@@ -524,7 +524,7 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	g.pf("   THE MULTI-THREADED FILL IS AN OBLIGATION ON THIS BACKEND, not a permission\n")
 	g.pf("   to the caller (docs/SPEC-TABLES.md §19.1). Nothing between these markers\n")
 	g.pf("   allocates, locks or takes an atomic. The parallelism itself lives in the\n")
-	g.pf("   caller's loop — N workers, disjoint index ranges, no synchronisation of any\n")
+	g.pf("   caller's loop — N workers, disjoint index ranges, no synchronization of any\n")
 	g.pf("   kind — and keeping this surface free of those three is what MAKES it\n")
 	g.pf("   possible. */\n\n")
 
@@ -654,7 +654,7 @@ func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 		g.pf("        /* EVERY NUMBER BELOW COMES FROM THE INSTANCE, so the arithmetic is\n")
 		g.pf("           unsigned and each term is BOUNDED BEFORE IT IS ADDED. A forged\n")
 		g.pf("           offset_of near 2^63 must refuse, and an addition that carried past\n")
-		g.pf("           the top of the type would be the undefined behaviour the check\n")
+		g.pf("           the top of the type would be the undefined behavior the check\n")
 		g.pf("           after it was supposed to catch. */\n")
 		g.pf("        const uint64_t offset_of = projection->%s.offset_of;\n", a.Field.Name)
 		g.pf("        const uint64_t count = projection->%s.count;\n", a.Field.Name)

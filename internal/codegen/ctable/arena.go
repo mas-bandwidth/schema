@@ -250,7 +250,7 @@ static SCHEMA_UNUSED uint32_t table_arena_grab_slab( TableArena * arena )
             if ( table_atomic_load_ptr( &arena->segments[segment] ) == NULL )
             {
                 /* calloc, NOT malloc: Lock copies whole nodes, PADDING
-                   INCLUDED, so anything uninitialised here reaches a packed
+                   INCLUDED, so anything uninitialized here reaches a packed
                    region. It costs nothing measurable: a fresh segment is
                    untouched pages either way, and calloc has the kernel hand
                    them over zeroed. */

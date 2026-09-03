@@ -12,7 +12,7 @@
  * is that it NEVER CRASHES and NEVER READS PAST THE EXTENT ITS CALLER CLAIMED,
  * whatever it answers, and the sanitizers are what say so: the buffer is
  * allocated at exactly the claim, so an over-read lands in a redzone rather
- * than in a neighbour.
+ * than in a neighbor.
  *
  * AND IT WALKS WHAT IT OPENED, which is the whole difference between this and
  * the shape it started as. An Open validates and POINTS — it reads no row — so

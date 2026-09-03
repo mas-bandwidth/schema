@@ -25,7 +25,7 @@ on:
     - cron: '17 9 * * *'
   workflow_dispatch:
 
-# Certification runs are NEVER cancelled — every main commit's full-matrix
+# Certification runs are NEVER canceled — every main commit's full-matrix
 # proof must run to completion. The event name is part of the group so a queued
 # nightly and a queued push run can never displace each other (a group holds
 # only one pending run).

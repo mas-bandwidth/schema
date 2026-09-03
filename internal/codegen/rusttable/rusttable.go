@@ -363,7 +363,7 @@ func keyedTypeExpr(f *ir.Field) string {
 	return fmt.Sprintf("TableKeyed::<%s, { %s::MAX.0 as usize }>", rustFieldType(f.Type), f.KeyEnum)
 }
 
-// arrayLen renders a field's array extent as a Rust expression — parenthesised,
+// arrayLen renders a field's array extent as a Rust expression — parenthesized,
 // never braced, because a braced block in a for-range position is the loop's
 // own body.
 func arrayLen(f *ir.Field) string {

@@ -55,7 +55,7 @@ two runs hit 2–4x higher — the exact inverse of the M2 desched class (where 
 against max and one outlier run sat low). inputpacket write: med 6.29 M msg/s, max 22.94.
 probearray write: med 5.02, max 24.24. shipcreate write: med 9.88, max 34.43.
 
-**The intervention (2026-08-11, labelled DIAGNOSTIC, serial, alone on core 0):** one cs
+**The intervention (2026-08-11, labeled DIAGNOSTIC, serial, alone on core 0):** one cs
 leg re-run with `DOTNET_TieredCompilation=0`, nothing else changed. Every poisoned row
 snapped to the neighborhood of its former max and the spreads collapsed:
 
@@ -159,7 +159,7 @@ benches, batch separately. The M2 v5 finals sit beside for the cross-host read.
 | C# * | **137%** | 199% | **198%** | 214% | **120%** | 140% | **150%** | 175% |
 | Go | **177%** | 323% | **370%** | 387% | **196%** | 204% | **108%** | 198% |
 
-\* C# row from the labelled `TieredCompilation=0` diagnostic — the default-config row
+\* C# row from the labeled `TieredCompilation=0` diagnostic — the default-config row
 computes to 305/195/248/203 and its write/batch-write cells are the artifact above, not
 the language. (Reads barely differ between configs: 195 vs 198.)
 
@@ -278,5 +278,5 @@ provenance):
 - `2026-08-07-four-language-v5-x86_64-epyc-restrict-ab-gcc.csv` — leg 6
 - `2026-08-07-four-language-v5-x86_64-epyc-restrict-ab-clang.csv` — leg 7
 - `2026-08-07-four-language-v5-x86_64-epyc-write-control.csv` — leg 8
-- `2026-08-11-cs-tiered-jit-diagnostic-x86_64-epyc.csv` — the labelled diagnostic
+- `2026-08-11-cs-tiered-jit-diagnostic-x86_64-epyc.csv` — the labeled diagnostic
 - `2026-08-07-v5-epyc-pass.log` — the serial-gate evidence (quiet windows, core-0 snapshots)

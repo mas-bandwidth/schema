@@ -146,15 +146,15 @@ table Mesh
     triangles uint32
 }
 
-table MeshCatalogue
+table MeshCatalog
 {
     meshes [..4096]Mesh
 }
 ```
 
 ```sh
-schema pack --root MeshCatalogue --out Assets.bin assets/ .
-schema cook --root MeshCatalogue --in Assets.bin --out Assets.cook .
+schema pack --root MeshCatalog --out Assets.bin assets/ .
+schema cook --root MeshCatalog --in Assets.bin --out Assets.cook .
 schema build-version .
 ```
 

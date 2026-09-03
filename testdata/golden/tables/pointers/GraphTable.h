@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package graphdemo — protocol id 0x79242c6a555d3a60 (packets only: tables version by field id, not by protocol id)
+// package graphdemo — protocol id 0x137b390d2dd13473 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -47,7 +47,7 @@
 #include "Graph.h"
 #include "MarksTable.h"
 #include "PartsTable.h"
-#include "graph_colour.h"
+#include "graph_color.h"
 
 #ifndef GRAPHDEMO_SCHEMA_TABLE_PRIMITIVES
 #define GRAPHDEMO_SCHEMA_TABLE_PRIMITIVES
@@ -168,7 +168,7 @@ struct TableFieldInfo
     const char * (*key_name)( uint64_t value );
     uint16_t (*key_id)( uint64_t value );
     // union fields: the tag and its arms, behind a function so the whole
-    // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
+    // descriptor stays CONSTANT-INITIALIZED (a captureless lambda converts to
     // a function pointer at compile time; the arms themselves are a static
     // inside it). NULL for every other kind.
     const TableUnionInfo * (*arms)();
@@ -617,13 +617,13 @@ struct TableWorker
         // A NODE IS BORN IN TWO HALVES: start its lifetime in the raw
         // storage, then write the declared defaults ONE MEMBER AT A TIME.
         //
-        // It is "T", not "T{}". Value-initialising the whole aggregate says
+        // It is "T", not "T{}". Value-initializing the whole aggregate says
         // the same thing and costs cl O(BYTES) TO COMPILE — it expands element
         // by element in its front end — while both halves here cost
         // O(declarations). The slab cap below refuses a large node at RUN
         // TIME and bounds nothing at compile time: the cost is paid by
         // whatever T a caller instantiates this with.
-        // Padding is not the difference: value-initialisation zeroes MEMBERS
+        // Padding is not the difference: value-initialization zeroes MEMBERS
         // and not padding either way, which is why the segment is calloc'd.
         //
         // TableReset is an OVERLOAD SET, one per closure member, reached from
@@ -631,11 +631,11 @@ struct TableWorker
         // Alloc is a template and cannot spell <Name>Reset.
         //
         // The reset is here because ONE DEFINITION SAYS WHAT THE DECLARED
-        // DEFAULTS ARE, and it is <Name>Reset. Default-initialisation lands on
+        // DEFAULTS ARE, and it is <Name>Reset. Default-initialization lands on
         // the same values today, because a member with a non-zero default
         // carries a member initializer that says so — but that is the class
         // definition agreeing with Reset, not the arena reading it, and #320's
-        // fix was itself a pass that MOVED initialisation between the two.
+        // fix was itself a pass that MOVED initialization between the two.
         // The arena reads the definition.
         slot.ptr = new ( TableArenaAt( *arena, at ) ) T;
         TableReset( *slot.ptr );
@@ -652,7 +652,7 @@ struct TableWorker
 // the same first-visit numbering the wire uses, so the pack order and the node
 // order are one order.
 //
-// COLOURING AN ENTRY WHILE ITS DESCENT IS OPEN COSTS ONE BIT, and it is what
+// COLORING AN ENTRY WHILE ITS DESCENT IS OPEN COSTS ONE BIT, and it is what
 // makes a data cycle free to refuse: a reference to an entry still open is a
 // cycle, and Lock returns failure rather than recursing away. The ROOT's entry
 // is open for the whole walk.
@@ -746,7 +746,7 @@ inline bool TablePackMapGrow( TablePackMap & map )
 }
 
 // REACH a node: one probe answers both questions the walk has. A true "taken"
-// says this is a FIRST visit, and the entry is now the node's, coloured open
+// says this is a FIRST visit, and the entry is now the node's, colored open
 // at "offset"; otherwise the entry is the one the node already has, and its
 // open bit says cycle or sharing. NULL is an allocation failure, and it is a
 // refusal like any other: Lock fails rather than packing a graph it cannot
@@ -1164,7 +1164,7 @@ namespace graphdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xe7c54936602ceecaull;
+static const uint64_t BuildVersion = 0x987bfec39c1c9f7cull;
 
 } // namespace graphdemo
 
@@ -1492,7 +1492,7 @@ struct Depot {
 struct Album {
     char name[16 + 1] = {}; // string(16): max length, used length beside it
     int32_t name_length = 0;
-    ::ColourMath tint;
+    ::ColorMath tint;
     Stamp stamp;
     Marker marker;
     TableRef pin; // *Marker — null until assigned
@@ -1604,7 +1604,7 @@ inline void AlbumReset( Album & value )
 {
     memset( value.name, 0, sizeof( value.name ) );
     value.name_length = 0;
-    value.tint = ::ColourMath();
+    value.tint = ::ColorMath();
     StampReset( value.stamp );
     MarkerReset( value.marker );
     value.pin.value = 0; // *Marker — null
@@ -1616,7 +1616,7 @@ inline void AlbumReset( Album & value )
 // TableWorker::Alloc is a template and cannot name a member's Reset, so
 // the arena reaches it through this overload set by argument-dependent
 // lookup. It is how a node born in raw arena storage comes to hold the
-// declared defaults without value-initialising the whole aggregate.
+// declared defaults without value-initializing the whole aggregate.
 
 inline void TableReset( Meta & value ) { MetaReset( value ); }
 inline void TableReset( Settings & value ) { SettingsReset( value ); }
@@ -2990,7 +2990,7 @@ inline int64_t AlbumMeasureBody( const Ctx & ctx, const Album & value )
     if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
     if ( value.name_length > 0 ) { bytes += 3 + 4 + value.name_length; } // name
     {
-        int64_t body_tint = ColourMeasure( value.tint );
+        int64_t body_tint = ColorMeasure( value.tint );
         if ( body_tint < 0 ) { return -1; }
         if ( body_tint > 2 ) { bytes += 3 + 4 + body_tint; } // tint: all-default nested elides
     }
@@ -3036,13 +3036,13 @@ inline bool AlbumSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         w.raw( value.name, value.name_length );
     }
     {
-        int64_t body_tint = ColourMeasure( value.tint );
+        int64_t body_tint = ColorMeasure( value.tint );
         if ( body_tint < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_tint > 2 ) // all-default nested elides
         {
             w.put16( 0x82b9 ); w.put8( 13 ); // tint
             w.put32( uint32_t( body_tint ) );
-            if ( !ColourSaveBody( w, value.tint ) ) return false;
+            if ( !ColorSaveBody( w, value.tint ) ) return false;
         }
     }
     {
@@ -3140,7 +3140,7 @@ inline bool AlbumLoadBody( TableReader & r, const TableNodeMap & nodes, Album & 
                 if ( !r.has( body_len ) ) { r.report->malformed = true; return false; }
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
-                    ColourLoadBody( sub, value.tint );
+                    ColorLoadBody( sub, value.tint );
                 }
                 r.offset += body_len;
                 break;
@@ -7274,7 +7274,7 @@ template <typename Ctx> inline bool AlbumCookBody( const Ctx & ctx, const TableC
 {
     table_cook_bytes( at + 0, value.name, value.name_length, 17 );
     table_cook_put( at + 20, (uint64_t) (uint32_t) value.name_length, 4, order );
-    ColourCookBody( at + 24, value.tint, order );
+    ColorCookBody( at + 24, value.tint, order );
     StampCookBody( at + 28, value.stamp, order );
     if ( !MarkerCookBody( ctx, region, at + 48, value.marker, order ) ) { return false; }
     if ( !table_cook_ref( region, at + 72, (const void *) MarkerAt( ctx, value.pin ), order ) ) { return false; } // pin
@@ -8498,7 +8498,7 @@ inline const TableTypeInfo * LayerTableType();
 inline const TableTypeInfo * SceneTableType();
 inline const TableTypeInfo * DepotTableType();
 inline const TableTypeInfo * AlbumTableType();
-// The descriptors are CONSTANT-INITIALISED data, and a field's target is
+// The descriptors are CONSTANT-INITIALIZED data, and a field's target is
 // the ADDRESS of another descriptor. These declarations are what let a
 // self- or mutually-referential graph — Node naming itself through *Node —
 // be expressed as constant data instead of a lazy link, which could not
@@ -8575,7 +8575,7 @@ inline const TableTypeInfo * DepotTableType() { return &DepotTableInfo; }
 
 inline const TableFieldInfo AlbumTableFields[] = {
     { "name", "name", "string", 0x30df, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Album, name ), (uint32_t) sizeof( Album::name ), (uint32_t) offsetof( Album, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "tint", "tint", "Colour", 0x82b9, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, tint ), (uint32_t) sizeof( Album::tint ), 0xffffffffu, 0xffffffffu, &ColourTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "tint", "tint", "Color", 0x82b9, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, tint ), (uint32_t) sizeof( Album::tint ), 0xffffffffu, 0xffffffffu, &ColorTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "stamp", "stamp", "Stamp", 0x0dc6, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, stamp ), (uint32_t) sizeof( Album::stamp ), 0xffffffffu, 0xffffffffu, &StampTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "marker", "marker", "Marker", 0x866f, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, marker ), (uint32_t) sizeof( Album::marker ), 0xffffffffu, 0xffffffffu, &MarkerTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "pin", "pin", "Marker", 0x69d5, 17, false, true, []( const void * slot ) -> const void * { return (const void *) MarkerAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) MarkerEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, pin ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &MarkerTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },

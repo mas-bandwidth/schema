@@ -23,7 +23,7 @@
 # era: sixlang-air-1   tier: quick (UNCERTIFIED — §2.6 window only; no twins, no bands)
 # rounds: 3   interleaved: yes
 # langs: cpp c go rust cs js
-# corpus note: TWO corpus_ids in this pass by runner coverage, not drift — 7a7c343f1a446f4c = 16-golden set (cpp,c,js); 6b118770d85af4f6 = same set minus real_packet.bin (go,rust,cs runners lack real_packet rows). Both ids reproduced from the on-disk goldens; zero byte drift. Cross-group ratios are outside §5.3 and live only in the era report, labelled.
+# corpus note: TWO corpus_ids in this pass by runner coverage, not drift — 7a7c343f1a446f4c = 16-golden set (cpp,c,js); 6b118770d85af4f6 = same set minus real_packet.bin (go,rust,cs runners lack real_packet rows). Both ids reproduced from the on-disk goldens; zero byte drift. Cross-group ratios are outside §5.3 and live only in the era report, labeled.
 # load_start: 1.46 1.30 1.41
 # load_end: 1.72 2.02 2.03
 # load_max: 2.23

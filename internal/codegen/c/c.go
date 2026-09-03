@@ -261,7 +261,7 @@ func (g *gen) constValue(d *ir.Const) string {
 	if d.Int == nil {
 		return "0"
 	}
-	// parenthesised so a #define used inside an expression cannot reassociate
+	// parenthesized so a #define used inside an expression cannot reassociate
 	return "(" + g.renderInt(d.Expr, d.Int) + ")"
 }
 

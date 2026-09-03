@@ -42,7 +42,7 @@ const TableBlockMagic uint64 = 0x4b4c42414d484353
 // obligation, not something a consumer improvises row by row.
 //
 // Go has no portable compile-time byte-order constant, so it is read off the
-// machine once, at package initialisation, and never on a per-block path.
+// machine once, at package initialization, and never on a per-block path.
 var TableBlockByteOrder = tableBlockNativeOrder()
 
 func tableBlockNativeOrder() uint64 {
@@ -121,7 +121,7 @@ type TableBlockFieldInfo struct {
 	PresentOffset uint32 // the presence companion, or 0xffffffff
 
 	// Element is the ELEMENT's or the nested record's own layout, behind a
-	// function so a descriptor graph needs no initialisation order. nil when
+	// function so a descriptor graph needs no initialization order. nil when
 	// the field is a scalar. Following it is how a walker DESCENDS: an
 	// out-of-line array's rows, and a nested record's fields, are both reached
 	// through this one column.
@@ -199,7 +199,7 @@ type TableStatBlockProjection struct {
 }
 
 // The LAYOUT CONTRACT's Go half (docs/SPEC-TABLES.md §19.3), run ONCE at
-// package initialisation. It REFUSES rather than guesses: a runtime whose
+// package initialization. It REFUSES rather than guesses: a runtime whose
 // model disagrees with the one the compiler derived stops the program where
 // it starts, rather than pointing at a row and reading the wrong bytes.
 func init() {
@@ -260,7 +260,7 @@ var tableBlockRecords = make([]TableBlockInfo, 2)
 // cycle among package-level variables, a closure in an initializer
 // included. An init body is not part of that analysis. Nothing mutates it
 // afterwards: the surface is immutable from here on, readable from any
-// goroutine with no synchronisation.
+// goroutine with no synchronization.
 func init() {
 	tableBlockRecords[0] = TableBlockInfo{
 		Name: "TableEntity", BuildVersion: BuildVersion, Size: 88, Align: 8, NumFields: 14,

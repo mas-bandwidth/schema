@@ -307,7 +307,7 @@ func stackKey(r *runtime.MemProfileRecord) string {
 }
 
 // grownSites is the stacks whose object count rose across the steady phase,
-// symbolised. A stack whose every frame is `runtime.` is the runtime's own;
+// symbolized. A stack whose every frame is `runtime.` is the runtime's own;
 // anything else names a package, and the port's packages are the ones that
 // matter.
 func grownSites(before, after map[string]int64) []site {
@@ -317,13 +317,13 @@ func grownSites(before, after map[string]int64) []site {
 		if grew <= 0 {
 			continue
 		}
-		out = append(out, symbolise(key, grew))
+		out = append(out, symbolize(key, grew))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].where < out[j].where })
 	return out
 }
 
-func symbolise(key string, objects int64) site {
+func symbolize(key string, objects int64) site {
 	var pcs []uintptr
 	for _, hex := range strings.Split(key, ";") {
 		if hex == "" {
@@ -333,7 +333,7 @@ func symbolise(key string, objects int64) site {
 		fmt.Sscanf(hex, "%x", &pc)
 		pcs = append(pcs, uintptr(pc))
 	}
-	result := site{objects: objects, where: "(unsymbolised)"}
+	result := site{objects: objects, where: "(unsymbolized)"}
 	if len(pcs) == 0 {
 		return result
 	}

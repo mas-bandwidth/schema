@@ -64,7 +64,7 @@ func includeCycle(u *ir.Unit) string {
 	deps := ir.FileDeps(u)
 	const (
 		white = 0
-		grey  = 1
+		gray  = 1
 		black = 2
 	)
 	color := map[string]int{}
@@ -73,13 +73,13 @@ func includeCycle(u *ir.Unit) string {
 	var visit func(base string) bool
 	visit = func(base string) bool {
 		switch color[base] {
-		case grey:
+		case gray:
 			found = strings.Join(append(path, base), " -> ")
 			return false
 		case black:
 			return true
 		}
-		color[base] = grey
+		color[base] = gray
 		path = append(path, base)
 		targets := make([]string, 0, len(deps[base]))
 		for t := range deps[base] {

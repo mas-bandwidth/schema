@@ -57,7 +57,7 @@ package rust
 //
 // What either attribute buys depends entirely on what stands between the
 // spine and its caller, and in bench/rust nothing does: the driver reaches
-// the spine through a Fn::call shim, #[inline(always)] is honoured INTO that
+// the spine through a Fn::call shim, #[inline(always)] is honored INTO that
 // shim, and LLVM then prices the shim against the driver and refuses it.
 // Flipping the read half to the demand there moves the bench_mixed rows by
 // less than half a percent — the attribute never reaches the timed loop.

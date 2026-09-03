@@ -49,7 +49,7 @@ func (g *NodeGraph) Records() []*tabletext.Instance { return g.Nodes[1:] }
 //
 // A DATA CYCLE IS REFUSED HERE, and the refusal is free: the walk carries one
 // entry per reachable node — that map IS identity, since a node must know its
-// index to be named twice — so colouring each entry while its descent is open
+// index to be named twice — so coloring each entry while its descent is open
 // costs one bit. A reference to an entry still open is a cycle, named, and
 // measure, save, Cook and Lock all return failure. Nothing recurses away.
 func Number(m *tabletext.Model, root *tabletext.Instance) (*NodeGraph, error) {

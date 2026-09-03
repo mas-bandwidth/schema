@@ -904,9 +904,9 @@ func TestPointerGenerationDeterministic(t *testing.T) {
 // THE SCAN IS SHAPE-INDEPENDENT ON PURPOSE. An earlier version matched two
 // declaration idioms with two regexes and silently missed five others a port
 // could plausibly reach for — a non-ref struct, an enum, a static readonly
-// field, a generic method, a non-sealed class. A scan that has to recognise
+// field, a generic method, a non-sealed class. A scan that has to recognize
 // declaration syntax is a scan that goes quietly blind the day the syntax
-// changes. This one recognises none: it collects every Table*-prefixed
+// changes. This one recognizes none: it collects every Table*-prefixed
 // identifier in the emitted text, declaration or use or comment, and requires
 // the whole set to be registered. Over-collection is the safe direction — the
 // cost of a false hit is registering a name or rewording a comment, and the
@@ -1844,7 +1844,7 @@ func TestCForceInlineStopsAtTheVariableClass(t *testing.T) {
 // cMacroSrc names every declaration with the same distinctive prefix, so a
 // macro in the emitted C that does NOT carry it is one the GENERATOR owns
 // rather than one the schema asked for. That is what makes the scan below
-// shape-independent: it recognises no spelling and no family, it simply
+// shape-independent: it recognizes no spelling and no family, it simply
 // subtracts the schema's own contribution and looks at what is left.
 const cMacroSrc = `package zqqpkg
 
@@ -2300,7 +2300,7 @@ table Node
 // it asks two things the C# scan does not have to.
 //
 // THE SPELLING IS lowerCamelCase for a free function and UpperCamel for a
-// class, so the scan collects both and normalises to the registry's PascalCase
+// class, so the scan collects both and normalizes to the registry's PascalCase
 // — the two are a bijection (the packet emitter's dartName), which is what
 // lets one registry cover the target.
 //

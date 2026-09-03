@@ -539,7 +539,7 @@ and returns failure in the others.
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only
-assumption the wire makes. The C++ behaviour in particular is the right one for
+assumption the wire makes. The C++ behavior in particular is the right one for
 a game shipping at 60 Hz, where re-checking every field of every packet in
 release is a cost with no buyer.
 
@@ -618,7 +618,7 @@ enum Grade { Bronze, Silver, Gold }  // v2 — every stored Gold still loads Gol
 ```
 
 A variant a reader has no name for loads as `None` (enum) or empty (union)
-and counts as `unknown` — never as its neighbour. There is no `was` for a
+and counts as `unknown` — never as its neighbor. There is no `was` for a
 variant: renaming one is a new variant, and old data reads as unknown.
 
 **`flags` is the exception: append at the END.** A mask rides as its raw
@@ -2963,7 +2963,7 @@ carrying a `# Safety` clause:
 
 Sites 3 and 4 are behind **cargo features**, both on by default: build with
 `default-features = false` and the block and cook modules are not compiled at
-all — the Rust analogue of C++'s "include the header only if you use the form"
+all — the Rust analog of C++'s "include the header only if you use the form"
 (§19). On the corpus's widest unit that is 7,181 of 23,290 generated lines not
 compiled. `--features cook` and `--features block` take one without the other.
 What stays either way is the wire, the text form, the reflection descriptors

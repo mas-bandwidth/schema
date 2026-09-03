@@ -91,7 +91,7 @@ The sitting is the type bench's, clause for clause (BENCH-STANDARD.md §1.5,
   needs no sink of its own: its output IS the re-save's input, so every loaded
   field is observed by construction.
 - **Variation is the 64 rotating instances**, and the producer proves they are
-  pairwise distinct, so no single buffer can be memorised by the branch
+  pairwise distinct, so no single buffer can be memorized by the branch
   predictor or the caches. `bytes_per_op` is constant by construction rather
   than by assertion.
 - **The read arm resets before it loads**, and that is not overhead the runner
@@ -184,7 +184,7 @@ it under the same nine rules as the type board's:
 
 Stated so a reader knows what is not here, and why:
 
-- **A Go leg's `opt` column is `default`.** Go has one optimisation
+- **A Go leg's `opt` column is `default`.** Go has one optimization
   configuration and no flag to name, so the column says what is true rather
   than borrowing C++'s spelling. `linkage` is `pkg`: the generated table codec
   is ordinary package code in the leg's binary and names no runtime at all.

@@ -228,7 +228,7 @@ func tableArrayInit(selfInit bool) string {
 // column. None of them writes `T{}` over the whole object.
 //
 // THE REASON IS A COMPILE-TIME ONE, MEASURED (#320). cl 19.51 expands a
-// value-initialisation of a large aggregate element by element in its front
+// value-initialization of a large aggregate element by element in its front
 // end, at O(bytes) rather than O(declarations). Against blockdemo::RenderFrame
 // — 7,879,320 bytes over ~105,000 rows — each `T{}` cost ~6 s and ` = {}` on
 // the array members another ~5 s, so a translation unit with that table in
@@ -1002,7 +1002,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			// that HOLDS the numbering has already consumed the table before it
 			// decodes any body, so the transport it rode in is stepped over
 			// here and NEVER counted unknown: 0xFFFF is not a field of the
-			// table, it is where the numbering travelled. An `unknown` here
+			// table, it is where the numbering traveled. An `unknown` here
 			// would mean "a build without kind 17", which is the difference §4
 			// exists to report and not one this reader has.
 			g.pf("            case 0x%04x:\n            {\n", ir.NodeTableFieldId)
@@ -1297,7 +1297,7 @@ func unionArmLambda(un *ir.Union, result string, arm func(ir.UnionVariant) strin
 
 // resetLambda renders a type descriptor's reset column: the same in-place
 // prefill the read path uses, behind a captureless lambda so the descriptor
-// stays constant-initialisable. The storage a walk hands it is a live object
+// stays constant-initializable. The storage a walk hands it is a live object
 // of the type, so this assigns rather than starting a lifetime.
 func resetLambda(name string) string {
 	return fmt.Sprintf("+[]( void * p ) { %sReset( *(%s *) p ); }", name, name)
@@ -1305,7 +1305,7 @@ func resetLambda(name string) string {
 
 // unionArmsLambda renders a union field's arms column: a captureless lambda
 // whose function-pointer conversion is a constant expression, so a descriptor
-// that names it stays constant-initialised (docs/SPEC-TABLES.md §8). The arms table
+// that names it stays constant-initialized (docs/SPEC-TABLES.md §8). The arms table
 // is a static inside it — no namespace-scope name to claim, and no first-use
 // state on the surface a caller sees.
 func (g *tableGen) unionArmsLambda(un *ir.Union, hoisted bool) string {
@@ -1335,14 +1335,14 @@ func bigToDouble(v *big.Int) string {
 // functions), built once on first use.
 func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	guards := tableGuardStrings(st)
-	// In a unit with pointers the descriptors are CONSTANT-INITIALISED data at
+	// In a unit with pointers the descriptors are CONSTANT-INITIALIZED data at
 	// namespace scope, and a field's target is the ADDRESS of another
 	// descriptor rather than a call. That is what makes a self- or
 	// mutually-referential graph expressible at all: a lazy link cannot
-	// describe Node -> *Node without re-entering its own initialisation, and
+	// describe Node -> *Node without re-entering its own initialization, and
 	// the read-modify-write it needed to try was a data race on first use. As
 	// constant data the whole reflection surface is immutable and readable from
-	// any thread at any time with no synchronisation.
+	// any thread at any time with no synchronization.
 	//
 	// A pointer-free unit keeps the function-local statics it always had, to
 	// the byte (docs/SPEC-TABLES.md §2.2, the zero-cost gate).
@@ -1389,7 +1389,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 
 			// `T::field`, never `T{}.field`: a member id-expression in an
 			// unevaluated operand names the type without an object, where the
-			// braced form makes the compiler materialise a whole value of T to
+			// braced form makes the compiler materialize a whole value of T to
 			// take the size of one member of it. cl runs out of heap space
 			// doing that for a multi-megabyte aggregate (C1060 on the block
 			// corpus, whose RenderFrame is 7.9 MB across ten fields).
@@ -1427,7 +1427,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 			table := "NULL"
 			if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
 				if hoisted {
-					// an ADDRESS, not a call: constant-initialisable, so a
+					// an ADDRESS, not a call: constant-initializable, so a
 					// self-reference (Node -> *Node) is simply &NodeTableInfo
 					table = "&" + f.Type.Name + "TableInfo"
 				} else {

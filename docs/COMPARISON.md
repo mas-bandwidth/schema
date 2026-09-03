@@ -120,8 +120,8 @@ It shows the wire cost of one gameplay packet, which is the case schema is
 built for: small, highly-constrained values sent at high frequency.
 
 It does not show throughput — see [PERFORMANCE.md](PERFORMANCE.md) for that —
-and it does not generalise. A packet of strings and unconstrained 64-bit
-integers would narrow the gap sharply, and a mostly-zero packet would favour
-Cap'n Proto's packing far more than it favours schema. Bit-packing wins where
+and it does not generalize. A packet of strings and unconstrained 64-bit
+integers would narrow the gap sharply, and a mostly-zero packet would favor
+Cap'n Proto's packing far more than it favors schema. Bit-packing wins where
 values are *bounded*, and bounds are what a game's data has and a
 general-purpose format cannot assume.

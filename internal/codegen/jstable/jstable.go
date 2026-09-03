@@ -71,7 +71,7 @@
 //     so a body of any depth costs no object. The C++ reference takes a
 //     sub-span and C# a sliced ref struct; both are stack, and a JavaScript
 //     slice would be heap, so the port scopes instead of slicing. The
-//     behaviour is identical: a nested decode cannot read past its own
+//     behavior is identical: a nested decode cannot read past its own
 //     framing.
 //   - Nothing for a string or a `bytes`. Storage is BYTES — a Uint8Array with
 //     a used length beside it, exactly as C++ and C# hold it — so a read is a
@@ -108,7 +108,7 @@
 //     reader, one writer, LoadBody then SaveBody — pays exactly Load's
 //     BigInts and nothing on the way back out.
 //   - AND A 64-BIT NUMBER THE FORM'S OWN FRAMING CARRIES IS NOT A FIELD, so it
-//     does not get that licence: a block array's `offset_of` and a cook
+//     does not get that license: a block array's `offset_of` and a cook
 //     reference's delta are both composed from TWO 32-BIT READS instead. Those
 //     are the two hottest lines the accelerators have — once per row addressed,
 //     once per edge followed — and a `getBigUint64` there would allocate per
@@ -116,7 +116,7 @@
 //     forgery near 2^63 must refuse; by the time a row is addressed the value
 //     fits a Number exactly.
 //   - A ROW'S 64-BIT FIELD reads as a BigInt through its accessor, one
-//     allocation per read, on the same licence as the wire's. A `flags` field
+//     allocation per read, on the same license as the wire's. A `flags` field
 //     carries `<Member>Has(view, at, bit)` beside it, which reads the one
 //     32-bit word holding the bit and allocates nothing — the accessor a
 //     per-frame consumer that only TESTS a flag reaches for.

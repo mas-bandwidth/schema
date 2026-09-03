@@ -231,7 +231,7 @@ build/schema_test_guard: build/guard-generated/.stamp test/guard/main.cpp
 # two-generation evolution pair (tblv1/tblv2), generated at build time into
 # build/ — test-only, never part of the committed generated/ tree.
 #
-# The generate step and the include path are parameterised by generator binary
+# The generate step and the include path are parameterized by generator binary
 # and output root, because the big-endian negative control below regenerates
 # the WHOLE corpus from a sabotaged emitter: a second copy of these lists would
 # be a second corpus, and the gate would stop covering what the leg covers.
@@ -286,7 +286,7 @@ tables-zero-cost: build/tables-generated/.stamp
 # therefore be the SAME BYTES in every generated .cpp of the corpus, whose
 # units disagree about packages, tables, kinds and pointer modes. The package
 # name lives in the guard and the namespace, outside the markers, so this is a
-# strict byte comparison with nothing normalised away. (It moved from the
+# strict byte comparison with nothing normalized away. (It moved from the
 # headers to the .cpp files with the walker itself — docs/SPEC-TABLES.md §16.1.)
 # THE RUST GENERIC-WALK GATE (docs/SPEC-TABLES.md §16), the Rust twin of the
 # one above: the text form is ONE walk over the reflection descriptors, and
@@ -294,7 +294,7 @@ tables-zero-cost: build/tables-generated/.stamp
 # not vary with what a unit declares — the units below disagree about
 # packages, tables, kinds, keyed arrays and pointer modes — so this is a strict
 # byte comparison of table_runtime.rs across the whole corpus, with nothing
-# normalised away except the generated banner, which names the schema file.
+# normalized away except the generated banner, which names the schema file.
 .PHONY: tables-rust-walk
 tables-rust-walk: build/tables-generated-rust/.stamp
 	@rm -rf build/rust-walk && mkdir -p build/rust-walk
@@ -396,7 +396,7 @@ tables-json-negative-control: bin/schema test/tables/json_negative_main.cpp
 # translation unit behind a guard. So the gate asserts two things: exactly one
 # file per unit directory carries a walker, and every walker in the corpus is
 # the same bytes. The package name never enters the markers, so nothing is
-# normalised away here either.
+# normalized away here either.
 .PHONY: tables-cs-json-walk
 tables-cs-json-walk: build/tables-generated-cs/.stamp
 	@rm -rf build/json-walk-cs && mkdir -p build/json-walk-cs
@@ -649,10 +649,10 @@ conformance-negative-control-dart: build/conformance-harness
 	@grep -q "^json-read *FAIL" $(CONFORMANCE_NEGATIVE_DART)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: json-read did not go red"; cat $(CONFORMANCE_NEGATIVE_DART)/log; exit 1; }
 	@grep -q "^json-write *pass" $(CONFORMANCE_NEGATIVE_DART)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: json-write went red too — the control does not localise the READER"; \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too — the control does not localize the READER"; \
 		  cat $(CONFORMANCE_NEGATIVE_DART)/log; exit 1; }
 	@grep -q "^wire *pass" $(CONFORMANCE_NEGATIVE_DART)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: wire went red too — the control does not localise the walk"; \
+		{ echo "NEGATIVE CONTROL FAILED: wire went red too — the control does not localize the walk"; \
 		  cat $(CONFORMANCE_NEGATIVE_DART)/log; exit 1; }
 	@grep -m1 "dart / json-read" $(CONFORMANCE_NEGATIVE_DART)/log
 	@echo "dart walk negative control: the sabotaged read reds json-read and leaves json-write and wire green"
@@ -1480,7 +1480,7 @@ tables-java-alloc: build/java-tables/.stamp build/cook-open/.stamp
 # exact-zero floor must catch it. A gate that could not see twenty-four bytes a
 # record is a gate that would not have seen the defect it exists for.
 #
-# The other half is the localisation, as it is for every control here: the wire
+# The other half is the localization, as it is for every control here: the wire
 # READ row goes red and every other row stays green, so the gate says WHICH path
 # allocated rather than "something did".
 .PHONY: tables-java-alloc-negative-control
@@ -1495,7 +1495,7 @@ tables-java-alloc-negative-control: build/java-tables/.stamp build/cook-open/.st
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the sabotaged path"; \
 		  cat build/java-alloc-negative.log; exit 1; }
 	@grep -q "wire save .*== 0" build/java-alloc-negative.log || \
-		{ echo "NEGATIVE CONTROL FAILED: every row went red, so it localises nothing"; \
+		{ echo "NEGATIVE CONTROL FAILED: every row went red, so it localizes nothing"; \
 		  cat build/java-alloc-negative.log; exit 1; }
 	@grep -m1 "wire read" build/java-alloc-negative.log
 	@echo "negative control: one allocation per record turns the Java allocation gate RED on that path alone"
@@ -3852,7 +3852,7 @@ generated/c/.stamp: bin/schema $(SCHEMAS)
 
 # -Wtype-limits is where gcc reports a vacuous comparison and clang stays quiet,
 # so it rides unconditionally. clang says the same thing under a flag gcc does
-# not recognise, so that one is FEATURE TESTED rather than assumed -- hardcoding
+# not recognize, so that one is FEATURE TESTED rather than assumed -- hardcoding
 # it broke the Linux leg once already, which is the argument for testing rather
 # than guessing which compiler is which.
 C_TAUTOLOGICAL := $(shell $(CC) -Wtautological-type-limit-compare -E - < /dev/null > /dev/null 2>&1 && echo -Wtautological-type-limit-compare)
@@ -4304,7 +4304,7 @@ bench:
 # drivers bench, regenerated from bench/corpus/Bench.schema's generated Go
 # codec. Deterministic — a regeneration that changes the committed file means
 # the shape or the §2.7 LCG mapping moved, and the tool refuses outright if
-# variant 0 stops equalling testdata/wire/bench_mixed.bin. Needs the
+# variant 0 stops equaling testdata/wire/bench_mixed.bin. Needs the
 # serialize.go checkout ($(SERIALIZE_GO)); the committed data's own gate,
 # bench/corpus/variants_test.go, needs nothing and runs in `make test`.
 bench-variants: generated/bench/go/.stamp
@@ -4428,7 +4428,7 @@ clean:
 # arm64 macOS at the landing, everything already built, median of three:
 #
 #   all three legs, 260 cases each   10.5 s
-#   the cpp leg alone                 0.79 s   (native execs, plus materialising)
+#   the cpp leg alone                 0.79 s   (native execs, plus materializing)
 #   the cs leg alone                 10.0 s   (`dotnet run` start-ups)
 #   the go leg alone                  1.07 s   (one native exec per surface)
 #
@@ -4834,7 +4834,7 @@ conformance-negative-control: build/conformance-harness build/conformance-cpp
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
 		  cat build/conformance-negative/log; exit 1; }
 	@grep -q "wire          pass" build/conformance-negative/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localizes nothing"; \
 		  cat build/conformance-negative/log; exit 1; }
 	@grep -m1 "cpp / json-write" build/conformance-negative/log
 	@echo "negative control: one byte off in one dump turns the harness RED on that surface alone"
@@ -4889,10 +4889,10 @@ conformance-negative-control-js: build/conformance-harness
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
 		  cat $(CONFORMANCE_NEGATIVE_JS)/log; exit 1; }
 	@grep -q "json-write    pass" $(CONFORMANCE_NEGATIVE_JS)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the READER"; \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localize the READER"; \
 		  cat $(CONFORMANCE_NEGATIVE_JS)/log; exit 1; }
 	@grep -q "wire          pass" $(CONFORMANCE_NEGATIVE_JS)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localizes nothing"; \
 		  cat $(CONFORMANCE_NEGATIVE_JS)/log; exit 1; }
 	@grep -m1 "js / json-read" $(CONFORMANCE_NEGATIVE_JS)/log
 	@echo "negative control: one field index off in the JavaScript walk turns the harness RED on json-read alone"
@@ -4930,10 +4930,10 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on block-dump"; \
 		  cat $(CONFORMANCE_NEGATIVE_BLOCK)/log; exit 1; }
 	@grep -q "^block         pass" $(CONFORMANCE_NEGATIVE_BLOCK)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: block went red too, so the control does not localise the ROW READ"; \
+		{ echo "NEGATIVE CONTROL FAILED: block went red too, so the control does not localize the ROW READ"; \
 		  cat $(CONFORMANCE_NEGATIVE_BLOCK)/log; exit 1; }
 	@grep -q "^forgery       pass" $(CONFORMANCE_NEGATIVE_BLOCK)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localizes nothing"; \
 		  cat $(CONFORMANCE_NEGATIVE_BLOCK)/log; exit 1; }
 	@grep -m1 "cpp / block-dump" $(CONFORMANCE_NEGATIVE_BLOCK)/log
 	@echo "negative control: one byte off INSIDE A ROW turns the harness RED on block-dump alone — block still opens"
@@ -4955,7 +4955,7 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 # (tables-json-negative-control). A C# field has no offset — the descriptor
 # carries accessors instead (§8.1) — so the twin of that arithmetic is the FIELD
 # INDEX the read path looks a descriptor up by: one key's value lands in its
-# neighbour's field. It is bounded on purpose, so a table with an odd field
+# neighbor's field. It is bounded on purpose, so a table with an odd field
 # count cannot turn the control into an exception rather than a wrong answer,
 # and it touches the READ path only.
 #
@@ -4998,10 +4998,10 @@ conformance-negative-control-cs: build/conformance-harness
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
 		  cat $(CONFORMANCE_NEGATIVE_CS)/log; exit 1; }
 	@grep -q "json-write    pass" $(CONFORMANCE_NEGATIVE_CS)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the READER"; \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localize the READER"; \
 		  cat $(CONFORMANCE_NEGATIVE_CS)/log; exit 1; }
 	@grep -q "wire          pass" $(CONFORMANCE_NEGATIVE_CS)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localizes nothing"; \
 		  cat $(CONFORMANCE_NEGATIVE_CS)/log; exit 1; }
 	@grep -m1 "cs / json-read" $(CONFORMANCE_NEGATIVE_CS)/log
 	@echo "negative control: one field index off in the C# walk turns the harness RED on json-read alone"
@@ -5037,7 +5037,7 @@ conformance-negative-control-go: build/conformance-harness build/tables-generate
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
 		  cat build/conformance-negative-go/log; exit 1; }
 	@grep -q "report        pass" build/conformance-negative-go/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localizes nothing"; \
 		  cat build/conformance-negative-go/log; exit 1; }
 	@grep -m1 "go / wire" build/conformance-negative-go/log
 	@echo "negative control (go): one byte off in one wire answer turns the harness RED on that surface alone"
@@ -5060,7 +5060,7 @@ conformance-negative-control-go: build/conformance-harness build/tables-generate
 # unsafe.Offsetof — so unlike C#, whose twin had to perturb a field INDEX
 # instead, that arithmetic ports directly. The sed is bounded to
 # tableJsonReadField's own body, because the writer's line is the same text and
-# a control that broke both would not localise the READER.
+# a control that broke both would not localize the READER.
 #
 # The second half is the point, as it is for every control here: json-read must
 # go RED and every other surface must stay GREEN.
@@ -5072,7 +5072,7 @@ conformance-negative-control-go: build/conformance-harness build/tables-generate
 # arithmetic and C# the field INDEX a descriptor is looked up by. An Elixir
 # struct has neither: a field is reached by its KEY, so the key is what the
 # control breaks — the read places every scalar under a name the instance does
-# not have, which is precisely "one key's value lands in its neighbour's" in the
+# not have, which is precisely "one key's value lands in its neighbor's" in the
 # only vocabulary this language has for it.
 #
 # The second half is the point, as it is for every control here: json-read must
@@ -5115,7 +5115,7 @@ conformance-negative-control-elixir: build/conformance-harness
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
 		  cat $(CONFORMANCE_NEGATIVE_ELIXIR)/log; exit 1; }
 	@grep -q "^json-write *pass" $(CONFORMANCE_NEGATIVE_ELIXIR)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: json-write went red too — the control does not localise the READER"; \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too — the control does not localize the READER"; \
 		  cat $(CONFORMANCE_NEGATIVE_ELIXIR)/log; exit 1; }
 	@echo "elixir walk negative control: the sabotaged read reds json-read and leaves json-write green"
 
@@ -5163,10 +5163,10 @@ conformance-negative-control-go-walk: build/conformance-harness
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
 		  cat $(CONFORMANCE_NEGATIVE_GOWALK)/log; exit 1; }
 	@grep -q "json-write    pass" $(CONFORMANCE_NEGATIVE_GOWALK)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the READER"; \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localize the READER"; \
 		  cat $(CONFORMANCE_NEGATIVE_GOWALK)/log; exit 1; }
 	@grep -q "wire          pass" $(CONFORMANCE_NEGATIVE_GOWALK)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localizes nothing"; \
 		  cat $(CONFORMANCE_NEGATIVE_GOWALK)/log; exit 1; }
 	@grep -m1 "go / json-read" $(CONFORMANCE_NEGATIVE_GOWALK)/log
 	@echo "negative control: one field offset off in the Go walk turns the harness RED on json-read alone"
@@ -5179,7 +5179,7 @@ conformance-negative-control-go-walk: build/conformance-harness
 # below is compiled against what that compiler generated.
 #
 # THE SABOTAGE is the C# control's: the FIELD INDEX the read path looks a
-# descriptor up by, so one key's value lands in its neighbour's field. It is
+# descriptor up by, so one key's value lands in its neighbor's field. It is
 # bounded on purpose, so a table with an odd field count cannot turn the control
 # into an exception rather than a wrong answer, and it touches the READ path
 # only — which is what makes json-write staying green the statement that the
@@ -5218,15 +5218,15 @@ conformance-negative-control-java: build/conformance-harness
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
 		  cat $(CONFORMANCE_NEGATIVE_JAVA)/log; exit 1; }
 	@grep -q "json-write    pass" $(CONFORMANCE_NEGATIVE_JAVA)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the READER"; \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localize the READER"; \
 		  cat $(CONFORMANCE_NEGATIVE_JAVA)/log; exit 1; }
 	@grep -q "wire          pass" $(CONFORMANCE_NEGATIVE_JAVA)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localizes nothing"; \
 		  cat $(CONFORMANCE_NEGATIVE_JAVA)/log; exit 1; }
 	@grep -m1 "java / json-read" $(CONFORMANCE_NEGATIVE_JAVA)/log
 	@echo "negative control: one field index off in the Java walk turns the harness RED on json-read alone"
 
-# THE SECOND JAVA NEGATIVE CONTROL, and it localises a DIFFERENT reader: the
+# THE SECOND JAVA NEGATIVE CONTROL, and it localizes a DIFFERENT reader: the
 # block form's Open. The three controls above all move a value; this one removes
 # a CHECK — the array's pitch against this build's own — so the forged image
 # `block_pitch` opens where it must refuse.
@@ -5269,10 +5269,10 @@ conformance-negative-control-java-block: build/conformance-harness
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the forgery battery"; \
 		  cat $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log; exit 1; }
 	@grep -q "^block         pass" $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: block went red too, so the control does not localise the CHECK"; \
+		{ echo "NEGATIVE CONTROL FAILED: block went red too, so the control does not localize the CHECK"; \
 		  cat $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log; exit 1; }
 	@grep -q "^block-dump    pass" $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: block-dump went red too, so the control does not localise the CHECK"; \
+		{ echo "NEGATIVE CONTROL FAILED: block-dump went red too, so the control does not localize the CHECK"; \
 		  cat $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log; exit 1; }
 	@grep -m1 "java / forgery" $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log
 	@echo "negative control: one missing pitch check in the Java block Open turns the harness RED on forgery alone"
@@ -5314,7 +5314,7 @@ TABLES_CFLAGS := -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTO
 
 # The flags a NEGATIVE CONTROL builds with. A control is built to be RUN ONCE
 # and thrown away — it proves a gate can go red and is never measured — so it
-# pays the warnings and skips the optimiser. On the driver's twenty-eight
+# pays the warnings and skips the optimizer. On the driver's twenty-eight
 # translation units that is most of the build, and `make test` runs two of
 # these.
 TABLES_CFLAGS_CONTROL := $(subst -O2,-O0,$(TABLES_CFLAGS))
@@ -5368,7 +5368,7 @@ tables-c-zero-cost: build/tables-generated-c/.stamp
 # property which makes it schema's rather than a packer's. The walker's source
 # must therefore be the SAME BYTES in every generated .c of the corpus, whose
 # units disagree about packages, tables, kinds and pointer modes. Nothing
-# outside the markers is compared and nothing inside them is normalised away:
+# outside the markers is compared and nothing inside them is normalized away:
 # the C walk names no package at all, because its entry points are reached
 # through the prefixed wrappers rather than through a namespace.
 .PHONY: tables-c-json-walk
@@ -5463,7 +5463,7 @@ tables-c: build/conformance-c build/conformance-c-asan tables-c-zero-cost tables
 # THE NEGATIVE CONTROL FOR THE C LEG, and it is the C# control's twin over the
 # C emitter: a green matrix row proves nothing until the row is shown capable
 # of going red. One field index in the C WALK is sabotaged — the reader takes
-# its neighbour's descriptor — and the harness must go red on `json-read`
+# its neighbor's descriptor — and the harness must go red on `json-read`
 # ALONE. The second half is the point: json-write must stay green, because the
 # sabotage is in the READER; and `wire` must stay green, because the wire codec
 # is a different half of the same backend. A control that turned the whole
@@ -5522,10 +5522,10 @@ conformance-negative-control-c: build/conformance-harness
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
 		  cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; }
 	@grep -q "json-write    pass" $(CONFORMANCE_NEGATIVE_C)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the READER"; \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localize the READER"; \
 		  cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; }
 	@grep -q "wire          pass" $(CONFORMANCE_NEGATIVE_C)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localizes nothing"; \
 		  cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; }
 	@grep -m1 "c / json-read" $(CONFORMANCE_NEGATIVE_C)/log
 	@echo "negative control: one field index off in the C walk turns the harness RED on json-read alone"
@@ -5537,7 +5537,7 @@ conformance-negative-control-c: build/conformance-harness
 # been the expectation, be right. The control neuters the byte swap and requires
 # BOTH foreign rows to go red while `cook` and `block` — the same Opens over the
 # same files, unswapped — stay green. That second half is what says the control
-# localises the swap rather than breaking the reader.
+# localizes the swap rather than breaking the reader.
 CONFORMANCE_NEGATIVE_C_FOREIGN := build/conformance-negative-c-foreign
 .PHONY: conformance-negative-control-c-foreign
 conformance-negative-control-c-foreign: build/conformance-harness build/tables-generated-c/.stamp
@@ -5564,10 +5564,10 @@ conformance-negative-control-c-foreign: build/conformance-harness build/tables-g
 		{ echo "NEGATIVE CONTROL FAILED: block-foreign stayed green with no swap"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; }
 	@grep -q "^cook          pass" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: cook went red too, so the control does not localise the swap"; \
+		{ echo "NEGATIVE CONTROL FAILED: cook went red too, so the control does not localize the swap"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; }
 	@grep -q "^block         pass" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: block went red too, so the control does not localise the swap"; \
+		{ echo "NEGATIVE CONTROL FAILED: block went red too, so the control does not localize the swap"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; }
 	@grep -m1 "c / cook-foreign" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log
 	@echo "negative control: a driver that never makes the file foreign turns cook-foreign and block-foreign RED, and only those"
@@ -5726,7 +5726,7 @@ tables-c-fuzz-negative-control: build/tables-generated-c/.stamp build/cook-open/
 .PHONY: tables-c-soak-negative-control
 tables-c-soak-negative-control: build/tables-generated-c/.stamp
 	@rm -rf build/c-soak-sabotage && mkdir -p build/c-soak-sabotage
-	@sed 's|            codec->load( value, loaded\[i\].wire, (int64_t) loaded\[i\].bytes, \&report );|            { void * sabotage = malloc( 1 ); *(volatile char *) sabotage = 1; free( sabotage ); } /* SABOTAGED: one matched pair, invisible to a live-byte sample. The volatile store is what stops the optimiser deleting a dead allocation outright, which gcc does at -O2 — a control the compiler removed proves nothing. */\n            codec->load( value, loaded[i].wire, (int64_t) loaded[i].bytes, \&report );|' \
+	@sed 's|            codec->load( value, loaded\[i\].wire, (int64_t) loaded\[i\].bytes, \&report );|            { void * sabotage = malloc( 1 ); *(volatile char *) sabotage = 1; free( sabotage ); } /* SABOTAGED: one matched pair, invisible to a live-byte sample. The volatile store is what stops the optimizer deleting a dead allocation outright, which gcc does at -O2 — a control the compiler removed proves nothing. */\n            codec->load( value, loaded[i].wire, (int64_t) loaded[i].bytes, \&report );|' \
 		test/c-tables/soak_main.c > build/c-soak-sabotage/soak_main.c
 	@grep -q SABOTAGED build/c-soak-sabotage/soak_main.c || \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }

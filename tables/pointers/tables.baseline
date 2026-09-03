@@ -3,13 +3,13 @@ package graphdemo
 
 table Album
     field name id=0x30df kind=12 size=16
-    field tint id=0x82b9 kind=13 type=Colour
+    field tint id=0x82b9 kind=13 type=Color
     field stamp id=0x0dc6 kind=13 type=Stamp
     field marker id=0x866f kind=13 type=Marker
     field pin id=0x69d5 kind=17 type=Marker
     field head id=0x79aa kind=17 type=ListNode
 
-table Colour
+table Color
     field r id=0xb019 kind=6
     field g id=0xc40a kind=6
     field b id=0xcae9 kind=6

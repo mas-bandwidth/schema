@@ -400,7 +400,7 @@ func (g *gen) emitStruct(d *ir.Struct) {
 	// Rust's default representation may reorder fields and is not stable
 	// across builds, so memcpy to a file, an mmap or another process — the
 	// things docs/USAGE.md's "The wire" promises of generated storage — would be
-	// honoured by accident until the day they were not. It also makes the layout match
+	// honored by accident until the day they were not. It also makes the layout match
 	// the C++ struct field for field, which is what "the same data type in
 	// five languages" ought to mean.
 	g.pf("#[repr(C)]\n")

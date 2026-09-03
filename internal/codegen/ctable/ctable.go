@@ -209,7 +209,7 @@ const tableKeyedAccessor = `
 /* The storage index a key names, with the None refusal that stands in EVERY
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
-   behaviour in the configuration a game ships. */
+   behavior in the configuration a game ships. */
 static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 {
     if ( key == 0 )

@@ -2,7 +2,7 @@
 //
 // A port of the tables layer is "make the driver pass". The DATA lives under
 // testdata/conformance/tables and names no language; the CONTRACT lives in
-// test/conformance/README.md; this tool generates the data, materialises the
+// test/conformance/README.md; this tool generates the data, materializes the
 // fixtures a driver cannot carry as text, runs every registered driver over
 // every surface, and prints the matrix.
 //
@@ -46,7 +46,7 @@ func usage() {
              resolved to byte offsets. Both come from the FIRST driver in the
              registry, which is the reference leg.
 
-  run        materialise the fixtures, run every driver in the registry over
+  run        materialize the fixtures, run every driver in the registry over
              every surface it lists, compare against the data, and print the
              per-language matrix. Exits nonzero if any registered surface
              fails.

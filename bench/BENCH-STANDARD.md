@@ -699,7 +699,7 @@ stride clause was added 2026-08-15, with the measurement that demanded it):
   precompute scratch words; `serialize/bench.cpp:187-190` says so in its own comment,
   and `serialize.go/bench_test.go:117` and `serialize.go/bench/cpp/bench.cpp:185`
   both do it anyway.
-- **64 rotating read buffers.** One buffer is memorised by the branch predictor and
+- **64 rotating read buffers.** One buffer is memorized by the branch predictor and
   the caches. `bench_test.go:158` and `bench/cpp/bench.cpp:220` re-read one.
 - **Variant-buffer stride is staggered: each of the 64 read buffers occupies a
   `BufferSize + 64` slot (4160 bytes), never packed at exact 4096.** Measured
@@ -885,8 +885,8 @@ regeneration check in CI; that is named here, not built.
 `path` column (one `paths` list drives `aggregate`, `twingate`, `bands` and the
 absolute table, so a new path can no longer make rows silently vanish), and
 `run.sh --quick`'s **headline section exits non-zero when it has zero rows**.
-The pre-fix behaviour was the defect: with cpp reporting `round_trip`, the
-blender dropped every row it did not recognise and printed an empty section at
+The pre-fix behavior was the defect: with cpp reporting `round_trip`, the
+blender dropped every row it did not recognize and printed an empty section at
 exit 0 — a leg that produced rows looked identical to a leg that produced
 none, which is exactly what #175 legislated against.
 
@@ -941,7 +941,7 @@ governs any port whose packaging still differs; for C-vs-C++ specifically it
 is history, and present-tense TU attributions in any doc dated after
 2026-08-17 are wrong.)
 
-> **Every pass MUST additionally emit a labelled external-linkage diagnostic leg for
+> **Every pass MUST additionally emit a labeled external-linkage diagnostic leg for
 > C++ and C**, so the size of the linkage term is a published number rather than a
 > thing discovered once and forgotten. Precedent: the `-flto` C diagnostic and the
 > `DOTNET_TieredCompilation=0` diagnostic, both already in `bench/results/`.
@@ -993,7 +993,7 @@ difference is recorded verbatim in the preamble (already done, `run.sh:125-144`)
 > determinism requirement.
 
 > **LTO is off in every standard leg**, because Go, C# and `cargo --release` have no
-> equivalent enabled by default. `-flto` and `lto = "fat"` are labelled diagnostic
+> equivalent enabled by default. `-flto` and `lto = "fat"` are labeled diagnostic
 > legs, never the default pass.
 
 ### §3.4 Assert state — matched where possible, named where not
@@ -1574,12 +1574,12 @@ Go keeps bounds checks, range validation and the sticky error check in every bui
 design. `serialize.rs` is `unsafe_code = "forbid"`, so every load is bounds-checked in
 every build, forever. A `-DNDEBUG` C++ build compiles all of that away. §3.4 records
 it and §5.3 refuses to launder it into a language claim — but the work genuinely
-differs, and no harness can equalise it without changing one of the libraries.
+differs, and no harness can equalize it without changing one of the libraries.
 
 **Inline verdicts are compiler-version-specific.** Go's cost-80 budget, GCC's
 15-instruction auto budget and clang's 375-cost threshold are implementation details
 that move between releases. The ledger will need re-baselining on a toolchain bump,
-and that re-baselining is a judgement call, not a mechanical one. The gate catches
+and that re-baselining is a judgment call, not a mechanical one. The gate catches
 *your* regressions; it also fires on *their* changes, and telling those apart is
 manual work.
 
@@ -1608,4 +1608,4 @@ has ever been true.
 **Nothing here makes a benchmark measure what you meant.** The oracle gate proves the
 bytes are right; the escape barriers prove the work happened; the inline verdict
 proves how it was compiled. None of that proves the benchmark asks a useful question.
-That judgement stays with whoever writes it.
+That judgment stays with whoever writes it.

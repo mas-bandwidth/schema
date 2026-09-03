@@ -184,9 +184,9 @@ func TestEnumKeyedObject(t *testing.T) {
 	_ = m
 }
 
-// §16.3: `json = "key"` is honoured on the way in and on the way out, and the
+// §16.3: `json = "key"` is honored on the way in and on the way out, and the
 // field's own name is then NOT a key.
-func TestJsonKeyIsHonoured(t *testing.T) {
+func TestJsonKeyIsHonored(t *testing.T) {
 	m, inst, r := read(t, "ShipEntry", `{ "name": "Vulture" }`)
 	if !r.Silent() {
 		t.Fatalf("expected silence, got %+v", r)

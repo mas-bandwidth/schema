@@ -51,7 +51,7 @@ cpp compiles the generated table codec inline into one translation unit and
 links no runtime at all; go compiles it as ordinary package code in the leg's
 binary and links none either, which the CSV records as `pkg` against C++'s
 `hdr`. The `opt` column says `default` for go, because the Go compiler has one
-optimisation configuration and no flag to name.
+optimization configuration and no flag to name.
 
 **How much the machine itself moves.** An earlier pass of this tree on this
 laptop put cpp write at 0.447 M msg/s against the 0.322 above — 28% on nothing

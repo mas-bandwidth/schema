@@ -275,7 +275,7 @@ static void walk_opened( const Info * info, const uint8_t * base, int64_t bytes,
 
         // THE WHOLE WALK: every byte of every row, actually read. Checked first
         // and read second, so the oracle names the defect and the sanitizer
-        // confirms independently that nothing above was modelled wrong. The
+        // confirms independently that nothing above was modeled wrong. The
         // read is one memcpy per array because the sanitizer range-checks a
         // memcpy whole, which is the same proof a byte loop gives at a fraction
         // of the gate's budget.

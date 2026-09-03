@@ -52,7 +52,7 @@ on:
   workflow_dispatch:
 
 # Superseded pushes to the same pull request cancel each other; a push to main
-# is never cancelled. The event name is part of the group so a queued main run
+# is never canceled. The event name is part of the group so a queued main run
 # and a queued dispatch run can never displace each other (a group holds only
 # one pending run).
 concurrency:
@@ -461,7 +461,7 @@ jobs:
   # more than half a second.
   #
   # WHAT IT GUARDS BEYOND COMPILING. cl's front end expands a
-  # value-initialisation of a large aggregate element by element, at O(bytes)
+  # value-initialization of a large aggregate element by element, at O(bytes)
   # — which is why the emitted header never writes `T{}` over a table and
   # prefills member by member instead (#320). One such `T{}` over
   # blockdemo::RenderFrame, a 7 879 320-byte aggregate, costs cl about six
@@ -560,7 +560,7 @@ jobs:
           # One cl per translation unit, each with a clock line in front of it.
           # /Itest\tables for the same reason the Makefile's tables legs carry
           # -Itest/tables: a `cpp_native` type names its own header through
-          # `cpp_include`, and tables/pointers' Colour names one that lives
+          # `cpp_include`, and tables/pointers' Color names one that lives
           # with the tests.
           {
             echo "@echo off"

@@ -474,7 +474,7 @@ static SCHEMA_UNUSED int table_json_write_float( TableJsonOut * out, double valu
         length = snprintf( text, sizeof( text ), "%.*g", digits, value );
         if ( length <= 0 || length >= (int) sizeof( text ) ) { return 0; }
         if ( digits >= high ) { break; }
-        /* the round-trip check runs BEFORE the decimal point is normalised:
+        /* the round-trip check runs BEFORE the decimal point is normalized:
            the token still carries whatever point snprintf just produced */
         if ( single )
         {

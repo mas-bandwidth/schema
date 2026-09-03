@@ -341,7 +341,7 @@ SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_firing, offsetof( TableEntity
    THE MULTI-THREADED FILL IS AN OBLIGATION ON THIS BACKEND, not a permission
    to the caller (docs/SPEC-TABLES.md §19.1). Nothing between these markers
    allocates, locks or takes an atomic. The parallelism itself lives in the
-   caller's loop — N workers, disjoint index ranges, no synchronisation of any
+   caller's loop — N workers, disjoint index ranges, no synchronization of any
    kind — and keeping this surface free of those three is what MAKES it
    possible. */
 
@@ -505,7 +505,7 @@ SCHEMA_TABLE_STATIC_ASSERT( TableStat_projection_delta, offsetof( TableStatBlock
    THE MULTI-THREADED FILL IS AN OBLIGATION ON THIS BACKEND, not a permission
    to the caller (docs/SPEC-TABLES.md §19.1). Nothing between these markers
    allocates, locks or takes an atomic. The parallelism itself lives in the
-   caller's loop — N workers, disjoint index ranges, no synchronisation of any
+   caller's loop — N workers, disjoint index ranges, no synchronization of any
    kind — and keeping this surface free of those three is what MAKES it
    possible. */
 

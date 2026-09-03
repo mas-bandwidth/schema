@@ -24,7 +24,7 @@
 // array the codec writes THROUGH a pointer, so the store is already observable,
 // and the returned length folds into a package-level sink beside a
 // runtime.KeepAlive — which is what the C# leg does, for the same reason. And
-// there is no optimisation level: the Go compiler has one configuration, so the
+// there is no optimization level: the Go compiler has one configuration, so the
 // CSV's opt column says `default` rather than naming a flag that does not
 // exist.
 //
@@ -71,7 +71,7 @@ var (
 // pkg — the generated table codec is ordinary package code in this binary and
 // names no runtime at all. checks contract — Go's bounds checks are on in every
 // configuration and the reader's wire-contract validation is unconditional,
-// which is §3.4's word for exactly this. opt default — Go has one optimisation
+// which is §3.4's word for exactly this. opt default — Go has one optimization
 // configuration and no flag to name.
 const csvSuffix = "pkg,contract,default,unknown"
 

@@ -5,7 +5,7 @@
 // this file only if it uses one, and <Base>Table.go carries not one symbol of
 // it. The C++ side is the producer (§19.1's builder) and this side is the
 // consumer: it POINTS at bytes another language wrote and reads rows in place,
-// with no marshalling and no copy at the boundary.
+// with no marshaling and no copy at the boundary.
 //
 // Two ways to read one block, and both come from one declaration (§19.2): the
 // DESCRIPTORS, which carry the projection's own layout and retire a hand-kept
@@ -214,7 +214,7 @@ const TableBlockMagic uint64 = 0x%016x
 // obligation, not something a consumer improvises row by row.
 //
 // Go has no portable compile-time byte-order constant, so it is read off the
-// machine once, at package initialisation, and never on a per-block path.
+// machine once, at package initialization, and never on a per-block path.
 var TableBlockByteOrder = tableBlockNativeOrder()
 
 func tableBlockNativeOrder() uint64 {
@@ -293,7 +293,7 @@ type TableBlockFieldInfo struct {
 	PresentOffset uint32 // the presence companion, or 0xffffffff
 
 	// Element is the ELEMENT's or the nested record's own layout, behind a
-	// function so a descriptor graph needs no initialisation order. nil when
+	// function so a descriptor graph needs no initialization order. nil when
 	// the field is a scalar. Following it is how a walker DESCENDS: an
 	// out-of-line array's rows, and a nested record's fields, are both reached
 	// through this one column.
@@ -479,7 +479,7 @@ func goBlittableType(u *ir.Unit, t ir.FieldType) string {
 // ---- the layout check (docs/SPEC-TABLES.md §19.3) ----
 
 // emitLayoutCheck emits the generated check, run ONCE at package
-// initialisation: every size, alignment and offset the C++ side static_asserts,
+// initialization: every size, alignment and offset the C++ side static_asserts,
 // asserted here against Go's own model. Go could state most of it at compile
 // time, but not with a message a person can act on, so it states it where the
 // program starts and REFUSES — naming the record, the field, the offset the
@@ -491,7 +491,7 @@ func goBlittableType(u *ir.Unit, t ir.FieldType) string {
 func (g *blockGen) emitLayoutCheck() {
 	g.needsFmt = true
 	g.hf("// The LAYOUT CONTRACT's Go half (docs/SPEC-TABLES.md §19.3), run ONCE at\n")
-	g.hf("// package initialisation. It REFUSES rather than guesses: a runtime whose\n")
+	g.hf("// package initialization. It REFUSES rather than guesses: a runtime whose\n")
 	g.hf("// model disagrees with the one the compiler derived stops the program where\n")
 	g.hf("// it starts, rather than pointing at a row and reading the wrong bytes.\n")
 	g.hf("func init() {\n")
@@ -702,7 +702,7 @@ func (g *blockGen) emitAllDescriptors() {
 	g.hf("// cycle among package-level variables, a closure in an initializer\n")
 	g.hf("// included. An init body is not part of that analysis. Nothing mutates it\n")
 	g.hf("// afterwards: the surface is immutable from here on, readable from any\n")
-	g.hf("// goroutine with no synchronisation.\n")
+	g.hf("// goroutine with no synchronization.\n")
 	g.hf("func init() {\n")
 	for i, key := range g.slots.order {
 		if key.projection != "" {

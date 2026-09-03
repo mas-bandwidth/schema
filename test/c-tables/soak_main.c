@@ -257,7 +257,7 @@ int main( int argc, char ** argv )
     }
 
     before = live_bytes();
-    /* one untimed pass first, so a lazily-initialised stdio buffer or locale
+    /* one untimed pass first, so a lazily-initialized stdio buffer or locale
        table is charged to the setup rather than to the loop */
     printf( "c tables soak: counting allocator calls over the measured loop\n" );
     fflush( stdout );

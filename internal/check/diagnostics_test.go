@@ -630,7 +630,7 @@ func TestPackageNameNeighborsAccepted(t *testing.T) {
 }
 
 // THE NEGATIVE CONTROL for the C preprocessor reservation: a refusal that
-// cannot be shown to LEAVE NEIGHBOURS ALONE is a refusal nobody can size.
+// cannot be shown to LEAVE NEIGHBORS ALONE is a refusal nobody can size.
 //
 // The set is enumerated rather than a bare prefix test, and this is what that
 // buys: `enum SchemaKind` folds to SCHEMA_KIND_ALPHA, `const SchemaVersion` to

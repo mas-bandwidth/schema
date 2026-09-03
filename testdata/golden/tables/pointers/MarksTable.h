@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package graphdemo — protocol id 0x79242c6a555d3a60 (packets only: tables version by field id, not by protocol id)
+// package graphdemo — protocol id 0x137b390d2dd13473 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -165,7 +165,7 @@ struct TableFieldInfo
     const char * (*key_name)( uint64_t value );
     uint16_t (*key_id)( uint64_t value );
     // union fields: the tag and its arms, behind a function so the whole
-    // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
+    // descriptor stays CONSTANT-INITIALIZED (a captureless lambda converts to
     // a function pointer at compile time; the arms themselves are a static
     // inside it). NULL for every other kind.
     const TableUnionInfo * (*arms)();
@@ -614,13 +614,13 @@ struct TableWorker
         // A NODE IS BORN IN TWO HALVES: start its lifetime in the raw
         // storage, then write the declared defaults ONE MEMBER AT A TIME.
         //
-        // It is "T", not "T{}". Value-initialising the whole aggregate says
+        // It is "T", not "T{}". Value-initializing the whole aggregate says
         // the same thing and costs cl O(BYTES) TO COMPILE — it expands element
         // by element in its front end — while both halves here cost
         // O(declarations). The slab cap below refuses a large node at RUN
         // TIME and bounds nothing at compile time: the cost is paid by
         // whatever T a caller instantiates this with.
-        // Padding is not the difference: value-initialisation zeroes MEMBERS
+        // Padding is not the difference: value-initialization zeroes MEMBERS
         // and not padding either way, which is why the segment is calloc'd.
         //
         // TableReset is an OVERLOAD SET, one per closure member, reached from
@@ -628,11 +628,11 @@ struct TableWorker
         // Alloc is a template and cannot spell <Name>Reset.
         //
         // The reset is here because ONE DEFINITION SAYS WHAT THE DECLARED
-        // DEFAULTS ARE, and it is <Name>Reset. Default-initialisation lands on
+        // DEFAULTS ARE, and it is <Name>Reset. Default-initialization lands on
         // the same values today, because a member with a non-zero default
         // carries a member initializer that says so — but that is the class
         // definition agreeing with Reset, not the arena reading it, and #320's
-        // fix was itself a pass that MOVED initialisation between the two.
+        // fix was itself a pass that MOVED initialization between the two.
         // The arena reads the definition.
         slot.ptr = new ( TableArenaAt( *arena, at ) ) T;
         TableReset( *slot.ptr );
@@ -649,7 +649,7 @@ struct TableWorker
 // the same first-visit numbering the wire uses, so the pack order and the node
 // order are one order.
 //
-// COLOURING AN ENTRY WHILE ITS DESCENT IS OPEN COSTS ONE BIT, and it is what
+// COLORING AN ENTRY WHILE ITS DESCENT IS OPEN COSTS ONE BIT, and it is what
 // makes a data cycle free to refuse: a reference to an entry still open is a
 // cycle, and Lock returns failure rather than recursing away. The ROOT's entry
 // is open for the whole walk.
@@ -743,7 +743,7 @@ inline bool TablePackMapGrow( TablePackMap & map )
 }
 
 // REACH a node: one probe answers both questions the walk has. A true "taken"
-// says this is a FIRST visit, and the entry is now the node's, coloured open
+// says this is a FIRST visit, and the entry is now the node's, colored open
 // at "offset"; otherwise the entry is the one the node already has, and its
 // open bit says cycle or sharing. NULL is an allocation failure, and it is a
 // refusal like any other: Lock fails rather than packing a graph it cannot
@@ -1161,7 +1161,7 @@ namespace graphdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xe7c54936602ceecaull;
+static const uint64_t BuildVersion = 0x987bfec39c1c9f7cull;
 
 } // namespace graphdemo
 
@@ -1452,7 +1452,7 @@ inline void MarkerReset( Marker & value )
 // TableWorker::Alloc is a template and cannot name a member's Reset, so
 // the arena reaches it through this overload set by argument-dependent
 // lookup. It is how a node born in raw arena storage comes to hold the
-// declared defaults without value-initialising the whole aggregate.
+// declared defaults without value-initializing the whole aggregate.
 
 inline void TableReset( Tally & value ) { TallyReset( value ); }
 inline void TableReset( Marker & value ) { MarkerReset( value ); }
@@ -2650,7 +2650,7 @@ static_assert( offsetof( Marker, note ) == 16, "Marker's field note moved: the b
 
 inline const TableTypeInfo * TallyTableType();
 inline const TableTypeInfo * MarkerTableType();
-// The descriptors are CONSTANT-INITIALISED data, and a field's target is
+// The descriptors are CONSTANT-INITIALIZED data, and a field's target is
 // the ADDRESS of another descriptor. These declarations are what let a
 // self- or mutually-referential graph — Node naming itself through *Node —
 // be expressed as constant data instead of a lazy link, which could not

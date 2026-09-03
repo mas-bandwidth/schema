@@ -225,7 +225,7 @@ type pairing map[string]match
 //
 // Pairing rides the `member` policy row with the warning, because they are one
 // feature: without the row there is no rename matching and no report of the
-// hole, which is the behaviour the row exists to replace.
+// hole, which is the behavior the row exists to replace.
 // closeness measures how far a candidate's own facts sit from the vanished
 // member's, under the ids they share. It is the second question the pairing
 // asks — the first, identity overlap, is blind to a brand-new declaration that

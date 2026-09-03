@@ -1104,7 +1104,7 @@ func bigToDouble(v *big.Int) string {
 }
 
 // emitTableDescriptor emits <X>TableFields, <X>TableInfo and <X>TableType() —
-// the reflection descriptor as CONSTANT-INITIALISED package data.
+// the reflection descriptor as CONSTANT-INITIALIZED package data.
 //
 // A field's nested-table column is a FUNCTION returning the descriptor rather
 // than its address, and that is not a taste: Go refuses an initialization
@@ -1112,7 +1112,7 @@ func bigToDouble(v *big.Int) string {
 // names it back — through a union arm, or simply through declaration order —
 // is exactly such a cycle. Behind a function the graph is expressible, the
 // whole surface stays immutable, and it is readable from any goroutine at any
-// time with no synchronisation.
+// time with no synchronization.
 func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	guards := tableGuardStrings(st)
 	g.needsUnsafe()
@@ -1301,7 +1301,7 @@ func (g *tableGen) emitUnionArms() {
 	g.pf("// initialization cycle among package-level variables. An init body is not\n")
 	g.pf("// part of that analysis, so the graph is expressible whatever a schema\n")
 	g.pf("// declares. Nothing mutates them afterwards: the surface is immutable from\n")
-	g.pf("// here on, readable from any goroutine with no synchronisation.\n")
+	g.pf("// here on, readable from any goroutine with no synchronization.\n")
 	g.pf("func init() {\n")
 	for _, a := range g.unionArms {
 		g.pf("\t%s\n", a)

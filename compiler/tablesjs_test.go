@@ -158,7 +158,7 @@ func jsModuleScopeNames(text string) []string {
 }
 
 // TestJsModuleScopeScanSeesEveryConvention is the scan's own NEGATIVE CONTROL:
-// the property that makes it worth running is that it recognises a module-scope
+// the property that makes it worth running is that it recognizes a module-scope
 // binding under any spelling, so the test that proves it feeds one of each. A
 // scan that only saw the emitter's own convention would go quietly blind the
 // day a port reached for another.

@@ -448,14 +448,14 @@ func goCookBlittableType(u *ir.Unit, t ir.FieldType) string {
 
 // emitLayoutCheck is §20.3's Go half for the COOK closure: the compiler's
 // layout model committed to every cookable record, asserted against THIS
-// runtime's own, run once at package initialisation. C++ says it with
+// runtime's own, run once at package initialization. C++ says it with
 // static_assert at compile time; Go could say most of it as a constant
 // expression but not with a message a person can act on, so it says it where
 // the program starts and REFUSES.
 func (g *cookGen) emitLayoutCheck() {
 	g.needsFmt = true
 	g.hf("// THE LAYOUT CONTRACT for the cook closure (docs/SPEC-TABLES.md §20.3), run\n")
-	g.hf("// ONCE at package initialisation: a cooked region is laid out by the\n")
+	g.hf("// ONCE at package initialization: a cooked region is laid out by the\n")
 	g.hf("// compiler's C ABI model, so a runtime that lays one of these records out\n")
 	g.hf("// differently would read a cook at the wrong offsets and never know.\n")
 	g.hf("func init() {\n")
@@ -660,7 +660,7 @@ func (g *cookGen) emitAllDescriptors() {
 	g.hf("// refuses a cyclic wire by name, §3.1.)\n")
 	g.hf("// The links are written once, before any consumer runs, and nothing mutates\n")
 	g.hf("// them after: the descriptor surface is immutable from then on, readable from\n")
-	g.hf("// any goroutine at any time with no synchronisation.\n")
+	g.hf("// any goroutine at any time with no synchronization.\n")
 	g.hf("func init() {\n")
 	for _, name := range g.cook.order {
 		g.emitRecordDescriptor(name)
@@ -865,7 +865,7 @@ type TableCookFieldInfo struct {
 	PresentOffset int32 // an optional's presence bool, or -1
 	Storage       TableCookStorage
 	// Record is the record this field NAMES, behind a function so the table
-	// stays constructible in any order — Go refuses an initialisation cycle
+	// stays constructible in any order — Go refuses an initialization cycle
 	// among package-level variables, and the DESCRIPTOR graph is cyclic by
 	// design: a record's field column can name its own record. A cooked REGION
 	// is never cyclic; schema cook refuses one by name (§3.1).
