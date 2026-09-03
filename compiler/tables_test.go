@@ -1120,9 +1120,8 @@ func capitalizeFirst(s string) string {
 }
 
 // allVariableSrc declares nothing but pointered tables: every table in the
-// unit derives VARIABLE-LENGTH, so none of them gets a text form (§16.1 —
-// the variable class reads through its builder, which no backend emits yet,
-// schema#275).
+// unit derives VARIABLE-LENGTH, so every text form in it is the builder's
+// (§16.7) and the unit's .cpp carries the graph half beside the walk.
 const allVariableSrc = packetSrc + `
 table Chain
 {
@@ -1136,56 +1135,62 @@ table Holder
 }
 `
 
-// TestNoTextFormUnitEmitsNoCpp: the .cpp exists to carry definitions, so a
-// unit with no definitions to carry does not get one. The alternative that
-// looks equivalent is not: an EMPTY .cpp would still have to hold a walker
-// to satisfy the generic-walk gate, and a glob-driven build would compile
-// 1600 lines exporting nothing on every build.
-func TestNoTextFormUnitEmitsNoCpp(t *testing.T) {
+// TestVariableUnitCarriesTheBuilderTextForm: an all-variable unit gets its
+// .cpp like any other, and what it carries is the class's own text form
+// (§16.7) — the builder-form FromJson and the region-form ToJson declared in
+// the header, the graph half beside the walk in the .cpp. A pointer-free unit
+// carries the walk and the stubs, and none of the graph half: the zero-cost
+// property (§2.2), holding for the text form.
+func TestVariableUnitCarriesTheBuilderTextForm(t *testing.T) {
 	c := New()
 	files, err := c.Generate(unitFromSource(t, allVariableSrc), "cpp", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name := range files {
-		if strings.HasSuffix(name, "Table.cpp") {
-			t.Errorf("an all-variable unit emitted %s — it has no text form to define", name)
-		}
-	}
-	// the header still exists, and still says by name that the class has no
-	// text form: the refusal is by absence and it is loud
-	header := ""
+	header, cpp := "", ""
 	for name, body := range files {
-		if strings.HasSuffix(name, "Table.h") {
+		switch {
+		case strings.HasSuffix(name, "Table.h"):
 			header = string(body)
+		case strings.HasSuffix(name, "Table.cpp"):
+			cpp = string(body)
 		}
 	}
-	if header == "" {
-		t.Fatal("no Table header generated for an all-variable unit")
+	if header == "" || cpp == "" {
+		t.Fatal("an all-variable unit did not emit both Table.h and Table.cpp")
 	}
-	for _, want := range []string{"ChainFromJson", "HolderFromJson"} {
-		if strings.Contains(header, want+"(") {
-			t.Errorf("header declares %s for a variable-length table", want)
+	for _, table := range []string{"Chain", "Holder"} {
+		if !strings.Contains(header, "bool "+table+"FromJson( "+table+"Builder & builder") {
+			t.Errorf("header does not declare the builder-form %sFromJson", table)
 		}
-		if !strings.Contains(header, "no "+want) {
-			t.Errorf("header does not say by name that %s is absent", want)
+		if !strings.Contains(header, "int64_t "+table+"ToJson( const "+table+" * root") {
+			t.Errorf("header does not declare the region-form %sToJson", table)
 		}
+	}
+	if !strings.Contains(cpp, "---- json graph walk: begin ----") || !strings.Contains(cpp, "TableJsonReadGraph") {
+		t.Error("the .cpp does not carry the graph half")
 	}
 
-	// and a unit that DOES have a fixed table still gets its .cpp, so the
-	// gate above is testing the guard rather than the emitter being off
+	// and a pointer-free unit carries the walk, the three stubs, and none of
+	// the graph half
 	with, err := c.Generate(unitFromSource(t, tableSrc), "cpp", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := false
-	for name := range with {
+	fixed := ""
+	for name, body := range with {
 		if strings.HasSuffix(name, "Table.cpp") {
-			found = true
+			fixed = string(body)
 		}
 	}
-	if !found {
-		t.Error("a unit with a fixed-size table emitted no Table.cpp")
+	if fixed == "" {
+		t.Fatal("a unit with a fixed-size table emitted no Table.cpp")
+	}
+	if !strings.Contains(fixed, "---- json walk: begin ----") || !strings.Contains(fixed, "this unit declares no pointer") {
+		t.Error("a pointer-free unit's .cpp does not carry the walk and the stubs")
+	}
+	if strings.Contains(fixed, "json graph walk") || strings.Contains(fixed, "TableJsonReadGraph") {
+		t.Error("the graph half leaked into a pointer-free unit")
 	}
 }
 

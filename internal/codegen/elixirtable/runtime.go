@@ -1008,6 +1008,10 @@ const runtimeSource = `  @moduledoc """
         {colon, pos} = peek(text, pos)
         if colon != ?:, do: bad(value, report)
         pos = pos + 1
+        # THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
+        # 16.7): never a field this build lacks, always a construct it cannot
+        # honor. Malformed and refused, never counted as unknown.
+        if String.starts_with?(key, "&"), do: bad(value, report)
 
         {value, pos, report, seen} =
           case Enum.find(type.fields, fn f -> f.json == key end) do

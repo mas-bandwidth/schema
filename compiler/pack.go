@@ -91,11 +91,8 @@ func (c *Compiler) Unpack(u *ir.Unit, root string, wire []byte, dir string) (Tab
 // else: no text is written and no tree is touched.
 //
 // It exists because the conformance corpus's evolution cases want the counters
-// and only the counters, and the two unpack entries above cannot give them for
-// a VARIABLE root — the text form of one has no spelling for a reference yet,
-// so both directions refuse the class by name (§16.2). A report is a fact about
-// the DECODE, which the engine has for every class, so the harness asks for the
-// decode rather than for a text it would throw away.
+// and only the counters: a report is a fact about the DECODE, so the harness
+// asks for the decode rather than for a text it would throw away.
 func (c *Compiler) ReadReport(u *ir.Unit, root string, wire []byte) (TableReport, error) {
 	report, err := tablepack.ReadReport(tabletext.NewModel(u), root, wire)
 	return publicReport(report), err

@@ -54,9 +54,9 @@ static class Program
         File.WriteAllBytes(Path.Combine(outDir, name + ".absent"), new byte[0]);
     }
 
-    // NoText marks an instance the corpus carries on the WIRE only: the
-    // variable class has no text form yet (docs/SPEC-TABLES.md §16.2), so the
-    // TEXT surfaces skip it rather than reporting a form nobody has.
+    // NoText marks an instance the corpus carries on the WIRE only — past the
+    // text form's depth cap by the form's own rule (docs/SPEC-TABLES.md §16.7)
+    // — so no leg is asked for its text.
     static bool NoText(string[] f) { return f.Length > 5 && f[5] == "no-text"; }
 
     // ---- the codec table: one row per (unit, root) the corpus names
@@ -294,7 +294,7 @@ static class Program
             {
                 // C# refuses a pointered unit's wire by name (§11), so it has
                 // no codec here and says so per case
-                SpillAbsent(outDir, f[1]);
+                SpillAbsent(outDir, f[1] + ".json");
                 continue;
             }
             byte[] wire = File.ReadAllBytes(f[4]);

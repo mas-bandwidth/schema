@@ -236,9 +236,13 @@ static const Codec codecs[] = {
 // ---------------------------------------------------------------------------
 //
 // A pointered root is not held by value: it is read through a REGION and a root
-// pointer, and the caller owns the region. So it cannot share the table above —
-// three of that row's columns take a `T &` that does not exist here — and it
-// gets its own, with the same erasure and the same one-loop-per-surface shape.
+// pointer, and the caller owns the region; its text is read into a BUILDER,
+// whose arena is where every node comes from (§16.7). So it cannot share the
+// table above — that row's columns take a `T &` that does not exist here — and
+// it gets its own, with the same erasure and the same one-loop-per-surface
+// shape. The two text columns carry the whole of a surface's step, because the
+// builder lives inside the call: `json_read` reads the text into a fresh
+// builder and answers the bytes it saves, `to_json` writes a region root.
 struct VarCodec
 {
     const char * unit;
@@ -250,6 +254,8 @@ struct VarCodec
     // allocates through the default pair, which is the hook pair
     int64_t ( *cook_measure )( const void * );
     bool ( *cook )( const void *, void *, uint64_t, int );
+    bool ( *json_read )( const char *, int64_t, Report *, std::vector<uint8_t> & );
+    bool ( *to_json )( const void *, std::vector<char> & );
 };
 
 #define VARCODEC( unit_key, ns, type )                                                         \
@@ -273,6 +279,24 @@ struct VarCodec
             return ns::type##Cook( (const ns::type *) v, o, c,                                  \
                                    big ? ns::TableByteOrder::Big                               \
                                        : ns::TableByteOrder::Little );                         \
+        },                                                                                     \
+        []( const char * t, int64_t n, Report * r, std::vector<uint8_t> & bytes ) {             \
+            ns::type##Builder builder;                                                          \
+            ns::TableReport inner;                                                              \
+            bool ok = ns::type##FromJson( builder, t, n, &inner );                              \
+            copy_report( inner, r );                                                            \
+            if ( !ok ) return false;                                                            \
+            int64_t size = ns::type##Measure( builder );                                        \
+            if ( size < 0 ) return false;                                                       \
+            bytes.assign( (size_t) size, 0 );                                                   \
+            return ns::type##Save( builder, bytes.data(), size ) == size;                        \
+        },                                                                                     \
+        []( const void * v, std::vector<char> & text ) {                                        \
+            int64_t size = ns::type##ToJsonMeasure( (const ns::type *) v );                      \
+            if ( size < 0 ) return false;                                                       \
+            text.assign( (size_t) size + 1, 0 );                                                \
+            text.resize( (size_t) size );                                                       \
+            return ns::type##ToJson( (const ns::type *) v, text.data(), size ) == size;          \
         }                                                                                      \
     }
 
@@ -660,18 +684,34 @@ static int surface_report( const std::string & out )
     return 0;
 }
 
+// an instance the corpus carries on the wire alone: past the text form's depth
+// cap by the form's own rule (§16.7), so no leg is asked for its text
+static bool no_text( const std::vector<std::string> & f )
+{
+    return f.size() > 5 && f[5] == "no-text";
+}
+
 static int surface_json_read( const std::string & out )
 {
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
     {
         const std::vector<std::string> & f = manifest_lines[i].field;
         if ( f[0] != "instance" ) continue;
-        if ( f.size() > 5 && f[5] == "no-text" ) continue; // wire only (§16.2)
-        const Codec * codec = find_codec( f[2], f[3] );
-        if ( codec == NULL ) return 1;
+        if ( no_text( f ) ) continue;
         std::vector<uint8_t> text;
         std::string path = "testdata/conformance/tables/json/" + f[1] + ".json";
         if ( !slurp( path.c_str(), text ) ) { fprintf( stderr, "driver: cannot read %s\n", path.c_str() ); return 1; }
+        const VarCodec * variable = find_var_codec( f[2], f[3] );
+        if ( variable != NULL )
+        {
+            Report report;
+            std::vector<uint8_t> bytes;
+            if ( !variable->json_read( (const char *) text.data(), (int64_t) text.size(), &report, bytes ) ) return 1;
+            if ( !spill( out, f[1], bytes.data(), bytes.size() ) ) return 1;
+            continue;
+        }
+        const Codec * codec = find_codec( f[2], f[3] );
+        if ( codec == NULL ) return 1;
 
         void * value = codec->make();
         codec->reset( value );
@@ -692,11 +732,23 @@ static int surface_json_write( const std::string & out )
     {
         const std::vector<std::string> & f = manifest_lines[i].field;
         if ( f[0] != "instance" ) continue;
-        if ( f.size() > 5 && f[5] == "no-text" ) continue; // wire only (§16.2)
-        const Codec * codec = find_codec( f[2], f[3] );
-        if ( codec == NULL ) return 1;
+        if ( no_text( f ) ) continue;
         std::vector<uint8_t> wire;
         if ( !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
+        const VarCodec * variable = find_var_codec( f[2], f[3] );
+        if ( variable != NULL )
+        {
+            std::vector<uint8_t> region;
+            Report report;
+            const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
+            if ( root == NULL ) return 1;
+            std::vector<char> text;
+            if ( !variable->to_json( root, text ) ) return 1;
+            if ( !spill( out, f[1] + ".json", text.data(), text.size() ) ) return 1;
+            continue;
+        }
+        const Codec * codec = find_codec( f[2], f[3] );
+        if ( codec == NULL ) return 1;
 
         void * value = codec->make();
         codec->reset( value );
@@ -817,17 +869,27 @@ static int surface_json_hostile( const std::string & out )
     {
         const std::vector<std::string> & f = manifest_lines[i].field;
         if ( f[0] != "json-hostile" ) continue;
-        const Codec * codec = find_codec( f[2], f[3] );
-        if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
         std::vector<uint8_t> text;
         // the tree is what `schema pack` reads, so the text is <tree>/<root>.json (§17)
         const std::string path = f[4] + "/" + f[3] + ".json";
         if ( !slurp( path.c_str(), text ) ) { fprintf( stderr, "driver: cannot read %s\n", path.c_str() ); return 1; }
 
-        void * value = codec->make();
-        codec->reset( value );
         Report report;
-        const bool ok = codec->from_json( value, (const char *) text.data(), (int64_t) text.size(), &report );
+        bool ok = false;
+        const VarCodec * variable = find_var_codec( f[2], f[3] );
+        if ( variable != NULL )
+        {
+            std::vector<uint8_t> bytes;
+            ok = variable->json_read( (const char *) text.data(), (int64_t) text.size(), &report, bytes );
+        }
+        else
+        {
+            const Codec * codec = find_codec( f[2], f[3] );
+            if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
+            void * value = codec->make();
+            codec->reset( value );
+            ok = codec->from_json( value, (const char *) text.data(), (int64_t) text.size(), &report );
+        }
         char verdict[128];
         int n;
         if ( !ok || report.malformed )

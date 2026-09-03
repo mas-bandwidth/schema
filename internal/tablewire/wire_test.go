@@ -193,12 +193,10 @@ func TestKeyedUnderArrayKindIsAMismatch(t *testing.T) {
 	}
 }
 
-// A variable-length root is the WIRE's business and not the TEXT form's: the
-// engine encodes and decodes one under §3.1's flat node table, and the refusal
-// that remains is `RefuseVariable`'s — the text form of a pointered table reads
-// through its builder, a named follow-on (§16.2, §15), which is why `schema
-// pack` still refuses one by name.
-func TestVariableRootRidesTheWireAndTheTextFormStillRefusesIt(t *testing.T) {
+// A variable-length root rides the engine.s wire under §3.1.s flat node table:
+// an empty pointered root reaches no node, writes none of them, and its bytes
+// are the root body alone.
+func TestVariableRootRidesTheWire(t *testing.T) {
 	c := compiler.New()
 	paths, err := compiler.GatherPaths([]string{"../../tables/pointers"})
 	if err != nil {
@@ -213,9 +211,6 @@ func TestVariableRootRidesTheWireAndTheTextFormStillRefusesIt(t *testing.T) {
 	for _, name := range m.Roots() {
 		if !variable[name] {
 			continue
-		}
-		if err := tablewire.RefuseVariable(m, m.Lookup(name)); err == nil {
-			t.Fatalf("%s is variable-length: the TEXT form must still refuse it", name)
 		}
 		// an empty pointered root reaches no node, so it writes none of them
 		// and its bytes are the root body alone

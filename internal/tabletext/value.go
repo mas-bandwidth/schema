@@ -105,10 +105,21 @@ type Instance struct {
 // needs at every node.
 type Model struct {
 	Unit *ir.Unit
+
+	variable map[string]bool // the derived mode of every table (§2.2), on first use
 }
 
 // NewModel binds a checked unit for the text and wire walks.
 func NewModel(u *ir.Unit) *Model { return &Model{Unit: u} }
+
+// IsVariable reports whether a table derives the VARIABLE-LENGTH mode
+// (docs/SPEC-TABLES.md §2.2): a pointer somewhere in its by-value closure.
+func (m *Model) IsVariable(name string) bool {
+	if m.variable == nil {
+		m.variable = ir.VariableTables(m.Unit)
+	}
+	return m.variable[name]
+}
 
 // Lookup resolves a closure member by name — a `table` or the `type` a table
 // reaches — exactly as the emitters resolve one.

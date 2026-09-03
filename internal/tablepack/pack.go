@@ -54,10 +54,6 @@ func Pack(m *tabletext.Model, root, dir string) ([]byte, []string, tabletext.Rep
 	if st == nil {
 		return nil, nil, tabletext.Report{}, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", root, strings.Join(m.Roots(), ", "))
 	}
-	if err := tablewire.RefuseVariable(m, st); err != nil {
-		// the refusal comes back before a single file is read
-		return nil, nil, tabletext.Report{}, err
-	}
 	inst := m.New(st)
 	p := &packer{m: m, report: &tabletext.Report{}}
 	if err := p.rootTree(inst, root, dir); err != nil {
@@ -74,8 +70,13 @@ func Pack(m *tabletext.Model, root, dir string) ([]byte, []string, tabletext.Rep
 }
 
 // rootTree reads the tree at dir into the root instance. The root may simply
-// be one `<Root>.json` (§17.1's last rule); anything beside that file is a
+// be one `<Root>.json` (§17.2's last rule); anything beside that file is a
 // second claim on the root and is refused rather than merged.
+//
+// A VARIABLE root is that one file and nothing else (§17.2): a shared node is
+// named by an id a TEXT owns (§16.7), and a tree of fields would split the
+// root across texts that cannot name each other's nodes. A tree of fields
+// under a variable root is refused by name before a file is read.
 func (p *packer) rootTree(inst *tabletext.Instance, root, dir string) error {
 	entries, err := p.list(dir)
 	if err != nil {
@@ -87,7 +88,7 @@ func (p *packer) rootTree(inst *tabletext.Instance, root, dir string) error {
 			continue
 		}
 		if len(entries) > 1 {
-			p.refusef("%s: %s is the whole root, and %s beside it claims it too — a root is one file or one tree of fields, never both (docs/SPEC-TABLES.md §17.1)",
+			p.refusef("%s: %s is the whole root, and %s beside it claims it too — a root is one file or one tree of fields, never both (docs/SPEC-TABLES.md §17.2)",
 				dir, whole, plural(len(entries)-1, "other entry", "other entries"))
 			return nil
 		}
@@ -96,6 +97,11 @@ func (p *packer) rootTree(inst *tabletext.Instance, root, dir string) error {
 			return err
 		}
 		p.readTableText(inst, filepath.Join(dir, whole), text)
+		return nil
+	}
+	if p.m.IsVariable(root) {
+		p.refusef("%s: %s is VARIABLE-LENGTH and packs from one %s — its shared nodes are named by labels a text owns, so a tree of fields cannot carry it (docs/SPEC-TABLES.md §16.7, §17.2)",
+			dir, root, whole)
 		return nil
 	}
 	p.tableDir(inst, dir, entries)

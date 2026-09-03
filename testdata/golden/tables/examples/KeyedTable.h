@@ -8,13 +8,27 @@
 
 #pragma once
 
-#include <cstdint>
-#include <cstring> // the prefill's scalar-array fills
-#include <cstddef> // offsetof, for the reflection descriptors
-#include <type_traits> // the enforced relocatability asserts
-#include <cassert> // the keyed accessor's None refusal, in a debug build
-#include <cstdlib> // and its abort, which NDEBUG does not remove
-#include <iterator> // the keyed iterator's traits typedefs
+#include <stdint.h>
+#include <string.h> // the prefill's scalar-array fills
+#include <stddef.h> // offsetof, for the reflection descriptors
+
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// serialize's asserts writes `#define schema_assert serialize_assert` before
+// including this header and both halves land in one handler.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
+
+// schema_fatal — what stands after the assert on a path that cannot continue.
+// NDEBUG does not remove it. Supply it and <stdlib.h> is never included.
+#ifndef schema_fatal
+#include <stdlib.h> // abort
+#define schema_fatal abort
+#endif // #ifndef schema_fatal
 
 #include "Keyed.h"
 
@@ -259,11 +273,13 @@ struct TableKeyed
     // THE REFUSAL, and it stands in EVERY BUILD, AT BOTH ENDS. The storage
     // holds one slot per NAMED variant: nothing for None below it and nothing
     // above Max, so a build that skipped this compare would index one element
-    // BEFORE the array or past its end — undefined behaviour in the
+    // BEFORE the array or past its end — undefined behavior in the
     // configuration a game ships. Either key is a program error, so the
     // accessor ends the program rather than reading something. The assert
     // carries the message where a debugger can read it and NDEBUG removes
-    // that; the abort is what stands after it.
+    // that; the fatal is what stands after it. BOTH GO THROUGH THE HOOKS —
+    // define schema_assert and schema_fatal and this refusal lands in your
+    // own handler.
     //
     // ONE UNSIGNED COMPARE COVERS BOTH ENDS: the storage index is key - 1, and
     // None's is -1, which wraps above kSlots unsigned. The cost is one
@@ -272,8 +288,8 @@ struct TableKeyed
     {
         if ( (uint32_t) ( (int32_t) key - 1 ) >= (uint32_t) kSlots )
         {
-            assert( false && "an enum-keyed array holds one slot per named variant: None keys none, and neither does a key past Max" );
-            abort();
+            schema_assert( false && "an enum-keyed array holds one slot per named variant: None keys none, and neither does a key past Max" );
+            schema_fatal();
         }
     }
 
@@ -286,20 +302,17 @@ struct TableKeyed
     // non-const lvalue reference cannot bind to the proxy. Write
     // auto [ ... ], or auto && [ ... ] if you prefer the reference form.
     //
-    // The iterators carry the five iterator_traits typedefs, so std::distance
-    // and the algorithms that only need a forward pass work on them.
+    // THE ITERATORS CARRY NO iterator_traits TYPEDEFS. They bought std::distance
+    // and the forward-pass algorithms for an audience that does not call them,
+    // and the <iterator> they need is the single most expensive include the
+    // generated corpus had: 536 headers and 986 KB, in a header whose whole
+    // remaining set is 123. begin(), end() and size() need none of it.
 
     struct Entry { E key; T & element; };
     struct ConstEntry { E key; const T & element; };
 
     struct Iterator
     {
-        typedef std::forward_iterator_tag iterator_category;
-        typedef Entry value_type;
-        typedef std::ptrdiff_t difference_type;
-        typedef void pointer;
-        typedef Entry reference;
-
         T * slots;
         int32_t index; // the STORAGE index; the key it holds is index + 1
         Entry operator*() const { return Entry{ (E) ( index + 1 ), slots[index] }; }
@@ -310,12 +323,6 @@ struct TableKeyed
 
     struct ConstIterator
     {
-        typedef std::forward_iterator_tag iterator_category;
-        typedef ConstEntry value_type;
-        typedef std::ptrdiff_t difference_type;
-        typedef void pointer;
-        typedef ConstEntry reference;
-
         const T * slots;
         int32_t index; // the STORAGE index; the key it holds is index + 1
         ConstEntry operator*() const { return ConstEntry{ (E) ( index + 1 ), slots[index] }; }
@@ -356,7 +363,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-inline constexpr uint64_t BuildVersion = 0x734b26e1a4d11cadull;
+static const uint64_t BuildVersion = 0x734b26e1a4d11cadull;
 
 } // namespace tabledemo
 
@@ -401,7 +408,7 @@ static const int64_t kTableCookHeaderBytes = 64;
 // OTHER order — or something that is not a cook. All three answers but the
 // first refuse, and a cook and a BLOCK are separated here too, because a
 // form's identity belongs in its magic rather than in a second digest.
-inline constexpr uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
+static const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
 
 // THIS BUILD's byte order, as the header's own word carries it. The magic is
 // what REFUSES a foreign order; this word is what RECORDS which order wrote
@@ -413,16 +420,16 @@ inline constexpr uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
 // GENERATION input, little for every target schema generates for today, so
 // two builds of one schema for two orders emit the same id.
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-inline constexpr uint64_t TableCookByteOrder = 2; // big
+static const uint64_t TableCookByteOrder = 2; // big
 #else
-inline constexpr uint64_t TableCookByteOrder = 1; // little
+static const uint64_t TableCookByteOrder = 1; // little
 #endif
 
 // The greatest region alignment a cooked file may name. The DATA part begins
 // at align_up( 64, alignment ), which is 64 for every unit this language can
 // declare — the largest alignment it has is sixteen — so a word past this cap
 // describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1).
-inline constexpr uint64_t TableCookMaxAlign = 64;
+static const uint64_t TableCookMaxAlign = 64;
 
 // The header read, BYTEWISE. memcpy is the portable spelling of "these eight
 // bytes, in this machine's order"; every compiler this repo builds under folds
@@ -2140,18 +2147,22 @@ inline bool KeyedConfigCook( const KeyedConfig & value, void * out, uint64_t cap
 // memcpy'd, mmap'd, shared across processes, and walked through
 // descriptor offsets. A failure here means a pointer, virtual or
 // non-trivial member crept into generated storage.
-static_assert( std::is_trivially_copyable<TeamConfig>::value, "TeamConfig must stay relocatable" );
-static_assert( std::is_standard_layout<TeamConfig>::value, "TeamConfig must stay standard-layout for offsetof" );
-static_assert( std::is_trivially_copyable<GunnerConfig>::value, "GunnerConfig must stay relocatable" );
-static_assert( std::is_standard_layout<GunnerConfig>::value, "GunnerConfig must stay standard-layout for offsetof" );
-static_assert( std::is_trivially_copyable<TurretConfig>::value, "TurretConfig must stay relocatable" );
-static_assert( std::is_standard_layout<TurretConfig>::value, "TurretConfig must stay standard-layout for offsetof" );
-static_assert( std::is_trivially_copyable<HullConfig>::value, "HullConfig must stay relocatable" );
-static_assert( std::is_standard_layout<HullConfig>::value, "HullConfig must stay standard-layout for offsetof" );
-static_assert( std::is_trivially_copyable<KeyedConfig>::value, "KeyedConfig must stay relocatable" );
-static_assert( std::is_standard_layout<KeyedConfig>::value, "KeyedConfig must stay standard-layout for offsetof" );
-static_assert( std::is_trivially_copyable<ScoreBoard>::value, "ScoreBoard must stay relocatable" );
-static_assert( std::is_standard_layout<ScoreBoard>::value, "ScoreBoard must stay standard-layout for offsetof" );
+//
+// They ask the COMPILER ITSELF, which is what every C++ standard library
+// answers the same two questions with — and it costs this header no
+// include at all.
+static_assert( __is_trivially_copyable( TeamConfig ), "TeamConfig must stay relocatable" );
+static_assert( __is_standard_layout( TeamConfig ), "TeamConfig must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( GunnerConfig ), "GunnerConfig must stay relocatable" );
+static_assert( __is_standard_layout( GunnerConfig ), "GunnerConfig must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( TurretConfig ), "TurretConfig must stay relocatable" );
+static_assert( __is_standard_layout( TurretConfig ), "TurretConfig must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( HullConfig ), "HullConfig must stay relocatable" );
+static_assert( __is_standard_layout( HullConfig ), "HullConfig must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( KeyedConfig ), "KeyedConfig must stay relocatable" );
+static_assert( __is_standard_layout( KeyedConfig ), "KeyedConfig must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( ScoreBoard ), "ScoreBoard must stay relocatable" );
+static_assert( __is_standard_layout( ScoreBoard ), "ScoreBoard must stay standard-layout for offsetof" );
 
 // ---- the cook's layout contract (docs/SPEC-TABLES.md §20.3) ----
 //

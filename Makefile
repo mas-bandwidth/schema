@@ -316,6 +316,30 @@ tables-json-walk: build/tables-generated/.stamp
 	done
 	@echo "tables generic-walk gate: one walker, byte-identical in $$(ls build/json-walk | wc -l | tr -d ' ') generated .cpp files"
 
+# THE GRAPH-WALK GATE (docs/SPEC-TABLES.md §16.7): the variable class's half of
+# the text form is emitted only in a unit that declares a pointer, and it is ONE
+# half too — the same bytes in every pointered .cpp of the corpus, on the walk's
+# own terms — and none of it reaches a pointer-free unit, which is the zero-cost
+# property (§2.2) holding for the text form.
+.PHONY: tables-json-graph-walk
+tables-json-graph-walk: build/tables-generated/.stamp
+	@rm -rf build/json-graph-walk && mkdir -p build/json-graph-walk
+	@for f in build/tables-generated/pointers/*Table.cpp build/tables-generated/p2/*Table.cpp; do \
+		out=build/json-graph-walk/$$(echo $$f | tr / _); \
+		awk '/---- json graph walk: begin ----/,/---- json graph walk: end ----/' $$f > $$out; \
+		if [ ! -s $$out ]; then echo "GRAPH-WALK GATE FAILED: no graph half in $$f"; exit 1; fi; \
+	done
+	@for f in build/tables-generated/examples/*Table.cpp build/tables-generated/v1/*Table.cpp build/tables-generated/p1/*Table.cpp; do \
+		if grep -q -- '---- json graph walk: begin ----' $$f; then \
+			echo "GRAPH-WALK GATE FAILED: the graph half leaked into the pointer-free $$f"; exit 1; fi; \
+	done
+	@first=""; for f in build/json-graph-walk/*; do \
+		if [ -z "$$first" ]; then first=$$f; else \
+			cmp -s $$first $$f || { echo "GRAPH-WALK GATE FAILED: the graph half in $$f is not the one in $$first"; exit 1; }; \
+		fi; \
+	done
+	@echo "tables graph-walk gate: one graph half, byte-identical in $$(ls build/json-graph-walk | wc -l | tr -d ' ') pointered .cpp files"
+
 # The NEGATIVE CONTROL for the walk (docs/SPEC-TABLES.md §16.5). A green round-trip
 # suite proves nothing until the suite is shown capable of going red: the
 # walker's field-offset arithmetic is sabotaged by one field width, and the
@@ -2319,52 +2343,6 @@ conformance-negative-control-absent: build/conformance-harness build/tables-gene
 	./build/conformance-harness run --drivers build/conformance-solo-drivers.txt --work build/conformance-solo-work
 	@echo "negative control: the same absences under a SUBSTITUTED registry are ordinary, and the leg passes"
 
-# UNPACK REFUSES THE VARIABLE CLASS BY NAME (schema#374, docs/SPEC-TABLES.md
-# §16.2), the way PACK always has. The decode reads a pointered root correctly;
-# what has no spelling yet is a REFERENCE in the text, so a text written anyway
-# carries every pointer as null — and because pack refuses the same class, no
-# round trip exists to catch it. Until §16 has the form, the refusal is the
-# whole answer.
-.PHONY: tables-unpack-variable-refusal
-tables-unpack-variable-refusal: bin/schema build/flatwire/tool.wire
-	@rm -rf build/unpack-refusal && mkdir -p build/unpack-refusal
-	@if ./bin/schema unpack --one-file --root Scene --in build/flatwire/tool.wire \
-			build/unpack-refusal tables/pointers > build/unpack-refusal.log 2>&1; then \
-		echo "FAILED: unpack accepted a VARIABLE root"; cat build/unpack-refusal.log; exit 1; \
-	fi
-	@grep -q "VARIABLE-LENGTH" build/unpack-refusal.log || \
-		{ echo "FAILED: unpack refused, but not by name"; cat build/unpack-refusal.log; exit 1; }
-	@test -z "$$(ls -A build/unpack-refusal)" || \
-		{ echo "FAILED: the refusal came back AFTER writing files"; exit 1; }
-	@echo "unpack refusal: a variable root is refused by name, before a file is written"
-
-# ITS NEGATIVE CONTROL: remove the refusal and show what it is standing in front
-# of — a text that does not carry the instance. The wire holds 123 nodes, the
-# tool's own cook of it says so, and the text written without the refusal has a
-# null at every pointer with a SILENT report.
-.PHONY: tables-unpack-variable-refusal-negative-control
-tables-unpack-variable-refusal-negative-control: bin/schema build/flatwire/tool.wire
-	@mkdir -p build
-	@sed -e 's|if err := tablewire.RefuseVariable(m, st); err != nil {|if err := error(nil); err != nil { // SABOTAGED|' \
-		internal/tablepack/unpack.go > build/unpack-no-refusal.gotext
-	@cmp -s build/unpack-no-refusal.gotext internal/tablepack/unpack.go && \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/tablepack/unpack.go":"%s/build/unpack-no-refusal.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/unpack-no-refusal-overlay.json
-	@go build -overlay=build/unpack-no-refusal-overlay.json -o build/schema-no-refusal ./cmd/schema
-	@rm -rf build/unpack-silent && mkdir -p build/unpack-silent
-	@./build/schema-no-refusal unpack --one-file --root Scene --in build/flatwire/tool.wire --verbose \
-		build/unpack-silent tables/pointers > build/unpack-silent.log 2>&1 || \
-		{ echo "NEGATIVE CONTROL FAILED: it refused for some OTHER reason"; cat build/unpack-silent.log; exit 1; }
-	@grep -q "silent" build/unpack-silent.log || \
-		{ echo "NEGATIVE CONTROL FAILED: the report was not silent, so the loss was not silent"; exit 1; }
-	@grep -q '"head": null' build/unpack-silent/Scene.json || \
-		{ echo "NEGATIVE CONTROL FAILED: the text carried the graph after all"; exit 1; }
-	@./bin/schema cook --root Scene --in build/flatwire/tool.wire --out build/unpack-silent/check.cook --verbose \
-		tables/pointers | grep -q "123 nodes" || \
-		{ echo "NEGATIVE CONTROL FAILED: the wire does not hold the nodes the text dropped"; exit 1; }
-	@echo "negative control: without the refusal, unpack writes a SILENT report and a text with a null where 122 nodes were"
-
 # THE CROSS-IMPLEMENTATION LOCK for the FLAT NODE TABLE (docs/SPEC-TABLES.md
 # §3.1), and it is what makes TWO implementations of one wire mean something.
 #
@@ -2930,10 +2908,10 @@ build/tables-pack-root.bin: bin/schema $(PACK_TREE)
 
 # PACK_INCLUDES is shared with the sanitized twins below, so a build and its
 # twin can never drift into covering different code (#278's rule).
-PACK_INCLUDES := -Ibuild/tables-generated/examples
+PACK_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generated/pointers -Itest/tables
 # these drivers CALL the text form, so they compile the generated translation
 # unit that holds it (docs/SPEC-TABLES.md §16.1) — the same rule any consumer follows
-PACK_JSON_SOURCES = $$(ls build/tables-generated/examples/*Table.cpp)
+PACK_JSON_SOURCES = $$(ls build/tables-generated/examples/*Table.cpp build/tables-generated/pointers/*Table.cpp)
 PACK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off
 PACK_SANITIZE := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
 
@@ -2989,7 +2967,7 @@ build/hostile-values/.stamp: bin/schema $(HOSTILE_MANIFEST) $(HOSTILE_TREES)
 	@grep '^json-hostile ' $(HOSTILE_MANIFEST) | grep -v ' refused$$' | \
 	while read -r kind name unit root tree verdict; do \
 		./bin/schema pack --root $$root --out build/hostile-values/$$name.bin --tolerate \
-			$$tree tables/examples || exit 1; \
+			$$tree $$(awk -v u=$$unit '$$1 == "unit" && $$2 == u { for ( i = 3; i <= NF; i++ ) printf "%s ", $$i }' $(HOSTILE_MANIFEST)) || exit 1; \
 	done
 	@touch $@
 
@@ -3268,6 +3246,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	./build/schema_test_tables_asan
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-json-walk
+	$(MAKE) tables-json-graph-walk
 	$(MAKE) tables-rust-walk
 	$(MAKE) tables-elixir-walk
 	$(MAKE) tables-rust-clippy
@@ -3358,8 +3337,6 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-flat-wire
 	$(MAKE) tables-flat-wire-negative-control
-	$(MAKE) tables-unpack-variable-refusal
-	$(MAKE) tables-unpack-variable-refusal-negative-control
 	$(MAKE) tables-shared-node-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
 	$(MAKE) tables-hooks
@@ -3616,7 +3593,7 @@ CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/examples/WideTable.cpp build/tables-generated/examples/NestedTable.cpp \
 	build/tables-generated/examples/KeyedTable.cpp build/tables-generated/examples/PackTable.cpp build/tables-generated/v1/V1Table.cpp \
 	build/tables-generated/v2/V2Table.cpp build/tables-generated/p1/P1Table.cpp \
-	build/tables-generated/p3/P3Table.cpp build/tables-generated/block/RenderBlock.cpp \
+	build/tables-generated/p2/P2Table.cpp build/tables-generated/p3/P3Table.cpp build/tables-generated/block/RenderBlock.cpp \
 	build/tables-generated/block/PaddedBlock.cpp build/tables-generated/pointers/GraphTable.cpp \
 	build/tables-generated/pointers/MarksTable.cpp build/tables-generated/pointers/PartsTable.cpp
 

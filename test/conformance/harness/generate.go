@@ -80,12 +80,10 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 	for _, inst := range m.Instances {
 		if inst.NoText {
 			// the corpus carries this one on the WIRE only, and says so on its
-			// own line: the variable class has no text form in any
-			// implementation and the tool refuses a variable root in both
-			// directions (§16.2). schema#275 drops the marker and this arm
-			// with it — until then a JSON golden here would be a file nothing
-			// can write and nothing holds.
-			fmt.Printf("conformance: %-22s wire only — the corpus marks it no-text (§16.2, schema#275)\n", inst.Name)
+			// own line: it is past the text form's depth cap by the form's own
+			// rule (§16.7), and a text the engine wrote for it would be one
+			// every reader refuses
+			fmt.Printf("conformance: %-22s wire only — the corpus marks it no-text (§16.7)\n", inst.Name)
 			continue
 		}
 		unit, err := u.get(inst.Unit)

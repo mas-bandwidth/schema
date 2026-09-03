@@ -1147,12 +1147,13 @@ tool's cook writes.
 what makes the matrix able to see it at all: four instances over a pointered
 root — a tree, a graph whose shared node is named three times and whose tree
 closes a diamond, an empty root, and a chain of 260 nodes — pinned by the
-reference and read by the tool. They ride the `wire` and `report` surfaces;
-they are marked `no-text` because §16 has no spelling for a reference yet
-(§16.2); and every backend that refuses a pointered unit's wire answers ABSENT
-for them, per case, so its FIXED-class pass is untouched and the gap is a
-number in the matrix rather than a paragraph somewhere. That is the row
-schema#349 fills, one language at a time.
+reference and read by the tool. They ride the `wire` and `report` surfaces, and
+the first three ride the TEXT surfaces too (§16.7); the chain is marked
+`no-text` on its line, because it nests in the text as deep as it is long and
+that is past the form's depth cap. Every backend that refuses a pointered
+unit's wire answers ABSENT for them, per case, so its FIXED-class pass is
+untouched and the gap is a number in the matrix rather than a paragraph
+somewhere. That is the row schema#349 fills, one language at a time.
 
 **The C port is the one backend that carries a pointered unit and does not
 carry this form yet**, because it was mirrored from the C++ backend while that
@@ -4052,8 +4053,11 @@ in build version (§20.5).
   for the type wire takes `type` payloads only, because types are value
   semantics.
 - **The text form's key** (§16): `json = "..."` on a field no table closure
-  reaches — keys are a table-wire construct; and two fields of one table
-  whose JSON keys collide, naming both, as wire ids do (§5).
+  reaches — keys are a table-wire construct; two fields of one table whose
+  JSON keys collide, naming both, as wire ids do (§5); and a key beginning
+  with `&`, the prefix §16.7 reserves to the sharing construct — the whole
+  prefix, so a fixed table's text can never carry one and a reader meeting it
+  never has to guess.
 - **An edit the committed TABLES BASELINE forbids** (§18), when a unit has
   one: a specified default changed, added or removed; a flags variant
   inserted, removed, reordered or renamed in place; a field's wire kind or
@@ -5203,6 +5207,26 @@ inspects everything in the schema built:
   it has no wire codec.
 - **The variable class in a ported backend** — the arena, the region, the
   cooked form and the pointer surface — after that port's fixed class.
+- **THE VARIABLE CLASS's TEXT FORM in a ported backend** (§16.7), with its
+  wire: the pointer adapters and the graph half beside the port's walk, the
+  builder-form `FromJson`, the region-form `ToJson`, and the three corpus texts
+  plus the hostile rows the C++ leg answers today. schema#349's row beside the
+  wire.
+- **`ToJson` FROM AN UNLOCKED BUILDER.** §16.7 writes from a region's const
+  root, so a builder writes its text after `Lock`; a write over the arena
+  would resolve slots through the arena context the wire's `Save( builder )`
+  already carries, and nothing in the form changes.
+- **THE EXPANDED TREE of a variable root** (§17.2). A variable root packs and
+  unpacks as one `<Root>.json`, because labels are a text's own. A tree of
+  `<field>.json` files that shared nodes across its files would need the pack
+  to number across the tree in an order the files fix, which is the tree
+  becoming a format; nothing here decides whether that is wanted.
+- **THE DEPTH CAP AGAINST A CHAIN'S LENGTH** (§16.7). A pointer chain nests in
+  the text as deep as it is long, and §16.2's cap of 128 bounds it in every
+  walk, so the corpus's 260-node chain, `graph_deep`, has a wire and no text.
+  Raising the cap is one
+  number in six walks and the hostile row that pins it; what the number should
+  be is a question about every port's stack, and it is the owner's.
 - **`Lock`'S IDENTITY MAP, PRESIZED.** The map (§6.2) grows by rehashing, and
   rehashing is what it spends: on a 131,071-node tree with NO sharing at all —
   where the map is pure overhead and buys nothing — `Lock` costs 5.8 ms against
@@ -5466,14 +5490,13 @@ its storage comes from (§6.5):
 SceneFromJson( builder, text, text_bytes, &report );
 ```
 
-**Backend status for this section: the FIXED class, in C++, C, C#, Go, Rust,
-Java and Elixir.** No backend implements the variable class's text form yet — a
-pointered unit gets no `FromJson`, refused by name with this section cited,
-never emitted with the function missing — and the second walker it needs,
-emitted only in units that declare a pointer, is tracked as schema#275. In C#,
-Go, Rust, Java and Elixir that refusal is already made one level up: a pointered
-unit gets no table source at all (§11), so it has no text form for the same
-reason it has no wire codec.
+**Backend status for this section: the FIXED class in C++, C, C#, Go, Rust,
+Java and Elixir; the VARIABLE class in C++ (§16.7).** A pointered unit's text
+form is the C++ reference's, through the builder, and carrying it to the other
+backends is schema#349's row beside the wire. In C#, Go, Rust, Java and Elixir
+the absence is already made one level up: a pointered unit gets no table source
+at all (§11), so it has no text form for the same reason it has no wire codec;
+the C port has the wire's earlier form (§3.1) and its text form follows it.
 
 **The FLOAT SPELLING is C's `%.*g`, byte for byte, in every port**, and each
 says how it gets there rather than reaching for its runtime's default. C++
@@ -5484,16 +5507,10 @@ two answers differ on a tie. A tie is discarded by the shortest-round-trip loop
 at every precision but the last — and at the last there is no loop left to save
 it, which is why the mode is named rather than left to the default.
 
-**THE TOOL REFUSES BOTH DIRECTIONS, and the reason the WRITE side had to be
-refused out loud is worth stating.** `schema pack` has always refused a
-variable root by name. `schema unpack` did not, and it decoded one correctly —
-the node table and all — then wrote a text with a null at every pointer and a
-SILENT report, because a REFERENCE has no spelling here yet. The round trip
-that catches an incomplete text is `pack`, and `pack` is the half that was
-already refusing, so nothing could catch it. Both directions now refuse the
-class by name, before a file is written, and the gate is that the refusal fires
-with its negative control showing what it stands in front of: the same wire,
-unpacked without the refusal, writes 122 nodes as a null.
+**THE TOOL TAKES BOTH DIRECTIONS.** `schema pack` and `schema unpack` take a
+variable root as one text (§16.7, §17.2), and the round trip is the gate: a
+text that lost a pointer, or a node's identity, cannot pack back to the bytes
+it came from.
 
 **Rust's walk allocates nothing, and that is a gate rather than a claim**:
 numbers format through a stack sink the size of the C++ walker's own
@@ -5597,7 +5614,7 @@ Per kind:
 | nested `type` / `table` | object | the same walk, recursively |
 | `?T` optional | the value, or the key absent | **presence of the KEY is presence**: a key present sets the field present, whatever its value; an absent key leaves it absent. `ToJson` writes present optionals only |
 | union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. A `table` arm (§2.6) is the same object form |
-| pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer |
+| pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer. A node named MORE THAN ONCE is defined once under `&node`, with its fields, and named by `&node` alone after — §16.7's one construct, and the only thing this form adds for the variable class |
 
 **One entry above describes a construct no declaration reaches yet**: the
 `table` union arm named in the union row lands with its own (schema#258). It
@@ -5606,14 +5623,15 @@ of the KIND — it lands as its declaration lands, not as a second decision
 about text. The `*T` pointer row is the variable class's, covered by the
 status in §16.1.
 
-**The text form is a TREE, and a pointer graph is not.** A pointee is
-written in place, so a node several parents name is written once per
-parent and reads back as that many nodes: the identity §3.1 preserves on
-the wire does not survive a round trip through text. And a walker over a
-structure whose provenance it does not trust carries its own visit bound,
-because a cyclic structure is expressible (§3.1) and writing one in place
-does not terminate. Both are properties of writing a graph as a tree, not
-of this mapping; the binary wire is where identity lives.
+**The text form writes a graph as a tree, and `&node` is what keeps identity
+across the seam** (§16.7). A pointee is written in place, so without the
+construct a node several parents name would be written once per parent and read
+back as that many nodes; with it, the second and later occurrences are
+references and the identity §3.1 preserves on the wire survives the round trip.
+The writer carries its own visit bound — a cyclic structure is refused at save
+(§3.1) but expressible in a region, and writing one in place would not
+terminate — and it carries this section's depth cap, because a pointer chain
+nests as deep as it is long.
 
 **Numbers.** JSON has ONE number type, so an integer field accepts any
 token whose VALUE is integral — `2`, `2.0` and `1e3` are the integers 2, 2
@@ -5752,6 +5770,282 @@ Not a file format, not a directory layout, not a manifest, not an envelope.
 Those are a packer's business; §17 is one packer, and it is a TOOL over
 this section rather than a second definition of it.
 
+### 16.7 The variable class: the same text, and one construct for sharing
+
+**The FIXED form above is the whole of this form too**: the JSON syntax for
+fixed and variable tables is the same where possible and completely consistent
+otherwise. So nothing in §16.2's table changes, a fixed table's text does not move a byte, and a
+pointered table whose graph is a TREE reads and writes exactly as if every
+pointer were a nested table. Sharing — the one fact a tree cannot say — gets
+**exactly one construct**, spelled the same way at every site. Nothing else is
+added.
+
+**One declaration, and the two texts it produces.** §3.1's own example:
+
+```
+table Palette { id int32 }
+table Node    { value int32  next *Node  palette *Palette }
+table Scene   { name string(16)  head *Node  palette *Palette }
+```
+
+A TREE — `scene.head = A`, `A.next = B`, and each of the three naming a
+`Palette` of its own — is §16.2's pointer row and no more: the pointee's object
+in place, `null` for a null pointer, pretty-printed as every object is.
+
+```json
+{
+  "name": "level1",
+  "head": {
+    "value": 1,
+    "next": {
+      "value": 2,
+      "next": null,
+      "palette": {
+        "id": 8
+      }
+    },
+    "palette": {
+      "id": 7
+    }
+  },
+  "palette": {
+    "id": 6
+  }
+}
+```
+
+**A reader who has only ever seen a fixed table's text can read that**, and
+that is the point of the ruling: a pointer looks like a nesting, because in a
+tree it is one.
+
+Now the SAME scene with one `Palette` P shared by all three. The writer reaches
+P while descending B — before `A.palette` is read, because the walk is
+depth-first, exactly as §3.1 numbers it — so P is DEFINED there, `&node` first
+and its fields after, and NAMED twice after by `&node` alone:
+
+```json
+{
+  "name": "level1",
+  "head": {
+    "value": 1,
+    "next": {
+      "value": 2,
+      "next": null,
+      "palette": {
+        "&node": 1,
+        "id": 6
+      }
+    },
+    "palette": {
+      "&node": 1
+    }
+  },
+  "palette": {
+    "&node": 1
+  }
+}
+```
+
+**`&node` IS THE ONE CONSTRUCT, and it is a LABEL: put on a node where it is
+written, and referred to elsewhere by the same mark.** A DEFINITION is the
+node's object with `"&node": N` as its FIRST key and the node's fields after
+it; a REFERENCE is an object holding `"&node": N` and nothing else. One
+spelling at both sites, and what follows the label says which half it is — so
+the rules below are what keep a typo loud: a label alone that the text has not
+defined is refused rather than read as a default node, a field after a label
+the text has already defined is refused rather than read as a second node, and
+labels run from `1` in first-write order, so a stray number in a hand-edited
+text is most often one never defined. The residual is stated plainly: a typo
+that lands on a label already defined, of the right type, is an ordinary wrong
+number, as any wrong number in JSON is. A node named once carries no label,
+which is why the tree above is untouched.
+
+**What the label is.** It is the text's counterpart of the wire's node index
+(§3.1): where the wire numbers every node it writes and carries a pointer as an
+index into that numbering, the text nests a node where it is named and needs
+a number only where nesting cannot say it — at the second and later slots that
+hold one node. So a label is written only where a node is shared, it is the
+text's own — not the wire's index, not anything a schema declares, and
+meaningless outside the document that carries it — and a tree writes none at
+all.
+
+**THE CONSTRUCT IS ONE A FIXED TABLE'S TEXT CAN NEVER PRODUCE, and that is a
+requirement and not an accident.** The `&` prefix is refused to every `json` key
+at compile time (§11) — the whole prefix, not the one spelling, so this form
+keeps room to grow without a later construct colliding with a field a schema
+already declares. No fixed table has a key that begins with one and no writer
+of the fixed form can emit one, so a reader never has to guess whether an `&`
+key it meets is sharing or a field it does not know: it cannot be a field. **A
+`&`-prefixed key among the keys a reader PLACES, where it does not expect one,
+is `malformed`, refused and counted — never `unknown`.** `unknown` means "a
+field this build does not have", which is a difference §4 exists to survive;
+this is "a construct this build cannot honor", and honoring it silently would
+read a shared graph as a tree with an empty object where every later reference
+stood. A FIXED reader handed a variable table's text refuses on the first `&node`
+it would have placed and says so, which is the whole point of spending the
+prefix. **What it does not place it does not police**: a value it skips — an
+unknown key's, a wrong shape's — is skipped whole with the prefix inside it,
+because that is §4's tolerance, and a newer schema's pointer field arriving at
+an older reader is exactly the unknown key §4 exists to survive.
+
+**The rules, in full.**
+
+- **The label is a positive integer, spelled as one**: digits, no sign, no
+  fraction, no exponent, no leading zero. `1`, never `1.0` or `01`. A writer
+  numbers the nodes it shares from `1` in the order it first writes them, and
+  a reader takes whatever it is given.
+- **`&node` is the FIRST key of a pointer's object.** After a field it is
+  `malformed`.
+- **A label the text has not defined, followed by the node's fields, DEFINES
+  it.** A definition carries at least one field: a label alone that the text
+  has not defined is `malformed` — never a default node — and a shared node
+  with nothing to write has no definition this form can spell, so the writer
+  refuses it as it refuses any value it cannot spell (§16.3).
+- **A label the text has defined, alone, REFERS to it.** A field after it is
+  a second definition and `malformed`. **Definition before reference, in
+  document order** is the whole ordering rule, and it costs nothing: a data
+  cycle is refused at save (§3.1), so a writer always reaches a node before
+  anything that shares it. **A label is defined when its object CLOSES**, so
+  a bare `{ "&node": N }` met inside N's own definition — at any depth of
+  by-value nesting — is `malformed`, exactly as a reference before its
+  definition is: it names a node whose descent is still open, which is the
+  cycle the wire refuses (§3.1), and the text refuses it where it is written
+  rather than later, at `Lock` or `Save`.
+- **A reference resolves against the labeled node's TABLE.** A `*Node` slot
+  naming a label that defined a `Palette` is `kind_mismatch`, the pointer null —
+  the wire's rule for a record of another type (§3.1).
+- **A DROPPED DEFINITION KEEPS ITS LABEL.** §16.2 drops an array element past its
+  bound and counts it, skips an unknown key's value and counts it, skips a value
+  of the wrong shape and counts it. A definition inside a dropped value still
+  takes its label — with no node — so a reference to it reads NULL, and nothing
+  more is counted, because the drop was counted where it happened. It is the
+  wire's rule for a node a reader cannot name (§3.1): the index stays, every
+  pointer naming it reads null, one event.
+- **Anywhere else, the prefix is `malformed`**: at the ROOT, which takes no
+  label because nothing may name it (a reference to the root is a reference to a node
+  whose descent is open, which is the cycle §3.1 refuses); in a by-value
+  nesting, a union arm, an array element, which are values and not nodes; under
+  any spelling but `&node`.
+- **`null` is unchanged**: it is a null pointer, as §16.2 says, and it never
+  carries a label.
+- **A writer emits the construct only where it must** — for a node it will name
+  more than once — so the text of any tree-shaped graph is byte-identical to the
+  text the same data would have as by-value nesting. That is the ruling's "same
+  where possible", made mechanical.
+- **A CHAIN NESTS AS DEEP AS IT IS LONG.** The wire indexes where the text
+  nests (§3.1), so a pointer chain of N nodes is N levels of nesting, and
+  §16.2's depth cap of 128 bounds it exactly as it bounds a by-value nesting
+  — the WRITER carries the reader's cap and refuses a graph past it, so it
+  never produces a text the reader would refuse. A graph deeper than the cap
+  has a wire and no text: the conformance corpus's `graph_deep`, a 260-node
+  chain, is that graph, its wire-only instance, marked `no-text` on its own
+  line. It is the one thing this form does not carry
+  of the variable class, and the cap is the fixed form's, held as the fixed
+  form holds it (§15 names the ruling that would move it).
+
+**What a reader builds.** The variable class is not held by value (§6.2), so
+its text form reads through the BUILDER, and writes from the CONST root of a
+region — what `Lock` and `Load` both produce. The surface is §16.1's with the
+class's own forms in the first argument:
+
+```cpp
+SceneBuilder builder;
+TableReport report;
+if ( !SceneFromJson( builder, text, text_bytes, &report ) )
+{
+    // the text is not JSON, or its labels do not resolve (report.malformed) —
+    // the builder holds what was placed before the stop
+}
+builder.Lock();
+
+int64_t size = SceneToJsonMeasure( builder.AsConst() );
+SceneToJson( builder.AsConst(), buffer, size );
+```
+
+`FromJson` reads into the builder's ROOT and allocates every node the text
+names through the field's own `<T>Emplace`, so a node the builder already held
+is left in the arena unreferenced; `ToJson` takes a const root because a text
+is written from a structure that is finished, and a builder writes its text
+after `Lock`. Reading a shared node places ONE node behind every reference —
+the two slots hold one arena offset — which is the identity §3.1 preserves on
+the wire, surviving the seam.
+
+**What the writer refuses** (§16.3's list, extended by one): a graph the WIRE
+refuses is refused here for the same reason — a data cycle, met as a reference
+to a node whose descent is still open, the ROOT's included — and a graph past
+the depth cap, above. There is no text-only refusal beyond that, because there
+is no text-only construct.
+
+**What allocates.** Every node comes from the builder's arena, through the
+same `Alloc` a program uses (§6.2). Beside it, each direction carries ONE map
+on the authoring side, on the terms §6.2 sets for `Lock`'s: reading, the
+label map — a label to the node it defined; writing, the identity map — a node
+to how many slots name it and the label it took. Both are proportional to NODES,
+never to bytes, released before the call returns, and allocated through the
+caller's pair (§6.5): the reader's through the builder's, the writer's through
+the `TableAllocator` handed to `ToJson`, defaulted to the program's pair
+exactly as `Measure` and `Save` default it. Writing is TWO passes
+over one walk — the first counts how many slots name each node and refuses a
+cycle, the second writes — because a node's first occurrence has to know
+whether it will be named again; `ToJsonMeasure` runs both, as `ToJson` does,
+so measure and write agree byte for byte.
+
+**Still ONE walk.** The generic walk of §16.1 places every kind but the pointer
+by itself, and meets a pointer through three adapters it declares and does not
+define — one reads a pointer's object into a slot, one writes the node a slot
+names, one takes an `&`-prefixed key the walk is skipping. A unit that declares
+no pointer defines them as stubs no field ever reaches, so its walk is
+byte-identical to every other unit's (`make tables-json-walk`); a pointered
+unit defines them in a GRAPH HALF that follows the walk in its `.cpp`, and that
+half is byte-identical across the pointered units of the corpus and reaches no
+pointer-free one (`make tables-json-graph-walk`) — the zero-cost property
+(§2.2), holding for the text form.
+
+**`schema pack` and `schema unpack` take a variable root, as ONE text** (§17.2).
+Labels are a text's own, so a tree of `<field>.json` files — the expanded shape —
+would split a root across texts that cannot name each other's nodes: `unpack`
+writes `<Root>.json` for a variable root whichever shape is asked for, and
+`pack` refuses a tree of fields under one by name, before a file is read. The
+round trip is the gate: a text that lost a pointer, or a node's identity,
+cannot pack back to the bytes it came from.
+
+**Held by test.**
+
+- Every pointered instance the conformance corpus carries a text for
+  round-trips `ToJson` → `FromJson` → `Save` and byte-matches the wire it came
+  from — the fixed class's gate (§16.5) over the variable class's instances —
+  and the shared-node instance is the one that cannot pass it by writing a
+  tree: four nodes held by seven slots come back as four records, or the
+  bytes differ — and the test asserts those counts.
+- **A PINNED TEXT** of the shared graph, against a literal: the construct
+  spelled at every site — `&node` at the two definitions and at the three
+  references, five in all, asserted — and nowhere in the tree beside them. Reader and writer share
+  the spelling, so a round trip could not see it wrong.
+- The compiler's engine (§17.1) writes the same bytes: `harness generate`
+  packs each text back to the wire it came from before it lands, and the C++
+  leg's `json-write` is compared against that text byte for byte.
+- A cycle is refused by `ToJsonMeasure` as it is by `Measure`, on a region
+  that holds one — `Lock` refuses to make one, so the test makes it by hand.
+- A hostile battery over the construct's own edges, in the corpus every leg
+  runs (§17.5): a label alone the text never defined, a reference before its
+  definition, a label defined twice, `&node` after a field, `&node` on the
+  root, `&node` in a by-value nesting, a label that is not an integer spelled
+  as one, a label of zero — each refused; a reference to a node of another table, a definition
+  past an array's bound, a definition under an unknown key — each counted the
+  way the page says, with the bytes both engines then write compared byte for
+  byte; and a shared node read back as one.
+- **The one that proves the prefix was worth spending**: a FIXED table's
+  `FromJson` handed a text carrying `&node` among the keys it places refuses
+  with `malformed`, and handed one inside a value it skips counts the skip and
+  reads on — both rows of the corpus battery, answered by every leg. The
+  negative control is that reader treating the placed key as unknown instead,
+  which reads a wrong instance and calls the report clean.
+- `graph_deep`, the 260-node chain, has a wire and no text, in the reference
+  and in the tool alike, and the corpus says so on its line.
+- A label named from inside its own definition is refused, in both engines and
+  in the corpus battery, beside a label that overflows a `u64`, a signed one
+  and one with a leading zero.
+
 ## 17. Packing: a directory tree that mirrors a root table
 
 `schema pack` assembles ONE table instance from a directory tree and writes
@@ -5810,7 +6104,12 @@ The tree MIRRORS the root table's shape, and nothing else:
 - for a **nested table**, either `<field>.json` or a directory of its
   fields;
 - a plain **`<field>.json` at any level** is that field's value verbatim;
-- the **root may simply be one `<Root>.json`**.
+- the **root may simply be one `<Root>.json`**;
+- a **VARIABLE root is that one file and nothing else** (§16.7): a shared node
+  is named by a label a TEXT owns, and a tree of fields would split the root
+  across texts that cannot name each other's nodes. `unpack` writes the one
+  file for such a root whichever shape is asked for, and `pack` refuses a tree
+  of fields under one by name.
 
 Each file's content is read under §16's rules, so everything about kinds,
 presence, numbers, clamping and the report is that section's and is not

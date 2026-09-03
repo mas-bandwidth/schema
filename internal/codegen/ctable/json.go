@@ -1642,6 +1642,15 @@ static SCHEMA_UNUSED int table_json_read_table( TableJsonIn * in, void * base, c
         {
             if ( strcmp( info->fields[i].json, key ) == 0 ) { index = i; break; }
         }
+        if ( key[0] == '&' )
+        {
+            /* THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
+               16.7): never a field this build lacks, always a construct it
+               cannot honor. MALFORMED and refused, never counted as unknown. */
+            in->report->malformed = 1;
+            in->bad = 1;
+            return 0;
+        }
         if ( index < 0 )
         {
             in->report->unknown++;

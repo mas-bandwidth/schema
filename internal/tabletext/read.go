@@ -29,6 +29,20 @@ type reader struct {
 	report *Report
 	bad    bool // the text is not JSON: the walk stops and keeps what it placed
 	m      *Model
+	// graph is the VARIABLE class's label map (docs/SPEC-TABLES.md §16.7): the
+	// node each `&node` defined, keyed by the label. nil for a fixed root,
+	// which is what makes the reserved prefix a refusal there.
+	graph map[uint64]labelEntry
+}
+
+// labelEntry is what an `&node` label defined: its node and the node's table,
+// or neither for a definition the walk dropped — a value past an array's bound, an
+// unknown key's value — whose label still has to exist so a reference to it reads
+// null rather than refusing the text (§16.7).
+type labelEntry struct {
+	node *Instance
+	st   *ir.Struct
+	open bool // the definition has not closed yet: a reference here is a cycle
 }
 
 // Read fills one instance from one JSON text (docs/SPEC-TABLES.md §16.1). The
@@ -36,6 +50,9 @@ type reader struct {
 // JSON or a value could not be placed at all, and report.Malformed says so.
 func (m *Model) Read(inst *Instance, text []byte, report *Report) bool {
 	in := &reader{text: text, report: report, m: m}
+	if m.IsVariable(inst.Def.Name) {
+		in.graph = map[uint64]labelEntry{}
+	}
 	ok := in.readTable(inst, 0)
 	if ok {
 		in.space()
@@ -407,6 +424,7 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 		return false
 	}
 	in.pos++ // the opening bracket
+	first := true
 	for {
 		c := in.peek()
 		if c == close {
@@ -418,7 +436,13 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 			return false
 		}
 		if close == '}' {
-			if _, _, ok := in.scanString(0); !ok {
+			// the key is kept, because a skipped OBJECT may still be a
+			// pointer's: an `&node` opening it names a node the storage could
+			// not hold, and the numbering has to survive the drop (§16.7).
+			// Anywhere but first, the prefix is the reserved key out of place
+			// — in a pointered root; a fixed root skips the value whole.
+			key, _, ok := in.scanString(maxJsonKey)
+			if !ok {
 				return false
 			}
 			if in.peek() != ':' {
@@ -426,7 +450,26 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 				return false
 			}
 			in.pos++
+			if len(key) > 0 && key[0] == '&' && in.graph != nil {
+				if !first || !in.skippedAmpersand(string(key)) {
+					in.bad = true
+					return false
+				}
+				first = false
+				c = in.peek()
+				if c == ',' {
+					in.pos++
+					continue
+				}
+				if c == close {
+					in.pos++
+					return true
+				}
+				in.bad = true
+				return false
+			}
 		}
+		first = false
 		if !in.skipValue(depth + 1) {
 			return false
 		}
@@ -458,26 +501,53 @@ func (in *reader) readTable(inst *Instance, depth int) bool {
 		return false
 	}
 	in.pos++
+	return in.readTableKeys(inst, depth, nil)
+}
+
+// readTableKeys places the keys of an object whose brace is already consumed.
+// A pointer's object opens the same way a table's does, but its FIRST key may
+// be `&node` (§16.7) and the reader of a pointer has to scan the key to know —
+// so it hands the key it scanned in as firstKey, with the colon consumed, and
+// this places it before scanning the rest.
+func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool {
 	seen := make(map[int]bool, len(inst.Fields))
 	for {
-		c := in.peek()
-		if c == '}' {
+		var key []byte
+		var c byte
+		if firstKey != nil {
+			key, firstKey = firstKey, nil
+		} else {
+			c = in.peek()
+			if c == '}' {
+				in.pos++
+				return true
+			}
+			if c == 0 {
+				in.bad = true
+				return false
+			}
+			var ok bool
+			key, _, ok = in.scanString(maxJsonKey)
+			if !ok {
+				return false
+			}
+			if in.peek() != ':' {
+				in.bad = true
+				return false
+			}
 			in.pos++
-			return true
 		}
-		if c == 0 {
+		if len(key) > 0 && key[0] == '&' {
+			// THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
+			// §16.7). No declaration may take a key beginning with it, so this
+			// is never a field this build lacks — it is the sharing construct
+			// somewhere it cannot stand: `&node` opens a pointer's
+			// object and nothing else, and readPointer has consumed them
+			// before these keys are read. Malformed; never unknown, never
+			// skipped.
 			in.bad = true
 			return false
 		}
-		key, _, ok := in.scanString(maxJsonKey)
-		if !ok {
-			return false
-		}
-		if in.peek() != ':' {
-			in.bad = true
-			return false
-		}
-		in.pos++
 		index, known := inst.FieldIndexByKey(string(key))
 		if !known {
 			in.report.Unknown++
@@ -538,6 +608,8 @@ func (in *reader) readTable(inst *Instance, depth int) bool {
 func (in *reader) readField(fv *Field, depth int) bool {
 	f := fv.Def
 	switch {
+	case f.Type.Pointer:
+		return in.readPointer(fv, depth)
 	case f.Type.Kind == ir.TString:
 		bound := int(f.Type.Size)
 		if f.Type.Pointer {
@@ -566,6 +638,157 @@ func (in *reader) readField(fv *Field, depth int) bool {
 	// with the wrong shape is skipped, never coerced, and re-establishment is
 	// tied to placing)
 	return in.readScalar(&fv.Cell, f, depth)
+}
+
+// scanLabel reads `&node`'s value, the label: a positive integer spelled as one —
+// digits, no sign, no fraction, no exponent, no leading zero (§16.7). Anything
+// else is malformed.
+func (in *reader) scanLabel() (uint64, bool) {
+	in.space()
+	if in.pos >= len(in.text) || in.text[in.pos] < '1' || in.text[in.pos] > '9' {
+		in.bad = true
+		return 0, false
+	}
+	var value uint64
+	for in.pos < len(in.text) && in.text[in.pos] >= '0' && in.text[in.pos] <= '9' {
+		digit := uint64(in.text[in.pos] - '0')
+		if value > (math.MaxUint64-digit)/10 {
+			in.bad = true
+			return 0, false
+		}
+		value = value*10 + digit
+		in.pos++
+	}
+	return value, true
+}
+
+// readPointer places a pointer's object (docs/SPEC-TABLES.md §16.7). Its FIRST
+// key decides what it is: `&node` naming an id not yet defined, with fields
+// after it, is a DEFINITION; `&node` naming one already defined, alone, is a
+// REFERENCE; any other key is a node named once, its object in place. The same walk in the generated C++ allocates the node in
+// the builder's arena; here it is an instance.
+func (in *reader) readPointer(fv *Field, depth int) bool {
+	st := StructOf(fv.Def)
+	if in.graph == nil || st == nil {
+		in.bad = true
+		return false
+	}
+	// the pointee nests one level down, exactly as a by-value table does, and
+	// takes the same cap: a chain nests as deep as it is long (§16.7)
+	if depth+1 > maxJsonDepth {
+		in.bad = true
+		return false
+	}
+	if in.peek() != '{' {
+		in.bad = true
+		return false
+	}
+	in.pos++
+	c := in.peek()
+	if c == '}' {
+		// an empty object: a node at its defaults, named once
+		in.pos++
+		fv.Cell.Node = in.m.New(st)
+		return true
+	}
+	if c == 0 {
+		in.bad = true
+		return false
+	}
+	key, _, ok := in.scanString(maxJsonKey)
+	if !ok {
+		return false
+	}
+	if in.peek() != ':' {
+		in.bad = true
+		return false
+	}
+	in.pos++
+	if string(key) != "&node" {
+		// a node named once: the pointee's object in place, and this key is
+		// its first field — unless it is the reserved prefix under a spelling
+		// this form does not have, which readTableKeys refuses
+		fv.Cell.Node = in.m.New(st)
+		return in.readTableKeys(fv.Cell.Node, depth+1, key)
+	}
+	label, ok := in.scanLabel()
+	if !ok {
+		return false
+	}
+	entry, defined := in.graph[label]
+	// ONE SPELLING, and what follows the label says which half it is: fields
+	// after a label the text has not defined DEFINE it, and a label alone
+	// that the text has defined REFERS to it. The other two are malformed — a
+	// label alone that the text never defined, which would otherwise read as a
+	// default node under a silent report, and a field after a label already
+	// defined, which would be a second definition. That is what keeps a typo
+	// loud.
+	c = in.peek()
+	if c == ',' {
+		in.pos++
+		c = in.peek()
+	}
+	bare := c == '}'
+	if bare != defined {
+		in.bad = true
+		return false
+	}
+	if bare {
+		// A REFERENCE. A label is defined when its object CLOSES, so a
+		// reference met inside its own definition — at any depth of by-value
+		// nesting — names a node whose descent is still open: the cycle the
+		// wire refuses (§3.1), refused here where it is written. A definition
+		// the reader dropped names no node, so the slot stays null with
+		// nothing more counted — the drop was counted where it happened. A
+		// node of another table than the slot declares is a kind mismatch, as
+		// it is on the wire.
+		in.pos++
+		if entry.open {
+			in.bad = true
+			return false
+		}
+		fv.Cell.Node = nil
+		switch {
+		case entry.st == nil:
+		case entry.st != st:
+			in.report.KindMismatch++
+		default:
+			fv.Cell.Node = entry.node
+		}
+		return true
+	}
+	// A DEFINITION: the node takes the label, and the keys after `&node` are
+	// its fields. The entry is OPEN until the object closes, so a reference to
+	// the label from inside the node's own fields is refused as the cycle it
+	// is; the node and its table are filled in at the close.
+	fv.Cell.Node = in.m.New(st)
+	in.graph[label] = labelEntry{open: true}
+	if !in.readTableKeys(fv.Cell.Node, depth+1, nil) {
+		return false
+	}
+	in.graph[label] = labelEntry{node: fv.Cell.Node, st: st}
+	return true
+}
+
+// skippedAmpersand handles an `&`-prefixed key opening an object the walk is
+// SKIPPING — a value past an array's bound, an unknown key's value, a value of
+// the wrong shape. A definition in there still takes its label, so the numbering
+// survives whatever the storage could not hold (§16.7): the label is registered
+// with no node, and a reference to it reads null. Any other prefixed key is
+// the reserved prefix out of place. A FIXED root never reaches this: what a
+// reader does not place it does not police, and the value is skipped whole.
+func (in *reader) skippedAmpersand(key string) bool {
+	if in.graph == nil || key != "&node" {
+		return false
+	}
+	label, ok := in.scanLabel()
+	if !ok {
+		return false
+	}
+	if _, defined := in.graph[label]; !defined {
+		in.graph[label] = labelEntry{}
+	}
+	return true
 }
 
 // readBase64 decodes a `bytes(N)` body six bits at a time, exactly as the

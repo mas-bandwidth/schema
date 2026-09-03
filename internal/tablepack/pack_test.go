@@ -232,11 +232,32 @@ func TestUnknownRootIsRefused(t *testing.T) {
 //
 //	json-hostile <case> <unit> <root> <tree> <verdict>
 func TestHostileValueCorpus(t *testing.T) {
-	c, u := corpus(t)
 	const manifestPath = "../../testdata/conformance/tables/MANIFEST.txt"
 	manifest, err := os.ReadFile(manifestPath)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// the units the rows name, loaded from the manifest's own `unit` lines
+	c := compiler.New()
+	units := map[string]*ir.Unit{}
+	for line := range strings.SplitSeq(string(manifest), "\n") {
+		row := strings.Fields(line)
+		if len(row) < 3 || row[0] != "unit" {
+			continue
+		}
+		args := make([]string, 0, len(row)-2)
+		for _, p := range row[2:] {
+			args = append(args, "../../"+p)
+		}
+		paths, err := compiler.GatherPaths(args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		u, err := c.Load(paths)
+		if err != nil {
+			t.Fatalf("unit %s: %v", row[1], err)
+		}
+		units[row[1]] = u
 	}
 	cases := 0
 	for line := range strings.SplitSeq(string(manifest), "\n") {
@@ -247,7 +268,11 @@ func TestHostileValueCorpus(t *testing.T) {
 		if len(row) != 6 {
 			t.Fatalf("%s: %q is not a json-hostile row", manifestPath, line)
 		}
-		name, root, tree, verdict := row[1], row[3], row[4], row[5]
+		name, unit, root, tree, verdict := row[1], row[2], row[3], row[4], row[5]
+		u := units[unit]
+		if u == nil {
+			t.Fatalf("%s: the manifest names no unit %s", name, unit)
+		}
 		cases++
 		t.Run(name, func(t *testing.T) {
 			_, _, report, err := c.Pack(u, root, "../../"+tree)
@@ -355,10 +380,9 @@ func TestHiddenEntries(t *testing.T) {
 	}
 }
 
-// A VARIABLE-LENGTH root is refused by name on BOTH verbs, and unpack refuses
-// before it writes anything: its text form reads through a builder, a named
-// follow-on (docs/SPEC-TABLES.md §16.1, §15).
-func TestVariableRootRefusedOnBothVerbs(t *testing.T) {
+// pointers loads the graphdemo unit, whose roots derive the VARIABLE mode.
+func pointers(t *testing.T) (*compiler.Compiler, *ir.Unit) {
+	t.Helper()
 	c := compiler.New()
 	paths, err := compiler.GatherPaths([]string{"../../tables/pointers"})
 	if err != nil {
@@ -368,30 +392,95 @@ func TestVariableRootRefusedOnBothVerbs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	variable := ir.VariableTables(u)
-	found := false
-	for name := range u.Tables {
-		if !variable[name] {
-			continue
-		}
-		found = true
-		out := t.TempDir()
-		if _, _, _, err := c.Pack(u, name, out); err == nil {
-			t.Fatalf("pack accepted the variable-length root %s", name)
-		}
-		if _, err := c.Unpack(u, name, nil, out); err == nil {
-			t.Fatalf("unpack accepted the variable-length root %s", name)
-		}
-		entries, err := os.ReadDir(out)
-		if err != nil {
+	return c, u
+}
+
+// A VARIABLE-LENGTH root is ONE text (docs/SPEC-TABLES.md §16.7, §17.2): its
+// shared nodes are named by labels a text owns, so `unpack` writes `<Root>.json`
+// whichever shape is asked for, and `pack` reads that file — and refuses a
+// tree of fields by name, before a file is read. The pinned variable instances
+// are the corpus: unpack -> pack is byte-identical to the wire each came from,
+// which is what proves a text COMPLETE (a text that lost a field or an identity
+// cannot pack to the bytes it came from).
+func TestVariableRootIsOneText(t *testing.T) {
+	c, u := pointers(t)
+	for _, name := range []string{"graph_tree", "graph_shared", "graph_empty"} {
+		t.Run(name, func(t *testing.T) {
+			wire, err := os.ReadFile("../../testdata/wire/tables/" + name + ".bin")
+			if err != nil {
+				t.Fatal(err)
+			}
+			out := t.TempDir()
+			// the EXPANDED shape is asked for and the one-file shape is what
+			// a variable root writes
+			report, err := c.Unpack(u, "Scene", wire, out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !report.Silent() {
+				t.Fatalf("the pinned wire did not read clean: %+v", report)
+			}
+			entries, err := os.ReadDir(out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 1 || entries[0].Name() != "Scene.json" {
+				t.Fatalf("a variable root unpacks as one Scene.json; got %d entries", len(entries))
+			}
+			back, _, report, err := c.Pack(u, "Scene", out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !report.Silent() {
+				t.Fatalf("the engine's own text did not read clean: %+v", report)
+			}
+			if !bytes.Equal(back, wire) {
+				t.Fatalf("unpack -> pack moved bytes: %d back against %d pinned", len(back), len(wire))
+			}
+		})
+	}
+
+	// a tree of fields under a variable root is refused by name, and nothing
+	// beside the refusal comes back
+	t.Run("tree of fields refused", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "name.json"), []byte(`"split"`), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if len(entries) != 0 {
-			t.Fatalf("unpack wrote %d entries before refusing %s", len(entries), name)
+		_, _, _, err := c.Pack(u, "Scene", dir)
+		if err == nil {
+			t.Fatal("pack accepted a tree of fields under a variable root")
 		}
+		if !strings.Contains(err.Error(), "VARIABLE-LENGTH") || !strings.Contains(err.Error(), "Scene.json") {
+			t.Fatalf("the refusal does not name the class and the one file it packs from: %v", err)
+		}
+	})
+}
+
+// A chain nests in the text as deep as it is long (docs/SPEC-TABLES.md §16.7),
+// and the text form's depth cap bounds it: the corpus's 260-node chain has a
+// wire and no text, in this engine as in the reference, so `unpack` refuses it
+// by depth before a file is written.
+func TestVariableRootPastTheDepthCapHasNoText(t *testing.T) {
+	c, u := pointers(t)
+	wire, err := os.ReadFile("../../testdata/wire/tables/graph_deep.bin")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !found {
-		t.Skip("the pointers corpus declares no variable-length root")
+	out := t.TempDir()
+	_, err = c.Unpack(u, "Scene", wire, out)
+	if err == nil {
+		t.Fatal("unpack wrote a text past the depth cap")
+	}
+	if !strings.Contains(err.Error(), "depth cap") {
+		t.Fatalf("the refusal does not name the cap: %v", err)
+	}
+	entries, err := os.ReadDir(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("unpack wrote %d entries before refusing", len(entries))
 	}
 }
 

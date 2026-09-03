@@ -459,32 +459,50 @@ defmodule Driver do
     end
   end
 
+  # Elixir refuses a pointered unit's wire by name (§11), so it has no text form
+  # for one either and says so per case (the json-write marker is named after
+  # the case's own file)
   defp run("json-read", rows, outdir) do
     for {name, unit, root, _wire} <- instances(rows, :texted) do
-      mod = codec(unit, root)
-      lo = Macro.underscore(root)
-      text = File.read!("testdata/conformance/tables/json/#{name}.json")
-      {value, _report} = apply(mod, String.to_atom("from_json_" <> lo), [text])
-      write(outdir, name, apply(mod, String.to_atom("save_" <> lo <> "!"), [value]))
+      case find_codec(unit, root) do
+        nil ->
+          absent(outdir, name)
+
+        mod ->
+          lo = Macro.underscore(root)
+          text = File.read!("testdata/conformance/tables/json/#{name}.json")
+          {value, _report} = apply(mod, String.to_atom("from_json_" <> lo), [text])
+          write(outdir, name, apply(mod, String.to_atom("save_" <> lo <> "!"), [value]))
+      end
     end
   end
 
   defp run("json-write", rows, outdir) do
     for {name, unit, root, wire} <- instances(rows, :texted) do
-      mod = codec(unit, root)
-      lo = Macro.underscore(root)
-      {value, _report} = apply(mod, String.to_atom("load_" <> lo), [File.read!(wire)])
-      write(outdir, name <> ".json", apply(mod, String.to_atom("to_json_" <> lo <> "!"), [value]))
+      case find_codec(unit, root) do
+        nil ->
+          absent(outdir, name <> ".json")
+
+        mod ->
+          lo = Macro.underscore(root)
+          {value, _report} = apply(mod, String.to_atom("load_" <> lo), [File.read!(wire)])
+          write(outdir, name <> ".json", apply(mod, String.to_atom("to_json_" <> lo <> "!"), [value]))
+      end
     end
   end
 
   defp run("json-hostile", rows, outdir) do
     for [name, unit, root, tree] <- rows(rows, "json-hostile") do
-      mod = codec(unit, root)
-      lo = Macro.underscore(root)
-      text = File.read!(Path.join(tree, root <> ".json"))
-      {_value, report} = apply(mod, String.to_atom("from_json_" <> lo), [text])
-      write(outdir, name, if(report.malformed, do: "refused\n", else: counters(report)))
+      case find_codec(unit, root) do
+        nil ->
+          absent(outdir, name)
+
+        mod ->
+          lo = Macro.underscore(root)
+          text = File.read!(Path.join(tree, root <> ".json"))
+          {_value, report} = apply(mod, String.to_atom("from_json_" <> lo), [text])
+          write(outdir, name, if(report.malformed, do: "refused\n", else: counters(report)))
+      end
     end
   end
 

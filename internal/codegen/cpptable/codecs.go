@@ -1515,7 +1515,16 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 
 			pointerColumn := ""
 			if g.anyVariable {
-				pointerColumn = fmt.Sprintf("%v, ", f.Type.Pointer)
+				// the three columns a pointered unit's descriptors carry: the
+				// flag, and the two thunks the ONE walk cannot spell for itself
+				// (docs/SPEC-TABLES.md §16.7)
+				resolve, emplace := "NULL", "NULL"
+				if f.Type.Pointer {
+					t := f.Type.Name
+					resolve = fmt.Sprintf("[]( const void * slot ) -> const void * { return (const void *) %sAt( *(const TableRef *) slot ); }", t)
+					emplace = fmt.Sprintf("[]( TableWorker & worker, void * slot ) -> void * { return (void *) %sEmplace( worker, *(TableRef *) slot ); }", t)
+				}
+				pointerColumn = fmt.Sprintf("%v, %s, %s, ", f.Type.Pointer, resolve, emplace)
 			}
 			g.pf("%s    { \"%s\", \"%s\", \"%s\", 0x%04x, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\" },\n",
 				indent, f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
