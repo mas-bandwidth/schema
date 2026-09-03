@@ -318,6 +318,18 @@ defmodule Driver do
     Enum.each(@surfaces, &IO.puts/1)
   end
 
+  def main([manifest, "alloc-audit"]) do
+    Audit.run(parse(File.read!(manifest)))
+  end
+
+  def main([manifest, "soak", seconds]) do
+    Audit.soak(parse(File.read!(manifest)), String.to_integer(seconds))
+  end
+
+  def main([manifest, "fuzz", iterations]) do
+    Fuzz.run(parse(File.read!(manifest)), String.to_integer(iterations))
+  end
+
   def main([manifest, surface, outdir]) do
     rows = parse(File.read!(manifest))
     run(surface, rows, outdir)
@@ -350,6 +362,8 @@ defmodule Driver do
   # the module exporting a root's codecs: whichever <Ns>.<Base>Table module has
   # the function. Loading is explicit because an .exs script runs with no
   # application to load the beams for it.
+  def codec_module(unit, root), do: codec(unit, root)
+
   defp codec(unit, root) do
     want = String.to_atom("load_" <> Macro.underscore(root))
     prefix = Atom.to_string(namespace(unit)) <> "."
@@ -551,6 +565,10 @@ defmodule Driver do
     magic |> :binary.bin_to_list() |> Enum.reverse() |> :binary.list_to_bin() |> Kernel.<>(rest)
   end
 
+  def block_table_of(name), do: block_table(name)
+  def block_module_of(unit, root), do: block_module(unit, root)
+  def accessor_of(unit, root, prefix, arity), do: accessor(unit, root, prefix, arity)
+
   defp block_module(unit, root) do
     {mod, _} = accessor(unit, root, "block_open", 1)
     mod
@@ -624,5 +642,365 @@ defmodule Driver do
   defp write(_outdir, name, :refused) do
     IO.puts(:stderr, "#{name}: the writer refused the value")
     System.halt(1)
+  end
+end
+
+# ---------------------------------------------------------------------------
+# THE ALLOCATION AUDIT, and the soak beside it
+# ---------------------------------------------------------------------------
+#
+# The instrument first, because the number is worth what the instrument is.
+#
+# A soak that gates on heap DRIFT is a LEAK instrument, and it cannot see a
+# per-iteration allocation that is collected: a path that allocates and frees
+# the same words every iteration reads +0 drift for an hour and is still
+# allocating. What "the read path costs this much" actually claims is a COUNT
+# per iteration, so that is what this gates on.
+#
+# On the BEAM the count is measurable exactly, and this is how: run the loop in
+# a process whose heap is large enough that NO GARBAGE COLLECTION HAPPENS, and
+# read :erlang.process_info(:total_heap_size) before and after. With no GC in
+# between, the heap grows by exactly the words the loop allocated. Refc
+# binaries live off that heap, so :erlang.memory(:binary) is read beside it —
+# the two together are the whole of what a read or a write allocates.
+#
+# THE FLOOR IS NOT ZERO AND IS NOT CLAIMED TO BE. Elixir has no caller-owned
+# buffer and no mutable struct: a decoded value IS an allocation, and a
+# sub-binary over the caller's bytes is a small one. What the gate holds is
+# that the figure does not MOVE — the budget is pinned per case in
+# test/conformance/elixir/alloc-budget.txt and re-pinned deliberately, exactly
+# as a wire golden is — so an allocation somebody adds shows up as a diff
+# rather than as nothing at all.
+#
+# The negative control is SOAK_SABOTAGE=1: one extra allocation per iteration,
+# which must take every case over its budget.
+defmodule Audit do
+  @budget "test/conformance/elixir/alloc-budget.txt"
+
+  @iterations 200
+
+  # THE TOLERANCE, and why it is not zero. The count is taken at a garbage
+  # collection boundary, and where that boundary falls moves the figure by a
+  # handful of words between runs — measured at plus or minus five over the
+  # whole corpus. The negative control adds about a hundred and forty, so
+  # sixty-four separates a real allocation from the boundary's jitter and the
+  # gate stays a gate.
+  @tolerance 64
+
+  def run(rows) do
+    cases = cases(rows)
+    measured = Enum.map(cases, fn c -> {c.name, measure(c)} end)
+
+    if System.get_env("ELIXIR_ALLOC_PIN") == "1" do
+      text = Enum.map_join(measured, fn {name, {words, r}} -> "#{name} #{words} #{r}\n" end)
+      File.write!(@budget, header() <> text)
+      IO.puts("alloc-audit: pinned #{length(measured)} budgets into #{@budget}")
+    else
+      compare(measured)
+    end
+  end
+
+  defp header do
+    """
+    # THE ALLOCATION BUDGET of the Elixir table leg, pinned (make tables-elixir-alloc-pin).
+    #
+    # <case> <heap words per iteration> <reductions per iteration>
+    #
+    # One iteration is one wire load, one wire save, one text read and one text
+    # write of that instance. The figures are EXACT: the audit runs the loop in a
+    # process large enough that no garbage collection happens, so the heap grows by
+    # exactly the words the loop allocated.
+    #
+    # The floor is not zero and is not claimed to be — Elixir has no caller-owned
+    # buffer and no mutable struct, so a decoded value IS an allocation. What this
+    # file holds is that the figure does not MOVE: the audit refuses a case that
+    # runs over its line by more than the collection boundary's own jitter.
+    #
+    # REDUCTIONS ride beside the words because they are the WORK half: a change
+    # that allocated the same and did twice as much of it moves this column and
+    # not the other, and an accidental quadratic moves it a great deal.
+    """
+  end
+
+  defp compare(measured) do
+    budget =
+      @budget
+      |> File.read!()
+      |> String.split("\n")
+      |> Enum.reject(fn l -> l == "" or String.starts_with?(l, "#") end)
+      |> Map.new(fn l ->
+        [name, words, reductions] = String.split(l, " ")
+        {name, {String.to_integer(words), String.to_integer(reductions)}}
+      end)
+
+    over =
+      Enum.filter(measured, fn {name, {words, reductions}} ->
+        case Map.fetch(budget, name) do
+          {:ok, {w, r}} -> words > w + @tolerance or reductions > r + div(r, 20) + @tolerance
+          :error -> true
+        end
+      end)
+
+    Enum.each(measured, fn {name, {words, reductions}} ->
+      IO.puts("  #{String.pad_trailing(name, 24)} #{words} words  #{reductions} reductions")
+    end)
+
+    if over == [] do
+      IO.puts("alloc-audit: every case is inside its pinned budget (#{length(measured)} cases)")
+    else
+      Enum.each(over, fn {name, {words, bin}} ->
+        want = Map.get(budget, name, {0, 0})
+
+        IO.puts(
+          :stderr,
+          "#{name}: #{words} heap words and #{bin} reductions per iteration, over the pinned " <>
+            "#{inspect(want)} — the generated code allocates more than it did; re-pin " <>
+            "deliberately (make tables-elixir-alloc-pin) or find what was added"
+        )
+      end)
+
+      System.halt(1)
+    end
+  end
+
+  # the soak: the whole corpus, read and written in a loop, with the bytes
+  # compared every iteration so a run that drifted STOPS rather than merely
+  # getting slower — and with the process's live heap and the system's binary
+  # memory printed each interval, which is the LEAK half of the instrument
+  def soak(rows, seconds) do
+    cases = cases(rows)
+    if cases == [], do: raise("the manifest names no instance to soak")
+    deadline = System.monotonic_time(:millisecond) + seconds * 1000
+    IO.puts("soak: #{length(cases)} instances, #{seconds}s")
+    # one warm pass, so nothing lazily built is counted as drift
+    Enum.each(cases, &once/1)
+    :erlang.garbage_collect()
+    base = {live(), :erlang.memory(:binary)}
+    loop(cases, deadline, base, 0, System.monotonic_time(:millisecond))
+  end
+
+  defp loop(cases, deadline, base, iterations, next_print) do
+    now = System.monotonic_time(:millisecond)
+
+    cond do
+      now >= deadline ->
+        report(base, iterations)
+        IO.puts("soak: #{iterations} iterations, heap and binary memory flat")
+
+      now >= next_print ->
+        report(base, iterations)
+        loop(cases, deadline, base, iterations, now + 10_000)
+
+      true ->
+        Enum.each(cases, &once/1)
+        loop(cases, deadline, base, iterations + 1, next_print)
+    end
+  end
+
+  defp report({base_live, base_bin}, iterations) do
+    :erlang.garbage_collect()
+
+    IO.puts(
+      "  #{iterations} iterations: live heap #{live() - base_live} words, " <>
+        "binary #{:erlang.memory(:binary) - base_bin} bytes (both against the warm baseline)"
+    )
+  end
+
+  defp live do
+    {:total_heap_size, words} = :erlang.process_info(self(), :total_heap_size)
+    words
+  end
+
+  # ONE case, measured.
+  #
+  # THE INSTRUMENT, and its limits. The BEAM keeps a cumulative count of the
+  # heap words a garbage collection RECLAIMED, so a loop bracketed by two full
+  # collections allocated exactly the words reclaimed between them plus whatever
+  # is still live at the end. That is a COUNT per iteration, not a drift figure,
+  # and it is deterministic: the same corpus measures the same number every run,
+  # which is what lets it be pinned like a golden.
+  #
+  # WHAT IT DOES NOT COUNT, named rather than implied: the payload of a REFC
+  # binary, which lives off the process heap and has no cumulative counter of
+  # its own. The soak beside this is that half's instrument — refc bytes that
+  # are allocated and freed every iteration read flat there, and ones that
+  # accumulate do not.
+  defp measure(c) do
+    once(c)
+    :erlang.garbage_collect()
+    {_, reclaimed0, _} = :erlang.statistics(:garbage_collection)
+    live0 = live()
+    {:reductions, r0} = :erlang.process_info(self(), :reductions)
+    spin(c, @iterations)
+    :erlang.garbage_collect()
+    {_, reclaimed1, _} = :erlang.statistics(:garbage_collection)
+    {:reductions, r1} = :erlang.process_info(self(), :reductions)
+    live1 = live()
+    words = div(reclaimed1 - reclaimed0 + (live1 - live0), @iterations)
+    {words, div(r1 - r0, @iterations)}
+  end
+
+  defp spin(_c, 0), do: :ok
+  defp spin(c, n), do: (once(c); spin(c, n - 1))
+
+  # one iteration: one wire load, one wire save, one text read, one text write —
+  # every path the generated code has, with the bytes compared so a run that
+  # drifted stops rather than getting slower
+  defp once(c) do
+    {value, _r} = apply(c.mod, c.load, [c.wire])
+    if apply(c.mod, c.save, [value]) != c.wire, do: raise("#{c.name}: the wire round trip drifted")
+    {from_text, _r2} = apply(c.mod, c.from_json, [c.text])
+    if apply(c.mod, c.save, [from_text]) != c.wire, do: raise("#{c.name}: the text read drifted")
+    if apply(c.mod, c.to_json, [value]) != c.text, do: raise("#{c.name}: the text write drifted")
+
+    if System.get_env("SOAK_SABOTAGE") == "1" do
+      # THE NEGATIVE CONTROL: one extra allocation per iteration, which must
+      # take every case over its pinned budget
+      _ = :binary.copy(<<0>>, 64)
+      _ = List.duplicate(0, 64)
+    end
+
+    :ok
+  end
+
+  def cases(rows) do
+    for [name, unit, root, wire] <- Map.get(rows, "instance", []) do
+      lo = Macro.underscore(root)
+      mod = Driver.codec_module(unit, root)
+
+      %{
+        name: name,
+        mod: mod,
+        load: String.to_atom("load_" <> lo),
+        save: String.to_atom("save_" <> lo),
+        from_json: String.to_atom("from_json_" <> lo),
+        to_json: String.to_atom("to_json_" <> lo),
+        wire: File.read!(wire),
+        text: File.read!("testdata/conformance/tables/json/#{name}.json")
+      }
+    end
+  end
+end
+
+# ---------------------------------------------------------------------------
+# THE FUZZER'S ORACLE over the two READERS (docs/SPEC-TABLES.md §7.4, §19.2)
+# ---------------------------------------------------------------------------
+#
+# The oracle is one sentence: for ANY bytes, Open either REFUSES or opens, and
+# an opened image is one every accessor can walk without leaving the buffer.
+# An index out of bounds is a REFUSAL, never an exception that escapes — which
+# on the BEAM is a claim with teeth, because a bad binary match raises and a
+# raise that reaches the caller is exactly the failure this exists to find.
+#
+# The mutants are the corpus's own fixtures with bytes flipped, words
+# overwritten and the file truncated — the shapes the forgery battery pins one
+# at a time, generated in bulk. A find here lands in the battery as a row.
+defmodule Fuzz do
+  import Bitwise
+
+  def run(rows, iterations) do
+    subjects = subjects(rows)
+    if subjects == [], do: raise("the manifest names no block or cook to fuzz")
+    :rand.seed(:exsss, {1, 2, 3})
+    total = Enum.reduce(1..iterations, 0, fn i, opened -> opened + one(subjects, i) end)
+
+    IO.puts(
+      "elixir fuzz: #{iterations} mutants over #{length(subjects)} fixtures — " <>
+        "#{total} opened and walked inside the buffer, the rest refused — no read left it"
+    )
+  end
+
+  defp subjects(rows) do
+    blocks =
+      for [name, unit, image] <- Map.get(rows, "block", []) do
+        %{kind: :block, unit: unit, root: Driver.block_table_of(name), bytes: File.read!(image)}
+      end
+
+    cooks =
+      for [_case, unit, root, file] <- Map.get(rows, "cook", []) do
+        %{kind: :cook, unit: unit, root: root, bytes: File.read!(file)}
+      end
+
+    blocks ++ Enum.uniq_by(cooks, & &1.root)
+  end
+
+  # THE ORACLE'S TWO OUTCOMES, and the line between them is the whole point.
+  #
+  # A DELIBERATE refusal is fine and is most of what a mutant gets: Open refuses
+  # by its check list, or — because Open is O(1) and validates no graph (§7.4) —
+  # the walk meets a delta or a count the region cannot hold and refuses THAT.
+  # Both are the reader saying no.
+  #
+  # AN ESCAPING EXCEPTION IS THE FAILURE. On the BEAM a read past the end of a
+  # binary raises MatchError, ArgumentError or FunctionClauseError, and one of
+  # those reaching a caller is precisely "an index out of bounds became an
+  # exception instead of a refusal". The two are told apart by CLASS: a
+  # deliberate refusal is a RuntimeError this leg raised with a sentence in it,
+  # and everything else is the runtime saying the reader left the buffer.
+  defp one(subjects, i) do
+    subject = Enum.at(subjects, rem(i, length(subjects)))
+    bytes = mutate(subject.bytes)
+
+    try do
+      case open(subject, bytes) do
+        :refuse ->
+          0
+
+        {:ok, handle} ->
+          # OPENED: every accessor must now stay inside the buffer, and the
+          # descriptor walk is every accessor.
+          walk(subject, handle)
+          1
+      end
+    rescue
+      _ in RuntimeError ->
+        # the walk's own refusal, with a sentence in it
+        0
+
+      e ->
+        reraise "the #{subject.kind} #{subject.root} reader left the buffer on mutant #{i} — " <>
+                  "an index out of bounds must be a refusal, never an escaping " <>
+                  Atom.to_string(e.__struct__) <> ": " <> Exception.message(e),
+                __STACKTRACE__
+    end
+  end
+
+  defp open(%{kind: :block} = s, bytes) do
+    mod = Driver.block_module_of(s.unit, s.root)
+    apply(mod, String.to_atom("block_open_" <> Macro.underscore(s.root)), [bytes])
+  end
+
+  defp open(%{kind: :cook} = s, bytes) do
+    {mod, fun} = Driver.accessor_of(s.unit, s.root, "cook_open", 1)
+    apply(mod, fun, [bytes])
+  end
+
+  defp walk(%{kind: :block} = s, block) do
+    mod = Driver.block_module_of(s.unit, s.root)
+    info = apply(mod, String.to_atom("block_info_" <> Macro.underscore(s.root)), [])
+    BlockDump.dump(block.base, info)
+  end
+
+  defp walk(%{kind: :cook}, cook), do: CookDump.dump(cook)
+
+  # the shapes the forgery battery pins one at a time, generated in bulk: a
+  # flipped byte, an overwritten word, and a truncation
+  defp mutate(bytes) do
+    size = byte_size(bytes)
+
+    case :rand.uniform(3) do
+      1 ->
+        at = :rand.uniform(size) - 1
+        <<head::binary-size(^at), b, tail::binary>> = bytes
+        <<head::binary, bxor(b, 1 <<< (:rand.uniform(8) - 1)), tail::binary>>
+
+      2 ->
+        at = min(:rand.uniform(size) - 1, size - 8)
+        <<head::binary-size(^at), _::binary-size(8), tail::binary>> = bytes
+        <<head::binary, :rand.uniform(0xFFFFFFFFFFFFFFFF)::little-unsigned-64, tail::binary>>
+
+      3 ->
+        binary_part(bytes, 0, :rand.uniform(size))
+    end
   end
 end

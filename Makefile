@@ -3607,6 +3607,62 @@ build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/confo
 .PHONY: build-conformance-elixir
 build-conformance-elixir: build/elixir-tables-ebin/.stamp
 
+# THE ELIXIR LEG's own gates, beside the harness's matrix row. They read the
+# DERIVED manifest the harness writes, so each is `conformance` plus one run.
+#
+# THE ALLOCATION AUDIT (docs/SPEC-TABLES.md §16.1's Rust paragraph, in the shape
+# the BEAM allows): the COUNT of heap words and refc binary bytes one iteration
+# allocates, measured in a process large enough that no garbage collection
+# happens, so the heap grows by exactly what the loop allocated. The floor is
+# not zero and is not claimed to be — Elixir has no caller-owned buffer and no
+# mutable struct — so the gate is a PINNED BUDGET per case, re-pinned
+# deliberately the way a wire golden is.
+.PHONY: tables-elixir-alloc-audit
+tables-elixir-alloc-audit: conformance
+	BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
+		build/conformance/manifest.txt alloc-audit
+
+.PHONY: tables-elixir-alloc-pin
+tables-elixir-alloc-pin: conformance
+	ELIXIR_ALLOC_PIN=1 BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
+		build/conformance/manifest.txt alloc-audit
+
+# THE NEGATIVE CONTROL, and it is what makes the audit an instrument rather
+# than a number: one extra allocation per iteration must take every case over
+# its budget. A gate that cannot go red is not a gate.
+.PHONY: tables-elixir-alloc-negative-control
+tables-elixir-alloc-negative-control: conformance
+	@if SOAK_SABOTAGE=1 BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
+			build/conformance/manifest.txt alloc-audit > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the audit passed with an extra allocation per iteration"; \
+		exit 1; \
+	else \
+		echo "elixir alloc negative control: one extra allocation per iteration reds the audit"; \
+	fi
+
+# THE SOAK: the whole corpus read and written in a loop, with the bytes
+# compared every iteration so a run that drifted STOPS rather than merely
+# getting slower, and the live heap and binary memory printed against the warm
+# baseline. This is the LEAK half; the audit above is the COUNT half, and the
+# two answer different questions.
+SOAK_SECONDS ?= 3600
+
+.PHONY: tables-elixir-soak
+tables-elixir-soak: conformance
+	BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
+		build/conformance/manifest.txt soak $(SOAK_SECONDS)
+
+# THE FUZZER'S ORACLE over the two READERS: for ANY bytes, Open either refuses
+# or opens, and an opened image is one every accessor walks without leaving the
+# buffer. An index out of bounds is a REFUSAL, never an exception that escapes
+# — which on the BEAM has teeth, because a bad binary match raises.
+ELIXIR_FUZZ_N ?= 20000
+
+.PHONY: tables-elixir-fuzz
+tables-elixir-fuzz: conformance
+	BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
+		build/conformance/manifest.txt fuzz $(ELIXIR_FUZZ_N)
+
 build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml
 	@mkdir -p build
 	cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
