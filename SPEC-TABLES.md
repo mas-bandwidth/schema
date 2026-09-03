@@ -5756,8 +5756,7 @@ schema alone. The compiler owns every fact in it, including the layout: it
 computes each record's layout from its own C ABI model — the model §19.3
 states and both backends MUST assert against (§20.3) — and emits the id as one
 constant. A build whose compiler lays a record out differently fails to BUILD,
-loudly, naming the type and the field; §20.3 states the asserts in full and
-names the one closure they do not yet reach.
+loudly, naming the type and the field; §20.3 states the asserts in full.
 
 **Backend status: the id, its projection and both READ sides are LIVE.**
 `schema build-version` prints the id and `schema build-version --facts` prints
@@ -5767,41 +5766,29 @@ C# BLOCK backends emit the constant and stamp it into every block's prologue
 header, `schema cook-check` reads it back, and the C++ `<Root>Open` and the C#
 `<Root>Cook.Open` each compare it (§7). What remains owed, largest first:
 
-1. **The constant rides in the BLOCK and COOK sources only.** §20.7 asks for
+1. **The constant rides in the TABLE-bearing sources only.** §20.7 asks for
    one beside `ProtocolId` in every backend; today the two block backends emit
    it into `<Base>Block.h` / `<Base>Block.cs`, the C++ table backend emits it
-   into the `<Base>Table.h` of a unit that has a variable-length table — where
-   the cook's reader is — the C# cook emits it into `<Base>Cook.cs` when the
-   unit has no block form to carry it already, and the seven backends that carry
-   no table emit none. A VALUE-ONLY unit's Table sources carry no constant, which
-   is the zero-cost gate (§2.2) rather than an omission: nothing in one reads a
-   cook. **In C# exactly one accelerator defines it** — `Schema` is one partial
-   class across a unit's files, so a second definition is a compile error rather
-   than C++'s harmless re-inclusion behind a guard.
-2. **The layout asserts cover the BLOCK CLOSURE and the COOK CLOSURE on BOTH
-   backends, but not a record in a unit with no accelerator reader in it.**
-   C++ `static_assert`s each block
-   projection's and each row type's `sizeof`, `alignof` and every field
-   `offsetof`, and does the same for every record declared by a file of a unit
-   that has a variable-length table. C# asserts the block facts under the
-   managed model in one once-run check and, in `TableCookLayout`, every record of
-   the unit's COOK closure — each `<Name>Row`'s size and each field's offset — in
-   another. What neither side asserts is a record in a unit with NO pointer
-   anywhere, which is exactly the unit whose sources the zero-cost gate holds
-   byte-identical, so closing it and §20.3's commitment are one question, and it
-   is OPEN.
-3. **The C# check is a THROW at first use, not a build error.** §20.3 asks
+   into every `<Base>Table.h` — where the cook's reader is — the C# cook emits
+   it into `<Base>Cook.cs` when the unit has no block form to carry it already,
+   and the seven backends that carry no table emit none. The C# Table sources
+   carry none, which is the zero-cost gate (§2.2) rather than an omission: the
+   C# cook reader is in the accelerator's own file. **In C# exactly one
+   accelerator defines it** — `Schema` is one partial class across a unit's
+   files, so a second definition is a compile error rather than C++'s harmless
+   re-inclusion behind a guard.
+2. **The C# check is a THROW at first use, not a build error.** §20.3 asks
    for a build error on the side that disagrees; C# has no `static_assert`,
    so the generated check runs once at type initialization and throws naming
    the type, the field, the offset it found and the offset the compiler's model
    gives. Loud and early, but not at compile time. The gate runs both `Verify()`
    halves as their own start-up mode rather than waiting for a first open, which
    is the most a runtime with no compile-time assert can do.
-4. **The COOK's WRITE side is the TOOL's alone.** `schema cook` produces a
+3. **The COOK's WRITE side is the TOOL's alone.** `schema cook` produces a
    cooked file and no generated runtime does: `CookMeasure` and the write half
    of `Cook` stay claimed ahead of their emitter (§7, §11, schema#251). BOTH
    read sides are emitted and gated.
-5. **A UNION-BEARING closure has no C# cook reader**, for the reason it has no
+4. **A UNION-BEARING closure has no C# cook reader**, for the reason it has no
    block form: §19.3 pins a blittable C# record to `Sequential`, which cannot
    overlay arms. The generated file names the table and the reason, the table's
    cook and its wire are untouched, and C++ reads one. A named follow-on (§15).
@@ -6100,21 +6087,18 @@ Pack = 1, Size = N)`) with generated padding and a once-run layout check
 that disagrees**, naming the type, the field, the expected offset and the one
 its compiler produced.
 
-**Those asserts are in the tree for the BLOCK CLOSURE and for the COOK closure
-of a POINTERED unit.** C++ `static_assert`s each block projection's and each
+**Those asserts are in the tree, for EVERY COOKABLE RECORD of every unit that
+declares a table.** C++ `static_assert`s each block projection's and each
 row type's `sizeof`, `alignof` and every field `offsetof`, and asserts the same
-three facts for every record declared by a file of a unit that has a
-variable-length table — the records a cook's region is laid out from, asserted
-in the file that DECLARES them, which is the same rule §7 gives a member's
-walk. C# emits blittable storage with generated padding and asserts the block
-facts under the managed model in a once-run check that THROWS rather than
-failing the build, because C# has no `static_assert`. What neither side asserts
-is a record in a unit with NO pointer in it — so for those this section's
-guarantee is still a specification and not a property of any build: **two
-builds whose ABIs differ there would share a build version and cook different
-bytes, with nothing to say so.** Closing it means emitting the asserts into a
-value-only unit's Table header, which moves bytes the zero-cost gate holds
-identical (§2.2), so it is one question with that gate and it is OPEN. The model is not self-evidently right either — on 32-bit System V
+three facts for every record a file declares — the records a cook's region is
+laid out from, asserted in the file that DECLARES them, which is the same rule
+§7 gives a member's walk. C# emits blittable storage with generated padding and
+asserts the block facts under the managed model in a once-run check that THROWS
+rather than failing the build, because C# has no `static_assert`, and asserts
+every record of the unit's cook closure in `TableCookLayout`. A VALUE-ONLY unit
+is not an exception: its Table header carries the asserts like any other, and
+the bytes they added are pinned by the zero-cost gate rather than excluded from
+it (§2.2). The model is not self-evidently right either — on 32-bit System V
 `alignof(uint64_t)` is 4, not 8 — which is precisely why it is asserted rather
 than assumed, and why "it never reaches a cook" is a claim the asserts make
 true rather than one the model makes true on its own.

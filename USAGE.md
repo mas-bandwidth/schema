@@ -1390,8 +1390,9 @@ so a compiler that lays a record out differently fails the BUILD, naming the
 type and the field. C# has no `static_assert`: the generated
 `TableBlockLayout.Verify()` and `TableCookLayout.Verify()` run once at first
 use and THROW, naming the type, the field, the offset it found and the offset
-the C++ side asserts — loud and early, but at run time. What neither side
-reaches is SPEC-TABLES.md §20's status list.
+the C++ side asserts — loud and early, but at run time. Both cover every
+cookable record of a unit that declares a table; what is still owed is
+SPEC-TABLES.md §20's status list.
 
 Two things it does not do:
 

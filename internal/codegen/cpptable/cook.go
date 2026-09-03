@@ -20,10 +20,11 @@
 // build's header or it returns NULL and the caller falls back to a wire load —
 // the path that carries every version.
 //
-// Nothing here is emitted for a unit of value-only tables: a cook's reader is
-// the variable-length surface's, so a pointer-free unit's <Base>Table.h is
-// byte-identical with or without this file, which is what the zero-cost gate
-// (§2.2) asks.
+// EVERY unit that declares a table gets this, value-only ones included: a
+// cook's root is any table, so a value-only unit's <Base>Table.h carries the
+// build version, the shared read runtime, one <Name>Open per table and §20.3's
+// layout asserts, and the zero-cost gate (§2.2) pins those bytes rather than
+// excluding them.
 package cpptable
 
 import (
