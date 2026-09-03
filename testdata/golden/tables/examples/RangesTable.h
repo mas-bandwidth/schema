@@ -95,6 +95,14 @@ struct TableUnionInfo
     const TableUnionArmInfo * arms;
 };
 
+// The exact raw range of a wide-kind field (docs/SPEC-TABLES.md §8.2): two 128-bit
+// values as 64-bit lanes, low lane first, two's complement for the signed kinds.
+struct TableWideRange
+{
+    uint64_t lo[2];
+    uint64_t hi[2];
+};
+
 struct TableFieldInfo
 {
     const char * name;      // schema field name, e.g. "health"
@@ -114,6 +122,16 @@ struct TableFieldInfo
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
     double range_max;
+    // the WIDE kinds (18-29, docs/SPEC-TABLES.md §3, §8.2): frac_bits is a fixed
+    // field's F — its storage holds units × 2^F — and wide is the declared
+    // range on that RAW scale, exact, as two 128-bit two's-complement values
+    // in 64-bit lanes (low lane first). NULL where the declaration bounds
+    // nothing (a bare uint128) and for every other kind; frac_bits is 0 for
+    // every kind that is not fixed-point. range_min/range_max still carry
+    // the declared bounds as doubles — whole units for a fixed field — for
+    // a walker that only shows them.
+    uint8_t frac_bits;
+    const TableWideRange * wide;
     int64_t enum_max;       // enums: highest valid value (None = 0 always valid);
                             // unions: the arm count (tag range [0, enum_max]);
                             // flags: the highest declared BIT INDEX; else -1
@@ -181,6 +199,8 @@ struct TableWriter
     TABLEDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     TABLEDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
     TABLEDEMO_TABLE_INLINE void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
+    TABLEDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
     TABLEDEMO_TABLE_INLINE void patch32( int64_t at, uint32_t v )
     {
         if ( at + 4 > capacity ) { overflow = true; return; }
@@ -204,16 +224,20 @@ struct TableReader
     TABLEDEMO_TABLE_INLINE uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
     TABLEDEMO_TABLE_INLINE uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
     TABLEDEMO_TABLE_INLINE uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
+    TABLEDEMO_TABLE_INLINE void get128( uint64_t & lo, uint64_t & hi ) { lo = get64(); hi = get64(); }
 
     // skip one payload by kind; false = framing damage
     bool skip( uint8_t kind )
     {
         switch ( kind )
         {
-            case 1: case 2: case 6: return has( 1 ) ? ( offset += 1, true ) : false;
-            case 3: case 7:         return has( 2 ) ? ( offset += 2, true ) : false;
-            case 4: case 8: case 10: case 17: return has( 4 ) ? ( offset += 4, true ) : false; // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1)
-            case 5: case 9: case 11: return has( 8 ) ? ( offset += 8, true ) : false;
+            // the fixed-width kinds, each by its width: 18-29 are the 128-bit integers and
+            // the fixed-point family at every storage width (docs/SPEC-TABLES.md §3)
+            case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
+            case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
+            case 4: case 8: case 10: case 17: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false; // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1)
+            case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
+            case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
             case 12: case 13: case 14: case 16:
             {
                 if ( !has( 4 ) ) return false;
@@ -548,6 +572,15 @@ inline void table_cook_put( uint8_t * at, uint64_t value, int32_t width, TableBy
     {
         for ( int32_t i = 0; i < width; i++ ) { at[i] = (uint8_t) ( value >> ( 8 * ( width - 1 - i ) ) ); }
     }
+}
+
+// A 128-bit store as two lanes: sixteen bytes, the low lane first in the
+// little order and the high lane first — each lane big-endian — in the big
+// order, exactly as a u64 is one lane of eight (docs/SPEC-TABLES.md §7.2).
+inline void table_cook_put128( uint8_t * at, uint64_t lo, uint64_t hi, TableByteOrder order )
+{
+    if ( order == TableByteOrder::Little ) { table_cook_put( at, lo, 8, order ); table_cook_put( at + 8, hi, 8, order ); }
+    else { table_cook_put( at, hi, 8, order ); table_cook_put( at + 8, lo, 8, order ); }
 }
 
 // A buffer piece: the USED bytes and nothing else. The tail is already zero —
@@ -2093,23 +2126,23 @@ inline const TableTypeInfo * RangedWidthsTableType();
 inline const TableTypeInfo * RangedSignedTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "i8_span", "i8_span", "int8", 0x8d4f, 2, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_span ), (uint32_t) sizeof( RangedSigned::i8_span ), 0xffffffffu, 0xffffffffu, NULL, true, -128.0, 127.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "i8_low", "i8_low", "int8", 0xe337, 2, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_low ), (uint32_t) sizeof( RangedSigned::i8_low ), 0xffffffffu, 0xffffffffu, NULL, true, -128.0, 126.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "i8_high", "i8_high", "int8", 0x6a5f, 2, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_high ), (uint32_t) sizeof( RangedSigned::i8_high ), 0xffffffffu, 0xffffffffu, NULL, true, -127.0, 127.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "i8_inside", "i8_inside", "int8", 0x8eee, 2, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_inside ), (uint32_t) sizeof( RangedSigned::i8_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -127.0, 126.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "i16_span", "i16_span", "int16", 0x0a1e, 3, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_span ), (uint32_t) sizeof( RangedSigned::i16_span ), 0xffffffffu, 0xffffffffu, NULL, true, -32768.0, 32767.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "i16_low", "i16_low", "int16", 0xaaae, 3, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_low ), (uint32_t) sizeof( RangedSigned::i16_low ), 0xffffffffu, 0xffffffffu, NULL, true, -32768.0, 32766.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "i16_high", "i16_high", "int16", 0xe8f2, 3, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_high ), (uint32_t) sizeof( RangedSigned::i16_high ), 0xffffffffu, 0xffffffffu, NULL, true, -32767.0, 32767.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "i16_inside", "i16_inside", "int16", 0x1a0e, 3, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_inside ), (uint32_t) sizeof( RangedSigned::i16_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -32767.0, 32766.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "i32_span", "i32_span", "int32", 0x6bd1, 4, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_span ), (uint32_t) sizeof( RangedSigned::i32_span ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483648e+09, 2.147483647e+09, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "i32_low", "i32_low", "int32", 0xb8e0, 4, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_low ), (uint32_t) sizeof( RangedSigned::i32_low ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483648e+09, 2.147483646e+09, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "i32_high", "i32_high", "int32", 0x3806, 4, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_high ), (uint32_t) sizeof( RangedSigned::i32_high ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483647e+09, 2.147483647e+09, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "i32_inside", "i32_inside", "int32", 0x9a24, 4, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_inside ), (uint32_t) sizeof( RangedSigned::i32_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483647e+09, 2.147483646e+09, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "i64_span", "i64_span", "int64", 0xf086, 5, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_span ), (uint32_t) sizeof( RangedSigned::i64_span ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "i64_low", "i64_low", "int64", 0xc705, 5, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_low ), (uint32_t) sizeof( RangedSigned::i64_low ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "i64_high", "i64_high", "int64", 0x328e, 5, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_high ), (uint32_t) sizeof( RangedSigned::i64_high ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "i64_inside", "i64_inside", "int64", 0x7d51, 5, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_inside ), (uint32_t) sizeof( RangedSigned::i64_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "edges", "edges", "int16", 0xb1cb, 3, true, true, false, 4, (uint32_t) offsetof( RangedSigned, edges ), (uint32_t) sizeof( RangedSigned::edges[0] ), (uint32_t) offsetof( RangedSigned, edges_count ), 0xffffffffu, NULL, true, -32768.0, 32767.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i8_span", "i8_span", "int8", 0x8d4f, 2, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_span ), (uint32_t) sizeof( RangedSigned::i8_span ), 0xffffffffu, 0xffffffffu, NULL, true, -128.0, 127.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i8_low", "i8_low", "int8", 0xe337, 2, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_low ), (uint32_t) sizeof( RangedSigned::i8_low ), 0xffffffffu, 0xffffffffu, NULL, true, -128.0, 126.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i8_high", "i8_high", "int8", 0x6a5f, 2, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_high ), (uint32_t) sizeof( RangedSigned::i8_high ), 0xffffffffu, 0xffffffffu, NULL, true, -127.0, 127.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i8_inside", "i8_inside", "int8", 0x8eee, 2, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_inside ), (uint32_t) sizeof( RangedSigned::i8_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -127.0, 126.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i16_span", "i16_span", "int16", 0x0a1e, 3, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_span ), (uint32_t) sizeof( RangedSigned::i16_span ), 0xffffffffu, 0xffffffffu, NULL, true, -32768.0, 32767.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i16_low", "i16_low", "int16", 0xaaae, 3, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_low ), (uint32_t) sizeof( RangedSigned::i16_low ), 0xffffffffu, 0xffffffffu, NULL, true, -32768.0, 32766.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i16_high", "i16_high", "int16", 0xe8f2, 3, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_high ), (uint32_t) sizeof( RangedSigned::i16_high ), 0xffffffffu, 0xffffffffu, NULL, true, -32767.0, 32767.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i16_inside", "i16_inside", "int16", 0x1a0e, 3, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_inside ), (uint32_t) sizeof( RangedSigned::i16_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -32767.0, 32766.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i32_span", "i32_span", "int32", 0x6bd1, 4, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_span ), (uint32_t) sizeof( RangedSigned::i32_span ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483648e+09, 2.147483647e+09, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i32_low", "i32_low", "int32", 0xb8e0, 4, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_low ), (uint32_t) sizeof( RangedSigned::i32_low ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483648e+09, 2.147483646e+09, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i32_high", "i32_high", "int32", 0x3806, 4, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_high ), (uint32_t) sizeof( RangedSigned::i32_high ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483647e+09, 2.147483647e+09, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i32_inside", "i32_inside", "int32", 0x9a24, 4, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_inside ), (uint32_t) sizeof( RangedSigned::i32_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483647e+09, 2.147483646e+09, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i64_span", "i64_span", "int64", 0xf086, 5, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_span ), (uint32_t) sizeof( RangedSigned::i64_span ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i64_low", "i64_low", "int64", 0xc705, 5, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_low ), (uint32_t) sizeof( RangedSigned::i64_low ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i64_high", "i64_high", "int64", 0x328e, 5, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_high ), (uint32_t) sizeof( RangedSigned::i64_high ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "i64_inside", "i64_inside", "int64", 0x7d51, 5, false, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_inside ), (uint32_t) sizeof( RangedSigned::i64_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "edges", "edges", "int16", 0xb1cb, 3, true, true, false, 4, (uint32_t) offsetof( RangedSigned, edges ), (uint32_t) sizeof( RangedSigned::edges[0] ), (uint32_t) offsetof( RangedSigned, edges_count ), 0xffffffffu, NULL, true, -32768.0, 32767.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "RangedSigned", (uint32_t) sizeof( RangedSigned ), 17, fields, +[]( void * p ) { RangedSignedReset( *(RangedSigned *) p ); } };
     return &info;
@@ -2118,23 +2151,23 @@ inline const TableTypeInfo * RangedSignedTableType()
 inline const TableTypeInfo * RangedUnsignedTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "u8_span", "u8_span", "uint8", 0x6434, 6, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_span ), (uint32_t) sizeof( RangedUnsigned::u8_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "u8_low", "u8_low", "uint8", 0xb24e, 6, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_low ), (uint32_t) sizeof( RangedUnsigned::u8_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 254.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "u8_high", "u8_high", "uint8", 0x202a, 6, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_high ), (uint32_t) sizeof( RangedUnsigned::u8_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 255.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "u8_inside", "u8_inside", "uint8", 0x8fbf, 6, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_inside ), (uint32_t) sizeof( RangedUnsigned::u8_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 254.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "u16_span", "u16_span", "uint16", 0xd410, 7, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_span ), (uint32_t) sizeof( RangedUnsigned::u16_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "u16_low", "u16_low", "uint16", 0x6f72, 7, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_low ), (uint32_t) sizeof( RangedUnsigned::u16_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65534.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "u16_high", "u16_high", "uint16", 0x1364, 7, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_high ), (uint32_t) sizeof( RangedUnsigned::u16_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 65535.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "u16_inside", "u16_inside", "uint16", 0xbf32, 7, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_inside ), (uint32_t) sizeof( RangedUnsigned::u16_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 65534.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "u32_span", "u32_span", "uint32", 0x0513, 8, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_span ), (uint32_t) sizeof( RangedUnsigned::u32_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "u32_low", "u32_low", "uint32", 0x4cce, 8, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_low ), (uint32_t) sizeof( RangedUnsigned::u32_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967294e+09, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "u32_high", "u32_high", "uint32", 0xa2da, 8, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_high ), (uint32_t) sizeof( RangedUnsigned::u32_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 4.294967295e+09, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "u32_inside", "u32_inside", "uint32", 0xf596, 8, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_inside ), (uint32_t) sizeof( RangedUnsigned::u32_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 4.294967294e+09, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "u64_span", "u64_span", "uint64", 0x6e8d, 9, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_span ), (uint32_t) sizeof( RangedUnsigned::u64_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "u64_low", "u64_low", "uint64", 0x95b5, 9, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_low ), (uint32_t) sizeof( RangedUnsigned::u64_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "u64_high", "u64_high", "uint64", 0x15e4, 9, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_high ), (uint32_t) sizeof( RangedUnsigned::u64_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 1.8446744073709552e+19, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "u64_inside", "u64_inside", "uint64", 0x2ce0, 9, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_inside ), (uint32_t) sizeof( RangedUnsigned::u64_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 1.8446744073709552e+19, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "counts", "counts", "uint64", 0xe27a, 9, true, true, false, 4, (uint32_t) offsetof( RangedUnsigned, counts ), (uint32_t) sizeof( RangedUnsigned::counts[0] ), (uint32_t) offsetof( RangedUnsigned, counts_count ), 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u8_span", "u8_span", "uint8", 0x6434, 6, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_span ), (uint32_t) sizeof( RangedUnsigned::u8_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u8_low", "u8_low", "uint8", 0xb24e, 6, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_low ), (uint32_t) sizeof( RangedUnsigned::u8_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 254.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u8_high", "u8_high", "uint8", 0x202a, 6, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_high ), (uint32_t) sizeof( RangedUnsigned::u8_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 255.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u8_inside", "u8_inside", "uint8", 0x8fbf, 6, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_inside ), (uint32_t) sizeof( RangedUnsigned::u8_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 254.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u16_span", "u16_span", "uint16", 0xd410, 7, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_span ), (uint32_t) sizeof( RangedUnsigned::u16_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u16_low", "u16_low", "uint16", 0x6f72, 7, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_low ), (uint32_t) sizeof( RangedUnsigned::u16_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65534.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u16_high", "u16_high", "uint16", 0x1364, 7, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_high ), (uint32_t) sizeof( RangedUnsigned::u16_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 65535.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u16_inside", "u16_inside", "uint16", 0xbf32, 7, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_inside ), (uint32_t) sizeof( RangedUnsigned::u16_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 65534.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u32_span", "u32_span", "uint32", 0x0513, 8, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_span ), (uint32_t) sizeof( RangedUnsigned::u32_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u32_low", "u32_low", "uint32", 0x4cce, 8, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_low ), (uint32_t) sizeof( RangedUnsigned::u32_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967294e+09, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u32_high", "u32_high", "uint32", 0xa2da, 8, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_high ), (uint32_t) sizeof( RangedUnsigned::u32_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 4.294967295e+09, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u32_inside", "u32_inside", "uint32", 0xf596, 8, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_inside ), (uint32_t) sizeof( RangedUnsigned::u32_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 4.294967294e+09, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u64_span", "u64_span", "uint64", 0x6e8d, 9, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_span ), (uint32_t) sizeof( RangedUnsigned::u64_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u64_low", "u64_low", "uint64", 0x95b5, 9, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_low ), (uint32_t) sizeof( RangedUnsigned::u64_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u64_high", "u64_high", "uint64", 0x15e4, 9, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_high ), (uint32_t) sizeof( RangedUnsigned::u64_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 1.8446744073709552e+19, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "u64_inside", "u64_inside", "uint64", 0x2ce0, 9, false, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_inside ), (uint32_t) sizeof( RangedUnsigned::u64_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 1.8446744073709552e+19, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "counts", "counts", "uint64", 0xe27a, 9, true, true, false, 4, (uint32_t) offsetof( RangedUnsigned, counts ), (uint32_t) sizeof( RangedUnsigned::counts[0] ), (uint32_t) offsetof( RangedUnsigned, counts_count ), 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "RangedUnsigned", (uint32_t) sizeof( RangedUnsigned ), 17, fields, +[]( void * p ) { RangedUnsignedReset( *(RangedUnsigned *) p ); } };
     return &info;
@@ -2143,12 +2176,12 @@ inline const TableTypeInfo * RangedUnsignedTableType()
 inline const TableTypeInfo * RangedWidthsTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "b8", "b8", "bits(8)", 0xa7cb, 6, false, false, false, 0, (uint32_t) offsetof( RangedWidths, b8 ), (uint32_t) sizeof( RangedWidths::b8 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "b16", "b16", "bits(16)", 0xb643, 7, false, false, false, 0, (uint32_t) offsetof( RangedWidths, b16 ), (uint32_t) sizeof( RangedWidths::b16 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "b32", "b32", "bits(32)", 0x33f2, 8, false, false, false, 0, (uint32_t) offsetof( RangedWidths, b32 ), (uint32_t) sizeof( RangedWidths::b32 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "b64", "b64", "bits(64)", 0x75dc, 9, false, false, false, 0, (uint32_t) offsetof( RangedWidths, b64 ), (uint32_t) sizeof( RangedWidths::b64 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "b12", "b12", "bits(12)", 0xbcf7, 7, false, false, false, 0, (uint32_t) offsetof( RangedWidths, b12 ), (uint32_t) sizeof( RangedWidths::b12 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "b48", "b48", "bits(48)", 0x9797, 9, false, false, false, 0, (uint32_t) offsetof( RangedWidths, b48 ), (uint32_t) sizeof( RangedWidths::b48 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "b8", "b8", "bits(8)", 0xa7cb, 6, false, false, false, 0, (uint32_t) offsetof( RangedWidths, b8 ), (uint32_t) sizeof( RangedWidths::b8 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "b16", "b16", "bits(16)", 0xb643, 7, false, false, false, 0, (uint32_t) offsetof( RangedWidths, b16 ), (uint32_t) sizeof( RangedWidths::b16 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "b32", "b32", "bits(32)", 0x33f2, 8, false, false, false, 0, (uint32_t) offsetof( RangedWidths, b32 ), (uint32_t) sizeof( RangedWidths::b32 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "b64", "b64", "bits(64)", 0x75dc, 9, false, false, false, 0, (uint32_t) offsetof( RangedWidths, b64 ), (uint32_t) sizeof( RangedWidths::b64 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "b12", "b12", "bits(12)", 0xbcf7, 7, false, false, false, 0, (uint32_t) offsetof( RangedWidths, b12 ), (uint32_t) sizeof( RangedWidths::b12 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "b48", "b48", "bits(48)", 0x9797, 9, false, false, false, 0, (uint32_t) offsetof( RangedWidths, b48 ), (uint32_t) sizeof( RangedWidths::b48 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "RangedWidths", (uint32_t) sizeof( RangedWidths ), 6, fields, +[]( void * p ) { RangedWidthsReset( *(RangedWidths *) p ); } };
     return &info;

@@ -18,7 +18,18 @@ import (
 // self-initializing type (a generated struct or union needs no initializer).
 func (g *tableGen) cppFieldType(t ir.FieldType) (string, bool) {
 	switch t.Kind {
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		// a fixed field's storage is the RAW scaled integer of exactly I+F
+		// bits in the type's own signedness (SPEC.md §4.3); at 128 bits both
+		// families are serialize's pair — native __int128 where the compiler
+		// has it, the emulated two-lane struct where it does not — which the
+		// packet header already brought in
+		if t.Width == 128 {
+			if t.Signed {
+				return "serialize::int128_t", false
+			}
+			return "serialize::uint128_t", false
+		}
 		if t.Signed {
 			return fmt.Sprintf("int%d_t", t.Width), false
 		}
@@ -55,6 +66,9 @@ func (g *tableGen) cppFieldType(t ir.FieldType) (string, bool) {
 // tableIntLit renders an integer literal safely at 64-bit width: unsigned
 // values past INT64_MAX need ull, and INT64_MIN has no single-literal form.
 func tableIntLit(v *big.Int, signed bool, widthBytes int) string {
+	if widthBytes == 16 {
+		return tableWideLit(v, signed)
+	}
 	s := v.String()
 	if widthBytes < 8 {
 		return s
@@ -66,6 +80,30 @@ func tableIntLit(v *big.Int, signed bool, widthBytes int) string {
 		return "( -9223372036854775807ll - 1 )"
 	}
 	return s + "ll"
+}
+
+// wideLanes is a 128-bit value's two's-complement halves, low lane first —
+// the form the descriptors' exact ranges and the composed literals share.
+func wideLanes(v *big.Int) (lo, hi *big.Int) {
+	u := new(big.Int).Set(v)
+	if u.Sign() < 0 {
+		u.Add(u, new(big.Int).Lsh(big.NewInt(1), 128))
+	}
+	mask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1))
+	return new(big.Int).And(u, mask), new(big.Int).Rsh(u, 64)
+}
+
+// tableWideLit renders a 128-bit constant the way the packet emitter does:
+// C++ has no 128-bit literal, so the value composes from its two lanes in the
+// unsigned domain, exact for native and emulated storage alike, and a signed
+// value is the bit-preserving conversion of that.
+func tableWideLit(v *big.Int, signed bool) string {
+	lo, hi := wideLanes(v)
+	composed := fmt.Sprintf("( ( serialize::uint128_t( %sull ) << 64 ) | serialize::uint128_t( %sull ) )", hi, lo)
+	if signed {
+		return "serialize::int128_t" + composed
+	}
+	return composed
 }
 
 // tableStorageRange is the inclusive range an integer storage of the given
@@ -91,9 +129,13 @@ func tableStorageRange(signed bool, bits int) (*big.Int, *big.Int) {
 // (-Wtautological-type-limit-compare), neither catching the other's
 // (issue #342, `make tables-clamp-limits`).
 func tableClampEnds(f *ir.Field, widthBytes int) (low, high bool) {
-	signed := f.Type.Kind == ir.TInt && f.Type.Signed
+	signed := ir.TableKindSigned(ir.TableScalarKind(f))
 	lo, hi := tableStorageRange(signed, widthBytes*8)
-	return f.IntMin.Cmp(lo) > 0, f.IntMax.Cmp(hi) < 0
+	rlo, rhi, ok := ir.TableRawRange(f)
+	if !ok {
+		return false, false
+	}
+	return rlo.Cmp(lo) > 0, rhi.Cmp(hi) < 0
 }
 
 // fieldDefaultExpr renders the C++ expression a field's default compares
@@ -115,12 +157,17 @@ func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
 			return formatFloat(f.DefFloat, false)
 		}
 		return "0.0"
-	case ir.TInt, ir.TBits:
+	case ir.TInt, ir.TBits, ir.TFixed:
+		// a fixed default is held RAW in the IR (units × 2^F, SPEC.md §4.6),
+		// which is what the storage holds, so it renders like any integer
 		if f.HasDefault && f.DefInt != nil {
-			signed := f.Type.Kind == ir.TInt && f.Type.Signed
+			signed := ir.TableKindSigned(ir.TableScalarKind(f))
 			width := 4
 			if f.Type.Width > 32 {
 				width = 8
+			}
+			if f.Type.Width == 128 {
+				width = 16
 			}
 			return tableIntLit(f.DefInt, signed, width)
 		}
@@ -171,6 +218,13 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		return
 	}
 	typ, selfInit := g.cppFieldType(f.Type)
+	if f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
+		// SIXTEEN BYTES AT SIXTEEN on every compiler (docs/SPEC-TABLES.md §7.2,
+		// §19.3): native __int128 is already 16-aligned and the emulated pair
+		// is not, and the layout the cook and the block are laid out by is
+		// the compiler's one model, asserted below
+		typ = "alignas( 16 ) " + typ
+	}
 	switch {
 	case f.Type.Kind == ir.TString:
 		g.pf("    char %s[%d + 1] = {}; // string(%d): max length, used length beside it\n", f.Name, f.Type.Size, f.Type.Size)
@@ -931,6 +985,13 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		g.pf("%s    w.patch32( elem_len_at, uint32_t( w.offset - elem_len_at - 4 ) );\n%s}\n", ind, ind)
 	default:
 		width := tableKindWidth(kind)
+		if width == 16 {
+			// the two lanes of the raw value, low half first — the type
+			// wire's own order (docs/SPEC-TABLES.md §3); the unsigned
+			// conversion is bit-preserving for the signed kinds
+			g.pf("%s{ serialize::uint128_t raw_v = serialize::uint128_t( %s ); w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) ); }\n", ind, expr)
+			return
+		}
 		cast := fmt.Sprintf("uint%d_t", width*8)
 		g.pf("%sw.%s( %s( %s ) );\n", ind, tablePut(width), cast, expr)
 	}
@@ -1224,20 +1285,34 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 	case tkF64:
 		g.pf("%s%s = table_bits_to_double( %s.get64() );\n", ind, lvalue, rdr)
 	default:
-		signed := f.Type.Kind == ir.TInt && f.Type.Signed
+		signed := ir.TableKindSigned(kind)
 		storage := fmt.Sprintf("uint%d_t", width*8)
 		if signed {
 			storage = fmt.Sprintf("int%d_t", width*8)
 		}
-		g.pf("%s%s decoded_v = %s( %s.%s( ) );\n", ind, storage, storage, rdr, tableGet(width))
-		if f.HasIntRange {
+		if width == 16 {
+			// the two lanes back into serialize's pair, low half first; the
+			// signed conversion is bit-preserving
+			storage = "serialize::uint128_t"
+			if signed {
+				storage = "serialize::int128_t"
+			}
+			g.pf("%suint64_t lo_v = 0, hi_v = 0; %s.get128( lo_v, hi_v );\n", ind, rdr)
+			g.pf("%s%s decoded_v = %s( ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v ) );\n", ind, storage, storage)
+		} else {
+			g.pf("%s%s decoded_v = %s( %s.%s( ) );\n", ind, storage, storage, rdr, tableGet(width))
+		}
+		// the declared range on the RAW scale — a fixed field's whole-unit
+		// bounds shifted by F — clamps and counts as every bounded scalar
+		// does (docs/SPEC-TABLES.md §4)
+		if rlo, rhi, ok := ir.TableRawRange(f); ok {
 			low, high := tableClampEnds(f, width)
 			if low {
-				lo := tableIntLit(f.IntMin, signed, width)
+				lo := tableIntLit(rlo, signed, width)
 				g.pf("%sif ( decoded_v < %s ) { decoded_v = %s; r.report->clamped++; }\n", ind, lo, lo)
 			}
 			if high {
-				hi := tableIntLit(f.IntMax, signed, width)
+				hi := tableIntLit(rhi, signed, width)
 				lead := "if"
 				if low {
 					lead = "else if"
@@ -1257,31 +1332,7 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 
 // tableFieldTypeName renders a field's schema-facing type name for the
 // descriptor ("float32", "bits(9)", "Grade", "GunnerSettings").
-func tableFieldTypeName(f *ir.Field) string {
-	switch f.Type.Kind {
-	case ir.TBool:
-		return "bool"
-	case ir.TInt:
-		prefix := "int"
-		if !f.Type.Signed {
-			prefix = "uint"
-		}
-		return fmt.Sprintf("%s%d", prefix, f.Type.Width)
-	case ir.TBits:
-		return fmt.Sprintf("bits(%d)", f.Type.Width)
-	case ir.TFloat32:
-		return "float32"
-	case ir.TFloat64:
-		return "float64"
-	case ir.TString:
-		return "string"
-	case ir.TBytes:
-		return "bytes"
-	case ir.TNamed:
-		return f.Type.Name
-	}
-	return "?"
-}
+func tableFieldTypeName(f *ir.Field) string { return ir.TableTypeSpelling(f) }
 
 // unionArmLambda renders a descriptor lambda over a union's tag values: 0 is
 // the empty arm, [1, N] the declared arms in tag order.
@@ -1357,6 +1408,21 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	infoQualifier := "static const"
 	switch {
 	case len(st.Fields) > 0:
+		// the WIDE kinds' exact raw ranges (docs/SPEC-TABLES.md §8.2), one
+		// constant per bounded wide field, named from the descriptor row
+		for _, f := range st.Fields {
+			if !ir.TableKindWide(tableScalarKind(f)) {
+				continue
+			}
+			rlo, rhi, ok := ir.TableRawRange(f)
+			if !ok {
+				continue
+			}
+			lo0, lo1 := wideLanes(rlo)
+			hi0, hi1 := wideLanes(rhi)
+			g.pf("%s%s TableWideRange %s_%s_wide = { { %sull, %sull }, { %sull, %sull } };\n",
+				indent, qualifier, st.Name, f.Name, lo0, lo1, hi0, hi1)
+		}
 		if hoisted {
 			g.pf("inline const TableFieldInfo %sTableFields[] = {\n", st.Name)
 		} else {
@@ -1526,10 +1592,20 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 				}
 				pointerColumn = fmt.Sprintf("%v, %s, %s, ", f.Type.Pointer, resolve, emplace)
 			}
-			g.pf("%s    { \"%s\", \"%s\", \"%s\", 0x%04x, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\" },\n",
+			// the wide columns: a fixed field's F, and the exact raw range
+			// where the declaration bounds one (docs/SPEC-TABLES.md §8.2)
+			fracBits := 0
+			if f.Type.Kind == ir.TFixed {
+				fracBits = f.Type.FracBits
+			}
+			wide := "NULL"
+			if _, _, ok := ir.TableRawRange(f); ok && ir.TableKindWide(tableScalarKind(f)) {
+				wide = fmt.Sprintf("&%s_%s_wide", st.Name, f.Name)
+			}
+			g.pf("%s    { \"%s\", \"%s\", \"%s\", 0x%04x, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\" },\n",
 				indent, f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 				st.Name, f.Name, elemSize, countOffset, presentOffset, table,
-				hasRange, rangeMin, rangeMax, enumMax, enumName, variantId,
+				hasRange, rangeMin, rangeMax, fracBits, wide, enumMax, enumName, variantId,
 				keyTypeName, keyName, keyId, arms, guards[f.Name])
 		}
 		if hoisted {

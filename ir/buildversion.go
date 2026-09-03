@@ -153,6 +153,11 @@ func cookFieldLine(fl FieldLayout, enums map[string]*Enum, unions map[string]*Un
 	kind := TableScalarKind(f)
 	var b strings.Builder
 	fmt.Fprintf(&b, "    field %04x kind=%d offset=%d size=%d", TableFieldId(f), kind, fl.Offset, fl.Size)
+	if f.Type.Kind == TFixed {
+		// a fixed field's SCALE: the slot holds units × 2^F, so F is a
+		// meaning fact like a bound (§20.1 group 3) and rides beside the kind
+		fmt.Fprintf(&b, " frac=%d", f.Type.FracBits)
+	}
 
 	// the REFERENT: the declaration this field, or its ARRAY ELEMENT, names.
 	// A kind number says a record is nested and not WHICH one, so two

@@ -50,12 +50,18 @@ func (r Report) Silent() bool {
 // every representation keeps the walks free of a type switch per access; only
 // the member the field's kind names is ever read.
 type Cell struct {
-	B   bool      // KindBool
-	I   int64     // signed integers
-	U   uint64    // unsigned integers, bits, flags, an enum value, a union tag
-	F   float64   // f32 / f64, held at double width as the descriptors do
-	Str []byte    // string / bytes payload, at its used extent
-	Tab *Instance // a nested table or type, or a union arm's payload
+	B bool    // KindBool
+	I int64   // signed integers
+	U uint64  // unsigned integers, bits, flags, an enum value, a union tag
+	F float64 // f32 / f64, held at double width as the descriptors do
+	// Wide is the RAW integer of a wide kind (ir.TableKindWide: the 128-bit
+	// integers and the fixed-point family, docs/SPEC-TABLES.md §3) — a fixed
+	// field holds units × 2^F here, exactly what its storage holds. nil is
+	// zero, so a fresh cell and an elided field agree without a materialized
+	// big.Int per slot.
+	Wide *big.Int
+	Str  []byte    // string / bytes payload, at its used extent
+	Tab  *Instance // a nested table or type, or a union arm's payload
 
 	// Node is a `*T` POINTER field's referent (docs/SPEC-TABLES.md §2.1, §3.1), and
 	// nil is NULL — a pointer takes no specified default, so null is the only
@@ -222,7 +228,15 @@ func (m *Model) fieldDefault(f *ir.Field) Cell {
 			return Cell{F: f.DefFloat}
 		}
 		return Cell{}
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		if ir.TableKindWide(ir.TableScalarKind(f)) {
+			// a fixed default is held RAW in the IR (units × 2^F), which is
+			// what the storage initializer carries (SPEC.md §4.6)
+			if f.HasDefault && f.DefInt != nil && f.DefInt.Sign() != 0 {
+				return Cell{Wide: new(big.Int).Set(f.DefInt)}
+			}
+			return Cell{}
+		}
 		if f.HasDefault && f.DefInt != nil {
 			return intCell(f.DefInt, f.Type.Signed)
 		}
@@ -292,24 +306,7 @@ func EnumName(e *ir.Enum, value int64) string {
 // in ir (ir.TableKind*, ir.TableScalarKind): two copies of that mapping would
 // be two wires, so this engine reads the same one the emitters do and adds only
 // the width question they answer inline.
-func KindWidth(kind int) int {
-	switch kind {
-	case ir.TableKindBool, ir.TableKindI8, ir.TableKindU8:
-		return 1
-	case ir.TableKindI16, ir.TableKindU16:
-		return 2
-	case ir.TableKindI32, ir.TableKindU32, ir.TableKindF32:
-		return 4
-	case ir.TableKindPointer:
-		// a POINTER INDEX is four bytes, and it is one row in the fixed-width
-		// skip rule — which is the whole of what spending a distinct kind costs
-		// (docs/SPEC-TABLES.md §3, §3.1)
-		return 4
-	case ir.TableKindI64, ir.TableKindU64, ir.TableKindF64:
-		return 8
-	}
-	return 0
-}
+func KindWidth(kind int) int { return ir.TableKindWidth(kind) }
 
 // ImpliedRange is the range a declaration implies without declaring one:
 // `bits(N)` declares its bound by its WIDTH, `[0, 2^N - 1]`, and a value past
@@ -331,7 +328,7 @@ func ImpliedRange(f *ir.Field) (lo, hi float64, ok bool) {
 // why `bits(N)`'s own bound is [ImpliedRange]'s job and not this one's.
 func StorageBytes(f *ir.Field) int {
 	switch f.Type.Kind {
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
 		return f.Type.Width / 8
 	case ir.TBits:
 		if f.Type.Width <= 32 {
@@ -482,4 +479,12 @@ func KeyedValueSlot(f *ir.Field, value int64) int {
 		return -1
 	}
 	return int(value) - 1
+}
+
+// WideValue is a wide cell's raw integer, zero when nothing placed one.
+func WideValue(cell *Cell) *big.Int {
+	if cell.Wide == nil {
+		return new(big.Int)
+	}
+	return cell.Wide
 }

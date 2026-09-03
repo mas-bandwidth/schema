@@ -1063,6 +1063,9 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 	if kind == ir.TableKindF32 || kind == ir.TableKindF64 {
 		return in.placeFloat(cell, f, token, kind == ir.TableKindF32)
 	}
+	if ir.TableKindWide(kind) {
+		return in.placeWide(cell, f, token, kind)
+	}
 	if kind == ir.TableKindU16 || kind == ir.TableKindU32 || kind == ir.TableKindU64 ||
 		kind == ir.TableKindI8 || kind == ir.TableKindI16 || kind == ir.TableKindI32 || kind == ir.TableKindI64 ||
 		kind == ir.TableKindU8 {
@@ -1440,5 +1443,29 @@ func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bo
 		report.Malformed = true
 		return false
 	}
+	return true
+}
+
+// placeWide converts a number token into a wide kind's raw storage
+// (docs/SPEC-TABLES.md §16.2): a 128-bit integer takes any token whose value
+// is integral, a fixed field any token whose value is EXACTLY representable
+// in its Q I.F — a finer fraction is the wrong shape for the field, counted
+// as a kind mismatch and never rounded, the rule SPEC.md §4.6 gives a fixed
+// default. A magnitude past the storage saturates and counts as a clamp;
+// the declared range clamps after it, as it does for every bounded scalar.
+func (in *reader) placeWide(cell *Cell, f *ir.Field, token string, kind int) bool {
+	raw, exact, saturated := ParseWide(token, kind, f.Type.FracBits)
+	if !exact {
+		in.report.KindMismatch++
+		return true
+	}
+	if saturated {
+		in.report.Clamped++
+	}
+	raw, clamped := WideClamp(raw, f)
+	if clamped {
+		in.report.Clamped++
+	}
+	cell.Wide = raw
 	return true
 }

@@ -39,6 +39,9 @@
 #include "P1Table.h"
 #include "P2Table.h"
 #include "P3Table.h"
+// the WIDE-SCALAR unit and its evolved twin (docs/SPEC-TABLES.md §3, §4)
+#include "ScalarsTable.h"
+#include "Scalars2Table.h"
 // the POINTERED unit (docs/SPEC-TABLES.md §6.2): a region and a root pointer,
 // never a value, which is why it gets its own row shape below
 #include "GraphTable.h"
@@ -240,6 +243,8 @@ static const Codec codecs[] = {
     CODEC( "messagedemo", messagedemo, Edit ),
     CODEC( "tblm1", tblm1, Msg ),
     CODEC( "tblm2", tblm2, Msg ),
+    CODEC( "scalars", scalardemo, SimState ),
+    CODEC( "tblscalars2", scalardemo2, SimState ),
 };
 
 // ---------------------------------------------------------------------------

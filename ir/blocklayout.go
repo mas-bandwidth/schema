@@ -585,7 +585,13 @@ func elementPiece(u *Unit, f *Field) storagePiece {
 		return storagePiece{size: 4, align: 4}
 	case TFloat64:
 		return storagePiece{size: 8, align: 8}
-	case TInt:
+	case TInt, TFixed:
+		// a 128-bit integer, and a fixed of 128 bits, is SIXTEEN BYTES AT
+		// SIXTEEN — the C ABI's natural alignment for a 128-bit integer, and
+		// the one a table's C++ storage spells out (alignas( 16 )) on every
+		// such member, so serialize's emulated pair — not naturally
+		// sixteen-aligned — lays out exactly as native __int128 does
+		// (docs/SPEC-TABLES.md §7.2, §19.3)
 		w := int64(t.Width) / 8
 		return storagePiece{size: w, align: w}
 	case TBits:
@@ -633,8 +639,7 @@ func elementPiece(u *Unit, f *Field) storagePiece {
 			return storagePiece{size: alignUp(size, align), align: align}
 		}
 	}
-	// TString/TBytes are handled by the caller; TFixed has no table-wire kind
-	// and never reaches a table closure (refused by name, §11)
+	// TString/TBytes are handled by the caller
 	return storagePiece{size: 1, align: 1}
 }
 

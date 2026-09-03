@@ -394,6 +394,10 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		w.put(']')
 		return nil
 	}
+	if kind := ir.TableScalarKind(f); ir.TableKindWide(kind) {
+		w.raw(FormatWide(WideValue(cell), kind, f.Type.FracBits))
+		return nil
+	}
 	switch ir.TableScalarKind(f) {
 	case ir.TableKindBool:
 		if cell.B {

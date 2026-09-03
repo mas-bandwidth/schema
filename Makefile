@@ -27,6 +27,7 @@ SCHEMAS_TABLES_BLOCK := $(wildcard tables/block/*.schema) $(wildcard tables/bloc
 # the MESSAGE corpora (docs/SPEC-TABLES.md §2.6): a union whose arms are tables,
 # fixed in tables/messages and with a variable arm in tables/stream
 SCHEMAS_TABLES_MESSAGES := $(wildcard tables/messages/*.schema) $(wildcard tables/stream/*.schema)
+SCHEMAS_TABLES_SCALARS := $(wildcard tables/scalars/*.schema)
 
 # The soak length every leg's soak takes, in seconds. The hour is the release
 # act — `make tables-<lang>-soak SOAK_SECONDS=3600` — and `make test` runs the
@@ -98,13 +99,15 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/jsonkeys test/tables/JsonKeys.schema
 	$(1) generate --lang cpp --out $(2)/m1 test/tables/M1.schema
 	$(1) generate --lang cpp --out $(2)/m2 test/tables/M2.schema
+	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
+	$(1) generate --lang cpp --out $(2)/scalars2 test/tables/Scalars2.schema
 endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/m1 -I$(1)/m2
+	-I$(1)/messages -I$(1)/stream -I$(1)/m1 -I$(1)/m2 -I$(1)/scalars -I$(1)/scalars2 -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/Scalars2.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -121,7 +124,7 @@ tables-zero-cost: build/tables-generated/.stamp
 	          build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
 	          build/tables-generated/p3/*Table.h \
 	          build/tables-generated/messages/*Table.h build/tables-generated/m1/*Table.h \
-	          build/tables-generated/m2/*Table.h; do \
+	          build/tables-generated/m2/*Table.h build/tables-generated/scalars/*Table.h; do \
 		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|TablePack|TableNode|is_pointer|Builder|PackMeasure|LoadMeasure" $$f; then \
 			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
 		fi; \
@@ -825,7 +828,7 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 	@n=0; d=0; \
 	for f in testdata/golden/tables/examples/*Table.* testdata/golden/tables/pointers/*Table.* \
 	         testdata/golden/tables/block/*Table.* testdata/golden/tables/blockhome/*Table.* \
-	         testdata/golden/tables/messages/*Table.* testdata/golden/tables/stream/*Table.* ; do \
+	         testdata/golden/tables/messages/*Table.* testdata/golden/tables/stream/*Table.* testdata/golden/tables/scalars/*Table.* ; do \
 		dir=$$(basename $$(dirname $$f)); \
 		n=$$(( n + 1 )); \
 		cmp -s $$f build/tables-generated/$$dir/$$(basename $$f) || \
@@ -1781,10 +1784,10 @@ build/tables-pack-root.bin: bin/schema $(PACK_TREE)
 
 # PACK_INCLUDES is shared with the sanitized twins below, so a build and its
 # twin can never drift into covering different code (#278's rule).
-PACK_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generated/pointers -Itest/tables
+PACK_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generated/pointers -Ibuild/tables-generated/scalars -Itest/tables -I$(SERIALIZE)
 # these drivers CALL the text form, so they compile the generated translation
 # unit that holds it (docs/SPEC-TABLES.md §16.1) — the same rule any consumer follows
-PACK_JSON_SOURCES = $$(ls build/tables-generated/examples/*Table.cpp build/tables-generated/pointers/*Table.cpp)
+PACK_JSON_SOURCES = $$(ls build/tables-generated/examples/*Table.cpp build/tables-generated/pointers/*Table.cpp build/tables-generated/scalars/*Table.cpp)
 PACK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off
 PACK_SANITIZE := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
 
@@ -1978,6 +1981,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-graph-walk
 	$(MAKE) tables-json-negative-control
+	$(MAKE) tables-ports-refuse-wide-scalars
+	$(MAKE) tables-scalars-block-asserts
 	# THE CONFORMANCE HARNESS (test/conformance/README.md): the same corpus as
 	# data, one driver per language, and the matrix that says which surfaces a
 	# backend has. The reference leg's own negative controls ride beside it;
@@ -2051,7 +2056,7 @@ update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
-	@for d in examples pointers block blockhome messages stream; do \
+	@for d in examples pointers block blockhome messages stream scalars; do \
 		mkdir -p testdata/golden/tables/$$d; \
 		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
 	done
@@ -2207,8 +2212,9 @@ CONFORMANCE_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generat
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
-	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Itest/tables
+	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -I$(SERIALIZE)
 CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
+	build/tables-generated/scalars/ScalarsTable.cpp build/tables-generated/scalars2/Scalars2Table.cpp \
 	build/tables-generated/examples/WideTable.cpp build/tables-generated/examples/NestedTable.cpp \
 	build/tables-generated/examples/KeyedTable.cpp build/tables-generated/examples/PackTable.cpp build/tables-generated/v1/V1Table.cpp \
 	build/tables-generated/v2/V2Table.cpp build/tables-generated/p1/P1Table.cpp \
@@ -2332,6 +2338,41 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 #   CONFORMANCE_ENV    environment the harness run carries to the drivers
 #   BENCH_TABLES_LEGS  the generated unit a leg of `make bench-tables` needs
 #   GOLDENS_LEGS       update-goldens-<lang>: the leg's committed table goldens
+# THE WIDE-SCALAR REFUSAL GATE (docs/SPEC-TABLES.md §3, §15): every scalar the
+# type wire carries rides in a table in the C++ reference and the tool, and a
+# port that has not landed the kinds yet must REFUSE a unit declaring them, by
+# name, rather than emit a second wire for them. tables/scalars is the unit that
+# declares each; every DISCOVERED port (make/<lang>.mk, the registry) is run
+# over it and either generates the unit — it carries the kinds, and the
+# conformance matrix holds it to the corpus — or stops with the diagnostic that
+# names the fields and the follow-on. Nothing here lists a language.
+.PHONY: tables-ports-refuse-wide-scalars
+tables-ports-refuse-wide-scalars: bin/schema
+	@rm -rf build/tables-wide-refusal && mkdir -p build/tables-wide-refusal
+	@carry=0; refuse=0; \
+	for lang in $(patsubst make/%.mk,%,$(wildcard make/*.mk)); do \
+		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
+			carry=$$((carry+1)); continue; \
+		fi; \
+		grep -q "does not carry the fixed-point and 128-bit table-wire kinds yet" build/tables-wide-refusal/$$lang.log || \
+			{ echo "REFUSAL GATE FAILED: the $$lang backend stopped for another reason:"; cat build/tables-wide-refusal/$$lang.log; exit 1; }; \
+		grep -q "SimState.reach fixed(112, 16)" build/tables-wide-refusal/$$lang.log || \
+			{ echo "REFUSAL GATE FAILED: the $$lang backend does not name the refused field"; exit 1; }; \
+		refuse=$$((refuse+1)); \
+	done; \
+	if [ $$((carry+refuse)) -eq 0 ]; then echo "REFUSAL GATE FAILED: no port discovered under make/"; exit 1; fi; \
+	echo "tables wide-scalar refusal gate: $$refuse ports refuse the unit by name, naming every wide field and the follow-on; $$carry carry the kinds"
+
+# THE WIDE-SCALAR LAYOUT ASSERTS (docs/SPEC-TABLES.md §7.2, §19.3): the scalars
+# unit's block form is compiled on its own, which is what makes its static_asserts
+# — sixteen bytes at sixteen for every 128-bit field, the compiler's one model
+# against this compiler's — a build fact rather than a claim.
+.PHONY: tables-scalars-block-asserts
+tables-scalars-block-asserts: build/tables-generated/.stamp
+	@mkdir -p build
+	$(CXX) $(BLOCK_CXXFLAGS) -I$(SERIALIZE) -Ibuild/tables-generated/scalars -c build/tables-generated/scalars/ScalarsBlock.cpp -o build/scalars-block.o
+	@echo "tables wide-scalar layout asserts: the scalars block form compiles, every sizeof, alignof and offsetof asserted"
+
 include $(wildcard make/*.mk)
 
 # THE CONFORMANCE MATRIX (test/conformance/README.md): every discovered driver

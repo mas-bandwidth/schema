@@ -70,6 +70,15 @@ inline void table_cook_put( uint8_t * at, uint64_t value, int32_t width, TableBy
     }
 }
 
+// A 128-bit store as two lanes: sixteen bytes, the low lane first in the
+// little order and the high lane first — each lane big-endian — in the big
+// order, exactly as a u64 is one lane of eight (docs/SPEC-TABLES.md §7.2).
+inline void table_cook_put128( uint8_t * at, uint64_t lo, uint64_t hi, TableByteOrder order )
+{
+    if ( order == TableByteOrder::Little ) { table_cook_put( at, lo, 8, order ); table_cook_put( at + 8, hi, 8, order ); }
+    else { table_cook_put( at, hi, 8, order ); table_cook_put( at + 8, lo, 8, order ); }
+}
+
 // A buffer piece: the USED bytes and nothing else. The tail is already zero —
 // the whole extent was zeroed before any field was written — so this copies the
 // used prefix and leaves the rest, which is what makes a string's unused tail a
@@ -316,7 +325,13 @@ func (g *tableGen) emitCookWriteElement(f *ir.Field, at, value, indent string) {
 		g.pf("%s{ uint32_t bits = 0; memcpy( &bits, &%s, 4 ); table_cook_put( %s, (uint64_t) bits, 4, order ); }\n", indent, value, at)
 	case ir.TFloat64:
 		g.pf("%s{ uint64_t bits = 0; memcpy( &bits, &%s, 8 ); table_cook_put( %s, bits, 8, order ); }\n", indent, value, at)
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		// a fixed field's slot holds its RAW scaled integer, the same bytes
+		// the storage holds; the 128-bit widths go as two lanes
+		if t.Width == 128 {
+			g.pf("%s{ serialize::uint128_t raw_v = serialize::uint128_t( %s ); table_cook_put128( %s, uint64_t( raw_v ), uint64_t( raw_v >> 64 ), order ); }\n", indent, value, at)
+			return
+		}
 		g.pf("%stable_cook_put( %s, (uint64_t) %s, %d, order );\n", indent, at, value, int64(t.Width)/8)
 	case ir.TBits:
 		width := int64(8)

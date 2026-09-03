@@ -21,6 +21,8 @@ p2_empty_as_p3     1,1,0,0,false
 p3_as_p1           0,0,0,0,false
 p3_as_p2           0,1,0,0,false
 p3_empty_as_p1     0,0,0,0,false
+scalars_edges_as_2 1,2,2,0,false
+scalars_full_as_2  2,2,2,0,false
 v1_cfg_as_v2       1,1,1,0,false
 v1_seams_as_v2     2,2,0,0,false
 v2_cfg_as_v1       5,1,1,0,false

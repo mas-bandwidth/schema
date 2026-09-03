@@ -83,12 +83,6 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { x int32 }\nunion U\n{\n    tab Tab\n}\ntype P { u U }\ntable Holder { p P }\n"},
 		{name: "a table arm holding its own union by value is a cycle", want: "type composition cycle",
 			src: "package t\ntable Tab { u U }\nunion U\n{\n    tab Tab\n}\ntable Holder { u U }\n"},
-		{name: "fixed(I, F) has no table-wire kind", want: "has no table-wire kind",
-			src: "package t\ntable Tab { x fixed(16, 16) | min = 0, max = 5 }\n"},
-		{name: "fixed in a type pulled into a closure", want: "has no table-wire kind",
-			src: "package t\ntype Inner { x fixed(16, 16) | min = 0, max = 5 }\ntable Tab { inner Inner }\n"},
-		{name: "uint128 has no table-wire kind", want: "has no table-wire kind",
-			src: "package t\ntable Tab { x uint128 }\n"},
 		{name: "enum variants colliding on a table-wire id", want: "collide on table-wire id",
 			src: "package t\nenum E { costarring, liquid }\ntable Tab { e E }\n"},
 		{name: "union arms colliding on a table-wire id", want: "collide on table-wire id",
@@ -885,5 +879,57 @@ table Msg { body Body }
 `)
 	if v := ir.VariableTables(variable); !v["Msg"] || !v["Chunk"] || v["Open"] {
 		t.Fatalf("a variable arm did not run the mode through the union: %v", v)
+	}
+}
+
+// TestEveryScalarRidesInATable is the negative control of the refusal §11 no
+// longer states: every scalar the TYPE wire carries is legal in a table body
+// and in a type a table reaches, and each lands on the kind docs/SPEC-TABLES.md
+// §3 gives it — the 128-bit integers under their own two kinds, and the
+// fixed-point family under one kind per storage width and signedness, the raw
+// scaled integer riding at the storage width.
+func TestEveryScalarRidesInATable(t *testing.T) {
+	u := buildUnit(t, "package t\n"+
+		"type Inner\n{\n    q fixed(2, 30) = 1.0 | min = -1, max = 1\n}\n"+
+		"table Tab\n{\n"+
+		"    a fixed(4, 4)      | min = -8, max = 7\n"+
+		"    b fixed(16, 16)    | min = -180, max = 180\n"+
+		"    c fixed(16, 48)    | min = -1000, max = 1000\n"+
+		"    d fixed(112, 16)   | min = -1000000, max = 1000000\n"+
+		"    e ufixed(4, 4)     | min = 0, max = 15\n"+
+		"    f ufixed(16, 16)   | min = 0, max = 360\n"+
+		"    g ufixed(48, 16)   | min = 0, max = 60000\n"+
+		"    h ufixed(64, 64)   | min = 0, max = 1000\n"+
+		"    i int128           | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376\n"+
+		"    j uint128\n"+
+		"    k [3]fixed(8, 8)   | min = -1, max = 1\n"+
+		"    l [..2]uint128\n"+
+		"    m fixed(32, 32) = 2.5 | min = -4, max = 4\n"+
+		"    n ufixed(64, 0)    | min = 0, max = 9223372036854775807\n"+
+		"    inner Inner\n"+
+		"}\n")
+	want := map[string]int{
+		"a": ir.TableKindFixed8, "b": ir.TableKindFixed32, "c": ir.TableKindFixed64, "d": ir.TableKindFixed128,
+		"e": ir.TableKindUFixed8, "f": ir.TableKindUFixed32, "g": ir.TableKindUFixed64, "h": ir.TableKindUFixed128,
+		"i": ir.TableKindI128, "j": ir.TableKindU128, "k": ir.TableKindFixed16, "l": ir.TableKindU128,
+		"m": ir.TableKindFixed64, "n": ir.TableKindUFixed64,
+	}
+	for _, f := range u.Tables["Tab"].Fields {
+		if k, ok := want[f.Name]; ok && ir.TableScalarKind(f) != k {
+			t.Errorf("field %s rides under kind %d, the page gives it %d", f.Name, ir.TableScalarKind(f), k)
+		}
+		if ir.TableKindWide(ir.TableScalarKind(f)) && ir.TableKindWidth(ir.TableScalarKind(f))*8 != f.Type.Width {
+			t.Errorf("field %s: kind width %d bytes against a %d-bit storage", f.Name, ir.TableKindWidth(ir.TableScalarKind(f)), f.Type.Width)
+		}
+	}
+	lo, hi, ok := ir.TableRawRange(u.Tables["Tab"].Fields[1])
+	if !ok || lo.String() != "-11796480" || hi.String() != "11796480" {
+		t.Errorf("fixed(16, 16) [-180, 180] should clamp raw at ±11796480, got %v %v %v", lo, hi, ok)
+	}
+	if got := ir.TableWideFields(u); len(got) != 15 {
+		t.Errorf("TableWideFields names %d fields, the unit declares 15: %v", len(got), got)
+	}
+	if u.Structs["Inner"].Fields[0].DefInt.String() != "1073741824" {
+		t.Errorf("the fixed default is held RAW: %v", u.Structs["Inner"].Fields[0].DefInt)
 	}
 }

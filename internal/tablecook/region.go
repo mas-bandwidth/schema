@@ -244,7 +244,11 @@ func (w *regionWriter) element(at int64, f *ir.Field, cell *tabletext.Cell) erro
 	case ir.TFloat64:
 		w.putU64(at, math.Float64bits(cell.F))
 		return nil
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		if kind := ir.TableScalarKind(f); ir.TableKindWide(kind) {
+			w.putWide(at, tabletext.WideBytes(tabletext.WideValue(cell), kind))
+			return nil
+		}
 		w.putWidth(at, int64(t.Width)/8, cell.U)
 		return nil
 	case ir.TBits:
@@ -371,4 +375,17 @@ func instField(inst *tabletext.Instance, f *ir.Field) *tabletext.Field {
 		}
 	}
 	return nil
+}
+
+// putWide stores a wide kind's raw integer, given as little-endian bytes, in
+// the target's byte order: a big-endian region holds the 128-bit value with
+// its high half first, exactly as it holds a u64 with its high byte first.
+func (w *regionWriter) putWide(at int64, le []byte) {
+	if w.ord == binary.LittleEndian {
+		copy(w.buf[at:], le)
+		return
+	}
+	for i := range le {
+		w.buf[at+int64(i)] = le[len(le)-1-i]
+	}
 }

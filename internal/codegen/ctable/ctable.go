@@ -578,6 +578,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
+	if err := ir.RefuseWideTableKinds(u, "C"); err != nil {
+		return nil, err
+	}
 	bases := map[string]bool{}
 	for _, f := range u.Files {
 		bases[f.Base] = true

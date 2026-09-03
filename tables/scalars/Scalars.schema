@@ -1,0 +1,57 @@
+// Scalars.schema — every scalar the TYPE wire carries, in a table
+// (docs/SPEC-TABLES.md §3): the fixed-point family at every storage width and
+// both signednesses, the 128-bit integers, and each of them as an array element,
+// a keyed slot and a field of a nested type. It is the shape of a deterministic
+// simulation's save game, which holds exactly these types and nothing a double
+// could carry without rounding.
+package scalardemo
+
+const MaxWorldUnits = 30000
+
+enum Axis { X, Y, Z }
+
+// a nested type carrying the family: its fields ride under the same kinds a
+// table's do, and its cook layout is the same 16-at-16 for the wide widths
+type Pose
+{
+    x       fixed(48, 16) = 0.5 | min = -MaxWorldUnits, max = MaxWorldUnits
+    y       fixed(48, 16)       | min = -MaxWorldUnits, max = MaxWorldUnits
+    heading ufixed(16, 16)      | min = 0, max = 360
+}
+
+table SimState
+{
+    // the signed widths: Q4.4, Q16.16, Q48.16, Q112.16, and F = 0 — a
+    // fixed with no fraction, which is a ranged integer under a fixed kind
+    tilt     fixed(4, 4)    | min = -8, max = 7
+    angle    fixed(16, 16)  | min = -180, max = 180
+    position fixed(48, 16)  | min = -MaxWorldUnits, max = MaxWorldUnits
+    reach    fixed(112, 16) | min = -1000000, max = 1000000
+    ticks    fixed(32, 0)   | min = 0, max = 1000000
+
+    // the unsigned widths, span's raw values filling uint64's high half
+    ratio  ufixed(4, 4)    | min = 0, max = 15
+    speed  ufixed(16, 16)  | min = 0, max = 1000
+    span   ufixed(48, 16)  | min = 0, max = 281474976710655
+    mass   ufixed(112, 16) | min = 0, max = 2000000
+    frames ufixed(32, 0)   | min = 0, max = 4294967295
+
+    // the 128-bit integers: a range only 128 bits hold, one that fits 64,
+    // and the raw unsigned field
+    flux      int128        | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376
+    energy    int128 = -250 | min = -5000000000, max = 5000000000
+    entity_id uint128
+
+    // a specified default in whole units, held raw in storage
+    scale fixed(16, 16) = 1.0 | min = -8, max = 8
+
+    // as elements: a fixed array, a bounded array, a keyed array
+    samples [3]fixed(16, 16)    | min = -8, max = 8
+    weights [..4]ufixed(8, 8)   | min = 0, max = 100
+    axes    [Axis]fixed(32, 32) | min = -100, max = 100
+    seeds   [..2]uint128
+
+    // by value and optional, through a nested type
+    pose  Pose
+    spawn ?Pose
+}

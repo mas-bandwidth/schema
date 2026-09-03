@@ -265,6 +265,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
+	if err := ir.RefuseWideTableKinds(u, "Java"); err != nil {
+		return nil, err
+	}
 	if err := checkNames(u); err != nil {
 		return nil, err
 	}
