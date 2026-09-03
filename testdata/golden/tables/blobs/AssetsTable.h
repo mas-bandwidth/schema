@@ -2113,7 +2113,7 @@ inline bool AssetNumber( const Ctx & ctx, TableNumbering & numbering, const Asse
                 node.type_id = kTableBytesTypeId;
                 node.measure = &TableBlobMeasureThunk<Ctx>;
                 node.save = &TableBlobSaveThunk<Ctx>;
-                if ( !TableNumberingAppend( numbering, node ) ) { return false; }
+                if ( !TableNumberingAppend( numbering, node ) ) { return false; } // a blob reaches nothing: no descent
                 TablePackMapClose( numbering.seen, (const void *) blob, slot );
             }
         }
@@ -2134,7 +2134,7 @@ inline bool AssetNumber( const Ctx & ctx, TableNumbering & numbering, const Asse
                 node.type_id = kTableStringTypeId;
                 node.measure = &TableBlobMeasureThunk<Ctx>;
                 node.save = &TableBlobSaveThunk<Ctx>;
-                if ( !TableNumberingAppend( numbering, node ) ) { return false; }
+                if ( !TableNumberingAppend( numbering, node ) ) { return false; } // a blob reaches nothing: no descent
                 TablePackMapClose( numbering.seen, (const void *) blob, slot );
             }
         }
@@ -2370,7 +2370,7 @@ inline bool CatalogNumber( const Ctx & ctx, TableNumbering & numbering, const Ca
                 node.type_id = kTableBytesTypeId;
                 node.measure = &TableBlobMeasureThunk<Ctx>;
                 node.save = &TableBlobSaveThunk<Ctx>;
-                if ( !TableNumberingAppend( numbering, node ) ) { return false; }
+                if ( !TableNumberingAppend( numbering, node ) ) { return false; } // a blob reaches nothing: no descent
                 TablePackMapClose( numbering.seen, (const void *) blob, slot );
             }
         }
@@ -2391,7 +2391,7 @@ inline bool CatalogNumber( const Ctx & ctx, TableNumbering & numbering, const Ca
                 node.type_id = kTableStringTypeId;
                 node.measure = &TableBlobMeasureThunk<Ctx>;
                 node.save = &TableBlobSaveThunk<Ctx>;
-                if ( !TableNumberingAppend( numbering, node ) ) { return false; }
+                if ( !TableNumberingAppend( numbering, node ) ) { return false; } // a blob reaches nothing: no descent
                 TablePackMapClose( numbering.seen, (const void *) blob, slot );
             }
         }
@@ -2412,7 +2412,7 @@ inline bool CatalogNumber( const Ctx & ctx, TableNumbering & numbering, const Ca
                 node.type_id = kTableBytesTypeId;
                 node.measure = &TableBlobMeasureThunk<Ctx>;
                 node.save = &TableBlobSaveThunk<Ctx>;
-                if ( !TableNumberingAppend( numbering, node ) ) { return false; }
+                if ( !TableNumberingAppend( numbering, node ) ) { return false; } // a blob reaches nothing: no descent
                 TablePackMapClose( numbering.seen, (const void *) blob, slot );
             }
         }

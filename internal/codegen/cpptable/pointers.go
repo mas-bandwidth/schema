@@ -428,7 +428,7 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 			g.pf("                node.type_id = %s;\n", blobTypeIdConst(f))
 			g.pf("                node.measure = &TableBlobMeasureThunk<Ctx>;\n")
 			g.pf("                node.save = &TableBlobSaveThunk<Ctx>;\n")
-			g.pf("                if ( !TableNumberingAppend( numbering, node ) ) { return false; }\n")
+			g.pf("                if ( !TableNumberingAppend( numbering, node ) ) { return false; } // a blob reaches nothing: no descent\n")
 			g.pf("                TablePackMapClose( numbering.seen, (const void *) blob, slot );\n")
 			g.pf("            }\n")
 			g.pf("        }\n    }\n")

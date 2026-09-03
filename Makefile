@@ -1567,7 +1567,7 @@ tables-clamp-limits: build/tables-generated/.stamp
 .PHONY: tables-clamp-limits-negative-control
 tables-clamp-limits-negative-control: bin/schema
 	@mkdir -p build
-	@sed 's|return f.IntMin.Cmp(lo) > 0, f.IntMax.Cmp(hi) < 0|return f.IntMin.Cmp(lo) >= 0, f.IntMax.Cmp(hi) <= 0 // SABOTAGED: both ends always written|' \
+	@sed 's|return rlo.Cmp(lo) > 0, rhi.Cmp(hi) < 0|return rlo.Cmp(lo) >= 0, rhi.Cmp(hi) <= 0 // SABOTAGED: both ends always written|' \
 		internal/codegen/cpptable/codecs.go > build/cpptable-always-clamp.gotext
 	@grep -q SABOTAGED build/cpptable-always-clamp.gotext || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
