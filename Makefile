@@ -2785,17 +2785,20 @@ clean:
 # The rule this target lives under is the two-minute one (#320). Measured on
 # arm64 macOS at the landing, everything already built, median of three:
 #
-#   both legs, 116 cases       5.07 s
-#   the cpp leg alone          0.41 s   (10 native execs, plus materialising)
-#   the cs leg alone           4.92 s   (12 `dotnet run` start-ups)
+#   all three legs, 260 cases each   10.5 s
+#   the cpp leg alone                 0.79 s   (native execs, plus materialising)
+#   the cs leg alone                 10.0 s   (`dotnet run` start-ups)
+#   the go leg alone                  1.07 s   (one native exec per surface)
 #
-# The cost is per-PROCESS, not per-case: the C# leg starts a runtime thirteen
-# times — `list`, six surfaces, and one per cook, because test/cs-cook's dump
-# takes one root per invocation. So the budget left for seven more languages is
-# nearly the whole of it, and nine languages each starting a runtime per surface
-# lands near 20 s. Sharding per language leg, the way the type wire's nine legs
-# already are, is what the numbers say to do if that stops holding; it is not
-# needed at this size.
+# The cost is per-PROCESS, not per-case: the C# leg starts a runtime once per
+# surface plus once per cook, because test/cs-cook's dump takes one root per
+# invocation, and that is where nearly the whole wall is. The Go leg is one
+# native exec per surface and no more — its cook and cook-forgery are answered
+# in the same binary as everything else — which is the cheapest shape a leg can
+# have under this contract. So the budget left for six more languages is most
+# of the two minutes, and sharding per language leg, the way the type wire's
+# nine legs already are, is what the numbers say to do if that stops holding;
+# it is not needed at this size.
 CONFORMANCE_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block

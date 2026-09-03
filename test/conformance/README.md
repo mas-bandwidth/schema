@@ -151,6 +151,13 @@ NATIVE legs together answer 520 cases in about a second; the rest of the wall
 is one runtime's start-ups. That is the shape the budget projection assumed and
 it is now measured rather than assumed.
 
+**The Go leg is ONE process per surface and no more**, because its `cook` and
+`cook-forgery` are answered in the same binary as everything else rather than
+delegated: ten execs of a native binary, about a second for all 260 cases. It
+is the cheapest shape a leg can have under this contract, and the C++ and C#
+legs cost what they do because each was assembled from a binary that already
+existed — which the contract exists to allow.
+
 So the data can grow a great deal before it matters, and the budget left for
 six more languages is most of the two minutes. Nine languages each starting a
 runtime per surface lands near 20 s. Sharding per language leg — the way the
