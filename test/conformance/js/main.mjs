@@ -75,9 +75,9 @@ function absent(outDir, name) {
   writeFileSync(join(outDir, name + ".absent"), new Uint8Array(0));
 }
 
-// noText marks an instance the corpus carries on the WIRE only: the variable
-// class has no text form yet (docs/SPEC-TABLES.md §16.2), so the TEXT surfaces
-// skip it rather than reporting a form nobody has.
+// noText marks an instance the corpus carries on the WIRE only — past the text
+// form's depth cap by the form's own rule (docs/SPEC-TABLES.md §16.7) — so no
+// leg is asked for its text.
 function noText(f) {
   return f.length > 5 && f[5] === "no-text";
 }
@@ -180,7 +180,7 @@ function surfaceJsonWrite(lines, outDir) {
     if (noText(f)) { continue; }
     const codec = find(f[2], f[3]);
     if (codec === null) {
-      absent(outDir, f[1]);
+      absent(outDir, f[1] + ".json");
       continue;
     }
     const wire = new Uint8Array(readFileSync(f[4]));
@@ -195,7 +195,12 @@ function surfaceJsonWrite(lines, outDir) {
 function surfaceJsonHostile(lines, outDir) {
   for (const f of kind(lines, "json-hostile")) {
     const codec = find(f[2], f[3]);
-    if (codec === null) { fail("no codec for " + f[2] + "." + f[3]); }
+    if (codec === null) {
+      // a pointered unit has no table source here (§11), so no text form
+      // either, and the driver says so per case
+      absent(outDir, f[1]);
+      continue;
+    }
     // the tree is what `schema pack` reads, so the text is <tree>/<root>.Json
     const text = new Uint8Array(readFileSync(join(f[4], f[3] + ".json")));
     const report = codec.Report();

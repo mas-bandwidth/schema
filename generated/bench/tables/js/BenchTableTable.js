@@ -1776,6 +1776,14 @@ export const TableJson = (() => {
       for (let i = 0; i < info.NumFields; i++) {
         if (same(ScanKey, keyLength, info.Fields[i].Json)) { index = i; break; }
       }
+      if (keyLength > 0 && ScanKey[0] === 0x26) {
+        // THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
+        // 16.7): never a field this build lacks, always a construct it
+        // cannot honor. MALFORMED and refused, never counted as unknown.
+        input.Report.Malformed = true;
+        input.bad = true;
+        return false;
+      }
       if (index < 0) {
         input.Report.Unknown++;
         if (!skipValue(text, input, depth + 1)) { return false; }
