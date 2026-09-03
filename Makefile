@@ -1795,6 +1795,24 @@ generated/bench/c/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang c --out generated/bench/c bench/corpus/RealWorld.schema
 	@touch $@
 
+# The TABLES bench corpus (bench/tables/README.md): bench/corpus/BenchTable.schema,
+# one representative fixed table mirroring BenchMixed, generated for the
+# backends that CARRY tables. It goes into its own directory rather than
+# beside the type corpus because every other backend REFUSES a unit that
+# declares tables, by name (docs/SPEC-TABLES.md §11) — generating it into
+# generated/bench/<lang> would break seven legs' generation the day it landed.
+# A port adds its stamp here in the same change that adds its leg to
+# bench/tables/legs.txt.
+generated/bench/tables/cpp/.stamp: bin/schema bench/corpus/BenchTable.schema
+	@mkdir -p generated/bench/tables/cpp
+	./bin/schema generate --lang cpp --out generated/bench/tables/cpp bench/corpus/BenchTable.schema
+	@touch $@
+
+generated/bench/tables/cs/.stamp: bin/schema bench/corpus/BenchTable.schema
+	@mkdir -p generated/bench/tables/cs
+	./bin/schema generate --lang cs --out generated/bench/tables/cs bench/corpus/BenchTable.schema
+	@touch $@
+
 generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang go --out generated/bench/go bench/corpus/Bench.schema
 	./bin/schema generate --lang go --out generated/bench/go/realworld bench/corpus/RealWorld.schema
@@ -1839,6 +1857,12 @@ build/schema_test_bench: generated/bench/cpp/.stamp test/bench/main.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/bench/cpp test/bench/main.cpp -o $@
 
+# the tables bench corpus's producer and oracle (bench/tables/README.md): the
+# ONE place that names a field of BenchTable.schema, so no language leg does
+build/schema_test_bench_table: generated/bench/tables/cpp/.stamp test/bench/table_main.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Igenerated/bench/tables/cpp test/bench/table_main.cpp -o $@
+
 build/schema_test_bench_c: generated/bench/c/.stamp test/bench/c_main.c
 	@mkdir -p build
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
@@ -1880,7 +1904,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c build/schema_test_bench_table generated/bench/tables/cs/.stamp generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
 	./build/schema_test_guard
 	./build/schema_test_tables
@@ -1937,6 +1961,11 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	cd test/c-ludicrous && ../../build/schema_test_c_ludicrous
 	./build/schema_test_bench
 	./build/schema_test_bench_c
+	# the tables bench corpus's oracle, and the C# leg's compile gate — the
+	# generated table unit has no other consumer under `make test`, and a
+	# unit that generates but does not compile is issue #80's lesson
+	./build/schema_test_bench_table
+	dotnet build bench/tables/cs -c Release --nologo -v quiet
 	cd generated/bench/go && go build ./...
 	cd generated/bench/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
 	cd generated/bench/rust-realworld && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
@@ -1968,7 +1997,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
-update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_tables build/schema_test_block
+update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block
 	@mkdir -p testdata/golden testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
@@ -1984,6 +2013,7 @@ update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_
 	@cp build/tables-generated-cs/blockhome/*Table.cs testdata/golden/tables/blockhome-cs/
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_ludicrous
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_bench
+	./build/schema_test_bench_table pin
 	go test ./...
 
 # the cross-language serialize profiling harness (bench/README.md): builds and
@@ -2001,6 +2031,34 @@ bench:
 # bench/corpus/variants_test.go, needs nothing and runs in `make test`.
 bench-variants: generated/bench/go/.stamp
 	cd bench/tools/variantgen && go run .
+
+# ---------------------------------------------------------------------------
+# THE TABLES BENCH (bench/tables/README.md) ---------------------------------
+#
+# One measured shape: a representative fixed table written and read on the
+# TOLERANT WIRE (docs/SPEC-TABLES.md §3) — the tables layer's per-language
+# release gate, and the number a reader who knows protobuf or flatbuffers
+# already has a comparison for. Block-form and cook numbers are NOT here: the
+# owner's scope ruling on issue #330 keeps those C++/C# and takes them in the
+# game on real render data.
+#
+# The corpus DATA is produced and verified by build/schema_test_bench_table,
+# which `make test` runs. `bench-table-corpus` re-pins it: deterministic, so a
+# re-pin that changes the committed files means the shape or the vary mapping
+# moved — the same stop-the-line rule the wire goldens carry.
+bench-table-corpus: build/schema_test_bench_table
+	./build/schema_test_bench_table pin
+
+bench-table-check: build/schema_test_bench_table
+	./build/schema_test_bench_table verify
+
+# The pass. Every leg in bench/tables/legs.txt, results under
+# bench/tables/results/. A PUBLISHABLE number is a box sitting under the
+# estate's bench rules — core 15, server stopped, not live, blessed per run;
+# a run on a shared interactive machine is a pairing check and the board says
+# which one it is.
+bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp bench-table-check
+	bench/tables/run.sh
 
 # Prove the COMMITTED generated/ tree matches what the current compiler
 # emits (issue #30). `make test` regenerates every tracked generated file in
@@ -2067,7 +2125,7 @@ shape-gate:
 clean:
 	rm -rf bin build generated
 
-.PHONY: all test check id fmt clean update-goldens bench bench-variants generated-current shape-gate
+.PHONY: all test check id fmt clean update-goldens bench bench-variants bench-tables bench-table-corpus bench-table-check generated-current shape-gate
 
 # ---------------------------------------------------------------------------
 # THE TABLES CONFORMANCE HARNESS (test/conformance/README.md) ----------------

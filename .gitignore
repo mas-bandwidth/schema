@@ -33,6 +33,8 @@ generated/**/.stamp
 /bench/rust/Cargo.lock
 /bench/cs/bin/
 /bench/cs/obj/
+/bench/tables/cs/bin/
+/bench/tables/cs/obj/
 # a `go build` in bench/go drops the leg's binary beside its source
 /bench/go/benchgo
 
