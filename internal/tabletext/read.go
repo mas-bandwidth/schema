@@ -608,6 +608,8 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 func (in *reader) readField(fv *Field, depth int) bool {
 	f := fv.Def
 	switch {
+	case f.Type.Blob():
+		return in.readBlob(fv)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return in.readPointer(fv, depth)
 	case f.Type.Kind == ir.TString:
@@ -660,6 +662,40 @@ func (in *reader) scanLabel() (uint64, bool) {
 		in.pos++
 	}
 	return value, true
+}
+
+// readBlob places a BYTE BUFFER's string (docs/SPEC-TABLES.md §2.5, §16.2): a
+// `*string`'s bytes are the string's, a `*bytes`'s are its base64 decoded, at
+// exactly the length that gives, with no bound to clamp against. A `*bytes`
+// body that is not base64 is the wrong shape for the kind: the reference stays
+// null and the event is counted, as a `bytes(N)` field keeps its default. The
+// same walk in the generated C++ allocates the node in the builder's arena;
+// here it is a Blob.
+func (in *reader) readBlob(fv *Field) bool {
+	fv.Cell.Blob = nil
+	if fv.Def.Type.Kind == ir.TString {
+		out, _, ok := in.scanString(-1)
+		if !ok {
+			return false
+		}
+		fv.Cell.Blob = &Blob{Data: out}
+		return true
+	}
+	before := in.report.KindMismatch
+	if !in.readBase64(fv) {
+		return false
+	}
+	data := fv.Cell.Str
+	fv.Cell.Str = nil
+	fv.Count = 0
+	if in.report.KindMismatch != before {
+		return true // not base64: counted, the reference left null
+	}
+	if data == nil {
+		data = []byte{}
+	}
+	fv.Cell.Blob = &Blob{Data: data}
+	return true
 }
 
 // readPointer places a pointer's object (docs/SPEC-TABLES.md §16.7). Its FIRST

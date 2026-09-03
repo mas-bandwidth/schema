@@ -108,8 +108,12 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		// and null are one value, because a pointer takes no specified default.
 		// A non-null pointer ALWAYS rides, even when its node's body is
 		// entirely default, or null and "points at an empty node" would be one
-		// value on the wire.
+		// value on the wire. A BYTE BUFFER's slot is the same seven bytes, and
+		// a zero-length blob rides for the same reason (§2.5).
 		index := e.g.Index(fv.Cell.Node)
+		if f.Type.Blob() {
+			index = e.g.BlobIndex(fv.Cell.Blob)
+		}
 		if index == ir.NodeIndexNull {
 			return nil
 		}

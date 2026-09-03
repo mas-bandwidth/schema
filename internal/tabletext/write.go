@@ -31,6 +31,10 @@ type graphOut struct {
 	count  map[*Instance]int
 	labels map[*Instance]uint64
 	next   uint64
+	// blobs counts the slots naming each BYTE BUFFER's blob (§2.5): a blob's
+	// text is a string, which has no first key to carry `&node`, so a blob
+	// named more than once has no spelling and the writer refuses the graph
+	blobs map[*Blob]int
 }
 
 func (w *writer) raw(s string) { w.b.WriteString(s) }
@@ -55,7 +59,7 @@ func (m *Model) Write(inst *Instance) ([]byte, error) {
 	// again. The ROOT's entry is open for the whole pass, so a reference back
 	// at it is the cycle it is, and it takes no label.
 	open := map[*Instance]bool{inst: true}
-	graph := &graphOut{count: map[*Instance]int{}, labels: map[*Instance]uint64{}}
+	graph := &graphOut{count: map[*Instance]int{}, labels: map[*Instance]uint64{}, blobs: map[*Blob]int{}}
 	if err := m.countInstance(graph, inst, open); err != nil {
 		return nil, err
 	}
@@ -89,6 +93,11 @@ func (m *Model) countInstance(g *graphOut, inst *Instance, open map[*Instance]bo
 func (m *Model) countField(g *graphOut, fv *Field, open map[*Instance]bool) error {
 	f := fv.Def
 	switch {
+	case f.Type.Blob():
+		if fv.Cell.Blob != nil {
+			g.blobs[fv.Cell.Blob]++
+		}
+		return nil
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return m.countNode(g, fv.Cell.Node, open)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
@@ -259,6 +268,25 @@ func (m *Model) writePointer(w *writer, node *Instance, depth int) error {
 func (m *Model) writeField(w *writer, fv *Field, depth int) error {
 	f := fv.Def
 	switch {
+	case f.Type.Blob():
+		// a BYTE BUFFER (docs/SPEC-TABLES.md §2.5, §16.7): null as `null`, a
+		// blob named once as its bytes in place — base64 for a *bytes, the
+		// string itself for a *string — and a blob named more than once
+		// refused, because a string has no first key to carry `&node`
+		blob := fv.Cell.Blob
+		if blob == nil {
+			w.raw("null")
+			return nil
+		}
+		if w.graph != nil && w.graph.blobs[blob] > 1 {
+			return fmt.Errorf("field %s names a byte buffer another slot names, and a blob's text is a string with no first key to carry `&node` — a shared blob has no spelling this form can carry (docs/SPEC-TABLES.md §16.7)", f.Name)
+		}
+		if f.Type.Kind == ir.TString {
+			writeString(w, blob.Data)
+		} else {
+			writeBase64(w, blob.Data)
+		}
+		return nil
 	case f.Type.Kind == ir.TString:
 		writeString(w, fv.Cell.Str)
 		return nil

@@ -175,9 +175,10 @@ func Cook(m *tabletext.Model, inst *tabletext.Instance, opts Options) ([]byte, e
 	copy(out[h.DataOffset():], data)
 	if h.AttribLength > 0 {
 		at := h.AttribOffset()
-		for _, n := range region.Nodes {
+		for i := range region.Nodes {
+			n := &region.Nodes[i]
 			ord.PutUint64(out[at:], uint64(n.Offset))
-			ord.PutUint64(out[at+8:], ir.TableTypeId(n.Def.Name))
+			ord.PutUint64(out[at+8:], n.TypeId())
 			at += directoryEntry
 		}
 	}

@@ -16,12 +16,54 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// Node is one numbered node: a table instance, or a BYTE BUFFER's blob
+// (docs/SPEC-TABLES.md §2.5). Exactly one of Inst and Blob is set; a blob
+// carries the field kind that named it, because a `*bytes` blob and a
+// `*string` blob ride under two reserved type ids (§3.1) and the node itself
+// does not know which slot reached it.
+type Node struct {
+	Inst *tabletext.Instance
+	Blob *tabletext.Blob
+	Kind ir.FieldTypeKind // a blob's: TBytes or TString
+}
+
+// Key is the node's identity for the numbering's map: the instance or the blob.
+func (n Node) Key() any {
+	if n.Blob != nil {
+		return n.Blob
+	}
+	return n.Inst
+}
+
+// TypeId is the record's wire type id (docs/SPEC-TABLES.md §3.1): the table's
+// name hash, or a blob's reserved id.
+func (n Node) TypeId() uint64 {
+	if n.Blob != nil {
+		if n.Kind == ir.TString {
+			return ir.StringTypeId
+		}
+		return ir.BytesTypeId
+	}
+	return ir.TableTypeId(n.Inst.Def.Name)
+}
+
+// Name spells the node for a diagnostic.
+func (n Node) Name() string {
+	if n.Blob != nil {
+		if n.Kind == ir.TString {
+			return "*string"
+		}
+		return "*bytes"
+	}
+	return n.Inst.Def.Name
+}
+
 // NodeGraph is one save's numbering: the nodes in index order, with the root
 // first. Node index `1` is the root and record `k` (1-based) is index `k + 1`,
 // so Nodes[i] is node index `i + 1` and Nodes[0] is the root (§3.1).
 type NodeGraph struct {
-	Nodes []*tabletext.Instance
-	index map[*tabletext.Instance]uint32
+	Nodes []Node
+	index map[any]uint32
 }
 
 // Index is the node index of one instance, or [ir.NodeIndexNull] for a nil
@@ -33,11 +75,19 @@ func (g *NodeGraph) Index(inst *tabletext.Instance) uint32 {
 	return g.index[inst]
 }
 
+// BlobIndex is the node index of one blob, or [ir.NodeIndexNull] for nil.
+func (g *NodeGraph) BlobIndex(blob *tabletext.Blob) uint32 {
+	if blob == nil {
+		return ir.NodeIndexNull
+	}
+	return g.index[blob]
+}
+
 // Records is the numbering's node-table records: every node but the root, in
 // index order. The root carries no record — it IS the body that hosts the table
 // — which is why an index of `1` is checked against the reader's own root type
 // rather than against a wire type id (§3.1).
-func (g *NodeGraph) Records() []*tabletext.Instance { return g.Nodes[1:] }
+func (g *NodeGraph) Records() []Node { return g.Nodes[1:] }
 
 // Number derives the numbering of one root instance: the FIRST-VISIT order of a
 // depth-first pre-order walk from the root over POINTER EDGES ONLY — fields in
@@ -53,9 +103,9 @@ func (g *NodeGraph) Records() []*tabletext.Instance { return g.Nodes[1:] }
 // costs one bit. A reference to an entry still open is a cycle, named, and
 // measure, save, Cook and Lock all return failure. Nothing recurses away.
 func Number(m *tabletext.Model, root *tabletext.Instance) (*NodeGraph, error) {
-	g := &NodeGraph{index: map[*tabletext.Instance]uint32{}}
-	open := map[*tabletext.Instance]bool{}
-	g.Nodes = append(g.Nodes, root)
+	g := &NodeGraph{index: map[any]uint32{}}
+	open := map[any]bool{}
+	g.Nodes = append(g.Nodes, Node{Inst: root})
 	g.index[root] = ir.NodeIndexRoot
 	open[root] = true
 	if err := g.descend(m, root, open); err != nil {
@@ -66,28 +116,34 @@ func Number(m *tabletext.Model, root *tabletext.Instance) (*NodeGraph, error) {
 }
 
 // descend walks one node's BY-VALUE closure looking for pointer edges. It is
-// the walk, and [visitEdges] is the shape of the closure it walks.
-func (g *NodeGraph) descend(m *tabletext.Model, inst *tabletext.Instance, open map[*tabletext.Instance]bool) error {
+// the walk, and [visitEdges] is the shape of the closure it walks. A BYTE
+// BUFFER's blob is numbered as every node is and reaches nothing, so its
+// descent closes at once (§2.5, §3.1).
+func (g *NodeGraph) descend(m *tabletext.Model, inst *tabletext.Instance, open map[any]bool) error {
 	var err error
-	visitEdges(m, inst, func(target *tabletext.Instance, field string) bool {
+	visitEdges(m, inst, func(target Node, field string) bool {
 		if err != nil {
 			return false
 		}
-		if open[target] {
-			err = fmt.Errorf("data cycle: %s.%s reaches %s, which is still open — a cycle is refused at save and at Lock, and nothing recurses away (docs/SPEC-TABLES.md §3.1)", inst.Def.Name, field, target.Def.Name)
+		key := target.Key()
+		if open[key] {
+			err = fmt.Errorf("data cycle: %s.%s reaches %s, which is still open — a cycle is refused at save and at Lock, and nothing recurses away (docs/SPEC-TABLES.md §3.1)", inst.Def.Name, field, target.Name())
 			return false
 		}
-		if _, seen := g.index[target]; seen {
+		if _, seen := g.index[key]; seen {
 			return true // one index, one node: a shared node is reached again and numbered once
 		}
-		g.index[target] = uint32(len(g.Nodes)) + 1
+		g.index[key] = uint32(len(g.Nodes)) + 1
 		g.Nodes = append(g.Nodes, target)
-		open[target] = true
-		if e := g.descend(m, target, open); e != nil {
+		if target.Blob != nil {
+			return true
+		}
+		open[key] = true
+		if e := g.descend(m, target.Inst, open); e != nil {
 			err = e
 			return false
 		}
-		open[target] = false
+		open[key] = false
 		return true
 	})
 	return err
@@ -109,7 +165,7 @@ func (g *NodeGraph) descend(m *tabletext.Model, inst *tabletext.Instance, open m
 // body holding a NON-NULL pointer is never all-default — a kind `17` field is
 // seven bytes whatever index it carries — so every body this walk reaches an
 // edge through is a body the writer writes.
-func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target *tabletext.Instance, field string) bool) {
+func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target Node, field string) bool) {
 	guards := tabletext.Guards(inst.Def)
 	for i := range inst.Fields {
 		fv := &inst.Fields[i]
@@ -120,23 +176,29 @@ func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target 
 		if f.Type.Optional && !fv.Present {
 			continue
 		}
+		if f.Type.Blob() {
+			if fv.Cell.Blob != nil && !visit(Node{Blob: fv.Cell.Blob, Kind: f.Type.Kind}, f.Name) {
+				return
+			}
+			continue
+		}
 		if f.Type.Pointer {
 			// a pointer field, or an ARRAY of them (§2.1): every live slot is an
 			// edge, in index order, and a null slot is not
 			switch f.Array {
 			case ir.ArrayNone:
-				if fv.Cell.Node != nil && !visit(fv.Cell.Node, f.Name) {
+				if fv.Cell.Node != nil && !visit(Node{Inst: fv.Cell.Node}, f.Name) {
 					return
 				}
 			case ir.ArrayFixed:
 				for k := range fv.Elems {
-					if fv.Elems[k].Node != nil && !visit(fv.Elems[k].Node, f.Name) {
+					if fv.Elems[k].Node != nil && !visit(Node{Inst: fv.Elems[k].Node}, f.Name) {
 						return
 					}
 				}
 			case ir.ArrayCounted:
 				for k := 0; k < fv.Count && k < len(fv.Elems); k++ {
-					if fv.Elems[k].Node != nil && !visit(fv.Elems[k].Node, f.Name) {
+					if fv.Elems[k].Node != nil && !visit(Node{Inst: fv.Elems[k].Node}, f.Name) {
 						return
 					}
 				}

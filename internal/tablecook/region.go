@@ -40,12 +40,55 @@ const RefBytes = int64(8)
 const RefNull = int64(0)
 
 // Node is one node of a laid-out region: where it begins, what it is, and the
-// instance whose values fill it.
+// instance whose values fill it — or, for a BYTE BUFFER's node
+// (docs/SPEC-TABLES.md §2.5), the blob, and whether it is a `*string` blob whose
+// storage carries the terminator.
 type Node struct {
 	Offset int64
 	Def    *ir.Struct
 	Inst   *tabletext.Instance
 	Layout *ir.MemberLayout
+	Blob   *tabletext.Blob
+	String bool
+}
+
+// BlobHeader is the blob node's header (docs/SPEC-TABLES.md §6.3): `length
+// (u32)` and four zero bytes, so the bytes at offset eight are eight-aligned.
+const BlobHeader = int64(8)
+
+// BlobAlign is a blob node's alignment: eight, the header's.
+const BlobAlign = int64(8)
+
+// Size is the node's storage in the region: a record's sizeof, or a blob's
+// header plus its bytes plus a string's terminator (§7.2).
+func (n *Node) Size() int64 {
+	if n.Blob != nil {
+		size := BlobHeader + int64(len(n.Blob.Data))
+		if n.String {
+			size++
+		}
+		return size
+	}
+	return n.Layout.Size
+}
+
+// TypeId is the node's directory type id (§3.1, §6.3).
+func (n *Node) TypeId() uint64 {
+	if n.Blob != nil {
+		if n.String {
+			return ir.StringTypeId
+		}
+		return ir.BytesTypeId
+	}
+	return ir.TableTypeId(n.Def.Name)
+}
+
+// Key is the node's identity: the instance or the blob.
+func (n *Node) Key() any {
+	if n.Blob != nil {
+		return n.Blob
+	}
+	return n.Inst
 }
 
 // Region is one packed region: its nodes in index order — position `i` is node
@@ -64,7 +107,16 @@ type Region struct {
 func Layout(m *tabletext.Model, g *tablewire.NodeGraph) (*Region, error) {
 	r := &Region{Align: ir.RegionAlignFloor}
 	offset := int64(0)
-	for _, inst := range g.Nodes {
+	for _, node := range g.Nodes {
+		if node.Blob != nil {
+			// a BYTE BUFFER's node: the header and its bytes, at eight (§7.2)
+			offset = alignUp(offset, BlobAlign)
+			n := Node{Offset: offset, Blob: node.Blob, String: node.Kind == ir.TString}
+			r.Nodes = append(r.Nodes, n)
+			offset += n.Size()
+			continue
+		}
+		inst := node.Inst
 		ml := ir.RecordLayout(m.Unit, inst.Def)
 		if ml.Align > r.Align {
 			r.Align = ml.Align
@@ -103,6 +155,14 @@ func (r *Region) Write(m *tabletext.Model, ord order) ([]byte, error) {
 	w := &regionWriter{m: m, ord: ord, buf: make([]byte, r.Bytes), region: r}
 	for i := range r.Nodes {
 		n := &r.Nodes[i]
+		if n.Blob != nil {
+			// the header's length in the target's order, then the bytes
+			// verbatim; the pad word, a string's terminator and the tail are
+			// the buffer's zeros (§6.3, §7.2)
+			w.putU32(n.Offset, uint32(len(n.Blob.Data)))
+			copy(w.buf[n.Offset+BlobHeader:], n.Blob.Data)
+			continue
+		}
 		if err := w.record(n.Offset, n.Def, n.Inst); err != nil {
 			return nil, err
 		}
@@ -115,19 +175,19 @@ type regionWriter struct {
 	ord    order
 	buf    []byte
 	region *Region
-	index  map[*tabletext.Instance]int64 // node -> its region offset
+	index  map[any]int64 // node (an instance or a blob) -> its region offset
 }
 
 // nodeOffset is where one referenced node sits. The map is built lazily because
 // a region with no pointer slot never needs it.
-func (w *regionWriter) nodeOffset(inst *tabletext.Instance) (int64, bool) {
+func (w *regionWriter) nodeOffset(key any) (int64, bool) {
 	if w.index == nil {
-		w.index = make(map[*tabletext.Instance]int64, len(w.region.Nodes))
-		for _, n := range w.region.Nodes {
-			w.index[n.Inst] = n.Offset
+		w.index = make(map[any]int64, len(w.region.Nodes))
+		for i := range w.region.Nodes {
+			w.index[w.region.Nodes[i].Key()] = w.region.Nodes[i].Offset
 		}
 	}
-	at, ok := w.index[inst]
+	at, ok := w.index[key]
 	return at, ok
 }
 
@@ -164,7 +224,16 @@ func (w *regionWriter) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		w.putBool(p.Offset, fv.Present)
 	}
 	switch {
+	case f.Type.Blob():
+		// a byte buffer's slot is the same delta, to its blob node (§2.5)
+		if fv.Cell.Blob == nil {
+			return w.ref(value.Offset, f, nil)
+		}
+		return w.ref(value.Offset, f, fv.Cell.Blob)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		if fv.Cell.Node == nil {
+			return w.ref(value.Offset, f, nil)
+		}
 		return w.ref(value.Offset, f, fv.Cell.Node)
 	case f.Type.Kind == ir.TString:
 		// char[N+1]: the used bytes, then a zero tail — the terminator the
@@ -211,7 +280,7 @@ func (w *regionWriter) slots(at int64, f *ir.Field, elems []tabletext.Cell, n in
 
 // ref writes a reference slot: the SELF-RELATIVE byte delta from the slot's own
 // address to the node's start, and zero for null.
-func (w *regionWriter) ref(at int64, f *ir.Field, target *tabletext.Instance) error {
+func (w *regionWriter) ref(at int64, f *ir.Field, target any) error {
 	if target == nil {
 		w.putI64(at, RefNull)
 		return nil

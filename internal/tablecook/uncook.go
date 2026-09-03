@@ -40,10 +40,33 @@ func Uncook(m *tabletext.Model, root *ir.Struct, file []byte) (*tabletext.Instan
 
 	r := &regionReader{m: m, ord: h.Order(), buf: h.Data(file), dir: dir}
 	r.nodes = make([]*tabletext.Instance, len(dir))
+	r.blobs = make([]*tabletext.Blob, len(dir))
 	for i, e := range dir {
-		r.nodes[i] = m.New(byTypeId[e.TypeId])
+		if st := byTypeId[e.TypeId]; st != nil {
+			r.nodes[i] = m.New(st)
+			continue
+		}
+		// a BYTE BUFFER's node (§6.3): the length, then the bytes at eight —
+		// checkDirectory bounded the header, and the length is bounded here
+		// against the node's extent exactly as cook-check bounds it
+		length := int64(r.ord.Uint32(r.buf[e.Offset:]))
+		extent := h.DataLength - e.Offset
+		if i+1 < len(dir) {
+			extent = dir[i+1].Offset - e.Offset
+		}
+		need := BlobHeader + length
+		if e.TypeId == ir.StringTypeId {
+			need++
+		}
+		if need > extent {
+			return nil, fmt.Errorf("node %d (%s at offset %d): the byte buffer's length is %d and its node's extent is %d: the bytes leave the node", i+1, nameOf(byTypeId, e.TypeId), e.Offset, length, extent)
+		}
+		r.blobs[i] = &tabletext.Blob{Data: append([]byte(nil), r.buf[e.Offset+BlobHeader:e.Offset+BlobHeader+length]...)}
 	}
 	for i, e := range dir {
+		if r.nodes[i] == nil {
+			continue
+		}
 		if err := r.record(e.Offset, byTypeId[e.TypeId], r.nodes[i]); err != nil {
 			return nil, err
 		}
@@ -56,7 +79,8 @@ type regionReader struct {
 	ord   order
 	buf   []byte
 	dir   []DirectoryEntry
-	nodes []*tabletext.Instance
+	nodes []*tabletext.Instance // by directory position; nil where the entry is a blob
+	blobs []*tabletext.Blob     // by directory position; nil where the entry is a table
 }
 
 func (r *regionReader) record(base int64, st *ir.Struct, inst *tabletext.Instance) error {
@@ -127,12 +151,24 @@ func (r *regionReader) ref(at int64, f *ir.Field, cell *tabletext.Cell) error {
 	delta := int64(r.ord.Uint64(r.buf[at:]))
 	if delta == RefNull {
 		cell.Node = nil
+		cell.Blob = nil
 		return nil
 	}
 	target := at + delta
 	slot := r.entryAt(target)
 	if slot < 0 {
 		return fmt.Errorf("field %s: the reference resolves to offset %d, which the directory does not name", f.Name, target)
+	}
+	if f.Type.Blob() {
+		// a byte buffer's slot names a blob node under its reserved id (§2.5)
+		if r.blobs[slot] == nil || r.dir[slot].TypeId != ir.BlobTypeId(f) {
+			return fmt.Errorf("field %s: the reference resolves to a node the directory names as type id 0x%016x, and the declaration requires a byte buffer", f.Name, r.dir[slot].TypeId)
+		}
+		cell.Blob = r.blobs[slot]
+		return nil
+	}
+	if r.nodes[slot] == nil {
+		return fmt.Errorf("field %s: the reference resolves to a byte buffer, and the declaration requires %s", f.Name, f.Type.Name)
 	}
 	cell.Node = r.nodes[slot]
 	return nil
@@ -265,6 +301,12 @@ func typeIdIndex(m *tabletext.Model) map[uint64]*ir.Struct {
 func nameOf(byTypeId map[uint64]*ir.Struct, id uint64) string {
 	if st := byTypeId[id]; st != nil {
 		return st.Name
+	}
+	switch id {
+	case ir.BytesTypeId:
+		return "*bytes" // a BYTE BUFFER's node under its reserved id (§2.5)
+	case ir.StringTypeId:
+		return "*string"
 	}
 	return fmt.Sprintf("an unknown type (id 0x%016x)", id)
 }
