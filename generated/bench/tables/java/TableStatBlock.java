@@ -72,6 +72,14 @@ public final class TableStatBlock {
     // an addition that wrapped past the top of the type would be what the check
     // after it was supposed to catch. The C++ side holds the same shape for the
     // same reason.
+    // THE LENGTH IS A long AND THE ARRAY IS NOT, and that is a ceiling rather
+    // than an oversight: a byte[] tops out at 2 GiB, so `bytes` can never
+    // carry a value this reader could use and the check below refuses one.
+    // It is a long because it is the seat the FOREIGN-MEMORY overload takes
+    // when the JDK floor allows one — MemorySegment is not stable before 22
+    // and this backend compiles at --release 17. Until then a block past
+    // 2 GiB has no Java reader, which docs/SPEC-TABLES.md states as the
+    // named follow-on it is.
     public static TableStatBlock open(byte[] data, int offset, long bytes) {
         TableBlockLayout.verify();
         if (data == null || offset < 0 || bytes < 32) { return null; }
@@ -100,18 +108,23 @@ public final class TableStatBlock {
     // this table's block descriptors: constant data, so a reflective read costs
     // a lookup and not a parse. The row layouts hang off the element column of
     // each field, so a walker reaches every record through the graph.
-    private static TableBlockInfo projection;
+    // published by CLASS INITIALIZATION rather than by a plain cached write:
+    // a descriptor's fields are not final, so a racing reader of a plain cache
+    // could see a non-null descriptor with a null field array (JLS §17.4), and
+    // this is the path every open takes.
+    private static final class ProjectionHolder {
+        static final TableBlockInfo INFO = build();
 
-    public static TableBlockInfo type() {
-        TableBlockInfo info = projection;
-        if (info != null) { return info; }
-        info = new TableBlockInfo();
+        private static TableBlockInfo build() {
+        TableBlockInfo info = new TableBlockInfo();
         info.name = "TableStat"; info.buildVersion = BuildVersion.value; info.size = 32; info.align = 8; info.numFields = 2;
         TableBlockFieldInfo[] fields = new TableBlockFieldInfo[2];
         fields[0] = TableBlockFieldInfo.of("stat_id", 24, 4, 6, -1, false, false, false, 0, 4, -1, null);
         fields[1] = TableBlockFieldInfo.of("delta", 28, 4, 4, -1, false, false, false, 0, 4, -1, null);
         info.fields = fields;
-        projection = info;
         return info;
+        }
     }
+
+    public static TableBlockInfo type() { return ProjectionHolder.INFO; }
 }

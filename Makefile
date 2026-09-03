@@ -752,6 +752,72 @@ tables-java-fuzz-negative-control: build/cook-open/.stamp
 tables-java-order: build/java-tables/.stamp build/cook-open/.stamp
 	$(JAVA) -cp build/java-tables Main order build/cook-open/Scene.cook build/cook-open/Scene-be.cook
 
+# THE REFERENCE EXTENT GATE (§6.3, §7.4), and it is the forged delta a blind read
+# of this port found. §7.1 blesses a cook that carries data alone, so the region
+# ends at the array's end and no directory bytes absorb an overrun; a reference
+# whose target STARTS inside the region and whose RECORD does not fit must be
+# refused by `at` and not one call later, in the caller's first field read.
+.PHONY: tables-java-cook-extent
+tables-java-cook-extent: build/java-tables/.stamp build/cook-open/.stamp
+	$(JAVA) -cp build/java-tables Main extent build/cook-open/Scene.cook
+
+# ITS NEGATIVE CONTROL: put the bound back on the target's START, which is where
+# it was, and the gate must go red. This is the defect written as a test — a
+# start bound passes every check the reader makes and then throws in the caller.
+JAVA_EXTENT_SABOTAGE := build/java-extent-sabotage
+JAVA_EXTENT_SABOTAGE_SED := s|long high = (long) region + regionLength - size - slot;|long high = (long) region + regionLength - 1 - slot; // SABOTAGED: the START, not the RECORD|
+.PHONY: tables-java-cook-extent-negative-control
+tables-java-cook-extent-negative-control: build/cook-open/.stamp
+	@rm -rf $(JAVA_EXTENT_SABOTAGE) && mkdir -p $(JAVA_EXTENT_SABOTAGE)
+	@sed '$(JAVA_EXTENT_SABOTAGE_SED)' internal/codegen/javatable/cook.go > $(JAVA_EXTENT_SABOTAGE)/javatable-cook.go.txt
+	@cmp -s internal/codegen/javatable/cook.go $(JAVA_EXTENT_SABOTAGE)/javatable-cook.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Java cook sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/javatable/cook.go":"%s/$(JAVA_EXTENT_SABOTAGE)/javatable-cook.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(JAVA_EXTENT_SABOTAGE)/overlay.json
+	go build -overlay $(JAVA_EXTENT_SABOTAGE)/overlay.json -o $(JAVA_EXTENT_SABOTAGE)/schema ./cmd/schema
+	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/examples tables/examples
+	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/pointers tables/pointers
+	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/block tables/block
+	@grep -lq SABOTAGED $(JAVA_EXTENT_SABOTAGE)/generated/pointers/SceneCook.java || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged at"; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_EXTENT_SABOTAGE)/classes \
+		$(JAVA_EXTENT_SABOTAGE)/generated/*/*.java test/java-tables/src/Main.java
+	@if $(JAVA) -cp $(JAVA_EXTENT_SABOTAGE)/classes Main extent build/cook-open/Scene.cook \
+			> $(JAVA_EXTENT_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a start-only bound left the extent gate green"; \
+		cat $(JAVA_EXTENT_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "the bound is on the START and not on the RECORD" $(JAVA_EXTENT_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the extent"; \
+		  cat $(JAVA_EXTENT_SABOTAGE)/log; exit 1; }
+	@grep -m1 "FAILED:" $(JAVA_EXTENT_SABOTAGE)/log
+	@echo "negative control: bounding a reference's START rather than its RECORD turns the extent gate RED"
+
+# THE SOAK's OWN NEGATIVE CONTROL. The soak is the gate this port leads with, and
+# its planted allocation was unreachable from soak mode — the flag was read
+# inside the alloc mode alone, so SCHEMA_ALLOC_SABOTAGE was a silent no-op here
+# and the gate had never once been red. A short soak is enough to prove it fires:
+# the plant is per-record and the first sample lands after warm-up.
+.PHONY: tables-java-soak-negative-control
+tables-java-soak-negative-control: build/java-tables/.stamp build/cook-open/.stamp
+	@if SCHEMA_ALLOC_SABOTAGE=1 $(JAVA) -Xmx256m -cp build/java-tables Main soak 22 testdata/wire/tables \
+			testdata/wire/tables/block_render.bin build/cook-open/Scene.cook \
+			> build/java-soak-negative.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: one allocation per record left the soak green"; \
+		cat build/java-soak-negative.log; exit 1; \
+	fi
+	@grep -q "^SABOTAGED" build/java-soak-negative.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the soak never read the sabotage flag"; \
+		  cat build/java-soak-negative.log; exit 1; }
+	@grep -q "wire read.*EXPECTED 0/record" build/java-soak-negative.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the soak went red, but not on the sabotaged path"; \
+		  cat build/java-soak-negative.log; exit 1; }
+	@grep -q "1 breach" build/java-soak-negative.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the soak did not count the breach"; \
+		  cat build/java-soak-negative.log; exit 1; }
+	@grep -m1 "wire read" build/java-soak-negative.log
+	@echo "negative control: one allocation per record turns the Java SOAK RED, on that path alone"
+
 # THE SOAK, and what it gates on is the ALLOCATION TABLE re-measured at every
 # sample, not only the heap — a heap-flat gate cannot see a per-iteration
 # allocation that is collected, and an allocation that appears an hour in (a
@@ -786,6 +852,8 @@ tables-java-release:
 	$(MAKE) tables-java-compile-all
 	$(MAKE) conformance-negative-control-java-block
 	$(MAKE) tables-java-fuzz-negative-control
+	$(MAKE) tables-java-cook-extent-negative-control
+	$(MAKE) tables-java-soak-negative-control
 	$(MAKE) tables-java-alloc JAVA_ALLOC_SCALE=100
 	$(MAKE) tables-java-soak JAVA_SOAK_SECONDS=$(JAVA_SOAK_SECONDS)
 
@@ -2928,6 +2996,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-java-alloc-negative-control
 	$(MAKE) tables-java-fuzz
 	$(MAKE) tables-java-order
+	$(MAKE) tables-java-cook-extent
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-shared-node-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control

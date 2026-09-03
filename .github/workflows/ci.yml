@@ -195,6 +195,8 @@ jobs:
             targets: build/conformance-harness build/conformance-go
           - lang: rust
             targets: build/conformance-harness build/conformance-rust
+          - lang: java
+            targets: build/conformance-harness build-conformance-java
 
     steps:
       - uses: actions/checkout@v7
@@ -212,6 +214,7 @@ jobs:
           go)   git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go ;;
           rust) git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs ;;
           cpp)  echo "the C++ leg names no runtime: a generated table header includes none" ;;
+          java) echo "the Java leg names no runtime: a generated table source stands alone on the JDK" ;;
           esac
 
       # bin/schema and the generated table units come out of Go in every leg.
@@ -228,14 +231,22 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         if: matrix.lang == 'rust'
 
+      # The JDK, same major as the Makefile's dist/ pin. JAVA/JAVAC below point
+      # the driver at the installed one rather than the repo-local unpack.
+      - uses: actions/setup-java@v5
+        if: matrix.lang == 'java'
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
       # Its own step so the run log carries the build cost and the run cost
       # separately — the two halves answer different questions when a leg
       # stops fitting.
       - name: build the harness and the ${{ matrix.lang }} driver
-        run: make ${{ matrix.targets }} RUSTUP_BIN=/usr/bin
+        run: make ${{ matrix.targets }} RUSTUP_BIN=/usr/bin JAVA=java JAVAC=javac
 
       - name: the ${{ matrix.lang }} leg over every surface
-        run: ./build/conformance-harness run --only ${{ matrix.lang }}
+        run: JAVA=java ./build/conformance-harness run --only ${{ matrix.lang }}
 
   # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is
   # little-endian and byte-oriented throughout; §7 says a cook is produced in

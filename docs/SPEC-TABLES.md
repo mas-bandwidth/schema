@@ -195,8 +195,11 @@ generic array extent. Its layout contract is a generated `init()` that REFUSES,
 naming the record, the field and both numbers, where C++ has `static_assert`,
 Rust has a const assert and C# a check at type initialization.
 
-**JAVA's four divergences**, each forced by the language and each named where
-it is spelled. **The unit's namespace is the PACKAGE and a public type lives in
+**JAVA's six divergences**, each forced by the language and each named where it
+is spelled. **The method names are lowerCamelCase** — `patrolMeasure`,
+`patrolSave`, `patrolLoad`, `patrolReset` — which leaves §6.1's NAME-FIRST order
+exactly as it is and spells the case the way Java's one naming rule and this
+backend's own packet half (`writeVec3`, `readVec3`) already do. **The unit's namespace is the PACKAGE and a public type lives in
 a file of its own name**, so the shared runtime is ONE FILE PER TYPE —
 `TableReport.java`, `TableReader.java`, `TableJson.java` and the rest — rather
 than one home file: file-order independent by construction rather than by a
@@ -226,15 +229,35 @@ the descriptors and a consumer reading it through the accessors cannot be
 reading two different records. What refuses a FOREIGN block or cook is `open`,
 which compares every number the instance carries against this build's.
 
+**AND THE SIXTH IS A CEILING RATHER THAN A SPELLING: the two accelerators read
+out of a `byte[]`, which stops at 2 GiB.** §7 states the scale it is built for in
+the owner's own words — *"100mbs or many gigabytes of data in Assets.bin"* — and
+the scale fixtures reach a gigabyte, so this is the one Java divergence that
+costs a stated requirement. C# meets the same `int` ceiling on its span overload
+and answers it with the pointer form beside it; Java at `--release 17` has no
+second spelling, because the foreign-memory API (`MemorySegment`) is not stable
+before 22. **The FFM overload is the named follow-on** (§15), and until it lands
+a catalogue past 2 GiB has no Java reader. Both `open`s take a `long` length
+that a `byte[]` can never fill: it is the seat that overload takes, and the
+generated source says so at the site rather than leaving a reader to meet the
+ceiling by hitting it.
+
 **One RULING rather than a spelling, in the cook**: a reference resolves through
-`<Root>Cook.at`, which BOUNDS the target against the region and answers "no
-target" for a delta that leaves it — the same answer it gives a null. C++, C#
-and Rust hand back a pointer and let the walk decide, because a cook is trusted
-input and an out-of-region delta there is undefined behaviour a sanitizer
-catches. Java has no undefined behaviour to preserve: an unchecked deref is an
-exception escaping into a caller that asked a question, which is exactly what
-the readers' fuzz oracle forbids, so the refusal is the reader's rather than the
-runtime's.
+`<Root>Cook.at(slot, size)`, which BOUNDS THE WHOLE RECORD — `[target, target +
+size)` inside the region — and answers "no target" otherwise, the same answer it
+gives a null. C++, C# and Rust hand back a pointer and let the walk decide,
+because a cook is trusted input and an out-of-region deref there is undefined
+behaviour a sanitizer catches. Java has none to preserve: an unchecked deref is
+an exception escaping into a caller that asked a question, which is what the
+readers' fuzz oracle forbids.
+
+**Bounding the target's START is not enough, and the size parameter is why.** A
+start bound passes every check the reader makes and then throws one call later,
+in the caller's first field read past the region's end — §7.1 blesses a cook
+carrying data alone, so there are no attribution bytes to absorb the overrun.
+The size is the pointee's own `<Name>Row.size`, which every call site knows.
+`make tables-java-cook-extent` is that forgery as a gate and its negative
+control puts the start-only bound back and requires the gate to go red.
 
 **BIG-ENDIAN, per backend.** The C++ leg proves the wire, the block form and
 the cooked form crossing the byte order on a real big-endian target under an
@@ -4669,6 +4692,12 @@ inspects everything in the schema built:
   that matters, the shape that keeps both is a SIGNED TABLE OF PER-CHUNK
   HASHES — the signature covers the table, and a page verifies as it faults in.
   Not built.
+- **A FOREIGN-MEMORY overload for the Java accelerators.** `<Table>Block.open`
+  and `<Root>Cook.open` read a `byte[]`, which stops at 2 GiB, so the Java reader
+  cannot reach the scale §7 is built for. `MemorySegment` is the spelling that
+  does, and it is not stable before JDK 22 where this backend compiles at
+  `--release 17`; both `open`s already take a `long` length, which is the seat
+  that overload takes when the floor moves.
 - **Per-language backends beyond C++ and C#** (the refusal in §11 names this).
   C# came first, because the dogfood's game engine reads the same config and
   asset bytes the C++ tools write (§12), and the FIXED class is what that

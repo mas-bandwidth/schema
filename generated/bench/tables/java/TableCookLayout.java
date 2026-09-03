@@ -16,16 +16,22 @@ package benchtable;
 public final class TableCookLayout {
     private TableCookLayout() {}
 
-    private static boolean checked;
+    // THE FLAG IS SET AFTER THE CHECKS PASS, not before. A caller that
+    // catches the first refusal and opens again must meet the same refusal:
+    // a check that threw has not been done, and "run once" must not mean
+    // "attempted once". It is volatile for the same reason the descriptors
+    // use a holder — a plain boolean is not ordered against the reads the
+    // checks made.
+    private static volatile boolean checked;
 
     public static void verify() {
         if (checked) { return; }
-        checked = true;
         // the records the BLOCK form emits are checked by its own half, and a
         // cooked region holds both sets
         TableBlockLayout.verify();
         record("TableEntityRow", TableEntityRow.size, TableEntityRow.align, TableEntityRow.offsets, TableEntityRow.cookInfo());
         record("TableStatRow", TableStatRow.size, TableStatRow.align, TableStatRow.offsets, TableStatRow.cookInfo());
+        checked = true;
     }
 
     private static void record(String what, int size, int align, int[] offsets, TableCookInfo info) {

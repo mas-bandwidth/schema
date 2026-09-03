@@ -98,9 +98,9 @@ public final class BenchTableTable {
         }
     }
 
-    // TableReset(TableEntity) restores TableEntity's declared defaults in place, reusing every
-    // buffer the value already owns. The reader calls it before overlaying.
-    public static void TableReset(BenchTableTable.TableEntity value) {
+    // tableEntityReset restores TableEntity's declared defaults in place, reusing every buffer the
+    // value already owns. The reader calls it before overlaying.
+    public static void tableEntityReset(BenchTableTable.TableEntity value) {
         value.entityId = 0;
         value.posX = 0;
         value.posY = 0;
@@ -117,7 +117,7 @@ public final class BenchTableTable {
         value.firing = false;
     }
 
-    public static long TableEntityMeasure(BenchTableTable.TableEntity value) {
+    public static long tableEntityMeasure(BenchTableTable.TableEntity value) {
         long bytes = 2; // terminator
         if (value.entityId != 0) { bytes += 3 + 2; } // entity_id
         if (value.posX != 0) { bytes += 3 + 4; } // pos_x
@@ -139,7 +139,7 @@ public final class BenchTableTable {
         return bytes;
     }
 
-    public static boolean TableEntitySaveBody(TableWriter w, BenchTableTable.TableEntity value) {
+    public static boolean tableEntitySaveBody(TableWriter w, BenchTableTable.TableEntity value) {
         if (value.entityId != 0) {
             w.put16(0x5a13); w.put8(7); // entity_id
             w.put16((value.entityId));
@@ -202,18 +202,20 @@ public final class BenchTableTable {
         return !w.overflow;
     }
 
-    public static long TableEntitySave(BenchTableTable.TableEntity value, byte[] buffer) {
-        return TableEntitySave(value, buffer, 0, buffer.length);
+    public static long tableEntitySave(BenchTableTable.TableEntity value, byte[] buffer) {
+        return tableEntitySave(value, buffer, 0, buffer.length);
     }
 
-    public static long TableEntitySave(BenchTableTable.TableEntity value, byte[] buffer, int offset, int length) {
+    // the convenience form: ONE TableWriter per call. A hot loop hoists its own
+    // writer and calls tableEntitySaveBody, which allocates nothing at all.
+    public static long tableEntitySave(BenchTableTable.TableEntity value, byte[] buffer, int offset, int length) {
         TableWriter w = new TableWriter(buffer, offset, length);
-        if (!TableEntitySaveBody(w, value)) { return -1; }
-        return w.offset - offset; // == TableEntityMeasure(value)
+        if (!tableEntitySaveBody(w, value)) { return -1; }
+        return w.offset - offset; // == tableEntityMeasure(value)
     }
 
-    public static boolean TableEntityLoadBody(TableReader r, BenchTableTable.TableEntity value) {
-        BenchTableTable.TableReset(value); // restore declared defaults in place, then overlay
+    public static boolean tableEntityLoadBody(TableReader r, BenchTableTable.TableEntity value) {
+        BenchTableTable.tableEntityReset(value); // restore declared defaults in place, then overlay
         for (;;) {
             if (!r.has(2)) { r.report.malformed = true; return false; }
             int fieldId = r.get16();
@@ -424,30 +426,32 @@ public final class BenchTableTable {
         }
     }
 
-    public static boolean TableEntityLoad(BenchTableTable.TableEntity value, byte[] bytes, TableReport report) {
-        return TableEntityLoad(value, bytes, 0, bytes.length, report);
+    public static boolean tableEntityLoad(BenchTableTable.TableEntity value, byte[] bytes, TableReport report) {
+        return tableEntityLoad(value, bytes, 0, bytes.length, report);
     }
 
-    public static boolean TableEntityLoad(BenchTableTable.TableEntity value, byte[] bytes, int offset, int length, TableReport report) {
+    // the convenience form: ONE TableReader per call. A hot loop hoists its own
+    // reader and calls tableEntityLoadBody, which allocates nothing at all.
+    public static boolean tableEntityLoad(BenchTableTable.TableEntity value, byte[] bytes, int offset, int length, TableReport report) {
         TableReader r = new TableReader(bytes, offset, length, report != null ? report : new TableReport());
-        return TableEntityLoadBody(r, value);
+        return tableEntityLoadBody(r, value);
     }
 
-    // TableReset(TableStat) restores TableStat's declared defaults in place, reusing every
-    // buffer the value already owns. The reader calls it before overlaying.
-    public static void TableReset(BenchTableTable.TableStat value) {
+    // tableStatReset restores TableStat's declared defaults in place, reusing every buffer the
+    // value already owns. The reader calls it before overlaying.
+    public static void tableStatReset(BenchTableTable.TableStat value) {
         value.statId = 0;
         value.delta = 0;
     }
 
-    public static long TableStatMeasure(BenchTableTable.TableStat value) {
+    public static long tableStatMeasure(BenchTableTable.TableStat value) {
         long bytes = 2; // terminator
         if (value.statId != 0) { bytes += 3 + 1; } // stat_id
         if (value.delta != 0) { bytes += 3 + 4; } // delta
         return bytes;
     }
 
-    public static boolean TableStatSaveBody(TableWriter w, BenchTableTable.TableStat value) {
+    public static boolean tableStatSaveBody(TableWriter w, BenchTableTable.TableStat value) {
         if (value.statId != 0) {
             w.put16(0xfb6c); w.put8(6); // stat_id
             w.put8((value.statId));
@@ -460,18 +464,20 @@ public final class BenchTableTable {
         return !w.overflow;
     }
 
-    public static long TableStatSave(BenchTableTable.TableStat value, byte[] buffer) {
-        return TableStatSave(value, buffer, 0, buffer.length);
+    public static long tableStatSave(BenchTableTable.TableStat value, byte[] buffer) {
+        return tableStatSave(value, buffer, 0, buffer.length);
     }
 
-    public static long TableStatSave(BenchTableTable.TableStat value, byte[] buffer, int offset, int length) {
+    // the convenience form: ONE TableWriter per call. A hot loop hoists its own
+    // writer and calls tableStatSaveBody, which allocates nothing at all.
+    public static long tableStatSave(BenchTableTable.TableStat value, byte[] buffer, int offset, int length) {
         TableWriter w = new TableWriter(buffer, offset, length);
-        if (!TableStatSaveBody(w, value)) { return -1; }
-        return w.offset - offset; // == TableStatMeasure(value)
+        if (!tableStatSaveBody(w, value)) { return -1; }
+        return w.offset - offset; // == tableStatMeasure(value)
     }
 
-    public static boolean TableStatLoadBody(TableReader r, BenchTableTable.TableStat value) {
-        BenchTableTable.TableReset(value); // restore declared defaults in place, then overlay
+    public static boolean tableStatLoadBody(TableReader r, BenchTableTable.TableStat value) {
+        BenchTableTable.tableStatReset(value); // restore declared defaults in place, then overlay
         for (;;) {
             if (!r.has(2)) { r.report.malformed = true; return false; }
             int fieldId = r.get16();
@@ -516,18 +522,20 @@ public final class BenchTableTable {
         }
     }
 
-    public static boolean TableStatLoad(BenchTableTable.TableStat value, byte[] bytes, TableReport report) {
-        return TableStatLoad(value, bytes, 0, bytes.length, report);
+    public static boolean tableStatLoad(BenchTableTable.TableStat value, byte[] bytes, TableReport report) {
+        return tableStatLoad(value, bytes, 0, bytes.length, report);
     }
 
-    public static boolean TableStatLoad(BenchTableTable.TableStat value, byte[] bytes, int offset, int length, TableReport report) {
+    // the convenience form: ONE TableReader per call. A hot loop hoists its own
+    // reader and calls tableStatLoadBody, which allocates nothing at all.
+    public static boolean tableStatLoad(BenchTableTable.TableStat value, byte[] bytes, int offset, int length, TableReport report) {
         TableReader r = new TableReader(bytes, offset, length, report != null ? report : new TableReport());
-        return TableStatLoadBody(r, value);
+        return tableStatLoadBody(r, value);
     }
 
-    // TableReset(TableMixed) restores TableMixed's declared defaults in place, reusing every
-    // buffer the value already owns. The reader calls it before overlaying.
-    public static void TableReset(BenchTableTable.TableMixed value) {
+    // tableMixedReset restores TableMixed's declared defaults in place, reusing every buffer the
+    // value already owns. The reader calls it before overlaying.
+    public static void tableMixedReset(BenchTableTable.TableMixed value) {
         value.protocolMagic = (short) 0;
         value.sequence = 0;
         value.ackSequence = 0;
@@ -539,11 +547,11 @@ public final class BenchTableTable {
         value.frameTick = 0L;
         value.serverTime = 0.0f;
         for (int i = 0; i < value.entities.length; i++) {
-            BenchTableTable.TableReset(value.entities[i]);
+            BenchTableTable.tableEntityReset(value.entities[i]);
         }
         value.entitiesCount = 0;
         for (int i = 0; i < value.stats.length; i++) {
-            BenchTableTable.TableReset(value.stats[i]);
+            BenchTableTable.tableStatReset(value.stats[i]);
         }
         value.statsCount = 0;
         value.gameEvent.type = BenchTable.TableEventType.none;
@@ -566,7 +574,7 @@ public final class BenchTableTable {
         value.idleTicks = 0;
     }
 
-    public static long TableMixedMeasure(BenchTableTable.TableMixed value) {
+    public static long tableMixedMeasure(BenchTableTable.TableMixed value) {
         long bytes = 2; // terminator
         if (value.protocolMagic != (short) 0) { bytes += 3 + 2; } // protocol_magic
         if (value.sequence != 0) { bytes += 3 + 2; } // sequence
@@ -582,7 +590,7 @@ public final class BenchTableTable {
         if (value.entitiesCount > 0) {
             bytes += 3 + 4 + 5; // entities
             for (int i = 0; i < value.entitiesCount; i++) {
-                long elem = BenchTableTable.TableEntityMeasure(value.entities[i]);
+                long elem = BenchTableTable.tableEntityMeasure(value.entities[i]);
                 if (elem < 0) { return -1; }
                 bytes += 4 + elem;
             }
@@ -591,7 +599,7 @@ public final class BenchTableTable {
         if (value.statsCount > 0) {
             bytes += 3 + 4 + 5; // stats
             for (int i = 0; i < value.statsCount; i++) {
-                long elem = BenchTableTable.TableStatMeasure(value.stats[i]);
+                long elem = BenchTableTable.tableStatMeasure(value.stats[i]);
                 if (elem < 0) { return -1; }
                 bytes += 4 + elem;
             }
@@ -599,19 +607,19 @@ public final class BenchTableTable {
         switch (value.gameEvent.type) { // game_event
             case BenchTable.TableEventType.none: break; // None elides — TLV absence is the None
             case BenchTable.TableEventType.hit: {
-                long arm = BenchTableTable.TableHitEventMeasure(value.gameEvent.hit);
+                long arm = BenchTableTable.tableHitEventMeasure(value.gameEvent.hit);
                 if (arm < 0) { return -1; }
                 bytes += 3 + 2 + 4 + arm; // the u16 ARM ID, then the arm length-prefixed
                 break;
             }
             case BenchTable.TableEventType.chat: {
-                long arm = BenchTableTable.TableChatEventMeasure(value.gameEvent.chat);
+                long arm = BenchTableTable.tableChatEventMeasure(value.gameEvent.chat);
                 if (arm < 0) { return -1; }
                 bytes += 3 + 2 + 4 + arm; // the u16 ARM ID, then the arm length-prefixed
                 break;
             }
             case BenchTable.TableEventType.pickup: {
-                long arm = BenchTableTable.TablePickupEventMeasure(value.gameEvent.pickup);
+                long arm = BenchTableTable.tablePickupEventMeasure(value.gameEvent.pickup);
                 if (arm < 0) { return -1; }
                 bytes += 3 + 2 + 4 + arm; // the u16 ARM ID, then the arm length-prefixed
                 break;
@@ -648,7 +656,7 @@ public final class BenchTableTable {
         return bytes;
     }
 
-    public static boolean TableMixedSaveBody(TableWriter w, BenchTableTable.TableMixed value) {
+    public static boolean tableMixedSaveBody(TableWriter w, BenchTableTable.TableMixed value) {
         if (value.protocolMagic != (short) 0) {
             w.put16(0xae30); w.put8(7); // protocol_magic
             w.put16((value.protocolMagic));
@@ -697,7 +705,7 @@ public final class BenchTableTable {
             for (int i = 0; i < value.entitiesCount; i++) {
                 {
                     int elemLenAt = w.offset; w.put32(0);
-                    if (!BenchTableTable.TableEntitySaveBody(w, value.entities[i])) { return false; }
+                    if (!BenchTableTable.tableEntitySaveBody(w, value.entities[i])) { return false; }
                     w.patch32(elemLenAt, w.offset - elemLenAt - 4);
                 }
             }
@@ -711,7 +719,7 @@ public final class BenchTableTable {
             for (int i = 0; i < value.statsCount; i++) {
                 {
                     int elemLenAt = w.offset; w.put32(0);
-                    if (!BenchTableTable.TableStatSaveBody(w, value.stats[i])) { return false; }
+                    if (!BenchTableTable.tableStatSaveBody(w, value.stats[i])) { return false; }
                     w.patch32(elemLenAt, w.offset - elemLenAt - 4);
                 }
             }
@@ -729,9 +737,9 @@ public final class BenchTableTable {
             }
             int lenAt = w.offset; w.put32(0);
             switch (value.gameEvent.type) {
-                case BenchTable.TableEventType.hit: if (!BenchTableTable.TableHitEventSaveBody(w, value.gameEvent.hit)) { return false; } break;
-                case BenchTable.TableEventType.chat: if (!BenchTableTable.TableChatEventSaveBody(w, value.gameEvent.chat)) { return false; } break;
-                case BenchTable.TableEventType.pickup: if (!BenchTableTable.TablePickupEventSaveBody(w, value.gameEvent.pickup)) { return false; } break;
+                case BenchTable.TableEventType.hit: if (!BenchTableTable.tableHitEventSaveBody(w, value.gameEvent.hit)) { return false; } break;
+                case BenchTable.TableEventType.chat: if (!BenchTableTable.tableChatEventSaveBody(w, value.gameEvent.chat)) { return false; } break;
+                case BenchTable.TableEventType.pickup: if (!BenchTableTable.tablePickupEventSaveBody(w, value.gameEvent.pickup)) { return false; } break;
                 default: return false; // write validates the tag before it rides
             }
             w.patch32(lenAt, w.offset - lenAt - 4);
@@ -818,18 +826,20 @@ public final class BenchTableTable {
         return !w.overflow;
     }
 
-    public static long TableMixedSave(BenchTableTable.TableMixed value, byte[] buffer) {
-        return TableMixedSave(value, buffer, 0, buffer.length);
+    public static long tableMixedSave(BenchTableTable.TableMixed value, byte[] buffer) {
+        return tableMixedSave(value, buffer, 0, buffer.length);
     }
 
-    public static long TableMixedSave(BenchTableTable.TableMixed value, byte[] buffer, int offset, int length) {
+    // the convenience form: ONE TableWriter per call. A hot loop hoists its own
+    // writer and calls tableMixedSaveBody, which allocates nothing at all.
+    public static long tableMixedSave(BenchTableTable.TableMixed value, byte[] buffer, int offset, int length) {
         TableWriter w = new TableWriter(buffer, offset, length);
-        if (!TableMixedSaveBody(w, value)) { return -1; }
-        return w.offset - offset; // == TableMixedMeasure(value)
+        if (!tableMixedSaveBody(w, value)) { return -1; }
+        return w.offset - offset; // == tableMixedMeasure(value)
     }
 
-    public static boolean TableMixedLoadBody(TableReader r, BenchTableTable.TableMixed value) {
-        BenchTableTable.TableReset(value); // restore declared defaults in place, then overlay
+    public static boolean tableMixedLoadBody(TableReader r, BenchTableTable.TableMixed value) {
+        BenchTableTable.tableMixedReset(value); // restore declared defaults in place, then overlay
         for (;;) {
             if (!r.has(2)) { r.report.malformed = true; return false; }
             int fieldId = r.get16();
@@ -1007,7 +1017,7 @@ public final class BenchTableTable {
                             {
                                 int elemLimit = r.limit;
                                 r.limit = elemEnd;
-                                BenchTableTable.TableEntityLoadBody(r, value.entities[i]);
+                                BenchTableTable.tableEntityLoadBody(r, value.entities[i]);
                                 r.limit = elemLimit;
                             }
                             r.offset = elemEnd;
@@ -1050,7 +1060,7 @@ public final class BenchTableTable {
                             {
                                 int elemLimit = r.limit;
                                 r.limit = elemEnd;
-                                BenchTableTable.TableStatLoadBody(r, value.stats[i]);
+                                BenchTableTable.tableStatLoadBody(r, value.stats[i]);
                                 r.limit = elemLimit;
                             }
                             r.offset = elemEnd;
@@ -1081,15 +1091,15 @@ public final class BenchTableTable {
                         switch (armId) { // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                             case 0xba78: // hit
                                 value.gameEvent.type = BenchTable.TableEventType.hit;
-                                BenchTableTable.TableHitEventLoadBody(r, value.gameEvent.hit);
+                                BenchTableTable.tableHitEventLoadBody(r, value.gameEvent.hit);
                                 break;
                             case 0x5be0: // chat
                                 value.gameEvent.type = BenchTable.TableEventType.chat;
-                                BenchTableTable.TableChatEventLoadBody(r, value.gameEvent.chat);
+                                BenchTableTable.tableChatEventLoadBody(r, value.gameEvent.chat);
                                 break;
                             case 0x99dd: // pickup
                                 value.gameEvent.type = BenchTable.TableEventType.pickup;
-                                BenchTableTable.TablePickupEventLoadBody(r, value.gameEvent.pickup);
+                                BenchTableTable.tablePickupEventLoadBody(r, value.gameEvent.pickup);
                                 break;
                             default:
                                 // an arm this reader cannot name: the value reads EMPTY and
@@ -1364,25 +1374,27 @@ public final class BenchTableTable {
         }
     }
 
-    public static boolean TableMixedLoad(BenchTableTable.TableMixed value, byte[] bytes, TableReport report) {
-        return TableMixedLoad(value, bytes, 0, bytes.length, report);
+    public static boolean tableMixedLoad(BenchTableTable.TableMixed value, byte[] bytes, TableReport report) {
+        return tableMixedLoad(value, bytes, 0, bytes.length, report);
     }
 
-    public static boolean TableMixedLoad(BenchTableTable.TableMixed value, byte[] bytes, int offset, int length, TableReport report) {
+    // the convenience form: ONE TableReader per call. A hot loop hoists its own
+    // reader and calls tableMixedLoadBody, which allocates nothing at all.
+    public static boolean tableMixedLoad(BenchTableTable.TableMixed value, byte[] bytes, int offset, int length, TableReport report) {
         TableReader r = new TableReader(bytes, offset, length, report != null ? report : new TableReport());
-        return TableMixedLoadBody(r, value);
+        return tableMixedLoadBody(r, value);
     }
 
-    // TableReset(TableHitEvent) restores TableHitEvent's declared defaults in place, reusing every
-    // buffer the value already owns. The reader calls it before overlaying.
-    public static void TableReset(BenchTable.TableHitEvent value) {
+    // tableHitEventReset restores TableHitEvent's declared defaults in place, reusing every buffer the
+    // value already owns. The reader calls it before overlaying.
+    public static void tableHitEventReset(BenchTable.TableHitEvent value) {
         value.targetId = 0;
         value.damage = 0;
         value.hitKind = 0;
         value.crit = false;
     }
 
-    public static long TableHitEventMeasure(BenchTable.TableHitEvent value) {
+    public static long tableHitEventMeasure(BenchTable.TableHitEvent value) {
         long bytes = 2; // terminator
         if (value.targetId != 0) { bytes += 3 + 2; } // target_id
         if (value.damage != 0) { bytes += 3 + 4; } // damage
@@ -1391,7 +1403,7 @@ public final class BenchTableTable {
         return bytes;
     }
 
-    public static boolean TableHitEventSaveBody(TableWriter w, BenchTable.TableHitEvent value) {
+    public static boolean tableHitEventSaveBody(TableWriter w, BenchTable.TableHitEvent value) {
         if (value.targetId != 0) {
             w.put16(0xdf6a); w.put8(7); // target_id
             w.put16((value.targetId));
@@ -1412,18 +1424,20 @@ public final class BenchTableTable {
         return !w.overflow;
     }
 
-    public static long TableHitEventSave(BenchTable.TableHitEvent value, byte[] buffer) {
-        return TableHitEventSave(value, buffer, 0, buffer.length);
+    public static long tableHitEventSave(BenchTable.TableHitEvent value, byte[] buffer) {
+        return tableHitEventSave(value, buffer, 0, buffer.length);
     }
 
-    public static long TableHitEventSave(BenchTable.TableHitEvent value, byte[] buffer, int offset, int length) {
+    // the convenience form: ONE TableWriter per call. A hot loop hoists its own
+    // writer and calls tableHitEventSaveBody, which allocates nothing at all.
+    public static long tableHitEventSave(BenchTable.TableHitEvent value, byte[] buffer, int offset, int length) {
         TableWriter w = new TableWriter(buffer, offset, length);
-        if (!TableHitEventSaveBody(w, value)) { return -1; }
-        return w.offset - offset; // == TableHitEventMeasure(value)
+        if (!tableHitEventSaveBody(w, value)) { return -1; }
+        return w.offset - offset; // == tableHitEventMeasure(value)
     }
 
-    public static boolean TableHitEventLoadBody(TableReader r, BenchTable.TableHitEvent value) {
-        BenchTableTable.TableReset(value); // restore declared defaults in place, then overlay
+    public static boolean tableHitEventLoadBody(TableReader r, BenchTable.TableHitEvent value) {
+        BenchTableTable.tableHitEventReset(value); // restore declared defaults in place, then overlay
         for (;;) {
             if (!r.has(2)) { r.report.malformed = true; return false; }
             int fieldId = r.get16();
@@ -1494,30 +1508,32 @@ public final class BenchTableTable {
         }
     }
 
-    public static boolean TableHitEventLoad(BenchTable.TableHitEvent value, byte[] bytes, TableReport report) {
-        return TableHitEventLoad(value, bytes, 0, bytes.length, report);
+    public static boolean tableHitEventLoad(BenchTable.TableHitEvent value, byte[] bytes, TableReport report) {
+        return tableHitEventLoad(value, bytes, 0, bytes.length, report);
     }
 
-    public static boolean TableHitEventLoad(BenchTable.TableHitEvent value, byte[] bytes, int offset, int length, TableReport report) {
+    // the convenience form: ONE TableReader per call. A hot loop hoists its own
+    // reader and calls tableHitEventLoadBody, which allocates nothing at all.
+    public static boolean tableHitEventLoad(BenchTable.TableHitEvent value, byte[] bytes, int offset, int length, TableReport report) {
         TableReader r = new TableReader(bytes, offset, length, report != null ? report : new TableReport());
-        return TableHitEventLoadBody(r, value);
+        return tableHitEventLoadBody(r, value);
     }
 
-    // TableReset(TableChatEvent) restores TableChatEvent's declared defaults in place, reusing every
-    // buffer the value already owns. The reader calls it before overlaying.
-    public static void TableReset(BenchTable.TableChatEvent value) {
+    // tableChatEventReset restores TableChatEvent's declared defaults in place, reusing every buffer the
+    // value already owns. The reader calls it before overlaying.
+    public static void tableChatEventReset(BenchTable.TableChatEvent value) {
         value.channel = 0;
         value.speaker = 0;
     }
 
-    public static long TableChatEventMeasure(BenchTable.TableChatEvent value) {
+    public static long tableChatEventMeasure(BenchTable.TableChatEvent value) {
         long bytes = 2; // terminator
         if (value.channel != 0) { bytes += 3 + 4; } // channel
         if (value.speaker != 0) { bytes += 3 + 2; } // speaker
         return bytes;
     }
 
-    public static boolean TableChatEventSaveBody(TableWriter w, BenchTable.TableChatEvent value) {
+    public static boolean tableChatEventSaveBody(TableWriter w, BenchTable.TableChatEvent value) {
         if (value.channel != 0) {
             w.put16(0x7366); w.put8(4); // channel
             w.put32((value.channel));
@@ -1530,18 +1546,20 @@ public final class BenchTableTable {
         return !w.overflow;
     }
 
-    public static long TableChatEventSave(BenchTable.TableChatEvent value, byte[] buffer) {
-        return TableChatEventSave(value, buffer, 0, buffer.length);
+    public static long tableChatEventSave(BenchTable.TableChatEvent value, byte[] buffer) {
+        return tableChatEventSave(value, buffer, 0, buffer.length);
     }
 
-    public static long TableChatEventSave(BenchTable.TableChatEvent value, byte[] buffer, int offset, int length) {
+    // the convenience form: ONE TableWriter per call. A hot loop hoists its own
+    // writer and calls tableChatEventSaveBody, which allocates nothing at all.
+    public static long tableChatEventSave(BenchTable.TableChatEvent value, byte[] buffer, int offset, int length) {
         TableWriter w = new TableWriter(buffer, offset, length);
-        if (!TableChatEventSaveBody(w, value)) { return -1; }
-        return w.offset - offset; // == TableChatEventMeasure(value)
+        if (!tableChatEventSaveBody(w, value)) { return -1; }
+        return w.offset - offset; // == tableChatEventMeasure(value)
     }
 
-    public static boolean TableChatEventLoadBody(TableReader r, BenchTable.TableChatEvent value) {
-        BenchTableTable.TableReset(value); // restore declared defaults in place, then overlay
+    public static boolean tableChatEventLoadBody(TableReader r, BenchTable.TableChatEvent value) {
+        BenchTableTable.tableChatEventReset(value); // restore declared defaults in place, then overlay
         for (;;) {
             if (!r.has(2)) { r.report.malformed = true; return false; }
             int fieldId = r.get16();
@@ -1587,30 +1605,32 @@ public final class BenchTableTable {
         }
     }
 
-    public static boolean TableChatEventLoad(BenchTable.TableChatEvent value, byte[] bytes, TableReport report) {
-        return TableChatEventLoad(value, bytes, 0, bytes.length, report);
+    public static boolean tableChatEventLoad(BenchTable.TableChatEvent value, byte[] bytes, TableReport report) {
+        return tableChatEventLoad(value, bytes, 0, bytes.length, report);
     }
 
-    public static boolean TableChatEventLoad(BenchTable.TableChatEvent value, byte[] bytes, int offset, int length, TableReport report) {
+    // the convenience form: ONE TableReader per call. A hot loop hoists its own
+    // reader and calls tableChatEventLoadBody, which allocates nothing at all.
+    public static boolean tableChatEventLoad(BenchTable.TableChatEvent value, byte[] bytes, int offset, int length, TableReport report) {
         TableReader r = new TableReader(bytes, offset, length, report != null ? report : new TableReport());
-        return TableChatEventLoadBody(r, value);
+        return tableChatEventLoadBody(r, value);
     }
 
-    // TableReset(TablePickupEvent) restores TablePickupEvent's declared defaults in place, reusing every
-    // buffer the value already owns. The reader calls it before overlaying.
-    public static void TableReset(BenchTable.TablePickupEvent value) {
+    // tablePickupEventReset restores TablePickupEvent's declared defaults in place, reusing every buffer the
+    // value already owns. The reader calls it before overlaying.
+    public static void tablePickupEventReset(BenchTable.TablePickupEvent value) {
         value.itemId = 0;
         value.amount = 0;
     }
 
-    public static long TablePickupEventMeasure(BenchTable.TablePickupEvent value) {
+    public static long tablePickupEventMeasure(BenchTable.TablePickupEvent value) {
         long bytes = 2; // terminator
         if (value.itemId != 0) { bytes += 3 + 2; } // item_id
         if (value.amount != 0) { bytes += 3 + 4; } // amount
         return bytes;
     }
 
-    public static boolean TablePickupEventSaveBody(TableWriter w, BenchTable.TablePickupEvent value) {
+    public static boolean tablePickupEventSaveBody(TableWriter w, BenchTable.TablePickupEvent value) {
         if (value.itemId != 0) {
             w.put16(0xec67); w.put8(7); // item_id
             w.put16((value.itemId));
@@ -1623,18 +1643,20 @@ public final class BenchTableTable {
         return !w.overflow;
     }
 
-    public static long TablePickupEventSave(BenchTable.TablePickupEvent value, byte[] buffer) {
-        return TablePickupEventSave(value, buffer, 0, buffer.length);
+    public static long tablePickupEventSave(BenchTable.TablePickupEvent value, byte[] buffer) {
+        return tablePickupEventSave(value, buffer, 0, buffer.length);
     }
 
-    public static long TablePickupEventSave(BenchTable.TablePickupEvent value, byte[] buffer, int offset, int length) {
+    // the convenience form: ONE TableWriter per call. A hot loop hoists its own
+    // writer and calls tablePickupEventSaveBody, which allocates nothing at all.
+    public static long tablePickupEventSave(BenchTable.TablePickupEvent value, byte[] buffer, int offset, int length) {
         TableWriter w = new TableWriter(buffer, offset, length);
-        if (!TablePickupEventSaveBody(w, value)) { return -1; }
-        return w.offset - offset; // == TablePickupEventMeasure(value)
+        if (!tablePickupEventSaveBody(w, value)) { return -1; }
+        return w.offset - offset; // == tablePickupEventMeasure(value)
     }
 
-    public static boolean TablePickupEventLoadBody(TableReader r, BenchTable.TablePickupEvent value) {
-        BenchTableTable.TableReset(value); // restore declared defaults in place, then overlay
+    public static boolean tablePickupEventLoadBody(TableReader r, BenchTable.TablePickupEvent value) {
+        BenchTableTable.tablePickupEventReset(value); // restore declared defaults in place, then overlay
         for (;;) {
             if (!r.has(2)) { r.report.malformed = true; return false; }
             int fieldId = r.get16();
@@ -1680,679 +1702,699 @@ public final class BenchTableTable {
         }
     }
 
-    public static boolean TablePickupEventLoad(BenchTable.TablePickupEvent value, byte[] bytes, TableReport report) {
-        return TablePickupEventLoad(value, bytes, 0, bytes.length, report);
+    public static boolean tablePickupEventLoad(BenchTable.TablePickupEvent value, byte[] bytes, TableReport report) {
+        return tablePickupEventLoad(value, bytes, 0, bytes.length, report);
     }
 
-    public static boolean TablePickupEventLoad(BenchTable.TablePickupEvent value, byte[] bytes, int offset, int length, TableReport report) {
+    // the convenience form: ONE TableReader per call. A hot loop hoists its own
+    // reader and calls tablePickupEventLoadBody, which allocates nothing at all.
+    public static boolean tablePickupEventLoad(BenchTable.TablePickupEvent value, byte[] bytes, int offset, int length, TableReport report) {
         TableReader r = new TableReader(bytes, offset, length, report != null ? report : new TableReport());
-        return TablePickupEventLoadBody(r, value);
+        return tablePickupEventLoadBody(r, value);
     }
 
     // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
-    private static TableTypeInfo TableEntityTableInfo;
+    // TableEntity's reflection descriptor (docs/SPEC-TABLES.md §8), built once and
+    // published by class initialization — see the holder note in the emitter.
+    private static final class TableEntityTableTypeHolder {
+        static final TableTypeInfo INFO = build();
 
-    public static TableTypeInfo TableEntityTableType() {
-        TableTypeInfo info = TableEntityTableInfo;
-        if (info != null) { return info; }
-        info = new TableTypeInfo();
-        info.name = "TableEntity";
-        info.numFields = 14;
-        TableFieldInfo[] fields = new TableFieldInfo[14];
-        TableFieldInfo f;
-        f = new TableFieldInfo();
-        f.name = "entity_id"; f.json = "entity_id"; f.typeName = "bits(12)"; f.id = 0x5a13; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 4095.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).entityId & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).entityId = (int) raw;
-        fields[0] = f;
-        f = new TableFieldInfo();
-        f.name = "pos_x"; f.json = "pos_x"; f.typeName = "int32"; f.id = 0xaaa3; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = -16383.0; f.rangeMax = 16383.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).posX; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).posX = (int) raw;
-        fields[1] = f;
-        f = new TableFieldInfo();
-        f.name = "pos_y"; f.json = "pos_y"; f.typeName = "int32"; f.id = 0xa5cc; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = -16383.0; f.rangeMax = 16383.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).posY; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).posY = (int) raw;
-        fields[2] = f;
-        f = new TableFieldInfo();
-        f.name = "pos_z"; f.json = "pos_z"; f.typeName = "int32"; f.id = 0xa985; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = -16383.0; f.rangeMax = 16383.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).posZ; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).posZ = (int) raw;
-        fields[3] = f;
-        f = new TableFieldInfo();
-        f.name = "yaw"; f.json = "yaw"; f.typeName = "bits(9)"; f.id = 0x80c1; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 511.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).yaw & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).yaw = (int) raw;
-        fields[4] = f;
-        f = new TableFieldInfo();
-        f.name = "pitch"; f.json = "pitch"; f.typeName = "bits(9)"; f.id = 0xf783; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 511.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).pitch & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).pitch = (int) raw;
-        fields[5] = f;
-        f = new TableFieldInfo();
-        f.name = "vel_x"; f.json = "vel_x"; f.typeName = "int32"; f.id = 0x03e2; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = -2048.0; f.rangeMax = 2047.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).velX; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).velX = (int) raw;
-        fields[6] = f;
-        f = new TableFieldInfo();
-        f.name = "vel_y"; f.json = "vel_y"; f.typeName = "int32"; f.id = 0x0151; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = -2048.0; f.rangeMax = 2047.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).velY; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).velY = (int) raw;
-        fields[7] = f;
-        f = new TableFieldInfo();
-        f.name = "vel_z"; f.json = "vel_z"; f.typeName = "int32"; f.id = 0x0e88; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = -2048.0; f.rangeMax = 2047.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).velZ; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).velZ = (int) raw;
-        fields[8] = f;
-        f = new TableFieldInfo();
-        f.name = "health"; f.json = "health"; f.typeName = "int32"; f.id = 0x8617; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 1000.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).health; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).health = (int) raw;
-        fields[9] = f;
-        f = new TableFieldInfo();
-        f.name = "weapon"; f.json = "weapon"; f.typeName = "TableWeapon"; f.id = 0x4f72; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 0;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = 15L; f.guard = "";
-        f.enumName = (v) -> BenchTable.enumNameTableWeapon(v); f.variantId = (v) -> TableEnumId.tableWeapon(v);
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).weapon & 0xffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).weapon = (byte) raw;
-        fields[10] = f;
-        f = new TableFieldInfo();
-        f.name = "damage"; f.json = "damage"; f.typeName = "TableDamage"; f.id = 0x15a9; f.kind = 9; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 0;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = 7L; f.guard = "";
-        f.enumName = (v) -> BenchTable.flagNameTableDamage((int) v); f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).damage; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).damage = raw;
-        fields[11] = f;
-        f = new TableFieldInfo();
-        f.name = "moving"; f.json = "moving"; f.typeName = "bool"; f.id = 0xa4b2; f.kind = 1; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 1;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).moving ? 1L : 0L; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).moving = raw != 0;
-        fields[12] = f;
-        f = new TableFieldInfo();
-        f.name = "firing"; f.json = "firing"; f.typeName = "bool"; f.id = 0x2302; f.kind = 1; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 1;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).firing ? 1L : 0L; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).firing = raw != 0;
-        fields[13] = f;
-        info.fields = fields;
-        info.reset = (o) -> BenchTableTable.TableReset((BenchTableTable.TableEntity) o);
-        TableEntityTableInfo = info;
-        return info;
-    }
-
-    private static TableTypeInfo TableStatTableInfo;
-
-    public static TableTypeInfo TableStatTableType() {
-        TableTypeInfo info = TableStatTableInfo;
-        if (info != null) { return info; }
-        info = new TableTypeInfo();
-        info.name = "TableStat";
-        info.numFields = 2;
-        TableFieldInfo[] fields = new TableFieldInfo[2];
-        TableFieldInfo f;
-        f = new TableFieldInfo();
-        f.name = "stat_id"; f.json = "stat_id"; f.typeName = "bits(8)"; f.id = 0xfb6c; f.kind = 6; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 255.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableStat) o).statId & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableStat) o).statId = (int) raw;
-        fields[0] = f;
-        f = new TableFieldInfo();
-        f.name = "delta"; f.json = "delta"; f.typeName = "int32"; f.id = 0x1720; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = -512.0; f.rangeMax = 511.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> (long) ((BenchTableTable.TableStat) o).delta; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableStat) o).delta = (int) raw;
-        fields[1] = f;
-        info.fields = fields;
-        info.reset = (o) -> BenchTableTable.TableReset((BenchTableTable.TableStat) o);
-        TableStatTableInfo = info;
-        return info;
-    }
-
-    private static TableTypeInfo TableMixedTableInfo;
-
-    public static TableTypeInfo TableMixedTableType() {
-        TableTypeInfo info = TableMixedTableInfo;
-        if (info != null) { return info; }
-        info = new TableTypeInfo();
-        info.name = "TableMixed";
-        info.numFields = 28;
-        TableFieldInfo[] fields = new TableFieldInfo[28];
-        TableFieldInfo f;
-        f = new TableFieldInfo();
-        f.name = "protocol_magic"; f.json = "protocol_magic"; f.typeName = "uint16"; f.id = 0xae30; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 2;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).protocolMagic & 0xffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).protocolMagic = (short) raw;
-        fields[0] = f;
-        f = new TableFieldInfo();
-        f.name = "sequence"; f.json = "sequence"; f.typeName = "bits(16)"; f.id = 0xd32b; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 65535.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).sequence & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).sequence = (int) raw;
-        fields[1] = f;
-        f = new TableFieldInfo();
-        f.name = "ack_sequence"; f.json = "ack_sequence"; f.typeName = "int32"; f.id = 0x3363; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 65535.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> (long) ((BenchTableTable.TableMixed) o).ackSequence; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).ackSequence = (int) raw;
-        fields[2] = f;
-        f = new TableFieldInfo();
-        f.name = "ack_bits"; f.json = "ack_bits"; f.typeName = "bits(32)"; f.id = 0xebb9; f.kind = 8; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 4.294967295e+09; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).ackBits & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).ackBits = (int) raw;
-        fields[3] = f;
-        f = new TableFieldInfo();
-        f.name = "session_id"; f.json = "session_id"; f.typeName = "uint64"; f.id = 0x8790; f.kind = 9; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).sessionId; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).sessionId = raw;
-        fields[4] = f;
-        f = new TableFieldInfo();
-        f.name = "client_id"; f.json = "client_id"; f.typeName = "uint32"; f.id = 0xd443; f.kind = 8; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).clientId & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).clientId = (int) raw;
-        fields[5] = f;
-        f = new TableFieldInfo();
-        f.name = "nonce"; f.json = "nonce"; f.typeName = "uint64"; f.id = 0x80f0; f.kind = 9; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
-        f.hasRange = true; f.rangeMin = 1.0; f.rangeMax = 9.223372036854776e+18; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).nonce; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).nonce = raw;
-        fields[6] = f;
-        f = new TableFieldInfo();
-        f.name = "world_time"; f.json = "world_time"; f.typeName = "int64"; f.id = 0x77f2; f.kind = 5; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
-        f.hasRange = true; f.rangeMin = -1e+12; f.rangeMax = 1e+12; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).worldTime; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).worldTime = raw;
-        fields[7] = f;
-        f = new TableFieldInfo();
-        f.name = "frame_tick"; f.json = "frame_tick"; f.typeName = "bits(48)"; f.id = 0xcbc2; f.kind = 9; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 2.81474976710655e+14; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).frameTick; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).frameTick = raw;
-        fields[8] = f;
-        f = new TableFieldInfo();
-        f.name = "server_time"; f.json = "server_time"; f.typeName = "float32"; f.id = 0x27f9; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 65535.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).serverTime) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).serverTime = Float.intBitsToFloat((int) raw);
-        fields[9] = f;
-        f = new TableFieldInfo();
-        f.name = "entities"; f.json = "entities"; f.typeName = "TableEntity"; f.id = 0x25e3; f.kind = 13; f.isArray = true; f.counted = true; f.optional = false; f.arrayBound = 8; f.elemWidth = 0;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = () -> BenchTableTable.TableEntityTableType();
-        f.getChild = (o, i) -> ((BenchTableTable.TableMixed) o).entities[i]; f.getCount = (o) -> ((BenchTableTable.TableMixed) o).entitiesCount; f.setCount = (o, n) -> ((BenchTableTable.TableMixed) o).entitiesCount = n;
-        fields[10] = f;
-        f = new TableFieldInfo();
-        f.name = "stats"; f.json = "stats"; f.typeName = "TableStat"; f.id = 0x76dd; f.kind = 13; f.isArray = true; f.counted = true; f.optional = false; f.arrayBound = 80; f.elemWidth = 0;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = () -> BenchTableTable.TableStatTableType();
-        f.getChild = (o, i) -> ((BenchTableTable.TableMixed) o).stats[i]; f.getCount = (o) -> ((BenchTableTable.TableMixed) o).statsCount; f.setCount = (o, n) -> ((BenchTableTable.TableMixed) o).statsCount = n;
-        fields[11] = f;
-        f = new TableFieldInfo();
-        f.name = "game_event"; f.json = "game_event"; f.typeName = "TableEvent"; f.id = 0xa17e; f.kind = 15; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 0;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = 3L; f.guard = "";
-        f.enumName = (v) -> { if (v == 0L) { return "None"; } if (v == 1L) { return "hit"; } if (v == 2L) { return "chat"; } if (v == 3L) { return "pickup"; } return "???"; }; f.variantId = (v) -> { if (v == 0L) { return 0; } if (v == 1L) { return 0xba78; } if (v == 2L) { return 0x5be0; } if (v == 3L) { return 0x99dd; } return 0; };
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getChild = (o, i) -> ((BenchTableTable.TableMixed) o).gameEvent;
-        {
-            TableUnionInfo u = new TableUnionInfo();
-            u.getTag = (o) -> ((BenchTable.TableEvent) o).type & 0xffL;
-            u.setTag = (o, t) -> ((BenchTable.TableEvent) o).type = (byte) t;
-            TableUnionArmInfo[] as = new TableUnionArmInfo[4];
-            as[0] = new TableUnionArmInfo();
-            as[1] = new TableUnionArmInfo();
-            as[1].tableRef = () -> BenchTableTable.TableHitEventTableType();
-            as[1].payload = (o) -> ((BenchTable.TableEvent) o).hit;
-            as[2] = new TableUnionArmInfo();
-            as[2].tableRef = () -> BenchTableTable.TableChatEventTableType();
-            as[2].payload = (o) -> ((BenchTable.TableEvent) o).chat;
-            as[3] = new TableUnionArmInfo();
-            as[3].tableRef = () -> BenchTableTable.TablePickupEventTableType();
-            as[3].payload = (o) -> ((BenchTable.TableEvent) o).pickup;
-            u.arms = as;
-            f.arms = u;
+        private static TableTypeInfo build() {
+            TableTypeInfo info = new TableTypeInfo();
+            info.name = "TableEntity";
+            info.numFields = 14;
+            TableFieldInfo[] fields = new TableFieldInfo[14];
+            TableFieldInfo f;
+            f = new TableFieldInfo();
+            f.name = "entity_id"; f.json = "entity_id"; f.typeName = "bits(12)"; f.id = 0x5a13; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 4095.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).entityId & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).entityId = (int) raw;
+            fields[0] = f;
+            f = new TableFieldInfo();
+            f.name = "pos_x"; f.json = "pos_x"; f.typeName = "int32"; f.id = 0xaaa3; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = -16383.0; f.rangeMax = 16383.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).posX; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).posX = (int) raw;
+            fields[1] = f;
+            f = new TableFieldInfo();
+            f.name = "pos_y"; f.json = "pos_y"; f.typeName = "int32"; f.id = 0xa5cc; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = -16383.0; f.rangeMax = 16383.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).posY; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).posY = (int) raw;
+            fields[2] = f;
+            f = new TableFieldInfo();
+            f.name = "pos_z"; f.json = "pos_z"; f.typeName = "int32"; f.id = 0xa985; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = -16383.0; f.rangeMax = 16383.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).posZ; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).posZ = (int) raw;
+            fields[3] = f;
+            f = new TableFieldInfo();
+            f.name = "yaw"; f.json = "yaw"; f.typeName = "bits(9)"; f.id = 0x80c1; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 511.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).yaw & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).yaw = (int) raw;
+            fields[4] = f;
+            f = new TableFieldInfo();
+            f.name = "pitch"; f.json = "pitch"; f.typeName = "bits(9)"; f.id = 0xf783; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 511.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).pitch & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).pitch = (int) raw;
+            fields[5] = f;
+            f = new TableFieldInfo();
+            f.name = "vel_x"; f.json = "vel_x"; f.typeName = "int32"; f.id = 0x03e2; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = -2048.0; f.rangeMax = 2047.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).velX; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).velX = (int) raw;
+            fields[6] = f;
+            f = new TableFieldInfo();
+            f.name = "vel_y"; f.json = "vel_y"; f.typeName = "int32"; f.id = 0x0151; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = -2048.0; f.rangeMax = 2047.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).velY; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).velY = (int) raw;
+            fields[7] = f;
+            f = new TableFieldInfo();
+            f.name = "vel_z"; f.json = "vel_z"; f.typeName = "int32"; f.id = 0x0e88; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = -2048.0; f.rangeMax = 2047.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).velZ; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).velZ = (int) raw;
+            fields[8] = f;
+            f = new TableFieldInfo();
+            f.name = "health"; f.json = "health"; f.typeName = "int32"; f.id = 0x8617; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 1000.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).health; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).health = (int) raw;
+            fields[9] = f;
+            f = new TableFieldInfo();
+            f.name = "weapon"; f.json = "weapon"; f.typeName = "TableWeapon"; f.id = 0x4f72; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 0;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = 15L; f.guard = "";
+            f.enumName = (v) -> BenchTable.enumNameTableWeapon(v); f.variantId = (v) -> TableEnumId.tableWeapon(v);
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).weapon & 0xffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).weapon = (byte) raw;
+            fields[10] = f;
+            f = new TableFieldInfo();
+            f.name = "damage"; f.json = "damage"; f.typeName = "TableDamage"; f.id = 0x15a9; f.kind = 9; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 0;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = 7L; f.guard = "";
+            f.enumName = (v) -> BenchTable.flagNameTableDamage((int) v); f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).damage; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).damage = raw;
+            fields[11] = f;
+            f = new TableFieldInfo();
+            f.name = "moving"; f.json = "moving"; f.typeName = "bool"; f.id = 0xa4b2; f.kind = 1; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 1;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).moving ? 1L : 0L; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).moving = raw != 0;
+            fields[12] = f;
+            f = new TableFieldInfo();
+            f.name = "firing"; f.json = "firing"; f.typeName = "bool"; f.id = 0x2302; f.kind = 1; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 1;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).firing ? 1L : 0L; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).firing = raw != 0;
+            fields[13] = f;
+            info.fields = fields;
+            info.reset = (o) -> BenchTableTable.tableEntityReset((BenchTableTable.TableEntity) o);
+            return info;
         }
-        fields[12] = f;
-        f = new TableFieldInfo();
-        f.name = "loadout"; f.json = "loadout"; f.typeName = "uint8"; f.id = 0x9f78; f.kind = 6; f.isArray = true; f.counted = false; f.optional = false; f.arrayBound = 4; f.elemWidth = 1;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).loadout[i] & 0xffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).loadout[i] = (byte) raw;
-        fields[13] = f;
-        f = new TableFieldInfo();
-        f.name = "player_name"; f.json = "player_name"; f.typeName = "string"; f.id = 0x2d3e; f.kind = 12; f.isArray = false; f.counted = true; f.optional = false; f.arrayBound = 15; f.elemWidth = 0;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getBuffer = (o) -> ((BenchTableTable.TableMixed) o).playerName; f.getCount = (o) -> ((BenchTableTable.TableMixed) o).playerNameLength; f.setCount = (o, n) -> ((BenchTableTable.TableMixed) o).playerNameLength = n;
-        fields[14] = f;
-        f = new TableFieldInfo();
-        f.name = "payload"; f.json = "payload"; f.typeName = "bytes"; f.id = 0x44aa; f.kind = 6; f.isArray = true; f.counted = true; f.optional = false; f.arrayBound = 16; f.elemWidth = 0;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getBuffer = (o) -> ((BenchTableTable.TableMixed) o).payload; f.getCount = (o) -> ((BenchTableTable.TableMixed) o).payloadLength; f.setCount = (o, n) -> ((BenchTableTable.TableMixed) o).payloadLength = n;
-        fields[15] = f;
-        f = new TableFieldInfo();
-        f.name = "aim_x"; f.json = "aim_x"; f.typeName = "float32"; f.id = 0x84e9; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = -1.0; f.rangeMax = 1.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).aimX) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).aimX = Float.intBitsToFloat((int) raw);
-        fields[16] = f;
-        f = new TableFieldInfo();
-        f.name = "aim_y"; f.json = "aim_y"; f.typeName = "float32"; f.id = 0x8d96; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = -1.0; f.rangeMax = 1.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).aimY) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).aimY = Float.intBitsToFloat((int) raw);
-        fields[17] = f;
-        f = new TableFieldInfo();
-        f.name = "aim_z"; f.json = "aim_z"; f.typeName = "float32"; f.id = 0x8e03; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = -1.0; f.rangeMax = 1.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).aimZ) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).aimZ = Float.intBitsToFloat((int) raw);
-        fields[18] = f;
-        f = new TableFieldInfo();
-        f.name = "recoil"; f.json = "recoil"; f.typeName = "float32"; f.id = 0x2d04; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).recoil) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).recoil = Float.intBitsToFloat((int) raw);
-        fields[19] = f;
-        f = new TableFieldInfo();
-        f.name = "drift"; f.json = "drift"; f.typeName = "float64"; f.id = 0xc023; f.kind = 11; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> Double.doubleToRawLongBits(((BenchTableTable.TableMixed) o).drift); f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).drift = Double.longBitsToDouble(raw);
-        fields[20] = f;
-        f = new TableFieldInfo();
-        f.name = "wide_key"; f.json = "wide_key"; f.typeName = "uint64"; f.id = 0x272f; f.kind = 9; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).wideKey; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).wideKey = raw;
-        fields[21] = f;
-        f = new TableFieldInfo();
-        f.name = "flux"; f.json = "flux"; f.typeName = "int64"; f.id = 0x196a; f.kind = 5; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
-        f.hasRange = true; f.rangeMin = -1e+18; f.rangeMax = 1e+18; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).flux; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).flux = raw;
-        fields[22] = f;
-        f = new TableFieldInfo();
-        f.name = "ping"; f.json = "ping"; f.typeName = "float32"; f.id = 0xe6d4; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 250.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).ping) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).ping = Float.intBitsToFloat((int) raw);
-        fields[23] = f;
-        f = new TableFieldInfo();
-        f.name = "crc_hint"; f.json = "crc_hint"; f.typeName = "bits(24)"; f.id = 0xd3dc; f.kind = 8; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 1.6777215e+07; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).crcHint & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).crcHint = (int) raw;
-        fields[24] = f;
-        f = new TableFieldInfo();
-        f.name = "has_extra"; f.json = "has_extra"; f.typeName = "bool"; f.id = 0xb023; f.kind = 1; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 1;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).hasExtra ? 1L : 0L; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).hasExtra = raw != 0;
-        fields[25] = f;
-        f = new TableFieldInfo();
-        f.name = "extra"; f.json = "extra"; f.typeName = "int32"; f.id = 0xb579; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 255.0; f.enumMax = -1L; f.guard = "has_extra";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> (long) ((BenchTableTable.TableMixed) o).extra; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).extra = (int) raw;
-        fields[26] = f;
-        f = new TableFieldInfo();
-        f.name = "idle_ticks"; f.json = "idle_ticks"; f.typeName = "int32"; f.id = 0x9555; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 15.0; f.enumMax = -1L; f.guard = "!has_extra";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> (long) ((BenchTableTable.TableMixed) o).idleTicks; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).idleTicks = (int) raw;
-        fields[27] = f;
-        info.fields = fields;
-        info.reset = (o) -> BenchTableTable.TableReset((BenchTableTable.TableMixed) o);
-        TableMixedTableInfo = info;
-        return info;
     }
 
-    private static TableTypeInfo TableHitEventTableInfo;
+    public static TableTypeInfo tableEntityTableType() { return TableEntityTableTypeHolder.INFO; }
 
-    public static TableTypeInfo TableHitEventTableType() {
-        TableTypeInfo info = TableHitEventTableInfo;
-        if (info != null) { return info; }
-        info = new TableTypeInfo();
-        info.name = "TableHitEvent";
-        info.numFields = 4;
-        TableFieldInfo[] fields = new TableFieldInfo[4];
-        TableFieldInfo f;
-        f = new TableFieldInfo();
-        f.name = "target_id"; f.json = "target_id"; f.typeName = "bits(12)"; f.id = 0xdf6a; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 4095.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTable.TableHitEvent) o).targetId & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTable.TableHitEvent) o).targetId = (int) raw;
-        fields[0] = f;
-        f = new TableFieldInfo();
-        f.name = "damage"; f.json = "damage"; f.typeName = "int32"; f.id = 0x15a9; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 4095.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> (long) ((BenchTable.TableHitEvent) o).damage; f.setRaw = (o, i, raw) -> ((BenchTable.TableHitEvent) o).damage = (int) raw;
-        fields[1] = f;
-        f = new TableFieldInfo();
-        f.name = "hit_kind"; f.json = "hit_kind"; f.typeName = "int32"; f.id = 0xaf83; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 7.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> (long) ((BenchTable.TableHitEvent) o).hitKind; f.setRaw = (o, i, raw) -> ((BenchTable.TableHitEvent) o).hitKind = (int) raw;
-        fields[2] = f;
-        f = new TableFieldInfo();
-        f.name = "crit"; f.json = "crit"; f.typeName = "bool"; f.id = 0x93d9; f.kind = 1; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 1;
-        f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTable.TableHitEvent) o).crit ? 1L : 0L; f.setRaw = (o, i, raw) -> ((BenchTable.TableHitEvent) o).crit = raw != 0;
-        fields[3] = f;
-        info.fields = fields;
-        info.reset = (o) -> BenchTableTable.TableReset((BenchTable.TableHitEvent) o);
-        TableHitEventTableInfo = info;
-        return info;
+    // TableStat's reflection descriptor (docs/SPEC-TABLES.md §8), built once and
+    // published by class initialization — see the holder note in the emitter.
+    private static final class TableStatTableTypeHolder {
+        static final TableTypeInfo INFO = build();
+
+        private static TableTypeInfo build() {
+            TableTypeInfo info = new TableTypeInfo();
+            info.name = "TableStat";
+            info.numFields = 2;
+            TableFieldInfo[] fields = new TableFieldInfo[2];
+            TableFieldInfo f;
+            f = new TableFieldInfo();
+            f.name = "stat_id"; f.json = "stat_id"; f.typeName = "bits(8)"; f.id = 0xfb6c; f.kind = 6; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 255.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableStat) o).statId & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableStat) o).statId = (int) raw;
+            fields[0] = f;
+            f = new TableFieldInfo();
+            f.name = "delta"; f.json = "delta"; f.typeName = "int32"; f.id = 0x1720; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = -512.0; f.rangeMax = 511.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> (long) ((BenchTableTable.TableStat) o).delta; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableStat) o).delta = (int) raw;
+            fields[1] = f;
+            info.fields = fields;
+            info.reset = (o) -> BenchTableTable.tableStatReset((BenchTableTable.TableStat) o);
+            return info;
+        }
     }
 
-    private static TableTypeInfo TableChatEventTableInfo;
+    public static TableTypeInfo tableStatTableType() { return TableStatTableTypeHolder.INFO; }
 
-    public static TableTypeInfo TableChatEventTableType() {
-        TableTypeInfo info = TableChatEventTableInfo;
-        if (info != null) { return info; }
-        info = new TableTypeInfo();
-        info.name = "TableChatEvent";
-        info.numFields = 2;
-        TableFieldInfo[] fields = new TableFieldInfo[2];
-        TableFieldInfo f;
-        f = new TableFieldInfo();
-        f.name = "channel"; f.json = "channel"; f.typeName = "int32"; f.id = 0x7366; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 3.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> (long) ((BenchTable.TableChatEvent) o).channel; f.setRaw = (o, i, raw) -> ((BenchTable.TableChatEvent) o).channel = (int) raw;
-        fields[0] = f;
-        f = new TableFieldInfo();
-        f.name = "speaker"; f.json = "speaker"; f.typeName = "bits(12)"; f.id = 0xce0b; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 4095.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTable.TableChatEvent) o).speaker & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTable.TableChatEvent) o).speaker = (int) raw;
-        fields[1] = f;
-        info.fields = fields;
-        info.reset = (o) -> BenchTableTable.TableReset((BenchTable.TableChatEvent) o);
-        TableChatEventTableInfo = info;
-        return info;
+    // TableMixed's reflection descriptor (docs/SPEC-TABLES.md §8), built once and
+    // published by class initialization — see the holder note in the emitter.
+    private static final class TableMixedTableTypeHolder {
+        static final TableTypeInfo INFO = build();
+
+        private static TableTypeInfo build() {
+            TableTypeInfo info = new TableTypeInfo();
+            info.name = "TableMixed";
+            info.numFields = 28;
+            TableFieldInfo[] fields = new TableFieldInfo[28];
+            TableFieldInfo f;
+            f = new TableFieldInfo();
+            f.name = "protocol_magic"; f.json = "protocol_magic"; f.typeName = "uint16"; f.id = 0xae30; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 2;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).protocolMagic & 0xffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).protocolMagic = (short) raw;
+            fields[0] = f;
+            f = new TableFieldInfo();
+            f.name = "sequence"; f.json = "sequence"; f.typeName = "bits(16)"; f.id = 0xd32b; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 65535.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).sequence & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).sequence = (int) raw;
+            fields[1] = f;
+            f = new TableFieldInfo();
+            f.name = "ack_sequence"; f.json = "ack_sequence"; f.typeName = "int32"; f.id = 0x3363; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 65535.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> (long) ((BenchTableTable.TableMixed) o).ackSequence; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).ackSequence = (int) raw;
+            fields[2] = f;
+            f = new TableFieldInfo();
+            f.name = "ack_bits"; f.json = "ack_bits"; f.typeName = "bits(32)"; f.id = 0xebb9; f.kind = 8; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 4.294967295e+09; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).ackBits & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).ackBits = (int) raw;
+            fields[3] = f;
+            f = new TableFieldInfo();
+            f.name = "session_id"; f.json = "session_id"; f.typeName = "uint64"; f.id = 0x8790; f.kind = 9; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).sessionId; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).sessionId = raw;
+            fields[4] = f;
+            f = new TableFieldInfo();
+            f.name = "client_id"; f.json = "client_id"; f.typeName = "uint32"; f.id = 0xd443; f.kind = 8; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).clientId & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).clientId = (int) raw;
+            fields[5] = f;
+            f = new TableFieldInfo();
+            f.name = "nonce"; f.json = "nonce"; f.typeName = "uint64"; f.id = 0x80f0; f.kind = 9; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
+            f.hasRange = true; f.rangeMin = 1.0; f.rangeMax = 9.223372036854776e+18; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).nonce; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).nonce = raw;
+            fields[6] = f;
+            f = new TableFieldInfo();
+            f.name = "world_time"; f.json = "world_time"; f.typeName = "int64"; f.id = 0x77f2; f.kind = 5; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
+            f.hasRange = true; f.rangeMin = -1e+12; f.rangeMax = 1e+12; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).worldTime; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).worldTime = raw;
+            fields[7] = f;
+            f = new TableFieldInfo();
+            f.name = "frame_tick"; f.json = "frame_tick"; f.typeName = "bits(48)"; f.id = 0xcbc2; f.kind = 9; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 2.81474976710655e+14; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).frameTick; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).frameTick = raw;
+            fields[8] = f;
+            f = new TableFieldInfo();
+            f.name = "server_time"; f.json = "server_time"; f.typeName = "float32"; f.id = 0x27f9; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 65535.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).serverTime) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).serverTime = Float.intBitsToFloat((int) raw);
+            fields[9] = f;
+            f = new TableFieldInfo();
+            f.name = "entities"; f.json = "entities"; f.typeName = "TableEntity"; f.id = 0x25e3; f.kind = 13; f.isArray = true; f.counted = true; f.optional = false; f.arrayBound = 8; f.elemWidth = 0;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = () -> BenchTableTable.tableEntityTableType();
+            f.getChild = (o, i) -> ((BenchTableTable.TableMixed) o).entities[i]; f.getCount = (o) -> ((BenchTableTable.TableMixed) o).entitiesCount; f.setCount = (o, n) -> ((BenchTableTable.TableMixed) o).entitiesCount = n;
+            fields[10] = f;
+            f = new TableFieldInfo();
+            f.name = "stats"; f.json = "stats"; f.typeName = "TableStat"; f.id = 0x76dd; f.kind = 13; f.isArray = true; f.counted = true; f.optional = false; f.arrayBound = 80; f.elemWidth = 0;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = () -> BenchTableTable.tableStatTableType();
+            f.getChild = (o, i) -> ((BenchTableTable.TableMixed) o).stats[i]; f.getCount = (o) -> ((BenchTableTable.TableMixed) o).statsCount; f.setCount = (o, n) -> ((BenchTableTable.TableMixed) o).statsCount = n;
+            fields[11] = f;
+            f = new TableFieldInfo();
+            f.name = "game_event"; f.json = "game_event"; f.typeName = "TableEvent"; f.id = 0xa17e; f.kind = 15; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 0;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = 3L; f.guard = "";
+            f.enumName = (v) -> { if (v == 0L) { return "None"; } if (v == 1L) { return "hit"; } if (v == 2L) { return "chat"; } if (v == 3L) { return "pickup"; } return "???"; }; f.variantId = (v) -> { if (v == 0L) { return 0; } if (v == 1L) { return 0xba78; } if (v == 2L) { return 0x5be0; } if (v == 3L) { return 0x99dd; } return 0; };
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getChild = (o, i) -> ((BenchTableTable.TableMixed) o).gameEvent;
+            {
+                TableUnionInfo u = new TableUnionInfo();
+                u.getTag = (o) -> ((BenchTable.TableEvent) o).type & 0xffL;
+                u.setTag = (o, t) -> ((BenchTable.TableEvent) o).type = (byte) t;
+                TableUnionArmInfo[] as = new TableUnionArmInfo[4];
+                as[0] = new TableUnionArmInfo();
+                as[1] = new TableUnionArmInfo();
+                as[1].tableRef = () -> BenchTableTable.tableHitEventTableType();
+                as[1].payload = (o) -> ((BenchTable.TableEvent) o).hit;
+                as[2] = new TableUnionArmInfo();
+                as[2].tableRef = () -> BenchTableTable.tableChatEventTableType();
+                as[2].payload = (o) -> ((BenchTable.TableEvent) o).chat;
+                as[3] = new TableUnionArmInfo();
+                as[3].tableRef = () -> BenchTableTable.tablePickupEventTableType();
+                as[3].payload = (o) -> ((BenchTable.TableEvent) o).pickup;
+                u.arms = as;
+                f.arms = u;
+            }
+            fields[12] = f;
+            f = new TableFieldInfo();
+            f.name = "loadout"; f.json = "loadout"; f.typeName = "uint8"; f.id = 0x9f78; f.kind = 6; f.isArray = true; f.counted = false; f.optional = false; f.arrayBound = 4; f.elemWidth = 1;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).loadout[i] & 0xffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).loadout[i] = (byte) raw;
+            fields[13] = f;
+            f = new TableFieldInfo();
+            f.name = "player_name"; f.json = "player_name"; f.typeName = "string"; f.id = 0x2d3e; f.kind = 12; f.isArray = false; f.counted = true; f.optional = false; f.arrayBound = 15; f.elemWidth = 0;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getBuffer = (o) -> ((BenchTableTable.TableMixed) o).playerName; f.getCount = (o) -> ((BenchTableTable.TableMixed) o).playerNameLength; f.setCount = (o, n) -> ((BenchTableTable.TableMixed) o).playerNameLength = n;
+            fields[14] = f;
+            f = new TableFieldInfo();
+            f.name = "payload"; f.json = "payload"; f.typeName = "bytes"; f.id = 0x44aa; f.kind = 6; f.isArray = true; f.counted = true; f.optional = false; f.arrayBound = 16; f.elemWidth = 0;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getBuffer = (o) -> ((BenchTableTable.TableMixed) o).payload; f.getCount = (o) -> ((BenchTableTable.TableMixed) o).payloadLength; f.setCount = (o, n) -> ((BenchTableTable.TableMixed) o).payloadLength = n;
+            fields[15] = f;
+            f = new TableFieldInfo();
+            f.name = "aim_x"; f.json = "aim_x"; f.typeName = "float32"; f.id = 0x84e9; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = -1.0; f.rangeMax = 1.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).aimX) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).aimX = Float.intBitsToFloat((int) raw);
+            fields[16] = f;
+            f = new TableFieldInfo();
+            f.name = "aim_y"; f.json = "aim_y"; f.typeName = "float32"; f.id = 0x8d96; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = -1.0; f.rangeMax = 1.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).aimY) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).aimY = Float.intBitsToFloat((int) raw);
+            fields[17] = f;
+            f = new TableFieldInfo();
+            f.name = "aim_z"; f.json = "aim_z"; f.typeName = "float32"; f.id = 0x8e03; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = -1.0; f.rangeMax = 1.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).aimZ) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).aimZ = Float.intBitsToFloat((int) raw);
+            fields[18] = f;
+            f = new TableFieldInfo();
+            f.name = "recoil"; f.json = "recoil"; f.typeName = "float32"; f.id = 0x2d04; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).recoil) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).recoil = Float.intBitsToFloat((int) raw);
+            fields[19] = f;
+            f = new TableFieldInfo();
+            f.name = "drift"; f.json = "drift"; f.typeName = "float64"; f.id = 0xc023; f.kind = 11; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> Double.doubleToRawLongBits(((BenchTableTable.TableMixed) o).drift); f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).drift = Double.longBitsToDouble(raw);
+            fields[20] = f;
+            f = new TableFieldInfo();
+            f.name = "wide_key"; f.json = "wide_key"; f.typeName = "uint64"; f.id = 0x272f; f.kind = 9; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).wideKey; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).wideKey = raw;
+            fields[21] = f;
+            f = new TableFieldInfo();
+            f.name = "flux"; f.json = "flux"; f.typeName = "int64"; f.id = 0x196a; f.kind = 5; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
+            f.hasRange = true; f.rangeMin = -1e+18; f.rangeMax = 1e+18; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).flux; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).flux = raw;
+            fields[22] = f;
+            f = new TableFieldInfo();
+            f.name = "ping"; f.json = "ping"; f.typeName = "float32"; f.id = 0xe6d4; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 250.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).ping) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).ping = Float.intBitsToFloat((int) raw);
+            fields[23] = f;
+            f = new TableFieldInfo();
+            f.name = "crc_hint"; f.json = "crc_hint"; f.typeName = "bits(24)"; f.id = 0xd3dc; f.kind = 8; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 1.6777215e+07; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).crcHint & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).crcHint = (int) raw;
+            fields[24] = f;
+            f = new TableFieldInfo();
+            f.name = "has_extra"; f.json = "has_extra"; f.typeName = "bool"; f.id = 0xb023; f.kind = 1; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 1;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).hasExtra ? 1L : 0L; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).hasExtra = raw != 0;
+            fields[25] = f;
+            f = new TableFieldInfo();
+            f.name = "extra"; f.json = "extra"; f.typeName = "int32"; f.id = 0xb579; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 255.0; f.enumMax = -1L; f.guard = "has_extra";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> (long) ((BenchTableTable.TableMixed) o).extra; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).extra = (int) raw;
+            fields[26] = f;
+            f = new TableFieldInfo();
+            f.name = "idle_ticks"; f.json = "idle_ticks"; f.typeName = "int32"; f.id = 0x9555; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 15.0; f.enumMax = -1L; f.guard = "!has_extra";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> (long) ((BenchTableTable.TableMixed) o).idleTicks; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).idleTicks = (int) raw;
+            fields[27] = f;
+            info.fields = fields;
+            info.reset = (o) -> BenchTableTable.tableMixedReset((BenchTableTable.TableMixed) o);
+            return info;
+        }
     }
 
-    private static TableTypeInfo TablePickupEventTableInfo;
+    public static TableTypeInfo tableMixedTableType() { return TableMixedTableTypeHolder.INFO; }
 
-    public static TableTypeInfo TablePickupEventTableType() {
-        TableTypeInfo info = TablePickupEventTableInfo;
-        if (info != null) { return info; }
-        info = new TableTypeInfo();
-        info.name = "TablePickupEvent";
-        info.numFields = 2;
-        TableFieldInfo[] fields = new TableFieldInfo[2];
-        TableFieldInfo f;
-        f = new TableFieldInfo();
-        f.name = "item_id"; f.json = "item_id"; f.typeName = "bits(10)"; f.id = 0xec67; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 1023.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> ((BenchTable.TablePickupEvent) o).itemId & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTable.TablePickupEvent) o).itemId = (int) raw;
-        fields[0] = f;
-        f = new TableFieldInfo();
-        f.name = "amount"; f.json = "amount"; f.typeName = "int32"; f.id = 0x39cc; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
-        f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 255.0; f.enumMax = -1L; f.guard = "";
-        f.enumName = null; f.variantId = null;
-        f.keyTypeName = null; f.keyName = null; f.keyId = null;
-        f.tableRef = null;
-        f.getRaw = (o, i) -> (long) ((BenchTable.TablePickupEvent) o).amount; f.setRaw = (o, i, raw) -> ((BenchTable.TablePickupEvent) o).amount = (int) raw;
-        fields[1] = f;
-        info.fields = fields;
-        info.reset = (o) -> BenchTableTable.TableReset((BenchTable.TablePickupEvent) o);
-        TablePickupEventTableInfo = info;
-        return info;
+    // TableHitEvent's reflection descriptor (docs/SPEC-TABLES.md §8), built once and
+    // published by class initialization — see the holder note in the emitter.
+    private static final class TableHitEventTableTypeHolder {
+        static final TableTypeInfo INFO = build();
+
+        private static TableTypeInfo build() {
+            TableTypeInfo info = new TableTypeInfo();
+            info.name = "TableHitEvent";
+            info.numFields = 4;
+            TableFieldInfo[] fields = new TableFieldInfo[4];
+            TableFieldInfo f;
+            f = new TableFieldInfo();
+            f.name = "target_id"; f.json = "target_id"; f.typeName = "bits(12)"; f.id = 0xdf6a; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 4095.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTable.TableHitEvent) o).targetId & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTable.TableHitEvent) o).targetId = (int) raw;
+            fields[0] = f;
+            f = new TableFieldInfo();
+            f.name = "damage"; f.json = "damage"; f.typeName = "int32"; f.id = 0x15a9; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 4095.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> (long) ((BenchTable.TableHitEvent) o).damage; f.setRaw = (o, i, raw) -> ((BenchTable.TableHitEvent) o).damage = (int) raw;
+            fields[1] = f;
+            f = new TableFieldInfo();
+            f.name = "hit_kind"; f.json = "hit_kind"; f.typeName = "int32"; f.id = 0xaf83; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 7.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> (long) ((BenchTable.TableHitEvent) o).hitKind; f.setRaw = (o, i, raw) -> ((BenchTable.TableHitEvent) o).hitKind = (int) raw;
+            fields[2] = f;
+            f = new TableFieldInfo();
+            f.name = "crit"; f.json = "crit"; f.typeName = "bool"; f.id = 0x93d9; f.kind = 1; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 1;
+            f.hasRange = false; f.rangeMin = 0.0; f.rangeMax = 0.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTable.TableHitEvent) o).crit ? 1L : 0L; f.setRaw = (o, i, raw) -> ((BenchTable.TableHitEvent) o).crit = raw != 0;
+            fields[3] = f;
+            info.fields = fields;
+            info.reset = (o) -> BenchTableTable.tableHitEventReset((BenchTable.TableHitEvent) o);
+            return info;
+        }
     }
+
+    public static TableTypeInfo tableHitEventTableType() { return TableHitEventTableTypeHolder.INFO; }
+
+    // TableChatEvent's reflection descriptor (docs/SPEC-TABLES.md §8), built once and
+    // published by class initialization — see the holder note in the emitter.
+    private static final class TableChatEventTableTypeHolder {
+        static final TableTypeInfo INFO = build();
+
+        private static TableTypeInfo build() {
+            TableTypeInfo info = new TableTypeInfo();
+            info.name = "TableChatEvent";
+            info.numFields = 2;
+            TableFieldInfo[] fields = new TableFieldInfo[2];
+            TableFieldInfo f;
+            f = new TableFieldInfo();
+            f.name = "channel"; f.json = "channel"; f.typeName = "int32"; f.id = 0x7366; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 3.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> (long) ((BenchTable.TableChatEvent) o).channel; f.setRaw = (o, i, raw) -> ((BenchTable.TableChatEvent) o).channel = (int) raw;
+            fields[0] = f;
+            f = new TableFieldInfo();
+            f.name = "speaker"; f.json = "speaker"; f.typeName = "bits(12)"; f.id = 0xce0b; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 4095.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTable.TableChatEvent) o).speaker & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTable.TableChatEvent) o).speaker = (int) raw;
+            fields[1] = f;
+            info.fields = fields;
+            info.reset = (o) -> BenchTableTable.tableChatEventReset((BenchTable.TableChatEvent) o);
+            return info;
+        }
+    }
+
+    public static TableTypeInfo tableChatEventTableType() { return TableChatEventTableTypeHolder.INFO; }
+
+    // TablePickupEvent's reflection descriptor (docs/SPEC-TABLES.md §8), built once and
+    // published by class initialization — see the holder note in the emitter.
+    private static final class TablePickupEventTableTypeHolder {
+        static final TableTypeInfo INFO = build();
+
+        private static TableTypeInfo build() {
+            TableTypeInfo info = new TableTypeInfo();
+            info.name = "TablePickupEvent";
+            info.numFields = 2;
+            TableFieldInfo[] fields = new TableFieldInfo[2];
+            TableFieldInfo f;
+            f = new TableFieldInfo();
+            f.name = "item_id"; f.json = "item_id"; f.typeName = "bits(10)"; f.id = 0xec67; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 1023.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> ((BenchTable.TablePickupEvent) o).itemId & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTable.TablePickupEvent) o).itemId = (int) raw;
+            fields[0] = f;
+            f = new TableFieldInfo();
+            f.name = "amount"; f.json = "amount"; f.typeName = "int32"; f.id = 0x39cc; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
+            f.hasRange = true; f.rangeMin = 0.0; f.rangeMax = 255.0; f.enumMax = -1L; f.guard = "";
+            f.enumName = null; f.variantId = null;
+            f.keyTypeName = null; f.keyName = null; f.keyId = null;
+            f.tableRef = null;
+            f.getRaw = (o, i) -> (long) ((BenchTable.TablePickupEvent) o).amount; f.setRaw = (o, i, raw) -> ((BenchTable.TablePickupEvent) o).amount = (int) raw;
+            fields[1] = f;
+            info.fields = fields;
+            info.reset = (o) -> BenchTableTable.tablePickupEventReset((BenchTable.TablePickupEvent) o);
+            return info;
+        }
+    }
+
+    public static TableTypeInfo tablePickupEventTableType() { return TablePickupEventTableTypeHolder.INFO; }
 
     // ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----
 
     // TableEntity in and out of a JSON text — one instance, one text, the generic
     // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
-    public static boolean TableEntityFromJson(BenchTableTable.TableEntity value, byte[] text, TableReport report) {
-        return TableEntityFromJson(value, text, 0, text.length, report);
+    public static boolean tableEntityFromJson(BenchTableTable.TableEntity value, byte[] text, TableReport report) {
+        return tableEntityFromJson(value, text, 0, text.length, report);
     }
 
-    public static boolean TableEntityFromJson(BenchTableTable.TableEntity value, byte[] text, int offset, int length, TableReport report) {
-        return TableJson.read(value, TableEntityTableType(), text, offset, length, report);
+    public static boolean tableEntityFromJson(BenchTableTable.TableEntity value, byte[] text, int offset, int length, TableReport report) {
+        return TableJson.read(value, tableEntityTableType(), text, offset, length, report);
     }
 
-    public static long TableEntityToJsonMeasure(BenchTableTable.TableEntity value) {
-        return TableJson.write(value, TableEntityTableType(), null, 0, 0, true);
+    public static long tableEntityToJsonMeasure(BenchTableTable.TableEntity value) {
+        return TableJson.write(value, tableEntityTableType(), null, 0, 0, true);
     }
 
-    public static long TableEntityToJson(BenchTableTable.TableEntity value, byte[] buffer) {
-        return TableEntityToJson(value, buffer, 0, buffer.length);
+    public static long tableEntityToJson(BenchTableTable.TableEntity value, byte[] buffer) {
+        return tableEntityToJson(value, buffer, 0, buffer.length);
     }
 
-    public static long TableEntityToJson(BenchTableTable.TableEntity value, byte[] buffer, int offset, int length) {
-        return TableJson.write(value, TableEntityTableType(), buffer, offset, length, false);
+    public static long tableEntityToJson(BenchTableTable.TableEntity value, byte[] buffer, int offset, int length) {
+        return TableJson.write(value, tableEntityTableType(), buffer, offset, length, false);
     }
 
     // TableStat in and out of a JSON text — one instance, one text, the generic
     // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
-    public static boolean TableStatFromJson(BenchTableTable.TableStat value, byte[] text, TableReport report) {
-        return TableStatFromJson(value, text, 0, text.length, report);
+    public static boolean tableStatFromJson(BenchTableTable.TableStat value, byte[] text, TableReport report) {
+        return tableStatFromJson(value, text, 0, text.length, report);
     }
 
-    public static boolean TableStatFromJson(BenchTableTable.TableStat value, byte[] text, int offset, int length, TableReport report) {
-        return TableJson.read(value, TableStatTableType(), text, offset, length, report);
+    public static boolean tableStatFromJson(BenchTableTable.TableStat value, byte[] text, int offset, int length, TableReport report) {
+        return TableJson.read(value, tableStatTableType(), text, offset, length, report);
     }
 
-    public static long TableStatToJsonMeasure(BenchTableTable.TableStat value) {
-        return TableJson.write(value, TableStatTableType(), null, 0, 0, true);
+    public static long tableStatToJsonMeasure(BenchTableTable.TableStat value) {
+        return TableJson.write(value, tableStatTableType(), null, 0, 0, true);
     }
 
-    public static long TableStatToJson(BenchTableTable.TableStat value, byte[] buffer) {
-        return TableStatToJson(value, buffer, 0, buffer.length);
+    public static long tableStatToJson(BenchTableTable.TableStat value, byte[] buffer) {
+        return tableStatToJson(value, buffer, 0, buffer.length);
     }
 
-    public static long TableStatToJson(BenchTableTable.TableStat value, byte[] buffer, int offset, int length) {
-        return TableJson.write(value, TableStatTableType(), buffer, offset, length, false);
+    public static long tableStatToJson(BenchTableTable.TableStat value, byte[] buffer, int offset, int length) {
+        return TableJson.write(value, tableStatTableType(), buffer, offset, length, false);
     }
 
     // TableMixed in and out of a JSON text — one instance, one text, the generic
     // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
-    public static boolean TableMixedFromJson(BenchTableTable.TableMixed value, byte[] text, TableReport report) {
-        return TableMixedFromJson(value, text, 0, text.length, report);
+    public static boolean tableMixedFromJson(BenchTableTable.TableMixed value, byte[] text, TableReport report) {
+        return tableMixedFromJson(value, text, 0, text.length, report);
     }
 
-    public static boolean TableMixedFromJson(BenchTableTable.TableMixed value, byte[] text, int offset, int length, TableReport report) {
-        return TableJson.read(value, TableMixedTableType(), text, offset, length, report);
+    public static boolean tableMixedFromJson(BenchTableTable.TableMixed value, byte[] text, int offset, int length, TableReport report) {
+        return TableJson.read(value, tableMixedTableType(), text, offset, length, report);
     }
 
-    public static long TableMixedToJsonMeasure(BenchTableTable.TableMixed value) {
-        return TableJson.write(value, TableMixedTableType(), null, 0, 0, true);
+    public static long tableMixedToJsonMeasure(BenchTableTable.TableMixed value) {
+        return TableJson.write(value, tableMixedTableType(), null, 0, 0, true);
     }
 
-    public static long TableMixedToJson(BenchTableTable.TableMixed value, byte[] buffer) {
-        return TableMixedToJson(value, buffer, 0, buffer.length);
+    public static long tableMixedToJson(BenchTableTable.TableMixed value, byte[] buffer) {
+        return tableMixedToJson(value, buffer, 0, buffer.length);
     }
 
-    public static long TableMixedToJson(BenchTableTable.TableMixed value, byte[] buffer, int offset, int length) {
-        return TableJson.write(value, TableMixedTableType(), buffer, offset, length, false);
+    public static long tableMixedToJson(BenchTableTable.TableMixed value, byte[] buffer, int offset, int length) {
+        return TableJson.write(value, tableMixedTableType(), buffer, offset, length, false);
     }
 
     // TableHitEvent in and out of a JSON text — one instance, one text, the generic
     // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
-    public static boolean TableHitEventFromJson(BenchTable.TableHitEvent value, byte[] text, TableReport report) {
-        return TableHitEventFromJson(value, text, 0, text.length, report);
+    public static boolean tableHitEventFromJson(BenchTable.TableHitEvent value, byte[] text, TableReport report) {
+        return tableHitEventFromJson(value, text, 0, text.length, report);
     }
 
-    public static boolean TableHitEventFromJson(BenchTable.TableHitEvent value, byte[] text, int offset, int length, TableReport report) {
-        return TableJson.read(value, TableHitEventTableType(), text, offset, length, report);
+    public static boolean tableHitEventFromJson(BenchTable.TableHitEvent value, byte[] text, int offset, int length, TableReport report) {
+        return TableJson.read(value, tableHitEventTableType(), text, offset, length, report);
     }
 
-    public static long TableHitEventToJsonMeasure(BenchTable.TableHitEvent value) {
-        return TableJson.write(value, TableHitEventTableType(), null, 0, 0, true);
+    public static long tableHitEventToJsonMeasure(BenchTable.TableHitEvent value) {
+        return TableJson.write(value, tableHitEventTableType(), null, 0, 0, true);
     }
 
-    public static long TableHitEventToJson(BenchTable.TableHitEvent value, byte[] buffer) {
-        return TableHitEventToJson(value, buffer, 0, buffer.length);
+    public static long tableHitEventToJson(BenchTable.TableHitEvent value, byte[] buffer) {
+        return tableHitEventToJson(value, buffer, 0, buffer.length);
     }
 
-    public static long TableHitEventToJson(BenchTable.TableHitEvent value, byte[] buffer, int offset, int length) {
-        return TableJson.write(value, TableHitEventTableType(), buffer, offset, length, false);
+    public static long tableHitEventToJson(BenchTable.TableHitEvent value, byte[] buffer, int offset, int length) {
+        return TableJson.write(value, tableHitEventTableType(), buffer, offset, length, false);
     }
 
     // TableChatEvent in and out of a JSON text — one instance, one text, the generic
     // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
-    public static boolean TableChatEventFromJson(BenchTable.TableChatEvent value, byte[] text, TableReport report) {
-        return TableChatEventFromJson(value, text, 0, text.length, report);
+    public static boolean tableChatEventFromJson(BenchTable.TableChatEvent value, byte[] text, TableReport report) {
+        return tableChatEventFromJson(value, text, 0, text.length, report);
     }
 
-    public static boolean TableChatEventFromJson(BenchTable.TableChatEvent value, byte[] text, int offset, int length, TableReport report) {
-        return TableJson.read(value, TableChatEventTableType(), text, offset, length, report);
+    public static boolean tableChatEventFromJson(BenchTable.TableChatEvent value, byte[] text, int offset, int length, TableReport report) {
+        return TableJson.read(value, tableChatEventTableType(), text, offset, length, report);
     }
 
-    public static long TableChatEventToJsonMeasure(BenchTable.TableChatEvent value) {
-        return TableJson.write(value, TableChatEventTableType(), null, 0, 0, true);
+    public static long tableChatEventToJsonMeasure(BenchTable.TableChatEvent value) {
+        return TableJson.write(value, tableChatEventTableType(), null, 0, 0, true);
     }
 
-    public static long TableChatEventToJson(BenchTable.TableChatEvent value, byte[] buffer) {
-        return TableChatEventToJson(value, buffer, 0, buffer.length);
+    public static long tableChatEventToJson(BenchTable.TableChatEvent value, byte[] buffer) {
+        return tableChatEventToJson(value, buffer, 0, buffer.length);
     }
 
-    public static long TableChatEventToJson(BenchTable.TableChatEvent value, byte[] buffer, int offset, int length) {
-        return TableJson.write(value, TableChatEventTableType(), buffer, offset, length, false);
+    public static long tableChatEventToJson(BenchTable.TableChatEvent value, byte[] buffer, int offset, int length) {
+        return TableJson.write(value, tableChatEventTableType(), buffer, offset, length, false);
     }
 
     // TablePickupEvent in and out of a JSON text — one instance, one text, the generic
     // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
-    public static boolean TablePickupEventFromJson(BenchTable.TablePickupEvent value, byte[] text, TableReport report) {
-        return TablePickupEventFromJson(value, text, 0, text.length, report);
+    public static boolean tablePickupEventFromJson(BenchTable.TablePickupEvent value, byte[] text, TableReport report) {
+        return tablePickupEventFromJson(value, text, 0, text.length, report);
     }
 
-    public static boolean TablePickupEventFromJson(BenchTable.TablePickupEvent value, byte[] text, int offset, int length, TableReport report) {
-        return TableJson.read(value, TablePickupEventTableType(), text, offset, length, report);
+    public static boolean tablePickupEventFromJson(BenchTable.TablePickupEvent value, byte[] text, int offset, int length, TableReport report) {
+        return TableJson.read(value, tablePickupEventTableType(), text, offset, length, report);
     }
 
-    public static long TablePickupEventToJsonMeasure(BenchTable.TablePickupEvent value) {
-        return TableJson.write(value, TablePickupEventTableType(), null, 0, 0, true);
+    public static long tablePickupEventToJsonMeasure(BenchTable.TablePickupEvent value) {
+        return TableJson.write(value, tablePickupEventTableType(), null, 0, 0, true);
     }
 
-    public static long TablePickupEventToJson(BenchTable.TablePickupEvent value, byte[] buffer) {
-        return TablePickupEventToJson(value, buffer, 0, buffer.length);
+    public static long tablePickupEventToJson(BenchTable.TablePickupEvent value, byte[] buffer) {
+        return tablePickupEventToJson(value, buffer, 0, buffer.length);
     }
 
-    public static long TablePickupEventToJson(BenchTable.TablePickupEvent value, byte[] buffer, int offset, int length) {
-        return TableJson.write(value, TablePickupEventTableType(), buffer, offset, length, false);
+    public static long tablePickupEventToJson(BenchTable.TablePickupEvent value, byte[] buffer, int offset, int length) {
+        return TableJson.write(value, tablePickupEventTableType(), buffer, offset, length, false);
     }
 
 }

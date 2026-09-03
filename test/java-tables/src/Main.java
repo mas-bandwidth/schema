@@ -112,68 +112,68 @@ public final class Main {
         tabledemo.TablesTable.RootConfig root = new tabledemo.TablesTable.RootConfig();
         out.add(instance("root_full", root,
                 b -> { reader.reset(b, 0, b.length, report.clear());
-                       return tabledemo.TablesTable.RootConfigLoadBody(reader, root); },
-                () -> tabledemo.TablesTable.RootConfigMeasure(root),
+                       return tabledemo.TablesTable.rootConfigLoadBody(reader, root); },
+                () -> tabledemo.TablesTable.rootConfigMeasure(root),
                 buf -> { writer.reset(buf, 0, buf.length);
-                         return tabledemo.TablesTable.RootConfigSaveBody(writer, root) ? writer.offset : -1; },
-                () -> tabledemo.TablesTable.RootConfigToJsonMeasure(root),
-                buf -> tabledemo.TablesTable.RootConfigToJson(root, buf),
-                t -> tabledemo.TablesTable.RootConfigFromJson(root, t, report.clear())));
+                         return tabledemo.TablesTable.rootConfigSaveBody(writer, root) ? writer.offset : -1; },
+                () -> tabledemo.TablesTable.rootConfigToJsonMeasure(root),
+                buf -> tabledemo.TablesTable.rootConfigToJson(root, buf),
+                t -> tabledemo.TablesTable.rootConfigFromJson(root, t, report.clear())));
 
         tabledemo.TablesTable.LoadoutConfig loadout = new tabledemo.TablesTable.LoadoutConfig();
         out.add(instance("loadout_full", loadout,
                 b -> { reader.reset(b, 0, b.length, report.clear());
-                       return tabledemo.TablesTable.LoadoutConfigLoadBody(reader, loadout); },
-                () -> tabledemo.TablesTable.LoadoutConfigMeasure(loadout),
+                       return tabledemo.TablesTable.loadoutConfigLoadBody(reader, loadout); },
+                () -> tabledemo.TablesTable.loadoutConfigMeasure(loadout),
                 buf -> { writer.reset(buf, 0, buf.length);
-                         return tabledemo.TablesTable.LoadoutConfigSaveBody(writer, loadout) ? writer.offset : -1; },
-                () -> tabledemo.TablesTable.LoadoutConfigToJsonMeasure(loadout),
-                buf -> tabledemo.TablesTable.LoadoutConfigToJson(loadout, buf),
-                t -> tabledemo.TablesTable.LoadoutConfigFromJson(loadout, t, report.clear())));
+                         return tabledemo.TablesTable.loadoutConfigSaveBody(writer, loadout) ? writer.offset : -1; },
+                () -> tabledemo.TablesTable.loadoutConfigToJsonMeasure(loadout),
+                buf -> tabledemo.TablesTable.loadoutConfigToJson(loadout, buf),
+                t -> tabledemo.TablesTable.loadoutConfigFromJson(loadout, t, report.clear())));
 
         tabledemo.TablesTable.ProfileConfig profile = new tabledemo.TablesTable.ProfileConfig();
         out.add(instance("profile_elide", profile,
                 b -> { reader.reset(b, 0, b.length, report.clear());
-                       return tabledemo.TablesTable.ProfileConfigLoadBody(reader, profile); },
-                () -> tabledemo.TablesTable.ProfileConfigMeasure(profile),
+                       return tabledemo.TablesTable.profileConfigLoadBody(reader, profile); },
+                () -> tabledemo.TablesTable.profileConfigMeasure(profile),
                 buf -> { writer.reset(buf, 0, buf.length);
-                         return tabledemo.TablesTable.ProfileConfigSaveBody(writer, profile) ? writer.offset : -1; },
-                () -> tabledemo.TablesTable.ProfileConfigToJsonMeasure(profile),
-                buf -> tabledemo.TablesTable.ProfileConfigToJson(profile, buf),
-                t -> tabledemo.TablesTable.ProfileConfigFromJson(profile, t, report.clear())));
+                         return tabledemo.TablesTable.profileConfigSaveBody(writer, profile) ? writer.offset : -1; },
+                () -> tabledemo.TablesTable.profileConfigToJsonMeasure(profile),
+                buf -> tabledemo.TablesTable.profileConfigToJson(profile, buf),
+                t -> tabledemo.TablesTable.profileConfigFromJson(profile, t, report.clear())));
 
         tabledemo.KeyedTable.KeyedConfig keyed = new tabledemo.KeyedTable.KeyedConfig();
         out.add(instance("keyed_config", keyed,
                 b -> { reader.reset(b, 0, b.length, report.clear());
-                       return tabledemo.KeyedTable.KeyedConfigLoadBody(reader, keyed); },
-                () -> tabledemo.KeyedTable.KeyedConfigMeasure(keyed),
+                       return tabledemo.KeyedTable.keyedConfigLoadBody(reader, keyed); },
+                () -> tabledemo.KeyedTable.keyedConfigMeasure(keyed),
                 buf -> { writer.reset(buf, 0, buf.length);
-                         return tabledemo.KeyedTable.KeyedConfigSaveBody(writer, keyed) ? writer.offset : -1; },
-                () -> tabledemo.KeyedTable.KeyedConfigToJsonMeasure(keyed),
-                buf -> tabledemo.KeyedTable.KeyedConfigToJson(keyed, buf),
-                t -> tabledemo.KeyedTable.KeyedConfigFromJson(keyed, t, report.clear())));
+                         return tabledemo.KeyedTable.keyedConfigSaveBody(writer, keyed) ? writer.offset : -1; },
+                () -> tabledemo.KeyedTable.keyedConfigToJsonMeasure(keyed),
+                buf -> tabledemo.KeyedTable.keyedConfigToJson(keyed, buf),
+                t -> tabledemo.KeyedTable.keyedConfigFromJson(keyed, t, report.clear())));
 
         tabledemo.NestedTable.ArchiveConfig archive = new tabledemo.NestedTable.ArchiveConfig();
         out.add(instance("archive", archive,
                 b -> { reader.reset(b, 0, b.length, report.clear());
-                       return tabledemo.NestedTable.ArchiveConfigLoadBody(reader, archive); },
-                () -> tabledemo.NestedTable.ArchiveConfigMeasure(archive),
+                       return tabledemo.NestedTable.archiveConfigLoadBody(reader, archive); },
+                () -> tabledemo.NestedTable.archiveConfigMeasure(archive),
                 buf -> { writer.reset(buf, 0, buf.length);
-                         return tabledemo.NestedTable.ArchiveConfigSaveBody(writer, archive) ? writer.offset : -1; },
-                () -> tabledemo.NestedTable.ArchiveConfigToJsonMeasure(archive),
-                buf -> tabledemo.NestedTable.ArchiveConfigToJson(archive, buf),
-                t -> tabledemo.NestedTable.ArchiveConfigFromJson(archive, t, report.clear())));
+                         return tabledemo.NestedTable.archiveConfigSaveBody(writer, archive) ? writer.offset : -1; },
+                () -> tabledemo.NestedTable.archiveConfigToJsonMeasure(archive),
+                buf -> tabledemo.NestedTable.archiveConfigToJson(archive, buf),
+                t -> tabledemo.NestedTable.archiveConfigFromJson(archive, t, report.clear())));
 
         tabledemo.WideTable.WideBlob wide = new tabledemo.WideTable.WideBlob();
         out.add(instance("wide_blob", wide,
                 b -> { reader.reset(b, 0, b.length, report.clear());
-                       return tabledemo.WideTable.WideBlobLoadBody(reader, wide); },
-                () -> tabledemo.WideTable.WideBlobMeasure(wide),
+                       return tabledemo.WideTable.wideBlobLoadBody(reader, wide); },
+                () -> tabledemo.WideTable.wideBlobMeasure(wide),
                 buf -> { writer.reset(buf, 0, buf.length);
-                         return tabledemo.WideTable.WideBlobSaveBody(writer, wide) ? writer.offset : -1; },
-                () -> tabledemo.WideTable.WideBlobToJsonMeasure(wide),
-                buf -> tabledemo.WideTable.WideBlobToJson(wide, buf),
-                t -> tabledemo.WideTable.WideBlobFromJson(wide, t, report.clear())));
+                         return tabledemo.WideTable.wideBlobSaveBody(writer, wide) ? writer.offset : -1; },
+                () -> tabledemo.WideTable.wideBlobToJsonMeasure(wide),
+                buf -> tabledemo.WideTable.wideBlobToJson(wide, buf),
+                t -> tabledemo.WideTable.wideBlobFromJson(wide, t, report.clear())));
 
         for (Instance i : out) {
             i.wire = Files.readAllBytes(Path.of(wireDir, i.name + ".bin"));
@@ -275,6 +275,16 @@ public final class Main {
             "the value, the buffer and the WRITER are the caller's");
     private static final Floor BLOCK_READ = new Floor("block row walk", 0, true,
             "a row is an offset into the caller's array and a field is one read at one offset");
+    // THE TYPED FAST PATH — the generated accessor §19.2 calls "what a per-frame
+    // job uses", which the descriptor walk above never touches. It was measured
+    // at zero through the wrong path once; it is measured through its own now.
+    private static final Floor BLOCK_TYPED = new Floor("block typed path", 0, true,
+            "<field>Count() and <field>At(i) read the triple out of the instance and answer an int");
+    // and the CONVENIENCE beside it, which carries the three numbers together in
+    // a record and costs one per call. Stated rather than hidden: a call site
+    // that wants zero uses the pair above.
+    private static final Floor BLOCK_ROWS = new Floor("block rows()", 64, false,
+            "one TableBlockRows record per call — the convenience, not the fast path");
     private static final Floor COOK_READ = new Floor("cook read", 0, true,
             "the same, plus `at`, which answers an offset and never a wrapper");
     private static final Floor BLOCK_OPEN = new Floor("block open", 64, false,
@@ -358,6 +368,28 @@ public final class Main {
         return allocated(bean) - before;
     }
 
+    // the TYPED accessors, exactly as USAGE and §19.2 spell them at a call site
+    private static long allocBlockTyped(com.sun.management.ThreadMXBean bean,
+                                        blockdemo.RenderFrameBlock handle, int passes) {
+        long before = allocated(bean);
+        for (int pass = 0; pass < passes; pass++) {
+            int rows = handle.shipsCount();
+            for (int i = 0; i < rows; i++) {
+                sink += blockdemo.RenderShipRow.objectId(handle.data(), handle.shipsAt(i));
+            }
+        }
+        return allocated(bean) - before;
+    }
+
+    private static long allocBlockRows(com.sun.management.ThreadMXBean bean,
+                                       blockdemo.RenderFrameBlock handle, int passes) {
+        long before = allocated(bean);
+        for (int pass = 0; pass < passes; pass++) {
+            escape = handle.ships();
+        }
+        return allocated(bean) - before;
+    }
+
     private static long allocBlockRead(com.sun.management.ThreadMXBean bean,
                                        blockdemo.RenderFrameBlock handle, int passes) {
         blockdemo.TableBlockInfo type = blockdemo.RenderFrameBlock.type();
@@ -387,8 +419,8 @@ public final class Main {
         for (int pass = 0; pass < passes; pass++) {
             readCook(cook.data(), cook.region(), cook.regionLength(), cook.root(), type, 0, null);
             for (graphdemo.TableCookFieldInfo f : type.fields) {
-                if (f.isPointer) {
-                    sink += cook.at(cook.root() + f.offset);
+                if (f.isPointer && f.record() != null) {
+                    sink += cook.at(cook.root() + f.offset, f.record().size);
                 }
             }
         }
@@ -396,6 +428,24 @@ public final class Main {
     }
 
     private static long sink;
+
+    /** what a measured path costs over its window. */
+    private interface Window { long bytes(); }
+
+    // EVERY PATH IS MEASURED TWICE AND THE SECOND IS REPORTED, which is the
+    // bench's own "one warmup run, then the measured ones" applied to
+    // allocation rather than to time — and it earns its place: the typed
+    // accessor loop is a tight int loop C2 compiles LATE, and at a small window
+    // the compilation lands inside the first measured span and reads as a fixed
+    // ~576 bytes. It is a one-off and not a per-record cost (576 over 2500
+    // records is 0.23 bytes; the smallest object Java can allocate is sixteen),
+    // and measuring past it is how the number becomes the loop's own rather
+    // than the compiler's. A path that really allocated per record allocates in
+    // the second window too.
+    private static long twice(Window w) {
+        w.bytes();
+        return w.bytes();
+    }
 
     // one measured row: the total over `records`, the per-record number, and the
     // verdict against the floor.
@@ -446,15 +496,21 @@ public final class Main {
                 corpus[n].jsonRead.of(corpus[n].text);
             }
         }
-        blockdemo.RenderFrameBlock blockHandle = null;
-        graphdemo.SceneCook cookHandle = null;
+        blockdemo.RenderFrameBlock warmBlock = null;
+        graphdemo.SceneCook warmCook = null;
         for (int pass = 0; pass < 2 * formPasses; pass++) {
-            blockHandle = blockdemo.RenderFrameBlock.open(block, 0, block.length);
-            cookHandle = graphdemo.SceneCook.open(cook, 0, cook.length);
-            readBlock(blockHandle.data(), blockHandle.base(), blockdemo.RenderFrameBlock.type());
-            readCook(cookHandle.data(), cookHandle.region(), cookHandle.regionLength(),
-                    cookHandle.root(), graphdemo.SceneCook.type(), 0, null);
+            warmBlock = blockdemo.RenderFrameBlock.open(block, 0, block.length);
+            warmCook = graphdemo.SceneCook.open(cook, 0, cook.length);
+            readBlock(warmBlock.data(), warmBlock.base(), blockdemo.RenderFrameBlock.type());
+            readCook(warmCook.data(), warmCook.region(), warmCook.regionLength(),
+                    warmCook.root(), graphdemo.SceneCook.type(), 0, null);
         }
+        if (warmBlock == null || warmCook == null) {
+            fail("the fixtures do not open");
+            return false;
+        }
+        final blockdemo.RenderFrameBlock blockHandle = warmBlock;
+        final graphdemo.SceneCook cookHandle = warmCook;
         if (blockHandle == null || cookHandle == null) {
             fail("the fixtures do not open");
             return false;
@@ -462,15 +518,17 @@ public final class Main {
 
         describe("the measured allocation window");
         boolean ok = true;
-        ok &= check(WIRE_READ, allocWireRead(bean, corpus, wirePasses), (long) wirePasses * corpus.length);
-        ok &= check(WIRE_SAVE, allocWireSave(bean, corpus, wirePasses), (long) wirePasses * corpus.length);
-        ok &= check(BLOCK_OPEN, allocBlockOpen(bean, block, wirePasses), wirePasses);
-        ok &= check(BLOCK_READ, allocBlockRead(bean, blockHandle, formPasses), formPasses);
-        ok &= check(COOK_OPEN, allocCookOpen(bean, cook, wirePasses), wirePasses);
-        ok &= check(COOK_READ, allocCookRead(bean, cookHandle, formPasses), formPasses);
+        ok &= check(WIRE_READ, twice(() -> allocWireRead(bean, corpus, wirePasses)), (long) wirePasses * corpus.length);
+        ok &= check(WIRE_SAVE, twice(() -> allocWireSave(bean, corpus, wirePasses)), (long) wirePasses * corpus.length);
+        ok &= check(BLOCK_OPEN, twice(() -> allocBlockOpen(bean, block, wirePasses)), wirePasses);
+        ok &= check(BLOCK_READ, twice(() -> allocBlockRead(bean, blockHandle, formPasses)), formPasses);
+        ok &= check(BLOCK_TYPED, twice(() -> allocBlockTyped(bean, blockHandle, wirePasses)), wirePasses);
+        ok &= check(BLOCK_ROWS, twice(() -> allocBlockRows(bean, blockHandle, wirePasses)), wirePasses);
+        ok &= check(COOK_OPEN, twice(() -> allocCookOpen(bean, cook, wirePasses)), wirePasses);
+        ok &= check(COOK_READ, twice(() -> allocCookRead(bean, cookHandle, formPasses)), formPasses);
         ok &= check(JSON_WRITE, allocJsonWrite(bean, corpus, jsonScratch, formPasses),
                 (long) formPasses * corpus.length);
-        ok &= check(JSON_READ, allocJsonRead(bean, corpus, formPasses), (long) formPasses * corpus.length);
+        ok &= check(JSON_READ, twice(() -> allocJsonRead(bean, corpus, formPasses)), (long) formPasses * corpus.length);
         return ok;
     }
 
@@ -483,10 +541,6 @@ public final class Main {
         if (bean == null) {
             System.out.println("SKIP: this JVM exposes no per-thread allocation counter");
             return 0;
-        }
-        sabotage = System.getenv("SCHEMA_ALLOC_SABOTAGE") != null;
-        if (sabotage) {
-            System.out.println("SABOTAGED: one extra allocation per record on the wire read path");
         }
         int scale = 100;
         String env = System.getenv("SCHEMA_ALLOC_SCALE");
@@ -632,13 +686,19 @@ public final class Main {
             if (!f.isPointer) {
                 continue;
             }
-            int target = cook.at(at + f.offset);
-            if (target < 0 || f.record() == null) {
-                continue; // null, or a delta the reader refused — both are answers
+            if (f.record() == null) {
+                continue;
             }
-            long offset = target - cook.region();
-            if (offset + f.record().size > cook.regionLength()) {
-                continue; // the record does not fit: a walker's own bound (§7.4)
+            // THE WALKER CARRIES NO BOUND OF ITS OWN, and that is the whole point
+            // of this loop: an oracle that re-checked what the reader is supposed
+            // to check would certify a reader that checks nothing. `at` refuses a
+            // delta whose whole record does not lie inside the region, so a -1 is
+            // the reader's answer and anything else is an offset the reader has
+            // vouched for — and if it has not, the read below throws and the
+            // oracle says so.
+            int target = cook.at(at + f.offset, f.record().size);
+            if (target < 0) {
+                continue; // null, or a delta the reader refused — both are answers
             }
             walkCook(cook, target, f.record(), depth + 1, seen);
         }
@@ -696,6 +756,81 @@ public final class Main {
         }
         System.out.println("OK");
         return 0;
+    }
+
+    // ---- the REFERENCE EXTENT gate (§6.3, §7.4)
+    //
+    // The forged delta the blind read of #356 found, kept as a gate. §7.1 blesses
+    // a cook that carries data alone (attribution_length 0 — "a build that ships
+    // no tooling need not carry it at all"), so the region ends at the array's
+    // end and there are no directory bytes to absorb an overrun. Forge a root
+    // pointer's delta so the target STARTS inside the region and its RECORD does
+    // not fit, and the reader must refuse.
+    //
+    // Bounding the start alone passes this and then throws one call later, on the
+    // first field read past the end — which is why the bound is over the whole
+    // record and why this gate exists.
+    private static int modeExtent(String cookFile) throws IOException {
+        byte[] file = Files.readAllBytes(Paths.get(cookFile));
+        long alignment = graphdemo.TableBytes.i64(file, 40);
+        long dataLength = graphdemo.TableBytes.i64(file, 24);
+        long dataOffset = (64 + alignment - 1) & ~(alignment - 1);
+
+        // the same file with the attribution part stripped, which §7.1 allows
+        byte[] bare = java.util.Arrays.copyOf(file, (int) (dataOffset + dataLength));
+        for (int i = 0; i < 8; i++) { bare[32 + i] = 0; }
+        describe("opening a cook that carries data alone");
+        graphdemo.SceneCook cook = graphdemo.SceneCook.open(bare, 0, bare.length);
+        if (cook == null) {
+            fail("a cook carrying no attribution part did not open — §7.1 blesses one");
+        }
+
+        // the first pointer field of the root, through the descriptors
+        graphdemo.TableCookFieldInfo edge = null;
+        for (graphdemo.TableCookFieldInfo f : graphdemo.SceneCook.type().fields) {
+            if (f.isPointer && f.record() != null) { edge = f; break; }
+        }
+        if (edge == null) {
+            fail("the root names no pointer, so there is nothing to forge");
+            return 1;
+        }
+        int slot = cook.root() + edge.offset;
+        int size = edge.record().size;
+        int regionEnd = cook.region() + (int) cook.regionLength();
+
+        // the CONTROL first: a delta whose record fits is still resolved, so a
+        // gate that refused everything could not pass this
+        describe("a delta whose record fits");
+        int good = regionEnd - size;
+        writeDelta(bare, slot, good - slot);
+        if (cook.at(slot, size) != good) {
+            fail("a reference whose record ends exactly at the region's end was refused");
+        }
+
+        // and the forgery: one byte further, so the record overruns by one
+        describe("a delta whose record overruns the region by one byte");
+        writeDelta(bare, slot, (good + 1) - slot);
+        int answer = cook.at(slot, size);
+        if (answer != -1) {
+            fail("at answered " + answer + " for a target whose record ends at " +
+                 (answer + size) + ", past the region's " + regionEnd +
+                 " — the bound is on the START and not on the RECORD");
+        }
+        // every byte from there to the end, so the gate is not one lucky offset
+        for (int start = good + 1; start < regionEnd; start++) {
+            writeDelta(bare, slot, start - slot);
+            if (cook.at(slot, size) != -1) {
+                fail("at accepted a target starting at " + start + ", whose record needs " +
+                     size + " bytes and the region ends at " + regionEnd);
+            }
+        }
+        System.out.println("extent: at refuses every delta whose record leaves the region, and resolves the one that fits");
+        System.out.println("OK");
+        return 0;
+    }
+
+    private static void writeDelta(byte[] data, int slot, long delta) {
+        for (int i = 0; i < 8; i++) { data[slot + i] = (byte) (delta >>> (8 * i)); }
     }
 
     // ---- the byte-order leg
@@ -861,9 +996,19 @@ public final class Main {
     public static void main(String[] args) throws IOException {
         if (args.length < 1) {
             System.err.println("usage: Main fuzz <block> <cook> | alloc <wiredir> <block> <cook> | " +
-                    "soak <seconds> <wiredir> <block> <cook> | order <le> <be>");
+                    "soak <seconds> <wiredir> <block> <cook> | order <le> <be> | extent <cook>");
             System.exit(1);
         }
+        // THE PLANTED ALLOCATION IS READ HERE, not inside one mode. It lived in
+        // modeAlloc, which made SCHEMA_ALLOC_SABOTAGE a silent no-op in the SOAK
+        // — the gate the whole port leads with had a control that could not fire,
+        // and by this file's own words a gate that has never gone red is watching
+        // nothing. Every mode that measures allocation reads it now.
+        sabotage = System.getenv("SCHEMA_ALLOC_SABOTAGE") != null;
+        if (sabotage) {
+            System.out.println("SABOTAGED: one extra allocation per record on the wire read path");
+        }
+
         String mode = args[0];
         switch (mode) {
             case "fuzz": {
@@ -888,6 +1033,9 @@ public final class Main {
                 break;
             case "order":
                 System.exit(modeOrder(args[1], args[2]));
+                break;
+            case "extent":
+                System.exit(modeExtent(args[1]));
                 break;
             default:
                 System.err.println("FAILED: unknown mode " + mode);

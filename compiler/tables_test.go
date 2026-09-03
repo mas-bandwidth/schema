@@ -1213,7 +1213,7 @@ table Node
 	}
 	for _, want := range []string{
 		"public static NodeCook open(byte[] data, int offset, long length)",
-		"public int at(int slot)",
+		"public int at(int slot, int size)",
 		"public static TableCookInfo type()",
 	} {
 		if !strings.Contains(cook, want) {
@@ -1389,5 +1389,94 @@ func TestJavaRefusesAFileNamedForARuntimeType(t *testing.T) {
 	}
 	if _, err := New().Generate(ok, "java", Options{}); err != nil {
 		t.Errorf("the same unit under an ordinary basename must generate: %v", err)
+	}
+}
+
+// TestJavaDescriptorsAreSafelyPublished is the test the unsafe-publication
+// defect asks for, and it is a STRUCTURAL one on purpose.
+//
+// The defect it guards is a data race the Java memory model PERMITS rather than
+// requires: a descriptor cached by a plain write can be read non-null with its
+// field array still null, on a machine whose store order allows it. A test that
+// tried to OBSERVE that would be a race detector — nondeterministic, green on
+// x86 almost always, and worthless as a gate. What is deterministic is the
+// SHAPE the emitter writes, and the shape is what was wrong.
+//
+// So this asserts the shape: every generated descriptor accessor is a read of a
+// holder's final field, and none of them is the `if (cached != null)` idiom the
+// defect had. A port that reintroduces the plain cache fails here, in every
+// build, on every host.
+func TestJavaDescriptorsAreSafelyPublished(t *testing.T) {
+	files := javaFiles(t, runtimeSrc)
+	// the four sites: the wire descriptor, the block projection, and a record's
+	// block and cook descriptors
+	accessors := regexp.MustCompile(`public static Table(?:Type|Block|Cook)Info ([A-Za-z0-9_]+)\(\) \{([^}]*)\}`)
+	holders := 0
+	for name, data := range files {
+		text := string(data)
+		for _, m := range accessors.FindAllStringSubmatch(text, -1) {
+			holders++
+			body := strings.TrimSpace(m[2])
+			// a holder read, or a one-line delegation to another accessor that is
+			// itself holder-backed — <Table>Cook.type() hands back its root
+			// record's descriptor rather than keeping a second one
+			delegates := strings.Contains(body, "Row.cookInfo()") || strings.Contains(body, "Row.blockInfo()")
+			if !strings.Contains(body, "Holder.INFO") && !delegates {
+				t.Errorf("%s: %s() neither reads a holder's final field nor delegates to one — its "+
+					"body is %q; a plain cache publishes a mutable descriptor unsafely (JLS §17.4)",
+					name, m[1], body)
+			}
+		}
+		// and the idiom itself must be gone, wherever it appears
+		for line := range strings.SplitSeq(text, "\n") {
+			if strings.Contains(line, "if (info != null) { return info; }") {
+				t.Errorf("%s carries the plain-cache idiom: %q", name, strings.TrimSpace(line))
+			}
+		}
+	}
+	if holders == 0 {
+		t.Fatal("the scan found no descriptor accessor at all — the scan, not the emitter, is what broke")
+	}
+	// every holder is a private static final class whose one field is final
+	for name, data := range files {
+		text := string(data)
+		for line := range strings.SplitSeq(text, "\n") {
+			if strings.Contains(line, "Holder {") && !strings.Contains(line, "private static final class") {
+				t.Errorf("%s: a descriptor holder is not a private static final class: %q", name, strings.TrimSpace(line))
+			}
+			if strings.Contains(line, "INFO =") && !strings.Contains(line, "static final") {
+				t.Errorf("%s: a holder's INFO is not final: %q", name, strings.TrimSpace(line))
+			}
+		}
+	}
+}
+
+// TestJavaGeneratedMethodsAreLowerCamel: Java has one naming rule and the
+// generated table surface follows it, as this backend's own packet half already
+// does (writeVec3, readVec3). §6.1's NAME-FIRST order is untouched — the method
+// is the declaration's name and then the verb — so only the case is the port's,
+// and it is the language's rather than C++'s.
+func TestJavaGeneratedMethodsAreLowerCamel(t *testing.T) {
+	files := javaFiles(t, runtimeSrc)
+	decl := regexp.MustCompile(`^\s*public static [A-Za-z0-9_.\[\]<>]+ ([A-Za-z0-9_]+)\(`)
+	seen := 0
+	for name, data := range files {
+		if !strings.HasSuffix(name, "Table.java") {
+			continue // the runtime types are types, and a TYPE is UpperCamel in Java
+		}
+		for line := range strings.SplitSeq(string(data), "\n") {
+			m := decl.FindStringSubmatch(line)
+			if m == nil {
+				continue
+			}
+			seen++
+			if m[1][0] >= 'A' && m[1][0] <= 'Z' {
+				t.Errorf("%s: generated method %s is UpperCamelCase — Java's rule, and this "+
+					"backend's packet half, spell a method lowerCamel", name, m[1])
+			}
+		}
+	}
+	if seen == 0 {
+		t.Fatal("the scan found no generated method at all — the scan, not the emitter, is what broke")
 	}
 }

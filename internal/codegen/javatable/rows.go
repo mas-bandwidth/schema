@@ -242,12 +242,14 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 // accessors above — which is what TableBlockLayout's check compares.
 func (g *rowGen) emitBlockRecordInfo(name string, ml *ir.MemberLayout) {
 	g.f("    // this record's BLOCK descriptor (docs/SPEC-TABLES.md §8, §19.2): constant\n")
-	g.f("    // data, so a reflective read costs a lookup and not a parse.\n")
-	g.f("    private static TableBlockInfo blockInfo;\n\n")
-	g.f("    public static TableBlockInfo blockInfo() {\n")
-	g.f("        TableBlockInfo info = blockInfo;\n")
-	g.f("        if (info != null) { return info; }\n")
-	g.f("        info = new TableBlockInfo();\n")
+	g.f("    // data, so a reflective read costs a lookup and not a parse — and it is\n")
+	g.f("    // published by CLASS INITIALIZATION rather than by a plain cached write,\n")
+	g.f("    // because a descriptor's fields are not final and a racing reader could\n")
+	g.f("    // otherwise see a non-null descriptor with a null field array (JLS §17.4).\n")
+	g.f("    private static final class BlockInfoHolder {\n")
+	g.f("        static final TableBlockInfo INFO = build();\n\n")
+	g.f("        private static TableBlockInfo build() {\n")
+	g.f("        TableBlockInfo info = new TableBlockInfo();\n")
 	g.f("        info.name = %q; info.buildVersion = BuildVersion.value; info.size = %d; info.align = %d; info.numFields = %d;\n",
 		name, ml.Size, ml.Align, len(ml.Fields))
 	g.f("        TableBlockFieldInfo[] fields = new TableBlockFieldInfo[%d];\n", len(ml.Fields))
@@ -255,8 +257,8 @@ func (g *rowGen) emitBlockRecordInfo(name string, ml *ir.MemberLayout) {
 		g.f("        fields[%d] = %s;\n", i, g.blockFieldInfo(fl, false, nil))
 	}
 	g.f("        info.fields = fields;\n")
-	g.f("        blockInfo = info;\n")
-	g.f("        return info;\n    }\n\n")
+	g.f("        return info;\n        }\n    }\n\n")
+	g.f("    public static TableBlockInfo blockInfo() { return BlockInfoHolder.INFO; }\n\n")
 }
 
 // blockFieldInfo renders one TableBlockFieldInfo construction expression.
@@ -294,11 +296,11 @@ func (g *rowGen) emitCookRecordInfo(name string, ml *ir.MemberLayout) {
 	g.f("    // actually has — where a field sits, how big it is, whether it is a\n")
 	g.f("    // POINTER EDGE, the bound its COUNT COMPANION is checked against, and the\n")
 	g.f("    // record it names.\n")
-	g.f("    private static TableCookInfo cookInfo;\n\n")
-	g.f("    public static TableCookInfo cookInfo() {\n")
-	g.f("        TableCookInfo info = cookInfo;\n")
-	g.f("        if (info != null) { return info; }\n")
-	g.f("        info = new TableCookInfo();\n")
+	g.f("    // published by CLASS INITIALIZATION, for the reason the block half states.\n")
+	g.f("    private static final class CookInfoHolder {\n")
+	g.f("        static final TableCookInfo INFO = build();\n\n")
+	g.f("        private static TableCookInfo build() {\n")
+	g.f("        TableCookInfo info = new TableCookInfo();\n")
 	g.f("        info.name = %q; info.size = %d; info.align = %d; info.numFields = %d;\n",
 		name, ml.Size, ml.Align, len(ml.Fields))
 	g.f("        TableCookFieldInfo[] fields = new TableCookFieldInfo[%d];\n", len(ml.Fields))
@@ -306,8 +308,8 @@ func (g *rowGen) emitCookRecordInfo(name string, ml *ir.MemberLayout) {
 		g.f("        fields[%d] = %s;\n", i, g.cookFieldInfo(fl))
 	}
 	g.f("        info.fields = fields;\n")
-	g.f("        cookInfo = info;\n")
-	g.f("        return info;\n    }\n\n")
+	g.f("        return info;\n        }\n    }\n\n")
+	g.f("    public static TableCookInfo cookInfo() { return CookInfoHolder.INFO; }\n\n")
 }
 
 func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {

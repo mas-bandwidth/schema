@@ -68,6 +68,13 @@ public final class TableStatCook {
     // THE BASE'S ALIGNMENT is its OFFSET's, for the reason <Table>Block.open
     // states: a Java caller holds an array and an index, and the index's residue
     // is the address's.
+    // THE LENGTH IS A long AND THE ARRAY IS NOT: a byte[] tops out at 2 GiB,
+    // so `length` can never carry a value this reader could use. The long is
+    // the seat the FOREIGN-MEMORY overload takes when the JDK floor allows
+    // one; MemorySegment is not stable before 22 and this backend compiles
+    // at --release 17. A catalogue past 2 GiB — which §7 is explicitly built
+    // for — has no Java reader until then, and that is a named follow-on
+    // rather than a silence.
     public static TableStatCook open(byte[] data, int offset, long length) {
         TableCookLayout.verify();
         if (data == null || offset < 0 || length < 64) { return null; }
@@ -138,20 +145,27 @@ public final class TableStatCook {
     // slot is eight bytes, SIGNED, self-relative from the SLOT'S OWN position, so
     // a deref needs no base and NULL IS A DELTA OF ZERO.
     //
-    // It takes the SLOT's offset and not its value, because a self-relative delta
-    // means nothing without the position it is relative to, and it answers the
-    // TARGET's offset — or -1, which is null AND a delta that leaves the region.
-    // The bound is Java's own divergence and this file's header states why: an
-    // unchecked deref here is an exception escaping a reader, not a pointer into
-    // trusted bytes.
-    public int at(int slot) {
+    // IT TAKES THE TARGET'S SIZE, and that is not decoration. C++, C# and Rust
+    // hand back a pointer and let the walk decide, because a cook is trusted
+    // input and an out-of-region deref there is undefined behaviour a sanitizer
+    // catches. Java has none to preserve: an unchecked deref is an
+    // ArrayIndexOutOfBoundsException escaping into a caller that asked a
+    // question. Bounding the target's START alone does not prevent that — it
+    // moves it one call along, to the first field read past the region's end —
+    // so the bound is over the WHOLE RECORD, [target, target + size), and the
+    // size is the pointee's own `<Name>Row.size`, which every call site knows.
+    //
+    // It answers the TARGET's offset, or -1, which is null AND a delta whose
+    // record does not lie wholly inside the region.
+    public int at(int slot, int size) {
         long delta = TableBytes.i64(data, slot);
-        if (delta == 0) { return -1; }
+        if (delta == 0 || size < 0) { return -1; }
         // written as bounds ON THE DELTA so no addition can wrap: the two limits
-        // are small and the delta is whatever the file carried
+        // are small and the delta is whatever the file carried. A size larger
+        // than the region makes high < low, so nothing passes.
         long low = (long) region - slot;
-        long high = (long) region + regionLength - slot;
-        if (delta < low || delta >= high) { return -1; }
+        long high = (long) region + regionLength - size - slot;
+        if (delta < low || delta > high) { return -1; }
         return slot + (int) delta;
     }
 

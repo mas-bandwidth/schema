@@ -141,55 +141,55 @@ public final class Driver {
     static {
         codecs.add(row("tabledemo", "RootConfig",
                 tabledemo.TablesTable.RootConfig::new, tabledemo.TableReport::new, Driver::copyDemo,
-                tabledemo.TablesTable::RootConfigLoad, tabledemo.TablesTable::RootConfigMeasure,
-                tabledemo.TablesTable::RootConfigSave, tabledemo.TablesTable::RootConfigFromJson,
-                tabledemo.TablesTable::RootConfigToJsonMeasure, tabledemo.TablesTable::RootConfigToJson));
+                tabledemo.TablesTable::rootConfigLoad, tabledemo.TablesTable::rootConfigMeasure,
+                tabledemo.TablesTable::rootConfigSave, tabledemo.TablesTable::rootConfigFromJson,
+                tabledemo.TablesTable::rootConfigToJsonMeasure, tabledemo.TablesTable::rootConfigToJson));
         codecs.add(row("tabledemo", "ProfileConfig",
                 tabledemo.TablesTable.ProfileConfig::new, tabledemo.TableReport::new, Driver::copyDemo,
-                tabledemo.TablesTable::ProfileConfigLoad, tabledemo.TablesTable::ProfileConfigMeasure,
-                tabledemo.TablesTable::ProfileConfigSave, tabledemo.TablesTable::ProfileConfigFromJson,
-                tabledemo.TablesTable::ProfileConfigToJsonMeasure, tabledemo.TablesTable::ProfileConfigToJson));
+                tabledemo.TablesTable::profileConfigLoad, tabledemo.TablesTable::profileConfigMeasure,
+                tabledemo.TablesTable::profileConfigSave, tabledemo.TablesTable::profileConfigFromJson,
+                tabledemo.TablesTable::profileConfigToJsonMeasure, tabledemo.TablesTable::profileConfigToJson));
         codecs.add(row("tabledemo", "LoadoutConfig",
                 tabledemo.TablesTable.LoadoutConfig::new, tabledemo.TableReport::new, Driver::copyDemo,
-                tabledemo.TablesTable::LoadoutConfigLoad, tabledemo.TablesTable::LoadoutConfigMeasure,
-                tabledemo.TablesTable::LoadoutConfigSave, tabledemo.TablesTable::LoadoutConfigFromJson,
-                tabledemo.TablesTable::LoadoutConfigToJsonMeasure, tabledemo.TablesTable::LoadoutConfigToJson));
+                tabledemo.TablesTable::loadoutConfigLoad, tabledemo.TablesTable::loadoutConfigMeasure,
+                tabledemo.TablesTable::loadoutConfigSave, tabledemo.TablesTable::loadoutConfigFromJson,
+                tabledemo.TablesTable::loadoutConfigToJsonMeasure, tabledemo.TablesTable::loadoutConfigToJson));
         codecs.add(row("tabledemo", "WideBlob",
                 tabledemo.WideTable.WideBlob::new, tabledemo.TableReport::new, Driver::copyDemo,
-                tabledemo.WideTable::WideBlobLoad, tabledemo.WideTable::WideBlobMeasure,
-                tabledemo.WideTable::WideBlobSave, tabledemo.WideTable::WideBlobFromJson,
-                tabledemo.WideTable::WideBlobToJsonMeasure, tabledemo.WideTable::WideBlobToJson));
+                tabledemo.WideTable::wideBlobLoad, tabledemo.WideTable::wideBlobMeasure,
+                tabledemo.WideTable::wideBlobSave, tabledemo.WideTable::wideBlobFromJson,
+                tabledemo.WideTable::wideBlobToJsonMeasure, tabledemo.WideTable::wideBlobToJson));
         codecs.add(row("tabledemo", "ArchiveConfig",
                 tabledemo.NestedTable.ArchiveConfig::new, tabledemo.TableReport::new, Driver::copyDemo,
-                tabledemo.NestedTable::ArchiveConfigLoad, tabledemo.NestedTable::ArchiveConfigMeasure,
-                tabledemo.NestedTable::ArchiveConfigSave, tabledemo.NestedTable::ArchiveConfigFromJson,
-                tabledemo.NestedTable::ArchiveConfigToJsonMeasure, tabledemo.NestedTable::ArchiveConfigToJson));
+                tabledemo.NestedTable::archiveConfigLoad, tabledemo.NestedTable::archiveConfigMeasure,
+                tabledemo.NestedTable::archiveConfigSave, tabledemo.NestedTable::archiveConfigFromJson,
+                tabledemo.NestedTable::archiveConfigToJsonMeasure, tabledemo.NestedTable::archiveConfigToJson));
         codecs.add(row("tabledemo", "KeyedConfig",
                 tabledemo.KeyedTable.KeyedConfig::new, tabledemo.TableReport::new, Driver::copyDemo,
-                tabledemo.KeyedTable::KeyedConfigLoad, tabledemo.KeyedTable::KeyedConfigMeasure,
-                tabledemo.KeyedTable::KeyedConfigSave, tabledemo.KeyedTable::KeyedConfigFromJson,
-                tabledemo.KeyedTable::KeyedConfigToJsonMeasure, tabledemo.KeyedTable::KeyedConfigToJson));
+                tabledemo.KeyedTable::keyedConfigLoad, tabledemo.KeyedTable::keyedConfigMeasure,
+                tabledemo.KeyedTable::keyedConfigSave, tabledemo.KeyedTable::keyedConfigFromJson,
+                tabledemo.KeyedTable::keyedConfigToJsonMeasure, tabledemo.KeyedTable::keyedConfigToJson));
         codecs.add(row("tabledemo", "PackConfig",
                 tabledemo.PackTable.PackConfig::new, tabledemo.TableReport::new, Driver::copyDemo,
-                tabledemo.PackTable::PackConfigLoad, tabledemo.PackTable::PackConfigMeasure,
-                tabledemo.PackTable::PackConfigSave, tabledemo.PackTable::PackConfigFromJson,
-                tabledemo.PackTable::PackConfigToJsonMeasure, tabledemo.PackTable::PackConfigToJson));
+                tabledemo.PackTable::packConfigLoad, tabledemo.PackTable::packConfigMeasure,
+                tabledemo.PackTable::packConfigSave, tabledemo.PackTable::packConfigFromJson,
+                tabledemo.PackTable::packConfigToJsonMeasure, tabledemo.PackTable::packConfigToJson));
         codecs.add(row("tblv1", "Cfg",
                 tblv1.V1Table.Cfg::new, tblv1.TableReport::new, Driver::copyV1,
-                tblv1.V1Table::CfgLoad, tblv1.V1Table::CfgMeasure, tblv1.V1Table::CfgSave,
-                tblv1.V1Table::CfgFromJson, tblv1.V1Table::CfgToJsonMeasure, tblv1.V1Table::CfgToJson));
+                tblv1.V1Table::cfgLoad, tblv1.V1Table::cfgMeasure, tblv1.V1Table::cfgSave,
+                tblv1.V1Table::cfgFromJson, tblv1.V1Table::cfgToJsonMeasure, tblv1.V1Table::cfgToJson));
         codecs.add(row("tblv2", "Cfg",
                 tblv2.V2Table.Cfg::new, tblv2.TableReport::new, Driver::copyV2,
-                tblv2.V2Table::CfgLoad, tblv2.V2Table::CfgMeasure, tblv2.V2Table::CfgSave,
-                tblv2.V2Table::CfgFromJson, tblv2.V2Table::CfgToJsonMeasure, tblv2.V2Table::CfgToJson));
+                tblv2.V2Table::cfgLoad, tblv2.V2Table::cfgMeasure, tblv2.V2Table::cfgSave,
+                tblv2.V2Table::cfgFromJson, tblv2.V2Table::cfgToJsonMeasure, tblv2.V2Table::cfgToJson));
         codecs.add(row("tblp1", "Chain",
                 tblp1.P1Table.Chain::new, tblp1.TableReport::new, Driver::copyP1,
-                tblp1.P1Table::ChainLoad, tblp1.P1Table::ChainMeasure, tblp1.P1Table::ChainSave,
-                tblp1.P1Table::ChainFromJson, tblp1.P1Table::ChainToJsonMeasure, tblp1.P1Table::ChainToJson));
+                tblp1.P1Table::chainLoad, tblp1.P1Table::chainMeasure, tblp1.P1Table::chainSave,
+                tblp1.P1Table::chainFromJson, tblp1.P1Table::chainToJsonMeasure, tblp1.P1Table::chainToJson));
         codecs.add(row("tblp3", "Chain",
                 tblp3.P3Table.Chain::new, tblp3.TableReport::new, Driver::copyP3,
-                tblp3.P3Table::ChainLoad, tblp3.P3Table::ChainMeasure, tblp3.P3Table::ChainSave,
-                tblp3.P3Table::ChainFromJson, tblp3.P3Table::ChainToJsonMeasure, tblp3.P3Table::ChainToJson));
+                tblp3.P3Table::chainLoad, tblp3.P3Table::chainMeasure, tblp3.P3Table::chainSave,
+                tblp3.P3Table::chainFromJson, tblp3.P3Table::chainToJsonMeasure, tblp3.P3Table::chainToJson));
     }
 
     private static Codec find(String unit, String root) {
@@ -615,11 +615,14 @@ public final class Driver {
 
     private interface CookOpen { CookHandle open(byte[] data, int offset, long length); }
 
+    /** the generated deref: the slot's offset and the pointee's size (§6.3). */
+    private interface Deref { int at(int slot, int size); }
+
     private static final class CookHandle {
         byte[] data;
         int region;
         long regionLength;
-        java.util.function.IntUnaryOperator at;
+        Deref at;
     }
 
     private static final class Root {
@@ -636,7 +639,7 @@ public final class Driver {
         return r;
     }
 
-    private static CookHandle handle(byte[] data, int region, long length, java.util.function.IntUnaryOperator at) {
+    private static CookHandle handle(byte[] data, int region, long length, Deref at) {
         CookHandle h = new CookHandle();
         h.data = data;
         h.region = region;
@@ -756,7 +759,12 @@ public final class Driver {
                 // THE GENERATED DEREF, and it is the reader under test: -1 is a
                 // delta that leaves the region, which the walk calls a failure and
                 // the reader calls a refusal
-                int target = cook.at.applyAsInt(slot);
+                if (f.record() == null) {
+                    fail(type.name + "." + f.name + " is a pointer whose descriptor names no record");
+                }
+                // the size is the READER's bound now, not the walker's: at
+                // refuses a delta whose whole record does not fit (§6.3)
+                int target = cook.at.at(slot, f.record().size);
                 if (target < 0) {
                     fail(type.name + "." + f.name + " resolves outside the region — a delta of " + delta +
                             " from a slot at " + (slot - cook.region));

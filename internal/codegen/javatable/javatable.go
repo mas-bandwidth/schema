@@ -21,6 +21,12 @@
 // forces a different spelling the reason is stated at the site, and there are
 // exactly five:
 //
+//   - THE GENERATED METHOD NAMES ARE lowerCamelCase, which is Java's one naming
+//     rule and the rule this backend's own packet half already follows
+//     (writeVec3, readVec3). §6.1's NAME-FIRST order is untouched — the method
+//     is still the declaration's name and then the verb — so the spelling is
+//     `patrolMeasure`, `patrolSave`, `patrolLoad`, `patrolReset`. Only the case
+//     is the port's, and it is the language's rather than C++'s.
 //   - THE UNIT'S NAMESPACE IS THE PACKAGE, and a public Java type lives in a
 //     file of its own name. So the shared runtime is not "one home file" as it
 //     is in C#: it is one file per runtime type (TableReport.java,
@@ -41,6 +47,16 @@
 //     at an offset the caller gives; the base's ALIGNMENT, which is a pointer
 //     fact in C++ and C#, is that offset's residue. The arithmetic is
 //     identical, so the refusals are.
+//   - THE TWO ACCELERATORS ARE CAPPED AT A byte[], which is 2 GiB. §7 states the
+//     scale it is built for in the owner's own words — "100mbs or many gigabytes
+//     of data in Assets.bin" — and the scale fixtures reach a gigabyte, so this
+//     is the one divergence that costs a stated requirement rather than a
+//     spelling. C# meets the same int ceiling on its span overload and answers
+//     it with the pointer form beside it; Java at --release 17 has no second
+//     spelling to answer it with, because the foreign-memory API (MemorySegment)
+//     is not stable before 22. Naming the FFM overload as the follow-on is the
+//     whole of what can be done here, and it is named on the page rather than
+//     left for a consumer to meet by hitting it.
 //   - THERE ARE NO STRUCTS. A block row and a cooked record have no Java type
 //     to lay out, so the generated accessors read each field at its offset and
 //     the layout is stated as constants; §19.3's static_assert half has no Java
@@ -533,6 +549,20 @@ func (g *tableGen) ref(name string) string {
 // fnRef is the Java spelling of a closure member's generated static methods —
 // they live on the class of the file that declares the member.
 func (g *tableGen) fnRef(name string) string { return g.declFile(name) + "Table." }
+
+// method is one generated method's own spelling: NAME-FIRST as §6.1 requires,
+// lowerCamelCase as Java requires. `Patrol` + `Measure` is `patrolMeasure`.
+//
+// The two halves of this backend's output agree on it: the packet emitter
+// spells `writeVec3` and `zeroVec3`, and a table's codecs sit in the same
+// package beside them. GoExportName and lowerFirst are a bijection, so the
+// checker's PascalCase claim over `<Name>Measure` covers `<name>measure`'s
+// spelling too and no second registry is needed (§11).
+func method(name, verb string) string { return lowerFirst(name) + verb }
+
+// call is `method` reached from anywhere in the package: the declaring file's
+// table class, then the method.
+func (g *tableGen) call(name, verb string) string { return g.fnRef(name) + method(name, verb) }
 
 // packetRef is the Java spelling of an enum or flags namespace, which the
 // PACKET emitter owns.

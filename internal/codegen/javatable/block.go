@@ -129,25 +129,25 @@ const tableBlockRowsSource = `// One out-of-line array's rows, at the pitch the 
 //
 // A row is an OFFSET into the block's own array — Java has no pointer and no
 // row struct — so reading one is <Name>Row's accessors at rows.at(i).
-public final class TableBlockRows {
-    public final byte[] data;
-    public final int base;    // the first row's offset in data
-    public final int count;   // rows the producer filled
-    public final int stride;  // the pitch the consumer indexes with, FROM THE DATA
-
-    public TableBlockRows(byte[] data, int base, int count, int stride) {
-        this.data = data;
-        this.base = base;
-        this.count = count;
-        this.stride = stride;
-    }
-
+// It is a Java record because that is what it is: four values, no identity, no
+// mutation. And it ALLOCATES, once per call, which is why the block handle also
+// carries <field>Count() and <field>At(int) — the allocation-free spelling a
+// per-frame job uses. This one is the convenience.
+public record TableBlockRows(byte[] data, int base, int count, int stride) {
     /** the offset of the row at index, at the pitch the instance gave. */
     public int at(int index) {
         if (index < 0 || index >= count) {
             throw new IndexOutOfBoundsException("row " + index + " of " + count);
         }
         return base + index * stride;
+    }
+
+    /** every row's offset, in order — the ITERATED form §19.2 asks for, with the
+     *  pitch inside rather than at the call site. */
+    public void forEach(java.util.function.IntConsumer row) {
+        for (int i = 0; i < count; i++) {
+            row.accept(base + i * stride);
+        }
     }
 }
 `
@@ -415,9 +415,22 @@ func (g *blockGen) emitArrays() {
 		g.f("    public static final long %sStride = %dL;\n", field, a.Stride)
 		g.f("    public static final long %sMax = %dL;\n", field, a.Max)
 		g.f("    public static final long %sProjectionOffset = %dL;\n\n", field, a.TripleOffset)
-		g.f("    // ITERATED, not indexed by hand: the accessor answers each row's OFFSET,\n")
-		g.f("    // at the pitch the INSTANCE gives, for count rows — read one with\n")
-		g.f("    // %sRow's accessors.\n", a.ElemName)
+		g.f("    // THE ALLOCATION-FREE PAIR, which is what a per-frame job uses: the row\n")
+		g.f("    // count and one row's OFFSET, both read from the INSTANCE at the pitch it\n")
+		g.f("    // gives. The pitch is still inside rather than at the call site, which is\n")
+		g.f("    // the property §19.2 asks for; what is not here is an object per call.\n")
+		g.f("    public int %sCount() { return TableBytes.i32(data, base + %d); }\n\n", field, a.CountOffset)
+		g.f("    public int %sAt(int index) {\n", field)
+		g.f("        int count = TableBytes.i32(data, base + %d);\n", a.CountOffset)
+		g.f("        if (index < 0 || index >= count) {\n")
+		g.f("            throw new IndexOutOfBoundsException(\"%s row \" + index + \" of \" + count);\n", a.Field.Name)
+		g.f("        }\n")
+		g.f("        long offsetOf = TableBytes.i64(data, base + %d);\n", a.OffsetOfOffset)
+		g.f("        int stride = TableBytes.i32(data, base + %d);\n", a.StrideOffset)
+		g.f("        return base + (int) offsetOf + index * stride;\n")
+		g.f("    }\n\n")
+		g.f("    // and the CONVENIENCE, which carries the three numbers together and costs\n")
+		g.f("    // one record per call — read a row with %sRow's accessors.\n", a.ElemName)
 		g.f("    public TableBlockRows %s() {\n", field)
 		g.f("        long offsetOf = TableBytes.i64(data, base + %d);\n", a.OffsetOfOffset)
 		g.f("        int count = TableBytes.i32(data, base + %d);\n", a.CountOffset)
@@ -450,6 +463,14 @@ func (g *blockGen) emitOpen() {
 	g.f("    // an addition that wrapped past the top of the type would be what the check\n")
 	g.f("    // after it was supposed to catch. The C++ side holds the same shape for the\n")
 	g.f("    // same reason.\n")
+	g.f("    // THE LENGTH IS A long AND THE ARRAY IS NOT, and that is a ceiling rather\n")
+	g.f("    // than an oversight: a byte[] tops out at 2 GiB, so `bytes` can never\n")
+	g.f("    // carry a value this reader could use and the check below refuses one.\n")
+	g.f("    // It is a long because it is the seat the FOREIGN-MEMORY overload takes\n")
+	g.f("    // when the JDK floor allows one — MemorySegment is not stable before 22\n")
+	g.f("    // and this backend compiles at --release 17. Until then a block past\n")
+	g.f("    // 2 GiB has no Java reader, which docs/SPEC-TABLES.md states as the\n")
+	g.f("    // named follow-on it is.\n")
 	g.f("    public static %sBlock open(byte[] data, int offset, long bytes) {\n", name)
 	g.f("        TableBlockLayout.verify();\n")
 	g.f("        if (data == null || offset < 0 || bytes < %d) { return null; }\n", bl.Projection.Size)
@@ -511,11 +532,14 @@ func (g *blockGen) emitType() {
 	g.f("    // this table's block descriptors: constant data, so a reflective read costs\n")
 	g.f("    // a lookup and not a parse. The row layouts hang off the element column of\n")
 	g.f("    // each field, so a walker reaches every record through the graph.\n")
-	g.f("    private static TableBlockInfo projection;\n\n")
-	g.f("    public static TableBlockInfo type() {\n")
-	g.f("        TableBlockInfo info = projection;\n")
-	g.f("        if (info != null) { return info; }\n")
-	g.f("        info = new TableBlockInfo();\n")
+	g.f("    // published by CLASS INITIALIZATION rather than by a plain cached write:\n")
+	g.f("    // a descriptor's fields are not final, so a racing reader of a plain cache\n")
+	g.f("    // could see a non-null descriptor with a null field array (JLS §17.4), and\n")
+	g.f("    // this is the path every open takes.\n")
+	g.f("    private static final class ProjectionHolder {\n")
+	g.f("        static final TableBlockInfo INFO = build();\n\n")
+	g.f("        private static TableBlockInfo build() {\n")
+	g.f("        TableBlockInfo info = new TableBlockInfo();\n")
 	g.f("        info.name = %q; info.buildVersion = BuildVersion.value; info.size = %d; info.align = %d; info.numFields = %d;\n",
 		name, bl.Projection.Size, bl.Projection.Align, len(bl.Projection.Fields))
 	g.f("        TableBlockFieldInfo[] fields = new TableBlockFieldInfo[%d];\n", len(bl.Projection.Fields))
@@ -527,8 +551,8 @@ func (g *blockGen) emitType() {
 		g.f("        fields[%d] = %s;\n", i, rg.blockFieldInfo(fl, true, nil))
 	}
 	g.f("        info.fields = fields;\n")
-	g.f("        projection = info;\n")
-	g.f("        return info;\n    }\n")
+	g.f("        return info;\n        }\n    }\n\n")
+	g.f("    public static TableBlockInfo type() { return ProjectionHolder.INFO; }\n")
 }
 
 // emitBlockLayoutFile is §19.3's Java half, and it says exactly what Java can
@@ -557,10 +581,15 @@ func emitBlockLayoutFile(u *ir.Unit, blocks *ir.BlockUnit, set *records) []byte 
 	b.WriteString("// the instance carries against this build's.\n")
 	b.WriteString("public final class TableBlockLayout {\n")
 	b.WriteString("    private TableBlockLayout() {}\n\n")
-	b.WriteString("    private static boolean checked;\n\n")
+	b.WriteString("    // THE FLAG IS SET AFTER THE CHECKS PASS, not before. A caller that\n")
+	b.WriteString("    // catches the first refusal and opens again must meet the same refusal:\n")
+	b.WriteString("    // a check that threw has not been done, and \"run once\" must not mean\n")
+	b.WriteString("    // \"attempted once\". It is volatile for the same reason the descriptors\n")
+	b.WriteString("    // use a holder — a plain boolean is not ordered against the reads the\n")
+	b.WriteString("    // checks made.\n")
+	b.WriteString("    private static volatile boolean checked;\n\n")
 	b.WriteString("    public static void verify() {\n")
 	b.WriteString("        if (checked) { return; }\n")
-	b.WriteString("        checked = true;\n")
 	for _, name := range set.order {
 		if !set.inBlock[name] {
 			continue
@@ -577,6 +606,7 @@ func emitBlockLayoutFile(u *ir.Unit, blocks *ir.BlockUnit, set *records) []byte 
 				t, member(a.Field), t, member(a.Field), a.ElemName)
 		}
 	}
+	b.WriteString("        checked = true;\n")
 	b.WriteString("    }\n\n")
 	b.WriteString(`    private static void record(String what, int size, int align, int[] offsets, TableBlockInfo info) {
         number(what + " size", size, info.size);

@@ -57,12 +57,12 @@ public final class TableEntityRow {
     // actually has — where a field sits, how big it is, whether it is a
     // POINTER EDGE, the bound its COUNT COMPANION is checked against, and the
     // record it names.
-    private static TableCookInfo cookInfo;
+    // published by CLASS INITIALIZATION, for the reason the block half states.
+    private static final class CookInfoHolder {
+        static final TableCookInfo INFO = build();
 
-    public static TableCookInfo cookInfo() {
-        TableCookInfo info = cookInfo;
-        if (info != null) { return info; }
-        info = new TableCookInfo();
+        private static TableCookInfo build() {
+        TableCookInfo info = new TableCookInfo();
         info.name = "TableEntity"; info.size = 64; info.align = 8; info.numFields = 14;
         TableCookFieldInfo[] fields = new TableCookFieldInfo[14];
         fields[0] = TableCookFieldInfo.of("entity_id", 0, 4, 4, false, 1, false, -1, -1, TableCookStorage.UNSIGNED, null);
@@ -80,8 +80,10 @@ public final class TableEntityRow {
         fields[12] = TableCookFieldInfo.of("moving", 56, 1, 1, false, 1, false, -1, -1, TableCookStorage.BOOL, null);
         fields[13] = TableCookFieldInfo.of("firing", 57, 1, 1, false, 1, false, -1, -1, TableCookStorage.BOOL, null);
         info.fields = fields;
-        cookInfo = info;
         return info;
+        }
     }
+
+    public static TableCookInfo cookInfo() { return CookInfoHolder.INFO; }
 
 }

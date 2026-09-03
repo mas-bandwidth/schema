@@ -11,7 +11,7 @@ public final class TableTypeInfo {
     /** put one instance back at its declared defaults, in place. A generic walker
      *  that FILLS a value has to establish the defaults an absent field takes, and
      *  it holds no type to spell — this is the one thing the columns could not
-     *  express without a function (§8.1). It calls TableReset, the same prefill the
+     *  express without a function (§8.1). It calls <name>Reset, the same prefill the
      *  wire's read path calls. */
     public interface Reset { void reset(Object value); }
 

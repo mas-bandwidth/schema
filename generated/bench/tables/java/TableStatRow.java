@@ -33,19 +33,21 @@ public final class TableStatRow {
     // actually has — where a field sits, how big it is, whether it is a
     // POINTER EDGE, the bound its COUNT COMPANION is checked against, and the
     // record it names.
-    private static TableCookInfo cookInfo;
+    // published by CLASS INITIALIZATION, for the reason the block half states.
+    private static final class CookInfoHolder {
+        static final TableCookInfo INFO = build();
 
-    public static TableCookInfo cookInfo() {
-        TableCookInfo info = cookInfo;
-        if (info != null) { return info; }
-        info = new TableCookInfo();
+        private static TableCookInfo build() {
+        TableCookInfo info = new TableCookInfo();
         info.name = "TableStat"; info.size = 8; info.align = 4; info.numFields = 2;
         TableCookFieldInfo[] fields = new TableCookFieldInfo[2];
         fields[0] = TableCookFieldInfo.of("stat_id", 0, 4, 4, false, 1, false, -1, -1, TableCookStorage.UNSIGNED, null);
         fields[1] = TableCookFieldInfo.of("delta", 4, 4, 4, false, 1, false, -1, -1, TableCookStorage.SIGNED, null);
         info.fields = fields;
-        cookInfo = info;
         return info;
+        }
     }
+
+    public static TableCookInfo cookInfo() { return CookInfoHolder.INFO; }
 
 }

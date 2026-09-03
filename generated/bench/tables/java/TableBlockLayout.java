@@ -26,13 +26,19 @@ package benchtable;
 public final class TableBlockLayout {
     private TableBlockLayout() {}
 
-    private static boolean checked;
+    // THE FLAG IS SET AFTER THE CHECKS PASS, not before. A caller that
+    // catches the first refusal and opens again must meet the same refusal:
+    // a check that threw has not been done, and "run once" must not mean
+    // "attempted once". It is volatile for the same reason the descriptors
+    // use a holder — a plain boolean is not ordered against the reads the
+    // checks made.
+    private static volatile boolean checked;
 
     public static void verify() {
         if (checked) { return; }
-        checked = true;
         record("TableEntityBlock projection", TableEntityBlock.projectionSize, 8, TableEntityBlock.projectionOffsets, TableEntityBlock.type());
         record("TableStatBlock projection", TableStatBlock.projectionSize, 8, TableStatBlock.projectionOffsets, TableStatBlock.type());
+        checked = true;
     }
 
     private static void record(String what, int size, int align, int[] offsets, TableBlockInfo info) {

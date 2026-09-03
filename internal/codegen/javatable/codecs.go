@@ -486,16 +486,15 @@ func guardWalk(st *ir.Struct, java bool) map[string]string {
 // of the C++ reader's placement-new prefill, and in place on purpose: reusing
 // the caller's buffers is what keeps the read path free of allocation.
 //
-// The name is VERB-FIRST and overloaded on the value's type, deliberately:
-// docs/SPEC-TABLES.md §11 freezes the name-first suffixes a closure member
-// claims, and a port must not quietly mint another. TableReset joins
-// TableEnumId/TableEnumValue in the verb-first family instead, which claims
-// nothing from a declaration's name — and it is a MEMBER of this file's class,
-// so it claims nothing at package scope either.
+// The name is NAME-FIRST, `<name>Reset`, which is the spelling §11 already
+// claims for every closure member and the one Java's own rule wants. C++ needs
+// a verb-first overload set because its arena's generic Alloc reaches a node's
+// declared defaults by argument-dependent lookup; Java has neither the arena
+// nor ADL, so nothing here has to be overloaded and no family name is minted.
 func (g *tableGen) emitTableReset(st *ir.Struct) {
-	g.pf("// TableReset(%s) restores %s's declared defaults in place, reusing every\n", st.Name, st.Name)
-	g.pf("// buffer the value already owns. The reader calls it before overlaying.\n")
-	g.pf("public static void TableReset(%s value) {\n", g.ref(st.Name))
+	g.pf("// %s restores %s's declared defaults in place, reusing every buffer the\n", method(st.Name, "Reset"), st.Name)
+	g.pf("// value already owns. The reader calls it before overlaying.\n")
+	g.pf("public static void %s(%s value) {\n", method(st.Name, "Reset"), g.ref(st.Name))
 	if len(st.Fields) == 0 {
 		g.pf("    // empty type: nothing to restore\n")
 	}
@@ -520,7 +519,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		if un, isUnion := f.Type.Ref.(*ir.Union); isUnion {
 			g.pf("        %s[i].type = %s.none;\n", base, g.tagRef(un.Name))
 		} else {
-			g.pf("        %sTableReset(%s[i]);\n", g.fnRef(f.Type.Name), base)
+			g.pf("        %s(%s[i]);\n", g.call(f.Type.Name, "Reset"), base)
 		}
 		g.pf("    }\n")
 		if f.Array == ir.ArrayCounted {
@@ -540,7 +539,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 			return
 		}
 		if isClassRef(f.Type) {
-			g.pf("    %sTableReset(value.%s);\n", g.fnRef(f.Type.Name), name)
+			g.pf("    %s(value.%s);\n", g.call(f.Type.Name, "Reset"), name)
 			return
 		}
 		g.pf("    value.%s = %s;\n", name, g.fieldDefaultExpr(f))
@@ -555,7 +554,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 // bytes into a buffer of exactly this size. A value violating its storage
 // invariants measures as -1, exactly as the write side refuses it.
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
-	g.pf("public static long %sMeasure(%s value) {\n", st.Name, g.ref(st.Name))
+	g.pf("public static long %s(%s value) {\n", method(st.Name, "Measure"), g.ref(st.Name))
 	g.pf("    long bytes = 2; // terminator\n")
 	guards := tableGuardExprs(st)
 	for _, f := range st.Fields {
@@ -584,7 +583,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("    if (value.%sPresent) { // ?%s: presence decides, not content\n", name, tableFieldTypeName(f))
 		switch {
 		case kind == tkTable:
-			g.pf("        long body = %s%sMeasure(value.%s);\n", g.fnRef(f.Type.Name), f.Type.Name, name)
+			g.pf("        long body = %s(value.%s);\n", g.call(f.Type.Name, "Measure"), name)
 			g.pf("        if (body < 0) { return -1; }\n")
 			g.pf("        bytes += 3 + 4 + body; // %s\n", f.Name)
 		case enumRef(f) != nil:
@@ -622,7 +621,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("    if (value.%sCount > 0) {\n", name)
 		g.pf("        bytes += 3 + 4 + 5; // %s\n", f.Name)
 		g.pf("        for (int i = 0; i < value.%sCount; i++) {\n", name)
-		g.pf("            long elem = %s%sMeasure(value.%s[i]);\n", g.fnRef(f.Type.Name), f.Type.Name, name)
+		g.pf("            long elem = %s(value.%s[i]);\n", g.call(f.Type.Name, "Measure"), name)
 		g.pf("            if (elem < 0) { return -1; }\n")
 		g.pf("            bytes += 4 + elem;\n")
 		g.pf("        }\n    }\n")
@@ -636,7 +635,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("    {\n")
 		g.pf("        bytes += 3 + 4 + 5; // %s (fixed [%d])\n", f.Name, f.ArrayBound)
 		g.pf("        for (int i = 0; i < %d; i++) {\n", f.ArrayBound)
-		g.pf("            long elem = %s%sMeasure(value.%s[i]);\n", g.fnRef(f.Type.Name), f.Type.Name, name)
+		g.pf("            long elem = %s(value.%s[i]);\n", g.call(f.Type.Name, "Measure"), name)
 		g.pf("            if (elem < 0) { return -1; }\n")
 		g.pf("            bytes += 4 + elem;\n")
 		g.pf("        }\n    }\n")
@@ -655,7 +654,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        case %s.none: break; // None elides — TLV absence is the None\n", g.tagRef(un.Name))
 		for _, v := range un.Variants {
 			g.pf("        case %s.%s: {\n", g.tagRef(un.Name), javaName(v.Name))
-			g.pf("            long arm = %s%sMeasure(value.%s.%s);\n", g.fnRef(v.Type), v.Type, name, javaName(v.Name))
+			g.pf("            long arm = %s(value.%s.%s);\n", g.call(v.Type, "Measure"), name, javaName(v.Name))
 			g.pf("            if (arm < 0) { return -1; }\n")
 			g.pf("            bytes += 3 + 2 + 4 + arm; // the u16 ARM ID, then the arm length-prefixed\n            break;\n        }\n")
 		}
@@ -663,7 +662,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("    }\n")
 	case kind == tkTable:
 		g.pf("    {\n")
-		g.pf("        long body = %s%sMeasure(value.%s);\n", g.fnRef(f.Type.Name), f.Type.Name, name)
+		g.pf("        long body = %s(value.%s);\n", g.call(f.Type.Name, "Measure"), name)
 		g.pf("        if (body < 0) { return -1; }\n")
 		g.pf("        if (body > 2) { bytes += 3 + 4 + body; } // %s: all-default nested elides\n", f.Name)
 		g.pf("    }\n")
@@ -686,7 +685,7 @@ func (g *tableGen) emitKeyedSlotRides(f *ir.Field, kind int, ind, onBad string) 
 	expr := g.keyedSlots("value.", f) + "[i]"
 	switch {
 	case kind == tkTable:
-		g.pf("%slong elemBytes = %s%sMeasure(%s);\n", ind, g.fnRef(f.Type.Name), f.Type.Name, expr)
+		g.pf("%slong elemBytes = %s(%s);\n", ind, g.call(f.Type.Name, "Measure"), expr)
 		g.pf("%sif (elemBytes < 0) { %s }\n", ind, onBad)
 		g.pf("%sif (elemBytes <= 2) { continue; } // an all-default slot elides\n", ind)
 	case enumRef(f) != nil:
@@ -716,7 +715,7 @@ func (g *tableGen) emitEnumElementCheck(f *ir.Field, expr, count, ind, onBad str
 // ---- write / save ----
 
 func (g *tableGen) emitTableWrite(st *ir.Struct) {
-	g.pf("public static boolean %sSaveBody(TableWriter w, %s value) {\n", st.Name, g.ref(st.Name))
+	g.pf("public static boolean %s(TableWriter w, %s value) {\n", method(st.Name, "SaveBody"), g.ref(st.Name))
 	guards := tableGuardExprs(st)
 	for _, f := range st.Fields {
 		if cond, guarded := guards[f.Name]; guarded {
@@ -738,12 +737,14 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 // <X>Measure's answer — or -1 when the room is too small.
 func (g *tableGen) emitTableSave(st *ir.Struct) {
 	ref := g.ref(st.Name)
-	g.pf("public static long %sSave(%s value, byte[] buffer) {\n", st.Name, ref)
-	g.pf("    return %sSave(value, buffer, 0, buffer.length);\n}\n\n", st.Name)
-	g.pf("public static long %sSave(%s value, byte[] buffer, int offset, int length) {\n", st.Name, ref)
+	g.pf("public static long %s(%s value, byte[] buffer) {\n", method(st.Name, "Save"), ref)
+	g.pf("    return %s(value, buffer, 0, buffer.length);\n}\n\n", method(st.Name, "Save"))
+	g.pf("// the convenience form: ONE TableWriter per call. A hot loop hoists its own\n")
+	g.pf("// writer and calls %s, which allocates nothing at all.\n", method(st.Name, "SaveBody"))
+	g.pf("public static long %s(%s value, byte[] buffer, int offset, int length) {\n", method(st.Name, "Save"), ref)
 	g.pf("    TableWriter w = new TableWriter(buffer, offset, length);\n")
-	g.pf("    if (!%sSaveBody(w, value)) { return -1; }\n", st.Name)
-	g.pf("    return w.offset - offset; // == %sMeasure(value)\n}\n\n", st.Name)
+	g.pf("    if (!%s(w, value)) { return -1; }\n", method(st.Name, "SaveBody"))
+	g.pf("    return w.offset - offset; // == %s(value)\n}\n\n", method(st.Name, "Measure"))
 }
 
 func (g *tableGen) emitTableWriteField(f *ir.Field) {
@@ -758,11 +759,11 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("    if (value.%sPresent) { // ?%s\n", name, tableFieldTypeName(f))
 		switch {
 		case kind == tkTable:
-			g.pf("        long body = %s%sMeasure(value.%s);\n", g.fnRef(f.Type.Name), f.Type.Name, name)
+			g.pf("        long body = %s(value.%s);\n", g.call(f.Type.Name, "Measure"), name)
 			g.pf("        if (body < 0) { return false; } // storage invariant, refused as measure refuses it\n")
 			g.pf("        w.put16(0x%04x); w.put8(%d); // %s\n", id, tkTable, f.Name)
 			g.pf("        w.put32((int) body);\n")
-			g.pf("        if (!%s%sSaveBody(w, value.%s)) { return false; }\n", g.fnRef(f.Type.Name), f.Type.Name, name)
+			g.pf("        if (!%s(w, value.%s)) { return false; }\n", g.call(f.Type.Name, "SaveBody"), name)
 		case enumRef(f) != nil:
 			g.pf("        int variantId = TableEnumId.%s(%s);\n", javaName(f.Type.Name), enumWiden("value."+name, enumRef(f)))
 			g.pf("        if (variantId < 0) { return false; }\n")
@@ -798,8 +799,8 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("                w.put16(keyId); // the slot's VARIANT id, not its position\n")
 		g.pf("                int elemLenAt = w.offset; w.put32(0);\n")
 		if kind == tkTable {
-			g.pf("                if (!%s%sSaveBody(w, %s[i])) { return false; }\n",
-				g.fnRef(f.Type.Name), f.Type.Name, g.keyedSlots("value.", f))
+			g.pf("                if (!%s(w, %s[i])) { return false; }\n",
+				g.call(f.Type.Name, "SaveBody"), g.keyedSlots("value.", f))
 		} else {
 			g.emitTableWriteElement(f, kind, g.keyedSlots("value.", f)+"[i]", "                ")
 		}
@@ -871,8 +872,8 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        int lenAt = w.offset; w.put32(0);\n")
 		g.pf("        switch (value.%s.type) {\n", name)
 		for _, v := range un.Variants {
-			g.pf("            case %s.%s: if (!%s%sSaveBody(w, value.%s.%s)) { return false; } break;\n",
-				tagType, javaName(v.Name), g.fnRef(v.Type), v.Type, name, javaName(v.Name))
+			g.pf("            case %s.%s: if (!%s(w, value.%s.%s)) { return false; } break;\n",
+				tagType, javaName(v.Name), g.call(v.Type, "SaveBody"), name, javaName(v.Name))
 		}
 		g.pf("            default: return false; // write validates the tag before it rides\n")
 		g.pf("        }\n")
@@ -881,12 +882,12 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		// elision is decided BEFORE any byte is emitted: measuring first keeps
 		// an all-default nested field from touching the buffer at all
 		g.pf("    {\n")
-		g.pf("        long body = %s%sMeasure(value.%s);\n", g.fnRef(f.Type.Name), f.Type.Name, name)
+		g.pf("        long body = %s(value.%s);\n", g.call(f.Type.Name, "Measure"), name)
 		g.pf("        if (body < 0) { return false; } // storage invariant, refused as measure refuses it\n")
 		g.pf("        if (body > 2) { // all-default nested elides\n")
 		g.pf("            w.put16(0x%04x); w.put8(%d); // %s\n", id, tkTable, f.Name)
 		g.pf("            w.put32((int) body);\n")
-		g.pf("            if (!%s%sSaveBody(w, value.%s)) { return false; }\n", g.fnRef(f.Type.Name), f.Type.Name, name)
+		g.pf("            if (!%s(w, value.%s)) { return false; }\n", g.call(f.Type.Name, "SaveBody"), name)
 		g.pf("        }\n    }\n")
 	case enumRef(f) != nil:
 		// the id is resolved BEFORE the header rides: a value no variant names
@@ -920,7 +921,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		g.pf("%sw.put64(Double.doubleToRawLongBits(%s));\n", ind, expr)
 	case tkTable:
 		g.pf("%s{\n%s    int elemLenAt = w.offset; w.put32(0);\n", ind, ind)
-		g.pf("%s    if (!%s%sSaveBody(w, %s)) { return false; }\n", ind, g.fnRef(f.Type.Name), f.Type.Name, expr)
+		g.pf("%s    if (!%s(w, %s)) { return false; }\n", ind, g.call(f.Type.Name, "SaveBody"), expr)
 		g.pf("%s    w.patch32(elemLenAt, w.offset - elemLenAt - 4);\n%s}\n", ind, ind)
 	default:
 		width := tableKindWidth(kind)
@@ -936,8 +937,8 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 
 func (g *tableGen) emitTableRead(st *ir.Struct) {
 	ref := g.ref(st.Name)
-	g.pf("public static boolean %sLoadBody(TableReader r, %s value) {\n", st.Name, ref)
-	g.pf("    %sTableReset(value); // restore declared defaults in place, then overlay\n", g.fnRef(st.Name))
+	g.pf("public static boolean %s(TableReader r, %s value) {\n", method(st.Name, "LoadBody"), ref)
+	g.pf("    %s(value); // restore declared defaults in place, then overlay\n", g.call(st.Name, "Reset"))
 	g.pf("    for (;;) {\n")
 	g.pf("        if (!r.has(2)) { r.report.malformed = true; return false; }\n")
 	g.pf("        int fieldId = r.get16();\n")
@@ -986,11 +987,13 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("    }\n}\n\n")
 	}
 
-	g.pf("public static boolean %sLoad(%s value, byte[] bytes, TableReport report) {\n", st.Name, ref)
-	g.pf("    return %sLoad(value, bytes, 0, bytes.length, report);\n}\n\n", st.Name)
-	g.pf("public static boolean %sLoad(%s value, byte[] bytes, int offset, int length, TableReport report) {\n", st.Name, ref)
+	g.pf("public static boolean %s(%s value, byte[] bytes, TableReport report) {\n", method(st.Name, "Load"), ref)
+	g.pf("    return %s(value, bytes, 0, bytes.length, report);\n}\n\n", method(st.Name, "Load"))
+	g.pf("// the convenience form: ONE TableReader per call. A hot loop hoists its own\n")
+	g.pf("// reader and calls %s, which allocates nothing at all.\n", method(st.Name, "LoadBody"))
+	g.pf("public static boolean %s(%s value, byte[] bytes, int offset, int length, TableReport report) {\n", method(st.Name, "Load"), ref)
 	g.pf("    TableReader r = new TableReader(bytes, offset, length, report != null ? report : new TableReport());\n")
-	g.pf("    return %sLoadBody(r, value);\n}\n\n", st.Name)
+	g.pf("    return %s(r, value);\n}\n\n", method(st.Name, "LoadBody"))
 }
 
 func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
@@ -1035,7 +1038,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		// the key k lives at STORAGE INDEX k-1 (docs/SPEC-TABLES.md §2.4)
 		slot := g.keyedSlots("value.", f) + "[(int) slot - 1]"
 		if kind == tkTable {
-			g.pf("%s        %s%sLoadBody(r, %s);\n", ind, g.fnRef(f.Type.Name), f.Type.Name, slot)
+			g.pf("%s        %s(r, %s);\n", ind, g.call(f.Type.Name, "LoadBody"), slot)
 		} else {
 			g.emitTableReadScalarFrom(f, kind, slot, ind+"        ",
 				"r.report.malformed = true; r.limit = slotLimit; r.offset = elemEnd; continue;")
@@ -1107,9 +1110,9 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s{\n%s    int bodyLimit = r.limit;\n%s    r.limit = bodyEnd;\n", ind, ind, ind)
 		g.pf("%s    switch (armId) { // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n", ind)
 		for _, v := range un.Variants {
-			g.pf("%s        case 0x%04x: // %s\n%s            value.%s.type = %s.%s;\n%s            %s%sLoadBody(r, value.%s.%s);\n%s            break;\n",
+			g.pf("%s        case 0x%04x: // %s\n%s            value.%s.type = %s.%s;\n%s            %s(r, value.%s.%s);\n%s            break;\n",
 				ind, ir.VariantId(v.Name), v.Name, ind, name, tagType, javaName(v.Name),
-				ind, g.fnRef(v.Type), v.Type, name, javaName(v.Name), ind)
+				ind, g.call(v.Type, "LoadBody"), name, javaName(v.Name), ind)
 		}
 		g.pf("%s        default:\n", ind)
 		g.pf("%s            // an arm this reader cannot name: the value reads EMPTY and\n", ind)
@@ -1127,7 +1130,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%sif (!r.has(bodyLen)) { r.report.malformed = true; return false; }\n", ind)
 		g.pf("%sint bodyEnd = r.offset + (int) bodyLen;\n", ind)
 		g.pf("%s{\n%s    int bodyLimit = r.limit;\n%s    r.limit = bodyEnd;\n", ind, ind, ind)
-		g.pf("%s    %s%sLoadBody(r, value.%s);\n", ind, g.fnRef(f.Type.Name), f.Type.Name, name)
+		g.pf("%s    %s(r, value.%s);\n", ind, g.call(f.Type.Name, "LoadBody"), name)
 		g.pf("%s    r.limit = bodyLimit;\n%s}\n", ind, ind)
 		g.pf("%sr.offset = bodyEnd;\n", ind)
 	default:
@@ -1147,7 +1150,7 @@ func (g *tableGen) emitTableReadElement(f *ir.Field, kind int, ind string) {
 		g.pf("%sif (!r.has(elemLen)) { r.report.malformed = true; break; }\n", ind)
 		g.pf("%sint elemEnd = r.offset + (int) elemLen;\n", ind)
 		g.pf("%s{\n%s    int elemLimit = r.limit;\n%s    r.limit = elemEnd;\n", ind, ind, ind)
-		g.pf("%s    %s%sLoadBody(r, value.%s[i]);\n", ind, g.fnRef(f.Type.Name), f.Type.Name, name)
+		g.pf("%s    %s(r, value.%s[i]);\n", ind, g.call(f.Type.Name, "LoadBody"), name)
 		g.pf("%s    r.limit = elemLimit;\n%s}\n", ind, ind)
 		g.pf("%sr.offset = elemEnd;\n", ind)
 	default:
@@ -1307,35 +1310,53 @@ func bigToDouble(v *big.Int) string {
 	return formatFloat64(f)
 }
 
-// emitTableDescriptor emits <X>TableType() — the reflection descriptor, built
-// once on first use and cached. The build is idempotent, so the benign race two
-// threads can run on first use produces two equivalent descriptors and then
-// one; nothing mutable is ever published.
+// emitTableDescriptor emits <name>TableType() — the reflection descriptor,
+// built once on first use and published through the HOLDER IDIOM.
+//
+// THE PUBLICATION IS THE WHOLE POINT, and a plain `if (cache != null)` would be
+// wrong here rather than merely unfashionable. A descriptor is a mutable object
+// with non-final fields, so under JLS §17.4 a second thread may read a non-null
+// cache and still see `fields == null` — the writes that filled it are not
+// ordered against the write that published it. The build being idempotent makes
+// the duplicate CONSTRUCTION benign and says nothing about the PUBLICATION. On
+// the estate's aarch64 targets that reordering is permitted, and the first
+// caller of it is <Table>Block.open, which is the one path a racing
+// NullPointerException must never escape from.
+//
+// The holder gives the ordering for free: a class initializes once, under the
+// JVM's own lock, and every write made during its initialization happens-before
+// any read of a field it published (JLS §12.4.2). Lazy, lock-free after the
+// first use, and allocation-free — the same three properties the cache had,
+// with the guarantee the cache was missing.
 func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	guards := tableGuardStrings(st)
 	ref := g.ref(st.Name)
-	g.pf("private static TableTypeInfo %sTableInfo;\n\n", st.Name)
-	g.pf("public static TableTypeInfo %sTableType() {\n", st.Name)
-	g.pf("    TableTypeInfo info = %sTableInfo;\n", st.Name)
-	g.pf("    if (info != null) { return info; }\n")
-	g.pf("    info = new TableTypeInfo();\n")
-	g.pf("    info.name = \"%s\";\n", st.Name)
-	g.pf("    info.numFields = %d;\n", len(st.Fields))
-	g.pf("    TableFieldInfo[] fields = new TableFieldInfo[%d];\n", len(st.Fields))
+	holder := st.Name + "TableTypeHolder"
+	g.pf("// %s's reflection descriptor (docs/SPEC-TABLES.md §8), built once and\n", st.Name)
+	g.pf("// published by class initialization — see the holder note in the emitter.\n")
+	g.pf("private static final class %s {\n", holder)
+	g.pf("    static final TableTypeInfo INFO = build();\n\n")
+	g.pf("    private static TableTypeInfo build() {\n")
+	g.pf("        TableTypeInfo info = new TableTypeInfo();\n")
+	g.pf("        info.name = \"%s\";\n", st.Name)
+	g.pf("        info.numFields = %d;\n", len(st.Fields))
+	g.pf("        TableFieldInfo[] fields = new TableFieldInfo[%d];\n", len(st.Fields))
 	if len(st.Fields) > 0 {
-		g.pf("    TableFieldInfo f;\n")
+		g.pf("        TableFieldInfo f;\n")
+		g.indent = "    "
 		for i, f := range st.Fields {
 			g.emitTableFieldDescriptor(i, f, guards[f.Name])
 		}
+		g.indent = ""
 	}
-	g.pf("    info.fields = fields;\n")
+	g.pf("        info.fields = fields;\n")
 	// the RESET hook (docs/SPEC-TABLES.md §8.1): the one column the descriptors
 	// cannot express without a function — a generic walker that FILLS a value
 	// establishes an absent field's defaults through it, holding no type to
-	// spell. It is TableReset, the prefill the wire's read path already calls.
-	g.pf("    info.reset = (o) -> %sTableReset((%s) o);\n", g.fnRef(st.Name), ref)
-	g.pf("    %sTableInfo = info;\n", st.Name)
-	g.pf("    return info;\n}\n\n")
+	// spell. It is <name>Reset, the prefill the wire's read path already calls.
+	g.pf("        info.reset = (o) -> %s((%s) o);\n", g.call(st.Name, "Reset"), ref)
+	g.pf("        return info;\n    }\n}\n\n")
+	g.pf("public static TableTypeInfo %s() { return %s.INFO; }\n\n", method(st.Name, "TableType"), holder)
 }
 
 // ---- the storage columns: Java's spelling of C++'s offset and elem_size ----
@@ -1485,7 +1506,7 @@ func (g *tableGen) emitUnionArms(un *ir.Union) {
 	g.pf("        as[0] = new TableUnionArmInfo();\n")
 	for i, v := range un.Variants {
 		g.pf("        as[%d] = new TableUnionArmInfo();\n", i+1)
-		g.pf("        as[%d].tableRef = () -> %s%sTableType();\n", i+1, g.fnRef(v.Type), v.Type)
+		g.pf("        as[%d].tableRef = () -> %s();\n", i+1, g.call(v.Type, "TableType"))
 		g.pf("        as[%d].payload = (o) -> ((%s) o).%s;\n", i+1, ref, javaName(v.Name))
 	}
 	g.pf("        u.arms = as;\n")
@@ -1516,7 +1537,7 @@ func (g *tableGen) emitTableFieldDescriptor(index int, f *ir.Field, guard string
 
 	tableRef := "null"
 	if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
-		tableRef = fmt.Sprintf("() -> %s%sTableType()", g.fnRef(f.Type.Name), f.Type.Name)
+		tableRef = fmt.Sprintf("() -> %s()", g.call(f.Type.Name, "TableType"))
 	}
 
 	// the KEY's vocabulary on an enum-keyed array (docs/SPEC-TABLES.md §8):

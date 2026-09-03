@@ -14,24 +14,24 @@ package benchtable;
 //
 // A row is an OFFSET into the block's own array — Java has no pointer and no
 // row struct — so reading one is <Name>Row's accessors at rows.at(i).
-public final class TableBlockRows {
-    public final byte[] data;
-    public final int base;    // the first row's offset in data
-    public final int count;   // rows the producer filled
-    public final int stride;  // the pitch the consumer indexes with, FROM THE DATA
-
-    public TableBlockRows(byte[] data, int base, int count, int stride) {
-        this.data = data;
-        this.base = base;
-        this.count = count;
-        this.stride = stride;
-    }
-
+// It is a Java record because that is what it is: four values, no identity, no
+// mutation. And it ALLOCATES, once per call, which is why the block handle also
+// carries <field>Count() and <field>At(int) — the allocation-free spelling a
+// per-frame job uses. This one is the convenience.
+public record TableBlockRows(byte[] data, int base, int count, int stride) {
     /** the offset of the row at index, at the pitch the instance gave. */
     public int at(int index) {
         if (index < 0 || index >= count) {
             throw new IndexOutOfBoundsException("row " + index + " of " + count);
         }
         return base + index * stride;
+    }
+
+    /** every row's offset, in order — the ITERATED form §19.2 asks for, with the
+     *  pitch inside rather than at the call site. */
+    public void forEach(java.util.function.IntConsumer row) {
+        for (int i = 0; i < count; i++) {
+            row.accept(base + i * stride);
+        }
     }
 }

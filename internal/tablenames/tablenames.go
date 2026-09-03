@@ -129,7 +129,7 @@ var registry = []Name{
 	// are emitted only into a unit with pointers, which is the only unit that
 	// has an arena; the CLAIM does not vary with that, because a name free
 	// today must not become a collision the day a table gains a pointer.
-	{Name: "TableReset", By: Cpp | Cs | Java, What: "restore a value's declared defaults in place — C#'s reset itself, and C++'s ADL hook onto <Name>Reset for the arena"},
+	{Name: "TableReset", By: Cpp | Cs, What: "restore a value's declared defaults in place — C#'s reset itself, and C++'s ADL hook onto <Name>Reset for the arena. JAVA DOES NOT DEFINE IT: it spells the prefill <name>Reset, name-first as §11 already claims and lowerCamel as Java requires, so no family name is minted there"},
 	// SCOPED: the TEXT FORM's generic walk (docs/SPEC-TABLES.md §16), a nested
 	// static class of Schema. Everything the walk spells — its reader, its
 	// writer sink, its scanners — is a member of it, so one registration

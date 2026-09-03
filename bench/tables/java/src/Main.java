@@ -356,14 +356,14 @@ public final class Main {
         Main.<benchtable.BenchTableTable.TableMixed>benchTable(
                 "bench_table", "bench_table", 400000L,
                 benchtable.BenchTableTable.TableMixed::new,
-                benchtable.BenchTableTable::TableReset,
+                benchtable.BenchTableTable::tableMixedReset,
                 (v, into) -> {
                     writer.reset(into, 0, into.length);
-                    return benchtable.BenchTableTable.TableMixedSaveBody(writer, v) ? writer.offset : -1;
+                    return benchtable.BenchTableTable.tableMixedSaveBody(writer, v) ? writer.offset : -1;
                 },
                 (v, bytes, length) -> {
                     reader.reset(bytes, 0, length, report.clear());
-                    return benchtable.BenchTableTable.TableMixedLoadBody(reader, v) && !report.malformed;
+                    return benchtable.BenchTableTable.tableMixedLoadBody(reader, v) && !report.malformed;
                 });
 
         flushCsv();
