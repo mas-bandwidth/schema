@@ -138,7 +138,8 @@ func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target 
 		}
 		switch {
 		case f.KeyEnum != "":
-			// slot 0 is None's and no walk ever reaches it (§2.4)
+			// every stored slot is a named variant's: the storage has no None
+			// slot to skip (§2.4)
 			for slot := tabletext.KeyedFirstSlot(); slot < tabletext.KeyedSlotCount(f); slot++ {
 				if sub := fv.Elems[slot].Tab; sub != nil {
 					visitEdges(m, sub, visit)

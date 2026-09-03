@@ -140,8 +140,8 @@ static bool same_config( const PackConfig & a, const PackConfig & b )
     {
         if ( a.global.spawn_delays[i] != b.global.spawn_delays[i] ) { return false; }
     }
-    // slot 0 is None's and is never valid, so the comparison starts at 1
-    for ( int32_t i = 1; i < 4; i++ )
+    // every stored slot is a named variant's: nothing is stored for None
+    for ( int32_t i = 0; i < 3; i++ )
     {
         if ( !same_ship( a.ships.slots[i], b.ships.slots[i] ) ) { return false; }
         if ( a.thresholds.slots[i] != b.thresholds.slots[i] ) { return false; }

@@ -341,10 +341,10 @@ Bound       = IntExpr | ".." IntExpr | IntExpr ".." IntExpr .       // [N] exact
                                                                     // "up to N"; [A..B] = count in [A, B].
                                                                     // An exact bound NAMING A DECLARED
                                                                     // ENUM is an ENUM-KEYED array: exactly
-                                                                    // E.Max + 1 slots, indexed by the
-                                                                    // variant, of which slot 0 (None) is
-                                                                    // never valid (SPEC-TABLES.md §2.4).
-                                                                    // On this wire it IS [E.Max + 1]T
+                                                                    // E.Max slots, one per named variant,
+                                                                    // key k at index k-1, nothing stored
+                                                                    // for None (SPEC-TABLES.md §2.4).
+                                                                    // On this wire it IS [E.Max]T
 
 AttrSection = "|" Attr { "," Attr } .                            // runs to END OF LINE: the newline
                                                                  // or a // comment terminates it —
@@ -418,9 +418,11 @@ FloatExpr   = float expression over float literals, int literals and const names
   `E`'s max — the derived count, or the widened `| max = K` — the same number
   the enum's wire range and storage derive from. The count of wire values is
   `E.Max + 1` by ordinary constant arithmetic; the count of real (non-`None`)
-  variants is `E.Max` (see the sentinel-zero convention below). Sizing
-  enum-indexed tables with `E.Max + 1` stays correct under `max` headroom,
-  where non-variant values are wire-legal. It works on the generated tag set
+  variants is `E.Max` (see the sentinel-zero convention below), and that is
+  the count an enum-indexed array is sized to: `[E.Max]T`, or the `[E]T`
+  spelling that resolves to it (SPEC-TABLES.md §2.4). Under `max` headroom
+  the reserved values above the last variant are wire-legal and name no slot.
+  It works on the generated tag set
   too (a union's `<Union>Type.Max` — §4.8); generated sets resolve in
   constant expressions and nowhere else. **Flags
   have `F.Count`, not `F.Max`** — a flags declaration is a set of
@@ -1678,7 +1680,7 @@ Every row to date is settled, deferred with its design banked, or discarded.
 5. ~~Doc comments~~ — deferred; the design is kept at §4.1.
 6. ~~A root/packet marker~~ — discarded.
 7. ~~Const expressions over enum counts~~ — settled: `E.Max` (§4.2);
-   `const NumTeams = Team.Max + 1`. `len(Team)` was declined: it has three
+   `const NumTeams = Team.Max`. `len(Team)` was declined: it has three
    plausible meanings, and every one sizes enum-indexed tables wrong under
    `max` headroom — the max is the true primitive.
 8. ~~Platform-conditional constants~~ — settled: constants are

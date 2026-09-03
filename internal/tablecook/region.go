@@ -177,11 +177,11 @@ func (w *regionWriter) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		w.putI32(pieces[1].Offset, int32(len(fv.Cell.Str)))
 		return nil
 	case f.KeyEnum != "":
-		// EVERY SLOT EXISTS in an enum-keyed array, slot 0 included: the array
-		// is indexed by the enum value itself, so slot `v` is variant `v`'s and
-		// slot 0 is None's, which names no record and holds the element's zero
-		// (§2.4). The wire rides them BY NAME (§3.2); the region rides them by
-		// position, and the two meet in the enum's own values.
+		// EVERY STORED SLOT EXISTS in an enum-keyed array, and every one is a
+		// named variant's: the storage holds E.Max elements with the key k at
+		// index k-1, and nothing for None (§2.4). The wire rides them BY NAME
+		// (§3.2); the region rides them at the storage's own shifted positions,
+		// and the two meet in the enum's own values.
 		return w.slots(value.Offset, f, fv.Elems, len(fv.Elems))
 	case f.Array == ir.ArrayFixed:
 		return w.slots(value.Offset, f, fv.Elems, len(fv.Elems))

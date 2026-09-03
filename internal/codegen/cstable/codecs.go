@@ -202,11 +202,13 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 			name, f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
 		g.tf("    public int %sLength;\n", name)
 	case f.KeyEnum != "":
-		// one slot per variant, indexed by the variant's own value. Slot 0 is
-		// None's and is never valid — the indexer refuses it. Every named slot
-		// exists, so there is no count companion (SPEC-TABLES.md §2.4).
-		g.tf("    public TableKeyed<%s> %s = new TableKeyed<%s>(%d); // [%s]: one slot per variant, indexed by the value\n",
-			typ, name, typ, f.ArrayBound, f.KeyEnum)
+		// ONE SLOT PER NAMED VARIANT, the key k at index k-1: nothing is
+		// stored for None, and the indexer is the only place the shift
+		// appears. Every named slot exists, so there is no count companion,
+		// and the type derives its own extent from the enum — nothing outside
+		// the array names its size (SPEC-TABLES.md §2.4).
+		g.tf("    public TableKeyed<%s, %s> %s = new TableKeyed<%s, %s>(); // [%s]: one slot per named variant, keyed by the value\n",
+			typ, f.KeyEnum, name, typ, f.KeyEnum, f.KeyEnum)
 	case f.Array == ir.ArrayFixed:
 		g.tf("    public %s[] %s = new %s[%d];\n", typ, name, typ, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
@@ -238,8 +240,8 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 // A TABLE's keyed field is a TableKeyed<T>, whose slots sit behind .Slots; a
 // closure `type`'s field is its PACKET storage — a plain array — because a
 // type's class is emitted by the packet backend and nothing on this wire
-// changes that (SPEC-TABLES.md §2.4). Both are E.Max + 1 elements indexed by
-// the variant's value, so only the spelling differs.
+// changes that (SPEC-TABLES.md §2.4). Both are E.Max elements with the key k
+// at index k-1, so only the spelling differs.
 func (g *tableGen) keyedSlots(access string, f *ir.Field) string {
 	name := access + member(f)
 	if f.KeyEnum != "" && g.owner != nil && g.owner.IsTable {
@@ -263,8 +265,8 @@ func (g *tableGen) emitElementConstructor(st *ir.Struct) {
 	}
 	g.tf("\n    public %s()\n    {\n", st.Name)
 	for _, f := range elems {
-		// a keyed field's slots live behind .Slots; every OTHER slot exists
-		// too, slot 0 included, because a slot's index is its variant's value
+		// a keyed field's slots live behind .Slots, and every one of them is a
+		// named variant's: the storage has no None slot (§2.4)
 		base := g.keyedSlots("", f)
 		g.tf("        for (int i = 0; i < %s.Length; i++)\n        {\n", base)
 		g.tf("            %s[i] = new %s();\n        }\n", base, f.Type.Name)
@@ -493,7 +495,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		// default elides like any default, and an empty array elides whole.
 		g.pf("    {\n")
 		g.pf("        long pairs = 0, keyedBytes = 0;\n")
-		g.pf("        for (int i = 1; i < %d; i++) // [%s]: slot 0 is None's and never rides\n        {\n", f.ArrayBound, f.KeyEnum)
+		g.pf("        for (int i = 0; i < %d; i++) // [%s]: every stored slot is a named variant's\n        {\n", f.ArrayBound, f.KeyEnum)
 		g.emitKeyedSlotRides(f, kind, "            ", "return -1;")
 		if kind == tkTable {
 			g.pf("            pairs++; keyedBytes += 2 + 4 + elemBytes; // key, length, body\n")
@@ -591,7 +593,7 @@ func (g *tableGen) emitKeyedSlotRides(f *ir.Field, kind int, ind, onBad string) 
 		g.pf("%sif (%s == %s) { continue; } // a default slot elides\n", ind, expr, fieldDefaultExpr(f))
 	}
 	g.pf("%sushort keyId;\n", ind)
-	g.pf("%sif (!TableEnumId((%s)i, out keyId)) { %s } // a slot no variant names has no wire identity\n",
+	g.pf("%sif (!TableEnumId((%s)(i + 1), out keyId)) { %s } // i is the STORAGE index; the key it holds is i + 1\n",
 		ind, f.KeyEnum, onBad)
 }
 
@@ -671,7 +673,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		// before the header rides, and so measure and save agree byte for byte.
 		g.pf("    {\n")
 		g.pf("        uint pairs = 0;\n")
-		g.pf("        for (int i = 1; i < %d; i++) // [%s]: slot 0 is None's and never rides\n        {\n", f.ArrayBound, f.KeyEnum)
+		g.pf("        for (int i = 0; i < %d; i++) // [%s]: every stored slot is a named variant's\n        {\n", f.ArrayBound, f.KeyEnum)
 		g.emitKeyedSlotRides(f, kind, "            ", "return false;")
 		g.pf("            pairs++;\n")
 		g.pf("        }\n")
@@ -685,7 +687,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("            // ASCENDING BY VARIANT ORDINAL, which is slot order — this\n")
 		g.pf("            // writer's choice, and a reader must not rely on it: every\n")
 		g.pf("            // slot is found by its key (SPEC-TABLES.md §3.2)\n")
-		g.pf("            for (int i = 1; i < %d; i++)\n            {\n", f.ArrayBound)
+		g.pf("            for (int i = 0; i < %d; i++)\n            {\n", f.ArrayBound)
 		g.emitKeyedSlotRides(f, kind, "                ", "return false;")
 		g.pf("                w.Put16(keyId); // the slot's VARIANT id, not its position\n")
 		g.pf("                int elemLenAt = w.Offset; w.Put32(0);\n")
@@ -917,7 +919,8 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s            r.Report.Unknown++; // a slot this reader cannot name\n", ind)
 		g.pf("%s            sub.Offset += (int)elemLen;\n%s            continue;\n%s        }\n", ind, ind, ind)
 		g.pf("%s        {\n%s            TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);\n", ind, ind)
-		slot := g.keyedSlots("value.", f) + "[(int)slot]"
+		// the key k lives at STORAGE INDEX k-1 (SPEC-TABLES.md §2.4)
+		slot := g.keyedSlots("value.", f) + "[(int)slot - 1]"
 		if kind == tkTable {
 			g.pf("%s            %sLoadBody(ref elem, %s);\n", ind, f.Type.Name, slot)
 		} else {
@@ -1165,12 +1168,17 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	isArray := f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes
 	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString
 
-	bound := int64(0)
+	// the count column, spelled the way the storage spells its own extent: a
+	// keyed array DERIVES it from the key enum, so nothing outside the array
+	// names its size (SPEC-TABLES.md §2.4, §8.1)
+	bound := "0"
 	switch {
+	case f.KeyEnum != "":
+		bound = fmt.Sprintf("(int)%s.Max", f.KeyEnum)
 	case f.Array != ir.ArrayNone:
-		bound = f.ArrayBound
+		bound = strconv.FormatInt(f.ArrayBound, 10)
 	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
-		bound = f.Type.Size
+		bound = strconv.FormatInt(f.Type.Size, 10)
 	}
 
 	tableRef := "null"
@@ -1178,11 +1186,11 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		tableRef = fmt.Sprintf("delegate { return %sTableType(); }", f.Type.Name)
 	}
 
-	// the KEY's vocabulary on an enum-keyed array (SPEC-TABLES.md §8): slot i
-	// belongs to the variant whose value is i, so a walker prints slots by
-	// name without the schema files. KeyId(0) is 0 and KeyName(0) is "None" —
-	// the reserved id is what marks slot 0 invalid, so a walker stepping
-	// [0, ArrayBound) skips it without a rule about slot indices (§2.4, §8).
+	// the KEY's vocabulary on an enum-keyed array (SPEC-TABLES.md §8):
+	// functions of the KEY, not of the storage index — a walker stepping
+	// [0, ArrayBound) asks about index + 1 and prints slots by name without
+	// the schema files. KeyId(0) is 0 and KeyName(0) is "None", the reserved
+	// id that says None keys no slot; no storage index maps to it (§2.4, §8).
 	keyTypeName, keyName, keyId := "null", "null", "null"
 	if f.KeyEnum != "" {
 		keyTypeName = fmt.Sprintf("%q", f.KeyEnum)
@@ -1225,7 +1233,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		}
 	}
 
-	g.pf("        new TableFieldInfo { Name = \"%s\", TypeName = \"%s\", Id = 0x%04x, Kind = %d, IsArray = %v, Counted = %v, Optional = %v, ArrayBound = %d, HasRange = %s, RangeMin = %s, RangeMax = %s, EnumMax = %s, EnumName = %s, VariantId = %s, KeyTypeName = %s, KeyName = %s, KeyId = %s, Guard = \"%s\", TableRef = %s },\n",
+	g.pf("        new TableFieldInfo { Name = \"%s\", TypeName = \"%s\", Id = 0x%04x, Kind = %d, IsArray = %v, Counted = %v, Optional = %v, ArrayBound = %s, HasRange = %s, RangeMin = %s, RangeMax = %s, EnumMax = %s, EnumName = %s, VariantId = %s, KeyTypeName = %s, KeyName = %s, KeyId = %s, Guard = \"%s\", TableRef = %s },\n",
 		f.Name, tableFieldTypeName(f), id, kind, isArray, counted, f.Type.Optional, bound,
 		hasRange, rangeMin, rangeMax, enumMax, enumName, variantId,
 		keyTypeName, keyName, keyId, guard, tableRef)

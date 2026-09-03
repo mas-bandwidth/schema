@@ -227,7 +227,8 @@ compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
 - **Fields may be OPTIONAL** (§2.3). `settings ?GunnerSettings` is present
   or absent by value, with no pointer and no change of mode.
 - **An array may be ENUM-KEYED** (§2.4). `ships [ShipType]ShipConfig` has
-  exactly one slot per variant, indexed by the variant.
+  exactly one slot per NAMED variant, keyed by the variant, and nothing for
+  `None`.
 - **A union arm may be a table** (§2.6), which is what makes an evolvable
   message set expressible.
 - **`was` — the rename attribute** (§5).
@@ -450,40 +451,63 @@ spellings never overlap, because an enum is declared: `[Name]` naming a
 constant is the fixed array it has always been, and `[Name]` naming an
 enum is keyed.
 
-- **Storage** is a generated KEYED-ARRAY TYPE wrapping `T slots[E.Max + 1]`
-  — one slot per variant, indexed by the enum value, no count companion
-  because every slot exists. The wrapper is what gives the accessor and the
+- **Storage** is a generated KEYED-ARRAY TYPE wrapping `T slots[E.Max]` —
+  ONE SLOT PER NAMED VARIANT and not one more, no count companion because
+  every named slot exists. The wrapper is what gives the accessor and the
   iteration below a home; the array inside it is its ONE member, and the
   iteration surface holds no state, so the type stays trivially copyable
   and standard-layout (§9).
-- **SLOT 0 EXISTS AND IS NEVER VALID.** `None` is the enum's null, so it
-  keys nothing: only `E.Max` slots can ever hold data. Slot 0 is kept in
-  storage so indexing stays unbiased, and reaching it is an ERROR.
+- **NOTHING IS STORED FOR `None`, AND THE STORAGE SHIFTS LEFT.** `None` is
+  the enum's null, so it keys nothing and it takes no room: **the key `k`
+  lives at storage index `k − 1`**, the extent is `E.Max` elements, and
+  `sizeof( TableKeyed<T, E> ) == E.Max * sizeof( T )`. Nothing is stored
+  for `None` and nothing is packed for it (§3.2, §16.2, §17.2).
 
-  **The accessor is `operator[]( E )`**: it takes a runtime key and ASSERTS
-  that it is not `None`. A key in a data-driven program IS a runtime value —
-  an enum field read out of a file, a key handed in by a tool, the key an
-  iteration just yielded — so this is the form call sites use, and a
+  **NOTHING OUTSIDE THE ARRAY NAMES ITS SIZE**, and that is what enforces
+  the rule rather than restating it. The storage type is
+  `TableKeyed<T, E>`: it takes the ELEMENT and the KEY ENUM and derives its
+  own extent from `E.Max`, so there is no size parameter on the type, no
+  count in a constructor, and no generated constant beside it. A count a
+  consumer can spell is a count that can stand one out of step with the
+  storage; the number has ONE home and it is inside the type. The
+  descriptors' count column (§8.1) derives the same way.
+
+  **The accessor is `operator[]( E )`**: it takes a runtime key, REFUSES
+  `None`, and SUBTRACTS ONE. A key in a data-driven program IS a runtime
+  value — an enum field read out of a file, a key handed in by a tool, the
+  key an iteration just yielded — so this is the form call sites use, and a
   compile-time accessor taking the key as a template parameter is not
   offered: it would serve only literal keys, which is not where keys come
-  from.
+  from. **The shift is never written at a call site**: the accessor is the
+  only place it appears.
 
   ```cpp
-  fleet.ships[ ship_type ]   // runtime key: asserts key != None
+  fleet.ships[ ship_type ]   // runtime key: refuses None, reads slots[ key - 1 ]
   ```
 
-  **The assert is a DEBUG guard and it is COMPILED OUT UNDER `NDEBUG`** —
-  and its equivalent elsewhere — so a shipped build carries no check on a
-  keyed index at all. That is the normal case, not an edge one, and the
-  page says it plainly rather than leaving a reader to infer a protection
-  that is not there in the configuration a game ships.
+  **THE REFUSAL STANDS IN EVERY BUILD, in every port.** It is not a debug
+  guard and `NDEBUG` does not remove it: **indexing by `None` is a PROGRAM
+  ERROR in every configuration**, and the accessor ends the program rather
+  than reading something. **There is NO undefined-behaviour path here in
+  any build** — which is the whole reason the compare is unconditional,
+  because the storage shifts left and holds no slot for `None` to land in,
+  so a build that skipped it would read one element BEFORE the array.
+  The cost is one perfectly-predicted compare on a path that reads config,
+  which is not a price worth a class of silent corruption.
+
+  What varies is only how a language ends a program: C++ asserts — for the
+  message, where a debugger can read it — and then ABORTS, and the abort is
+  what stands under `NDEBUG`; C# throws. **ITERATION is still the surface a
+  consumer of a whole array should reach for**, below, because it needs no
+  key from the caller at all.
 
 - **ITERATION IS THE SAFETY**, and it is the form a consumer of a whole
-  keyed array should reach for. The keyed type ITERATES ITS VALID SLOTS —
-  `1 .. E.Max`, never slot 0 — yielding the KEY beside the ELEMENT:
+  keyed array should reach for. The keyed type ITERATES EVERY SLOT — keys
+  `1 .. E.Max` over storage `0 .. E.Max − 1` — yielding the KEY beside the
+  ELEMENT:
 
   ```cpp
-  for ( auto [ ship_type, ship ] : fleet.ships )   // slot 0 is not in the range
+  for ( auto [ ship_type, ship ] : fleet.ships )   // ship_type is the KEY, never an index
   {
       ship.health *= 2.0f;                         // the element is a reference
   }
@@ -491,10 +515,10 @@ enum is keyed.
 
   In C++ the element is a REFERENCE to the slot, so iterating is how a whole
   array is filled as well as read, and the iteration is CONST-CORRECT: a
-  const keyed array yields const elements. **Slot 0 never appears at a call
-  site**, and neither does a lower bound nor an `E.Max` a consumer had to
-  spell for itself — the pieces of the slot rule that were re-derived by
-  hand at every one of them before.
+  const keyed array yields const elements. **A storage index never appears
+  at a call site**, and neither does a lower bound, an `E.Max` nor the
+  shift a consumer had to spell for itself — the pieces of the slot rule
+  that were re-derived by hand at every one of them before.
 
   **What the range guarantees is the same in every port; what the entry
   hands out is the port's own.** A port spells the walk in its own idiom
@@ -503,11 +527,16 @@ enum is keyed.
   port the equivalent — and two things vary with the language, both of
   which a port must state:
 
-  - **The KEY's currency.** Where a port's accessor takes the SLOT INDEX
-    rather than the enum — C# has no non-boxing generic enum conversion, so
-    its indexer takes the index — its iteration yields that same index, so
-    the two halves of the surface agree. A site that wants the key as its
-    enum type still writes the cast there; only C++ is free of one.
+  - **The KEY's currency is the ENUM VALUE, in every port.** Every port's
+    accessor takes the enum value and every port's iteration yields the
+    enum value; the STORAGE INDEX is the type's own business and reaches no
+    surface anywhere. What varies is only how a language spells an enum:
+    C# has no non-boxing generic enum conversion, so its indexer and its
+    entry carry the value as an `int` and the CAST is written at the call
+    site — the cast, never the shift. One convention across languages is
+    worth the cast: a rule learned in one port is the rule in the next, and
+    a port that handed out storage indices would make the number `1` mean
+    the second variant in one language and the first in another.
   - **Whether the ELEMENT is a reference.** C++ yields a reference for every
     element type. Where a port's entry holds a VALUE — C#'s does — a class
     element (a nested table) is the live instance and mutating it through
@@ -527,32 +556,41 @@ enum is keyed.
   `std::distance` works on them.
 
   **Held by test**: every keyed array in the corpus is iterated in both
-  backends and slot 0 is in none of them; the negative control moves
-  `begin()` to slot 0 and the tables suite itself goes red.
+  backends and every walk yields `E.Max` entries whose keys run `1 .. E.Max`;
+  one negative control moves `begin()` off the first stored slot and another
+  restores the `None` slot — storage `E.Max + 1` with no shift — and the
+  tables suite, the layout gate and the `sizeof` assertion go red. **The
+  refusal is held in the configuration that would drop it**: a translation
+  unit compiled `-DNDEBUG` indexes a keyed array by `None` and must die, so
+  a refusal that ever became an assert again fails the gate rather than the
+  reader.
 
-  The wire enforces the slot rule from the other side regardless: a `None`
+  The wire enforces the key rule from the other side regardless: a `None`
   key never rides (§3.2).
 - **In a `type` body the same spelling is a PLAIN ARRAY.** `per_team [Team]int32`
-  inside a `type` generates `int32_t per_team[4]` — no wrapper, no keyed
-  accessor, no iteration surface, and no `None` guard of any kind. The
-  type wire is positional (below), so there is no key to check and nothing to protect: slot 0 is an
-  ordinary element a `type` may read and write. **The guard exists only
-  where the keyed storage type is generated, which is table bodies**, and
-  only the TABLE-wire ENCODING is keyed. A porter reading this section
-  should not emit the wrapper for a `type`.
+  inside a `type` generates `int32_t per_team[3]` — no wrapper, no keyed
+  accessor, no iteration surface, and no `None` guard of any kind. It needs
+  none: the shift means there is no `None` slot to guard, index `i` holds
+  the key `i + 1`, and every index the array has is a named variant's. The
+  type wire is positional (below), so there is no key to check and nothing
+  to protect. **The wrapper is generated only in TABLE bodies**, and only
+  the TABLE-wire ENCODING is keyed; a porter reading this section should
+  not emit the wrapper for a `type`. What a `type` body does share is the
+  EXTENT — `E.Max`, one slot per named variant — because that is the
+  construct, not the wrapper's convenience.
 - **On the TABLE wire the slots ride by NAME** (§3.2): the body carries
   `(variant id, element)` pairs, so inserting, removing or reordering
   variants leaves every surviving slot in its own home. This is the whole
   point of the construct: an ordinal-indexed array is the last positional
   vocabulary the table wire had, and it failed silently.
-- **On the TYPE wire the spelling IS `[E.Max + 1]T`** — positional,
+- **On the TYPE wire the spelling IS `[E.Max]T`** — positional,
   bitpacked, same-build, the protocol id moving exactly as that spelling
   moves it. The two spellings project identically and share one protocol
   id, and that is held by test.
 - **Fixed-size when `T` is**, so the zero-cost gate holds.
 
 **The two spellings are ONE FIELD on the type wire and TWO DIFFERENT
-ENCODINGS on the table wire.** `[E]T` is kind `16` and `[E.Max + 1]T` is
+ENCODINGS on the table wire.** `[E]T` is kind `16` and `[E.Max]T` is
 kind `14` (§3), so changing a TABLE field from one spelling to the other
 is a wire break, not a refactor: an old file read under the new spelling
 is a kind mismatch — skipped, counted, never misdecoded (§4) — and the
@@ -1131,9 +1169,11 @@ element carries:
 - **`N` is the number of SLOTS PRESENT**, not the array's extent. A slot
   whose element holds its default is elided, exactly as a defaulted field
   is, and an array with no present slot is not written at all. The upper
-  bound on `N` is therefore `E.Max`, never `E.Max + 1`.
+  bound on `N` is therefore `E.Max`, which is the whole extent of the
+  storage (§2.4): every stored slot can ride and no stored slot cannot.
 - **A `None` key NEVER RIDES.** `None` is the enum's null and keys no slot
-  (§2.4), so slot 0 is not written whatever it holds, and **a stored key of
+  (§2.4), so there is no `None` slot to write — the storage holds one
+  element per named variant and not one more — and **a stored key of
   `0` is MALFORMED** — not an unknown variant, because `0` is the reserved
   id no declared name can ever fold to (§5), so a body carrying one is
   damaged rather than merely foreign. The reader stops that body, keeps
@@ -1158,7 +1198,7 @@ element carries:
   `None`: measure and save return failure, exactly as they refuse an
   unnameable enum value or an out-of-range union tag (§5).
 
-The contrast is the point. A plain `[E.Max + 1]T` array is POSITIONAL:
+The contrast is the point. A plain `[E.Max]T` array is POSITIONAL:
 insert a variant in the middle and every later slot lands one place off,
 with nothing on the wire to say so and no report event that could fire.
 The keyed spelling costs `2 + 4` bytes per present slot and closes that
@@ -1219,7 +1259,7 @@ tolerance is the versioning model:
   has a kind of its own — **and so is an array whose ELEMENT kind differs**,
   which is the same event one level in (§3): `[3]int32` read into a
   `[3]float32` field is skipped and counted, never reinterpreted.
-- **A changed array BOUND** (a literal, a constant, or an `E.Max + 1`
+- **A changed array BOUND** (a literal, a constant, or an `E.Max`
   expression that moved): the array still loads, and the bound is not part
   of identity — a field is its name hash and its kind, and neither carries
   an extent. A count past the READER's bound keeps the bounded prefix and
@@ -1338,7 +1378,7 @@ on it.**
   besides flags: insert a variant in the middle and every later slot lands
   one place off. `[E]T` (§2.4) closes it — keyed slots ride by name, so a
   middle insert moves no slot.
-- **Changing a table field between `[E]T` and `[E.Max + 1]T`** would then
+- **Changing a table field between `[E]T` and `[E.Max]T`** would then
   have replaced it: two encodings under one kind would have let a reader
   decode keys as values and report nothing. The keyed body's own kind `16`
   (§3.2) turns that edit into a kind mismatch, counted like any other.
@@ -2244,7 +2284,7 @@ fields would get wrong:
 | `bytes(N)` | `uint8[N]`, then `int32` used length |
 | `[N]T` | `N` elements at the element's `sizeof` |
 | `[..N]T` | `N` elements, then `int32` used count |
-| `[E]T` | `E.Max + 1` elements, slot `0` included |
+| `[E]T` | `E.Max` elements, one per named variant, nothing for `None` |
 | `*T` | `int64` self-relative delta, eight bytes at eight |
 | `?T` | the value's own pieces, then `bool` present |
 
@@ -2252,12 +2292,12 @@ fields would get wrong:
   (SPEC.md §4.2) — not the wire's variant-name hash. What group 3 of the build
   version captures is what a slot HOLDS (§20.1), and the two vocabularies meet
   in the enum's own values.
-- **An ENUM-KEYED array's slots are POSITIONAL in a region**, indexed by the
-  enum value itself: slot `v` is variant `v`'s, and slot `0` is `None`'s,
-  which names no record, is never read through the iteration surface (§2.4)
-  and holds the element's value-initialized bytes. The wire rides the same
-  array BY NAME (§3.2); a region rides it by position, and the cook is where
-  the two are reconciled.
+- **An ENUM-KEYED array's slots are POSITIONAL in a region**, at the same
+  SHIFTED positions the storage has (§2.4): index `v − 1` is variant `v`'s,
+  the extent is `E.Max`, and nothing is stored for `None`. A region is a
+  memory image of the storage type, so it can be nothing else. The wire
+  rides the same array BY NAME (§3.2); a region rides it by position, and
+  the cook is where the two are reconciled.
 - **A UNION is a TAG beside its arms**: the tag at the union's own base at its
   storage width, the arms overlaid at `align_up( tag width, greatest arm
   alignment )`, the whole rounded to the union's alignment. **Only the SET
@@ -2606,12 +2646,23 @@ field and `present_offset` names the `<field>_present` bool, exactly as
 and write presence without knowing the spelling that produced it, and can
 tell "absent" from "present and default" (§2.3).
 
-**An enum-keyed array carries its KEY's vocabulary.** `key_type_name` names
-the keying enum, and `key_name` and `key_id` map a slot index to that
-variant's name and to the wire id it rides under — so a tool prints
-`ships[Bomber]` rather than `ships[2]`, with no schema files on hand. The
-element's own vocabulary columns are unaffected: a keyed array OF enums
-carries both (§2.4). A positional array leaves all three NULL.
+**An enum-keyed array carries its KEY's vocabulary, and the columns speak
+in KEYS.** `key_type_name` names the keying enum, and `key_name( key )` and
+`key_id( key )` map an ENUM VALUE to that variant's name and to the wire id
+it rides under — so a tool prints `ships[Bomber]` rather than `ships[2]`,
+with no schema files on hand. The element's own vocabulary columns are
+unaffected: a keyed array OF enums carries both (§2.4). A positional array
+leaves all three NULL.
+
+**The public currency is the KEY; the storage index is private** (§2.4).
+`array_bound` on a keyed field is the STORAGE EXTENT, `E.Max` — derived
+from the enum exactly as the storage type derives it, so nothing outside
+the array names its size — and a walker steps `[0, array_bound)` over
+storage and asks the columns about **`index + 1`**, the key that index
+holds. That one rule is the whole mapping, it lives in this paragraph, and
+it is why no other column and no other section has to mention a storage
+index again. **There is no invalid slot**: every index in the range is a
+named variant's, so a walker enumerating a keyed array skips nothing.
 
 **A vocabulary field carries its vocabulary and the ids it rides under.**
 An enum field and a union field both describe a named set indexed by
@@ -2634,14 +2685,14 @@ union's arms. It carries no per-variant wire id, because a mask's variants
 ride by position and have none (§4); a null id function beside a non-null
 name function is what identifies a flags field.
 
-**An enum-keyed array's slot 0 is marked invalid** (§2.4), and the
-descriptor says so in the column a walker is already reading:
-**`key_id( 0 )` is `0`**, the reserved id no declared name can fold to
-(§5), with `key_name( 0 )` reading `"None"` beside it. So a walker
-enumerating `[0, array_bound)` skips the slot whose key id is 0 rather than
-printing a `None` row, and it needs no rule about slot indices to do it —
-the same reserved id that keeps `None` off the wire keeps it out of a
-listing.
+**`key_id( 0 )` is still `0`**, the reserved id no declared name can fold
+to (§5), with `key_name( 0 )` reading `"None"` beside it — because the
+columns are functions of the KEY and `None` is a key the enum has. No
+storage index maps to it (§2.4), so nothing a walker enumerates reaches
+it; the row exists so that a tool holding a key from somewhere else — a
+wire body, a text key, a user's input — can ask about `None` and be told
+`0` rather than be left to a rule about slot indices. A key whose id is `0`
+names no slot on this wire, and that is the one test a tool needs.
 
 **A FIXED table carries a second set of positions for the same fields, and
 this is what makes the block form READABLE BY REFLECTION** (§19.2). No flag
@@ -2766,11 +2817,11 @@ reaches has ids nothing ever checked. So **an enum, a flags or a union no
 table closure reaches carries `id = 0` on every variant row** — the
 registry's `ViewVariant.id` (§8.3) and a descriptor's `variant_id()`
 function (§8.1) alike — and **an enum-keyed array whose KEY enum no table
-closure reaches carries `key_id( slot )` of `0` in every slot**. `0` is the
+closure reaches carries `key_id( key )` of `0` for every key**. `0` is the
 reserved id no declared name folds to (§5), and it already spells "no
 table-wire identity here" in the two places the columns state it: a flags
-bit's id, and slot 0 of a keyed array. A vocabulary a closure reaches
-carries its checked ids exactly as it did before.
+bit's id, and the `None` key of a keyed array. A vocabulary a closure
+reaches carries its checked ids exactly as it did before.
 
 **The compiler is unchanged, and is right to be.** Inside a closure it
 refuses a collision by name; outside one it accepts the unit, because the
@@ -3597,8 +3648,18 @@ are these rulings, in the owner's words:
   holds the gate to.
 - **Enum-keyed arrays** (§2.4): "I like the enum keyed arrays. That is
   cool… It's a really good, unique language feature, that is optional."
-  Optional is part of the design: `[E.Max + 1]T` stays legal and
-  positional; `[E]T` is the keyed form a user chooses.
+  Optional is part of the design: `[E.Max]T` stays legal and positional;
+  `[E]T` is the keyed form a user chooses.
+- **Enum arrays shift left** (§2.4, 2026-09-03): "I think there is really
+  just a rule here for enum arrays" / "enum arrays should not pack index 0"
+  / "and shift left." The basis was given the day before: "the 0th entry in
+  the array is not valid, and is 'null', so you really only store n-1
+  entries… If you look across the usage in ConfigManager and AssetsManager
+  in C++, you'll see this is historically how I've always done it. This
+  saves memory." So the storage is `E.Max` elements, the key `k` lives at
+  index `k − 1`, and nothing is stored or packed for `None`. The rule is
+  the ARRAY's, not the wrapper's: it holds in a `type` body, where the same
+  spelling is a plain array, exactly as it holds in a table body.
 - **Union arms as tables** (§2.6): "if you had a set of messages for
   tooling, you'd want to safely evolve those tables / messages."
 - **The text form** (§16): "the general idea of reading JSON file into a
@@ -5092,7 +5153,9 @@ declaration does not spell:**
   field **of the table itself** — `[..N]T` — is laid out of line, in
   declaration order, each at its own pitch, subject to the element rule below.
   Everything else stays exactly where it is: a fixed `[N]T`, an enum-keyed
-  `[E]T`, and **every
+  `[E]T` — **whose inline extent is `E.Max` elements, one per named
+  variant, nothing for `None`** (§2.4), so it occupies `E.Max * sizeof( T )`
+  bytes of the projection and not one more — and **every
   array at any depth inside an element** — which is a rule about the EMITTERS
   as much as about the form: a backend that projects a bounded array inside a
   nested record writes sixteen bytes where the other side wrote the whole
@@ -5858,7 +5921,7 @@ of declaration it names"*:
   record is nested; the name says WHICH.
 - **`key=`** names a keyed array's KEY enum, because its slots ride by that
   enum's variant-name hashes (§3.2): `[Difficulty]int32` and `[Team]int32` are
-  the same kind, the same element and the same four slots at the same offsets,
+  the same kind, the same element and the same three slots at the same offsets,
   and they are not the same data.
 - **`array=` and `bound=`** name the array's CLASS and its evaluated extent,
   so a fixed array and a bounded one of the same width are distinguishable and
@@ -6053,7 +6116,11 @@ wrong fails to build instead of degrading.
   tightened, loosened, added or removed** — group 3, and the reason group 3
   exists;
 - **an `enum` variant inserted, removed, reordered or renamed**; a `union` arm
-  inserted, removed, reordered or renamed;
+  inserted, removed, reordered or renamed. **An enum a keyed array KEYS moves
+  layout as well as meaning**: the array's extent is `E.Max` (§2.4), so
+  inserting or removing a variant moves the field's `bound=` and `size`, every
+  later field's `offset`, and the record's `sizeof` — the same shape as a
+  declared maximum moving, arrived at through the enum;
 - **the target's BYTE ORDER**;
 - a `ProjectionVersion` bump, or a bump of the cook projection's own form
   version (§20.2).

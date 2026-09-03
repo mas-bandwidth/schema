@@ -431,15 +431,25 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 // measured), and Convert.ToInt32 boxes on every index, which is per-frame
 // garbage in the consumer this port exists for.
 //
-// So the indexer takes the SLOT INDEX and the caller writes the cast:
-// `hull.Turrets[(int)Weapon.Missile]`. The None refusal survives as the
-// runtime guard, and unlike C++'s assert it is NOT compiled out in release,
-// so the C# guard is the stronger of the two at runtime.
+// So the indexer takes the key's VALUE as an int and the caller writes the
+// cast: `hull.Turrets[(int)Weapon.Missile]`. The CAST is the port's; the SHIFT
+// is not — the indexer subtracts one exactly as C++'s does, so no call site in
+// any language spells it (§2.4). The None refusal survives as the runtime
+// guard, and it stands in EVERY build — as C++'s does (§2.4): the two ports
+// refuse the same key in the same configurations, differing only in how a
+// language ends a program.
 //
 // ITERATION carries over with the same RANGE and one difference in what it
-// hands out (§2.4): a struct enumerator over slots 1..E.Max, so `foreach`
-// allocates nothing and slot 0 is never yielded. Its key is the SLOT INDEX,
-// the same currency the indexer takes, so the two halves of the surface agree.
+// hands out (§2.4): a struct enumerator over the whole storage, so `foreach`
+// allocates nothing. Its key is the ENUM VALUE, 1..E.Max, the same currency
+// the indexer takes, so the two halves of the surface agree and agree with
+// every other port's.
+//
+// The EXTENT is derived from the enum's own `Max` member, once per closed
+// generic type, so nothing outside the array names its size — no constructor
+// argument and no generated constant (§2.4). C# has no compile-time enum
+// arithmetic, so the one read is reflective and cached in a static; it happens
+// at type initialization and never on a per-value path.
 //
 // The entry's Element is a `readonly T`, so where the element type is a CLASS
 // — a nested table, the common case — it is the live instance and mutating it
@@ -448,34 +458,44 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 // written. C++ hands out a reference in both cases; a ref-yielding enumerator
 // here is a follow-on, not this construct's shape. The wire enforces the slot
 // rule from the other side regardless: a None key never rides (§3.2).
-const tableKeyedStorage = `// An ENUM-KEYED array's storage: N = E.Max + 1 slots indexed by the variant's
-// own value, so Turrets[(int)Weapon.Missile] reads as itself.
+const tableKeyedStorage = `// An ENUM-KEYED array's storage: E.Max slots, ONE PER NAMED VARIANT, with the
+// key k at index k-1 — the storage SHIFTS LEFT and nothing is stored for None.
 //
-// SLOT 0 IS NONE'S AND IS NEVER VALID. None is the null key: it never rides on
-// the wire, a stored key of 0 is malformed, and INDEXING BY IT IS AN ERROR.
-// The slot exists because memory is cheap and the bias is not: a slot's index
-// IS its variant's value, with nothing to add or subtract anywhere.
+// NOTHING OUTSIDE THE ARRAY NAMES ITS SIZE: the extent comes from the key
+// enum's own Max member, read once per closed generic type and cached, so
+// there is no constructor argument and no constant a consumer could put one
+// out of step with.
 //
-// ITERATION is the surface a consumer of the WHOLE array wants: foreach runs
-// slots 1..E.Max and yields the key beside the element, so slot 0 never
-// reaches a call site and no caller spells a bound or a lower limit of its
-// own. The enumerator is a struct and foreach binds it by pattern, so the
-// walk allocates nothing.
+// NONE IS THE NULL KEY: it names no slot, it never rides on the wire, a stored
+// key of 0 is malformed, and INDEXING BY IT IS AN ERROR — a throw from the
+// indexer, which stands in every build exactly as the C++ abort does.
+//
+// ITERATION is the surface a consumer of the WHOLE array wants: foreach walks
+// every stored slot and yields the KEY, 1..E.Max, beside the element, so no
+// caller spells a bound, a lower limit or the shift. The enumerator is a
+// struct and foreach binds it by pattern, so the walk allocates nothing.
 //
 // The entry's Element is a readonly T: a CLASS element (a nested table) is the
 // live instance and mutating it through the iteration is visible, and a VALUE
 // element (a scalar, an enum) is a COPY — iteration READS those and the
 // indexer is how they are written.
 //
-// Slots is public and is what the generated codecs walk; the indexer is for
-// callers, and it is the one place the None key can be caught in C#.
-public sealed class TableKeyed<T>
+// Slots is public and is what the generated codecs walk, by STORAGE INDEX; the
+// indexer is for callers and takes the KEY, and it is the one place the None
+// key can be caught in C#.
+public sealed class TableKeyed<T, E> where E : struct, System.Enum
 {
+    // the extent is the enum's, derived here and named nowhere else. C# has no
+    // compile-time enum arithmetic, so this reads the generated Max member
+    // once, at type initialization — never on a per-value path.
+    public static readonly int SlotCount =
+        (int)System.Convert.ToInt64(System.Enum.Parse(typeof(E), "Max"));
+
     public readonly T[] Slots;
 
-    public TableKeyed(int slots)
+    public TableKeyed()
     {
-        Slots = new T[slots];
+        Slots = new T[SlotCount];
     }
 
     public T this[int key]
@@ -483,12 +503,12 @@ public sealed class TableKeyed<T>
         get
         {
             RefuseNone(key);
-            return Slots[key];
+            return Slots[key - 1];
         }
         set
         {
             RefuseNone(key);
-            Slots[key] = value;
+            Slots[key - 1] = value;
         }
     }
 
@@ -497,7 +517,7 @@ public sealed class TableKeyed<T>
         if (key == 0)
         {
             throw new ArgumentOutOfRangeException("key",
-                "slot 0 is None's and is never valid: None is the null key of an enum-keyed array");
+                "None is the null key of an enum-keyed array: it keys no slot");
         }
     }
 
@@ -506,7 +526,7 @@ public sealed class TableKeyed<T>
         return new Enumerator(Slots);
     }
 
-    // one valid slot: its index and its element. Deconstruct so a caller may
+    // one slot: the KEY it holds and its element. Deconstruct so a caller may
     // write: foreach (var (key, element) in keyed).
     public readonly struct Entry
     {
@@ -529,12 +549,12 @@ public sealed class TableKeyed<T>
     public struct Enumerator
     {
         readonly T[] slots;
-        int index;
+        int index; // the STORAGE index; the key it holds is index + 1
 
         public Enumerator(T[] slots)
         {
             this.slots = slots;
-            this.index = 0; // the first MoveNext lands on slot 1, never slot 0
+            this.index = -1; // the first MoveNext lands on the first stored slot
         }
 
         public bool MoveNext()
@@ -545,7 +565,7 @@ public sealed class TableKeyed<T>
 
         public Entry Current
         {
-            get { return new Entry(index, slots[index]); }
+            get { return new Entry(index + 1, slots[index]); }
         }
     }
 }

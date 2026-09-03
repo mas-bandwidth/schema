@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package tabledemo — protocol id 0x12cf1828bc593ac7 (packets only: tables version by field id, not by protocol id)
+// package tabledemo — protocol id 0x9924bf6d375ec24d (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -12,7 +12,8 @@
 #include <cstring> // the prefill's scalar-array fills
 #include <cstddef> // offsetof, for the reflection descriptors
 #include <type_traits> // the enforced relocatability asserts
-#include <cassert> // the keyed accessor's None refusal
+#include <cassert> // the keyed accessor's None refusal, in a debug build
+#include <cstdlib> // and its abort, which NDEBUG does not remove
 #include <iterator> // the keyed iterator's traits typedefs
 
 #include "Wide.h"
@@ -203,36 +204,58 @@ struct TableReader
 };
 
 
-// An ENUM-KEYED array's storage: N = E.Max + 1 slots indexed by the variant's
-// own value, so ships[ShipType::Bomber] reads as itself.
+// An ENUM-KEYED array's storage: E.Max slots, ONE PER NAMED VARIANT, with the
+// key k at index k-1 — the storage SHIFTS LEFT and nothing is stored for None.
 //
-// SLOT 0 IS NONE'S AND IS NEVER VALID. None is the null key: it never rides on
-// the wire, a stored key of 0 is malformed, and INDEXING BY IT IS AN ERROR —
-// an assert through operator[], which cannot see a runtime key any earlier,
-// and that assert is a DEBUG guard, compiled out by -DNDEBUG. So a shipped
-// build carries no check on a keyed index at all, and ITERATION is where the
-// safety lives: begin()/end() run 1..E.Max and never offer slot 0, so a
-// consumer of the whole array writes no bound, no cast and no None question.
-// The slot exists because memory is cheap and the bias is not: a slot's index
-// IS its variant's value, with nothing to add or subtract anywhere.
-template <typename T, typename E, int32_t N>
+// NOTHING OUTSIDE THE ARRAY NAMES ITS SIZE: the extent is derived from E::Max
+// here and nowhere else, so there is no size parameter to spell and no count a
+// consumer could put one out of step with.
+//
+// NONE IS THE NULL KEY: it names no slot, it never rides on the wire, a stored
+// key of 0 is malformed, and INDEXING BY IT IS A PROGRAM ERROR IN EVERY
+// CONFIGURATION — caught by operator[], which cannot see a runtime key any
+// earlier, and REFUSED UNCONDITIONALLY. NDEBUG does not remove the compare:
+// there is NO UB PATH here in any build. ITERATION is still the surface a
+// consumer of the whole array wants: begin()/end() walk every stored slot and
+// yield the KEY, 1..E.Max, so a call site writes no bound, no cast, no shift
+// and no None question.
+template <typename T, typename E>
 struct TableKeyed
 {
-    T slots[N] = {};
+    // the extent is the enum's, derived here and named nowhere else
+    static constexpr int32_t kSlots = (int32_t) E::Max;
+
+    T slots[kSlots] = {};
 
     T & operator[]( E key )
     {
-        // slot 0 is None's, and None is the null key
-        assert( key != E::None && "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
-        return slots[ (int32_t) key ];
+        RefuseNone( key );
+        return slots[ (int32_t) key - 1 ];
     }
     const T & operator[]( E key ) const
     {
-        assert( key != E::None && "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
-        return slots[ (int32_t) key ];
+        RefuseNone( key );
+        return slots[ (int32_t) key - 1 ];
     }
 
-    // ---- iteration over the VALID slots: 1..E.Max, key beside element ----
+    // THE REFUSAL, and it stands in EVERY BUILD. The storage shifts left and
+    // holds no slot for None, so a build that skipped this compare would index
+    // one element BEFORE the array — undefined behaviour in the configuration
+    // a game ships. A None key is a program error, so the accessor ends the
+    // program rather than reading something. The assert carries the message
+    // where a debugger can read it and NDEBUG removes that; the abort is what
+    // stands after it. The cost is one perfectly-predicted compare, on a path
+    // that reads config.
+    static void RefuseNone( E key )
+    {
+        if ( key == E::None )
+        {
+            assert( false && "None is the null key of an enum-keyed array: it keys no slot" );
+            abort();
+        }
+    }
+
+    // ---- iteration: keys 1..E.Max over storage 0..E.Max-1, key beside element ----
     //
     // The entry is a key and a REFERENCE, handed out BY VALUE the way any
     // proxy is: for ( auto [ key, element ] : keyed ) binds element to the
@@ -256,8 +279,8 @@ struct TableKeyed
         typedef Entry reference;
 
         T * slots;
-        int32_t index;
-        Entry operator*() const { return Entry{ (E) index, slots[index] }; }
+        int32_t index; // the STORAGE index; the key it holds is index + 1
+        Entry operator*() const { return Entry{ (E) ( index + 1 ), slots[index] }; }
         Iterator & operator++() { index++; return *this; }
         bool operator==( const Iterator & other ) const { return index == other.index; }
         bool operator!=( const Iterator & other ) const { return index != other.index; }
@@ -272,17 +295,17 @@ struct TableKeyed
         typedef ConstEntry reference;
 
         const T * slots;
-        int32_t index;
-        ConstEntry operator*() const { return ConstEntry{ (E) index, slots[index] }; }
+        int32_t index; // the STORAGE index; the key it holds is index + 1
+        ConstEntry operator*() const { return ConstEntry{ (E) ( index + 1 ), slots[index] }; }
         ConstIterator & operator++() { index++; return *this; }
         bool operator==( const ConstIterator & other ) const { return index == other.index; }
         bool operator!=( const ConstIterator & other ) const { return index != other.index; }
     };
 
-    Iterator begin() { return Iterator{ slots, 1 }; } // 1: slot 0 is None's
-    Iterator end() { return Iterator{ slots, N }; }
-    ConstIterator begin() const { return ConstIterator{ slots, 1 }; }
-    ConstIterator end() const { return ConstIterator{ slots, N }; }
+    Iterator begin() { return Iterator{ slots, 0 }; }
+    Iterator end() { return Iterator{ slots, kSlots }; }
+    ConstIterator begin() const { return ConstIterator{ slots, 0 }; }
+    ConstIterator end() const { return ConstIterator{ slots, kSlots }; }
 };
 
 inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -311,7 +334,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-inline constexpr uint64_t BuildVersion = 0x324fda67cd7d76efull;
+inline constexpr uint64_t BuildVersion = 0x89c17e3f4a1f6255ull;
 
 } // namespace tabledemo
 

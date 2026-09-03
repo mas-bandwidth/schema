@@ -445,31 +445,30 @@ func (inst *Instance) FieldIndexByKey(key string) (int, bool) {
 
 // ---- enum-keyed arrays: the slot <-> variant mapping ----
 
-// The owner ruled (2026-09-02, schema#255) that an enum-keyed array's STORAGE
-// keeps E.Max + 1 slots — slot i is the variant whose value is i, so
-// `ships[int( ShipType::Bomber )]` still just works — and that SLOT 0 IS NEVER
-// VALID: None keys no record. Every rule that follows is one consequence of
-// that: a None key never rides on the wire, a stored key of 0 is malformed, a
-// "None" key in a text is unknown and counted, and a keyed field's directory
-// has no `None.json`. The three functions below are the ONE place the mapping
-// lives.
+// An enum-keyed array's STORAGE holds E.Max slots, ONE PER NAMED VARIANT
+// (SPEC-TABLES.md §2.4): None is the null key, so nothing is stored for it and
+// the storage SHIFTS LEFT — the key k lives at slot k-1. Every rule that
+// follows is one consequence of that: a None key never rides on the wire, a
+// stored key of 0 is malformed, a "None" key in a text is unknown and counted,
+// and a keyed field's directory has no `None.json`. The four functions below
+// are the ONE place the mapping lives; the SHIFT appears nowhere else.
 
-// KeyedSlotCount is the number of slots an enum-keyed array stores, slot 0
-// included. Iterate from [KeyedFirstSlot].
+// KeyedSlotCount is the number of slots an enum-keyed array stores — the whole
+// extent, every slot a named variant's. Iterate from [KeyedFirstSlot].
 func KeyedSlotCount(f *ir.Field) int { return int(f.ArrayBound) }
 
-// KeyedFirstSlot is the first slot a walk visits: slot 0 belongs to None and
-// no walk ever reaches it.
-func KeyedFirstSlot() int { return 1 }
+// KeyedFirstSlot is the first slot a walk visits: the storage has no None slot
+// to skip, so a walk starts at 0.
+func KeyedFirstSlot() int { return 0 }
 
-// KeyedSlotValue is the enum value slot i belongs to.
-func KeyedSlotValue(f *ir.Field, slot int) int64 { return int64(slot) }
+// KeyedSlotValue is the enum value slot i belongs to: the shift, in one place.
+func KeyedSlotValue(f *ir.Field, slot int) int64 { return int64(slot) + 1 }
 
 // KeyedValueSlot is the inverse: the slot an enum value owns, or -1 when the
 // array has no slot for it — which None, value 0, never has.
 func KeyedValueSlot(f *ir.Field, value int64) int {
-	if value < int64(KeyedFirstSlot()) || value >= int64(KeyedSlotCount(f)) {
+	if value < 1 || value > int64(KeyedSlotCount(f)) {
 		return -1
 	}
-	return int(value)
+	return int(value) - 1
 }

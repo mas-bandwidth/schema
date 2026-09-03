@@ -126,8 +126,8 @@ func (m *Model) writeField(w *writer, fv *Field, depth int) error {
 
 // writeKeyed renders an enum-keyed array as an OBJECT keyed by variant name
 // (SPEC-TABLES.md §2.4, §16.2). Every slot the array KEYS is written, as a
-// fixed array writes every element — the slots ARE the value. Slot 0 is
-// None's and is never one of them: None keys no record.
+// fixed array writes every element — the slots ARE the value. None keys no
+// slot, so the storage holds none for it and nothing is written for it.
 func (m *Model) writeKeyed(w *writer, fv *Field, depth int) error {
 	f := fv.Def
 	n := KeyedSlotCount(f)

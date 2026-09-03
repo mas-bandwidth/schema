@@ -84,6 +84,12 @@ static const tblv1::TableFieldInfo * v1_field( const tblv1::TableTypeInfo * type
     return NULL;
 }
 
+// a `type` body's keyed array is a PLAIN ARRAY (SPEC-TABLES.md §2.4): no wrapper
+// and no accessor, so the STORAGE INDEX is spelled here — the key minus one,
+// the same shift TableKeyed does for a table body.
+template <typename E>
+static int32_t keyed_index( E key ) { return (int32_t) key - 1; }
+
 static void set_string( char * dest, int32_t & length, const char * s )
 {
     length = (int32_t) strlen( s );
@@ -2082,7 +2088,7 @@ static void test_keyed_round_trip()
     // ScoreBoard is a `type`, so its keyed field keeps its PACKET storage — a
     // raw array indexed by the value, with no keyed accessor. The WIRE is
     // keyed either way (SPEC-TABLES.md §2.4).
-    cfg.scores.per_team[int32_t( tabledemo::Team::Red )] = 1200;
+    cfg.scores.per_team[keyed_index( tabledemo::Team::Red )] = 1200;
 
     uint8_t wire[8192];
     int64_t bytes = tabledemo::KeyedConfigSave( cfg, wire, sizeof( wire ) );
@@ -2098,9 +2104,9 @@ static void test_keyed_round_trip()
     CHECK( strcmp( back.teams[tabledemo::Team::Blue].banner, "blue" ) == 0 );
     // a slot nobody set never rode, and reads as its declared default
     CHECK( back.teams[tabledemo::Team::Red].spawn_count == 4 );
-    // slot 0 is None's: it never rides and the accessor refuses to name it,
-    // so it stays at the declared defaults forever
-    CHECK( back.teams.slots[0].spawn_count == 4 );
+    // there is no None slot to check: the storage holds one element per named
+    // variant and the key k lives at index k-1 (SPEC-TABLES.md §2.4)
+    CHECK( sizeof( back.teams ) == 3 * sizeof( tabledemo::TeamConfig ) );
     CHECK( back.hulls[tabledemo::Hull::Gunship].health == 400.0f );
     CHECK( back.hulls[tabledemo::Hull::Interceptor].health == 100.0f );
     // keyed arrays nest, and an optional inside one survives the trip
@@ -2111,8 +2117,8 @@ static void test_keyed_round_trip()
     CHECK( !back.hulls[tabledemo::Hull::Gunship]
                 .turrets[tabledemo::Weapon::Cannon].gunner_present );
     // a `type`'s keyed array rides keyed too
-    CHECK( back.scores.per_team[int32_t( tabledemo::Team::Red )] == 1200 );
-    CHECK( back.scores.per_team[int32_t( tabledemo::Team::Blue )] == 0 );
+    CHECK( back.scores.per_team[keyed_index( tabledemo::Team::Red )] == 1200 );
+    CHECK( back.scores.per_team[keyed_index( tabledemo::Team::Blue )] == 0 );
 
     // an all-default keyed array elides whole
     tabledemo::KeyedConfig empty;
@@ -2123,16 +2129,17 @@ static void test_keyed_round_trip()
 //
 // A consumer of a keyed array wants the WHOLE array, and the shape it wants is
 // (key, element) over the slots that can hold data. Iteration is that shape,
-// and it is where the slot rule lives now: the range is 1..E.Max, so slot 0
-// never reaches a call site and nothing out here spells a lower bound, a cast
-// or an E.Max of its own. The assert on operator[] is a debug guard that a
-// shipped build compiles out; this is not.
+// and it is where the key rule lives: the walk yields KEYS 1..E.Max over
+// storage 0..E.Max-1, so nothing out here spells a bound, a cast, a shift or
+// an E.Max of its own. The accessor REFUSES None in every build, so both
+// surfaces are safe in a shipped build; this one is safe without a key at all.
 
 // the sweep every keyed array in the corpus goes through: walk it, and prove
-// the key is never slot 0. Written once, against no particular enum, so a
-// keyed array added to the corpus is one line away from being covered.
+// the keys are exactly 1..E.Max, ascending. Written once, against no
+// particular enum, so a keyed array added to the corpus is one line away from
+// being covered.
 template <typename Keyed>
-static int32_t iterate_and_refuse_slot_zero( const Keyed & keyed )
+static int32_t iterate_and_check_keys( const Keyed & keyed )
 {
     int32_t seen = 0;
     int32_t expect = 1; // slots arrive in ascending variant order, from 1
@@ -2162,8 +2169,6 @@ static void test_keyed_iteration()
     CHECK( cfg.teams[tabledemo::Team::Red].spawn_count == 10 );
     CHECK( cfg.teams[tabledemo::Team::Blue].spawn_count == 11 );
     CHECK( cfg.teams[tabledemo::Team::Green].spawn_count == 12 );
-    // slot 0 was not in the range, so it still holds the declared default
-    CHECK( cfg.teams.slots[0].spawn_count == 4 );
 
     // reading it back through a CONST keyed array: the same range, const
     // elements
@@ -2176,28 +2181,27 @@ static void test_keyed_iteration()
     }
     CHECK( total == 10 + 11 + 12 );
 
-    // EVERY keyed array in the corpus, iterated, and slot 0 in none of them.
-    // Team, Hull and Weapon each declare three variants, so each iteration is
-    // exactly E.Max long — one slot per variant, never E.Max + 1.
-    CHECK( iterate_and_refuse_slot_zero( cfg.teams ) == 3 );
-    CHECK( iterate_and_refuse_slot_zero( cfg.hulls ) == 3 );
+    // EVERY keyed array in the corpus, iterated, and None yielded by none of
+    // them. Team, Hull and Weapon each declare three variants, so each
+    // iteration is exactly E.Max long — one slot per NAMED variant.
+    CHECK( iterate_and_check_keys( cfg.teams ) == 3 );
+    CHECK( iterate_and_check_keys( cfg.hulls ) == 3 );
     for ( auto [ hull, config ] : cfg.hulls )
     {
         CHECK( hull != tabledemo::Hull::None );
-        CHECK( iterate_and_refuse_slot_zero( config.turrets ) == 3 ); // nested
+        CHECK( iterate_and_check_keys( config.turrets ) == 3 ); // nested
     }
 
     // the space-shaped corpus: one record per ship type, one threshold per
     // difficulty — the config bin this construct exists for
     tabledemo::PackConfig pack;
-    CHECK( iterate_and_refuse_slot_zero( pack.ships ) == 3 );
-    CHECK( iterate_and_refuse_slot_zero( pack.thresholds ) == 3 );
+    CHECK( iterate_and_check_keys( pack.ships ) == 3 );
+    CHECK( iterate_and_check_keys( pack.thresholds ) == 3 );
     for ( auto [ ship_type, entry ] : pack.ships )
     {
         CHECK( ship_type != tabledemo::ShipType::None );
         entry.mass = 2.0f;
     }
-    CHECK( pack.ships.slots[0].mass == 1.0f ); // None's slot, still default
     CHECK( pack.ships[tabledemo::ShipType::Bomber].mass == 2.0f );
 
     // the evolution unit's keyed arrays, BOTH generations: tables, scalars and
@@ -2206,19 +2210,19 @@ static void test_keyed_iteration()
     // it — V1's Slot has four variants, V2's five — so the iteration follows
     // the enum without a consumer touching anything.
     tblv1::Cfg v1;
-    CHECK( iterate_and_refuse_slot_zero( v1.bank ) == 4 );
-    CHECK( iterate_and_refuse_slot_zero( v1.tokens ) == 4 );
-    CHECK( iterate_and_refuse_slot_zero( v1.ranks ) == 4 );
+    CHECK( iterate_and_check_keys( v1.bank ) == 4 );
+    CHECK( iterate_and_check_keys( v1.tokens ) == 4 );
+    CHECK( iterate_and_check_keys( v1.ranks ) == 4 );
 
     tblv2::Cfg v2;
-    CHECK( iterate_and_refuse_slot_zero( v2.bank ) == 5 );
-    CHECK( iterate_and_refuse_slot_zero( v2.tokens ) == 5 );
-    CHECK( iterate_and_refuse_slot_zero( v2.ranks ) == 5 );
-    CHECK( iterate_and_refuse_slot_zero( v2.ledger ) == 3 );
+    CHECK( iterate_and_check_keys( v2.bank ) == 5 );
+    CHECK( iterate_and_check_keys( v2.tokens ) == 5 );
+    CHECK( iterate_and_check_keys( v2.ranks ) == 5 );
+    CHECK( iterate_and_check_keys( v2.ledger ) == 3 );
 
     // and the VARIABLE class's keyed array, which is the same storage type
     graphdemo::Depot depot;
-    CHECK( iterate_and_refuse_slot_zero( depot.banks ) == 2 );
+    CHECK( iterate_and_check_keys( depot.banks ) == 2 );
 
     // the iterators carry their traits typedefs, so a forward pass over one
     // works without the range-for
@@ -2232,7 +2236,6 @@ static void test_keyed_iteration()
     }
     CHECK( v2.tokens[tblv2::Slot::Alpha] == 10 );
     CHECK( v2.tokens[tblv2::Slot::Sigma] == 50 );
-    CHECK( v2.tokens.slots[0] == 0 );
 
     // a value filled by iteration rides and reads back by name
     uint8_t wire[8192];
@@ -2248,14 +2251,16 @@ static void test_keyed_iteration()
     }
 }
 
-// ---- the None assert on operator[] is still there (SPEC-TABLES.md §2.4) ----
+// ---- operator[] REFUSES None, and in every build (SPEC-TABLES.md §2.4) ----
 //
-// The runtime guard is what a debug build has, and iteration is what a release
-// build has instead — so the guard is worth a test that shows it firing rather
-// than a comment claiming it does. A forked child indexes slot 0 and must die
-// on the assert; the parent goes red if the child returns instead.
+// The refusal is unconditional — NDEBUG does not remove it — so it is worth a
+// test that shows it firing rather than a comment claiming it does. A forked
+// child indexes by None and must die; the parent goes red if the child returns
+// instead. This unit compiles with asserts LIVE, so it cannot tell the refusal
+// from an assert: `make tables-keyed-none-refusal-ndebug` is the half that
+// can, and its own negative control proves that gate has teeth.
 
-static void test_keyed_none_index_asserts()
+static void test_keyed_none_index_refused()
 {
     fflush( stdout );
     pid_t child = fork();
@@ -2266,13 +2271,13 @@ static void test_keyed_none_index_asserts()
         (void) quiet;
         tabledemo::KeyedConfig cfg;
         tabledemo::TeamConfig & none = cfg.teams[tabledemo::Team::None];
-        none.spawn_count = 1; // never reached: the accessor asserted
+        none.spawn_count = 1; // never reached: the accessor refused
         _exit( 0 );
     }
     CHECK( child > 0 );
     int status = 0;
     CHECK( waitpid( child, &status, 0 ) == child );
-    CHECK( WIFSIGNALED( status ) ); // the assert aborted the child
+    CHECK( WIFSIGNALED( status ) ); // the refusal ended the child
     if ( WIFEXITED( status ) )
     {
         printf( "FAIL keyed None index: the child returned %d — the assert is gone\n",
@@ -2316,7 +2321,8 @@ static void test_keyed_evolution_old_data()
     CHECK( out.bank[tblv2::Slot::Omega].power == 0 );
     CHECK( out.bank[tblv2::Slot::Delta].power == 40 );
     CHECK( out.bank[tblv2::Slot::Sigma].power == 0 ); // a slot V1 never had
-    CHECK( out.bank.slots[0].power == 0 ); // slot 0 is None's: never written, never named
+    // there is no None slot: the storage holds one element per named variant
+    CHECK( sizeof( out.bank ) == 5 * sizeof( tblv2::Cell ) );
     CHECK( out.tokens[tblv2::Slot::Beta] == 7 );
     CHECK( out.tokens[tblv2::Slot::Omega] == 0 );
     CHECK( out.ranks[tblv2::Slot::Beta] == tblv2::Grade::Gold );
@@ -2372,9 +2378,10 @@ static void test_keyed_versus_positional_is_a_kind_mismatch()
     CHECK( tblv2::CfgLoad( keyed_out, wire, bytes, &to_keyed ) );
     CHECK( !to_keyed.malformed && to_keyed.unknown == 0 );
     CHECK( to_keyed.kind_mismatch == 1 );  // seen, counted, skipped
-    for ( int32_t i = 0; i < 4; i++ )      // and NEVER decoded as slots
+    for ( auto [ grade, tokens ] : keyed_out.ledger )  // and NEVER decoded as slots
     {
-        CHECK( keyed_out.ledger.slots[i] == 0 );
+        (void) grade;
+        CHECK( tokens == 0 );
     }
 
     // KEYED writer -> POSITIONAL reader
@@ -2396,7 +2403,7 @@ static void test_keyed_versus_positional_is_a_kind_mismatch()
 }
 
 // ---- a stored key of 0 is DAMAGE, not an unknown name: None is the null key
-// ---- and slot 0 is never valid (SPEC-TABLES.md §3.2).
+// ---- and it keys no slot (SPEC-TABLES.md §3.2).
 
 static void test_keyed_none_key_is_malformed()
 {
@@ -2433,7 +2440,6 @@ static void test_keyed_none_key_is_malformed()
     CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
     CHECK( report.malformed );                   // damage, not an unknown name
     CHECK( report.unknown == 0 );
-    CHECK( out.tokens.slots[0] == 0 );           // slot 0 was never written
     CHECK( out.tokens[tblv1::Slot::Delta] == 0 ); // and the body stopped at the damage
 }
 
@@ -2496,7 +2502,7 @@ static void test_keyed_and_optional_in_a_variable_table()
     // pointee is a node the region has to hold
     for ( int32_t tier = int32_t( graphdemo::Tier::Low ); tier <= int32_t( graphdemo::Tier::High ); tier++ )
     {
-        graphdemo::Layer & layer = root->banks.slots[tier];
+        graphdemo::Layer & layer = root->banks[graphdemo::Tier( tier )];
         layer.depth = tier * 3;
         graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
         node->value = 100 + tier;
@@ -2521,15 +2527,14 @@ static void test_keyed_and_optional_in_a_variable_table()
     CHECK( loaded->spare_present && loaded->spare.build == 7 );
     for ( int32_t tier = int32_t( graphdemo::Tier::Low ); tier <= int32_t( graphdemo::Tier::High ); tier++ )
     {
-        const graphdemo::Layer & layer = loaded->banks.slots[tier];
+        const graphdemo::Layer & layer = loaded->banks[graphdemo::Tier( tier )];
         CHECK( layer.depth == tier * 3 );
         const graphdemo::ListNode * node = graphdemo::ListNodeAt( layer.head );
         CHECK( node != NULL && node->value == 100 + tier );
     }
-    // slot 0 is None's and is never valid: nothing ever wrote it, nothing
-    // ever rode for it, and the accessor refuses to name it
-    CHECK( loaded->banks.slots[0].depth == 0 );
-    CHECK( graphdemo::ListNodeAt( loaded->banks.slots[0].head ) == NULL );
+    // there is no None slot: the storage holds one element per named variant,
+    // so nothing was ever reserved for the null key
+    CHECK( sizeof( loaded->banks ) == 2 * sizeof( graphdemo::Layer ) );
 
     // and the PACKED REGION: Lock lays every slot's pointee out, the const
     // form reads them back, and a save from it is byte-stable
@@ -2587,10 +2592,10 @@ static void test_keyed_variable_oracle()
 
         int32_t depths[8] = {};
         int32_t chains[8] = {};
-        for ( int32_t slot = 1; slot < 3; slot++ ) // slot 0 is None's: never touched
+        for ( int32_t slot = 1; slot < 3; slot++ ) // the KEYS, 1..Tier.Max
         {
             if ( ( oracle_rand( state ) & 1 ) == 0 ) continue; // this slot stays default
-            graphdemo::Layer & layer = root->banks.slots[slot];
+            graphdemo::Layer & layer = root->banks[graphdemo::Tier( slot )];
             depths[slot] = (int32_t) ( oracle_rand( state ) % 65 );
             layer.depth = depths[slot];
             chains[slot] = (int32_t) ( oracle_rand( state ) % 4 );
@@ -2622,8 +2627,9 @@ static void test_keyed_variable_oracle()
         CHECK( loaded->spare_present == spare_present );
         for ( int32_t slot = 1; slot < 3; slot++ )
         {
-            CHECK( loaded->banks.slots[slot].depth == depths[slot] );
-            const graphdemo::ListNode * node = graphdemo::ListNodeAt( loaded->banks.slots[slot].head );
+            const graphdemo::Layer & layer = loaded->banks[graphdemo::Tier( slot )];
+            CHECK( layer.depth == depths[slot] );
+            const graphdemo::ListNode * node = graphdemo::ListNodeAt( layer.head );
             for ( int32_t link = 0; link < chains[slot]; link++ )
             {
                 CHECK( node != NULL && node->value == slot * 1000 + link );
@@ -2667,21 +2673,21 @@ static void test_optional_and_keyed_reflection()
     const tblv1::TableFieldInfo * bank = v1_field( cfg, "bank" );
     CHECK( bank != NULL );
     CHECK( bank->is_array && !bank->counted );
-    CHECK( bank->array_bound == 5 );  // Slot.Max + 1: None's slot plus four
+    CHECK( bank->array_bound == 4 );  // Slot.Max: one slot per named variant
     CHECK( bank->count_offset == 0xffffffffu ); // every slot exists: no count
     CHECK( bank->key_type_name != NULL && strcmp( bank->key_type_name, "Slot" ) == 0 );
-    // key_name and key_id take the SLOT INDEX, which IS the variant's value:
-    // slot 2 is Beta's in V1, and a walker steps [0, array_bound) with no
-    // arithmetic of its own (SPEC-TABLES.md §8)
+    // key_name and key_id are functions of the KEY, not of the storage index:
+    // a walker steps [0, array_bound) and asks about index + 1, which is the
+    // key that index holds (SPEC-TABLES.md §2.4, §8)
     CHECK( bank->key_name != NULL && strcmp( bank->key_name( 2 ), "Beta" ) == 0 );
     CHECK( bank->key_id != NULL && bank->key_id( 2 ) == field_id( "Beta" ) );
-    // SLOT 0 IS MARKED INVALID by the one id no declared name can hold: it is
-    // None's slot, it never rides, and indexing it is an error
+    // None is a KEY the enum has and it names no slot: the reserved id says so
     CHECK( bank->key_id( 0 ) == 0 );
     CHECK( strcmp( bank->key_name( 0 ), "None" ) == 0 );
-    for ( int32_t slot = 1; slot < bank->array_bound; slot++ )
+    for ( int32_t slot = 0; slot < bank->array_bound; slot++ )
     {
-        CHECK( bank->key_id( (uint64_t) slot ) != 0 ); // every other slot is nameable
+        // every STORED slot holds a nameable key, and none of them holds None
+        CHECK( bank->key_id( (uint64_t) ( slot + 1 ) ) != 0 );
     }
 
     // an enum-keyed array of enums carries BOTH vocabularies: the key's and
@@ -4365,8 +4371,8 @@ static void test_json_nested_guards()
 //
 // `?T` (SPEC-TABLES.md §2.3): PRESENCE OF THE KEY IS THE PRESENCE.
 // `[E]T` (§2.4): an OBJECT KEYED BY VARIANT NAME, because that is what the
-// storage is — one slot per variant, addressed by the variant, and slot 0 is
-// None's and names nothing.
+// storage is — one slot per NAMED variant, addressed by the variant, with
+// nothing stored for None.
 
 static tabledemo::KeyedConfig json_keyed_instance()
 {
@@ -4379,7 +4385,7 @@ static tabledemo::KeyedConfig json_keyed_instance()
     cfg.hulls[tabledemo::Hull::Gunship].turrets[tabledemo::Weapon::Missile].gunner_present = true;
     cfg.hulls[tabledemo::Hull::Gunship].turrets[tabledemo::Weapon::Missile].gunner.reaction = 0.9f;
     cfg.hulls[tabledemo::Hull::Gunship].turrets[tabledemo::Weapon::Missile].gunner.tracking = true;
-    cfg.scores.per_team[(int) tabledemo::Team::Green] = 1234;
+    cfg.scores.per_team[keyed_index( tabledemo::Team::Green )] = 1234;
     return cfg;
 }
 
@@ -4499,8 +4505,8 @@ static void test_json_keyed_arrays()
         CHECK( report.unknown == 0 && !report.malformed );
     }
 
-    // "None" NAMES NO SLOT (§2.4): slot 0 is None's and is never valid, so
-    // the key is unknown like any other name this reader cannot place
+    // "None" NAMES NO SLOT (§2.4): nothing is stored for it, so the key is
+    // unknown like any other name this reader cannot place
     {
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
@@ -4575,8 +4581,8 @@ static void test_json_keyed_arrays()
         tabledemo::TableReport report;
         const char * text = "{ \"per_team\": { \"Blue\": 900, \"Green\": 200000 } }";
         CHECK( tabledemo::ScoreBoardFromJson( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.per_team[(int) tabledemo::Team::Blue] == 900 );
-        CHECK( value.per_team[(int) tabledemo::Team::Green] == 100000 ); // clamped to max
+        CHECK( value.per_team[keyed_index( tabledemo::Team::Blue )] == 900 );
+        CHECK( value.per_team[keyed_index( tabledemo::Team::Green )] == 100000 ); // clamped to max
         CHECK( report.clamped == 1 );
     }
 }
@@ -4635,8 +4641,8 @@ static void test_json_pinned_keyed_and_optional()
     // an enum-keyed array of scalars: one entry per SLOT, keyed by the
     // variant that owns it, and NO "None" row
     tabledemo::ScoreBoard scores;
-    scores.per_team[(int) tabledemo::Team::Red] = 10;
-    scores.per_team[(int) tabledemo::Team::Green] = 1234;
+    scores.per_team[keyed_index( tabledemo::Team::Red )] = 10;
+    scores.per_team[keyed_index( tabledemo::Team::Green )] = 1234;
     static const char * keyed =
         "{\n"
         "  \"per_team\": {\n"
@@ -4691,23 +4697,25 @@ static void build_golden_keyed( tabledemo::KeyedConfig & cfg )
     tabledemo::HullConfig & freighter = cfg.hulls[tabledemo::Hull::Freighter];
     freighter.mass = 12.0f;                    // turrets all default: the keyed array elides whole
 
-    cfg.scores.per_team[1] = 10;               // a `type`'s keyed field: plain array storage,
-    cfg.scores.per_team[3] = 30;               // keyed BODY on this wire
+    // a `type`.s keyed field: PLAIN ARRAY storage, shifted like any other
+    // keyed array (key k at index k-1), and a keyed BODY on this wire
+    cfg.scores.per_team[keyed_index( tabledemo::Team::Red )] = 10;
+    cfg.scores.per_team[keyed_index( tabledemo::Team::Green )] = 30;
 }
 
 static void build_golden_v1_seams( tblv1::Cfg & cfg )
 {
     cfg.a = 3;
-    cfg.bank.slots[1].power = 11;              // Alpha
-    set_string( cfg.bank.slots[1].label, cfg.bank.slots[1].label_length, "a1" );
-    cfg.bank.slots[2].power = 22;              // Beta — ordinal 2 in V1, 3 in V2
-    cfg.bank.slots[3].power = 33;              // Gamma — REMOVED in V2
+    cfg.bank[tblv1::Slot::Alpha].power = 11;
+    set_string( cfg.bank[tblv1::Slot::Alpha].label, cfg.bank[tblv1::Slot::Alpha].label_length, "a1" );
+    cfg.bank[tblv1::Slot::Beta].power = 22;    // ordinal 2 in V1, 3 in V2
+    cfg.bank[tblv1::Slot::Gamma].power = 33;   // REMOVED in V2
     // Delta's slot stays default: it elides
-    cfg.tokens.slots[1] = 101;
-    cfg.tokens.slots[2] = 102;
-    cfg.tokens.slots[4] = 104;                 // Delta
-    cfg.ranks.slots[1] = tblv1::Grade::Gold;
-    cfg.ranks.slots[3] = tblv1::Grade::Bronze;
+    cfg.tokens[tblv1::Slot::Alpha] = 101;
+    cfg.tokens[tblv1::Slot::Beta] = 102;
+    cfg.tokens[tblv1::Slot::Delta] = 104;
+    cfg.ranks[tblv1::Slot::Alpha] = tblv1::Grade::Gold;
+    cfg.ranks[tblv1::Slot::Gamma] = tblv1::Grade::Bronze;
     cfg.ledger[0] = 7; cfg.ledger[2] = 9;      // POSITIONAL in V1, KEYED in V2: kind 14 vs 16
     cfg.extra_present = true;
     cfg.extra.factor = 6.25f;
@@ -4720,15 +4728,16 @@ static void build_golden_v1_seams( tblv1::Cfg & cfg )
 static void build_golden_v2_seams( tblv2::Cfg & cfg )
 {
     cfg.a = 1.5f;
-    cfg.bank.slots[1].power = 11;              // Alpha
-    set_string( cfg.bank.slots[1].label, cfg.bank.slots[1].label_length, "a1" );
-    cfg.bank.slots[2].power = 44;              // Omega — INSERTED in V2; V1 cannot name it
-    cfg.bank.slots[3].power = 22;              // Beta, slid from ordinal 2 to 3
-    cfg.bank.slots[5].power = 55;              // Sigma — appended; V1 cannot name it
-    cfg.tokens.slots[1] = 101;
-    cfg.tokens.slots[3] = 102;
-    cfg.ranks.slots[1] = tblv2::Grade::Gold;
-    cfg.ledger.slots[1] = 7; cfg.ledger.slots[3] = 9; // KEYED in V2
+    cfg.bank[tblv2::Slot::Alpha].power = 11;
+    set_string( cfg.bank[tblv2::Slot::Alpha].label, cfg.bank[tblv2::Slot::Alpha].label_length, "a1" );
+    cfg.bank[tblv2::Slot::Omega].power = 44;   // INSERTED in V2; V1 cannot name it
+    cfg.bank[tblv2::Slot::Beta].power = 22;    // slid from ordinal 2 to 3
+    cfg.bank[tblv2::Slot::Sigma].power = 55;   // appended; V1 cannot name it
+    cfg.tokens[tblv2::Slot::Alpha] = 101;
+    cfg.tokens[tblv2::Slot::Beta] = 102;
+    cfg.ranks[tblv2::Slot::Alpha] = tblv2::Grade::Gold;
+    cfg.ledger[tblv2::Grade::Bronze] = 7;
+    cfg.ledger[tblv2::Grade::Gold] = 9;        // KEYED in V2
     cfg.extra_present = true;
     cfg.extra.factor = 6.25f;
     cfg.tier_present = false;                  // absent: nothing rides
@@ -4791,8 +4800,8 @@ static void test_golden_seams()
         static tblv2::Cfg new_reader;
         CHECK( tblv2::CfgLoad( new_reader, buffer, v1_bytes, &forward ) );
         CHECK( !forward.malformed && forward.unknown == 2 && forward.kind_mismatch == 2 && forward.clamped == 0 );
-        CHECK( new_reader.bank.slots[(int32_t) tblv2::Slot::Beta].power == 22 ); // by NAME, not by ordinal
-        CHECK( new_reader.bank.slots[(int32_t) tblv2::Slot::Omega].power == 0 );
+        CHECK( new_reader.bank[tblv2::Slot::Beta].power == 22 ); // by NAME, not by ordinal
+        CHECK( new_reader.bank[tblv2::Slot::Omega].power == 0 );
 
         static tblv2::Cfg v2;
         build_golden_v2_seams( v2 );
@@ -4801,8 +4810,8 @@ static void test_golden_seams()
         static tblv1::Cfg old_reader;
         CHECK( tblv1::CfgLoad( old_reader, buffer, v2_bytes, &back ) );
         CHECK( !back.malformed && back.unknown == 2 && back.kind_mismatch == 2 );
-        CHECK( old_reader.bank.slots[(int32_t) tblv1::Slot::Beta].power == 22 );
-        CHECK( old_reader.bank.slots[(int32_t) tblv1::Slot::Gamma].power == 0 );
+        CHECK( old_reader.bank[tblv1::Slot::Beta].power == 22 );
+        CHECK( old_reader.bank[tblv1::Slot::Gamma].power == 0 );
     }
 
     // the three spellings over NON-DEFAULT content: byte-identical
@@ -4939,7 +4948,7 @@ static void test_json_keyed_duplicate_keys()
         tabledemo::TableReport report;
         const char * text = "{ \"per_team\": { \"Blue\": 1, \"Blue\": 2, \"Blue\": 3 } }";
         CHECK( tabledemo::ScoreBoardFromJson( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.per_team[(int) tabledemo::Team::Blue] == 3 );
+        CHECK( value.per_team[keyed_index( tabledemo::Team::Blue )] == 3 );
         CHECK( report.duplicate == 2 );
     }
 
@@ -5010,7 +5019,7 @@ int main()
     test_optional_three_way_evolution();
     test_keyed_round_trip();
     test_keyed_iteration();
-    test_keyed_none_index_asserts();
+    test_keyed_none_index_refused();
     test_keyed_evolution_old_data();
     test_keyed_evolution_new_data();
     test_keyed_versus_positional_is_a_kind_mismatch();

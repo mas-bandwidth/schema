@@ -1,27 +1,27 @@
-0xb34bc386659d9873
+0x863a8eebc1090dc6
 schema-build-version 1
 protocol 7a706bf2ea47d94b
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
-record PaddedFrame sizeof=4648 alignof=8
+record PaddedFrame sizeof=4136 alignof=8
     field 866f kind=6 offset=0 size=1
     field 0dc6 kind=9 offset=8 size=8
-    field 99af kind=13 offset=16 size=4612 type=PaddedRow elem=72 array=bounded bound=64
-    field d316 kind=14 offset=4628 size=16 bound=12
+    field 99af kind=13 offset=16 size=4100 type=PaddedRow elem=64 array=bounded bound=64
+    field d316 kind=14 offset=4116 size=16 bound=12
 block PaddedFrame sizeof=72 alignof=8
     slot 866f offset=24 size=1
     slot 0dc6 offset=32 size=8
-    slot 99af offset=40 size=16 out_of_line stride=72
+    slot 99af offset=40 size=16 out_of_line stride=64
     slot d316 offset=56 size=16
-record PaddedRow sizeof=72 alignof=8
+record PaddedRow sizeof=64 alignof=8
     field bc64 kind=6 offset=0 size=1
     field 9194 kind=11 offset=8 size=8
     field 153d kind=1 offset=16 size=1
     field 5dd8 kind=8 offset=20 size=4
     field e16a kind=12 offset=24 size=20 bound=15
     field f4d8 kind=7 offset=44 size=8 elem=2 array=fixed bound=4
-    field 9ae1 kind=6 offset=52 size=5 elem=1 array=keyed bound=5 key=Team
-    field 428f kind=4 offset=60 size=5 optional=true
+    field 9ae1 kind=6 offset=52 size=4 elem=1 array=keyed bound=4 key=Team
+    field 428f kind=4 offset=56 size=5 optional=true
 record RenderCamera sizeof=72 alignof=8
     field dd45 kind=13 offset=0 size=24 type=RenderVector3
     field 60f3 kind=13 offset=24 size=32 type=RenderQuaternion

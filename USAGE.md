@@ -597,7 +597,7 @@ only structural damage stops a load. Tables never touch the protocol id —
 add, edit or remove one and no packet byte and no id moves.
 
 **An array's BOUND is not part of that identity either.** Resize a bounded
-array — a literal, a constant, or an `E.Max + 1` expression that moved when
+array — a literal, a constant, or an `E.Max` expression that moved when
 the enum grew — and files written under the old bound still load: a count
 past your bound keeps the bounded prefix and counts `clamped`, a count short
 of it leaves your tail at its declared defaults. (`malformed` means something
@@ -705,22 +705,25 @@ beside a `<Name>Present` bool, and a union is its tag beside one pre-allocated
 arm — the same spelling the packet backend uses, because a table's closure
 decodes into the packet backend's own classes.
 
-An enum-keyed array is a `TableKeyed<T>` holding `E.Max + 1` slots. **C#
-indexes it by the slot index**, because the language has no non-boxing generic
-enum-to-int conversion — so the caller writes the cast,
-`fleet.Ships[(int)ShipType.Bomber]`. The `None` refusal survives as a runtime
-guard on that indexer, and unlike C++'s `assert` it is **not** compiled out in
-release. Generated code walks `.Slots` directly and never pays for the guard.
+An enum-keyed array is a `TableKeyed<T, E>` holding `E.Max` slots — one per
+named variant, nothing for `None`, the key `k` at index `k - 1`. Nothing
+outside the array names its size: the type derives its extent from the enum's
+own `Max`. **C# indexes it by the ENUM VALUE**, as every port does, but the
+language has no non-boxing generic enum-to-int conversion — so the caller
+writes the cast, `fleet.Ships[(int)ShipType.Bomber]`. The cast, never the
+shift. The `None` refusal survives as a runtime guard on that indexer, and
+it stands in every build, as the C++ abort does. Generated code
+walks `.Slots` directly and never pays for the guard.
 
-`foreach` walks the valid slots, `1 .. E.Max`, and yields the slot index beside
-the element — the same currency the indexer takes, so a site that wants the key
+`foreach` walks every slot and yields the KEY, `1 .. E.Max`, beside the
+element — the same currency the indexer takes, so a site that wants the key
 as its enum writes `(ShipType)ship_type` there. The enumerator is a struct, so
 the walk allocates nothing:
 
 ```csharp
 foreach (var (ship_type, ship) in fleet.Ships)
 {
-    ship.Health *= 2.0f;   // slot 0 is not in the range
+    ship.Health *= 2.0f;   // ship_type is the KEY, never a storage index
 }
 ```
 
@@ -734,8 +737,10 @@ follow-on rather than part of this construct.
 
 `<Name>TableType()` returns the reflection descriptor: field names, wire ids
 and kinds, bounds, ranges, guards, `Optional`, the enum/union vocabulary, and
-an enum-keyed array's `KeyTypeName`/`KeyName`/`KeyId` — where `KeyId(0)` is
-`0`, the reserved id that marks slot 0 as `None`'s and never valid.
+an enum-keyed array's `KeyTypeName`/`KeyName`/`KeyId`, which are functions of
+the KEY — `KeyId(0)` is `0`, the reserved id that says `None` names no slot.
+`ArrayBound` is the storage extent, `E.Max`, and the key at index `i` is
+`i + 1`.
 
 **Which makes a default part of the wire contract.** An absent field means
 "the reader's declared default", so changing a default changes what every
@@ -817,22 +822,22 @@ takes no specified default: presence is its only default.
 
 ### Enum-keyed arrays: `ships [ShipType]ShipConfig`
 
-An array bound that names a declared ENUM gives you exactly one slot per
-variant, indexed by the variant:
+An array bound that names a declared ENUM gives you exactly one slot per NAMED
+variant, keyed by the variant:
 
 ```
 enum ShipType { Fighter, Bomber, Scout }
 
 table Fleet
 {
-    ships [ShipType]ShipConfig   // one slot per variant, indexed by the variant
+    ships [ShipType]ShipConfig   // one slot per named variant, keyed by the variant
 }
 ```
 
 ```cpp
 Fleet fleet;
 
-for ( auto [ ship_type, ship ] : fleet.ships )   // every VALID slot, 1..Max
+for ( auto [ ship_type, ship ] : fleet.ships )   // every slot; the KEY runs 1..Max
 {
     ship.health = DefaultHealth( ship_type );    // the element is a reference
 }
@@ -841,23 +846,28 @@ ShipType key = TypeFromConfig();                 // keys are runtime values
 fleet.ships[key].health = 400.0f;                // asserts key != None
 ```
 
-Storage is a generated keyed-array type wrapping a plain `ShipConfig[ShipType.Max
-+ 1]` — no count companion, because every slot exists — so the memory is the
-array you would have written by hand, with the accessor and the iteration on
-top of it. **Slot 0 exists and is never valid**: `None` is the enum's
-null, so it keys nothing and only `ShipType.Max` slots ever hold data. The
-slot is kept so indexing stays unbiased, and reaching it is an error — an
-assert on the accessor, and **not in the iteration's range at all**.
+Storage is a generated keyed-array type wrapping a plain
+`ShipConfig[ShipType.Max]` — no count companion, because every named slot
+exists — so the memory is the array you would have written by hand, with the
+accessor and the iteration on top of it. **Nothing is stored for `None`, and
+the storage shifts left**: `None` is the enum's null, so it keys nothing and
+takes no room, and the key `k` lives at index `k - 1`. The type is
+`TableKeyed<T, E>` and derives its extent from the enum: nothing outside the
+array names its size.
 
-**Iterate, and the slot rule never reaches your code.** Keys in a
-data-driven program are runtime values — an enum read out of a file, a key a
-tool hands you — so `operator[]` is the accessor every call site uses, and its
-assert is a debug guard that `NDEBUG` compiles out. A shipped build carries no
-check on a keyed index, which is why iteration, not the assert, is where the
-safety lives: the range is `1 .. Max`, so a consumer of the whole array writes
-no lower bound, no cast and no `Max` of its own, and cannot reach `None`'s
-slot by accident. Iteration is const-correct, and a const keyed array yields
-const elements.
+**Indexing by `None` is refused in every build.** Keys in a data-driven
+program are runtime values — an enum read out of a file, a key a tool hands
+you — so `operator[]` is the accessor every call site uses, and it ends the
+program on `None` rather than reading something. This is **not** a debug
+guard: `NDEBUG` does not remove it, so there is no configuration in which a
+`None` key reads one element before the array. C++ asserts for the message
+and then aborts; C# throws. The cost is one predictable compare.
+
+**Iterate, and the key rule never reaches your code at all.** Iteration
+yields the KEY, `1 .. Max`, so a consumer of the whole array writes no lower
+bound, no cast, no shift and no `Max` of its own, and hands over no key to be
+refused. Iteration is const-correct, and a const keyed array yields const
+elements.
 
 The entry is a **proxy handed out by value** — a key beside a reference — so
 the spelling is `for ( auto [ key, element ] : keyed )`. `auto & [ ... ]` is a
@@ -881,11 +891,12 @@ place, silently. A slot the writer left at its default is elided; a slot this
 reader has no name for is skipped and counted `unknown`; a slot the writer
 never sent keeps its declared default. A `None` key never rides at all.
 
-In a `type` body the same spelling is exactly `[E.Max + 1]T` — positional and
+In a `type` body the same spelling is exactly `[E.Max]T` — positional and
 bitpacked, the packet wire as always, with the same protocol id either way —
 and there the storage is a **plain array**: `per_team [Team]int32` in a `type`
-is `int32_t per_team[4]`, no accessor, no iteration surface and no `None`
-guard, because there is no key to check. Only the table wire keys the slots.
+is `int32_t per_team[3]`, no accessor, no iteration surface and no `None`
+guard, because there is no key to check and no `None` slot to guard. Only the
+table wire keys the slots.
 
 A key enum counts as part of the table closure: it rides by variant name, so
 `| max` headroom and colliding variant names are refused for it too, with the

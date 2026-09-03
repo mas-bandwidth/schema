@@ -1,4 +1,4 @@
-0x7970dae87b5cf43a
+0xe7c54936602ceeca
 schema-build-version 1
 protocol 79242c6a555d3a60
 byteorder little
@@ -14,11 +14,11 @@ record Colour sizeof=3 alignof=1
     field b019 kind=6 offset=0 size=1
     field c40a kind=6 offset=1 size=1
     field cae9 kind=6 offset=2 size=1
-record Depot sizeof=104 alignof=8
+record Depot sizeof=88 alignof=8
     field 30df kind=12 offset=0 size=20 bound=12
-    field 7f34 kind=13 offset=24 size=48 type=Layer elem=16 array=keyed bound=3 key=Tier
-    field 3a4f kind=13 offset=72 size=21 type=Meta optional=true
-    field 79aa kind=17 offset=96 size=8 type=ListNode
+    field 7f34 kind=13 offset=24 size=32 type=Layer elem=16 array=keyed bound=2 key=Tier
+    field 3a4f kind=13 offset=56 size=21 type=Meta optional=true
+    field 79aa kind=17 offset=80 size=8 type=ListNode
 record Layer sizeof=16 alignof=8
     field 609f kind=4 offset=0 size=4 default=0 min=0 max=64
     field 79aa kind=17 offset=8 size=8 type=ListNode

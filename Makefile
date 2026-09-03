@@ -1109,40 +1109,125 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 	./build/schema_test_json_keyed_dup_negative
 
 # The NEGATIVE CONTROL for a keyed array's ITERATION RANGE (SPEC-TABLES.md
-# §2.4). The iteration's whole promise is that slot 0 — None's — is not in the
-# range, and an untouched slot 0 holds the same declared defaults every other
-# untouched slot does, so a walk that visited it would look identical to a walk
-# that did not.
+# §2.4). The iteration's whole promise is that it walks EVERY stored slot and
+# yields the KEY it holds, 1..E.Max; an off-by-one at either end reads as an
+# ordinary walk, because every untouched slot holds the same declared defaults.
 #
-# It sabotages the EMITTER's begin() to slot 0 and requires THE TABLES SUITE
-# ITSELF — the same test/tables/main.cpp the leg runs, against a whole corpus
-# regenerated from the sabotaged compiler — to go red. A purpose-written
-# fixture would only prove the sabotage is observable by a fixture written for
-# it; what has to be shown is that the GUARDED test reddens.
+# It sabotages the EMITTER's begin() past the first stored slot and requires
+# THE TABLES SUITE ITSELF — the same test/tables/main.cpp the leg runs, against
+# a whole corpus regenerated from the sabotaged compiler — to go red. A
+# purpose-written fixture would only prove the sabotage is observable by a
+# fixture written for it; what has to be shown is that the GUARDED test reddens.
 #
 # The sabotaged emitter reaches the compiler through `go build -overlay`, so no
 # tracked file is ever written to (the big-endian control's rule).
 .PHONY: tables-keyed-iteration-negative-control
 tables-keyed-iteration-negative-control: bin/schema
 	@mkdir -p build
-	@sed -e 's|Iterator begin() { return Iterator{ slots, 1 }; }|Iterator begin() { return Iterator{ slots, 0 }; } // SABOTAGED|' \
-	     -e 's|ConstIterator begin() const { return ConstIterator{ slots, 1 }; }|ConstIterator begin() const { return ConstIterator{ slots, 0 }; } // SABOTAGED|' \
-		internal/codegen/cpptable/cpptable.go > build/cpptable-slot-zero.gotext
-	@cmp -s build/cpptable-slot-zero.gotext internal/codegen/cpptable/cpptable.go && \
+	@sed -e 's|Iterator begin() { return Iterator{ slots, 0 }; }|Iterator begin() { return Iterator{ slots, 1 }; } // SABOTAGED|' \
+	     -e 's|ConstIterator begin() const { return ConstIterator{ slots, 0 }; }|ConstIterator begin() const { return ConstIterator{ slots, 1 }; } // SABOTAGED|' \
+		internal/codegen/cpptable/cpptable.go > build/cpptable-first-slot.gotext
+	@cmp -s build/cpptable-first-slot.gotext internal/codegen/cpptable/cpptable.go && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpptable-slot-zero.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/cpptable-slot-zero-overlay.json
-	@go build -overlay=build/cpptable-slot-zero-overlay.json -o build/schema-slot-zero ./cmd/schema
-	@rm -rf build/tables-slot-zero && mkdir -p build/tables-slot-zero
-	$(call tables_generate,./build/schema-slot-zero,build/tables-slot-zero)
-	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-slot-zero) \
-		test/tables/main.cpp $$(ls build/tables-slot-zero/*/*Table.cpp) -o build/schema_test_tables_slot_zero
-	@if ./build/schema_test_tables_slot_zero > build/tables-slot-zero.log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: begin() reaching slot 0 left the tables suite GREEN"; exit 1; \
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpptable-first-slot.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cpptable-first-slot-overlay.json
+	@go build -overlay=build/cpptable-first-slot-overlay.json -o build/schema-first-slot ./cmd/schema
+	@rm -rf build/tables-first-slot && mkdir -p build/tables-first-slot
+	$(call tables_generate,./build/schema-first-slot,build/tables-first-slot)
+	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-first-slot) \
+		test/tables/main.cpp $$(ls build/tables-first-slot/*/*Table.cpp) -o build/schema_test_tables_first_slot
+	@if ./build/schema_test_tables_first_slot > build/tables-first-slot.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: begin() past the first stored slot left the tables suite GREEN"; exit 1; \
 	fi
-	@grep -q "^FAIL test/tables/main.cpp" build/tables-slot-zero.log || \
-		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on a CHECK"; cat build/tables-slot-zero.log; exit 1; }
-	@echo "negative control: begin() at slot 0 turns the TABLES SUITE red — $$(grep -c '^FAIL' build/tables-slot-zero.log) failures"
+	@grep -q "^FAIL test/tables/main.cpp" build/tables-first-slot.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on a CHECK"; cat build/tables-first-slot.log; exit 1; }
+	@echo "negative control: begin() past the first stored slot turns the TABLES SUITE red — $$(grep -c '^FAIL' build/tables-first-slot.log) failures"
+
+# THE None REFUSAL, HELD UNDER -DNDEBUG (SPEC-TABLES.md §2.4). The refusal is
+# unconditional by ruling: indexing a keyed array by None is a program error in
+# EVERY configuration, because the shifted storage has no slot for None and a
+# build that let the index through would read one element BEFORE the array.
+#
+# The tables suite proves the refusal fires, but it compiles with asserts LIVE,
+# so it cannot tell an unconditional refusal from an assert. This gate compiles
+# ONE translation unit -DNDEBUG — the configuration a game ships, and the one
+# that removes an assert — and requires the None index to end the program
+# there too.
+.PHONY: tables-keyed-none-refusal-ndebug
+tables-keyed-none-refusal-ndebug: build/tables-generated/.stamp test/tables/keyed_none_ndebug_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -DNDEBUG -Ibuild/tables-generated/examples \
+		test/tables/keyed_none_ndebug_main.cpp -o build/schema_test_keyed_none_ndebug
+	./build/schema_test_keyed_none_ndebug
+
+# and its NEGATIVE CONTROL: put the refusal back to a bare assert — the shape
+# the ruling replaced — and the gate above must go RED, because -DNDEBUG then
+# removes it. A gate that only ever passes proves nothing about what it checks.
+.PHONY: tables-keyed-none-refusal-negative-control
+tables-keyed-none-refusal-negative-control: bin/schema test/tables/keyed_none_ndebug_main.cpp
+	@mkdir -p build
+	@sed -e 's|            abort();|            /* SABOTAGED: a debug-only guard again */|' \
+		internal/codegen/cpptable/cpptable.go > build/cpptable-assert-only.gotext
+	@grep -q SABOTAGED build/cpptable-assert-only.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpptable-assert-only.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cpptable-assert-only-overlay.json
+	@go build -overlay=build/cpptable-assert-only-overlay.json -o build/schema-assert-only ./cmd/schema
+	@rm -rf build/tables-assert-only && mkdir -p build/tables-assert-only
+	@./build/schema-assert-only generate --lang cpp --out build/tables-assert-only tables/examples
+	@$(CXX) $(TABLES_CXXFLAGS) -DNDEBUG -Ibuild/tables-assert-only \
+		test/tables/keyed_none_ndebug_main.cpp -o build/schema_test_keyed_none_assert_only
+	@if ./build/schema_test_keyed_none_assert_only > build/keyed-none-assert-only.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a debug-only guard left the -DNDEBUG gate GREEN"; exit 1; \
+	fi
+	@grep -q "the refusal was compiled out" build/keyed-none-assert-only.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the refusal"; cat build/keyed-none-assert-only.log; exit 1; }
+	@echo "negative control: a debug-only guard turns the -DNDEBUG refusal gate red"
+
+# The NEGATIVE CONTROL for the SHIFT itself (SPEC-TABLES.md §2.4, owner ruling
+# 2026-09-03). The storage holds E.Max slots with the key k at index k-1 and
+# nothing for None. Putting the None slot BACK — E.Max + 1 slots, no shift —
+# is the exact edit the ruling reversed, and it must not be able to pass
+# quietly: the compiler computes the layout from E.Max and both backends assert
+# it (§19.3), so a storage type one element wider than the compiler says
+# must fail to COMPILE, and the corpus's own sizeof checks must fail too.
+#
+# The whole point is that this is caught by the GATES already in the tree — the
+# block projection's static_asserts and the tables suite — rather than by a
+# fixture written to notice it.
+.PHONY: tables-keyed-shift-negative-control
+tables-keyed-shift-negative-control: bin/schema
+	@mkdir -p build
+	@sed -e 's|static constexpr int32_t kSlots = (int32_t) E::Max;|static constexpr int32_t kSlots = (int32_t) E::Max + 1; // SABOTAGED: None'"'"'s slot back|' \
+	     -e 's|return slots\[ (int32_t) key - 1 \];|return slots[ (int32_t) key ]; // SABOTAGED: no shift|' \
+	     -e 's|Entry operator\*() const { return Entry{ (E) ( index + 1 ), slots\[index\] }; }|Entry operator*() const { return Entry{ (E) index, slots[index] }; } // SABOTAGED|' \
+	     -e 's|ConstEntry operator\*() const { return ConstEntry{ (E) ( index + 1 ), slots\[index\] }; }|ConstEntry operator*() const { return ConstEntry{ (E) index, slots[index] }; } // SABOTAGED|' \
+	     -e 's|Iterator begin() { return Iterator{ slots, 0 }; }|Iterator begin() { return Iterator{ slots, 1 }; } // SABOTAGED|' \
+	     -e 's|ConstIterator begin() const { return ConstIterator{ slots, 0 }; }|ConstIterator begin() const { return ConstIterator{ slots, 1 }; } // SABOTAGED|' \
+		internal/codegen/cpptable/cpptable.go > build/cpptable-none-slot.gotext
+	@test $$(grep -c SABOTAGED build/cpptable-none-slot.gotext) -eq 7 || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched $$(grep -c SABOTAGED build/cpptable-none-slot.gotext) of 7 sites"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpptable-none-slot.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cpptable-none-slot-overlay.json
+	@go build -overlay=build/cpptable-none-slot-overlay.json -o build/schema-none-slot ./cmd/schema
+	@rm -rf build/tables-none-slot && mkdir -p build/tables-none-slot
+	$(call tables_generate,./build/schema-none-slot,build/tables-none-slot)
+	@# the LAYOUT GATE: the block corpus asserts the compiler's own offsets and
+	@# sizes, and a keyed array one element wider moves them
+	@if $(CXX) $(BLOCK_CXXFLAGS) -Ibuild/tables-none-slot/block -Ibuild/tables-none-slot/blockhome \
+			-fsyntax-only build/tables-none-slot/block/PaddedBlock.cpp > build/tables-none-slot-layout.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the None slot back left the BLOCK LAYOUT GATE green"; exit 1; \
+	fi
+	@grep -q "projection" build/tables-none-slot-layout.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the block build went red, but not on a layout assert"; cat build/tables-none-slot-layout.log; exit 1; }
+	@# and the SIZEOF assertions in the tables suite itself
+	@if $(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-none-slot) \
+			test/tables/main.cpp $$(ls build/tables-none-slot/*/*Table.cpp) -o build/schema_test_tables_none_slot \
+			> build/tables-none-slot-build.log 2>&1 && \
+		./build/schema_test_tables_none_slot > build/tables-none-slot.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the None slot back left the tables suite GREEN"; exit 1; \
+	fi
+	@echo "negative control: the None slot back turns the BLOCK LAYOUT GATE and the tables suite red"
 
 # Deliberately compiled WITHOUT -I$(SERIALIZE): the generated Table headers
 # carry no serialize dependency, and this build proves it stays that way.
@@ -1622,6 +1707,9 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	cd test/cs-tables && dotnet run
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
+	$(MAKE) tables-keyed-none-refusal-ndebug
+	$(MAKE) tables-keyed-none-refusal-negative-control
+	$(MAKE) tables-keyed-shift-negative-control
 	$(MAKE) tables-block
 	$(MAKE) tables-block-fuzz
 	$(MAKE) tables-block-fuzz-extent-negative-control

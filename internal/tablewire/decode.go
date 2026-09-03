@@ -336,7 +336,7 @@ func (r *wireReader) element(fv *tabletext.Field, i int) bool {
 // keyed places an enum-keyed array's pairs BY VARIANT ID, so a slot lands by
 // name however the enum moved (SPEC-TABLES.md §3.2). A key this reader cannot
 // name is skipped by its length and counted unknown; a slot the writer never
-// sent keeps its declared default; a key of 0 is None's, which keys no record,
+// sent keeps its declared default; a key of 0 is None, which keys no slot,
 // and is framing damage.
 func (r *wireReader) keyed(fv *tabletext.Field) bool {
 	f := fv.Def

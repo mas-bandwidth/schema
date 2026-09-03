@@ -705,8 +705,8 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 
 // readKeyed places an enum-keyed array: an OBJECT keyed by VARIANT NAME
 // (SPEC-TABLES.md §2.4, §16.2). An absent key keeps that slot's defaults; an
-// unknown key is skipped and counted, and `"None"` is such a key because slot 0
-// names nothing (§2.4).
+// unknown key is skipped and counted, and `"None"` is such a key because None
+// keys no slot (§2.4).
 //
 // A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a duplicate key
 // like any other, last-wins and counted (§16.2). The count is taken on the
