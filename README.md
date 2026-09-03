@@ -98,8 +98,6 @@ table BuildRequest
 }
 ```
 
-Tools, the backend and the website each ship on their own schedule. A file written by last month's tool has to load in this month's backend.
-
 A table rides a second wire. Each field carries an id, a kind and a length,
 so a reader that does not know a field skips it, a field that is missing
 takes its declared default, a field that was renamed is found under its old
