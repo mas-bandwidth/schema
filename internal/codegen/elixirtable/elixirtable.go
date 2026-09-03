@@ -60,7 +60,6 @@ import (
 // table-wire kinds (docs/SPEC-TABLES.md §3), named locally over the one
 // target-independent definition in ir — the vocabulary is wire law.
 const (
-	tkBool  = ir.TableKindBool
 	tkTable = ir.TableKindTable
 	tkUnion = ir.TableKindUnion
 )
@@ -117,7 +116,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	out[BuildVersionModule+".ex"] = append([]byte(banner), buildVersionModule(u, ns)...)
 
 	for _, f := range u.Files {
-		g := &gen{unit: u, ns: ns, file: f, variable: variable, closure: closure, blocks: blocks, banner: banner}
+		g := &gen{unit: u, ns: ns, file: f, closure: closure, banner: banner}
 		if len(refused) == 0 {
 			if body := g.tableModule(); body != nil {
 				out[f.Base+"Table.ex"] = body
@@ -169,13 +168,11 @@ func englishList(names []string) string {
 }
 
 type gen struct {
-	unit     *ir.Unit
-	ns       string
-	file     *ir.File
-	variable map[string]bool
-	closure  map[string]bool
-	blocks   *ir.BlockUnit
-	banner   string
+	unit    *ir.Unit
+	ns      string
+	file    *ir.File
+	closure map[string]bool
+	banner  string
 
 	// owner is the closure member whose codec is being emitted. It decides how
 	// an enum-keyed array is REACHED: a `table` declaration's storage is this

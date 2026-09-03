@@ -57,7 +57,7 @@ func generateBlocks(u *ir.Unit, ns string, blocks *ir.BlockUnit, banner string) 
 	for _, base := range bases {
 		tables := byFile[base]
 		sort.Slice(tables, func(i, j int) bool { return tables[i].Table.Name < tables[j].Table.Name })
-		b := &blockGen{unit: u, ns: ns, base: base, blocks: blocks, records: map[string]bool{}}
+		b := &blockGen{unit: u, ns: ns, base: base}
 		b.pf("defmodule %s.%sBlock do\n", ns, base)
 		b.pf("%s", blockModuleBanner)
 		b.pf("  alias %s.BlockRuntime, as: B\n\n", ns)
@@ -173,12 +173,10 @@ const blockRuntimeSource = `  @moduledoc """
 `
 
 type blockGen struct {
-	unit    *ir.Unit
-	ns      string
-	base    string
-	blocks  *ir.BlockUnit
-	records map[string]bool
-	body    strings.Builder
+	unit *ir.Unit
+	ns   string
+	base string
+	body strings.Builder
 }
 
 func (b *blockGen) pf(format string, args ...any) {

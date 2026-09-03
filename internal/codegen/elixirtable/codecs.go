@@ -204,10 +204,6 @@ func (g *gen) scalarDefault(f *ir.Field) string {
 	return "0"
 }
 
-// zeroElement is the §5 zero form of one array element, which is what an
-// array's untouched slots hold before the declared defaults land on them.
-func (g *gen) zeroElement(f *ir.Field) string { return g.elementDefault(f) }
-
 func enumValue(e *ir.Enum, name string) int64 {
 	if name == "None" {
 		return 0
@@ -580,7 +576,7 @@ func (g *gen) measureKeyed(f *ir.Field, kind, width int) {
 		g.pf("  {pairs + 1, bytes + 2 + 4 + %d} # key, length, element\n", width)
 		g.pf("end\n")
 	default:
-		g.pf("if slot == %s do\n", g.zeroElement(f))
+		g.pf("if slot == %s do\n", g.elementDefault(f))
 		g.pf("  {pairs, bytes} # a default slot elides\n")
 		g.pf("else\n")
 		g.pf("  if %s == nil, do: throw(:refused)\n", g.enumIdent(f.KeyEnumRef, "table_id", "i + 1"))
@@ -808,7 +804,7 @@ func (g *gen) saveKeyed(f *ir.Field, kind int) {
 		g.pf("end\n")
 	default:
 		width := tableKindWidth(kind)
-		g.pf("if slot == %s do\n", g.zeroElement(f))
+		g.pf("if slot == %s do\n", g.elementDefault(f))
 		g.pf("  [] # a default slot elides\n")
 		g.pf("else\n")
 		g.pf("  if key == nil, do: throw(:refused)\n")
