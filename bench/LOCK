@@ -77,15 +77,13 @@
 # bench path it moves is generated/bench/tables/, the tables corpus, under no
 # prefix here.
 #
-# THE LOCK RE-FREEZES AT THE NEW REFERENCE IMMEDIATELY AFTER. Restoration is
-# the protocol's PR C, whose diff is this file alone and which restores the
-# prefixes verbatim the moment PR #348 lands. The full lift condition is
+# THE LOCK RE-FROZE AT THE NEW REFERENCE when PR #348 landed: this is the
+# protocol's PR C, whose diff is this file alone. The full lift condition is
 # unchanged: the round closing, on the owner's word (issue #170).
 #
-# Locked prefixes, one per line (matched against changed paths), SUSPENDED
-# for the #346 carve and restored by PR C:
-# internal/codegen/c/
-# internal/codegen/cpp/
-# generated/c/
-# generated/cpp/
-# generated/c-ludicrous/
+# Locked prefixes, one per line (matched against changed paths):
+internal/codegen/c/
+internal/codegen/cpp/
+generated/c/
+generated/cpp/
+generated/c-ludicrous/
