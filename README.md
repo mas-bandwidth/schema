@@ -99,26 +99,13 @@ language, over one 438-byte packet exercising every construct. Raw sweeps are
 committed under [bench/results](bench/results/); reproduce with
 `./bench/run.sh`.
 
-Tables ride their own wire and have their own board: the same shape declared
-as a fixed table, written and read in every language that carries tables
-([bench/tables](bench/tables/), `make bench-tables`).
-
 ## Install and build
 
 ```
-make            # builds the compiler at bin/schema — needs only Go
-
+make                # builds the compiler at bin/schema
 bin/schema check    <dir of .schema files>
 bin/schema generate --lang c|cpp|cs|dart|elixir|go|java|js|rust --out <outdir> <dir>
 ```
-
-`make` builds `bin/schema` and nothing else. Success is silent; `--verbose`
-lists every file written. The nine-language conformance chain is `make test`,
-which needs the serialize runtime checkouts beside this repo and the pinned
-Dart, Java and Elixir toolchains unpacked into `dist/`. The Makefile header
-carries every version and hash, and [CONTRIBUTING.md](docs/CONTRIBUTING.md) has
-the clone list.
-
 ## Documentation
 
 | Document | What's in it |
