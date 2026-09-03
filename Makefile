@@ -2988,6 +2988,10 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-c-keyed-none-refusal-ndebug
 	$(MAKE) tables-c-keyed-none-refusal-negative-control
 	$(MAKE) tables-c-soak SOAK_SECONDS=20
+	# and the whole matrix again under ASan + UBSan: the sanitized run is the
+	# strongest gate this leg has, and a gate that only fires under a target
+	# nobody types is not in the chain.
+	./build/conformance-harness run --drivers test/conformance/c/drivers-asan.txt --work build/conformance-c-asan-work
 	# THE CONFORMANCE HARNESS (test/conformance/README.md): the same corpus as
 	# data, one driver per language, and the matrix that says which surfaces a
 	# backend has. It rides here rather than at the end because the two legs it
