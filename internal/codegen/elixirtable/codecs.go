@@ -57,7 +57,7 @@ func (g *gen) tableModule() []byte {
 
 	var b strings.Builder
 	b.WriteString(header(g.file.Base, g.unit.Package,
-		fmt.Sprintf("the TABLE wire (docs/SPEC-TABLES.md); protocol id 0x%016x names packets only, and a table versions by field id", g.unit.ProtocolId)))
+		fmt.Sprintf("the TABLE wire (docs/SPEC-TABLES.md); protocol id 0x%016X names packets only, and a table versions by field id", g.unit.ProtocolId)))
 	b.WriteString("\n")
 	b.WriteString(g.body.String())
 	return []byte(b.String())
@@ -234,14 +234,14 @@ func (g *gen) emitEnumIdentity(e *ir.Enum) {
 	g.pf("# data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.\n")
 	g.pf("def table_id_%s(0), do: 0\n", lo)
 	for i, v := range e.Variants {
-		g.pf("def table_id_%s(%d), do: 0x%04x\n", lo, i+1, ir.VariantId(v))
+		g.pf("def table_id_%s(%d), do: 0x%04X\n", lo, i+1, ir.VariantId(v))
 	}
 	g.pf("# no variant names this value: no wire identity\n")
 	g.pf("def table_id_%s(_), do: nil\n\n", lo)
 
 	g.pf("def table_value_%s(0), do: 0\n", lo)
 	for i, v := range e.Variants {
-		g.pf("def table_value_%s(0x%04x), do: %d\n", lo, ir.VariantId(v), i+1)
+		g.pf("def table_value_%s(0x%04X), do: %d\n", lo, ir.VariantId(v), i+1)
 	}
 	g.pf("# an id this build cannot name\n")
 	g.pf("def table_value_%s(_), do: nil\n\n", lo)
@@ -571,7 +571,7 @@ func (g *gen) emitSaveField(st *ir.Struct, f *ir.Field, guard string) {
 
 // tag renders the two framing bytes a field opens with: its id and its kind.
 func tag(f *ir.Field) string {
-	return fmt.Sprintf("<<0x%04x::little-unsigned-16, %d::little-unsigned-8>>",
+	return fmt.Sprintf("<<0x%04X::little-unsigned-16, %d::little-unsigned-8>>",
 		ir.TableFieldId(f), ir.TableFieldKind(f))
 }
 
@@ -698,7 +698,7 @@ func (g *gen) saveUnion(f *ir.Field) {
 		g.pf("    body = %s(arm)\n", g.call("measure_body", v.Type))
 		g.pf("    [\n")
 		g.pf("      %s,\n", tag(f))
-		g.pf("      <<0x%04x::little-unsigned-16, body::little-unsigned-32>>,\n", ir.VariantId(v.Name))
+		g.pf("      <<0x%04X::little-unsigned-16, body::little-unsigned-32>>,\n", ir.VariantId(v.Name))
 		g.pf("      %s(arm)\n    ]\n\n", g.call("save_body", v.Type))
 	}
 	g.pf("  _ ->\n    throw(:refused)\n")
@@ -789,7 +789,7 @@ func (g *gen) emitLoad(st *ir.Struct) {
 	g.pf("  result =\n")
 	g.pf("    case id do\n")
 	for _, f := range st.Fields {
-		g.pf("      0x%04x -> f_%s_%s(kind, rest, value, report)\n", ir.TableFieldId(f), lo, f.Name)
+		g.pf("      0x%04X -> f_%s_%s(kind, rest, value, report)\n", ir.TableFieldId(f), lo, f.Name)
 	}
 	g.pf("      _ -> R.skip_unknown(kind, rest, value, report)\n")
 	g.pf("    end\n\n")
@@ -1004,7 +1004,7 @@ func (g *gen) loadUnion(f *ir.Field) {
 	g.indent += "    "
 	g.pf("case arm do\n")
 	for i, v := range un.Variants {
-		g.pf("  0x%04x ->\n", ir.VariantId(v.Name))
+		g.pf("  0x%04X ->\n", ir.VariantId(v.Name))
 		g.pf("    {payload, report} = %s(body, report)\n", g.call("load_body", v.Type))
 		g.pf("    {:ok, rest2, %s, report}\n\n",
 			place(f, fmt.Sprintf("%%%s{type: %d, %s: payload}", g.mod(f.Type.Name), i+1, v.Name)))

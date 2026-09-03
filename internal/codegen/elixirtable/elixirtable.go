@@ -193,7 +193,15 @@ func (g *gen) pf(format string, args ...any) {
 		if trailing {
 			s = s[:len(s)-1]
 		}
-		s = g.indent + strings.ReplaceAll(s, "\n", "\n"+g.indent)
+		// a BLANK line takes no indent: trailing whitespace is what `mix
+		// format` refuses, and the gate that runs it is the point
+		lines := strings.Split(s, "\n")
+		for i, line := range lines {
+			if line != "" {
+				lines[i] = g.indent + line
+			}
+		}
+		s = strings.Join(lines, "\n")
 		if trailing {
 			s += "\n"
 		}

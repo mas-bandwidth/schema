@@ -125,7 +125,7 @@ func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
 	fmt.Fprintf(&b, "      json: %q,\n", ir.TableFieldJsonKey(f))
 	fmt.Fprintf(&b, "      type_name: %q,\n", tableFieldTypeName(f))
 	fmt.Fprintf(&b, "      key: :%s,\n", f.Name)
-	fmt.Fprintf(&b, "      id: 0x%04x,\n", ir.TableFieldId(f))
+	fmt.Fprintf(&b, "      id: 0x%04X,\n", ir.TableFieldId(f))
 	fmt.Fprintf(&b, "      kind: %d,\n", kind)
 	fmt.Fprintf(&b, "      array: %s,\n", array)
 	fmt.Fprintf(&b, "      bound: %d,\n", bound)
