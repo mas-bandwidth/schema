@@ -133,8 +133,184 @@ defmodule BlockDump do
   defp i32(data, at), do: s(data, at, 4)
 end
 
+# The cook's canonical NODE dump (docs/SPEC-TABLES.md §7.5): the walk every
+# reader makes through its OWN derefs, written as text, so two implementations'
+# walks are byte-compared rather than merely both succeeding.
+#
+# A node is visited ONCE: sharing and a back-reference are the same fact (§6.3).
+# A float has no canonical cross-language spelling here and the corpus this
+# covers has none, so a dump that meets one REFUSES rather than inventing one.
+defmodule CookDump do
+  def dump(cook) do
+    {_reached, out} = node(cook, 0, info(cook.info), 0, %{}, [])
+    IO.iodata_to_binary(Enum.reverse(out))
+  end
+
+  defp info({m, f}), do: apply(m, f, [])
+
+  defp node(cook, offset, rec, depth, reached, out) do
+    if depth > 4096 do
+      raise "the walk nested past any depth a region can hold — a cycle the deref did not close"
+    end
+
+    case Map.fetch(reached, offset) do
+      {:ok, name} ->
+        if name != rec.name do
+          raise "two references name the node at offset #{offset} as two different tables: " <>
+                  "#{name} and #{rec.name}"
+        end
+
+        {reached, out}
+
+      :error ->
+        if offset > cook.region_length or rec.size > cook.region_length - offset do
+          raise "the node at offset #{offset} (#{rec.name}, size #{rec.size}) does not fit " <>
+                  "inside the region's #{cook.region_length} bytes"
+        end
+
+        index = map_size(reached)
+        reached = Map.put(reached, offset, rec.name)
+        out = ["node #{index} #{rec.name} @#{offset}\n" | out]
+        storage(cook, offset, rec, depth, "", reached, out)
+    end
+  end
+
+  defp storage(cook, at, rec, depth, path, reached, out) do
+    Enum.reduce(rec.fields, {reached, out}, fn f, {reached, out} ->
+      name = join(path, f.name)
+
+      # every COUNT COMPANION, against its declared bound, and a negative one
+      # refuses too — an extent is never negative, and a walker handed one
+      # indexes backwards out of the region (§7.4's pass two)
+      used =
+        if f.count_offset >= 0 do
+          u = i32(cook.region, at + f.count_offset)
+
+          if u < 0 or u > f.array_bound do
+            raise "#{rec.name}.#{f.name} carries a count companion of #{u}, " <>
+                    "outside [ 0, #{f.array_bound} ]"
+          end
+
+          u
+        else
+          -1
+        end
+
+      {reached, out} =
+        cond do
+          f.is_pointer ->
+            pointer(cook, at, f, name, depth, reached, out)
+
+          f.storage in [:string, :bytes] ->
+            {reached, [line(name, text(cook.region, at + f.offset, used)) | out]}
+
+          f.storage == :record ->
+            # a nested record — by value, or every slot of an array of them. A
+            # COUNTED array writes all N slots (§7.2), and a slot past the live
+            # count holds the value-initialised element.
+            Enum.reduce(0..(slots(f) - 1)//1, {reached, out}, fn slot, {reached, out} ->
+              storage(cook, at + f.offset + slot * f.elem_size, info(f.record), depth,
+                      slot_path(f, name, slot), reached, out)
+            end)
+
+          true ->
+            Enum.reduce(0..(slots(f) - 1)//1, {reached, out}, fn slot, {reached, out} ->
+              value = scalar(cook.region, at + f.offset + slot * f.elem_size, f.storage, f.elem_size)
+              {reached, [line(slot_path(f, name, slot), value) | out]}
+            end)
+        end
+
+      out =
+        if f.count_offset >= 0 and f.storage not in [:string, :bytes] do
+          [line(name <> "#count", Integer.to_string(used)) | out]
+        else
+          out
+        end
+
+      out =
+        if f.present_offset >= 0 do
+          present = u(cook.region, at + f.present_offset, 1) != 0
+          [line(name <> "#present", if(present, do: "true", else: "false")) | out]
+        else
+          out
+        end
+
+      {reached, out}
+    end)
+  end
+
+  defp pointer(cook, at, f, name, depth, reached, out) do
+    slot = at + f.offset
+    delta = s(cook.region, slot, 8)
+
+    if delta == 0 do
+      # NULL IN A REGION IS A DELTA OF ZERO (§6.3)
+      {reached, [line(name, "null") | out]}
+    else
+      target = slot + delta
+
+      if target < 0 or target >= cook.region_length do
+        raise "#{name} resolves outside the region — a delta of #{delta}"
+      end
+
+      out = [line(name, "-> @#{target}") | out]
+      node(cook, target, info(f.record), depth + 1, reached, out)
+    end
+  end
+
+  # the number of storage slots a field has, which is what a cook writes: a
+  # COUNTED array writes all N slots (§7.2), a keyed array writes one per named
+  # variant, and a fixed array writes N
+  defp slots(f), do: if(f.is_array, do: f.array_bound, else: 1)
+
+  defp slot_path(f, name, slot), do: if(f.is_array, do: "#{name}[#{slot}]", else: name)
+
+  defp line(path, value), do: "  #{path} = #{value}\n"
+
+  defp join("", name), do: name
+  defp join(prefix, name), do: prefix <> "." <> name
+
+  defp scalar(_region, _at, :float, _width) do
+    raise "the dump met a float, whose canonical cross-language spelling this gate does not fix"
+  end
+
+  defp scalar(region, at, :bool, _width) do
+    if u(region, at, 1) != 0, do: "true", else: "false"
+  end
+
+  defp scalar(region, at, :signed, width), do: Integer.to_string(s(region, at, width))
+  defp scalar(region, at, _storage, width), do: Integer.to_string(u(region, at, width))
+
+  defp text(region, at, used) do
+    body =
+      Enum.map(0..(used - 1)//1, fn i ->
+        c = :binary.at(region, at + i)
+
+        if c >= 0x20 and c < 0x7F and c != ?" and c != ?\\ do
+          <<c>>
+        else
+          "\\x" <> String.pad_leading(String.downcase(Integer.to_string(c, 16)), 2, "0")
+        end
+      end)
+
+    IO.iodata_to_binary(["\"", body, "\" len=#{used}"])
+  end
+
+  defp u(data, at, width) do
+    <<_::binary-size(^at), v::little-unsigned-size(^width)-unit(8), _::binary>> = data
+    v
+  end
+
+  defp s(data, at, width) do
+    <<_::binary-size(^at), v::little-signed-size(^width)-unit(8), _::binary>> = data
+    v
+  end
+
+  defp i32(data, at), do: s(data, at, 4)
+end
+
 defmodule Driver do
-  @surfaces ~w(wire report json-read json-write json-hostile block block-dump forgery)
+  @surfaces ~w(wire report json-read json-write json-hostile block block-dump forgery cook cook-forgery)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -309,11 +485,10 @@ defmodule Driver do
 
       case apply(mod, open, [File.read!(file)]) do
         {:ok, cook} ->
-          {dumper, dump} = accessor(unit, root, "cook_dump", 1)
-          write(outdir, name, apply(dumper, dump, [cook]))
+          write(outdir, name, CookDump.dump(cook))
 
         :refuse ->
-          write(outdir, name, "refuse\n")
+          raise "the cook #{root} did not open — the tool wrote it and this build cannot point at it"
       end
     end
   end
@@ -321,7 +496,7 @@ defmodule Driver do
   defp run("cook-forgery", rows, outdir) do
     for [name, kind, subject, file, extent, pointer] <- rows(rows, "forgery"), kind == "cook" do
       unit = cook_unit(rows, subject)
-      {mod, open} = accessor(unit, subject, "cook_open", 1)
+      {mod, open} = accessor(unit, subject, "cook_open", 2)
 
       verdict =
         case claim(file, extent, pointer) do
@@ -329,7 +504,10 @@ defmodule Driver do
             "refuse\n"
 
           bytes ->
-            case apply(mod, open, [bytes]) do
+            # the POINTER column is the lead of the buffer the caller holds, and
+            # Open takes it because a BEAM binary cannot carry it (§7's base
+            # alignment, and CookRuntime.open/5's note)
+            case apply(mod, open, [bytes, String.to_integer(pointer)]) do
               {:ok, _cook} -> "open\n"
               :refuse -> "refuse\n"
             end
@@ -419,5 +597,3 @@ defmodule Driver do
     System.halt(1)
   end
 end
-
-Driver.main(System.argv())

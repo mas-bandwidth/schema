@@ -111,6 +111,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(refused) == 0 {
 		out[RuntimeModule+".ex"] = runtimeModule(u, ns)
 	}
+	if anyCookable(u, closure) {
+		out[CookRuntimeModule+".ex"] = append([]byte(banner), cookRuntimeModule(u, ns)...)
+	}
 	out[BuildVersionModule+".ex"] = append([]byte(banner), buildVersionModule(u, ns)...)
 
 	for _, f := range u.Files {

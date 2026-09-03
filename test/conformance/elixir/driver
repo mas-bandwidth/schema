@@ -16,5 +16,9 @@ set -e
 BEAM_PATH="${BEAM_PATH:-$PWD/dist/otp-29.0.5/bin:$PWD/dist/elixir-1.20.4/bin}"
 PATH="$BEAM_PATH:$PATH"
 export PATH
+# The driver's own modules are COMPILED with the corpus, not compiled per run:
+# a BEAM boot is 0.26 s and compiling this script at every start was another
+# 0.4 s on top of it, eleven times over. The two-minute rule (#320) is what that
+# is measured against.
 exec elixir --erl "+B -noinput" -pa build/elixir-tables-ebin \
-	test/conformance/elixir/driver.exs "$@"
+	-e 'Driver.main(System.argv())' -- "$@"

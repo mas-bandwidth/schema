@@ -3598,13 +3598,14 @@ build/tables-generated-elixir/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TAB
 	done
 	@touch $@
 
-build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp
+build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
 	@rm -rf build/elixir-tables-ebin && mkdir -p build/elixir-tables-ebin
-	$(ELIXIRC) -o build/elixir-tables-ebin build/tables-generated-elixir/*/*.ex
+	$(ELIXIRC) -o build/elixir-tables-ebin build/tables-generated-elixir/*/*.ex \
+		test/conformance/elixir/driver_impl.ex
 	@touch $@
 
 .PHONY: build-conformance-elixir
-build-conformance-elixir: build/elixir-tables-ebin/.stamp test/conformance/elixir/driver.exs
+build-conformance-elixir: build/elixir-tables-ebin/.stamp
 
 build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml
 	@mkdir -p build
