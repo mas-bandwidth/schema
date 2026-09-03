@@ -43,6 +43,14 @@ const (
 	Go
 	// Java is the Java table backend (internal/codegen/javatable).
 	Java
+	// C is the C table backend (internal/codegen/ctable). It carries the
+	// widest surface of the six, and for one reason: C has no namespace to
+	// put a runtime in and no nested scope to hide one in, so every spelling
+	// the others can scope away is a unit-level name here. Everything a
+	// consumer never types is spelled schema_<package>_..._ instead and claims
+	// nothing (internal/codegen/ctable's `sym`); what is left is what a
+	// consumer reads and writes.
+	C
 )
 
 // Name is one spelling the generated table runtimes carry, and the backends
@@ -82,18 +90,18 @@ type Name struct {
 // decide what a diagnostic says.
 var registry = []Name{
 	// the shared surface both backends define per unit
-	{Name: "TableReport", By: Cpp | Cs | Go | Rust | Java, What: "the read report — the permissive contract's ledger"},
-	{Name: "TableWriter", By: Cpp | Cs | Go | Rust | Java, What: "the wire writer over the caller's buffer"},
-	{Name: "TableReader", By: Cpp | Cs | Go | Rust | Java, What: "the wire reader over the caller's buffer"},
-	{Name: "TableTypeInfo", By: Cpp | Cs | Go | Rust | Java, What: "a table's reflection descriptor"},
-	{Name: "TableFieldInfo", By: Cpp | Cs | Go | Rust | Java, What: "a field's reflection descriptor"},
+	{Name: "TableReport", By: Cpp | Cs | Rust | Go | C | Java, What: "the read report — the permissive contract's ledger"},
+	{Name: "TableWriter", By: Cpp | Cs | Rust | Go | C | Java, What: "the wire writer over the caller's buffer"},
+	{Name: "TableReader", By: Cpp | Cs | Rust | Go | C | Java, What: "the wire reader over the caller's buffer"},
+	{Name: "TableTypeInfo", By: Cpp | Cs | Rust | Go | C | Java, What: "a table's reflection descriptor"},
+	{Name: "TableFieldInfo", By: Cpp | Cs | Rust | Go | C | Java, What: "a field's reflection descriptor"},
 	// a UNION field's shape (docs/SPEC-TABLES.md §8.1): the tag, and each arm's
 	// payload by its own descriptor. Every backend defines both, and every one
 	// puts them at unit level beside the two descriptors above — a union
 	// field's column has to name a type, and a nested one would be reached
 	// through a descriptor a walk holds by value.
-	{Name: "TableUnionInfo", By: Cpp | Cs | Go | Rust | Java, What: "a union field's tag and its arms"},
-	{Name: "TableUnionArmInfo", By: Cpp | Cs | Go | Rust | Java, What: "one union arm's payload and descriptor"},
+	{Name: "TableUnionInfo", By: Cpp | Cs | Rust | Go | C | Java, What: "a union field's tag and its arms"},
+	{Name: "TableUnionArmInfo", By: Cpp | Cs | Rust | Go | C | Java, What: "one union arm's payload and descriptor"},
 	{Name: "TableEnumId", By: Cpp | Cs | Go | Java, What: "an enum value -> its table-wire variant id"},
 	{Name: "TableEnumValue", By: Cpp | Cs | Go | Java, What: "a table-wire variant id -> its enum value"},
 
@@ -111,10 +119,10 @@ var registry = []Name{
 	{Name: "Table", By: Cs | Go, What: "TableFieldInfo's nested-table column", Scoped: true},
 
 	// C++'s float <-> IEEE-754 bit pattern helpers
-	{Name: "table_bits_to_float", By: Cpp, What: "u32 bits -> float"},
-	{Name: "table_float_to_bits", By: Cpp, What: "float -> u32 bits"},
-	{Name: "table_bits_to_double", By: Cpp, What: "u64 bits -> double"},
-	{Name: "table_double_to_bits", By: Cpp, What: "double -> u64 bits"},
+	{Name: "table_bits_to_float", By: Cpp | C, What: "u32 bits -> float"},
+	{Name: "table_float_to_bits", By: Cpp | C, What: "float -> u32 bits"},
+	{Name: "table_bits_to_double", By: Cpp | C, What: "u64 bits -> double"},
+	{Name: "table_double_to_bits", By: Cpp | C, What: "double -> u64 bits"},
 
 	// C#'s twins, plus the reader's in-place prefill. These are VERB-FIRST on
 	// purpose: §11 freezes the name-first suffixes a closure member claims
@@ -149,11 +157,11 @@ var registry = []Name{
 	// lazy factory for the nested table's descriptor, which is scoped. The
 	// C++ meaning is unit-level, so the name is claimed whatever the target —
 	// the claim is the union, never the intersection.
-	{Name: "TableRef", By: Cpp | Cs, What: "C++: a pointer's eight-byte reference slot; C#: a field descriptor's nested-table factory"},
+	{Name: "TableRef", By: Cpp | Cs | C, What: "C++: a pointer's eight-byte reference slot; C#: a field descriptor's nested-table factory"},
 	{Name: "TableSlot", By: Cpp, What: "an arena slot"},
-	{Name: "TableArena", By: Cpp, What: "the builder's segmented slab arena"},
+	{Name: "TableArena", By: Cpp | C, What: "the builder's segmented slab arena"},
 	{Name: "TableSlab", By: Cpp, What: "one worker's privately-owned slab of it"},
-	{Name: "TableWorker", By: Cpp, What: "a builder worker's allocation front"},
+	{Name: "TableWorker", By: Cpp | C, What: "a builder worker's allocation front"},
 	{Name: "TableBuilder", By: Cpp, What: "the mutable life's base"},
 	{Name: "TableRegion", By: Cpp, What: "the locked, packed region"},
 	// Lock's identity map (docs/SPEC-TABLES.md §6.2): one entry per reachable
@@ -169,29 +177,30 @@ var registry = []Name{
 	// whenever a unit declares a table, on the same terms as everything above:
 	// nothing declares the block form, every fixed table has one, and a table
 	// gains and loses it as its closure gains and loses a pointer.
-	{Name: "TableBlockAllocator", By: Cpp, What: "the caller's alloc/free pair, used once at build time"},
-	{Name: "TableBlockDefaultAllocator", By: Cpp, What: "the malloc/free pair, for a caller with none of its own"},
-	{Name: "table_block_default_alloc", By: Cpp, What: "the default allocator's alloc half"},
-	{Name: "table_block_default_free", By: Cpp, What: "the default allocator's free half"},
-	{Name: "TableBlockTriple", By: Cpp | Cs | Go | Rust, What: "one array's (offset_of, count, stride)"},
+	{Name: "TableBlockAllocator", By: Cpp | C, What: "the caller's alloc/free pair, used once at build time"},
+	{Name: "TableBlockDefaultAllocator", By: Cpp | C, What: "the malloc/free pair, for a caller with none of its own"},
+	{Name: "table_block_default_alloc", By: Cpp | C, What: "the default allocator's alloc half"},
+	{Name: "table_block_default_free", By: Cpp | C, What: "the default allocator's free half"},
+	{Name: "TableBlockTriple", By: Cpp | Cs | Rust | Go | C, What: "one array's (offset_of, count, stride)"},
 	// JAVA's byte-access primitive. C++ reads a record through its type, C#
 	// through a pointer cast and Rust through a transmute; Java has none of
 	// those, so every multi-byte read of a block or a cook goes through one
 	// package-level class of explicit little-endian readers — which is also
 	// what settles the byte order of both accelerators without asking the host.
 	{Name: "TableBytes", By: Java, What: "explicit little-endian reads out of a byte[] (Java's block and cook read through it)"},
-	{Name: "TableBlockRefusal", By: Cpp, What: "why Begin refused: the array, its count and its maximum"},
-	{Name: "TableBlockRows", By: Cpp | Cs | Go | Java, What: "one array's rows, iterated at the pitch the instance gives"},
+	{Name: "TableBlockRefusal", By: Cpp | C, What: "why Begin refused: the array, its count and its maximum"},
+	{Name: "TableBlockRows", By: Cpp | Cs | Go | C | Java, What: "one array's rows, iterated at the pitch the instance gives"},
 	{Name: "TableBlockSpan", By: Cpp, What: "one array's rows as a contiguous view (C# uses ReadOnlySpan)"},
-	{Name: "TableBlockFieldInfo", By: Cpp | Cs | Go | Rust | Java, What: "a block field's reflection descriptor"},
-	{Name: "TableBlockInfo", By: Cpp | Cs | Go | Rust | Java, What: "a block's reflection descriptor"},
-	{Name: "TableBlockMagic", By: Cpp | Cs | Go | Rust, What: "the block prologue's magic, and the byte-order check with it", RustConst: true},
+	{Name: "TableBlockFieldInfo", By: Cpp | Cs | Rust | Go | C | Java, What: "a block field's reflection descriptor"},
+	{Name: "TableBlockInfo", By: Cpp | Cs | Rust | Go | C | Java, What: "a block's reflection descriptor"},
+	{Name: "TableBlockMagic", By: Cpp | Cs | Rust | Go | C, What: "the block prologue's magic, and the byte-order check with it", RustConst: true},
 	{Name: "TableBlockLayout", By: Cs | Java, What: "the layout contract's check, run once. C# spells it a nested class of Schema and Java puts it at package scope, so the claim is the UNION"},
+	{Name: "TableBlockLayout", By: Cs, What: "the C# layout contract's check, run once", Scoped: true},
 	{Name: "TableBlockRead64", By: Cs, What: "the C# prologue read (a Schema member, so it claims nothing)", Scoped: true},
-	{Name: "TableBlockByteOrder", By: Cpp | Cs | Go | Rust, What: "this build's byte order, as the prologue carries it", RustConst: true},
-	{Name: "table_block_byteswap64", By: Cpp, What: "the byte-order check's swap"},
-	{Name: "table_block_read64", By: Cpp, What: "the prologue read BYTEWISE"},
-	{Name: "table_block_align", By: Cpp, What: "round an offset up to an alignment"},
+	{Name: "TableBlockByteOrder", By: Cpp | Cs | Go | Rust | C, What: "this build's byte order, as the prologue carries it", RustConst: true},
+	{Name: "table_block_byteswap64", By: Cpp | C, What: "the byte-order check's swap"},
+	{Name: "table_block_read64", By: Cpp | C, What: "the prologue read BYTEWISE"},
+	{Name: "table_block_align", By: Cpp | C, What: "round an offset up to an alignment"},
 
 	// the COOKED FORM's read runtime (docs/SPEC-TABLES.md §7), emitted into
 	// <Base>Table.h of a unit that declares a variable-length table — a cook's
@@ -200,11 +209,11 @@ var registry = []Name{
 	// variable-length names above: a table gains and loses its cook reader as
 	// its closure gains and loses a pointer, and a name free today must not
 	// become a collision tomorrow.
-	{Name: "TableCookOpen", By: Cpp, What: "the cooked header's WHOLE check, shared by every <Name>Open"},
-	{Name: "TableCookMagic", By: Cpp | Cs | Go | Rust, What: "the cooked header's magic, and the byte-order check with it", RustConst: true},
-	{Name: "TableCookByteOrder", By: Cpp | Cs | Go | Rust, What: "this build's byte order, as a cooked header records it", RustConst: true},
-	{Name: "TableCookMaxAlign", By: Cpp | Cs | Go | Rust, What: "the greatest region alignment a cooked header may name", RustConst: true},
-	{Name: "table_cook_read64", By: Cpp, What: "the cooked header read BYTEWISE"},
+	{Name: "TableCookOpen", By: Cpp | C, What: "the cooked header's WHOLE check, shared by every <Name>Open"},
+	{Name: "TableCookMagic", By: Cpp | Cs | Go | Rust | C, What: "the cooked header's magic, and the byte-order check with it", RustConst: true},
+	{Name: "TableCookByteOrder", By: Cpp | Cs | Go | Rust | C, What: "this build's byte order, as a cooked header records it", RustConst: true},
+	{Name: "TableCookMaxAlign", By: Cpp | Cs | Go | Rust | C, What: "the greatest region alignment a cooked header may name", RustConst: true},
+	{Name: "table_cook_read64", By: Cpp | C, What: "the cooked header read BYTEWISE"},
 
 	// ---- the RUST backend's own spellings (internal/codegen/rusttable) ----
 	//
@@ -380,7 +389,156 @@ var registry = []Name{
 	// carries and BlockOpen compares. It is not a Table* spelling, and it is
 	// claimed here because it is a unit-level name the generated block sources
 	// define.
-	{Name: "BuildVersion", By: Cpp | Go | Rust | Java, What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust and Java put it at unit scope — Java in a file of its own name — so the claim is the union", RustConst: true},
+	{Name: "BuildVersion", By: Cpp | Rust | Go | Java, What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust and Java put it at unit scope — Java in a file of its own name — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
+
+	// ---- THE C BACKEND's own spellings (internal/codegen/ctable) ----
+	//
+	// C has no namespace and no nested scope, so a runtime name is a unit-level
+	// name whatever it is for. The list is long for that reason and for no
+	// other: everything a consumer never types carries the schema_<package>_
+	// prefix instead and is absent from here (ctable's `sym`), so what follows
+	// is the surface a C consumer actually reads and writes, plus the text
+	// form's walk — which lives in <Base>Table.c and would collide there with a
+	// declaration of the same name in the unit's own header.
+
+	// the wire reader and writer's operations. C++ spells these as member
+	// functions of TableWriter and TableReader, which claim nothing; C has no
+	// members, so each is a name.
+	{Name: "TableWriterMake", By: C, What: "a writer over a caller's buffer"},
+	{Name: "TableWriterRaw", By: C, What: "the writer's byte move"},
+	{Name: "TableWriterPut8", By: C, What: "the writer's u8"},
+	{Name: "TableWriterPut16", By: C, What: "the writer's little-endian u16"},
+	{Name: "TableWriterPut32", By: C, What: "the writer's little-endian u32"},
+	{Name: "TableWriterPut64", By: C, What: "the writer's little-endian u64"},
+	{Name: "TableWriterPatch32", By: C, What: "the writer's back-patch of a length prefix"},
+	{Name: "TableReaderMake", By: C, What: "a reader over a caller's buffer"},
+	{Name: "TableReaderHas", By: C, What: "the reader's remaining-bytes question"},
+	{Name: "TableReaderGet8", By: C, What: "the reader's u8"},
+	{Name: "TableReaderGet16", By: C, What: "the reader's little-endian u16"},
+	{Name: "TableReaderGet32", By: C, What: "the reader's little-endian u32"},
+	{Name: "TableReaderGet64", By: C, What: "the reader's little-endian u64"},
+	{Name: "TableReaderSkip", By: C, What: "skip one payload by kind — the tolerant read's unknown-field path"},
+
+	// the descriptors' VOCABULARY, as data. C++ spells an enum's names and wire
+	// ids as captureless lambdas in the field descriptor; C has none, and a
+	// named function per enum would claim a name per enum, so the same facts
+	// ride as a table indexed the way enum_max bounds (§8.1).
+	{Name: "TableVariantInfo", By: C, What: "one vocabulary entry: a variant's name and its table-wire id"},
+
+	// the ENUM-KEYED array (docs/SPEC-TABLES.md §2.4). C's storage IS the array,
+	// so there is no TableKeyed to emit; what C++ puts in operator[] — the
+	// left shift and the None refusal — lives in these two.
+	{Name: "TableKeyedSlot", By: C, What: "the storage index a key names, refusing None in every build"},
+	{Name: "TableKeyedAt", By: C, What: "keyed[key] as an lvalue, over TableKeyedSlot"},
+
+	// the VARIABLE-LENGTH runtime's C spellings (docs/SPEC-TABLES.md §6). The
+	// arena and the worker are C++'s too; everything a member function or a
+	// template did there is a name here.
+	{Name: "TableRefNull", By: C, What: "is this reference slot null (§6.3)"},
+	{Name: "TableAlignUp", By: C, What: "round a u32 arena offset up to the node alignment"},
+	{Name: "TableAlignUp64", By: C, What: "round an i64 region offset up to the node alignment"},
+	{Name: "TableArenaInit", By: C, What: "start one arena"},
+	{Name: "TableArenaShutdown", By: C, What: "release one arena's segments"},
+	{Name: "TableArenaAt", By: C, What: "resolve an arena offset — one L1 load plus an add"},
+	{Name: "TableArenaGrabSlab", By: C, What: "hand one worker its next private slab"},
+	{Name: "TableWorkerMake", By: C, What: "one thread's allocation front"},
+	{Name: "TableWorkerBump", By: C, What: "reserve one node's bytes in a worker's slab, untyped"},
+	{Name: "TableCtx", By: C, What: "which encoding a walk is reading: an arena's offsets, or a region's self-relative deltas"},
+	{Name: "TableRegionSink", By: C, What: "bump-allocation into the caller's exact region"},
+	{Name: "TableSink", By: C, What: "where a node comes from — a region sink or a worker; C's form of the reference's Sink template parameter"},
+
+	// the one ATOMIC the arena needs, and its spelling is FEATURE TESTED
+	// because C99 has none (§6.4). The names are claimed whatever the
+	// compiler picks, so a schema cannot become illegal by changing compilers.
+	{Name: "TableAtomicU32", By: C, What: "the arena cursor's atomic u32"},
+	{Name: "TableAtomicPtr", By: C, What: "an arena segment's atomic pointer"},
+	{Name: "TableAtomicLoad32", By: C, What: "an acquire load of the cursor"},
+	{Name: "TableAtomicStore32", By: C, What: "a relaxed store of the cursor"},
+	{Name: "TableAtomicLoadPtr", By: C, What: "an acquire load of a segment"},
+	{Name: "TableAtomicStorePtr", By: C, What: "a relaxed store of a segment"},
+	{Name: "TableArenaCas32", By: C, What: "the slab handout's compare-exchange"},
+	{Name: "TableArenaCasPtr", By: C, What: "the segment publication's compare-exchange"},
+
+	// the BLOCK form's C spellings (§19)
+	{Name: "TableBlockRowAt", By: C, What: "one row of an array, at the pitch the instance gives"},
+
+	// THE TUNING CONSTANTS, which C spells as #define and the other two as
+	// typed constants inside their own scope. A macro is not scoped by
+	// anything, so each is a unit-level name here (§6, §7.1, §16).
+	{Name: "kTableAlign", By: C, What: "every arena node starts eight-aligned"},
+	{Name: "kTableAllocFailed", By: C, What: "the arena's refusal, never a silent smaller slab"},
+	{Name: "kTableMaxDepth", By: C, What: "the pointer-chain depth cap (§3.1)"},
+	{Name: "kTableMaxSegments", By: C, What: "the arena's segment table"},
+	{Name: "kTableSegmentBits", By: C, What: "the arena's segment size, as a shift"},
+	{Name: "kTableSegmentMask", By: C, What: "the offset inside a segment"},
+	{Name: "kTableSegmentSize", By: C, What: "the arena's segment size"},
+	{Name: "kTableSlabBytes", By: C, What: "one worker's slab: one atomic per slab, none per node"},
+	{Name: "kTableCookHeaderBytes", By: C, What: "the cooked header's 64 bytes (§7.1)"},
+	{Name: "kTableJsonMaxDepth", By: C, What: "the text form's nesting cap"},
+	{Name: "kTableJsonMaxKey", By: C, What: "the longest key that can name a field"},
+	{Name: "kTableJsonMaxNumber", By: C, What: "the longest numeric token the walk converts"},
+
+	// THE TEXT FORM'S WALK (docs/SPEC-TABLES.md §16), which C# scopes inside a
+	// nested class and C++ hides in a namespace. C has neither, and the walk
+	// lives in <Base>Table.c beside the unit's own header, so every one of its
+	// spellings could collide with a declaration in that unit. They are one
+	// family with one job, and the registry lists them rather than filtering
+	// them: a scan that has to recognise a prefix is a scan that goes blind the
+	// day a name leaves the family.
+	{Name: "TableJsonBase64Alphabet", By: C, What: "the text form's walk"},
+	{Name: "TableJsonCount", By: C, What: "the text form's walk"},
+	{Name: "TableJsonDecimalPoint", By: C, What: "the text form's walk"},
+	{Name: "TableJsonElementShape", By: C, What: "the text form's walk"},
+	{Name: "TableJsonEncodeUtf8", By: C, What: "the text form's walk"},
+	{Name: "TableJsonFinite", By: C, What: "the text form's walk"},
+	{Name: "TableJsonGetRaw", By: C, What: "the text form's walk"},
+	{Name: "TableJsonGetSigned", By: C, What: "the text form's walk"},
+	{Name: "TableJsonGuardHolds", By: C, What: "the text form's walk"},
+	{Name: "TableJsonHex4", By: C, What: "the text form's walk"},
+	{Name: "TableJsonIn", By: C, What: "the text form's walk"},
+	{Name: "TableJsonIsBytes", By: C, What: "the text form's walk"},
+	{Name: "TableJsonIsEnum", By: C, What: "the text form's walk"},
+	{Name: "TableJsonIsFlags", By: C, What: "the text form's walk"},
+	{Name: "TableJsonIsKeyed", By: C, What: "the text form's walk"},
+	{Name: "TableJsonKeyId", By: C, What: "the text form's walk"},
+	{Name: "TableJsonKeyName", By: C, What: "the text form's walk"},
+	{Name: "TableJsonKeyedSlotKey", By: C, What: "the text form's walk"},
+	{Name: "TableJsonKeyedSlotValid", By: C, What: "the text form's walk"},
+	{Name: "TableJsonLine", By: C, What: "the text form's walk"},
+	{Name: "TableJsonLiteral", By: C, What: "the text form's walk"},
+	{Name: "TableJsonOut", By: C, What: "the text form's walk"},
+	{Name: "TableJsonPeek", By: C, What: "the text form's walk"},
+	{Name: "TableJsonPut", By: C, What: "the text form's walk"},
+	{Name: "TableJsonRaw", By: C, What: "the text form's walk"},
+	{Name: "TableJsonRead", By: C, What: "the text form's walk"},
+	{Name: "TableJsonReadField", By: C, What: "the text form's walk"},
+	{Name: "TableJsonReadScalar", By: C, What: "the text form's walk"},
+	{Name: "TableJsonReadTable", By: C, What: "the text form's walk"},
+	{Name: "TableJsonScanNumber", By: C, What: "the text form's walk"},
+	{Name: "TableJsonScanString", By: C, What: "the text form's walk"},
+	{Name: "TableJsonSetCount", By: C, What: "the text form's walk"},
+	{Name: "TableJsonSetRaw", By: C, What: "the text form's walk"},
+	{Name: "TableJsonShape", By: C, What: "the text form's walk"},
+	{Name: "TableJsonSkipContainer", By: C, What: "the text form's walk"},
+	{Name: "TableJsonSkipValue", By: C, What: "the text form's walk"},
+	{Name: "TableJsonSpace", By: C, What: "the text form's walk"},
+	{Name: "TableJsonText", By: C, What: "the text form's walk"},
+	{Name: "TableJsonTokenDouble", By: C, What: "the text form's walk"},
+	{Name: "TableJsonTokenInteger", By: C, What: "the text form's walk"},
+	{Name: "TableJsonUtf8", By: C, What: "the text form's walk"},
+	{Name: "TableJsonValueShape", By: C, What: "the text form's walk"},
+	{Name: "TableJsonVariantId", By: C, What: "the text form's walk"},
+	{Name: "TableJsonVariantName", By: C, What: "the text form's walk"},
+	{Name: "TableJsonWalkNumber", By: C, What: "the text form's walk"},
+	{Name: "TableJsonWrite", By: C, What: "the text form's walk"},
+	{Name: "TableJsonWriteBase64", By: C, What: "the text form's walk"},
+	{Name: "TableJsonWriteField", By: C, What: "the text form's walk"},
+	{Name: "TableJsonWriteFloat", By: C, What: "the text form's walk"},
+	{Name: "TableJsonWriteScalar", By: C, What: "the text form's walk"},
+	{Name: "TableJsonWriteSigned", By: C, What: "the text form's walk"},
+	{Name: "TableJsonWriteString", By: C, What: "the text form's walk"},
+	{Name: "TableJsonWriteUnsigned", By: C, What: "the text form's walk"},
+	{Name: "TableJsonWriteValue", By: C, What: "the text form's walk"},
 }
 
 // All returns the whole registry, sorted by name.

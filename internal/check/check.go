@@ -2797,6 +2797,14 @@ var tableGeneratedVerbs = []string{
 	"Cook", "CookMeasure", "Open", "TableFields", "TableInfo",
 	"FromJson", "ToJson", "ToJsonMeasure",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
+	// THE C BACKEND's own name-first spellings (internal/codegen/ctable). C++
+	// and C# put these on a class — a builder's Lock, a storage's Create, a
+	// block type's Type — and a member function claims nothing. C has no
+	// members, so each is a free function under its owner's name, and the
+	// comment above this list is the rule they are added under: a port that
+	// spells the surface otherwise adds its spellings here.
+	"BuilderInit", "BuilderShutdown", "BuilderLock", "BuilderRoot",
+	"BlockStorageCreate", "BlockStorageDestroy", "BlockType",
 	// the C# BLITTABLE records take claimed suffixes in the package namespace
 	// rather than a nested namespace of their own: a generated namespace named
 	// by a common noun is a collision class no refusal can close, because it
