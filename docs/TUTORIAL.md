@@ -1282,3 +1282,492 @@ $ schema id .
 **You now have** the full vocabulary of scalar and buffer fields, a ship state
 that costs a fraction of its struct size on the wire, and one field whose
 storage is your engine's own type.
+
+---
+
+## Part 5: Branches, unions, and your protocol
+
+### The problem
+
+A docked ship has no velocity, no throttle and no radar contacts, and sending
+those fields for every ship every tick is paying for fields that mean nothing.
+Beyond that, Starlight has more than one **kind** of message. A fire command is
+not a chat line is not a snapshot, and so far a type is one fixed layout.
+
+Everything in this part goes in a new file of the same unit, `Net.schema`,
+shown entire at the end. Three constants join `Game.schema` first:
+
+```
+const MaxPlayers           = 64
+const MaxHealth            = 1000
+const MaxShipName          = 24
+const MaxChatText          = 120
+const MaxShipsPerSnapshot  = 8
+const MaxPayloadsPerPacket = 4
+const TickRate             = 60
+const TickInterval         = 1.0 / TickRate
+const Pi float32           = 3.14159265359
+```
+
+### if / else: pay only for what is true
+
+```
+type Contact
+{
+    on_radar bool
+    if on_radar
+    {
+        bearing  bits(9)
+        distance ufixed(24, 8) | min = 0, max = 60000
+    }
+    else
+    {
+        last_seen uint32
+    }
+}
+```
+
+The condition must be a `bool` field declared **earlier** in the same or an
+enclosing block, because the reader has to know it before it can decide what
+comes next, and it is exactly a field name with no expressions. `bad/Bad.schema`
+breaking each rule:
+
+```
+package bad
+
+type T
+{
+    if moving
+    {
+        a int32
+    }
+    moving bool
+}
+```
+
+```
+$ schema check .
+Bad.schema:5:8: if condition moving must be a bool field declared earlier in the same or an enclosing block (the dominance rule, SPEC §4.5)
+schema: 1 error(s)
+```
+
+```
+package bad
+
+type T
+{
+    kind uint8
+    if kind
+    {
+        a int32
+    }
+}
+```
+
+```
+$ schema check .
+Bad.schema:6:8: if condition kind must be a bool field (SPEC §4.6)
+schema: 1 error(s)
+```
+
+Storage holds both sides and the wire carries only the taken one:
+
+```cpp
+struct Contact {
+    bool on_radar = false;
+
+    // if on_radar — wire branch; storage holds both sides, a read zeroes the
+    // untaken side (SPEC §5)
+    uint32_t bearing = 0;
+    uint32_t distance = 0; // ufixed(24, 8) — UQ24.8, raw value scaled by 2^8; bounds in whole units; wire [0, 60000]
+
+    // if on_radar else — wire branch; storage holds both sides, a read zeroes the
+    // untaken side (SPEC §5)
+    uint32_t last_seen = 0;
+};
+```
+
+The read side shows the detail that saves you a debugging session:
+
+```cpp
+SCHEMA_READ_INLINE bool ReadContact( serialize::ReadStream & stream, Contact & value )
+{
+    read_bool( stream, value.on_radar );
+    if ( value.on_radar )
+    {
+        read_bits( stream, value.bearing, 9 );
+        read_fixed( stream, value.distance, 24, 8, 0, 60000 );
+        value.last_seen = 0;
+    }
+    else
+    {
+        read_bits( stream, value.last_seen, 32 );
+        value.bearing = 0;
+        value.distance = 0;
+    }
+    return true;
+}
+```
+
+**A read zeroes the untaken side.** Reuse one `Contact` for packet after packet
+and you never inherit a stale `bearing` from the last packet through a branch
+that was not taken this time.
+
+### union: one of a set
+
+`if`/`else` picks between two layouts under a bool. When the choice is one of N
+named payloads, that is a union. Starlight's fire command is a laser or a
+missile:
+
+```
+type LaserFire
+{
+    target_id uint16
+    power     float32 | min = 0, max = 1, resolution = 0.01
+}
+
+type MissileFire
+{
+    target_id uint16
+    count     int32 = 1 | min = 1, max = 4
+}
+
+union WeaponFire
+{
+    laser   LaserFire
+    missile MissileFire
+}
+
+type FireCommand
+{
+    ship_id uint16
+    fire    WeaponFire
+}
+```
+
+That `count int32 = 1 | min = 1, max = 4` is Part 3's zero-excluding-range rule
+paying off, because missiles fire at least one.
+
+The compiler generates a tag enum and a real C++ union:
+
+```cpp
+enum class WeaponFireType : uint8_t {
+    None = 0,
+    Laser = 1,
+    Missile = 2,
+    Max = 2, // the exported extent (SPEC §4.2)
+};
+
+struct WeaponFire
+{
+    WeaponFireType type;
+
+    union
+    {
+        LaserFire laser;
+        MissileFire missile;
+    };
+
+    WeaponFire() : type( WeaponFireType::None ) {} // the tag only — arms are zero-established at selection
+};
+```
+
+Like the enum, **every union has an implicit `None = 0`**, the empty union, in
+band. A zero-initialized union field carries "nothing" without a has-flag, and
+a stream of unions can end on `None`. The program below prints that tag.
+
+The tag enum is not a full enum. It carries `None` and `Max`, and it does not
+carry `Count` or a name function, so `EnumName( cmd.fire.type )` does not
+compile. Log the tag by switching on it, which the program below does.
+
+To select an arm in C++, set the tag and value-establish the arm, both, in that
+order of importance:
+
+```cpp
+    first.type = PayloadType::Fire;
+    first.fire = FireCommand{};            // zero-establish the arm
+    first.fire.ship_id = 7;                // then fill it
+```
+
+Forget the tag and the write emits `None`, tag only, with your payload silently
+absent, because tag `None` is a legal value and nothing asserts. Forget the
+establishment and the arm's bytes are whatever was there. Treat the pair as one
+motion. Rust ties the two together by construction with a real
+`enum WeaponFire { None, Laser(LaserFire), ... }`.
+
+The wire is the tag in minimal bits for `[0, variant count]`, two bits here,
+followed by **the selected payload only**. A read rejects a tag above the
+count, and a write validates the tag before it rides. Compare the bool-guard
+version you would otherwise write, a `has_laser bool` and an `if has_laser`
+block per weapon: that spends a bit per absent arm and lets "two weapons at
+once" exist as a representable state for every consumer to police. The union
+deletes the illegal state and costs less.
+
+In a `type` body every arm names a declared type. `bad/Bad.schema` with a
+scalar arm:
+
+```
+package bad
+
+type A { x uint16 }
+
+union U
+{
+    a A
+    ping uint32
+}
+
+type T { u U }
+```
+
+```
+$ schema check .
+Bad.schema:11:12: U has the arm ping uint32, and a union in a `type` body takes `type` payloads only — types are value semantics, and an arm that is not a declared type has no packet wire yet; hold the union in a table body, or make the arm a type (docs/SPEC-TABLES.md §2.6, §11, §15)
+Bad.schema:5:1: union U: the arm ping uint32 is not a declared type, and no table reaches U — such an arm is a table-closure construct, and a union outside one takes `type` payloads only; hold the union in a table body, or make the arm a type (docs/SPEC-TABLES.md §2.6, §11, §15)
+schema: 2 error(s)
+```
+
+The second message names the way out: a union whose arms are field lines of any
+type belongs to a table closure. Part 7 builds one.
+
+### Your protocol is a union away
+
+A union of message payloads plus your own framing is a protocol:
+
+```
+type ChatLine
+{
+    speaker uint16
+    text    string(MaxChatText)
+}
+
+type Snapshot
+{
+    tick  uint32
+    ships [..MaxShipsPerSnapshot]ShipState
+}
+
+union Payload
+{
+    fire     FireCommand
+    chat     ChatLine
+    snapshot Snapshot
+}
+
+type Packet
+{
+    sequence uint16
+    payloads [..MaxPayloadsPerPacket]Payload
+}
+```
+
+One declaration buys the tag enum, the validated tag wire, and `WritePacket`
+and `ReadPacket` end to end. If you prefer a terminated stream to a counted
+array, write `Payload` values back to back and end on the in-band `None`.
+
+### Framing: `const`, `reserved`, `align`
+
+A real packet usually opens with framing: a magic byte so junk is rejected in
+the first 8 bits, a version nibble, and room to grow. Three storage-less
+constructs write wire with no field behind them:
+
+```
+type PacketHeader
+{
+    const(0xC7, 8)
+    version bits(3)
+    reserved(5)
+    align
+    sequence uint16
+}
+```
+
+```cpp
+struct PacketHeader {
+    uint32_t version = 0;
+    uint16_t sequence = 0;
+};
+```
+
+Storage holds only the real fields. The write carries the rest:
+
+```cpp
+SCHEMA_WRITE_INLINE bool WritePacketHeader( serialize::WriteStream & stream, const PacketHeader & value )
+{
+    write_bits( stream, 199ull, 8 ); // const(199, 8) — SPEC §4.3
+    write_bits( stream, value.version, 3 );
+    write_bits( stream, 0ull, 5 ); // reserved(5) — zeros on the wire
+    write_align( stream );
+    write_bits( stream, value.sequence, 16 );
+    return true;
+}
+```
+
+`const` is written always and a read **rejects any other value**. `reserved(N)`
+rides as zeros, a read rejects nonzero, and you can claim the bits later.
+`align` zero-pads to the byte boundary and a read rejects a nonzero pad, which
+earns its keep before bulk data because an aligned `bytes(N)` body can be
+copied instead of bit-shifted. Strings and bytes align internally already:
+length, align, then the raw bytes.
+
+### A program
+
+`main.cpp`, entire:
+
+```cpp
+#include "NetWire.h"
+#include <cstdio>
+#include <cstring>
+
+int main()
+{
+    using namespace starlight;
+
+    // one packet: a fire command and a chat line
+    Packet packet;
+    packet.sequence = 1000;
+    packet.payloads_count = 2;
+
+    Payload & first = packet.payloads[0];
+    first.type = PayloadType::Fire;
+    first.fire = FireCommand{};
+    first.fire.ship_id = 7;
+    first.fire.fire.type = WeaponFireType::Laser;
+    first.fire.fire.laser = LaserFire{};
+    first.fire.fire.laser.target_id = 12;
+    first.fire.fire.laser.power = 0.75f;
+
+    Payload & second = packet.payloads[1];
+    second.type = PayloadType::Chat;
+    second.chat = ChatLine{};
+    second.chat.speaker = 7;
+    strcpy( second.chat.text, "on my way" );
+    second.chat.text_length = 9;
+
+    uint8_t buffer[PacketMaxBytes];
+    serialize::WriteStream w( buffer, sizeof( buffer ) );
+    WritePacket( w, packet );
+    w.Flush();
+
+    Packet back;
+    serialize::ReadStream r( buffer, w.GetBytesProcessed() );
+    ReadPacket( r, back );
+
+    printf( "packet %u: %d payloads in %lld bytes\n",
+        back.sequence, back.payloads_count, (long long) w.GetBytesProcessed() );
+    for ( int32_t i = 0; i < back.payloads_count; i++ )
+    {
+        const Payload & p = back.payloads[i];
+        switch ( p.type )
+        {
+            case PayloadType::Fire:
+                printf( "  fire: ship %u laser at %u power %.2f\n",
+                    p.fire.ship_id, p.fire.fire.laser.target_id, p.fire.fire.laser.power );
+                break;
+            case PayloadType::Chat:
+                printf( "  chat: %u says \"%s\"\n", p.chat.speaker, p.chat.text );
+                break;
+            case PayloadType::Snapshot:
+                printf( "  snapshot: tick %u, %d ships\n", p.snapshot.tick, p.snapshot.ships_count );
+                break;
+            case PayloadType::None:
+                printf( "  none\n" );
+                break;
+            default:
+                printf( "  unknown tag\n" );
+                break;
+        }
+    }
+
+    // the empty union, in band
+    Payload empty;
+    printf( "a default Payload's tag is %d (None)\n", (int) empty.type );
+
+    // framing
+    PacketHeader header;
+    header.version = 2;
+    header.sequence = 1000;
+    uint8_t frame[PacketHeaderMaxBytes];
+    serialize::WriteStream hw( frame, sizeof( frame ) );
+    WritePacketHeader( hw, header );
+    hw.Flush();
+    printf( "header %lld bytes, first byte 0x%02X\n",
+        (long long) hw.GetBytesProcessed(), frame[0] );
+
+    frame[0] = 0xC6;
+    PacketHeader bad;
+    serialize::ReadStream hr( frame, hw.GetBytesProcessed() );
+    printf( "wrong magic: %s\n", ReadPacketHeader( hr, bad ) ? "ACCEPTED" : "refused" );
+    return 0;
+}
+```
+
+```
+$ c++ -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -I gen -I . -I ../serialize -o starlight main.cpp
+$ ./starlight
+packet 1000: 2 payloads in 20 bytes
+  fire: ship 7 laser at 12 power 0.75
+  chat: 7 says "on my way"
+a default Payload's tag is 0 (None)
+header 4 bytes, first byte 0xC7
+wrong magic: refused
+```
+
+Twenty bytes for a two-message packet, and `PacketMaxBytes` is 3104, which is
+what four snapshots of eight ships would cost at the worst case.
+
+### The protocol id: same or refuse
+
+Now the promise from Part 1 comes due. Look at the id, then add one arm to
+`WeaponFire` and look again:
+
+```
+$ schema id .
+0xb786cca203ebb6ea
+$ # add:  railgun LaserFire  to union WeaponFire, then schema fmt .
+$ schema id .
+0x799890f44a60c51f
+```
+
+Take the arm back out and the id returns to `0xb786cca203ebb6ea`, because the
+id is a pure function of the unit's text. `schema projection` prints the exact
+text that gets hashed:
+
+```
+$ schema projection .
+schema-wire-projection 2
+schema-wire-law 1
+package starlight
+enum Pending max=0 storage=8 variants=0
+enum ShipType max=3 storage=8 variants=3
+  variant 1 name=Fighter
+  variant 2 name=Freighter
+  variant 3 name=Corvette
+enum Weapon max=15 storage=8 variants=2
+  variant 1 name=Laser
+  variant 2 name=Missile
+flags SystemFlags wirebits=4
+  bit 0 name=Shields
+  bit 1 name=Cloak
+  bit 2 name=WarpDrive
+  bit 3 name=Autopilot
+```
+
+and it continues through every type, field kind, width and range in the unit.
+Nothing on the wire identifies fields, and both sides simply know the layout
+because they were generated from the same schema. That is what makes the wire
+this small, and it means both sides must **be** the same. The contract:
+
+- Exchange ids in your connection handshake. `starlight::ProtocolId` is in the
+  generated header.
+- Same id: every packet decodes, bit for bit.
+- Different id: refuse the connection. Do not talk.
+
+There is no version tag on any packet, so you pay for version agreement once at
+connect instead of on every message. This wire is deliberately not an evolution
+system. When you need data that survives schema drift, that is what tables are
+for, and they are the next part.
+
+**You now have** a complete network protocol: conditional layouts, typed
+messages, framing, and a handshake rule that makes wire mismatch impossible by
+construction.
