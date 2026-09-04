@@ -81,9 +81,27 @@
 # protocol's PR C, whose diff is this file alone. The full lift condition is
 # unchanged: the round closing, on the owner's word (issue #170).
 #
-# Locked prefixes, one per line (matched against changed paths):
-internal/codegen/c/
-internal/codegen/cpp/
-generated/c/
-generated/cpp/
-generated/c-ludicrous/
+# ONE-SHOT CARVE, 2026-09-04, on the owner's word ("Please land", given after
+# PR #488 and PR #489 were reported green except this lock):
+#
+# WHAT THE CARVE ADMITS, exactly and nothing else:
+#
+#   1. PR #488: the protocol id projection sees enum, flags and union arm
+#      order and names (issues #462, #491; ProjectionVersion 2). Under the
+#      locked prefixes it moves re-pinned protocol ids and build-version
+#      words only; the emitters under internal/codegen/c and
+#      internal/codegen/cpp are byte-identical.
+#   2. PR #489: every enum exports Count (issue #456). One emitter line each
+#      in internal/codegen/c/c.go and internal/codegen/cpp/cpp.go, and the
+#      generated Enums.h, Wire.h and Ludicrous.h lines they emit.
+#
+# THE PREFIXES ARE SUSPENDED BELOW for these two merges. The restoring PR,
+# whose diff is this file alone, re-freezes at the new reference. The full
+# lift condition is unchanged: the round closing, on the owner's word (#170).
+#
+# Locked prefixes, one per line (matched against changed paths), SUSPENDED:
+# internal/codegen/c/
+# internal/codegen/cpp/
+# generated/c/
+# generated/cpp/
+# generated/c-ludicrous/
