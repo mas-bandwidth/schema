@@ -303,3 +303,59 @@ func TestCGeneratorMacrosAreOwned(t *testing.T) {
 		}
 	}
 }
+
+// THE BLOCK ACCESSOR PAIR IS ONE NAME WITH TWO VERBS (#521 G-14). One field's
+// two accessors used to be spelled `RenderFrameShips` and
+// `RenderFrameships_span` — the same table prefix glued once onto the field's
+// exported spelling and once onto its own lowercase one, which for a
+// multi-word field came out `RenderFramedynamic_props_span`. Neither was the
+// snake_case this backend spells everything else in
+// (`render_frame_block_open`, `enum_name_ship_type`, `ship_config_load`), and
+// the two could not both be right.
+//
+// Reverting the rename turns this red on both halves.
+func TestCBlockAccessorsAreSnakeCasePairs(t *testing.T) {
+	const src = `package probe
+
+table RenderShip
+{
+    object_id uint32
+}
+
+table RenderFrame
+{
+    frame         uint64
+    ships         [..8]RenderShip
+    dynamic_props [..8]RenderShip
+}
+`
+	files, err := New().Generate(unitFromSource(t, src), "c", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var header string
+	for name, data := range files {
+		if strings.HasSuffix(name, "Block.h") {
+			header = string(data)
+		}
+	}
+	if header == "" {
+		t.Fatal("the C backend emitted no block header for a table with out-of-line arrays")
+	}
+	for _, want := range []string{
+		"TableBlockRows render_frame_ships_rows( const RenderFrameBlock * block )",
+		"RenderShip * render_frame_ships_span( const RenderFrameBlock * block )",
+		"TableBlockRows render_frame_dynamic_props_rows( const RenderFrameBlock * block )",
+		"RenderShip * render_frame_dynamic_props_span( const RenderFrameBlock * block )",
+	} {
+		if !strings.Contains(header, want) {
+			t.Errorf("the block header does not declare %q", want)
+		}
+	}
+	// and the spellings that mixed the two conventions are gone
+	for _, gone := range []string{"RenderFrameShips(", "RenderFrameships_span", "RenderFramedynamic_props_span"} {
+		if strings.Contains(header, gone) {
+			t.Errorf("the block header still spells %q", gone)
+		}
+	}
+}

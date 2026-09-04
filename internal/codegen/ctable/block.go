@@ -588,12 +588,19 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	g.pf("    return table_block_align( used, %d );\n}\n\n", ir.BlockAlign)
 
 	for _, a := range bl.Arrays {
-		field := ir.GoExportName(a.Field.Name)
+		// THE PAIR IS ONE NAME WITH TWO VERBS, in the C target's own spelling
+		// (§11). The rows accessor read `RenderFrameShips` and the span beside
+		// it `RenderFrameships_span` — a PascalCase table prefix glued onto
+		// the field's own lowercase spelling, which for `dynamic_props` came
+		// out `RenderFramedynamic_props_span`. Neither was the snake_case the
+		// rest of this backend emits (`render_frame_block_open`), and the two
+		// could not both be right (#521 G-14).
+		field := g.api(name, ir.RustSnake(a.Field.Name))
 		g.pf("/* %s: an accessor is ONE ADD — block base + offset_of — at the pitch the\n", a.Field.Name)
 		g.pf("   INSTANCE gives. A worker holds it and indexes; disjoint index ranges into\n")
 		g.pf("   one array are safe concurrently, and two workers writing one row is the\n")
 		g.pf("   caller's problem (docs/SPEC-TABLES.md §19.1). */\n")
-		g.pf("static SCHEMA_UNUSED TableBlockRows %s%s( const %sBlock * block )\n{\n", name, field, name)
+		g.pf("static SCHEMA_UNUSED TableBlockRows %s_rows( const %sBlock * block )\n{\n", field, name)
 		g.pf("    TableBlockRows rows;\n")
 		g.pf("    rows.base = block->base + block->projection->%s.offset_of;\n", a.Field.Name)
 		g.pf("    rows.count = (int32_t) block->projection->%s.count;\n", a.Field.Name)
@@ -603,7 +610,7 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 		g.pf("/* %s, as a CONTIGUOUS TYPED base — available because the pitch IS sizeof\n", a.Field.Name)
 		g.pf("   (§2.7), which is how the fast path is actually written. The COUNT comes\n")
 		g.pf("   from the accessor above, out of the instance, never from a constant. */\n")
-		g.pf("static SCHEMA_UNUSED %s * %s%s( const %sBlock * block )\n{\n", a.ElemName, name, g.api(field, "span"), name)
+		g.pf("static SCHEMA_UNUSED %s * %s_span( const %sBlock * block )\n{\n", a.ElemName, field, name)
 		g.pf("    return (%s *) (void *) ( block->base + block->projection->%s.offset_of );\n}\n\n", a.ElemName, a.Field.Name)
 	}
 	g.pf("/* ---- block fill path: end ---- */\n\n")
