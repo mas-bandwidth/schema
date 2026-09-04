@@ -62,20 +62,34 @@ harsher contract, and it buys the thing Protobuf cannot give you: nothing on
 the wire identifies a field, so nothing on the wire is spent identifying one.
 
 If your client and server ship independently and must interoperate across
-versions over one connection, **use Protobuf** — the type wire will fight
-you. If they ship
+versions over one connection, the type wire will fight you and you should not
+use it — but the answer is not another library. **That case is what the TABLE
+wire is for**, and the MESSAGE FORM is its stream shape: a peer announces its
+unit's whole vocabulary once a connection and then carries none of it, so a
+four-field login is 58 bytes against proto3's 49 rather than the 106 the file
+form costs (SPEC-TABLES.md §3.3). What schema still declines beside Protobuf
+is RPC: there is no service definition, no stub generation and no
+request-response machinery, so a stack that wants those brings its own or
+brings Protobuf. If client and server ship
 together, which is the normal case for a game client and its dedicated server,
 the tags were pure overhead and the protocol id is the honest statement of what
 was always true.
 
 That narrowness is one of TWO wires, and the other one is the evolution
-answer: declare a `table` and its fields ride under the hash of their NAMES,
-so a reader takes any data a writer ever wrote — unknown fields skipped and
-counted, absent fields defaulted, changed kinds skipped rather than
-misdecoded, out-of-range values clamped, every event in a read report and
-only structural damage fatal (SPEC-TABLES.md). Save games, config, asset
-archives and tool output belong there; packets belong on the type wire. What
-schema does not offer is Protobuf's model of one wire that does both.
+answer: declare a `table` and its fields are identified by the hash of their
+NAMES, so a reader takes any data a writer ever wrote — unknown fields skipped
+and counted, absent fields defaulted, changed kinds skipped rather than
+misdecoded, a kind that merely grew decoded exactly and counted `widened`
+(specified, and nothing counts it yet in any language, #523),
+out-of-range values clamped, and every event in a read report. **Nothing is
+fatal below the whole wire**: framing damage stops the damaged nesting level,
+keeps what it decoded there, and the parent reads on past the field's own
+length. Two things do stop the file, and both DECODE NOTHING rather than
+mangle anything: a trailer the reader cannot read whole, and a form byte the
+reader does not know, which is a refusal by name and moves no counter at all
+(SPEC-TABLES.md §3, §4). Save games, config, asset archives, tool output and backend messages
+belong there; packets belong on the type wire. What schema does not offer is
+Protobuf's model of ONE wire that does both.
 
 ## Isn't this just Cap'n Proto?
 
@@ -265,7 +279,8 @@ On the write side each language uses its own correctness idiom: C++ has
 `assert`/`NDEBUG`, a check that disappears in release, so that is what it uses;
 Go has no assert idiom, so it returns `ErrValueOutOfRange`, and C, C#, Rust
 and JavaScript likewise return failure rather than invent an assert; Dart
-and Java have `assert`, so like C++ they assert. A
+and Java have `assert`, so like C++ they assert; and the BEAM has no dormant
+assert at all, so Elixir raises `ArgumentError` in every build. A
 language should verify correctness the way that language verifies
 correctness — which means the write side is not uniform across targets, and you
 should not build on it. Keep values inside
@@ -276,22 +291,41 @@ cost with no buyer. See
 
 ## Is everything supported in all nine languages?
 
-**Yes.** The wire is generated for C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust from one IR, and
-checked against each other in CI on every push. Every target's output is held
-to the same pinned goldens.
+**Yes, on the PACKET wire.** It is generated for C, C++, C#, Dart, Elixir,
+Go, Java, JavaScript and Rust from one IR, and checked against each other in
+CI on every push. Every target's output is held to the same pinned goldens.
+
+**The table wire is not there yet, and the state is one sentence.** All nine
+carry the FIXED class on the wire, the text form, the cook's open, the block's
+read and the descriptors; the variable class is the C++ reference's and the
+tool's; and the id-table wire itself is the reference's and the tool's, with
+the eight ports still writing its previous form
+([#511](https://github.com/mas-bandwidth/schema/issues/511) to
+[#518](https://github.com/mas-bandwidth/schema/issues/518)). The parity gate
+is [#366](https://github.com/mas-bandwidth/schema/issues/366).
 
 Parity means everything: fixed point, 128-bit integers, unions and their
 generated tag surface, in every target. Rust's
 `#[repr(C)]` storage is what makes relocatability actually true there rather
 than incidental.
 
+One type is specified and not yet emitted anywhere, so it is named rather than
+counted as parity: `wstring(N)`, the wide-text type, whose reader rules,
+storage and goldens are SPEC.md §4.12 and whose first implementation lands
+them in every target at once.
+
 ## What does the language NOT have?
 
 Worth knowing before you adopt rather than after:
 
 - **No maps on the packet wire.** Use a counted array of key/value pairs.
-  Tables have them — `map[K]V` (SPEC-TABLES.md §2.8), landing in the C++
-  reference first ([#380](https://github.com/mas-bandwidth/schema/issues/380)).
+  Tables have them — `map[K]V` (SPEC-TABLES.md §2.8), a lookup over entries
+  the wire carries as a sorted array, in the C++ reference and the tool.
+- **No unbounded collections on the packet wire.** Everything the type wire
+  carries has a declared bound, and a `type` body refuses the unbounded
+  spellings by name. A table body takes an unbounded `map` and an unbounded
+  `[]T`, because a table reader owns its own allocation (SPEC-TABLES.md §2.8,
+  §2.9).
 - **No recursive types.** `type Node { children [..4]Node }` is rejected as a
   composition cycle — generated storage is by value, with no pointers, which is
   what makes it relocatable and memcpy-able. A table may point at a table,

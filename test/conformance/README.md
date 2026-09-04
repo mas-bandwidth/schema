@@ -121,6 +121,17 @@ they become part of the count as schema#349 and the per-construct follow-ons
 land them, one language at a time, with nothing in this data or this contract
 moving as they do.
 
+**AND ONE ABSENCE IS WIDER THAN A CLASS: the WIRE FORM ITSELF.** The id-table
+wire (docs/SPEC-TABLES.md §3) is the form byte, the reference-and-kind field
+header, the canonical LEB128 numbers and the trailing id table. The C++
+reference and the tool write it and the eight ports still write its previous
+form, so a port's leg has no codec for those roots and the harness says so in
+its own words: `N seeds absent (roots the leg has no codec for)` on the run's
+own line, which is the same "absent is not failure" rule this page states
+above, one grain up. The eight are schema#511 (go), #512 (c), #513 (cs), #514
+(dart), #515 (elixir), #516 (js), #517 (java) and #518 (rust), and PORTING.md
+M20 is the register cell for each.
+
 **Absent is not failure, and the distinction is the whole reason the matrix
 exists.** A backend with no text form is missing a FEATURE; a backend whose text
 form writes the wrong bytes is failing a TEST. A harness that printed both the

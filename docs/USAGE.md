@@ -10,17 +10,26 @@ compiler does.
 - [Declarations](#declarations)
   - [const](#const) · [enum](#enum) · [flags](#flags) · [type](#type) ·
     [union](#union)
+- [Documenting and tagging: `///` and tags](#documenting-and-tagging--and-tags)
 - [Field types](#field-types)
   - [Integers](#integers) · [Ranged integers](#ranged-integers) ·
     [bits(N)](#bitsn) · [bool](#bool) · [Floats](#floats) ·
     [Compressed floats](#compressed-floats) · [fixed(I, F)](#fixedi-f) · [ufixed(I, F)](#ufixedi-f) ·
-    [Strings and bytes](#strings-and-bytes) · [Arrays](#arrays) ·
-    [Composition](#composition)
+    [Strings and bytes](#strings-and-bytes) · [wstring(N)](#wstringn) ·
+    [Arrays](#arrays) · [Composition](#composition)
 - [Branches: if / else](#branches-if--else)
 - [Defaults](#defaults)
 - [The wire](#the-wire)
 - [Reading untrusted data](#reading-untrusted-data)
 - [The protocol id](#the-protocol-id)
+- [Tables: data that outlives builds](#tables-data-that-outlives-builds)
+  - [Optional fields](#optional-fields-settings-gunnersettings) ·
+    [Enum-keyed arrays](#enum-keyed-arrays-ships-shiptypeshipconfig) ·
+    [Maps](#maps-ships-mapstring32shipconfig) ·
+    [Unbounded arrays](#unbounded-arrays-placements-placement) ·
+    [Pointers](#pointers-next-node) · [The block form](#the-block-form-rows-another-language-points-at) ·
+    [The cooked form](#the-cooked-form-point-at-a-file-instead-of-parsing-it) ·
+    [The text form](#the-text-form-json-in-and-out-of-one-table)
 - [Embedding the compiler](#embedding-the-compiler)
 - [Per-language notes](#per-language-notes)
 
@@ -298,6 +307,108 @@ choose.
 
 ---
 
+## Documenting and tagging: `///` and tags
+
+*Specified, not yet emitted. The front end does not read a `///` block, and a
+tag is carried on a `type` declaration alone (SPEC.md §4.1, §4.2,
+SPEC-TABLES.md §8.1).*
+
+### Doc comments are opt-in, and the marker is `///`
+
+A schema tree is full of working notes written directly above things. Under an
+implicit rule every one of them would become a descriptor string, a comment in
+nine generated languages, and read-only data in the binary of every game that
+links the table headers. So documentation is something you OPT INTO, and the
+marker is `///`:
+
+```
+/// The hull's structural health. A hull at zero is destroyed.
+health float32 = 100.0 | min = 0.0, max = 1000.0
+
+// a working note, and it reaches nothing at all
+armor int32 = 1
+```
+
+A DOC COMMENT is a contiguous run of `///` lines whose last line immediately
+precedes a **declaration, a field, an enum or flags variant, or a union arm**.
+A plain `//` block above the same item stays an ordinary comment. `///` is a
+`//` line by ordinary lexing, so a reader that does not know the rule sees a
+comment and every editor already highlights it as one, and a `/* */` block is
+never a doc comment in any spelling.
+
+**The text is the block verbatim, with the marker removed.** Each line
+contributes what follows its `///`, with at most one leading space dropped and
+trailing whitespace dropped, the lines joined with a single newline. Nothing
+else is interpreted: no markup, no keywords, no reflow, no escape sequences,
+so two leading spaces and an empty line in the middle are what a tool prints.
+
+Where it goes: into the `doc` column of the reflection descriptors, and into
+ordinary LINE comments above the declaration in the generated code, `//` in
+C++, C, C#, Go, JS and Java and `///` in Rust and Dart. A line comment ends
+where the line does, so a `*/` or a `<` in your text needs no rule at all,
+which is why no target emits `/** */` or a `<summary>` element. Elixir carries
+the descriptor column alone for a field and a variant, which have no attribute
+to hang a doc on, and emits `@moduledoc` / `@typedoc` for a declaration.
+
+**Every `///` line is part of a doc comment or is refused by name**, because
+silently dropping an opt-in is the outcome opt-in exists to prevent. Refused:
+a `///` block above `package`, above a `const( )`, `reserved( )` or `align`
+item, or above a closing brace, none of which has a descriptor row to carry
+one; a `///` block separated from its item by a blank line or by an ordinary
+`//` line; and a `///` that TRAILS code on the item's own line. Each
+diagnostic names the spelling that works, and `//` is always that spelling.
+`| doc = "..."` is refused too: one text has one spelling.
+
+### Tags: the vocabulary is yours
+
+A TAG is one user-chosen identifier right of the pipe, in its own open
+namespace, and **every declaration and every declared item may carry one**: a
+`type`, a `table`, an `enum`, `flags`, a `union`, a `const`, a field, an enum
+or flags variant, and a union arm.
+
+```
+const StarterGold = 500 | tuning
+
+enum Rarity | loot
+{
+    Common
+    Uncommon
+    Rare      | celebrate
+    Legendary | celebrate
+}
+
+table ShipConfig | designer_facing
+{
+    /// The hull's structural health. A hull at zero is destroyed.
+    health   float32 = 100.0 | ui_slider, min = 0.0, max = 1000.0
+    texture  uint64          | asset_ref
+    nickname string(32)      | localized
+}
+```
+
+A tag is **inert**: parsed, carried through the IR, carried into the
+descriptors, and it changes zero generated wire code. Valueless markers come
+first in a qualification and valued keys after, which the parser accepts in
+any order and `schema fmt` writes in this one. A bare identifier that spells a
+known valued key is refused by name rather than taken as a tag, so `| min`
+draws "min takes a value: write min = 0" and the open namespace cannot swallow
+a typo in the closed one. A repeated tag is refused, and so is a tag that
+repeats a valued key already on the line.
+
+**Both are free edits.** A doc comment and a tag are excluded from the wire
+shape projection and from the cook projection, so neither moves the protocol
+id or the build version. Neither enters a baseline row. And neither is in the
+silent class, because nothing about a stored byte's meaning is in reach of
+them. Annotating a shipped schema costs no redeploy and is safe at any time,
+which is exactly what makes the tag namespace safe to leave open.
+
+Meaning arrives by CLAIMING. A future compiler pass claims a tag and assigns
+its semantics. Until one does, the compiler does not ask what a tag means, and
+a tool that reads the tag out of a descriptor is the claiming pass you wrote
+for yourself.
+
+---
+
 ## Field types
 
 ### Integers
@@ -418,6 +529,72 @@ failure. So Latin-1 bytes in a `string(32)` are refused by every reader that
 sees them. If your payload is genuinely arbitrary bytes, declare `bytes(N)`,
 which is the same wire with no encoding rule (SPEC.md §4.7).
 
+### wstring(N)
+
+*Specified, not yet emitted. The front end refuses the spelling at parse, no
+backend teaches the type, and the `examples/` declaration and the golden pins
+land with the first implementation (SPEC.md §4.12,
+[#522](https://github.com/mas-bandwidth/schema/issues/522)).*
+
+```
+title wstring(64)
+```
+
+Wide text: UTF-16 code units, with **N counted in CODE UNITS**, not code
+points and not bytes, so a character outside the basic plane occupies two of
+them. It exists for a host whose native text is already UTF-16, where the wire
+and the string hold the same units and text crosses the boundary as a copy
+rather than a transcode.
+
+The wire is two steps and **no alignment in either**: the length as a ranged
+integer over `[0, N]`, then each code unit as a 32-bit group, packed
+LSB-first like every other value. `MaxBits` is therefore
+`bits_required(0, N) + 32 * N`, with no padding term. And because it
+introduces no alignment point, a `wstring` field does not make its type's
+layout depend on the entry bit offset the way `string` and `bytes` do.
+
+A `wstring` takes no attributes and no `= default`, and `wstring(N)` with N
+below 2 is a compile error, the same floor `string(N)` carries.
+
+**The reader enforces four rules, identically in all nine targets and in every
+build mode.** A decoded length outside `[0, N]` fails. A group above `0xFFFF`
+fails, whatever wide character type the host happens to have. A zero group
+among the transmitted units fails, which is `string(N)`'s interior-null rule
+in code-unit terms. And surrogates must PAIR: a high surrogate not
+immediately followed by a low one fails, a low surrogate not immediately
+preceded by a high one fails, and a high surrogate as the final group fails.
+Well-formed pairs are how astral text travels. Nothing else about the text is
+examined: noncharacters are accepted, `0xFFFF` included, and there is no
+normalization, no case folding and no code-point count. A reader that adds a
+check here is as wrong as one that drops a check above.
+
+**The write side checks two things**, in each target's own idiom: the used
+length is within `[0, N]`, because it guards the copy, and a zero code unit
+among the used units is refused. Surrogate pairing is NOT checked on write.
+It is a writer obligation the reader on the other end enforces.
+
+Storage is a pre-allocated buffer of code units with a used length beside it,
+and nothing transcodes inside the generated read or write path. What the
+boundary costs is per language. On C#, Java, JavaScript, Dart, and C++ or C on
+a UTF-16 host it is a copy of code units, which is the reason the type exists.
+On Go, Rust and Elixir, whose native text is UTF-8, the transcode is real and
+is paid in your own code: `utf16.Encode`/`utf16.Decode` in Go,
+`str::encode_utf16`/`String::from_utf16` in Rust, and
+`:unicode.characters_to_binary/3` in Elixir. In C and C++ a successful read
+also writes the zero unit at index `length`, which is what the `+ 1` in
+`char16_t[N + 1]` is for.
+
+`wstring(N)` rides the TABLE wire too, under a wide-text kind of its own,
+whose payload is a byte length holding half as many code units, two bytes each
+little-endian. So respelling a field between `string(N)` and `wstring(N)` is
+an ordinary counted kind mismatch and never UTF-8 bytes read as code units.
+The validation above holds on both wires, and only the SHAPE of the refusal
+differs: a packet read stops, while a table read gives the field its declared
+default, counts one `malformed`, and reads on. It is refused as a MAP key,
+with `string(N)` named as the key that works, because `memcmp` over UTF-8 is
+a portable order and little-endian code units have none.
+
+
 ### Arrays
 
 ```
@@ -504,9 +681,9 @@ versioning is by [protocol id](#the-protocol-id): one id, same-or-refuse,
 with no evolution machinery anywhere. That is a deliberate choice for data
 whose writer and reader ship together, and it is one of TWO wires this
 language has. Data that has to survive schema drift is the other one's job:
-declare a `table` and it rides the tolerant wire, where fields carry their
-name's hash, any reader reads any data, and every difference is counted in a
-read report rather than being fatal (docs/SPEC-TABLES.md, and
+declare a `table` and it rides the tolerant wire, where a field is identified
+by the hash of its name, any reader reads any data, and every difference is
+counted in a read report rather than being fatal (docs/SPEC-TABLES.md, and
 [Tables](#tables-data-that-outlives-builds) below). Save games, config and
 asset archives belong there; packets belong here.
 
@@ -603,9 +780,20 @@ not talk to each other at all. Check it during your handshake.
 There is no version tag on the wire — that is the point. The id is how you
 find out, once, at connect time, instead of paying for it on every packet.
 
-It covers your `type` declarations and nothing else. Tables never touch it —
-edit a table and what moves is the **build version**, which keys cooked
-assets and gates no connection (below).
+*The rule below is specified and the compiler does not scope by it yet:
+`ir.WireProjection` still renders the whole unit at `ProjectionVersion` 2, and
+the scoping is owed as
+[#524](https://github.com/mas-bandwidth/schema/issues/524) (SPEC.md §3.1).*
+
+It covers the CLOSURE over your `type` declarations — every `type`, and every
+enum and union a `type` reaches, by a field's type, an array's element, an
+array's bound, a keyed array's key enum, a constant's value, a union arm's
+payload or either side of a branch. An enum only a `table` reaches is not in
+it. **`flags` is the one exception and projects whether a `type` reaches it or
+not**, because a mask is positional on the table wire and the protocol id is
+the only runtime frame that can refuse two peers whose bit assignments differ
+(SPEC.md §3.1). Tables never touch it — edit a table and what moves is the
+**build version**, which keys cooked assets and gates no connection (below).
 
 ---
 
@@ -638,16 +826,33 @@ allocates, a fixed table WITH a union may allocate for the arm in a language
 that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
-A table lives on its own wire — evolution-tolerant TLV, carried by **all nine
-targets**: C++ and C take both classes, and C#, Dart, Elixir, Go, Java,
-JavaScript and Rust take the fixed class, wire and
+A table lives on its own wire — self-describing and evolution-tolerant,
+carried by **all nine targets**: C++ and C take both classes, and C#, Dart,
+Elixir, Go, Java, JavaScript and Rust take the fixed class, wire and
 text form both; the pointer surface ON THE WIRE is a follow-on in those seven,
-whose cook and block accelerators read a pointered unit today. Field
-identity is a hash of the field NAME, so any reader takes any data, both
-directions: unknown fields are skipped, absent fields take their declared
-defaults, a field whose type changed is skipped rather than misdecoded,
-out-of-range values are clamped. Every such event is counted in a report;
-only structural damage stops a load. Tables never touch the protocol id —
+whose cook and block accelerators read a pointered unit today.
+
+**Each field is a reference, a kind byte and a payload**, and the file carries
+every id it used once each in a trailer at the end, so a field header spends
+one byte on the reference where the eight-byte id itself would have spent
+eight. The file opens with a one-byte FORM version — `1` for a file — which a
+reader that does not know it refuses by name. *That form is written by the C++
+reference and by the tool; the eight other backends still write its previous
+form, and each is a named follow-on
+([#511](https://github.com/mas-bandwidth/schema/issues/511) to
+[#518](https://github.com/mas-bandwidth/schema/issues/518), PORTING.md M20).*
+Field identity is a hash of the
+field NAME, so any reader takes any data, both directions: unknown fields are
+skipped by their kind, absent fields take their declared defaults, a field
+whose kind changed is skipped rather than misdecoded, a field whose kind
+merely GREW — an integer to a wider integer of the same signedness, or
+`float32` to `float64` — decodes exactly and counts `widened`, and
+out-of-range values are clamped. *The widening rule is specified and nothing
+counts `widened` yet, in any language
+([#523](https://github.com/mas-bandwidth/schema/issues/523)).* Every such event is counted in a report;
+framing damage stops the damaged nesting level, keeps what it decoded there
+and reads on past the field's own length, so one bad subtable never takes
+down the rest of the file. Tables never touch the protocol id —
 add, edit or remove one and no packet byte and no id moves.
 
 **An array's BOUND is not part of that identity either.** Resize a bounded
@@ -659,10 +864,10 @@ else: a count the body cannot cover.) The storage struct's size and extent
 change with the constant; the table on the wire does not, because identity is
 the field name hash and the kind.
 
-**Enum variants and union arms ride by name too.** An enum value on the wire
-is the hash of its variant's name and a union body opens with the hash of its
-arm's name, so you can insert a variant in the MIDDLE and every stored value
-still reads back as itself:
+**Enum variants and union arms ride by name too.** An enum value rides under
+its own kind carrying a reference to its variant NAME's id, and a union body
+opens with a reference to its arm's, so you can insert a variant in the MIDDLE
+and every stored value still reads back as itself:
 
 ```
 enum Grade { Bronze, Gold }          // v1
@@ -722,7 +927,11 @@ if ( report.unknown || report.kind_mismatch || report.clamped )
 ```
 
 Values at their defaults stay off the wire entirely — an all-default table
-saves as 2 bytes and loads back complete.
+saves as ten bytes and loads back complete: the form byte, the body's zero
+reference, and the eight-byte entry count of an id table with no entries. That
+fixed cost is the price of 64-bit identity on a wire that trades bytes for
+tolerance, and it is why a small same-build message belongs on the type wire
+instead (SPEC-TABLES.md §3).
 
 The C# surface is the same three functions, name first, on the unit's `Schema`
 class, over spans the caller owns. Storage is a sealed class with public
@@ -1500,12 +1709,22 @@ place, silently. A slot the writer left at its default is elided; a slot this
 reader has no name for is skipped and counted `unknown`; a slot the writer
 never sent keeps its declared default. A `None` key never rides at all.
 
-In a `type` body the same spelling is exactly `[E.Max]T` — positional and
-bitpacked, the packet wire as always, with the same protocol id either way —
-and there the storage is a **plain array**: `per_team [Team]int32` in a `type`
-is `int32_t per_team[3]`, no accessor, no iteration surface and no `None`
-guard, because there is no key to check and no `None` slot to guard. Only the
-table wire keys the slots.
+In a `type` body the same spelling lowers to exactly `[E.Max]T` — positional
+and bitpacked, the packet wire as always, with the same protocol id either
+way — and there the storage is a **plain array**: `per_team [Team]int32` in a
+`type` is `int32_t per_team[3]`, no accessor, no iteration surface and no
+`None` guard, because there is no key to check and no `None` slot to guard.
+Only the table wire keys the slots.
+
+**And the positional spelling `[E.Max]T` is REFUSED in a table body, by
+name**, with `[E]T` named as the fix. *The specification states that refusal
+and the checker does not make it today: `[E.Max]T` in a table body still
+compiles ([#540](https://github.com/mas-bandwidth/schema/issues/540)).*
+An ordinal-indexed array is a positional
+vocabulary, and a table has exactly one of those — `flags` — so the refusal is
+what keeps the closed class closed: you cannot reopen it by spelling the array
+the old way and then never touching the field again. `[E.Max]T` stays legal in
+a `type` body, where it is a plain array (SPEC-TABLES.md §2.4, §11).
 
 A key enum counts as part of the table closure: it rides by variant name, so
 `| max` headroom and colliding variant names are refused for it too, with the
@@ -1553,9 +1772,32 @@ reader that lacks it reads the union empty, skips the body by its length and
 counts `unknown`; arms may be removed and reordered freely. Unlike a
 `type`-only payload, a message may carry a nested table or a whole
 collection. A union declared for the packet wire still takes `type` payloads
-only — types stay value semantics. C++ carries the form today; every other
-backend refuses a unit that declares one, by name, and the ports are named
-follow-ons.
+only — types stay value semantics. *The C++ reference and the tool carry the
+form; every other backend refuses a unit that declares one, by name, and the
+ports are a named follow-on
+([#392](https://github.com/mas-bandwidth/schema/issues/392),
+SPEC-TABLES.md §15).*
+
+An arm is a field line, so an arm's type is any type a field's is — a scalar
+with its bounds, a compressed float, a string, a bounded array, an enum, a
+`flags` mask, a declared `type`, a `table`, a pointer, another union — and an
+arm may carry **no payload at all**, written as its name alone:
+
+```
+union Value
+{
+    count   int32 | min = 0, max = 100
+    label   string(64)
+    samples [..8]float32
+    doc     OpenDocument
+    ping
+}
+```
+
+`ping` selects and carries nothing, which is not the union's `None`: `None`
+says no arm was selected. What an arm may NOT take is a specified default, a
+`?`, a `was`, a `json`, an enum-keyed `[E]T`, an `if` guard, a `map` or an
+unbounded `[]T` — each refused by name (SPEC-TABLES.md §2.6).
 
 ### Pointers: `next *Node`
 
@@ -1662,11 +1904,13 @@ directory the load fills so an index resolves whichever way it points. The
 answer is their sum, and the attribution can be released once `Load` returns.
 Pass `NULL` (or nothing) if you only want the total.
 
-On the wire a pointer rides as a **u32 index into a flat node table**: every
-reachable node is written once, and a pointer field carries the number and not
-the body. So **two pointers to one node are one node**, on the wire as in a
-region, and a chain's length is not a nesting depth — there is no depth cap in
-either direction. Null pointers are simply absent.
+On the wire a pointer rides as an **index into a flat node table**, under a
+kind of its own, encoded as the same canonical variable-length integer every
+length and count on that wire uses: every reachable node is written once, and
+a pointer field carries the number and not the body. So **two pointers to one
+node are one node**, on the wire as in a region, and a chain's length is not a
+nesting depth — there is no depth cap in either direction. Null pointers are
+simply absent.
 
 A by-value `T` and an optional `?T` are one framing and a field may move
 between them with no byte moving; a POINTER is its own kind, so moving a field
@@ -1811,7 +2055,209 @@ What is still not the dialect in a POINTERED unit's header — `<atomic>` and
 `<new>` — and the builder's destructor are named follow-ons in
 SPEC-TABLES §15.
 
-### Byte buffers: `bytes(N)`, `*bytes` and `*string`
+### Maps: `ships map[string(32)]ShipConfig`
+
+*Specified and carried by the C++ reference and the tool. Every other backend
+refuses a unit that declares one, by name, because a map makes its holder
+variable, and the ports are a named follow-on
+([#380](https://github.com/mas-bandwidth/schema/issues/380),
+SPEC-TABLES.md §11, §15).*
+
+A map is a **lookup the runtime provides over entries the wire carries as a
+sorted array**. It spends no wire kind and invents no encoding: on the wire,
+in a region and in a cook a map is nothing new, just an array of one generated
+`{ key, value }` table, held in ascending key order.
+
+```
+table Fleet
+{
+    ships    map[string(32)]ShipConfig       // a lookup by name
+    by_id    map[uint32]*ShipConfig          // by number; two keys may share one node
+    loadouts map[string(16)]map[uint8]Item   // a map is a value, so maps nest
+}
+```
+
+**Keys are bounded strings and integers, and nothing else**: `string(N)`, or
+one of `int8` through `int64` and `uint8` through `uint64`, bare. No `| min`,
+no `| max` and no default, because a key is an identity and clamping an
+identity merges two entries. Every other key is refused by name with its
+reason. A `wstring(N)` key names `string(N)`, because `memcmp` over UTF-8 is a
+portable order and little-endian code units have none. An enum key names
+`[E]T`. A `bool`, a float, a `flags`, `bits(N)`, `bytes(N)`, a 128-bit
+integer, a `fixed`/`ufixed`, a `type`, a `table`, a pointer, an optional and a
+union are each refused too.
+
+**A value is anything a table field can hold**, a map included, so a map of
+maps is one declaration and nothing special.
+
+**The order is total and it is the same in nine languages.** Integers compare
+by value, signed for the signed kinds and unsigned for the unsigned. Strings
+compare by BYTES, unsigned, a shorter string that is a prefix of a longer one
+first. Never a locale, never a code point, never a case fold.
+
+**A map makes its holder VARIABLE-LENGTH**, whatever its key and value are,
+so a table declaring one rides in the arena with the pointers and has no block
+form. A `type` body refuses one by name. There is no bound on the count, no
+`| max` on a map, no `?map` and no default: a fresh map is empty, and an empty
+map elides. What bounds a read is `LoadMeasure`, whose answer the caller owns
+and can refuse.
+
+The surface is a builder and a reader:
+
+```cpp
+FleetBuilder builder;
+Fleet * fleet = builder.GetRoot();
+
+// insert: the key is copied and the value comes back at its defaults to fill;
+// a duplicate key REPLACES and hands the same entry back reset
+ShipConfig * fighter = FleetShipsInsert( builder.main, fleet->ships, "fighter" );
+fighter->health = 100;
+
+ShipConfig * found = FleetShipsFind( builder.arena, fleet->ships, "fighter" );
+bool erased      = FleetShipsErase( builder.arena, fleet->ships, "bomber" );
+for ( auto [ key, ship ] : FleetShipsEach( builder.arena, fleet->ships ) ) { }
+
+builder.Lock();                                  // sorts once; dead entries dropped
+const Fleet * locked = builder.AsConst();
+
+// the const form, a locked region or a loaded one or an opened cook, is ONE surface
+const ShipConfig * ship = locked->ships.Find( "fighter" );  // log n, in place, NULL when absent
+for ( auto [ key, ship ] : locked->ships ) { }              // ASCENDING key order
+```
+
+**`Insert` answers NULL for a key longer than `N`**, and for an arena that
+cannot carve another segment, because a truncated key would be a merged entry:
+NULL means not inserted, and a caller that needs the reason checks the key's
+length before the call.
+
+`Find` on a locked region, a loaded one and an opened cook is a binary search
+in place, `floor(log2 n) + 1` compares with no allocation and no parse, because
+the three are one encoding. For a map big enough that a cold array's compares
+cost more than a hash and a probe, there is an OPTIONAL index built at load
+into storage you own and never stored in a file:
+`FleetShipsIndexMeasure`, `FleetShipsIndex` and `FleetShipsIndexFind`.
+
+**A map claims eight names against its field**: `<Table><Field>` followed by
+`Entry`, `Insert`, `Find`, `Erase`, `Each`, `IndexMeasure`, `Index` and
+`IndexFind`. A `Fleet` with a `ships` map therefore claims `FleetShipsEntry`,
+`FleetShipsInsert` and the rest, and a declaration spelling any of the eight
+is refused naming the map.
+
+**Evolution.** A repeated key on read is last-wins and counts `duplicate`. A
+DESCENDING key is not something a conforming writer produces, so the map keeps
+its ascending prefix, flags `malformed`, and the parent reads on. A key that
+does not fit the reader's bound drops its entry and counts `clamped`, one per
+entry, so keys never clamp into each other. A key kind that disagrees resets
+the map to empty and counts one `kind_mismatch`, and a key kind the reader's
+own WIDENS decodes exactly and counts one `widened` (*specified, and nothing
+counts `widened` yet in any language,
+[#523](https://github.com/mas-bandwidth/schema/issues/523)*). And a map is
+byte-identical with `[..N]Pair` over a user's own
+`table Pair { key ...; value ... }`, in both directions, which is the
+migration path from the table-of-pairs idiom.
+
+In JSON a map is a plain object keyed by the key, an integer key written as
+its quoted decimal spelling, entries in ascending key order.
+
+### Unbounded arrays: `placements []Placement`
+
+*Specified, not yet emitted. The front end refuses the `[]T` spelling at
+parse, no backend carries the construct, and the corpus holds no
+`tables/lists` (SPEC-TABLES.md §2.9).*
+
+**An unbounded array is a counted array whose count the DATA decides.** It is
+the map with the key and the sort taken out: the same kind `14` body a
+`[..N]T` writes, the same element kind, the same count. What it drops is the
+declared BOUND, so the slot holds a reference and a count where a bounded
+array stores its maximum inline.
+
+```
+table Save
+{
+    placements []Placement    // as many as the world has
+    log        []*LogEntry    // pointer elements, two slots may name one node
+    scores     []int32        // a scalar element is an element like any other
+}
+```
+
+**`[]T` and `[..N]T` are the same bytes**, so the migration runs both ways: a
+schema that outgrew its bound removes it and reads every file it ever wrote,
+and one that discovers a bound adds it and reads every file too, clamping past
+it.
+
+The element set is `[..N]T`'s exactly: a scalar, an enum, a `flags` mask, a
+declared `type`, a table by value, `*T` and a union, with nothing added and
+nothing held back. So `[][]T` is refused because arrays of arrays are not in
+v1, and the fix is a TABLE wrapper rather than a `type` one, because a `type`
+body refuses a `[]T`:
+
+```
+table Row   { items []Sample }    // the inner array, wrapped
+table Sheet { rows  []Row }       // the outer one, of that table
+```
+
+`[]?T` is refused too, and the answer that serves today is `[]*T` with a null
+slot. `[..]T` and `[0..]T` are refused as spellings: an EMPTY bracket is the
+absence of an extent, which is what the construct is.
+
+Like a map, an unbounded array **makes its holder VARIABLE-LENGTH** and is
+refused in a `type` body by name, which is what keeps "no unbounded
+collections" true of the type wire. The order is INSERTION order, on the wire,
+in a region and in a cook, so position is identity the way it is in a fixed
+array, and there is no sort for a writer to hold and no order check for a
+reader to run.
+
+```cpp
+SaveBuilder builder;
+Save * save = builder.GetRoot();
+
+Placement * placement = SavePlacementsAdd( builder.main, save->placements );
+placement->x = 1.0f;
+*SaveScoresAdd( builder.main, save->scores ) = 10;
+
+bool erased = SavePlacementsErase( builder.arena, save->placements, placement );
+for ( Placement * e : SavePlacementsEach( builder.arena, save->placements ) ) { }
+
+builder.Lock();                                  // one pass, no sort
+const Save * locked = builder.AsConst();
+
+int32_t n = locked->placements.size();
+for ( const Placement & p : locked->placements ) { }
+```
+
+**`Add` answers NULL when the arena cannot carve another segment**, exactly as
+a map's `Insert` does, and a count past the `int32` extent cap is refused as
+any array's count is.
+
+**Erase is addressed by the POINTER `Add` handed back**, because a list has no
+key and an element's address is the one thing the builder promises never
+moves. **Indices are not stable across an erase**, and that is the whole of its
+cost: erasing element 2 of five leaves four, and what was index 3 is index 2
+in the next `Save`, `Lock` or `Cook`. A caller holding an index across an erase
+is holding a stale one, and a caller holding the pointer is not.
+
+**An unbounded array claims three names against its field** where a map claims
+eight: `<Table><Field>` followed by `Add`, `Each` or `Erase`. A `Save` with a
+`placements` list claims `SavePlacementsAdd`, `SavePlacementsEach` and
+`SavePlacementsErase`, and a declaration spelling any of the three is refused
+naming the field. It claims no `Entry`, because no entry table is generated,
+no `Insert` or `Find`, because there is no key, and none of the three index
+names, because there is no lookup to accelerate.
+
+`operator[]` is bounds-checked in **every** build, `NDEBUG` included: the
+extent is a number that came out of a file, so an index past it is not a
+mistake a release build gets to make cheaply.
+
+**Two counters cannot fire here, and their absence is the design.**
+`duplicate` cannot, because there is no key equality, so two equal elements
+are two elements. And **`clamped` cannot fire on the COUNT**, because there is
+no reader bound to clamp against: a count is read, refused by `LoadMeasure`
+before any decode, or damaged. A reader that declares `[..N]T` where the
+writer declared `[]T` clamps at N and counts once, which is the price of
+adding a bound.
+
+
+### Byte buffers: `bytes(N)`, `*bytes`, `*string` and `*wstring`
 
 A bounded blob is `bytes(N)` — N bytes of inline storage in every instance,
 at a bound you declare, with its used length beside it. When the size varies
@@ -1819,7 +2265,10 @@ wildly per node, the bound costs you: a `bytes(65536)` field is 64 KB in
 every instance whether it is used or not.
 
 **A buffer at exactly its used size is `*bytes`, and `*string` is the same
-node with a terminator** (SPEC-TABLES.md §2.5). Each is a POINTER to a BLOB
+node with a terminator** (SPEC-TABLES.md §2.5). `*wstring` is the third
+spelling and does the same in UTF-16 code units — *specified, and no backend
+emits it ([#522](https://github.com/mas-bandwidth/schema/issues/522),
+SPEC-TABLES.md §2.5).* Each is a POINTER to a BLOB
 NODE of exactly its bytes, and every pointer rule applies: table body only,
 no default, no `?`, no array, no bound — and the field makes its holder
 variable, so the builder is where the bytes are put:
@@ -1828,8 +2277,9 @@ variable, so the builder is where the bytes are put:
 table Asset
 {
     name    string(32)
-    data    *bytes  // the asset, at exactly its size; null when absent
-    caption *string // a string at its used length
+    data    *bytes   // the asset, at exactly its size; null when absent
+    caption *string  // a string at its used length
+    label   *wstring // the same, in UTF-16 code units
 }
 ```
 
@@ -1979,7 +2429,12 @@ for ship in block.ships() {          // &[RenderShipRow]
 
 `Open` verifies the magic, the byte order, the build version, the base's
 alignment, every array's count against its declared maximum and every array's
-extent, and then you index.
+extent, and then you index. On a refusal it hands back the reason beside the
+null — the same `TableRefuseReason` a cook's `Open` fills, with `bad_layout`
+for a pitch, a count, an offset or an extent the prologue states that
+disagrees with this build's (SPEC-TABLES.md §19.2). *That enum is specified
+and no backend writes it yet, so an `Open` answers the null alone today
+([#523](https://github.com/mas-bandwidth/schema/issues/523)).*
 
 **That alignment check binds the CONSUMER, and it is the one that surprises.**
 A block's base is 64-byte aligned because the producer's storage is; a consumer
@@ -2001,9 +2456,13 @@ this side allocates: the bytes are yours, from wherever you got them.
 **Three things to know before you reach for one.**
 
 - **It is a same-build contract.** Both sides are generated from one
-  declaration and ship together. Every row size and field offset is asserted
-  by generated code in both languages, so a field that moves is a build
-  error, not a garbled frame.
+  declaration and ship together. Every row size and field offset is held
+  against the compiler's own layout model on each side, in that language's own
+  means: a `static_assert` in C++ and C, a const assert in Rust, a check at
+  type initialization in C#, a refusing `init()` in Go, and an
+  accessors-against-descriptors check in Java, which has no record layout to
+  assert. A field that moves is caught there or refused by the open, not a
+  garbled frame.
 - **Every schema edit is a regenerate.** Append a field to the table, append
   one to a row, raise a maximum — each moves the build version, `BlockOpen`
   refuses bytes from the older build, and both sides rebuild from the one
@@ -2547,12 +3006,14 @@ surface is refused by name in those seven while their two accelerators read
 one in full. Every scalar the type wire carries rides in a table: `fixed`/`ufixed`
 as their raw scaled integer under a fixed kind of their storage width, with
 the whole-unit bounds clamping on the raw scale and the text in whole units
-(`1.5`), and `int128`/`uint128` under kinds of their own, sixteen bytes low
-half first (SPEC-TABLES.md §3, §16.2). What stays off the table wire:
-`const`/`reserved`/`align` (bit-position constructs — the table wire has no
-bit positions). Extents have
-no wire ceiling: string and bytes byte lengths and array counts ride in
-uint32, so the only limit is the language's own int32 storage cap.
+(`1.5`), `int128`/`uint128` under kinds of their own, sixteen bytes low
+half first, and `wstring(N)` under a wide-text kind of its own, its code units
+two bytes each little-endian (SPEC-TABLES.md §3, §16.2). What stays off the
+table wire: `const`/`reserved`/`align` (bit-position constructs — the table
+wire has no bit positions). Extents have
+no wire ceiling: every length, count and index rides as a canonical
+variable-length integer with 64 bits of capability, so the only limit is the
+language's own int32 storage cap.
 
 ### Inspecting a whole build: the view
 

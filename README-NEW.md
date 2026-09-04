@@ -98,12 +98,14 @@ table BuildRequest
 }
 ```
 
-Tables are versioned. Each field carries an id, a kind and a length,
-so a reader that does not know a field skips it, a field that is missing
-takes its declared default, a field that was renamed is found under its old
-name, and a value out of range is clamped. Every one of those events is
-counted in a read report. Nothing is fatal in either direction unless
-you want it to be.
+Tables are versioned. Each field carries a reference to its name's id, a kind
+byte and its payload, and the file carries every id it used once each in a
+trailer — so a reader that does not know a field skips it by its kind, a field
+that is missing takes its declared default, a field that was renamed is found
+under its old name, and a value out of range is clamped. The skip and the clamp
+are counted in a read report; the default and the rename are silent, because
+nothing was lost. Nothing is fatal in either direction unless you want it to
+be.
 
 _The tables feature is new in this release_.
 
@@ -127,10 +129,11 @@ table SaveGame
 
 A save file is a table too, so it gets the same tolerance. It also gets a
 guard the wire cannot give: a committed baseline file that refuses, at
-compile time, the two edits that change what old data means without changing
-a byte of it. Changing a field's default is one. Reordering a `flags` variant
-is the other. When you mean the change, you record it with a reason, and the
-reason stays in the file.
+compile time, the four edits that change what old data means without changing
+a byte of it. Changing a field's default is one. Moving a `flags` variant is
+another. Swapping a field's referent for one that cannot stand in for it is
+the third, and moving a `fixed` field's fraction is the fourth. When you mean
+the change, you record it with a reason, and the reason stays in the file.
 
 _The version baseline feature is in preview in this release_.
 
@@ -162,10 +165,11 @@ Tools build the assets. The game should not parse them at load. It should map th
 
 `schema cook` writes a table's data in the exact memory layout of one build,
 in that build's byte order. Opening it is a header check and a cast: magic,
-byte order, build version, lengths, alignment. Nothing is walked, so a
-gigabyte opens as fast as a kilobyte. A cook only opens in the build it was
-cooked for. Any other build gets NULL and loads the wire instead, which every
-build can read.
+byte order, build version, reserved words, alignment, lengths. Nothing is
+walked, so a gigabyte opens as fast as a kilobyte. A cook only opens in the
+build it was cooked for. Any other build gets NULL and loads the wire
+instead, which every build can read. The named reason beside that null,
+`TableRefuseReason`, is specified and no backend writes it yet.
 
 _The cook feature is in preview in this release_.
 
@@ -196,8 +200,10 @@ Every fixed table has a block form. Its arrays are laid out at a fixed pitch
 with the offsets at the front. C++ fills it from as many threads as it likes,
 with no lock and no allocation. C# opens it and reads the rows as spans over
 the same memory. Both sides are generated from the one declaration, and the
-row sizes and field offsets are asserted at compile time in both languages.
-A field that moves is a build error, not a garbled frame.
+row sizes and field offsets are held against the compiler's own model on each
+side: a `static_assert` in C++, a check at type initialization in C#. A field
+that moves is caught by those checks or refused by the open, not a garbled
+frame.
 
 _This feature is new in this release_.
 
@@ -253,9 +259,11 @@ An editor wants to show any table as a property tree. A debug view wants to
 inspect what the game is holding this frame.
 
 Every table comes with reflection descriptors beside its code: each field's
-name, type, offset, range, and the names of every enum and union variant. A
-tool walks a table it has never seen. A debug view walks the live instance in
-memory. There is no RTTI and no schema file at run time.
+name, type, offset, range, its text key, and the names of every enum and union
+variant. Two more columns, a declaration's `///` doc comment and its tags, are
+specified and no backend emits them yet. A tool walks a table it has
+never seen. A debug view walks the live instance in memory. There is no RTTI
+and no schema file at run time.
 
 _This feature is new in this release_.
 
@@ -309,9 +317,15 @@ the clone list.
 | **[SPEC.md](docs/SPEC.md)** | The normative reference for the type wire: grammar, wire law, every edge case. |
 | **[SPEC-TABLES.md](docs/SPEC-TABLES.md)** | The normative reference for tables: the wire, the cook, the block form, reflection, the build version. |
 
-Beside them: [PERFORMANCE.md](docs/PERFORMANCE.md),
+Beside them: [PORTING.md](docs/PORTING.md) (the techniques register: every
+method and instrument a table backend carries, with a cell per language and a
+gate), [PERFORMANCE.md](docs/PERFORMANCE.md),
 [COMPARISON.md](docs/COMPARISON.md) (the same packet against Cap'n Proto, Protobuf
-and FlatBuffers), [FAQ.md](docs/FAQ.md), [VERSIONING.md](docs/VERSIONING.md),
+and FlatBuffers), [COMPARISON-TABLES.md](docs/COMPARISON-TABLES.md) (tables
+against FlatBuffers and Protobuf, feature by feature),
+[COMPETITION.md](docs/COMPETITION.md) (the standing comparison against
+Protocol Buffers, FlatBuffers, Cap'n Proto and Avro),
+[FAQ.md](docs/FAQ.md), [VERSIONING.md](docs/VERSIONING.md),
 [CONTRIBUTING.md](docs/CONTRIBUTING.md) and [SECURITY.md](docs/SECURITY.md).
 
 Where a guide and a spec cover the same ground: the spec keeps the spelling a

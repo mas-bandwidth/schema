@@ -124,8 +124,10 @@ The projection is a text rendering of every fact that determines packet bytes:
 field order and names, kinds, widths, bounds, capacities, defaults, branch
 structure, enum storage, flags bits, enum and flags variant names in
 declaration order, union arm order and arm names. It excludes what the bytes
-cannot see: comments, layout, declaration order across records, and every
-declaration no `type` reaches, `flags` excepted. A source-text hash would
+cannot see: comments, `///` doc comments among them; layout; declaration order
+across records; `const` declarations, whose values are already resolved into
+the bounds it carries; tags and native-type attributes, wherever they are
+written; and every declaration no `type` reaches, `flags` excepted. A source-text hash would
 produce spurious mismatches, and hashing the compiler's internal structures
 could produce a spurious *match*, which is the dangerous direction. The
 projection is the thing in between. `schema id` prints the id and
@@ -197,9 +199,11 @@ reconcile them.
 
 ## The table wire and identity by name
 
-On the table wire a field is `id, kind, payload`; a node, one table's worth of
-data, is `type id, length, fields`. The **id** is the hash of the declared
-name. That one decision produces the whole evolution story:
+On the table wire a field is `id reference, kind, payload`; a node, one
+table's worth of data, is a record of `type id reference, length, body` inside
+the node table. A REFERENCE names a slot of the id table the wire carries once
+(the layout section below), and the **id** in that slot is the hash of the
+declared name. That one decision produces the whole evolution story:
 
 - **Add a field anywhere.** An old reader meets an id it does not know, skips
   the payload by its kind, counts one `unknown`, and continues. A new reader
@@ -297,11 +301,14 @@ does today.
 | a flags variant inserted or removed | silent | refuses | moves, and so does the protocol id |
 | a flags variant reordered or renamed in place | **silent** | **refuses** | moves: the cook projection digests each variant's bit position, and the protocol id moves too |
 | a union arm reordered or renamed | `unknown` for an arm this reader lacks; a reorder is silent and safe | warns on a vanished name | moves, and the protocol id with it where a `type` reaches the union: the arm names are what a same-typed reorder moves |
-| a keyed array made positional | `kind_mismatch` | refuses; and in a TABLE body the positional spelling no longer compiles at all (SPEC-TABLES.md §2.4) | moves |
+| a keyed array made positional | `kind_mismatch` | refuses; and in a TABLE body the positional spelling is refused by name (SPEC-TABLES.md §2.4, §11), which the checker does not do yet (#540) | moves |
 | a keyed array's key enum swapped for another | `unknown`, one per slot; the kind stays | refuses | moves |
 | a map's KEY kind changed, or its KEY bound tightened (SPEC-TABLES.md §2.8) | a changed kind is one `kind_mismatch` for the map, which reads empty. A tightened bound drops the entries that no longer fit and counts `clamped`, one per entry | **refuses** a changed kind, warns on a tightened bound | moves |
+| an array changed between `[]T` and `[..N]T` (SPEC-TABLES.md §2.9) | nothing where the count fits the new bound, `clamped` past it: the two are the same bytes | warns on the direction that ADDS a bound, as any capacity shrunk; passes on the one that removes it | moves: the storage is a reference and a count on one side and the maximum inline on the other |
+| an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (SPEC-TABLES.md §2.9) | `kind_mismatch`, the array reading empty | **refuses**, as any element kind changed | moves |
 | a guard added or removed | nothing | passes | nothing |
 | a `json =` key changed | nothing on the wire | passes | nothing |
+| a `///` doc comment or a tag added, changed or removed (SPEC.md §4.1, §4.2) | nothing: neither is a fact a codec reads | passes; neither enters a baseline row | **nothing**, and the protocol id does not move either, so annotating a shipped schema is a free edit |
 | a table renamed | nothing when it is held by value (a declaration name is not on the wire); every pointer to it reads null and counts `unknown` when it is a pointer target | warns | moves, until table `was` lands (#396); then a `was` rename moves nothing |
 | a retired name re-added with a new meaning | **silent** | **passes today**; the ledger is #441 | moves |
 | a language added to the build | nothing | nothing | nothing |
@@ -905,9 +912,11 @@ still open.
   pipeline, to re-download, or to fix its own unaligned pointer, and one that
   passes nothing learns none of it. `unaligned_base` is the value worth
   checking first, because it is the one the caller caused.
-- **Tiny messages pay for 64-bit identity.** A file carries each distinct id
-  once at eight bytes, so a three-field message is about 45 bytes; a stream
-  that wants small same-build messages is a `type` stream.
+- **Tiny messages pay for 64-bit identity, in the FILE form.** A file carries
+  each distinct id once at eight bytes, so a three-field message is about 45
+  bytes and an empty table is ten. A stream whose peers ship together is a
+  `type` stream; one whose peers do not is the message form above, which sheds
+  the trailer and takes that empty table to two bytes.
 - **Deep pointered saves have no text form** past the text reader's depth
   cap of 128 levels; the "debug an old file" pattern hits that wall on the
   largest saves.
@@ -948,6 +957,9 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #442: `was` for variants and arms; #478: `was` for the fields of a `type`
   that a table reaches.
 - #446: the evolution table's fixtures.
+- #540: the `[E.Max]T` refusal in a table body, which SPEC-TABLES.md §2.4 and
+  §11 state and the checker does not make, so the positional spelling still
+  compiles there and reopens the class §4.1 closed.
 - #524: the reachability-scoped wire-shape projection, and the negative
   control on the walk that a missed edge must turn red.
 - #525: retain-unknown, the two report counters, and the conformance rows.
@@ -956,6 +968,12 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #523: the `widened` counter and its two integer ladders, the
   `TableRefuseReason` enum on `Open`, `BlockOpen` and `LoadMeasure`, and `//`
   and `/* */` comments accepted by the text form's reader.
+- #523: the unbounded array, `[]T` and `[]*T`, its refusals and the
+  `list_migrates` golden that pins "the same bytes" as `[..N]T`
+  (SPEC-TABLES.md §2.9).
+- #523: the `///` doc comment, the field-, variant- and arm-level tag, and the
+  `doc` and `tags` descriptor columns (SPEC.md §4.1, §4.2, SPEC-TABLES.md
+  §8.1). A tag is carried on a `type` declaration alone today.
 - #439 and #460: the standard's own contradictions on `T`→`*T`, the flags
   row, writer misuse, the declaration-rename row, the count of silent edits,
   and the pages that still say schema is not an evolution system.
