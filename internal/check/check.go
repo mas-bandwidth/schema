@@ -1139,14 +1139,33 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		}
 		out.Type = ir.FieldType{Kind: ir.TFixed, Signed: f.Type.Signed, Width: int(total),
 			IntBits: int(iv.Int64()), FracBits: int(fv.Int64())}
-	case ast.ScalarString, ast.ScalarBytes:
+	case ast.ScalarString, ast.ScalarWString, ast.ScalarBytes:
 		minN := int64(1)
 		what := "bytes"
 		k := ir.TBytes
-		if f.Type.Kind == ast.ScalarString {
+		switch f.Type.Kind {
+		case ast.ScalarString:
 			minN = 2
 			what = "string"
 			k = ir.TString
+		case ast.ScalarWString:
+			minN = 2
+			what = "wstring"
+			k = ir.TWString
+		}
+		if k == ir.TWString {
+			// WIDE TEXT rides the PACKET wire only today. The table half is
+			// kind 33 (docs/SPEC-TABLES.md §3), specified ahead of its
+			// implementation, so a wstring inside a table closure is refused
+			// BY NAME rather than emitted as something else.
+			if inTable {
+				c.errf(f.Type.Pos, "field %s: wstring is not carried on the TABLE wire yet — wide text rides the packet wire today (SPEC §4.12); declare the field string(N) here, or move the declaring type to a `type` (docs/SPEC-TABLES.md §11, schema#522)", f.Name)
+				return nil
+			}
+			if f.Type.Pointer {
+				c.errf(f.Type.Pos, "field %s: *wstring is specified ahead of its implementation and no backend emits it (docs/SPEC-TABLES.md §2.5); declare *string for an unbounded byte buffer, or wstring(N) in a `type` for inline wide text (SPEC §4.12, schema#522)", f.Name)
+				return nil
+			}
 		}
 		if f.Type.Pointer {
 			// `*bytes` / `*string` — a BYTE BUFFER at its used size
@@ -1236,7 +1255,7 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 	// array bound
 	if f.Array != nil {
 		switch out.Type.Kind {
-		case ir.TString, ir.TBytes, ir.TBits:
+		case ir.TString, ir.TWString, ir.TBytes, ir.TBits:
 			c.errf(f.Pos, "an array of %s is not supported in v1 — wrap the element in a type", scalarName(out.Type.Kind))
 			return nil
 		}
@@ -1514,6 +1533,8 @@ func scalarName(k ir.FieldTypeKind) string {
 	switch k {
 	case ir.TString:
 		return "string(N)"
+	case ir.TWString:
+		return "wstring(N)"
 	case ir.TBytes:
 		return "bytes(N)"
 	case ir.TBits:
@@ -2632,7 +2653,7 @@ func (c *checker) checkOptionalSpelling(f *ast.Field, out *ir.Field, inTable boo
 		return false
 	}
 	switch out.Type.Kind {
-	case ir.TString, ir.TBytes:
+	case ir.TString, ir.TWString, ir.TBytes:
 		c.errf(f.Type.Pos, "field %s: ? on %s is a named follow-on — the generated length companion already carries emptiness, and a second presence bit beside it would be two answers to one question; wrap it in a table and make that optional (docs/SPEC-TABLES.md §15)",
 			f.Name, scalarName(out.Type.Kind))
 		return false
@@ -2707,6 +2728,8 @@ func scalarSpelling(t ast.ScalarType) string {
 			return "*" + t.Name
 		case ast.ScalarString:
 			return "*string"
+		case ast.ScalarWString:
+			return "*wstring"
 		case ast.ScalarBytes:
 			return "*bytes"
 		}
@@ -2726,6 +2749,8 @@ func scalarSpelling(t ast.ScalarType) string {
 		return "bits(N)"
 	case ast.ScalarString:
 		return "string(N)"
+	case ast.ScalarWString:
+		return "wstring(N)"
 	case ast.ScalarBytes:
 		return "bytes(N)"
 	}
@@ -2958,7 +2983,7 @@ func (c *checker) checkTargetNames() {
 						// generated companion storage claims names too: the
 						// used length beside string/bytes, the used count
 						// beside a counted array (SPEC §6.1)
-						if item.Type.Kind == ast.ScalarString || item.Type.Kind == ast.ScalarBytes {
+						if item.Type.Kind == ast.ScalarString || item.Type.Kind == ast.ScalarWString || item.Type.Kind == ast.ScalarBytes {
 							register(item.Pos, item.Name, goExportName(item.Name)+"Length", "the generated length companion")
 						}
 						if item.Array != nil && item.Array.Kind != ast.ArrayFixed {

@@ -156,6 +156,12 @@ func (c *checker) resolveMapKey(f *ast.Field, m *ast.MapType) *ir.Field {
 		c.errf(k.Pos, "field %s: a bits(N) key is refused — bits(N) is a packing width for the packet wire and rides on the table wire as the narrowest unsigned kind that holds it, so it names no key kind of its own; key the map with that integer kind (docs/SPEC-TABLES.md §2.8, §11)",
 			f.Name)
 		return nil
+	case ast.ScalarWString:
+		// §11: the diagnostic names string(N), because memcmp over UTF-8 is
+		// the portable order and a little-endian code unit's bytes are not
+		c.errf(k.Pos, "field %s: a wstring(N) key is refused — a map's entries ride in KEY ORDER and that order is `memcmp`, which is a portable order over UTF-8 and no order at all over little-endian code units; key the map with string(N) and leave wstring(N) for the VALUE (docs/SPEC-TABLES.md §2.8, §11, SPEC §4.12)",
+			f.Name)
+		return nil
 	case ast.ScalarBytes:
 		c.errf(k.Pos, "field %s: a bytes(N) key is refused — bytes is opaque storage with no order the language defines; key the map with string(N), whose keys compare by BYTES, unsigned, shortest-prefix first (docs/SPEC-TABLES.md §2.8, §11)",
 			f.Name)

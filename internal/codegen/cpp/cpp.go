@@ -479,6 +479,12 @@ func (g *gen) emitStorageField(f *ir.Field) {
 		g.pf("    char %s[%s + 1] = {}; // string(%s): max length, used length beside it (SPEC §4.7)\n",
 			f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    int32_t %s_length = 0;\n", f.Name)
+	case f.Type.Kind == ir.TWString:
+		// char16_t[N + 1]: the + 1 holds the zero UNIT every successful read
+		// writes at index length, the one stated exception to §5's tail rule
+		g.pf("    char16_t %s[%s + 1] = {}; // wstring(%s): max length in UTF-16 code units, used length beside it (SPEC §4.12)\n",
+			f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
+		g.pf("    int32_t %s_length = 0;\n", f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    uint8_t %s[%s] = {}; // bytes(%s): fixed buffer, used length beside it (SPEC §4.7)\n",
 			f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
