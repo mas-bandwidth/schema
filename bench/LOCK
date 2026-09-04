@@ -88,9 +88,18 @@
 # reference when this restoring PR landed, its diff this file alone. The full
 # lift condition is unchanged: the round closing, on the owner's word (#170).
 #
+# THE ROUND CLOSED AND THE LOCK LIFTED, 2026-09-05, on the owner's word
+# ("1 and 2 please go ahead with what you think is best", Sydney airport,
+# delegating the decision) and the bud's ruling: the sweep lands every row in
+# the C++ reference first, so a freeze that costs three PRs and a bench
+# sitting per row is the wrong instrument for the next phase. What the lock
+# protected survives as a standing gate rather than a freeze: a PR that moves
+# the C or C++ packet emitters re-pins the reproduction rows (bench_mixed:
+# write and round_trip; bitpacker: bits) in the same PR and states the
+# sitting that produced them; a laptop sitting is admitted with its provenance
+# stated, and a quiet-box sitting on the space server precedes the next
+# release, with the owner's per-run blessing. The cpp-lock job stays and
+# matches nothing until a prefix is written below again; a future freeze is
+# one line here on the owner's word.
+#
 # Locked prefixes, one per line (matched against changed paths):
-internal/codegen/c/
-internal/codegen/cpp/
-generated/c/
-generated/cpp/
-generated/c-ludicrous/
