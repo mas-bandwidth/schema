@@ -7774,6 +7774,11 @@ function per unit, name-first in the unit's own namespace beside
 `ProtocolId` (SPEC §6.1), answering with the set of everything the build
 declared:
 
+**BACKEND STATUS: OWED, not emitted.** `UnitView()` is specified ahead of its
+implementation: no backend emits it in any of the nine targets today, and it is
+owed under #523 item 4 with the doc and tag descriptor columns of §8.1. The
+implementation PR that lands it deletes this paragraph.
+
 ```cpp
 struct ViewConstant
 {
