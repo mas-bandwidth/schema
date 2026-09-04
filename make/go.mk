@@ -225,3 +225,30 @@ test-go: generated/bench/tables/go/.stamp generated/go/.stamp generated/go-ludic
 TEST_LEGS         += test-go
 CONFORMANCE_LEGS  += build/conformance-go
 BENCH_TABLES_LEGS += generated/bench/tables/go/.stamp
+
+# THE GO NATIVE GATE (issue #547). Generated Go is held to the two instruments
+# a Go reader already runs over their own tree: gofmt, which is the language's
+# one formatting authority, and go vet at its default set. Both corpora ride,
+# the examples corpus under generated/ and the tables corpus under build/, so
+# an emitter that drifts in the surface the packet backend writes is not
+# covered by the table backend's cleanliness, or the other way round. Both
+# halves run before the leg reports.
+#
+# vet runs PER MODULE because every generated unit is its own module with its
+# own replace of the serialize.go sibling; a walk from the repo root would not
+# see them at all.
+.PHONY: native-go
+native-go: generated/go/.stamp generated/go-ludicrous/.stamp build/tables-generated-go/.stamp
+	@fail=0; \
+	echo "==== gofmt"; \
+	out=$$(gofmt -l generated/go generated/go-ludicrous build/tables-generated-go); \
+	if [ -n "$$out" ]; then echo "$$out"; echo "gofmt would rewrite the generated files above"; fail=1; fi; \
+	echo "==== go vet"; \
+	for m in generated/go generated/go-ludicrous build/tables-generated-go/*/; do \
+		test -f $$m/go.mod || continue; \
+		( cd $$m && go vet ./... ) || fail=1; \
+	done; \
+	if [ $$fail -ne 0 ]; then echo "native Go: the findings above are the emitter's"; exit 1; fi; \
+	echo "native Go: gofmt-canonical and go vet clean over the examples and tables corpora"
+
+NATIVE_LEGS       += native-go

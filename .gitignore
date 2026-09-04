@@ -71,3 +71,12 @@ erl_crash.dump
 # binary here rather than in build/ — the Makefile always names `-o` and never
 # wants this file. It reached main once already (#345).
 /harness
+
+
+# the Elixir native gate's credo build and its fetched deps
+/test/native/elixir/_build/
+/test/native/elixir/deps/
+
+# a working clone symlinks the pinned toolchains in rather than unpacking a
+# second copy; the ignore above matches the directory, this one the link
+/dist

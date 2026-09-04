@@ -1,0 +1,1 @@
+{"targets": "native-java", "java": "21", "env": "JAVA=java JAVAC=javac"}

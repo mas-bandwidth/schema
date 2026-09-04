@@ -1,0 +1,3 @@
+{"targets": "native-cpp",
+ "runtime": "serialize", "runtime_tag": "SERIALIZE_TAG",
+ "clang": "18"}

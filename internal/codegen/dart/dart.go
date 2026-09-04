@@ -347,8 +347,12 @@ func (g *gen) assemble() []byte {
 	}
 	g.emitHelpers(&h)
 	h.WriteString(strings.TrimRight(g.body.String(), "\n"))
-	h.WriteString("\n")
-	return []byte(h.String())
+	// One trailing newline, with no blank line before it. A unit whose Dart
+	// surface is the banner and nothing else (no import, no helper, no
+	// declaration) would otherwise end on the blank line that follows the
+	// banner, and that blank line is the one thing `dart format` rewrites in
+	// this emitter's output.
+	return []byte(strings.TrimRight(h.String(), "\n") + "\n")
 }
 
 // writeImport renders one show-list import, wrapped the way dart format
