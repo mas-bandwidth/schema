@@ -2206,3 +2206,517 @@ nest itself by value.
 **You now have** a save format. Write it with any build of Starlight, read it
 with any other, and every difference between them is absorbed, counted and
 reported.
+
+---
+
+## Part 7: Shaping real data: optionals, keyed arrays, and a second unit
+
+### The problem
+
+One `ShipConfig` is not a game. Starlight's designers want one file that holds
+everything: global switches, a weapon list, and a per-ship-type tuning block.
+Parts of it are genuinely optional, because gunner settings exist only for
+ships that have a gunner seat.
+
+One constant joins `Game.schema`, `const MaxWeapons = 8`, and `Config.schema`
+becomes:
+
+```
+package starlight
+
+table GunnerSettings
+{
+    sensitivity float32 = 1.0
+}
+
+table ShipConfig
+{
+    display_name string(32)
+    max_health   float32 = 100.0
+    max_speed    float32 = 500.0
+    armor        int32 = 1       | min = 0, max = 10
+    ship_type    ShipType
+    settings     ?GunnerSettings
+    tier         ?int32
+}
+
+table WeaponConfig
+{
+    damage float32 = 21.0
+    homing bool
+}
+
+table GameConfig
+{
+    friendly_fire bool
+    weapons       [..MaxWeapons]WeaponConfig
+    ships         [ShipType]ShipConfig
+    level_name    string(64)
+}
+```
+
+Declare the root and the file format falls out. The bytes `GameConfigSave`
+writes to disk **are** the format, and the same bytes work as a message on a
+socket. Nothing adds an envelope, so if you want a magic number or a content
+hash around it, that is a few lines of yours on top.
+
+Two field spellings up there are new. Take them one at a time.
+
+### `?T`: present or absent
+
+A `?` before the type makes the field **present or absent**. Storage is the
+value plus a generated `_present` bool, so the table stays a fixed-size struct
+with no pointer and no allocation:
+
+```cpp
+struct ShipConfig {
+    char display_name[32 + 1] = {}; // string(32): max length, used length beside it
+    int32_t display_name_length = 0;
+    float max_health = 100.0f;
+    float max_speed = 500.0f;
+    int32_t armor = 1;
+    ShipType ship_type = ShipType::None;
+    GunnerSettings settings;
+    bool settings_present = false; // ?GunnerSettings: absent until set
+    int32_t tier = 0;
+    bool tier_present = false; // ?int32: absent until set
+};
+```
+
+**Presence decides whether it rides, not content**, which the program below
+shows: an all-default `GunnerSettings` still costs bytes once it is present.
+That is the difference between `?T` and a plain nested `T`. A plain nesting at
+all defaults elides entirely, so you cannot tell "not there" from "there, all
+defaults". An optional keeps "absent" and "present with nothing to say" as two
+distinct values. A reader that meets the field sets `_present` whatever the
+content, and an absent one leaves it false.
+
+`?` applies to a nested table, a nested type, an enum, a flags mask, any
+scalar, and a bounded array of those. Where it is refused, the refusal explains
+the logic. Each of these is its own `bad/Bad.schema`:
+
+```
+package bad
+
+table A { x int32 }
+table B { y int32 }
+
+union U
+{
+    a A
+    b B
+}
+
+table T { u ?U }
+```
+
+```
+$ schema check .
+Bad.schema:12:14: field u: ?U marks a union optional, and a union is ALREADY optional — its None arm IS the absence, and an empty union elides exactly as an absent optional does; drop the ? (docs/SPEC-TABLES.md §2.3)
+Bad.schema:6:1: union U: the arm a A is not a declared type, and no table reaches U — such an arm is a table-closure construct, and a union outside one takes `type` payloads only; hold the union in a table body, or make the arm a type (docs/SPEC-TABLES.md §2.6, §11, §15)
+schema: 2 error(s)
+```
+
+Read the first line. The second is the reachability walk losing sight of `U`
+because the `?` made the field unusable, and it prescribes a fix the schema
+already has.
+
+```
+package bad
+
+table N { v int32 }
+table T { a ?*N }
+```
+
+```
+$ schema check .
+Bad.schema:4:14: field a: ?*N marks a pointer optional, and a pointer is ALREADY optional — null is its absence, and it rides exactly as an absent optional does; drop the ? (docs/SPEC-TABLES.md §2.3)
+schema: 1 error(s)
+```
+
+```
+package bad
+
+table T { a ?string(8) }
+```
+
+```
+$ schema check .
+Bad.schema:3:14: field a: ? on string(N) is a named follow-on — the generated length companion already carries emptiness, and a second presence bit beside it would be two answers to one question; wrap it in a table and make that optional (docs/SPEC-TABLES.md §15)
+schema: 1 error(s)
+```
+
+```
+package bad
+
+table T { a ?int32 = 3 }
+```
+
+```
+$ schema check .
+Bad.schema:3:11: field a: an optional field takes no specified default — PRESENCE is the only default an optional has, and an absent optional reads as absent with its value at the type's own zero (docs/SPEC-TABLES.md §2.3)
+schema: 1 error(s)
+```
+
+### `[ShipType]ShipConfig`: one slot per named variant
+
+The tuning block wants exactly one `ShipConfig` per ship type. You could write
+`[ShipType.Max]ShipConfig` and index by `int( type ) - 1`, and the day someone
+inserts a variant mid-enum every stored file shifts its slots by one, silently.
+The keyed spelling exists so that cannot happen:
+
+```cpp
+struct GameConfig {
+    bool friendly_fire = false;
+    WeaponConfig weapons[8]; // used count beside it; count in [0, 8]
+    int32_t weapons_count = 0;
+    TableKeyed<ShipConfig, ShipType> ships; // [ShipType]: one slot per named variant, keyed by the value
+    char level_name[64 + 1] = {}; // string(64): max length, used length beside it
+    int32_t level_name_length = 0;
+};
+```
+
+There is no count companion, because every named slot exists, and no slot for
+`None`, because `None` is the null and key `k` lives at index `k - 1`.
+Iteration yields the **key**, never a storage index, so consuming the whole
+array involves no `- 1`, no cast, and no bound of your own. Write
+`auto [ k, v ]` and not `auto & [ k, v ]`, because the entry is a proxy handed
+out by value and the compiler refuses the reference spelling by design. The
+element inside it is a real reference either way.
+
+### A program
+
+`config.cpp`, entire:
+
+```cpp
+#include "ConfigTable.h"
+#include <cstdio>
+#include <cstring>
+#include <vector>
+
+int main()
+{
+    using namespace starlight;
+
+    GameConfig config;
+    config.friendly_fire = true;
+    memcpy( config.level_name, "orbital", 7 );
+    config.level_name_length = 7;
+    config.weapons_count = 2;
+    config.weapons[0].damage = 35.0f;
+    config.weapons[1].homing = true;
+
+    ShipConfig & fighter = config.ships[ShipType::Fighter];
+    printf( "fighter measures %lld with settings absent\n",
+        (long long) ShipConfigMeasure( fighter ) );
+    fighter.settings_present = true;
+    printf( "fighter measures %lld with settings present and all-default\n",
+        (long long) ShipConfigMeasure( fighter ) );
+
+    config.ships[ShipType::Corvette].max_health = 400.0f;
+
+    for ( auto [ ship_type, ship ] : config.ships )
+    {
+        printf( "slot %-10s health=%g\n", EnumName( ship_type ), ship.max_health );
+    }
+
+    int64_t size = GameConfigMeasure( config );
+    std::vector<uint8_t> buffer( size );
+    GameConfigSave( config, buffer.data(), size );
+    printf( "GameConfig is %lld bytes\n", (long long) size );
+
+    FILE * f = fopen( "config.bin", "wb" );
+    fwrite( buffer.data(), 1, size, f );
+    fclose( f );
+    printf( "wrote config.bin\n" );
+    return 0;
+}
+```
+
+```
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o config config.cpp gen/ConfigTable.cpp
+$ ./config
+fighter measures 10 with settings absent
+fighter measures 22 with settings present and all-default
+slot Fighter    health=100
+slot Freighter  health=100
+slot Corvette   health=400
+GameConfig is 142 bytes
+wrote config.bin
+```
+
+`config.bin` is used again in Parts 9 and 11, so leave it there.
+
+**On the wire, slots ride by variant name**, like every enum value in Part 6.
+The `starlight-2.0` copy from Part 6 already has `Interceptor` inserted in the
+middle. Give it this `Config.schema` and load the 1.0 file:
+
+```
+$ ./keyed ../starlight/config.bin
+slot Fighter      health=100
+slot Interceptor  health=100
+slot Freighter    health=100
+slot Corvette     health=400
+report: unknown=0
+```
+
+The new slot arrives at its declared default and the tuned slot is still
+Corvette's. A slot the writer left at its default is elided, a slot this reader
+has no name for is skipped and counted `unknown`, and a `None` key never rides
+at all.
+
+### Indexing by `None` ends the program, in every build
+
+Keys in data-driven code are runtime values: an enum read out of a file, a key
+a tool hands you. `none.cpp`, entire:
+
+```cpp
+#include "ConfigTable.h"
+#include <cstdio>
+
+int main()
+{
+    using namespace starlight;
+    GameConfig config;
+    ShipType key = ShipType::None;      // a key read out of a file, say
+    printf( "about to index by None...\n" );
+    fflush( stdout );
+    config.ships[key].max_health = 1.0f;
+    printf( "still here\n" );
+    return 0;
+}
+```
+
+```
+$ c++ -std=c++17 -O2 -DNDEBUG -I gen -I . -o none none.cpp gen/ConfigTable.cpp
+$ ./none
+about to index by None...
+$ echo $?
+134
+```
+
+This is not a debug assert, and `NDEBUG` does not remove it, because there is
+no configuration in which a `None` key silently reading one element **before**
+the array is acceptable. The cost is one predictable compare, and iteration,
+which hands over no key, never pays even that.
+
+One caution for later. In a `type` body the same spelling `[ShipType]int32` is
+legal but positional: a plain array, on the packet wire, with no accessor and
+no guard. On the table wire, changing a field between the keyed and positional
+spellings is a wire break the report calls `kind_mismatch`, because the two are
+different encodings and not a refactor. Part 10's baseline refuses that edit
+outright.
+
+### A second unit: the C++-only forms
+
+Part 6's rule said the table wire is C++'s. Some table **declarations** are
+C++'s too, and the compiler refuses them by name on the other eight targets.
+Rather than lose the whole `starlight` unit's eight backends, put those
+declarations in a unit of their own. That is what the refusal tells you to do:
+
+```
+$ schema generate --lang go --out gen .
+schema: unit declares a union a TABLE CLOSURE holds (ToolBody) — the table side of a union, whose arms are field lines of any type, is cpp only today, and the go form is a named follow-on; generate with --lang cpp, or move the union and its tables to their own unit (docs/SPEC-TABLES.md §2.6, §11)
+```
+
+`starlight/tools/Tools.schema`, its own directory and its own package:
+
+```
+package starlighttools
+
+table OpenDocument
+{
+    path string(256)
+    line uint32
+}
+
+table SaveDocument
+{
+    path  string(256)
+    force bool
+}
+
+union ToolBody
+{
+    open OpenDocument
+    save SaveDocument
+    ping uint32
+    close
+}
+
+table ToolMessage
+{
+    sequence uint32
+    body     ToolBody
+}
+
+table ToolLog
+{
+    events [..8]ToolBody
+}
+
+table Attachment
+{
+    label *string
+    data  *bytes
+}
+
+table AttachmentSet
+{
+    items [..4]Attachment
+}
+```
+
+Four C++-only forms live in there, and Part 8's maps make a fifth.
+
+**A union a table closure holds.** In a `type` body every arm names a declared
+type, which is what Part 5's refusal said. In a table closure an arm is a field
+line of any type, so `ToolBody` has a table arm, a **scalar** arm, and an arm
+with **no payload at all**:
+
+```cpp
+enum class ToolBodyType : uint8_t {
+    None = 0,
+    Open = 1,
+    Save = 2,
+    Ping = 3,
+    Close = 4,
+    Max = 4, // the exported extent (SPEC §4.2)
+};
+
+struct ToolBody
+{
+    ToolBodyType type;
+
+    union
+    {
+        OpenDocument open;
+        SaveDocument save;
+        uint32_t ping;
+    };
+
+    ToolBody() : type( ToolBodyType::None ) {} // the tag only — arms are established at selection
+};
+```
+
+`Close` is a value of the tag enum and no member: it selects and carries
+nothing, which is what a one-of wants for a case that is a fact rather than a
+value.
+
+**An array of unions in a table closure**, which is what `ToolLog` is: a
+heterogeneous event log as one bounded array of one union.
+
+**`*string` and `*bytes`**, buffers at their used size rather than at a
+declared bound:
+
+```cpp
+struct Attachment {
+    TableRef label; // *string — a byte buffer at its used size, null until assigned
+    TableRef data; // *bytes — a byte buffer at its used size, null until assigned
+};
+```
+
+A reference is not a value, so a table that holds one is built rather than
+filled, which is Part 8's builder arriving early. `tools.cpp`, entire:
+
+```cpp
+#include "ToolsTable.h"
+#include <cstdio>
+#include <cstring>
+
+using namespace starlighttools;
+
+int main()
+{
+    // an arm that is a table
+    ToolMessage open;
+    open.sequence = 3;
+    open.body.type = ToolBodyType::Open;
+    open.body.open = OpenDocument{};
+    memcpy( open.body.open.path, "ship.cfg", 8 );
+    open.body.open.path_length = 8;
+    open.body.open.line = 42;
+    printf( "open  measures %lld bytes\n", (long long) ToolMessageMeasure( open ) );
+
+    // an arm that is a bare scalar
+    ToolMessage ping;
+    ping.sequence = 4;
+    ping.body.type = ToolBodyType::Ping;
+    ping.body.ping = 99;
+    printf( "ping  measures %lld bytes\n", (long long) ToolMessageMeasure( ping ) );
+
+    // an arm with no payload at all: a value of the tag enum and no member
+    ToolMessage close;
+    close.sequence = 5;
+    close.body.type = ToolBodyType::Close;
+    printf( "close measures %lld bytes\n", (long long) ToolMessageMeasure( close ) );
+
+    // an array of unions
+    ToolLog log;
+    log.events_count = 2;
+    log.events[0].type = ToolBodyType::Ping;
+    log.events[0].ping = 7;
+    log.events[1].type = ToolBodyType::Close;
+    printf( "a log of %d events measures %lld bytes\n",
+        log.events_count, (long long) ToolLogMeasure( log ) );
+
+    // *string and *bytes: buffers at their used size, so their holder is built
+    AttachmentSetBuilder builder;
+    AttachmentSet * set = builder.GetRoot();
+    set->items_count = 1;
+    TableStringSlot label = builder.AllocString( 5 );
+    memcpy( label.data, "notes", 5 );
+    set->items[0].label = label;
+    TableBytesSlot data = builder.AllocBytes( 3 );
+    data.data[0] = 1;
+    data.data[1] = 2;
+    data.data[2] = 3;
+    set->items[0].data = data;
+
+    builder.Lock();
+    const AttachmentSet * locked = builder.AsConst();
+    TableStringView name = TableStringAt( locked->items[0].label );
+    TableBytesView blob = TableBytesAt( locked->items[0].data );
+    printf( "attachment \"%.*s\" carries %lld bytes, the set measures %lld\n",
+        (int) name.length, name.data, (long long) blob.length,
+        (long long) AttachmentSetMeasure( locked ) );
+    return 0;
+}
+```
+
+```
+$ cd tools && schema generate --lang cpp --out gen .
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -o tools tools.cpp gen/ToolsTable.cpp
+$ ./tools
+open  measures 79 bytes
+ping  measures 49 bytes
+close measures 45 bytes
+a log of 2 events measures 49 bytes
+attachment "notes" carries 3 bytes, the set measures 87
+```
+
+On the table wire a union's arm rides under its **arm-name hash** with a length
+prefix, so adding a message is adding an arm. A reader that lacks the arm reads
+the union empty as `None`, skips the body by its length and counts `unknown`,
+and arms may be removed and reordered freely. Everything Part 6 taught about
+fields applies to messages.
+
+The `starlight` unit itself still generates for all nine:
+
+```
+$ cd .. && for l in c cpp cs dart elixir go java js rust; do printf "%-8s " $l; schema generate --lang $l --out /tmp/g-$l . && echo ok; done
+c        ok
+cpp      ok
+cs       ok
+dart     ok
+elixir   ok
+go       ok
+java     ok
+js       ok
+rust     ok
+```
+
+**You now have** `GameConfig`, one declared root and one binary format, with
+optional blocks and per-ship-type tuning that survives enum surgery, plus a
+second unit where the C++-only forms live without costing the first unit its
+eight backends.
