@@ -22,7 +22,7 @@ import (
 )
 
 // surfaces, in the order the matrix prints them.
-var surfaces = []string{"wire", "report", "json-read", "json-write", "json-hostile",
+var surfaces = []string{"wire", "message", "report", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery"}
 
 type driver struct {
@@ -154,6 +154,12 @@ func deriveManifest(m *Manifest, path string) error {
 		}
 		fmt.Fprintf(&b, "instance %s %s %s %s%s\n", i.Name, i.Unit, i.Root, i.Wire, marker)
 	}
+	for _, c := range m.Connections {
+		fmt.Fprintf(&b, "connection %s %s 0x%016x %s\n", c.Key, c.Unit, c.BuildVersion, c.Wire)
+	}
+	for _, msg := range m.Messages {
+		fmt.Fprintf(&b, "message %s %s %s %s %s\n", msg.Name, msg.Connection, msg.Root, msg.FileWire, msg.MessageWire)
+	}
 	for _, r := range m.Reports {
 		fmt.Fprintf(&b, "report %s %s %s %s\n", r.Name, r.Unit, r.Root, r.Wire)
 	}
@@ -203,6 +209,18 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 				return nil, err
 			}
 			out = append(out, expectation{i.Name, want})
+		}
+	case "message":
+		// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): read the message
+		// against the connection's announced table and write it back. The
+		// expectation is the message golden itself, exactly as the wire
+		// surface's is the wire golden.
+		for _, msg := range m.Messages {
+			want, err := os.ReadFile(msg.MessageWire)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, expectation{msg.Name, want})
 		}
 	case "json-write":
 		for _, i := range m.Instances {
