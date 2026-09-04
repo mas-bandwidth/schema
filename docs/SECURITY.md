@@ -101,7 +101,11 @@ what the language specifies, in a way that weakens a check.
 - The TABLES wire is read as untrusted input, exactly as the type wire is,
   and the claim has its own gate: `make tables-wire-fuzz` mutates every pinned
   table wire in the corpus — bit flips, truncation, lengths and counts past
-  the body, duplicate ids, kind swaps, node indices out of range — and requires
+  the body, non-minimal LEB128 spellings, references past the id table's entry
+  count, a trailer whose entry count runs past the front of the file or names
+  one id twice, a body terminator moved inside its own length, an arm's kind
+  and length swapped, kind bytes swapped to every other value including the
+  reserved `34`, duplicate fields, and node indices out of range — and requires
   the generated read to return, to match an independent oracle (the compiler's
   own engine) on the report and on the decoded value, and never to size a
   region past what the framing can justify, plain and under ASan and UBSan,
