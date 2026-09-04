@@ -133,7 +133,7 @@ func main() {
 			fatalf("%v", err)
 		}
 	case "run":
-		ok, err := run(m, *manifest, *jsonDir, *reports, *drivers, *work, *only)
+		ok, err := run(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only)
 		if err != nil {
 			fatalf("%v", err)
 		}

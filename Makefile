@@ -1300,6 +1300,49 @@ conformance-negative-control-absent: build/conformance-harness build/tables-gene
 	./build/conformance-harness run --drivers build/conformance-solo-drivers.txt --work build/conformance-solo-work
 	@echo "negative control: the same absences under a SUBSTITUTED registry are ordinary, and the leg passes"
 
+# THE SAME RULE AT THE COARSER GRAIN (schema#467): a WHOLE SURFACE the reference
+# leg never registers.
+#
+# A reference leg that drops a surface from `list` — or exits 2 on it — leaves
+# every other leg comparing against a surface nothing pins, which is the same
+# hole a per-case absence there would leave and is red for the same reason. The
+# success footer may not print beside it, and this is the control that says so.
+#
+# The sabotage is on the DRIVER rather than on an emitter (docs/PORTING.md I2)
+# because `list` is the driver's own answer and nothing generates it: a WRAPPER
+# around the committed reference driver, filtering one surface out of its list,
+# planted as the reference of a scratch DISCOVERED registry — the rule belongs
+# to that registry alone, so a substituted one would not exercise it. The
+# wrapper refuses rather than filtering nothing, so a control that removed no
+# surface says so instead of reading as a pass. No tracked file is written.
+CONFORMANCE_REFERENCE_MISSING := build/conformance-reference-missing
+CONFORMANCE_REFERENCE_SURFACE := block-dump
+.PHONY: conformance-negative-control-reference-surface
+conformance-negative-control-reference-surface: build/conformance-harness build/conformance-cpp build/schema_test_cook
+	@rm -rf $(CONFORMANCE_REFERENCE_MISSING)
+	@mkdir -p $(CONFORMANCE_REFERENCE_MISSING)/registry/cpp
+	@printf '#!/bin/sh\nif [ "$$2" != list ]; then exec test/conformance/cpp/driver "$$@"; fi\ntest/conformance/cpp/driver "$$1" list > %s/listed.txt\ngrep -q "^$(CONFORMANCE_REFERENCE_SURFACE)$$" %s/listed.txt || { echo "the reference leg registers no $(CONFORMANCE_REFERENCE_SURFACE) surface: this control removes nothing" >&2; exit 1; }\ngrep -v "^$(CONFORMANCE_REFERENCE_SURFACE)$$" %s/listed.txt\n' \
+		"$(CONFORMANCE_REFERENCE_MISSING)" "$(CONFORMANCE_REFERENCE_MISSING)" "$(CONFORMANCE_REFERENCE_MISSING)" \
+		> $(CONFORMANCE_REFERENCE_MISSING)/registry/cpp/driver
+	@chmod +x $(CONFORMANCE_REFERENCE_MISSING)/registry/cpp/driver
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_REFERENCE_MISSING)/registry \
+			--work $(CONFORMANCE_REFERENCE_MISSING)/work > $(CONFORMANCE_REFERENCE_MISSING)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the REFERENCE leg registered no $(CONFORMANCE_REFERENCE_SURFACE) surface and the harness stayed green"; \
+		cat $(CONFORMANCE_REFERENCE_MISSING)/log; exit 1; \
+	fi
+	@grep -q "REFERENCE leg is ABSENT on the whole $(CONFORMANCE_REFERENCE_SURFACE) surface" $(CONFORMANCE_REFERENCE_MISSING)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the reference rule"; \
+		  cat $(CONFORMANCE_REFERENCE_MISSING)/log; exit 1; }
+	@if grep -q "every registered surface passes" $(CONFORMANCE_REFERENCE_MISSING)/log; then \
+		echo "NEGATIVE CONTROL FAILED: the success footer printed beside a reference ABSENT"; \
+		cat $(CONFORMANCE_REFERENCE_MISSING)/log; exit 1; \
+	fi
+	@grep -q "wire          pass" $(CONFORMANCE_REFERENCE_MISSING)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		  cat $(CONFORMANCE_REFERENCE_MISSING)/log; exit 1; }
+	@grep -m1 "cpp / $(CONFORMANCE_REFERENCE_SURFACE)" $(CONFORMANCE_REFERENCE_MISSING)/log
+	@echo "negative control: a SURFACE the reference leg never registers turns the harness red"
+
 # THE CROSS-IMPLEMENTATION LOCK for the FLAT NODE TABLE (docs/SPEC-TABLES.md
 # §3.1), and it is what makes TWO implementations of one wire mean something.
 #
@@ -2078,6 +2121,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) conformance
 	$(MAKE) conformance-negative-control
 	$(MAKE) conformance-negative-control-absent
+	$(MAKE) conformance-negative-control-reference-surface
 	$(MAKE) conformance-negative-control-block-dump
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-flat-wire
