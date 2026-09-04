@@ -85,8 +85,11 @@ does not offer, and if you need that thing the price is fair.
 **Protobuf — 56 bytes — buys field-number evolution.** Every field carries a
 tag, so old readers skip unknown fields and missing fields take defaults. That
 is why Protobuf is right for service APIs that version independently over
-years. schema's wire has no tags at all; it has a protocol id and the rule that
-both peers deploy together.
+years. **This wire** has no tags at all; it has a protocol id and the rule that
+both peers deploy together. schema's answer for the independently-versioned
+case is its OTHER wire, where a table's fields ride under the hash of their
+names and a message stream announces its vocabulary once a connection — a
+different measurement, on different values, in SPEC-TABLES.md §3.3.
 
 **FlatBuffers — 72 bytes — buys zero-copy access.** The root offset, vtable and
 alignment padding are what make reading a field without parsing the buffer
