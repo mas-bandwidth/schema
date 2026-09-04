@@ -42,7 +42,7 @@ extern "C" {
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE 0x5f2254539e3ad47dull
+#define SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE 0xf4b855b89df191edull
 
 #endif /* SCHEMA_BENCHTABLE_BUILD_VERSION */
 

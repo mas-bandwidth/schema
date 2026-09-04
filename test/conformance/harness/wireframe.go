@@ -16,6 +16,7 @@ package main
 
 import (
 	"encoding/binary"
+	"slices"
 	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -488,12 +489,9 @@ func spliceSpot(seed *wireSeed, si int, newBytes []byte) []byte {
 	}
 	edits := []edit{{sp.off, sp.width, newBytes}}
 	d := len(newBytes) - sp.width
-	for j := len(sp.enclosing) - 1; j >= 0; j-- {
-		e := f.spots[sp.enclosing[j]]
-		grown := int64(e.value) + int64(d)
-		if grown < 0 {
-			grown = 0
-		}
+	for _, encl := range slices.Backward(sp.enclosing) {
+		e := f.spots[encl]
+		grown := max(int64(e.value)+int64(d), 0)
 		nb := lebBytes(uint64(grown))
 		d += len(nb) - e.width
 		edits = append(edits, edit{e.off, e.width, nb})
@@ -555,8 +553,8 @@ func duplicateField(seed *wireSeed, fi int, fix bool) []byte {
 	}
 	var edits []edit
 	d := n
-	for j := len(fld.enclosing) - 1; j >= 0; j-- {
-		e := seed.frame.spots[fld.enclosing[j]]
+	for _, encl := range slices.Backward(fld.enclosing) {
+		e := seed.frame.spots[encl]
 		nb := lebBytes(e.value + uint64(d))
 		d += len(nb) - e.width
 		edits = append(edits, edit{e.off, e.width, nb})

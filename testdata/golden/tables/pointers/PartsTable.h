@@ -79,6 +79,11 @@ struct TableReport
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
+    // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
+    // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
+    // zero counters and a false flag are what a clean read prints too, so the
+    // verdict is what tells the two apart.
+    bool refused = false;
 };
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
@@ -135,7 +140,7 @@ struct TableFieldInfo
     const char * name;      // schema field name, e.g. "health"
     const char * json;      // the TEXT form's key: the json = "key" attribute, else name (§16.3)
     const char * type_name; // schema type name, e.g. "float32", "Grade"
-    uint16_t id;            // table-wire field id (name hash; the was alias's hash after a rename)
+    uint64_t id;            // table-wire field id: fnv1a64 of the name, of the was alias after a rename (§5)
     uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
     bool is_array;          // fixed or counted array (bytes included)
     bool is_pointer;        // a *T pointer field: storage is an 8-byte TableRef; the target is a table
@@ -182,7 +187,7 @@ struct TableFieldInfo
     // other kind — a FLAGS field's variants have no per-variant wire id (§4),
     // so a NULL here beside a non-NULL enum_name is what says "flags".
     // Walk [0, enum_max] to enumerate a vocabulary and its ids.
-    uint16_t (*variant_id)( uint64_t value );
+    uint64_t (*variant_id)( uint64_t value );
     // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
     // ride under variant ids rather than positions. key_name and key_id are
@@ -190,7 +195,7 @@ struct TableFieldInfo
     // NULL on every other field.
     const char * key_type_name;
     const char * (*key_name)( uint64_t value );
-    uint16_t (*key_id)( uint64_t value );
+    uint64_t (*key_id)( uint64_t value );
     // union fields: the tag and its arms, behind a function so the whole
     // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
     // a function pointer at compile time; the arms themselves are a static
@@ -243,11 +248,116 @@ struct TableWriter
     GRAPHDEMO_TABLE_INLINE void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
     // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
     GRAPHDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
-    GRAPHDEMO_TABLE_INLINE void patch32( int64_t at, uint32_t v )
+    // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
+    // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
+    // group first, the high bit set on every byte but the last. One value has
+    // one spelling, so two conforming writers agree byte for byte.
+    GRAPHDEMO_TABLE_INLINE void putleb( uint64_t v )
     {
-        if ( at + 4 > capacity ) { overflow = true; return; }
-        buffer[at] = uint8_t( v ); buffer[at+1] = uint8_t( v >> 8 );
-        buffer[at+2] = uint8_t( v >> 16 ); buffer[at+3] = uint8_t( v >> 24 );
+        while ( v >= 0x80 ) { put8( uint8_t( v ) | 0x80 ); v >>= 7; }
+        put8( uint8_t( v ) );
+    }
+};
+
+// TableLebBytes is one value's spelling length, which a MEASURE needs before
+// the bytes exist — the length of a body has to be known before it is written,
+// because a length whose own width moves cannot be patched in place.
+inline int64_t TableLebBytes( uint64_t v )
+{
+    int64_t n = 1;
+    while ( v >= 0x80 ) { v >>= 7; n++; }
+    return n;
+}
+
+// THE ID TABLE, WRITER SIDE (docs/SPEC-TABLES.md §3). It holds every id the
+// body used, once each, in FIRST-USE order over the whole wire, and the body
+// names them by position: reference k is the kth entry, counted from 1, and
+// reference 0 names NO ID.
+//
+// Its capacity is a COMPILE-TIME fact of the unit — the distinct names its
+// table closure can spell — so a save allocates nothing: the table is a local
+// of Measure and of Save. The bucket chain makes ref constant time and makes
+// truncate constant time too, which is what an ELIDED field needs: a field
+// that turns out not to ride costs nothing in the id table either, so the walk
+// interns its id, builds the payload that decides, and undoes the entry when
+// nothing rides.
+struct TableIds
+{
+    static const int32_t kCapacity = 47;
+    static const int32_t kBuckets = 128;
+
+    uint64_t ids[ kCapacity ];
+    int32_t chain[ kCapacity ];
+    int32_t head[ kBuckets ];
+    int32_t count;
+    bool overflow;
+
+    TableIds() : count( 0 ), overflow( false )
+    {
+        for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+    }
+
+    static GRAPHDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
+    {
+        return uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> 57 ) & uint32_t( kBuckets - 1 );
+    }
+
+    // the reference an id takes, appending it on first use
+    uint64_t ref( uint64_t id )
+    {
+        const uint32_t b = bucket_of( id );
+        for ( int32_t i = head[b]; i >= 0; i = chain[i] )
+        {
+            if ( ids[i] == id ) { return uint64_t( i ) + 1; }
+        }
+        if ( count >= kCapacity ) { overflow = true; return 1; }
+        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        return uint64_t( count );
+    }
+
+    // undo every entry appended since mark. An entry removed is the most
+    // recent one in its bucket, so it sits at that bucket's head.
+    void truncate( int32_t mark )
+    {
+        while ( count > mark )
+        {
+            count--;
+            head[ bucket_of( ids[count] ) ] = chain[count];
+        }
+    }
+};
+
+// TableIdsBytes is the trailer's own size: the entries, each a fixed
+// little-endian u64, and the ENTRY COUNT, the one fixed-width number on the
+// wire (docs/SPEC-TABLES.md §3).
+inline int64_t TableIdsBytes( const TableIds & ids ) { return int64_t( ids.count ) * 8 + 8; }
+
+// TableIdsWrite puts the trailer where the walk ended: a writer never patches,
+// because first-use order is known only when the walk ends.
+inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
+{
+    for ( int32_t i = 0; i < ids.count; i++ ) { w.put64( ids.ids[i] ); }
+    w.put64( uint64_t( ids.count ) );
+}
+
+// THE ID TABLE, READER SIDE (docs/SPEC-TABLES.md §3). A reader locates it from
+// the END of the wire and resolves it ONCE, at open: the entries are eight
+// bytes each and a body names them by position, so every field dispatches
+// through an index rather than through a search over hashes.
+struct TableIdTable
+{
+    const uint8_t * entries = NULL;
+    int64_t count = 0;
+
+    // the id a reference names. ref is 1-based and bounds-checked by the
+    // caller: a reference ABOVE the entry count is framing damage on the body
+    // that carries it, and 0 names no id at all.
+    uint64_t at( uint64_t ref ) const
+    {
+        const uint8_t * e = entries + ( ref - 1 ) * 8;
+        uint64_t lo = uint64_t( e[0] ) | uint64_t( e[1] ) << 8 | uint64_t( e[2] ) << 16 | uint64_t( e[3] ) << 24;
+        uint64_t hi = uint64_t( e[4] ) | uint64_t( e[5] ) << 8 | uint64_t( e[6] ) << 16 | uint64_t( e[7] ) << 24;
+        return lo | ( hi << 32 );
     }
 };
 
@@ -257,18 +367,78 @@ struct TableReader
     int64_t size;
     int64_t offset = 0;
     TableReport * report;
+    const TableIdTable * ids = NULL;
+    // ONLY THE ROOT BODY CARRIES THE NODE TABLE (docs/SPEC-TABLES.md §3.1), so
+    // a body has to know which it is: the reserved id inside a NESTED body is
+    // malformed, because a second numbering cannot exist. Every reader made
+    // for a payload is nested; the two the wire surfaces make for a root say so.
+    bool nested = true;
 
     TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report )
         : buffer( from_buffer ), size( from_size ), report( to_report ) {}
 
+    TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report, const TableIdTable * to_ids )
+        : buffer( from_buffer ), size( from_size ), report( to_report ), ids( to_ids ) {}
+
     GRAPHDEMO_TABLE_INLINE bool has( int64_t bytes ) const { return offset + bytes <= size; }
+    // A LENGTH IS A 64-BIT NUMBER AND A BUFFER IS NOT (docs/SPEC-TABLES.md
+    // §3): every length, count and index on this wire has sixty-four bits of
+    // capability, so one past what remains must be compared UNSIGNED. Casting
+    // it to int64 first turns 0xFFFFFFFFFFFFFFFF into -1, and a negative
+    // length looks like room.
+    GRAPHDEMO_TABLE_INLINE bool room( uint64_t bytes ) const { return bytes <= (uint64_t) ( size - offset ); }
     GRAPHDEMO_TABLE_INLINE uint8_t get8()   { return buffer[offset++]; }
     GRAPHDEMO_TABLE_INLINE uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
     GRAPHDEMO_TABLE_INLINE uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
     GRAPHDEMO_TABLE_INLINE uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
     GRAPHDEMO_TABLE_INLINE void get128( uint64_t & lo, uint64_t & hi ) { lo = get64(); hi = get64(); }
 
-    // skip one payload by kind; false = framing damage
+    // ONE CANONICAL UNSIGNED LEB128 (docs/SPEC-TABLES.md §3), and a
+    // non-minimal spelling is MALFORMED: 0x80 0x00 and 0x00 both spell zero,
+    // and only the second is legal input. An encoding past ten bytes, or a
+    // tenth byte with a bit above the 64th value bit, is malformed on the same
+    // rule. false = framing damage on the body carrying it.
+    bool getleb( uint64_t & value )
+    {
+        // A NUMBER THIS READER REFUSES LEAVES THE CURSOR WHERE IT WAS. The
+        // caller's next question is often "did this body end exactly at its
+        // L", and a rejected number that had moved the cursor would answer
+        // that question with the damage already stepped over.
+        const int64_t at = offset;
+        value = 0;
+        uint32_t shift = 0;
+        for ( int32_t i = 0; i < 10; i++ )
+        {
+            if ( !has( 1 ) ) { offset = at; return false; }
+            const uint8_t b = get8();
+            if ( i == 9 && b > 1 ) { offset = at; return false; }
+            value |= uint64_t( b & 0x7F ) << shift;
+            if ( ( b & 0x80 ) == 0 )
+            {
+                if ( i > 0 && b == 0 ) { offset = at; return false; } // a redundant continuation
+                return true;
+            }
+            shift += 7;
+        }
+        offset = at;
+        return false;
+    }
+
+    // resolve one id reference against the file's table. false = a reference
+    // ABOVE the entry count, or a 0 where an id is required, both of which
+    // are framing damage on the body that carries it.
+    bool getid( uint64_t & id )
+    {
+        uint64_t ref = 0;
+        if ( !getleb( ref ) ) { return false; }
+        if ( ref == 0 || ids == NULL || ref > (uint64_t) ids->count ) { return false; }
+        id = ids->at( ref );
+        return true;
+    }
+
+    // skip one payload by kind; false = framing damage. FOUR RULES COVER THE
+    // SET (docs/SPEC-TABLES.md §3), and a kind outside it is not skippable —
+    // which is why the set is closed and why kind 31 exists.
     bool skip( uint8_t kind )
     {
         switch ( kind )
@@ -277,27 +447,112 @@ struct TableReader
             // the fixed-point family at every storage width (docs/SPEC-TABLES.md §3)
             case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
             case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
-            case 4: case 8: case 10: case 17: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false; // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1)
+            case 4: case 8: case 10: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false;
             case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
             case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
-            case 12: case 13: case 14: case 16:
+            case 17: case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
-                if ( !has( 4 ) ) return false;
-                uint32_t n = get32();
-                return has( n ) ? ( offset += n, true ) : false;
+                uint64_t ignored = 0;
+                return getleb( ignored );
             }
-            case 15: // union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body)
+            case 12: case 13: case 14: case 16: case 31: case 32: // 31 is the ESCAPE, 32 the payload-free kind
             {
-                if ( !has( 2 ) ) return false;
-                if ( get16() == 0 ) return true;
-                if ( !has( 4 ) ) return false;
-                uint32_t n = get32();
-                return has( n ) ? ( offset += n, true ) : false;
+                uint64_t n = 0;
+                if ( !getleb( n ) ) return false;
+                return room( n ) ? ( offset += (int64_t) n, true ) : false;
+            }
+            case 15: // union: the arm id reference, then its kind, its L and its payload (reference 0 = empty)
+            {
+                uint64_t arm = 0;
+                if ( !getleb( arm ) ) return false;
+                if ( arm == 0 ) return true;
+                if ( !has( 1 ) ) return false;
+                offset += 1; // the arm's kind byte
+                uint64_t n = 0;
+                if ( !getleb( n ) ) return false;
+                return room( n ) ? ( offset += (int64_t) n, true ) : false;
             }
         }
         return false;
     }
 };
+
+// The RESERVED node-table id, the one id the language holds back
+// (docs/SPEC-TABLES.md §3.1, §5). It rides in every unit, pointered or not,
+// because every body has to know that a NESTED body claiming one is damaged.
+static const uint64_t kTableNodeTableFieldId = 0xFFFFFFFFFFFFFFFFull;
+
+// TableWireForm is the FORM BYTE, and it is the whole header
+// (docs/SPEC-TABLES.md §3). A reader that meets a byte it does not know
+// refuses the wire by name and never reports damage.
+const uint8_t kTableWireForm = 1;
+
+// TableOpen reads the form byte and the trailer, in that order, and hands back
+// the ROOT BODY. It answers one of three verdicts, because five zero counters
+// and a false flag are what a clean read prints too:
+//
+//   TableOpenOk       the form is known and the table read whole
+//   TableOpenRefused  a FORM BYTE this reader does not carry: nothing is
+//                     decoded, nothing is counted, and no damage is reported
+//   TableOpenDamaged  a table that cannot be read whole — fewer than eight
+//                     bytes, a count whose entries run past the front of the
+//                     file, a count that leaves no room for the form byte, or
+//                     ONE ID IN TWO ENTRIES. The whole wire is malformed,
+//                     nothing is decoded, and one event is counted.
+//   TableOpenBodyStopped  the form and the table were good and the ROOT BODY
+//                     could not be walked to its own terminator. What it
+//                     decoded before that is kept, as everywhere on this wire.
+enum TableOpenVerdict { TableOpenOk, TableOpenRefused, TableOpenDamaged, TableOpenBodyStopped };
+
+inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
+{
+    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
+    if ( bytes < 9 ) { return TableOpenDamaged; }
+    const uint8_t * tail = buffer + bytes - 8;
+    uint64_t lo = uint64_t( tail[0] ) | uint64_t( tail[1] ) << 8 | uint64_t( tail[2] ) << 16 | uint64_t( tail[3] ) << 24;
+    uint64_t hi = uint64_t( tail[4] ) | uint64_t( tail[5] ) << 8 | uint64_t( tail[6] ) << 16 | uint64_t( tail[7] ) << 24;
+    uint64_t count = lo | ( hi << 32 );
+    if ( count > (uint64_t) ( bytes / 8 ) ) { return TableOpenDamaged; }
+    const int64_t span = (int64_t) count * 8 + 8;
+    if ( span + 1 > bytes ) { return TableOpenDamaged; }
+    table.entries = buffer + bytes - span;
+    table.count = (int64_t) count;
+    // THE ENTRIES ARE DISTINCT: a table that carries one id twice is malformed
+    // for the whole wire, because no wire this schema writes carries a repeat
+    // and it would leave one more shape of table for a hostile writer to aim
+    // at (docs/SPEC-TABLES.md §3).
+    for ( int64_t i = 1; i < table.count; i++ )
+    {
+        const uint64_t id = table.at( uint64_t( i ) + 1 );
+        for ( int64_t j = 0; j < i; j++ )
+        {
+            if ( table.at( uint64_t( j ) + 1 ) == id ) { return TableOpenDamaged; }
+        }
+    }
+    body_bytes = bytes - span - 1;
+    return TableOpenOk;
+}
+
+// TableBodyExtent walks a body's framing to the zero reference that ends it,
+// so a reader can tell a body that ENDED EARLY — leaving bytes no field claims
+// — from one that is merely damaged. ANY BYTE BETWEEN THE ROOT'S TERMINATOR
+// AND THE TABLE'S FIRST ENTRY IS MALFORMED, because no field claims it and the
+// two ends of the file have met (docs/SPEC-TABLES.md §3).
+inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const TableIdTable & table )
+{
+    TableReport ignored;
+    TableReader r( body, bytes, &ignored, &table );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.getleb( ref ) ) { return false; }
+        if ( ref == 0 ) { return r.offset != bytes; }
+        if ( ref > (uint64_t) table.count ) { return false; }
+        if ( !r.has( 1 ) ) { return false; }
+        if ( !r.skip( r.get8() ) ) { return false; }
+    }
+}
 
 
 // An ENUM-KEYED array's storage: E.Max slots, ONE PER NAMED VARIANT, with the
@@ -1042,15 +1297,16 @@ inline char * TableStringEmplace( TableWorker & worker, TableRef & slot, const c
 // ---- the FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1) ----
 //
 // A pointered save writes every reachable node ONCE, into a node table, and a
-// pointer field rides as a u32 INDEX into it under kind 17. The encoding is
+// pointer field rides as an INDEX into it under kind 17. The encoding is
 // flat: no pointer edge is a nesting level, so a chain's length is not a depth,
 // and two references to one node are one node.
+//
+// THE FIELD RIDES ONCE: an L with sixty-four bits of capability frames a
+// numbering of any size, so the whole numbering is one contiguous payload and a
+// save's node bodies have no aggregate ceiling.
 
-static const uint16_t kTableNodeTableFieldId = 0xFFFF; // the RESERVED field id it rides under
-static const uint32_t kTableNodeIndexNull = 0;         // absence and null are one value
-static const uint32_t kTableNodeIndexRoot = 1;         // the body that hosts the table
-static const int64_t kTableNodeRecordHeader = 12;      // type id (u64), length (u32)
-static const int64_t kTableNodeFieldMax = 0xFFFFFFFF;  // a field's L is a u32, and so is a record's
+static const uint64_t kTableNodeIndexNull = 0;         // absence and null are one value
+static const uint64_t kTableNodeIndexRoot = 1;         // the body that hosts the table
 
 // The not-materialized sentinel (§6.3): a record whose type id this build could
 // not name. Distinct from every real offset including the root's 0, so an index
@@ -1069,8 +1325,8 @@ struct TableNodeEntry
 {
     const void * node;
     uint64_t type_id;
-    int64_t ( * measure )( const void * ctx, const void * node );
-    bool ( * save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, const void * node );
+    int64_t ( * measure )( const void * ctx, const TableNumbering & numbering, TableIds & ids, const void * node );
+    bool ( * save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node );
 };
 
 struct TableNumbering
@@ -1104,12 +1360,12 @@ inline void TableNumberingShutdown( TableNumbering & n )
 // The index a numbered node was given, for the save that writes it into a
 // pointer slot. False means the two walks disagree about the graph, which is a
 // refusal and never a guess.
-inline bool TableNumberingIndex( const TableNumbering & n, const void * node, uint32_t & index )
+inline bool TableNumberingIndex( const TableNumbering & n, const void * node, uint64_t & index )
 {
     if ( n.seen.capacity == 0 ) { return false; }
     const TablePackEntry & entry = n.seen.entries[ TablePackMapSlot( n.seen, node ) ];
     if ( entry.key != node ) { return false; }
-    index = (uint32_t) entry.offset;
+    index = (uint64_t) entry.offset;
     return true;
 }
 
@@ -1143,15 +1399,15 @@ inline bool TableNumberingAppend( TableNumbering & n, const TableNodeEntry & ent
 // the arena's TableReset uses, and the reason a numbering may span the files of
 // one unit without any file naming another's members.
 template <typename Ctx, typename T>
-inline int64_t TableNodeMeasureThunk( const void * ctx, const void * node )
+inline int64_t TableNodeMeasureThunk( const void * ctx, const TableNumbering & numbering, TableIds & ids, const void * node )
 {
-    return TableNodeMeasure( *(const Ctx *) ctx, *(const T *) node );
+    return TableNodeMeasure( *(const Ctx *) ctx, numbering, ids, *(const T *) node );
 }
 
 template <typename Ctx, typename T>
-inline bool TableNodeSaveThunk( const void * ctx, const TableNumbering & numbering, TableWriter & w, const void * node )
+inline bool TableNodeSaveThunk( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node )
 {
-    return TableNodeSave( *(const Ctx *) ctx, numbering, w, *(const T *) node );
+    return TableNodeSave( *(const Ctx *) ctx, numbering, w, ids, *(const T *) node );
 }
 
 // ---- a BYTE BUFFER's record (docs/SPEC-TABLES.md §2.5, §3.1) ----
@@ -1165,13 +1421,13 @@ static const uint64_t kTableBytesTypeId = 0x2f2ec0474f1c4fe4ull;  // fnv1a64( "b
 static const uint64_t kTableStringTypeId = 0x704be0d8faaffc58ull; // fnv1a64( "string" )
 
 template <typename Ctx>
-inline int64_t TableBlobMeasureThunk( const void *, const void * node )
+inline int64_t TableBlobMeasureThunk( const void *, const TableNumbering &, TableIds &, const void * node )
 {
     return (int64_t) ( (const TableBlob *) node )->length;
 }
 
 template <typename Ctx>
-inline bool TableBlobSaveThunk( const void *, const TableNumbering &, TableWriter & w, const void * node )
+inline bool TableBlobSaveThunk( const void *, const TableNumbering &, TableWriter & w, TableIds &, const void * node )
 {
     const TableBlob * blob = (const TableBlob *) node;
     w.raw( (const void *) ( blob + 1 ), (int64_t) blob->length );
@@ -1179,69 +1435,58 @@ inline bool TableBlobSaveThunk( const void *, const TableNumbering &, TableWrite
 }
 
 // TableNodeTableMeasure and TableNodeTableSave are the framing, and they are
-// ONE fill rule written twice — measure derives the chunking from the graph and
-// save derives the same one, which is what makes measure == save hold across a
+// ONE fill rule written twice — measure derives it from the graph and save
+// derives the same one, which is what makes measure == save hold across a
 // pointer graph (§3.1).
 //
-// A RECORD NEVER STRADDLES A FIELD: the next field opens when the record about
-// to be written would not fit in this one, so every multi-byte read a reader
-// makes lies inside one contiguous payload.
+// The field rides ONCE, under the reserved id, kind 12: the payload opens with
+// the count and then carries the records back to back, each a type id
+// REFERENCE, a length and a body. The reserved id is interned BEFORE the
+// records, and a record's type id before its body, which is the first-use order
+// the trailer is written in (§3).
 template <typename Ctx>
-inline int64_t TableNodeTableMeasure( const Ctx & ctx, const TableNumbering & n )
+inline int64_t TableNodeTablePayload( const Ctx & ctx, TableIds & ids, const TableNumbering & n )
 {
-    if ( n.count == 0 ) { return 0; } // a root that reaches no nodes writes none of them
-    int64_t bytes = 0;
-    int64_t field = 8; // the FIRST field's payload opens with node_count (u64)
+    int64_t payload = TableLebBytes( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
     {
-        int64_t body = n.entries[k].measure( (const void *) &ctx, n.entries[k].node );
-        if ( body < 0 || body > kTableNodeFieldMax ) { return -1; }
-        if ( field > 0 && field + kTableNodeRecordHeader + body > kTableNodeFieldMax )
-        {
-            bytes += 7 + field; // id (u16), kind (u8), L (u32)
-            field = 0;
-        }
-        field += kTableNodeRecordHeader + body;
+        payload += TableLebBytes( ids.ref( n.entries[k].type_id ) );
+        const int64_t body = n.entries[k].measure( (const void *) &ctx, n, ids, n.entries[k].node );
+        if ( body < 0 ) { return -1; }
+        payload += TableLebBytes( (uint64_t) body ) + body;
     }
-    return bytes + 7 + field;
+    return payload;
 }
 
 template <typename Ctx>
-inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, const TableNumbering & n )
+inline int64_t TableNodeTableMeasure( const Ctx & ctx, TableIds & ids, const TableNumbering & n )
+{
+    if ( n.count == 0 ) { return 0; } // a root that reaches no nodes writes none of them
+    const uint64_t ref = ids.ref( kTableNodeTableFieldId );
+    const int64_t payload = TableNodeTablePayload( ctx, ids, n );
+    if ( payload < 0 ) { return -1; }
+    return TableLebBytes( ref ) + 1 + TableLebBytes( (uint64_t) payload ) + payload;
+}
+
+template <typename Ctx>
+inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, TableIds & ids, const TableNumbering & n )
 {
     if ( n.count == 0 ) { return true; }
-    int64_t length_at = 0;
-    int64_t payload_at = 0;
-    int64_t field = 0;
-    bool open = false;
+    const uint64_t ref = ids.ref( kTableNodeTableFieldId );
+    const int64_t payload = TableNodeTablePayload( ctx, ids, n );
+    if ( payload < 0 ) { return false; }
+    w.putleb( ref );
+    w.put8( 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
+    w.putleb( (uint64_t) payload );
+    w.putleb( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
     {
-        int64_t body = n.entries[k].measure( (const void *) &ctx, n.entries[k].node );
-        if ( body < 0 || body > kTableNodeFieldMax ) { return false; }
-        if ( !open )
-        {
-            w.put16( kTableNodeTableFieldId );
-            w.put8( 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
-            length_at = w.offset;
-            w.put32( 0 );
-            payload_at = w.offset;
-            open = true;
-            field = 0;
-            if ( k == 0 ) { w.put64( (uint64_t) n.count ); field = 8; }
-        }
-        else if ( field + kTableNodeRecordHeader + body > kTableNodeFieldMax )
-        {
-            w.patch32( length_at, uint32_t( w.offset - payload_at ) );
-            open = false;
-            k--; // this record opens the next field instead
-            continue;
-        }
-        w.put64( n.entries[k].type_id );
-        w.put32( uint32_t( body ) );
-        if ( !n.entries[k].save( (const void *) &ctx, n, w, n.entries[k].node ) ) { return false; }
-        field += kTableNodeRecordHeader + body;
+        w.putleb( ids.ref( n.entries[k].type_id ) );
+        const int64_t body = n.entries[k].measure( (const void *) &ctx, n, ids, n.entries[k].node );
+        if ( body < 0 ) { return false; }
+        w.putleb( (uint64_t) body );
+        if ( !n.entries[k].save( (const void *) &ctx, n, w, ids, n.entries[k].node ) ) { return false; }
     }
-    w.patch32( length_at, uint32_t( w.offset - payload_at ) );
     return true;
 }
 
@@ -1276,11 +1521,11 @@ struct TableNodeMap
 // is checked at every index, the root's included: the root carries no record
 // and therefore no wire type id, so the READER'S OWN root type is what the
 // claim is checked against.
-inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint32_t index, uint64_t target, TableReport * report )
+inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_t index, uint64_t target, TableReport * report )
 {
     slot.value = 0;
     if ( index == kTableNodeIndexNull || !map.good ) { return; }
-    if ( (int64_t) ( index - 1 ) >= map.count )
+    if ( index - 1 >= (uint64_t) map.count )
     {
         report->malformed = true; // an index above node_count + 1
         return;
@@ -1305,101 +1550,97 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint32_
 // ---- the record SCAN, and it is the whole of load's bound (§3.1) ----
 //
 // Reading follows no reference. The scan walks the root body's top-level fields,
-// takes every one under the reserved id, and reads records out of their payloads
-// in order — a record never straddles a field, so nothing is copied to make a
-// body contiguous and the generated body decoder never learns that chunking
-// exists.
+// finds the ONE under the reserved id, and reads records out of its payload in
+// order — the field rides once, so nothing is copied to make a body contiguous
+// and the generated body decoder never learns the transport exists.
 struct TableNodeScan
 {
     TableReader fields;        // over the ROOT body, skipping past everything else
-    const uint8_t * payload;   // the field currently being read out of
+    const uint8_t * payload;   // the node-table field's payload
     int64_t payload_size;
     int64_t payload_offset;
-    bool first;                // the next field opened carries node_count
+    bool opened;               // the root body has been walked for the field
     uint64_t declared;
     int64_t records;
     bool present;              // the root body carries a node table at all
     bool malformed;
+    const TableIdTable * ids;
 };
 
-inline TableNodeScan TableNodeScanBegin( const uint8_t * body, int64_t size, TableReport * report )
+inline TableNodeScan TableNodeScanBegin( const uint8_t * body, int64_t size, TableReport * report, const TableIdTable * ids )
 {
-    TableNodeScan s = { TableReader( body, size, report ), NULL, 0, 0, true, 0, 0, false, false };
+    TableNodeScan s = { TableReader( body, size, report, ids ), NULL, 0, 0, false, 0, 0, false, false, ids };
     return s;
 }
 
-// open the next node-table field, or answer false when the root body has no more
+// find the node-table field, or answer false when the root body has none. A
+// body carrying an id more than once is legal input and THE LAST OCCURRENCE
+// WINS (docs/SPEC-TABLES.md §3), so the walk runs to the terminator and keeps
+// the last rather than stopping at the first.
 inline bool TableNodeScanOpen( TableNodeScan & s )
 {
+    if ( s.opened ) { return false; }
+    s.opened = true;
     for ( ;; )
     {
-        if ( !s.fields.has( 2 ) ) { return false; }
-        uint16_t id = s.fields.get16();
-        if ( id == 0 ) { return false; } // the terminator
-        if ( !s.fields.has( 1 ) ) { return false; }
-        uint8_t kind = s.fields.get8();
+        uint64_t ref = 0;
+        if ( !s.fields.getleb( ref ) ) { break; }
+        if ( ref == 0 ) { break; } // the terminator
+        if ( s.ids == NULL || ref > (uint64_t) s.ids->count ) { break; }
+        const uint64_t id = s.ids->at( ref );
+        if ( !s.fields.has( 1 ) ) { break; }
+        const uint8_t kind = s.fields.get8();
         if ( id == kTableNodeTableFieldId )
         {
             s.present = true;
             if ( kind != 12 ) { s.malformed = true; return false; }
-            if ( !s.fields.has( 4 ) ) { s.malformed = true; return false; }
-            uint32_t length = s.fields.get32();
-            if ( !s.fields.has( length ) ) { s.malformed = true; return false; }
+            uint64_t length = 0;
+            if ( !s.fields.getleb( length ) || !s.fields.room( length ) ) { s.malformed = true; return false; }
             s.payload = s.fields.buffer + s.fields.offset;
             s.payload_size = (int64_t) length;
-            s.payload_offset = 0;
-            s.fields.offset += length;
-            if ( s.first )
-            {
-                if ( s.payload_size < 8 ) { s.malformed = true; return false; }
-                s.declared = 0;
-                for ( int i = 0; i < 8; i++ ) { s.declared |= (uint64_t) s.payload[i] << ( 8 * i ); }
-                s.payload_offset = 8;
-                s.first = false;
-            }
-            return true;
+            s.fields.offset += (int64_t) length;
+            continue;
         }
-        if ( !s.fields.skip( kind ) ) { return false; }
+        if ( !s.fields.skip( kind ) ) { break; }
     }
+    if ( s.payload == NULL ) { return false; }
+    TableReader head( s.payload, s.payload_size, s.fields.report, s.ids );
+    if ( !head.getleb( s.declared ) ) { s.malformed = true; return false; }
+    s.payload_offset = head.offset;
+    return true;
 }
 
 // the next record, or false at the end of the table — s.malformed says whether
 // the end was the end or the framing giving out
 inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint8_t * & body, int64_t & length )
 {
-    for ( ;; )
+    if ( !s.opened && !TableNodeScanOpen( s ) ) { return false; }
+    if ( s.payload == NULL || s.payload_offset >= s.payload_size ) { return false; }
+    TableReader rec( s.payload, s.payload_size, s.fields.report, s.ids );
+    rec.offset = s.payload_offset;
+    uint64_t ref = 0;
+    if ( !rec.getleb( ref ) || ref == 0 || s.ids == NULL || ref > (uint64_t) s.ids->count )
     {
-        if ( s.payload == NULL || s.payload_offset >= s.payload_size )
-        {
-            if ( s.payload != NULL && s.payload_offset != s.payload_size )
-            {
-                s.malformed = true; // bytes left over inside a field
-                return false;
-            }
-            if ( !TableNodeScanOpen( s ) ) { return false; }
-            continue;
-        }
-        if ( s.payload_offset + kTableNodeRecordHeader > s.payload_size )
-        {
-            s.malformed = true; // a record whose header runs past its field
-            return false;
-        }
-        const uint8_t * at = s.payload + s.payload_offset;
-        type_id = 0;
-        for ( int i = 0; i < 8; i++ ) { type_id |= (uint64_t) at[i] << ( 8 * i ); }
-        uint32_t declared_length = (uint32_t) at[8] | (uint32_t) at[9] << 8 | (uint32_t) at[10] << 16 | (uint32_t) at[11] << 24;
-        s.payload_offset += kTableNodeRecordHeader;
-        if ( s.payload_offset + (int64_t) declared_length > s.payload_size )
-        {
-            s.malformed = true; // a record whose length runs past its field
-            return false;
-        }
-        body = s.payload + s.payload_offset;
-        length = (int64_t) declared_length;
-        s.payload_offset += length;
-        s.records++;
-        return true;
+        s.malformed = true; // a type id reference of 0, or one past the table
+        return false;
     }
+    type_id = s.ids->at( ref );
+    uint64_t declared_length = 0;
+    if ( !rec.getleb( declared_length ) )
+    {
+        s.malformed = true; // a record whose length is damaged
+        return false;
+    }
+    if ( declared_length > (uint64_t) ( s.payload_size - rec.offset ) )
+    {
+        s.malformed = true; // a record whose length runs past its field
+        return false;
+    }
+    body = s.payload + rec.offset;
+    length = (int64_t) declared_length;
+    s.payload_offset = rec.offset + length;
+    s.records++;
+    return true;
 }
 
 // The record scan is AUTHORITATIVE: node_count is data from the wire, and a
@@ -1433,7 +1674,7 @@ namespace graphdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x94b679c0a547181bull;
+static const uint64_t BuildVersion = 0xa1f52e4e9db89badull;
 
 } // namespace graphdemo
 
@@ -1683,9 +1924,9 @@ struct TableCookRegion
 inline bool table_cook_ref( const TableCookRegion & region, uint8_t * at, const void * pointee, TableByteOrder order )
 {
     if ( pointee == NULL ) { table_cook_put( at, 0, 8, order ); return true; }
-    uint32_t index = 0;
+    uint64_t index = 0;
     if ( !TableNumberingIndex( *region.numbering, pointee, index ) ) { return false; }
-    if ( index == 0 || (int64_t) index > region.count ) { return false; }
+    if ( index == 0 || index > (uint64_t) region.count ) { return false; }
     const int64_t delta = region.offsets[index - 1] - (int64_t) ( at - region.base );
     table_cook_put( at, (uint64_t) delta, 8, order );
     return true;
@@ -1731,44 +1972,56 @@ inline void TableReset( Colour & value ) { ColourReset( value ); }
 
 // ---- codecs: measure/save/load per closure member ----
 
-inline int64_t StampMeasure( const Stamp & value );
-GRAPHDEMO_TABLE_INLINE bool StampSaveBody( TableWriter & w, const Stamp & value );
+inline int64_t StampMeasureBody( TableIds & ids, const Stamp & value );
+GRAPHDEMO_TABLE_INLINE bool StampSaveBody( TableWriter & w, TableIds & ids, const Stamp & value );
 GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value );
-inline int64_t ColourMeasure( const Colour & value );
-GRAPHDEMO_TABLE_INLINE bool ColourSaveBody( TableWriter & w, const Colour & value );
+inline int64_t ColourMeasureBody( TableIds & ids, const Colour & value );
+GRAPHDEMO_TABLE_INLINE bool ColourSaveBody( TableWriter & w, TableIds & ids, const Colour & value );
 GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value );
 
-inline int64_t StampMeasure( const Stamp & value )
+inline int64_t StampMeasureBody( TableIds & ids, const Stamp & value )
 {
-    int64_t bytes = 2; // terminator
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
-    if ( value.tag_length > 0 ) { bytes += 3 + 4 + value.tag_length; } // tag
-    if ( value.seq != 0 ) { bytes += 3 + 4; } // seq
+    if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
+    if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref( 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
     return bytes;
 }
 
-GRAPHDEMO_TABLE_INLINE bool StampSaveBody( TableWriter & w, const Stamp & value )
+inline int64_t StampMeasure( const Stamp & value )
+{
+    TableIds ids;
+    const int64_t body = StampMeasureBody( ids, value );
+    if ( body < 0 || ids.overflow ) { return -1; }
+    return 1 + body + TableIdsBytes( ids );
+}
+
+GRAPHDEMO_TABLE_INLINE bool StampSaveBody( TableWriter & w, TableIds & ids, const Stamp & value )
 {
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
     if ( value.tag_length > 0 )
     {
-        w.put16( 0xbc64 ); w.put8( 12 ); // tag
-        w.put32( uint32_t( value.tag_length ) );
+        w.putleb( ids.ref( 0x56d7ab194448a4f3ull ) ); w.put8( 12 ); // tag
+        w.putleb( (uint64_t) value.tag_length );
         w.raw( value.tag, value.tag_length );
     }
     if ( value.seq != 0 )
     {
-        w.put16( 0xc29b ); w.put8( 4 ); // seq
+        w.putleb( ids.ref( 0x823b8a195ce2133cull ) ); w.put8( 4 ); // seq
         w.put32( uint32_t( value.seq ) );
     }
-    w.put16( 0 ); // terminator
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
 }
 
 inline int64_t StampSave( const Stamp & value, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w( buffer, capacity );
-    if ( !StampSaveBody( w, value ) ) { return -1; }
+    TableIds ids;
+    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
+    if ( !StampSaveBody( w, ids, value ) || ids.overflow ) { return -1; }
+    TableIdsWrite( w, ids ); // the ID TABLE is the last thing in the file
+    if ( w.overflow ) { return -1; }
     return w.offset; // == StampMeasure( value )
 }
 
@@ -1777,36 +2030,50 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
     StampReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
-        if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
-        uint16_t field_id = r.get16();
-        if ( field_id == 0 ) return true;
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
+        if ( field_id == kTableNodeTableFieldId && r.nested )
+        {
+            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
+            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
+            // second numbering cannot exist, so a body claiming one is
+            // damaged — that body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
         switch ( field_id )
         {
-            case 0xbc64: // tag
+            case 0x56d7ab194448a4f3ull: // tag
             {
                 if ( kind != 12 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                uint32_t len = r.get32();
-                if ( !r.has( len ) ) { r.report->malformed = true; return false; }
-                uint32_t keep = len;
+                uint64_t len = 0;
+                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
+                uint64_t keep = len;
                 if ( keep > 8 ) { keep = 8; r.report->clamped++; }
-                memcpy( value.tag, r.buffer + r.offset, keep );
+                memcpy( value.tag, r.buffer + r.offset, (size_t) keep );
                 value.tag[keep] = 0;
                 value.tag_length = (int32_t) keep;
-                r.offset += len;
+                r.offset += (int64_t) len;
                 break;
             }
-            case 0xc29b: // seq
+            case 0x823b8a195ce2133cull: // seq
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1828,47 +2095,95 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
     }
 }
 
-inline bool StampLoad( Stamp & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so a
+// file that is both a newer form and damaged is a REFUSAL and never damage.
+// A refusal moves none of the report's five counters, because nothing was
+// decoded and there is nothing to count (docs/SPEC-TABLES.md §3).
+inline TableOpenVerdict StampLoadVerdict( Stamp & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
-    TableReader r( buffer, bytes, report != NULL ? report : &ignored );
-    return StampLoadBody( r, value );
+    TableReport * to = report != NULL ? report : &ignored;
+    TableIdTable table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        StampReset( value );
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        else { to->refused = true; }
+        return verdict;
+    }
+    // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
+    // MALFORMED, because no field claims it and the two ends of the file
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
+    {
+        StampReset( value );
+        to->malformed = true;
+        return TableOpenDamaged;
+    }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !StampLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    return TableOpenOk;
+}
+
+// The bool is the BODY reaching its own terminator, and it is what it has
+// always been: framing damage inside a field keeps what it decoded, flags
+// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).
+// False is a wire nothing could be decoded from: a refusal, a table that
+// cannot be read whole, or a root body the walk could not finish.
+inline bool StampLoad( Stamp & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    return StampLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
+}
+
+inline int64_t ColourMeasureBody( TableIds & ids, const Colour & value )
+{
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    if ( value.r != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63ef4c86020cd5ull ) ) + 1 + 1; } // r
+    if ( value.g != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63da4c8601e926ull ) ) + 1 + 1; } // g
+    if ( value.b != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63df4c8601f1a5ull ) ) + 1 + 1; } // b
+    return bytes;
 }
 
 inline int64_t ColourMeasure( const Colour & value )
 {
-    int64_t bytes = 2; // terminator
-    if ( value.r != 0 ) { bytes += 3 + 1; } // r
-    if ( value.g != 0 ) { bytes += 3 + 1; } // g
-    if ( value.b != 0 ) { bytes += 3 + 1; } // b
-    return bytes;
+    TableIds ids;
+    const int64_t body = ColourMeasureBody( ids, value );
+    if ( body < 0 || ids.overflow ) { return -1; }
+    return 1 + body + TableIdsBytes( ids );
 }
 
-GRAPHDEMO_TABLE_INLINE bool ColourSaveBody( TableWriter & w, const Colour & value )
+GRAPHDEMO_TABLE_INLINE bool ColourSaveBody( TableWriter & w, TableIds & ids, const Colour & value )
 {
     if ( value.r != 0 )
     {
-        w.put16( 0xb019 ); w.put8( 6 ); // r
+        w.putleb( ids.ref( 0xaf63ef4c86020cd5ull ) ); w.put8( 6 ); // r
         w.put8( uint8_t( value.r ) );
     }
     if ( value.g != 0 )
     {
-        w.put16( 0xc40a ); w.put8( 6 ); // g
+        w.putleb( ids.ref( 0xaf63da4c8601e926ull ) ); w.put8( 6 ); // g
         w.put8( uint8_t( value.g ) );
     }
     if ( value.b != 0 )
     {
-        w.put16( 0xcae9 ); w.put8( 6 ); // b
+        w.putleb( ids.ref( 0xaf63df4c8601f1a5ull ) ); w.put8( 6 ); // b
         w.put8( uint8_t( value.b ) );
     }
-    w.put16( 0 ); // terminator
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
 }
 
 inline int64_t ColourSave( const Colour & value, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w( buffer, capacity );
-    if ( !ColourSaveBody( w, value ) ) { return -1; }
+    TableIds ids;
+    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
+    if ( !ColourSaveBody( w, ids, value ) || ids.overflow ) { return -1; }
+    TableIdsWrite( w, ids ); // the ID TABLE is the last thing in the file
+    if ( w.overflow ) { return -1; }
     return w.offset; // == ColourMeasure( value )
 }
 
@@ -1877,17 +2192,30 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
     ColourReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
-        if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
-        uint16_t field_id = r.get16();
-        if ( field_id == 0 ) return true;
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
+        if ( field_id == kTableNodeTableFieldId && r.nested )
+        {
+            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
+            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
+            // second numbering cannot exist, so a body claiming one is
+            // damaged — that body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
         switch ( field_id )
         {
-            case 0xb019: // r
+            case 0xaf63ef4c86020cd5ull: // r
             {
                 if ( kind != 6 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1897,10 +2225,12 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
                 value.r = decoded_v;
                 break;
             }
-            case 0xc40a: // g
+            case 0xaf63da4c8601e926ull: // g
             {
                 if ( kind != 6 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1910,10 +2240,12 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
                 value.g = decoded_v;
                 break;
             }
-            case 0xcae9: // b
+            case 0xaf63df4c8601f1a5ull: // b
             {
                 if ( kind != 6 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1933,11 +2265,47 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
     }
 }
 
-inline bool ColourLoad( Colour & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so a
+// file that is both a newer form and damaged is a REFUSAL and never damage.
+// A refusal moves none of the report's five counters, because nothing was
+// decoded and there is nothing to count (docs/SPEC-TABLES.md §3).
+inline TableOpenVerdict ColourLoadVerdict( Colour & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
-    TableReader r( buffer, bytes, report != NULL ? report : &ignored );
-    return ColourLoadBody( r, value );
+    TableReport * to = report != NULL ? report : &ignored;
+    TableIdTable table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        ColourReset( value );
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        else { to->refused = true; }
+        return verdict;
+    }
+    // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
+    // MALFORMED, because no field claims it and the two ends of the file
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
+    {
+        ColourReset( value );
+        to->malformed = true;
+        return TableOpenDamaged;
+    }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !ColourLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    return TableOpenOk;
+}
+
+// The bool is the BODY reaching its own terminator, and it is what it has
+// always been: framing damage inside a field keeps what it decoded, flags
+// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).
+// False is a wire nothing could be decoded from: a refusal, a table that
+// cannot be read whole, or a root body the walk could not finish.
+inline bool ColourLoad( Colour & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    return ColourLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
 // ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
@@ -2093,16 +2461,16 @@ extern const TableTypeInfo StampTableInfo;
 extern const TableTypeInfo ColourTableInfo;
 
 inline const TableFieldInfo StampTableFields[] = {
-    { "tag", "tag", "string", 0xbc64, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( Stamp::tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "seq", "seq", "int32", 0xc29b, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( Stamp::tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "seq", "seq", "int32", 0x823b8a195ce2133cull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo StampTableInfo = { "Stamp", (uint32_t) sizeof( Stamp ), 2, StampTableFields, +[]( void * p ) { StampReset( *(Stamp *) p ); }, false };
 inline const TableTypeInfo * StampTableType() { return &StampTableInfo; }
 
 inline const TableFieldInfo ColourTableFields[] = {
-    { "r", "r", "uint8", 0xb019, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( Colour::r ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "g", "g", "uint8", 0xc40a, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( Colour::g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "b", "b", "uint8", 0xcae9, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( Colour::b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "r", "r", "uint8", 0xaf63ef4c86020cd5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( Colour::r ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( Colour::g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( Colour::b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo ColourTableInfo = { "Colour", (uint32_t) sizeof( Colour ), 3, ColourTableFields, +[]( void * p ) { ColourReset( *(Colour *) p ); }, false };
 inline const TableTypeInfo * ColourTableType() { return &ColourTableInfo; }

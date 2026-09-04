@@ -12,7 +12,7 @@ defmodule Benchtable.BuildVersion do
   by a build this one does not agree with.
   """
 
-  @build_version 0x5F2254539E3AD47D
+  @build_version 0xF4B855B89DF191ED
 
   def build_version, do: @build_version
 end

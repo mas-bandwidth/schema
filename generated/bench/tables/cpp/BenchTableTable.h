@@ -47,6 +47,11 @@ struct TableReport
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
+    // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
+    // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
+    // zero counters and a false flag are what a clean read prints too, so the
+    // verdict is what tells the two apart.
+    bool refused = false;
 };
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
@@ -99,7 +104,7 @@ struct TableFieldInfo
     const char * name;      // schema field name, e.g. "health"
     const char * json;      // the TEXT form's key: the json = "key" attribute, else name (§16.3)
     const char * type_name; // schema type name, e.g. "float32", "Grade"
-    uint16_t id;            // table-wire field id (name hash; the was alias's hash after a rename)
+    uint64_t id;            // table-wire field id: fnv1a64 of the name, of the was alias after a rename (§5)
     uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
     bool is_array;          // fixed or counted array (bytes included)
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
@@ -136,7 +141,7 @@ struct TableFieldInfo
     // other kind — a FLAGS field's variants have no per-variant wire id (§4),
     // so a NULL here beside a non-NULL enum_name is what says "flags".
     // Walk [0, enum_max] to enumerate a vocabulary and its ids.
-    uint16_t (*variant_id)( uint64_t value );
+    uint64_t (*variant_id)( uint64_t value );
     // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
     // ride under variant ids rather than positions. key_name and key_id are
@@ -144,7 +149,7 @@ struct TableFieldInfo
     // NULL on every other field.
     const char * key_type_name;
     const char * (*key_name)( uint64_t value );
-    uint16_t (*key_id)( uint64_t value );
+    uint64_t (*key_id)( uint64_t value );
     // union fields: the tag and its arms, behind a function so the whole
     // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
     // a function pointer at compile time; the arms themselves are a static
@@ -192,11 +197,116 @@ struct TableWriter
     BENCHTABLE_TABLE_INLINE void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
     // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
     BENCHTABLE_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
-    BENCHTABLE_TABLE_INLINE void patch32( int64_t at, uint32_t v )
+    // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
+    // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
+    // group first, the high bit set on every byte but the last. One value has
+    // one spelling, so two conforming writers agree byte for byte.
+    BENCHTABLE_TABLE_INLINE void putleb( uint64_t v )
     {
-        if ( at + 4 > capacity ) { overflow = true; return; }
-        buffer[at] = uint8_t( v ); buffer[at+1] = uint8_t( v >> 8 );
-        buffer[at+2] = uint8_t( v >> 16 ); buffer[at+3] = uint8_t( v >> 24 );
+        while ( v >= 0x80 ) { put8( uint8_t( v ) | 0x80 ); v >>= 7; }
+        put8( uint8_t( v ) );
+    }
+};
+
+// TableLebBytes is one value's spelling length, which a MEASURE needs before
+// the bytes exist — the length of a body has to be known before it is written,
+// because a length whose own width moves cannot be patched in place.
+inline int64_t TableLebBytes( uint64_t v )
+{
+    int64_t n = 1;
+    while ( v >= 0x80 ) { v >>= 7; n++; }
+    return n;
+}
+
+// THE ID TABLE, WRITER SIDE (docs/SPEC-TABLES.md §3). It holds every id the
+// body used, once each, in FIRST-USE order over the whole wire, and the body
+// names them by position: reference k is the kth entry, counted from 1, and
+// reference 0 names NO ID.
+//
+// Its capacity is a COMPILE-TIME fact of the unit — the distinct names its
+// table closure can spell — so a save allocates nothing: the table is a local
+// of Measure and of Save. The bucket chain makes ref constant time and makes
+// truncate constant time too, which is what an ELIDED field needs: a field
+// that turns out not to ride costs nothing in the id table either, so the walk
+// interns its id, builds the payload that decides, and undoes the entry when
+// nothing rides.
+struct TableIds
+{
+    static const int32_t kCapacity = 78;
+    static const int32_t kBuckets = 256;
+
+    uint64_t ids[ kCapacity ];
+    int32_t chain[ kCapacity ];
+    int32_t head[ kBuckets ];
+    int32_t count;
+    bool overflow;
+
+    TableIds() : count( 0 ), overflow( false )
+    {
+        for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+    }
+
+    static BENCHTABLE_TABLE_INLINE uint32_t bucket_of( uint64_t id )
+    {
+        return uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> 56 ) & uint32_t( kBuckets - 1 );
+    }
+
+    // the reference an id takes, appending it on first use
+    uint64_t ref( uint64_t id )
+    {
+        const uint32_t b = bucket_of( id );
+        for ( int32_t i = head[b]; i >= 0; i = chain[i] )
+        {
+            if ( ids[i] == id ) { return uint64_t( i ) + 1; }
+        }
+        if ( count >= kCapacity ) { overflow = true; return 1; }
+        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        return uint64_t( count );
+    }
+
+    // undo every entry appended since mark. An entry removed is the most
+    // recent one in its bucket, so it sits at that bucket's head.
+    void truncate( int32_t mark )
+    {
+        while ( count > mark )
+        {
+            count--;
+            head[ bucket_of( ids[count] ) ] = chain[count];
+        }
+    }
+};
+
+// TableIdsBytes is the trailer's own size: the entries, each a fixed
+// little-endian u64, and the ENTRY COUNT, the one fixed-width number on the
+// wire (docs/SPEC-TABLES.md §3).
+inline int64_t TableIdsBytes( const TableIds & ids ) { return int64_t( ids.count ) * 8 + 8; }
+
+// TableIdsWrite puts the trailer where the walk ended: a writer never patches,
+// because first-use order is known only when the walk ends.
+inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
+{
+    for ( int32_t i = 0; i < ids.count; i++ ) { w.put64( ids.ids[i] ); }
+    w.put64( uint64_t( ids.count ) );
+}
+
+// THE ID TABLE, READER SIDE (docs/SPEC-TABLES.md §3). A reader locates it from
+// the END of the wire and resolves it ONCE, at open: the entries are eight
+// bytes each and a body names them by position, so every field dispatches
+// through an index rather than through a search over hashes.
+struct TableIdTable
+{
+    const uint8_t * entries = NULL;
+    int64_t count = 0;
+
+    // the id a reference names. ref is 1-based and bounds-checked by the
+    // caller: a reference ABOVE the entry count is framing damage on the body
+    // that carries it, and 0 names no id at all.
+    uint64_t at( uint64_t ref ) const
+    {
+        const uint8_t * e = entries + ( ref - 1 ) * 8;
+        uint64_t lo = uint64_t( e[0] ) | uint64_t( e[1] ) << 8 | uint64_t( e[2] ) << 16 | uint64_t( e[3] ) << 24;
+        uint64_t hi = uint64_t( e[4] ) | uint64_t( e[5] ) << 8 | uint64_t( e[6] ) << 16 | uint64_t( e[7] ) << 24;
+        return lo | ( hi << 32 );
     }
 };
 
@@ -206,18 +316,78 @@ struct TableReader
     int64_t size;
     int64_t offset = 0;
     TableReport * report;
+    const TableIdTable * ids = NULL;
+    // ONLY THE ROOT BODY CARRIES THE NODE TABLE (docs/SPEC-TABLES.md §3.1), so
+    // a body has to know which it is: the reserved id inside a NESTED body is
+    // malformed, because a second numbering cannot exist. Every reader made
+    // for a payload is nested; the two the wire surfaces make for a root say so.
+    bool nested = true;
 
     TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report )
         : buffer( from_buffer ), size( from_size ), report( to_report ) {}
 
+    TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report, const TableIdTable * to_ids )
+        : buffer( from_buffer ), size( from_size ), report( to_report ), ids( to_ids ) {}
+
     BENCHTABLE_TABLE_INLINE bool has( int64_t bytes ) const { return offset + bytes <= size; }
+    // A LENGTH IS A 64-BIT NUMBER AND A BUFFER IS NOT (docs/SPEC-TABLES.md
+    // §3): every length, count and index on this wire has sixty-four bits of
+    // capability, so one past what remains must be compared UNSIGNED. Casting
+    // it to int64 first turns 0xFFFFFFFFFFFFFFFF into -1, and a negative
+    // length looks like room.
+    BENCHTABLE_TABLE_INLINE bool room( uint64_t bytes ) const { return bytes <= (uint64_t) ( size - offset ); }
     BENCHTABLE_TABLE_INLINE uint8_t get8()   { return buffer[offset++]; }
     BENCHTABLE_TABLE_INLINE uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
     BENCHTABLE_TABLE_INLINE uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
     BENCHTABLE_TABLE_INLINE uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
     BENCHTABLE_TABLE_INLINE void get128( uint64_t & lo, uint64_t & hi ) { lo = get64(); hi = get64(); }
 
-    // skip one payload by kind; false = framing damage
+    // ONE CANONICAL UNSIGNED LEB128 (docs/SPEC-TABLES.md §3), and a
+    // non-minimal spelling is MALFORMED: 0x80 0x00 and 0x00 both spell zero,
+    // and only the second is legal input. An encoding past ten bytes, or a
+    // tenth byte with a bit above the 64th value bit, is malformed on the same
+    // rule. false = framing damage on the body carrying it.
+    bool getleb( uint64_t & value )
+    {
+        // A NUMBER THIS READER REFUSES LEAVES THE CURSOR WHERE IT WAS. The
+        // caller's next question is often "did this body end exactly at its
+        // L", and a rejected number that had moved the cursor would answer
+        // that question with the damage already stepped over.
+        const int64_t at = offset;
+        value = 0;
+        uint32_t shift = 0;
+        for ( int32_t i = 0; i < 10; i++ )
+        {
+            if ( !has( 1 ) ) { offset = at; return false; }
+            const uint8_t b = get8();
+            if ( i == 9 && b > 1 ) { offset = at; return false; }
+            value |= uint64_t( b & 0x7F ) << shift;
+            if ( ( b & 0x80 ) == 0 )
+            {
+                if ( i > 0 && b == 0 ) { offset = at; return false; } // a redundant continuation
+                return true;
+            }
+            shift += 7;
+        }
+        offset = at;
+        return false;
+    }
+
+    // resolve one id reference against the file's table. false = a reference
+    // ABOVE the entry count, or a 0 where an id is required, both of which
+    // are framing damage on the body that carries it.
+    bool getid( uint64_t & id )
+    {
+        uint64_t ref = 0;
+        if ( !getleb( ref ) ) { return false; }
+        if ( ref == 0 || ids == NULL || ref > (uint64_t) ids->count ) { return false; }
+        id = ids->at( ref );
+        return true;
+    }
+
+    // skip one payload by kind; false = framing damage. FOUR RULES COVER THE
+    // SET (docs/SPEC-TABLES.md §3), and a kind outside it is not skippable —
+    // which is why the set is closed and why kind 31 exists.
     bool skip( uint8_t kind )
     {
         switch ( kind )
@@ -226,27 +396,112 @@ struct TableReader
             // the fixed-point family at every storage width (docs/SPEC-TABLES.md §3)
             case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
             case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
-            case 4: case 8: case 10: case 17: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false; // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1)
+            case 4: case 8: case 10: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false;
             case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
             case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
-            case 12: case 13: case 14: case 16:
+            case 17: case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
-                if ( !has( 4 ) ) return false;
-                uint32_t n = get32();
-                return has( n ) ? ( offset += n, true ) : false;
+                uint64_t ignored = 0;
+                return getleb( ignored );
             }
-            case 15: // union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body)
+            case 12: case 13: case 14: case 16: case 31: case 32: // 31 is the ESCAPE, 32 the payload-free kind
             {
-                if ( !has( 2 ) ) return false;
-                if ( get16() == 0 ) return true;
-                if ( !has( 4 ) ) return false;
-                uint32_t n = get32();
-                return has( n ) ? ( offset += n, true ) : false;
+                uint64_t n = 0;
+                if ( !getleb( n ) ) return false;
+                return room( n ) ? ( offset += (int64_t) n, true ) : false;
+            }
+            case 15: // union: the arm id reference, then its kind, its L and its payload (reference 0 = empty)
+            {
+                uint64_t arm = 0;
+                if ( !getleb( arm ) ) return false;
+                if ( arm == 0 ) return true;
+                if ( !has( 1 ) ) return false;
+                offset += 1; // the arm's kind byte
+                uint64_t n = 0;
+                if ( !getleb( n ) ) return false;
+                return room( n ) ? ( offset += (int64_t) n, true ) : false;
             }
         }
         return false;
     }
 };
+
+// The RESERVED node-table id, the one id the language holds back
+// (docs/SPEC-TABLES.md §3.1, §5). It rides in every unit, pointered or not,
+// because every body has to know that a NESTED body claiming one is damaged.
+static const uint64_t kTableNodeTableFieldId = 0xFFFFFFFFFFFFFFFFull;
+
+// TableWireForm is the FORM BYTE, and it is the whole header
+// (docs/SPEC-TABLES.md §3). A reader that meets a byte it does not know
+// refuses the wire by name and never reports damage.
+const uint8_t kTableWireForm = 1;
+
+// TableOpen reads the form byte and the trailer, in that order, and hands back
+// the ROOT BODY. It answers one of three verdicts, because five zero counters
+// and a false flag are what a clean read prints too:
+//
+//   TableOpenOk       the form is known and the table read whole
+//   TableOpenRefused  a FORM BYTE this reader does not carry: nothing is
+//                     decoded, nothing is counted, and no damage is reported
+//   TableOpenDamaged  a table that cannot be read whole — fewer than eight
+//                     bytes, a count whose entries run past the front of the
+//                     file, a count that leaves no room for the form byte, or
+//                     ONE ID IN TWO ENTRIES. The whole wire is malformed,
+//                     nothing is decoded, and one event is counted.
+//   TableOpenBodyStopped  the form and the table were good and the ROOT BODY
+//                     could not be walked to its own terminator. What it
+//                     decoded before that is kept, as everywhere on this wire.
+enum TableOpenVerdict { TableOpenOk, TableOpenRefused, TableOpenDamaged, TableOpenBodyStopped };
+
+inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
+{
+    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
+    if ( bytes < 9 ) { return TableOpenDamaged; }
+    const uint8_t * tail = buffer + bytes - 8;
+    uint64_t lo = uint64_t( tail[0] ) | uint64_t( tail[1] ) << 8 | uint64_t( tail[2] ) << 16 | uint64_t( tail[3] ) << 24;
+    uint64_t hi = uint64_t( tail[4] ) | uint64_t( tail[5] ) << 8 | uint64_t( tail[6] ) << 16 | uint64_t( tail[7] ) << 24;
+    uint64_t count = lo | ( hi << 32 );
+    if ( count > (uint64_t) ( bytes / 8 ) ) { return TableOpenDamaged; }
+    const int64_t span = (int64_t) count * 8 + 8;
+    if ( span + 1 > bytes ) { return TableOpenDamaged; }
+    table.entries = buffer + bytes - span;
+    table.count = (int64_t) count;
+    // THE ENTRIES ARE DISTINCT: a table that carries one id twice is malformed
+    // for the whole wire, because no wire this schema writes carries a repeat
+    // and it would leave one more shape of table for a hostile writer to aim
+    // at (docs/SPEC-TABLES.md §3).
+    for ( int64_t i = 1; i < table.count; i++ )
+    {
+        const uint64_t id = table.at( uint64_t( i ) + 1 );
+        for ( int64_t j = 0; j < i; j++ )
+        {
+            if ( table.at( uint64_t( j ) + 1 ) == id ) { return TableOpenDamaged; }
+        }
+    }
+    body_bytes = bytes - span - 1;
+    return TableOpenOk;
+}
+
+// TableBodyExtent walks a body's framing to the zero reference that ends it,
+// so a reader can tell a body that ENDED EARLY — leaving bytes no field claims
+// — from one that is merely damaged. ANY BYTE BETWEEN THE ROOT'S TERMINATOR
+// AND THE TABLE'S FIRST ENTRY IS MALFORMED, because no field claims it and the
+// two ends of the file have met (docs/SPEC-TABLES.md §3).
+inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const TableIdTable & table )
+{
+    TableReport ignored;
+    TableReader r( body, bytes, &ignored, &table );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.getleb( ref ) ) { return false; }
+        if ( ref == 0 ) { return r.offset != bytes; }
+        if ( ref > (uint64_t) table.count ) { return false; }
+        if ( !r.has( 1 ) ) { return false; }
+        if ( !r.skip( r.get8() ) ) { return false; }
+    }
+}
 
 inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
@@ -274,7 +529,7 @@ namespace benchtable {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x5f2254539e3ad47dull;
+static const uint64_t BuildVersion = 0xf4b855b89df191edull;
 
 } // namespace benchtable
 
@@ -559,54 +814,101 @@ struct TableMixed {
     int32_t idle_ticks = 0;
 };
 
-// TableWeapon on the TABLE wire: a value rides as the u16 hash of its VARIANT
-// NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
+// TableWeapon on the TABLE wire: a value rides under its OWN kind 30, carrying the
+// REFERENCE to its variant name's id, whatever the declaration-side storage
+// width — so a variant may be added anywhere, removed, or reordered and old
+// data still reads (docs/SPEC-TABLES.md §3, §5). None is the ZERO REFERENCE,
+// the one value that names no id, so no declared variant can be mistaken for it.
 #ifndef BENCHTABLE_SCHEMA_TABLE_ENUM_TABLEWEAPON
 #define BENCHTABLE_SCHEMA_TABLE_ENUM_TABLEWEAPON
-inline bool TableEnumId( TableWeapon value, uint16_t & id )
+inline bool TableEnumRef( TableIds & ids, TableWeapon value, uint64_t & ref )
+{
+    switch ( value )
+    {
+        case TableWeapon::None: ref = 0; return true;
+        case TableWeapon::Fists: ref = ids.ref( 0xa790eee12766cf0cull ); return true;
+        case TableWeapon::Pistol: ref = ids.ref( 0x9fbfefa835da8476ull ); return true;
+        case TableWeapon::Shotgun: ref = ids.ref( 0x188bbb1783928a95ull ); return true;
+        case TableWeapon::Rifle: ref = ids.ref( 0x2c3667b9c2f272f1ull ); return true;
+        case TableWeapon::Sniper: ref = ids.ref( 0x0ca8b41b00d755f6ull ); return true;
+        case TableWeapon::Smg: ref = ids.ref( 0x985fc819fab21a4eull ); return true;
+        case TableWeapon::Rocket: ref = ids.ref( 0x229d0447c3086a55ull ); return true;
+        case TableWeapon::Grenade: ref = ids.ref( 0x011c7b49a7228f9dull ); return true;
+        case TableWeapon::Plasma: ref = ids.ref( 0x89f7566e1123e15full ); return true;
+        case TableWeapon::Railgun: ref = ids.ref( 0x8d7f25318b3b4469ull ); return true;
+        case TableWeapon::Flamer: ref = ids.ref( 0xd9cd0dcc285b7816ull ); return true;
+        case TableWeapon::Mine: ref = ids.ref( 0x04dc16aea8ff5276ull ); return true;
+        case TableWeapon::Turret: ref = ids.ref( 0x35e53bc341129217ull ); return true;
+        case TableWeapon::Drone: ref = ids.ref( 0x2cc8282fb0de8831ull ); return true;
+        case TableWeapon::Repair: ref = ids.ref( 0x20bada21bc8cb334ull ); return true;
+        default: return false; // no variant names this value: no wire identity
+    }
+}
+inline bool TableEnumNamed( TableWeapon value )
+{
+    switch ( value )
+    {
+        case TableWeapon::None: return true;
+        case TableWeapon::Fists: return true;
+        case TableWeapon::Pistol: return true;
+        case TableWeapon::Shotgun: return true;
+        case TableWeapon::Rifle: return true;
+        case TableWeapon::Sniper: return true;
+        case TableWeapon::Smg: return true;
+        case TableWeapon::Rocket: return true;
+        case TableWeapon::Grenade: return true;
+        case TableWeapon::Plasma: return true;
+        case TableWeapon::Railgun: return true;
+        case TableWeapon::Flamer: return true;
+        case TableWeapon::Mine: return true;
+        case TableWeapon::Turret: return true;
+        case TableWeapon::Drone: return true;
+        case TableWeapon::Repair: return true;
+        default: return false;
+    }
+}
+inline bool TableEnumId( TableWeapon value, uint64_t & id )
 {
     switch ( value )
     {
         case TableWeapon::None: id = 0; return true;
-        case TableWeapon::Fists: id = 0x03ed; return true;
-        case TableWeapon::Pistol: id = 0x54eb; return true;
-        case TableWeapon::Shotgun: id = 0xdf27; return true;
-        case TableWeapon::Rifle: id = 0xaa64; return true;
-        case TableWeapon::Sniper: id = 0x5513; return true;
-        case TableWeapon::Smg: id = 0x138b; return true;
-        case TableWeapon::Rocket: id = 0x56fa; return true;
-        case TableWeapon::Grenade: id = 0xf3ed; return true;
-        case TableWeapon::Plasma: id = 0xa376; return true;
-        case TableWeapon::Railgun: id = 0xeff8; return true;
-        case TableWeapon::Flamer: id = 0xfa19; return true;
-        case TableWeapon::Mine: id = 0x61bf; return true;
-        case TableWeapon::Turret: id = 0xf720; return true;
-        case TableWeapon::Drone: id = 0xc67e; return true;
-        case TableWeapon::Repair: id = 0x86cc; return true;
+        case TableWeapon::Fists: id = 0xa790eee12766cf0cull; return true;
+        case TableWeapon::Pistol: id = 0x9fbfefa835da8476ull; return true;
+        case TableWeapon::Shotgun: id = 0x188bbb1783928a95ull; return true;
+        case TableWeapon::Rifle: id = 0x2c3667b9c2f272f1ull; return true;
+        case TableWeapon::Sniper: id = 0x0ca8b41b00d755f6ull; return true;
+        case TableWeapon::Smg: id = 0x985fc819fab21a4eull; return true;
+        case TableWeapon::Rocket: id = 0x229d0447c3086a55ull; return true;
+        case TableWeapon::Grenade: id = 0x011c7b49a7228f9dull; return true;
+        case TableWeapon::Plasma: id = 0x89f7566e1123e15full; return true;
+        case TableWeapon::Railgun: id = 0x8d7f25318b3b4469ull; return true;
+        case TableWeapon::Flamer: id = 0xd9cd0dcc285b7816ull; return true;
+        case TableWeapon::Mine: id = 0x04dc16aea8ff5276ull; return true;
+        case TableWeapon::Turret: id = 0x35e53bc341129217ull; return true;
+        case TableWeapon::Drone: id = 0x2cc8282fb0de8831ull; return true;
+        case TableWeapon::Repair: id = 0x20bada21bc8cb334ull; return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
-inline bool TableEnumValue( uint16_t id, TableWeapon & out )
+inline bool TableEnumValue( uint64_t id, TableWeapon & out )
 {
     switch ( id )
     {
-        case 0: out = TableWeapon::None; return true;
-        case 0x03ed: out = TableWeapon::Fists; return true;
-        case 0x54eb: out = TableWeapon::Pistol; return true;
-        case 0xdf27: out = TableWeapon::Shotgun; return true;
-        case 0xaa64: out = TableWeapon::Rifle; return true;
-        case 0x5513: out = TableWeapon::Sniper; return true;
-        case 0x138b: out = TableWeapon::Smg; return true;
-        case 0x56fa: out = TableWeapon::Rocket; return true;
-        case 0xf3ed: out = TableWeapon::Grenade; return true;
-        case 0xa376: out = TableWeapon::Plasma; return true;
-        case 0xeff8: out = TableWeapon::Railgun; return true;
-        case 0xfa19: out = TableWeapon::Flamer; return true;
-        case 0x61bf: out = TableWeapon::Mine; return true;
-        case 0xf720: out = TableWeapon::Turret; return true;
-        case 0xc67e: out = TableWeapon::Drone; return true;
-        case 0x86cc: out = TableWeapon::Repair; return true;
+        case 0xa790eee12766cf0cull: out = TableWeapon::Fists; return true;
+        case 0x9fbfefa835da8476ull: out = TableWeapon::Pistol; return true;
+        case 0x188bbb1783928a95ull: out = TableWeapon::Shotgun; return true;
+        case 0x2c3667b9c2f272f1ull: out = TableWeapon::Rifle; return true;
+        case 0x0ca8b41b00d755f6ull: out = TableWeapon::Sniper; return true;
+        case 0x985fc819fab21a4eull: out = TableWeapon::Smg; return true;
+        case 0x229d0447c3086a55ull: out = TableWeapon::Rocket; return true;
+        case 0x011c7b49a7228f9dull: out = TableWeapon::Grenade; return true;
+        case 0x89f7566e1123e15full: out = TableWeapon::Plasma; return true;
+        case 0x8d7f25318b3b4469ull: out = TableWeapon::Railgun; return true;
+        case 0xd9cd0dcc285b7816ull: out = TableWeapon::Flamer; return true;
+        case 0x04dc16aea8ff5276ull: out = TableWeapon::Mine; return true;
+        case 0x35e53bc341129217ull: out = TableWeapon::Turret; return true;
+        case 0x2cc8282fb0de8831ull: out = TableWeapon::Drone; return true;
+        case 0x20bada21bc8cb334ull: out = TableWeapon::Repair; return true;
         default: return false; // an id this build cannot name
     }
 }
@@ -691,132 +993,147 @@ inline void TablePickupEventReset( TablePickupEvent & value ) { value = TablePic
 
 // ---- codecs: measure/save/load per closure member ----
 
-inline int64_t TableEntityMeasure( const TableEntity & value );
-BENCHTABLE_TABLE_INLINE bool TableEntitySaveBody( TableWriter & w, const TableEntity & value );
+inline int64_t TableEntityMeasureBody( TableIds & ids, const TableEntity & value );
+BENCHTABLE_TABLE_INLINE bool TableEntitySaveBody( TableWriter & w, TableIds & ids, const TableEntity & value );
 BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity & value );
-inline int64_t TableStatMeasure( const TableStat & value );
-BENCHTABLE_TABLE_INLINE bool TableStatSaveBody( TableWriter & w, const TableStat & value );
+inline int64_t TableStatMeasureBody( TableIds & ids, const TableStat & value );
+BENCHTABLE_TABLE_INLINE bool TableStatSaveBody( TableWriter & w, TableIds & ids, const TableStat & value );
 BENCHTABLE_TABLE_INLINE bool TableStatLoadBody( TableReader & r, TableStat & value );
-inline int64_t TableMixedMeasure( const TableMixed & value );
-BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, const TableMixed & value );
+inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value );
+BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids, const TableMixed & value );
 BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & value );
-inline int64_t TableHitEventMeasure( const TableHitEvent & value );
-BENCHTABLE_TABLE_INLINE bool TableHitEventSaveBody( TableWriter & w, const TableHitEvent & value );
+inline int64_t TableHitEventMeasureBody( TableIds & ids, const TableHitEvent & value );
+BENCHTABLE_TABLE_INLINE bool TableHitEventSaveBody( TableWriter & w, TableIds & ids, const TableHitEvent & value );
 BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEvent & value );
-inline int64_t TableChatEventMeasure( const TableChatEvent & value );
-BENCHTABLE_TABLE_INLINE bool TableChatEventSaveBody( TableWriter & w, const TableChatEvent & value );
+inline int64_t TableChatEventMeasureBody( TableIds & ids, const TableChatEvent & value );
+BENCHTABLE_TABLE_INLINE bool TableChatEventSaveBody( TableWriter & w, TableIds & ids, const TableChatEvent & value );
 BENCHTABLE_TABLE_INLINE bool TableChatEventLoadBody( TableReader & r, TableChatEvent & value );
-inline int64_t TablePickupEventMeasure( const TablePickupEvent & value );
-BENCHTABLE_TABLE_INLINE bool TablePickupEventSaveBody( TableWriter & w, const TablePickupEvent & value );
+inline int64_t TablePickupEventMeasureBody( TableIds & ids, const TablePickupEvent & value );
+BENCHTABLE_TABLE_INLINE bool TablePickupEventSaveBody( TableWriter & w, TableIds & ids, const TablePickupEvent & value );
 BENCHTABLE_TABLE_INLINE bool TablePickupEventLoadBody( TableReader & r, TablePickupEvent & value );
 
-inline int64_t TableEntityMeasure( const TableEntity & value )
+inline int64_t TableEntityMeasureBody( TableIds & ids, const TableEntity & value )
 {
-    int64_t bytes = 2; // terminator
-    if ( value.entity_id != 0 ) { bytes += 3 + 2; } // entity_id
-    if ( value.pos_x != 0 ) { bytes += 3 + 4; } // pos_x
-    if ( value.pos_y != 0 ) { bytes += 3 + 4; } // pos_y
-    if ( value.pos_z != 0 ) { bytes += 3 + 4; } // pos_z
-    if ( value.yaw != 0 ) { bytes += 3 + 2; } // yaw
-    if ( value.pitch != 0 ) { bytes += 3 + 2; } // pitch
-    if ( value.vel_x != 0 ) { bytes += 3 + 4; } // vel_x
-    if ( value.vel_y != 0 ) { bytes += 3 + 4; } // vel_y
-    if ( value.vel_z != 0 ) { bytes += 3 + 4; } // vel_z
-    if ( value.health != 0 ) { bytes += 3 + 4; } // health
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    if ( value.entity_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x23fcfd6678e36712ull ) ) + 1 + 2; } // entity_id
+    if ( value.pos_x != 0 ) { bytes += TableLebBytes( ids.ref( 0xcb4b37357667310eull ) ) + 1 + 4; } // pos_x
+    if ( value.pos_y != 0 ) { bytes += TableLebBytes( ids.ref( 0xcb4b3835766732c1ull ) ) + 1 + 4; } // pos_y
+    if ( value.pos_z != 0 ) { bytes += TableLebBytes( ids.ref( 0xcb4b353576672da8ull ) ) + 1 + 4; } // pos_z
+    if ( value.yaw != 0 ) { bytes += TableLebBytes( ids.ref( 0xb54d8e19798e16e8ull ) ) + 1 + 2; } // yaw
+    if ( value.pitch != 0 ) { bytes += TableLebBytes( ids.ref( 0x53a9f665a90cc1b1ull ) ) + 1 + 2; } // pitch
+    if ( value.vel_x != 0 ) { bytes += TableLebBytes( ids.ref( 0x6cede6b6eb60ee67ull ) ) + 1 + 4; } // vel_x
+    if ( value.vel_y != 0 ) { bytes += TableLebBytes( ids.ref( 0x6cede5b6eb60ecb4ull ) ) + 1 + 4; } // vel_y
+    if ( value.vel_z != 0 ) { bytes += TableLebBytes( ids.ref( 0x6cede8b6eb60f1cdull ) ) + 1 + 4; } // vel_z
+    if ( value.health != 0 ) { bytes += TableLebBytes( ids.ref( 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
     if ( value.weapon != TableWeapon::None )
     {
-        uint16_t id_weapon = 0;
-        if ( !TableEnumId( value.weapon, id_weapon ) ) { return -1; } // no variant names this value
-        bytes += 3 + 2; // weapon: the variant's name hash
+        if ( !TableEnumNamed( value.weapon ) ) { return -1; } // no variant names this value
+        const uint64_t ref_weapon = ids.ref( 0xa0b610205f2c6e01ull );
+        uint64_t variant_weapon = 0;
+        if ( !TableEnumRef( ids, value.weapon, variant_weapon ) ) { return -1; }
+        bytes += TableLebBytes( ref_weapon ) + 1 + TableLebBytes( variant_weapon ); // weapon: the variant's reference
     }
-    if ( value.damage != 0 ) { bytes += 3 + 8; } // damage
-    if ( value.moving != false ) { bytes += 3 + 1; } // moving
-    if ( value.firing != false ) { bytes += 3 + 1; } // firing
+    if ( value.damage != 0 ) { bytes += TableLebBytes( ids.ref( 0x7f6308be8ab37fc0ull ) ) + 1 + 8; } // damage
+    if ( value.moving != false ) { bytes += TableLebBytes( ids.ref( 0x11a44fc1d1243da7ull ) ) + 1 + 1; } // moving
+    if ( value.firing != false ) { bytes += TableLebBytes( ids.ref( 0x7674cfd19b9031caull ) ) + 1 + 1; } // firing
     return bytes;
 }
 
-BENCHTABLE_TABLE_INLINE bool TableEntitySaveBody( TableWriter & w, const TableEntity & value )
+inline int64_t TableEntityMeasure( const TableEntity & value )
+{
+    TableIds ids;
+    const int64_t body = TableEntityMeasureBody( ids, value );
+    if ( body < 0 || ids.overflow ) { return -1; }
+    return 1 + body + TableIdsBytes( ids );
+}
+
+BENCHTABLE_TABLE_INLINE bool TableEntitySaveBody( TableWriter & w, TableIds & ids, const TableEntity & value )
 {
     if ( value.entity_id != 0 )
     {
-        w.put16( 0x5a13 ); w.put8( 7 ); // entity_id
+        w.putleb( ids.ref( 0x23fcfd6678e36712ull ) ); w.put8( 7 ); // entity_id
         w.put16( uint16_t( value.entity_id ) );
     }
     if ( value.pos_x != 0 )
     {
-        w.put16( 0xaaa3 ); w.put8( 4 ); // pos_x
+        w.putleb( ids.ref( 0xcb4b37357667310eull ) ); w.put8( 4 ); // pos_x
         w.put32( uint32_t( value.pos_x ) );
     }
     if ( value.pos_y != 0 )
     {
-        w.put16( 0xa5cc ); w.put8( 4 ); // pos_y
+        w.putleb( ids.ref( 0xcb4b3835766732c1ull ) ); w.put8( 4 ); // pos_y
         w.put32( uint32_t( value.pos_y ) );
     }
     if ( value.pos_z != 0 )
     {
-        w.put16( 0xa985 ); w.put8( 4 ); // pos_z
+        w.putleb( ids.ref( 0xcb4b353576672da8ull ) ); w.put8( 4 ); // pos_z
         w.put32( uint32_t( value.pos_z ) );
     }
     if ( value.yaw != 0 )
     {
-        w.put16( 0x80c1 ); w.put8( 7 ); // yaw
+        w.putleb( ids.ref( 0xb54d8e19798e16e8ull ) ); w.put8( 7 ); // yaw
         w.put16( uint16_t( value.yaw ) );
     }
     if ( value.pitch != 0 )
     {
-        w.put16( 0xf783 ); w.put8( 7 ); // pitch
+        w.putleb( ids.ref( 0x53a9f665a90cc1b1ull ) ); w.put8( 7 ); // pitch
         w.put16( uint16_t( value.pitch ) );
     }
     if ( value.vel_x != 0 )
     {
-        w.put16( 0x03e2 ); w.put8( 4 ); // vel_x
+        w.putleb( ids.ref( 0x6cede6b6eb60ee67ull ) ); w.put8( 4 ); // vel_x
         w.put32( uint32_t( value.vel_x ) );
     }
     if ( value.vel_y != 0 )
     {
-        w.put16( 0x0151 ); w.put8( 4 ); // vel_y
+        w.putleb( ids.ref( 0x6cede5b6eb60ecb4ull ) ); w.put8( 4 ); // vel_y
         w.put32( uint32_t( value.vel_y ) );
     }
     if ( value.vel_z != 0 )
     {
-        w.put16( 0x0e88 ); w.put8( 4 ); // vel_z
+        w.putleb( ids.ref( 0x6cede8b6eb60f1cdull ) ); w.put8( 4 ); // vel_z
         w.put32( uint32_t( value.vel_z ) );
     }
     if ( value.health != 0 )
     {
-        w.put16( 0x8617 ); w.put8( 4 ); // health
+        w.putleb( ids.ref( 0x7f69d4b5288ba9cfull ) ); w.put8( 4 ); // health
         w.put32( uint32_t( value.health ) );
     }
     if ( value.weapon != TableWeapon::None )
     {
-        uint16_t id_weapon = 0;
-        if ( !TableEnumId( value.weapon, id_weapon ) ) { return false; }
-        w.put16( 0x4f72 ); w.put8( 7 ); // weapon
-        w.put16( id_weapon );
+        if ( !TableEnumNamed( value.weapon ) ) { return false; }
+        const uint64_t ref_weapon = ids.ref( 0xa0b610205f2c6e01ull );
+        uint64_t variant_weapon = 0;
+        if ( !TableEnumRef( ids, value.weapon, variant_weapon ) ) { return false; }
+        w.putleb( ref_weapon ); w.put8( 30 ); w.putleb( variant_weapon ); // weapon
     }
     if ( value.damage != 0 )
     {
-        w.put16( 0x15a9 ); w.put8( 9 ); // damage
+        w.putleb( ids.ref( 0x7f6308be8ab37fc0ull ) ); w.put8( 9 ); // damage
         w.put64( uint64_t( value.damage ) );
     }
     if ( value.moving != false )
     {
-        w.put16( 0xa4b2 ); w.put8( 1 ); // moving
+        w.putleb( ids.ref( 0x11a44fc1d1243da7ull ) ); w.put8( 1 ); // moving
         w.put8( value.moving ? 1 : 0 );
     }
     if ( value.firing != false )
     {
-        w.put16( 0x2302 ); w.put8( 1 ); // firing
+        w.putleb( ids.ref( 0x7674cfd19b9031caull ) ); w.put8( 1 ); // firing
         w.put8( value.firing ? 1 : 0 );
     }
-    w.put16( 0 ); // terminator
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
 }
 
 inline int64_t TableEntitySave( const TableEntity & value, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w( buffer, capacity );
-    if ( !TableEntitySaveBody( w, value ) ) { return -1; }
+    TableIds ids;
+    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
+    if ( !TableEntitySaveBody( w, ids, value ) || ids.overflow ) { return -1; }
+    TableIdsWrite( w, ids ); // the ID TABLE is the last thing in the file
+    if ( w.overflow ) { return -1; }
     return w.offset; // == TableEntityMeasure( value )
 }
 
@@ -825,17 +1142,30 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
     TableEntityReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
-        if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
-        uint16_t field_id = r.get16();
-        if ( field_id == 0 ) return true;
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
+        if ( field_id == kTableNodeTableFieldId && r.nested )
+        {
+            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
+            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
+            // second numbering cannot exist, so a body claiming one is
+            // damaged — that body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
         switch ( field_id )
         {
-            case 0x5a13: // entity_id
+            case 0x23fcfd6678e36712ull: // entity_id
             {
                 if ( kind != 7 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -846,10 +1176,12 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.entity_id = decoded_v;
                 break;
             }
-            case 0xaaa3: // pos_x
+            case 0xcb4b37357667310eull: // pos_x
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -861,10 +1193,12 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.pos_x = decoded_v;
                 break;
             }
-            case 0xa5cc: // pos_y
+            case 0xcb4b3835766732c1ull: // pos_y
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -876,10 +1210,12 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.pos_y = decoded_v;
                 break;
             }
-            case 0xa985: // pos_z
+            case 0xcb4b353576672da8ull: // pos_z
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -891,10 +1227,12 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.pos_z = decoded_v;
                 break;
             }
-            case 0x80c1: // yaw
+            case 0xb54d8e19798e16e8ull: // yaw
             {
                 if ( kind != 7 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -905,10 +1243,12 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.yaw = decoded_v;
                 break;
             }
-            case 0xf783: // pitch
+            case 0x53a9f665a90cc1b1ull: // pitch
             {
                 if ( kind != 7 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -919,10 +1259,12 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.pitch = decoded_v;
                 break;
             }
-            case 0x03e2: // vel_x
+            case 0x6cede6b6eb60ee67ull: // vel_x
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -934,10 +1276,12 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.vel_x = decoded_v;
                 break;
             }
-            case 0x0151: // vel_y
+            case 0x6cede5b6eb60ecb4ull: // vel_y
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -949,10 +1293,12 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.vel_y = decoded_v;
                 break;
             }
-            case 0x0e88: // vel_z
+            case 0x6cede8b6eb60f1cdull: // vel_z
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -964,10 +1310,12 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.vel_z = decoded_v;
                 break;
             }
-            case 0x8617: // health
+            case 0x7f69d4b5288ba9cfull: // health
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -979,29 +1327,33 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.health = decoded_v;
                 break;
             }
-            case 0x4f72: // weapon
+            case 0xa0b610205f2c6e01ull: // weapon
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
+                uint64_t variant_ref = 0;
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( variant_ref == 0 ) { value.weapon = TableWeapon::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( !TableEnumValue( r.ids->at( variant_ref ), value.weapon ) )
                 {
-                    uint16_t variant = r.get16();
-                    if ( !TableEnumValue( variant, value.weapon ) )
-                    {
-                        value.weapon = TableWeapon::None;
-                        r.report->unknown++;
-                    }
+                    value.weapon = TableWeapon::None;
+                    r.report->unknown++;
                 }
                 break;
             }
-            case 0x15a9: // damage
+            case 0x7f6308be8ab37fc0ull: // damage
             {
                 if ( kind != 9 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1011,10 +1363,12 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.damage = decoded_v;
                 break;
             }
-            case 0xa4b2: // moving
+            case 0x11a44fc1d1243da7ull: // moving
             {
                 if ( kind != 1 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1023,10 +1377,12 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.moving = r.get8() != 0;
                 break;
             }
-            case 0x2302: // firing
+            case 0x7674cfd19b9031caull: // firing
             {
                 if ( kind != 1 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1045,41 +1401,89 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
     }
 }
 
-inline bool TableEntityLoad( TableEntity & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so a
+// file that is both a newer form and damaged is a REFUSAL and never damage.
+// A refusal moves none of the report's five counters, because nothing was
+// decoded and there is nothing to count (docs/SPEC-TABLES.md §3).
+inline TableOpenVerdict TableEntityLoadVerdict( TableEntity & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
-    TableReader r( buffer, bytes, report != NULL ? report : &ignored );
-    return TableEntityLoadBody( r, value );
+    TableReport * to = report != NULL ? report : &ignored;
+    TableIdTable table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        TableEntityReset( value );
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        else { to->refused = true; }
+        return verdict;
+    }
+    // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
+    // MALFORMED, because no field claims it and the two ends of the file
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
+    {
+        TableEntityReset( value );
+        to->malformed = true;
+        return TableOpenDamaged;
+    }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !TableEntityLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    return TableOpenOk;
+}
+
+// The bool is the BODY reaching its own terminator, and it is what it has
+// always been: framing damage inside a field keeps what it decoded, flags
+// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).
+// False is a wire nothing could be decoded from: a refusal, a table that
+// cannot be read whole, or a root body the walk could not finish.
+inline bool TableEntityLoad( TableEntity & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    return TableEntityLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
+}
+
+inline int64_t TableStatMeasureBody( TableIds & ids, const TableStat & value )
+{
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    if ( value.stat_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x80ab75f0866dbf65ull ) ) + 1 + 1; } // stat_id
+    if ( value.delta != 0 ) { bytes += TableLebBytes( ids.ref( 0x52076675ec13a0c1ull ) ) + 1 + 4; } // delta
+    return bytes;
 }
 
 inline int64_t TableStatMeasure( const TableStat & value )
 {
-    int64_t bytes = 2; // terminator
-    if ( value.stat_id != 0 ) { bytes += 3 + 1; } // stat_id
-    if ( value.delta != 0 ) { bytes += 3 + 4; } // delta
-    return bytes;
+    TableIds ids;
+    const int64_t body = TableStatMeasureBody( ids, value );
+    if ( body < 0 || ids.overflow ) { return -1; }
+    return 1 + body + TableIdsBytes( ids );
 }
 
-BENCHTABLE_TABLE_INLINE bool TableStatSaveBody( TableWriter & w, const TableStat & value )
+BENCHTABLE_TABLE_INLINE bool TableStatSaveBody( TableWriter & w, TableIds & ids, const TableStat & value )
 {
     if ( value.stat_id != 0 )
     {
-        w.put16( 0xfb6c ); w.put8( 6 ); // stat_id
+        w.putleb( ids.ref( 0x80ab75f0866dbf65ull ) ); w.put8( 6 ); // stat_id
         w.put8( uint8_t( value.stat_id ) );
     }
     if ( value.delta != 0 )
     {
-        w.put16( 0x1720 ); w.put8( 4 ); // delta
+        w.putleb( ids.ref( 0x52076675ec13a0c1ull ) ); w.put8( 4 ); // delta
         w.put32( uint32_t( value.delta ) );
     }
-    w.put16( 0 ); // terminator
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
 }
 
 inline int64_t TableStatSave( const TableStat & value, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w( buffer, capacity );
-    if ( !TableStatSaveBody( w, value ) ) { return -1; }
+    TableIds ids;
+    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
+    if ( !TableStatSaveBody( w, ids, value ) || ids.overflow ) { return -1; }
+    TableIdsWrite( w, ids ); // the ID TABLE is the last thing in the file
+    if ( w.overflow ) { return -1; }
     return w.offset; // == TableStatMeasure( value )
 }
 
@@ -1088,17 +1492,30 @@ BENCHTABLE_TABLE_INLINE bool TableStatLoadBody( TableReader & r, TableStat & val
     TableStatReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
-        if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
-        uint16_t field_id = r.get16();
-        if ( field_id == 0 ) return true;
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
+        if ( field_id == kTableNodeTableFieldId && r.nested )
+        {
+            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
+            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
+            // second numbering cannot exist, so a body claiming one is
+            // damaged — that body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
         switch ( field_id )
         {
-            case 0xfb6c: // stat_id
+            case 0x80ab75f0866dbf65ull: // stat_id
             {
                 if ( kind != 6 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1108,10 +1525,12 @@ BENCHTABLE_TABLE_INLINE bool TableStatLoadBody( TableReader & r, TableStat & val
                 value.stat_id = decoded_v;
                 break;
             }
-            case 0x1720: // delta
+            case 0x52076675ec13a0c1ull: // delta
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1133,319 +1552,419 @@ BENCHTABLE_TABLE_INLINE bool TableStatLoadBody( TableReader & r, TableStat & val
     }
 }
 
-inline bool TableStatLoad( TableStat & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so a
+// file that is both a newer form and damaged is a REFUSAL and never damage.
+// A refusal moves none of the report's five counters, because nothing was
+// decoded and there is nothing to count (docs/SPEC-TABLES.md §3).
+inline TableOpenVerdict TableStatLoadVerdict( TableStat & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
-    TableReader r( buffer, bytes, report != NULL ? report : &ignored );
-    return TableStatLoadBody( r, value );
+    TableReport * to = report != NULL ? report : &ignored;
+    TableIdTable table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        TableStatReset( value );
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        else { to->refused = true; }
+        return verdict;
+    }
+    // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
+    // MALFORMED, because no field claims it and the two ends of the file
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
+    {
+        TableStatReset( value );
+        to->malformed = true;
+        return TableOpenDamaged;
+    }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !TableStatLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    return TableOpenOk;
 }
 
-inline int64_t TableMixedMeasure( const TableMixed & value )
+// The bool is the BODY reaching its own terminator, and it is what it has
+// always been: framing damage inside a field keeps what it decoded, flags
+// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).
+// False is a wire nothing could be decoded from: a refusal, a table that
+// cannot be read whole, or a root body the walk could not finish.
+inline bool TableStatLoad( TableStat & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    int64_t bytes = 2; // terminator
-    if ( value.protocol_magic != 0 ) { bytes += 3 + 2; } // protocol_magic
-    if ( value.sequence != 0 ) { bytes += 3 + 2; } // sequence
-    if ( value.ack_sequence != 0 ) { bytes += 3 + 4; } // ack_sequence
-    if ( value.ack_bits != 0 ) { bytes += 3 + 4; } // ack_bits
-    if ( value.session_id != 0 ) { bytes += 3 + 8; } // session_id
-    if ( value.client_id != 0 ) { bytes += 3 + 4; } // client_id
-    if ( value.nonce != 1ull ) { bytes += 3 + 8; } // nonce
-    if ( value.world_time != 0 ) { bytes += 3 + 8; } // world_time
-    if ( value.frame_tick != 0 ) { bytes += 3 + 8; } // frame_tick
-    if ( value.server_time != 0.0f ) { bytes += 3 + 4; } // server_time
+    return TableStatLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
+}
+
+inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
+{
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    if ( value.protocol_magic != 0 ) { bytes += TableLebBytes( ids.ref( 0x6a5a70d91aa115fdull ) ) + 1 + 2; } // protocol_magic
+    if ( value.sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0xaa38aca481f528a8ull ) ) + 1 + 2; } // sequence
+    if ( value.ack_sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0x0dbe005c56697c3eull ) ) + 1 + 4; } // ack_sequence
+    if ( value.ack_bits != 0 ) { bytes += TableLebBytes( ids.ref( 0x9bae0da8b829ee03ull ) ) + 1 + 4; } // ack_bits
+    if ( value.session_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xb7d7b5650a590b05ull ) ) + 1 + 8; } // session_id
+    if ( value.client_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x6d7b98e2d095967eull ) ) + 1 + 4; } // client_id
+    if ( value.nonce != 1ull ) { bytes += TableLebBytes( ids.ref( 0x73a94c71d60dc0d8ull ) ) + 1 + 8; } // nonce
+    if ( value.world_time != 0 ) { bytes += TableLebBytes( ids.ref( 0x3eee6b51be54fc85ull ) ) + 1 + 8; } // world_time
+    if ( value.frame_tick != 0 ) { bytes += TableLebBytes( ids.ref( 0x7bbc035f7b6d0112ull ) ) + 1 + 8; } // frame_tick
+    if ( value.server_time != 0.0f ) { bytes += TableLebBytes( ids.ref( 0x3c460475f9be69c6ull ) ) + 1 + 4; } // server_time
     if ( value.entities_count < 0 || value.entities_count > 8 ) { return -1; } // storage invariant
     if ( value.entities_count > 0 )
     {
-        bytes += 3 + 4 + 5; // entities
-        for ( int32_t i = 0; i < value.entities_count; i++ )
+        const uint64_t ref_entities = ids.ref( 0x935d0fb07bb3822aull );
+        int64_t body_entities = 0;
+        body_entities += 1 + TableLebBytes( (uint64_t) ( value.entities_count ) ); // the element kind byte and the count
+        for ( int32_t elem_i = 0; elem_i < value.entities_count; elem_i++ )
         {
-            int64_t elem_entities = TableEntityMeasure( value.entities[i] );
-            if ( elem_entities < 0 ) { return -1; }
-            bytes += 4 + elem_entities;
+            const int64_t elem_bytes = TableEntityMeasureBody( ids, value.entities[elem_i] );
+            if ( elem_bytes < 0 ) { return -1; }
+            body_entities += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
+        bytes += TableLebBytes( ref_entities ) + 1 + TableLebBytes( (uint64_t) ( body_entities ) ) + ( body_entities ); // entities
     }
     if ( value.stats_count < 0 || value.stats_count > 80 ) { return -1; } // storage invariant
     if ( value.stats_count > 0 )
     {
-        bytes += 3 + 4 + 5; // stats
-        for ( int32_t i = 0; i < value.stats_count; i++ )
+        const uint64_t ref_stats = ids.ref( 0xee639cad45b1994cull );
+        int64_t body_stats = 0;
+        body_stats += 1 + TableLebBytes( (uint64_t) ( value.stats_count ) ); // the element kind byte and the count
+        for ( int32_t elem_i = 0; elem_i < value.stats_count; elem_i++ )
         {
-            int64_t elem_stats = TableStatMeasure( value.stats[i] );
-            if ( elem_stats < 0 ) { return -1; }
-            bytes += 4 + elem_stats;
+            const int64_t elem_bytes = TableStatMeasureBody( ids, value.stats[elem_i] );
+            if ( elem_bytes < 0 ) { return -1; }
+            body_stats += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
+        bytes += TableLebBytes( ref_stats ) + 1 + TableLebBytes( (uint64_t) ( body_stats ) ) + ( body_stats ); // stats
     }
-    switch ( value.game_event.type ) // game_event
+    if ( value.game_event.type != TableEventType::None ) // None elides — the absence of the field is the None
     {
-        case TableEventType::None: break; // None elides — TLV absence is the None
-        case TableEventType::Hit:
+        bytes += TableLebBytes( ids.ref( 0x2e35dc5321aa5790ull ) ) + 1;
+        switch ( value.game_event.type )
         {
-            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            case TableEventType::None: break;
+            case TableEventType::Hit:
             {
-                int64_t arm_body = TableHitEventMeasure( value.game_event.hit );
-                if ( arm_body < 0 ) { return -1; }
-                bytes += arm_body; // the arm's own table body (§3)
+                int64_t arm_payload = 0;
+                const uint64_t arm_ref = ids.ref( 0x33732819300680aaull );
+                {
+                    const int64_t arm_body = TableHitEventMeasureBody( ids, value.game_event.hit );
+                    if ( arm_body < 0 ) { return -1; }
+                    arm_payload += arm_body; // the arm's own table body (§3)
+                }
+                bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
+                break;
             }
-            break;
-        }
-        case TableEventType::Chat:
-        {
-            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            case TableEventType::Chat:
             {
-                int64_t arm_body = TableChatEventMeasure( value.game_event.chat );
-                if ( arm_body < 0 ) { return -1; }
-                bytes += arm_body; // the arm's own table body (§3)
+                int64_t arm_payload = 0;
+                const uint64_t arm_ref = ids.ref( 0xf2a38d910b5b348bull );
+                {
+                    const int64_t arm_body = TableChatEventMeasureBody( ids, value.game_event.chat );
+                    if ( arm_body < 0 ) { return -1; }
+                    arm_payload += arm_body; // the arm's own table body (§3)
+                }
+                bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
+                break;
             }
-            break;
-        }
-        case TableEventType::Pickup:
-        {
-            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            case TableEventType::Pickup:
             {
-                int64_t arm_body = TablePickupEventMeasure( value.game_event.pickup );
-                if ( arm_body < 0 ) { return -1; }
-                bytes += arm_body; // the arm's own table body (§3)
+                int64_t arm_payload = 0;
+                const uint64_t arm_ref = ids.ref( 0x9fa3a41c86ecb765ull );
+                {
+                    const int64_t arm_body = TablePickupEventMeasureBody( ids, value.game_event.pickup );
+                    if ( arm_body < 0 ) { return -1; }
+                    arm_payload += arm_body; // the arm's own table body (§3)
+                }
+                bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
+                break;
             }
-            break;
+            default: return -1; // invalid tag — the write side refuses it too
         }
-        default: return -1; // invalid tag — the write side refuses it too
     }
     {
         bool all_default_loadout = true;
         for ( int32_t i = 0; i < 4; i++ ) { if ( value.loadout[i] != 0 ) { all_default_loadout = false; break; } }
         if ( !all_default_loadout )
         {
-            bytes += 3 + 4 + 5 + 4; // loadout
+            const uint64_t ref_loadout = ids.ref( 0x5759ce7586bbb5a3ull );
+            int64_t body_loadout = 0;
+            body_loadout += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
+            body_loadout += (int64_t) ( 4 ) * 1;
+            bytes += TableLebBytes( ref_loadout ) + 1 + TableLebBytes( (uint64_t) ( body_loadout ) ) + ( body_loadout ); // loadout
         }
     }
     if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return -1; } // storage invariant
-    if ( value.player_name_length > 0 ) { bytes += 3 + 4 + value.player_name_length; } // player_name
+    if ( value.player_name_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x13a62f542cf8e86eull ) ) + 1 + TableLebBytes( (uint64_t) ( value.player_name_length ) ) + ( value.player_name_length ); } // player_name
     if ( value.payload_length < 0 || value.payload_length > 16 ) { return -1; } // storage invariant
-    if ( value.payload_length > 0 ) { bytes += 3 + 4 + 5 + value.payload_length; } // payload
-    if ( value.aim_x != 0.0f ) { bytes += 3 + 4; } // aim_x
-    if ( value.aim_y != 0.0f ) { bytes += 3 + 4; } // aim_y
-    if ( value.aim_z != 0.0f ) { bytes += 3 + 4; } // aim_z
-    if ( value.recoil != 0.0f ) { bytes += 3 + 4; } // recoil
-    if ( value.drift != 0.0 ) { bytes += 3 + 8; } // drift
-    if ( value.wide_key != 0 ) { bytes += 3 + 8; } // wide_key
-    if ( value.flux != 0 ) { bytes += 3 + 8; } // flux
-    if ( value.ping != 0.0f ) { bytes += 3 + 4; } // ping
-    if ( value.crc_hint != 0 ) { bytes += 3 + 4; } // crc_hint
-    if ( value.has_extra != false ) { bytes += 3 + 1; } // has_extra
+    if ( value.payload_length > 0 )
+    {
+        const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
+        bytes += TableLebBytes( ids.ref( 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
+    }
+    if ( value.aim_x != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xdbaf7be5e24296c9ull ) ) + 1 + 4; } // aim_x
+    if ( value.aim_y != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xdbaf7ae5e2429516ull ) ) + 1 + 4; } // aim_y
+    if ( value.aim_z != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xdbaf79e5e2429363ull ) ) + 1 + 4; } // aim_z
+    if ( value.recoil != 0.0f ) { bytes += TableLebBytes( ids.ref( 0x9cef31fff7e2e457ull ) ) + 1 + 4; } // recoil
+    if ( value.drift != 0.0 ) { bytes += TableLebBytes( ids.ref( 0x5ab3f9c9341f6c04ull ) ) + 1 + 8; } // drift
+    if ( value.wide_key != 0 ) { bytes += TableLebBytes( ids.ref( 0xa3348580461faf16ull ) ) + 1 + 8; } // wide_key
+    if ( value.flux != 0 ) { bytes += TableLebBytes( ids.ref( 0xd61bdd7908af2642ull ) ) + 1 + 8; } // flux
+    if ( value.ping != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xbf30e00dc53307a9ull ) ) + 1 + 4; } // ping
+    if ( value.crc_hint != 0 ) { bytes += TableLebBytes( ids.ref( 0x560d6527ccd8515full ) ) + 1 + 4; } // crc_hint
+    if ( value.has_extra != false ) { bytes += TableLebBytes( ids.ref( 0xc08292176cfd8672ull ) ) + 1 + 1; } // has_extra
     if ( value.has_extra )
     {
-        if ( value.extra != 0 ) { bytes += 3 + 4; } // extra
+        if ( value.extra != 0 ) { bytes += TableLebBytes( ids.ref( 0xfd29ee12a979cb69ull ) ) + 1 + 4; } // extra
     }
     if ( !value.has_extra )
     {
-        if ( value.idle_ticks != 0 ) { bytes += 3 + 4; } // idle_ticks
+        if ( value.idle_ticks != 0 ) { bytes += TableLebBytes( ids.ref( 0x78101ac0aa8cbcfeull ) ) + 1 + 4; } // idle_ticks
     }
     return bytes;
 }
 
-BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, const TableMixed & value )
+inline int64_t TableMixedMeasure( const TableMixed & value )
+{
+    TableIds ids;
+    const int64_t body = TableMixedMeasureBody( ids, value );
+    if ( body < 0 || ids.overflow ) { return -1; }
+    return 1 + body + TableIdsBytes( ids );
+}
+
+BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids, const TableMixed & value )
 {
     if ( value.protocol_magic != 0 )
     {
-        w.put16( 0xae30 ); w.put8( 7 ); // protocol_magic
+        w.putleb( ids.ref( 0x6a5a70d91aa115fdull ) ); w.put8( 7 ); // protocol_magic
         w.put16( uint16_t( value.protocol_magic ) );
     }
     if ( value.sequence != 0 )
     {
-        w.put16( 0xd32b ); w.put8( 7 ); // sequence
+        w.putleb( ids.ref( 0xaa38aca481f528a8ull ) ); w.put8( 7 ); // sequence
         w.put16( uint16_t( value.sequence ) );
     }
     if ( value.ack_sequence != 0 )
     {
-        w.put16( 0x3363 ); w.put8( 4 ); // ack_sequence
+        w.putleb( ids.ref( 0x0dbe005c56697c3eull ) ); w.put8( 4 ); // ack_sequence
         w.put32( uint32_t( value.ack_sequence ) );
     }
     if ( value.ack_bits != 0 )
     {
-        w.put16( 0xebb9 ); w.put8( 8 ); // ack_bits
+        w.putleb( ids.ref( 0x9bae0da8b829ee03ull ) ); w.put8( 8 ); // ack_bits
         w.put32( uint32_t( value.ack_bits ) );
     }
     if ( value.session_id != 0 )
     {
-        w.put16( 0x8790 ); w.put8( 9 ); // session_id
+        w.putleb( ids.ref( 0xb7d7b5650a590b05ull ) ); w.put8( 9 ); // session_id
         w.put64( uint64_t( value.session_id ) );
     }
     if ( value.client_id != 0 )
     {
-        w.put16( 0xd443 ); w.put8( 8 ); // client_id
+        w.putleb( ids.ref( 0x6d7b98e2d095967eull ) ); w.put8( 8 ); // client_id
         w.put32( uint32_t( value.client_id ) );
     }
     if ( value.nonce != 1ull )
     {
-        w.put16( 0x80f0 ); w.put8( 9 ); // nonce
+        w.putleb( ids.ref( 0x73a94c71d60dc0d8ull ) ); w.put8( 9 ); // nonce
         w.put64( uint64_t( value.nonce ) );
     }
     if ( value.world_time != 0 )
     {
-        w.put16( 0x77f2 ); w.put8( 5 ); // world_time
+        w.putleb( ids.ref( 0x3eee6b51be54fc85ull ) ); w.put8( 5 ); // world_time
         w.put64( uint64_t( value.world_time ) );
     }
     if ( value.frame_tick != 0 )
     {
-        w.put16( 0xcbc2 ); w.put8( 9 ); // frame_tick
+        w.putleb( ids.ref( 0x7bbc035f7b6d0112ull ) ); w.put8( 9 ); // frame_tick
         w.put64( uint64_t( value.frame_tick ) );
     }
     if ( value.server_time != 0.0f )
     {
-        w.put16( 0x27f9 ); w.put8( 10 ); // server_time
+        w.putleb( ids.ref( 0x3c460475f9be69c6ull ) ); w.put8( 10 ); // server_time
         w.put32( table_float_to_bits( value.server_time ) );
     }
     if ( value.entities_count < 0 || value.entities_count > 8 ) { return false; } // storage invariant
     if ( value.entities_count > 0 )
     {
-        w.put16( 0x25e3 ); w.put8( 14 ); // entities
-        int64_t len_at_entities = w.offset; w.put32( 0 );
-        w.put8( 13 ); w.put32( uint32_t( value.entities_count ) );
-        for ( int32_t i = 0; i < value.entities_count; i++ )
+        const uint64_t ref_entities = ids.ref( 0x935d0fb07bb3822aull );
+        int64_t body_entities = 0;
+        body_entities += 1 + TableLebBytes( (uint64_t) ( value.entities_count ) ); // the element kind byte and the count
+        for ( int32_t elem_i = 0; elem_i < value.entities_count; elem_i++ )
+        {
+            const int64_t elem_bytes = TableEntityMeasureBody( ids, value.entities[elem_i] );
+            if ( elem_bytes < 0 ) { return false; }
+            body_entities += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
+        }
+        w.putleb( ref_entities ); w.put8( 14 ); w.putleb( (uint64_t) body_entities ); // entities
+        w.put8( 13 ); w.putleb( (uint64_t) ( value.entities_count ) );
+        for ( int32_t elem_i = 0; elem_i < value.entities_count; elem_i++ )
         {
             {
-                int64_t elem_len_at = w.offset; w.put32( 0 );
-                if ( !TableEntitySaveBody( w, value.entities[i] ) ) return false;
-                w.patch32( elem_len_at, uint32_t( w.offset - elem_len_at - 4 ) );
+                const int64_t elem_len = TableEntityMeasureBody( ids, value.entities[elem_i] );
+                if ( elem_len < 0 ) return false;
+                w.putleb( (uint64_t) elem_len );
+                if ( !TableEntitySaveBody( w, ids, value.entities[elem_i] ) ) return false;
             }
         }
-        w.patch32( len_at_entities, uint32_t( w.offset - len_at_entities - 4 ) );
     }
     if ( value.stats_count < 0 || value.stats_count > 80 ) { return false; } // storage invariant
     if ( value.stats_count > 0 )
     {
-        w.put16( 0x76dd ); w.put8( 14 ); // stats
-        int64_t len_at_stats = w.offset; w.put32( 0 );
-        w.put8( 13 ); w.put32( uint32_t( value.stats_count ) );
-        for ( int32_t i = 0; i < value.stats_count; i++ )
+        const uint64_t ref_stats = ids.ref( 0xee639cad45b1994cull );
+        int64_t body_stats = 0;
+        body_stats += 1 + TableLebBytes( (uint64_t) ( value.stats_count ) ); // the element kind byte and the count
+        for ( int32_t elem_i = 0; elem_i < value.stats_count; elem_i++ )
+        {
+            const int64_t elem_bytes = TableStatMeasureBody( ids, value.stats[elem_i] );
+            if ( elem_bytes < 0 ) { return false; }
+            body_stats += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
+        }
+        w.putleb( ref_stats ); w.put8( 14 ); w.putleb( (uint64_t) body_stats ); // stats
+        w.put8( 13 ); w.putleb( (uint64_t) ( value.stats_count ) );
+        for ( int32_t elem_i = 0; elem_i < value.stats_count; elem_i++ )
         {
             {
-                int64_t elem_len_at = w.offset; w.put32( 0 );
-                if ( !TableStatSaveBody( w, value.stats[i] ) ) return false;
-                w.patch32( elem_len_at, uint32_t( w.offset - elem_len_at - 4 ) );
+                const int64_t elem_len = TableStatMeasureBody( ids, value.stats[elem_i] );
+                if ( elem_len < 0 ) return false;
+                w.putleb( (uint64_t) elem_len );
+                if ( !TableStatSaveBody( w, ids, value.stats[elem_i] ) ) return false;
             }
         }
-        w.patch32( len_at_stats, uint32_t( w.offset - len_at_stats - 4 ) );
     }
     if ( value.game_event.type != TableEventType::None )
     {
-        w.put16( 0xa17e ); w.put8( 15 ); // game_event
-        // the ARM ID is the hash of the arm's NAME (docs/SPEC-TABLES.md §5), so
-        // arms may be added anywhere, removed and reordered
-        switch ( value.game_event.type )
-        {
-            case TableEventType::Hit: w.put16( 0xba78 ); break;
-            case TableEventType::Chat: w.put16( 0x5be0 ); break;
-            case TableEventType::Pickup: w.put16( 0x99dd ); break;
-            default: return false; // write validates the tag before it rides
-        }
-        int64_t len_at_game_event = w.offset; w.put32( 0 );
+        w.putleb( ids.ref( 0x2e35dc5321aa5790ull ) ); w.put8( 15 ); // game_event
         switch ( value.game_event.type )
         {
             case TableEventType::Hit:
             {
-                if ( !TableHitEventSaveBody( w, value.game_event.hit ) ) { return false; }
+                const uint64_t arm_ref = ids.ref( 0x33732819300680aaull );
+                int64_t arm_payload = 0;
+                {
+                    const int64_t arm_body = TableHitEventMeasureBody( ids, value.game_event.hit );
+                    if ( arm_body < 0 ) { return false; }
+                    arm_payload += arm_body; // the arm's own table body (§3)
+                }
+                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // hit
+                if ( !TableHitEventSaveBody( w, ids, value.game_event.hit ) ) { return false; }
                 break;
             }
             case TableEventType::Chat:
             {
-                if ( !TableChatEventSaveBody( w, value.game_event.chat ) ) { return false; }
+                const uint64_t arm_ref = ids.ref( 0xf2a38d910b5b348bull );
+                int64_t arm_payload = 0;
+                {
+                    const int64_t arm_body = TableChatEventMeasureBody( ids, value.game_event.chat );
+                    if ( arm_body < 0 ) { return false; }
+                    arm_payload += arm_body; // the arm's own table body (§3)
+                }
+                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // chat
+                if ( !TableChatEventSaveBody( w, ids, value.game_event.chat ) ) { return false; }
                 break;
             }
             case TableEventType::Pickup:
             {
-                if ( !TablePickupEventSaveBody( w, value.game_event.pickup ) ) { return false; }
+                const uint64_t arm_ref = ids.ref( 0x9fa3a41c86ecb765ull );
+                int64_t arm_payload = 0;
+                {
+                    const int64_t arm_body = TablePickupEventMeasureBody( ids, value.game_event.pickup );
+                    if ( arm_body < 0 ) { return false; }
+                    arm_payload += arm_body; // the arm's own table body (§3)
+                }
+                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // pickup
+                if ( !TablePickupEventSaveBody( w, ids, value.game_event.pickup ) ) { return false; }
                 break;
             }
             default: return false; // write validates the tag before it rides
         }
-        w.patch32( len_at_game_event, uint32_t( w.offset - len_at_game_event - 4 ) );
     }
     {
         bool all_default_loadout = true;
         for ( int32_t i = 0; i < 4; i++ ) { if ( value.loadout[i] != 0 ) { all_default_loadout = false; break; } }
         if ( !all_default_loadout )
         {
-            w.put16( 0x9f78 ); w.put8( 14 ); // loadout (fixed [4])
-            int64_t len_at_loadout = w.offset; w.put32( 0 );
-            w.put8( 6 ); w.put32( 4 );
-            for ( int32_t i = 0; i < 4; i++ )
+            const uint64_t ref_loadout = ids.ref( 0x5759ce7586bbb5a3ull );
+            int64_t body_loadout = 0;
+            body_loadout += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
+            body_loadout += (int64_t) ( 4 ) * 1;
+            w.putleb( ref_loadout ); w.put8( 14 ); w.putleb( (uint64_t) body_loadout ); // loadout
+            w.put8( 6 ); w.putleb( (uint64_t) ( 4 ) );
+            for ( int32_t elem_i = 0; elem_i < 4; elem_i++ )
             {
-                w.put8( uint8_t( value.loadout[i] ) );
+                w.put8( uint8_t( value.loadout[elem_i] ) );
             }
-            w.patch32( len_at_loadout, uint32_t( w.offset - len_at_loadout - 4 ) );
         }
     }
     if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return false; } // storage invariant
     if ( value.player_name_length > 0 )
     {
-        w.put16( 0x2d3e ); w.put8( 12 ); // player_name
-        w.put32( uint32_t( value.player_name_length ) );
+        w.putleb( ids.ref( 0x13a62f542cf8e86eull ) ); w.put8( 12 ); // player_name
+        w.putleb( (uint64_t) value.player_name_length );
         w.raw( value.player_name, value.player_name_length );
     }
     if ( value.payload_length < 0 || value.payload_length > 16 ) { return false; } // storage invariant
     if ( value.payload_length > 0 )
     {
-        w.put16( 0x44aa ); w.put8( 14 ); // payload
-        w.put32( uint32_t( 5 + value.payload_length ) );
-        w.put8( 6 ); w.put32( uint32_t( value.payload_length ) );
+        const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
+        w.putleb( ids.ref( 0xcfb8a9d063b5e9e5ull ) ); w.put8( 14 ); // payload
+        w.putleb( (uint64_t) body_payload );
+        w.put8( 6 ); w.putleb( (uint64_t) value.payload_length );
         w.raw( value.payload, value.payload_length );
     }
     if ( value.aim_x != 0.0f )
     {
-        w.put16( 0x84e9 ); w.put8( 10 ); // aim_x
+        w.putleb( ids.ref( 0xdbaf7be5e24296c9ull ) ); w.put8( 10 ); // aim_x
         w.put32( table_float_to_bits( value.aim_x ) );
     }
     if ( value.aim_y != 0.0f )
     {
-        w.put16( 0x8d96 ); w.put8( 10 ); // aim_y
+        w.putleb( ids.ref( 0xdbaf7ae5e2429516ull ) ); w.put8( 10 ); // aim_y
         w.put32( table_float_to_bits( value.aim_y ) );
     }
     if ( value.aim_z != 0.0f )
     {
-        w.put16( 0x8e03 ); w.put8( 10 ); // aim_z
+        w.putleb( ids.ref( 0xdbaf79e5e2429363ull ) ); w.put8( 10 ); // aim_z
         w.put32( table_float_to_bits( value.aim_z ) );
     }
     if ( value.recoil != 0.0f )
     {
-        w.put16( 0x2d04 ); w.put8( 10 ); // recoil
+        w.putleb( ids.ref( 0x9cef31fff7e2e457ull ) ); w.put8( 10 ); // recoil
         w.put32( table_float_to_bits( value.recoil ) );
     }
     if ( value.drift != 0.0 )
     {
-        w.put16( 0xc023 ); w.put8( 11 ); // drift
+        w.putleb( ids.ref( 0x5ab3f9c9341f6c04ull ) ); w.put8( 11 ); // drift
         w.put64( table_double_to_bits( value.drift ) );
     }
     if ( value.wide_key != 0 )
     {
-        w.put16( 0x272f ); w.put8( 9 ); // wide_key
+        w.putleb( ids.ref( 0xa3348580461faf16ull ) ); w.put8( 9 ); // wide_key
         w.put64( uint64_t( value.wide_key ) );
     }
     if ( value.flux != 0 )
     {
-        w.put16( 0x196a ); w.put8( 5 ); // flux
+        w.putleb( ids.ref( 0xd61bdd7908af2642ull ) ); w.put8( 5 ); // flux
         w.put64( uint64_t( value.flux ) );
     }
     if ( value.ping != 0.0f )
     {
-        w.put16( 0xe6d4 ); w.put8( 10 ); // ping
+        w.putleb( ids.ref( 0xbf30e00dc53307a9ull ) ); w.put8( 10 ); // ping
         w.put32( table_float_to_bits( value.ping ) );
     }
     if ( value.crc_hint != 0 )
     {
-        w.put16( 0xd3dc ); w.put8( 8 ); // crc_hint
+        w.putleb( ids.ref( 0x560d6527ccd8515full ) ); w.put8( 8 ); // crc_hint
         w.put32( uint32_t( value.crc_hint ) );
     }
     if ( value.has_extra != false )
     {
-        w.put16( 0xb023 ); w.put8( 1 ); // has_extra
+        w.putleb( ids.ref( 0xc08292176cfd8672ull ) ); w.put8( 1 ); // has_extra
         w.put8( value.has_extra ? 1 : 0 );
     }
     if ( value.has_extra )
     {
         if ( value.extra != 0 )
         {
-            w.put16( 0xb579 ); w.put8( 4 ); // extra
+            w.putleb( ids.ref( 0xfd29ee12a979cb69ull ) ); w.put8( 4 ); // extra
             w.put32( uint32_t( value.extra ) );
         }
     }
@@ -1453,18 +1972,22 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, const TableMix
     {
         if ( value.idle_ticks != 0 )
         {
-            w.put16( 0x9555 ); w.put8( 4 ); // idle_ticks
+            w.putleb( ids.ref( 0x78101ac0aa8cbcfeull ) ); w.put8( 4 ); // idle_ticks
             w.put32( uint32_t( value.idle_ticks ) );
         }
     }
-    w.put16( 0 ); // terminator
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
 }
 
 inline int64_t TableMixedSave( const TableMixed & value, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w( buffer, capacity );
-    if ( !TableMixedSaveBody( w, value ) ) { return -1; }
+    TableIds ids;
+    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
+    if ( !TableMixedSaveBody( w, ids, value ) || ids.overflow ) { return -1; }
+    TableIdsWrite( w, ids ); // the ID TABLE is the last thing in the file
+    if ( w.overflow ) { return -1; }
     return w.offset; // == TableMixedMeasure( value )
 }
 
@@ -1473,17 +1996,30 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
     TableMixedReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
-        if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
-        uint16_t field_id = r.get16();
-        if ( field_id == 0 ) return true;
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
+        if ( field_id == kTableNodeTableFieldId && r.nested )
+        {
+            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
+            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
+            // second numbering cannot exist, so a body claiming one is
+            // damaged — that body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
         switch ( field_id )
         {
-            case 0xae30: // protocol_magic
+            case 0x6a5a70d91aa115fdull: // protocol_magic
             {
                 if ( kind != 7 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1493,10 +2029,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.protocol_magic = decoded_v;
                 break;
             }
-            case 0xd32b: // sequence
+            case 0xaa38aca481f528a8ull: // sequence
             {
                 if ( kind != 7 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1506,10 +2044,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.sequence = decoded_v;
                 break;
             }
-            case 0x3363: // ack_sequence
+            case 0x0dbe005c56697c3eull: // ack_sequence
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1521,10 +2061,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.ack_sequence = decoded_v;
                 break;
             }
-            case 0xebb9: // ack_bits
+            case 0x9bae0da8b829ee03ull: // ack_bits
             {
                 if ( kind != 8 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1534,10 +2076,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.ack_bits = decoded_v;
                 break;
             }
-            case 0x8790: // session_id
+            case 0xb7d7b5650a590b05ull: // session_id
             {
                 if ( kind != 9 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1547,10 +2091,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.session_id = decoded_v;
                 break;
             }
-            case 0xd443: // client_id
+            case 0x6d7b98e2d095967eull: // client_id
             {
                 if ( kind != 8 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1560,10 +2106,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.client_id = decoded_v;
                 break;
             }
-            case 0x80f0: // nonce
+            case 0x73a94c71d60dc0d8ull: // nonce
             {
                 if ( kind != 9 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1575,10 +2123,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.nonce = decoded_v;
                 break;
             }
-            case 0x77f2: // world_time
+            case 0x3eee6b51be54fc85ull: // world_time
             {
                 if ( kind != 5 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1590,10 +2140,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.world_time = decoded_v;
                 break;
             }
-            case 0xcbc2: // frame_tick
+            case 0x7bbc035f7b6d0112ull: // frame_tick
             {
                 if ( kind != 9 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1604,10 +2156,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.frame_tick = decoded_v;
                 break;
             }
-            case 0x27f9: // server_time
+            case 0x3c460475f9be69c6ull: // server_time
             {
                 if ( kind != 10 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1619,124 +2173,175 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.server_time = decoded_f;
                 break;
             }
-            case 0x25e3: // entities
+            case 0x935d0fb07bb3822aull: // entities
             {
                 if ( kind != 14 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                uint32_t body_len = r.get32();
-                if ( !r.has( body_len ) ) { r.report->malformed = true; return false; }
-                int64_t body_end = r.offset + body_len;
-                if ( body_len >= 5 )
+                uint64_t body_len = 0;
+                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
+                int64_t body_end = r.offset + (int64_t) body_len;
+                // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
+                // count, so fewer than two bytes — is INERT (§4): the field keeps the
+                // value it has, no counter is raised, and the walk continues past L.
+                if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
-                    uint32_t count = r.get32();
-                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    uint32_t keep = count;
+                    uint64_t count = 0;
+                    const bool counted_ok = r.getleb( count );
+                    // A DAMAGED COUNT stops the elements and nothing else: the field
+                    // RODE, so an optional is still PRESENT (§2.3) — only a foreign
+                    // ELEMENT KIND says the payload is not this array's at all.
+                    if ( !counted_ok ) { r.report->malformed = true; }
+                    else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    else
+                    {
+                    uint64_t keep = count;
                     if ( keep > 8 ) { keep = 8; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
                     // cannot cover keeps the decoded prefix, flags malformed, and
                     // the parent continues at the next field — following fields'
                     // bytes are never fabricated into elements
-                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report );
-                    uint32_t decoded = 0;
-                    for ( uint32_t i = 0; i < keep; i++ )
+                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                    uint64_t decoded = 0;
+                    for ( uint64_t i = 0; i < keep; i++ )
                     {
-                        if ( !sub.has( 4 ) ) { r.report->malformed = true; break; }
-                        uint32_t elem_len = sub.get32();
-                        if ( !sub.has( elem_len ) ) { r.report->malformed = true; break; }
+                        uint64_t elem_len = 0;
+                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->malformed = true; break; }
                         {
-                            TableReader elem( sub.buffer + sub.offset, elem_len, r.report );
-                            TableEntityLoadBody( elem, value.entities[i] );
+                            TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
+                            TableEntityLoadBody( elem, value.entities[(int32_t) i] );
                         }
-                        sub.offset += elem_len;
+                        sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
                     }
                     value.entities_count = (int32_t) decoded;
+                    }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0x76dd: // stats
+            case 0xee639cad45b1994cull: // stats
             {
                 if ( kind != 14 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                uint32_t body_len = r.get32();
-                if ( !r.has( body_len ) ) { r.report->malformed = true; return false; }
-                int64_t body_end = r.offset + body_len;
-                if ( body_len >= 5 )
+                uint64_t body_len = 0;
+                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
+                int64_t body_end = r.offset + (int64_t) body_len;
+                // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
+                // count, so fewer than two bytes — is INERT (§4): the field keeps the
+                // value it has, no counter is raised, and the walk continues past L.
+                if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
-                    uint32_t count = r.get32();
-                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    uint32_t keep = count;
+                    uint64_t count = 0;
+                    const bool counted_ok = r.getleb( count );
+                    // A DAMAGED COUNT stops the elements and nothing else: the field
+                    // RODE, so an optional is still PRESENT (§2.3) — only a foreign
+                    // ELEMENT KIND says the payload is not this array's at all.
+                    if ( !counted_ok ) { r.report->malformed = true; }
+                    else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    else
+                    {
+                    uint64_t keep = count;
                     if ( keep > 80 ) { keep = 80; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
                     // cannot cover keeps the decoded prefix, flags malformed, and
                     // the parent continues at the next field — following fields'
                     // bytes are never fabricated into elements
-                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report );
-                    uint32_t decoded = 0;
-                    for ( uint32_t i = 0; i < keep; i++ )
+                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                    uint64_t decoded = 0;
+                    for ( uint64_t i = 0; i < keep; i++ )
                     {
-                        if ( !sub.has( 4 ) ) { r.report->malformed = true; break; }
-                        uint32_t elem_len = sub.get32();
-                        if ( !sub.has( elem_len ) ) { r.report->malformed = true; break; }
+                        uint64_t elem_len = 0;
+                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->malformed = true; break; }
                         {
-                            TableReader elem( sub.buffer + sub.offset, elem_len, r.report );
-                            TableStatLoadBody( elem, value.stats[i] );
+                            TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
+                            TableStatLoadBody( elem, value.stats[(int32_t) i] );
                         }
-                        sub.offset += elem_len;
+                        sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
                     }
                     value.stats_count = (int32_t) decoded;
+                    }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0xa17e: // game_event
+            case 0x2e35dc5321aa5790ull: // game_event
             {
                 if ( kind != 15 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
-                uint16_t arm_id = r.get16();
-                if ( arm_id == 0 ) { value.game_event.type = TableEventType::None; break; } // empty: the id is the whole payload
-                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                uint32_t body_len = r.get32();
-                if ( !r.has( body_len ) ) { r.report->malformed = true; return false; }
+                uint64_t arm_ref = 0;
+                if ( !r.getleb( arm_ref ) ) { r.report->malformed = true; return false; }
+                if ( arm_ref == 0 ) { value.game_event.type = TableEventType::None; break; } // empty: the reference is the whole payload
+                if ( arm_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                const uint64_t arm_id = r.ids->at( arm_ref );
+                if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+                const uint8_t arm_kind = r.get8();
+                uint64_t body_len = 0;
+                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 {
-                    TableReader sub( r.buffer + r.offset, body_len, r.report );
+                    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                     {
-                        case 0xba78: // hit
+                        case 0x33732819300680aaull: // hit
                         {
+                            if ( arm_kind != 13 )
+                            {
+                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                // arm skips by L, the union reads None, and the parent reads on
+                                value.game_event.type = TableEventType::None;
+                                r.report->kind_mismatch++;
+                                break;
+                            }
                             value.game_event.type = TableEventType::Hit;
                             TableHitEventLoadBody( sub, value.game_event.hit );
                             if ( sub.offset != sub.size ) { value.game_event.type = TableEventType::None; r.report->malformed = true; break; }
                             break;
                         }
-                        case 0x5be0: // chat
+                        case 0xf2a38d910b5b348bull: // chat
                         {
+                            if ( arm_kind != 13 )
+                            {
+                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                // arm skips by L, the union reads None, and the parent reads on
+                                value.game_event.type = TableEventType::None;
+                                r.report->kind_mismatch++;
+                                break;
+                            }
                             value.game_event.type = TableEventType::Chat;
                             TableChatEventLoadBody( sub, value.game_event.chat );
                             if ( sub.offset != sub.size ) { value.game_event.type = TableEventType::None; r.report->malformed = true; break; }
                             break;
                         }
-                        case 0x99dd: // pickup
+                        case 0x9fa3a41c86ecb765ull: // pickup
                         {
+                            if ( arm_kind != 13 )
+                            {
+                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                // arm skips by L, the union reads None, and the parent reads on
+                                value.game_event.type = TableEventType::None;
+                                r.report->kind_mismatch++;
+                                break;
+                            }
                             value.game_event.type = TableEventType::Pickup;
                             TablePickupEventLoadBody( sub, value.game_event.pickup );
                             if ( sub.offset != sub.size ) { value.game_event.type = TableEventType::None; r.report->malformed = true; break; }
@@ -1753,103 +2358,130 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                             break;
                     }
                 }
-                r.offset += body_len;
+                r.offset += (int64_t) body_len;
                 break;
             }
-            case 0x9f78: // loadout
+            case 0x5759ce7586bbb5a3ull: // loadout
             {
                 if ( kind != 14 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                uint32_t body_len = r.get32();
-                if ( !r.has( body_len ) ) { r.report->malformed = true; return false; }
-                int64_t body_end = r.offset + body_len;
-                if ( body_len >= 5 )
+                uint64_t body_len = 0;
+                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
+                int64_t body_end = r.offset + (int64_t) body_len;
+                // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
+                // count, so fewer than two bytes — is INERT (§4): the field keeps the
+                // value it has, no counter is raised, and the walk continues past L.
+                if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
-                    uint32_t count = r.get32();
-                    if ( elem_kind != 6 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    uint32_t keep = count;
+                    uint64_t count = 0;
+                    const bool counted_ok = r.getleb( count );
+                    // A DAMAGED COUNT stops the elements and nothing else: the field
+                    // RODE, so an optional is still PRESENT (§2.3) — only a foreign
+                    // ELEMENT KIND says the payload is not this array's at all.
+                    if ( !counted_ok ) { r.report->malformed = true; }
+                    else if ( elem_kind != 6 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    else
+                    {
+                    uint64_t keep = count;
                     if ( keep > 4 ) { keep = 4; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
                     // cannot cover keeps the decoded prefix, flags malformed, and
                     // the parent continues at the next field — following fields'
                     // bytes are never fabricated into elements
-                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report );
-                    for ( uint32_t i = 0; i < keep; i++ )
+                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                    for ( uint64_t i = 0; i < keep; i++ )
                     {
                         if ( !sub.has( 1 ) ) { r.report->malformed = true; break; }
                         uint8_t decoded_v = uint8_t( sub.get8( ) );
-                        value.loadout[i] = decoded_v;
+                        value.loadout[(int32_t) i] = decoded_v;
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0x2d3e: // player_name
+            case 0x13a62f542cf8e86eull: // player_name
             {
                 if ( kind != 12 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                uint32_t len = r.get32();
-                if ( !r.has( len ) ) { r.report->malformed = true; return false; }
-                uint32_t keep = len;
+                uint64_t len = 0;
+                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
+                uint64_t keep = len;
                 if ( keep > 15 ) { keep = 15; r.report->clamped++; }
-                memcpy( value.player_name, r.buffer + r.offset, keep );
+                memcpy( value.player_name, r.buffer + r.offset, (size_t) keep );
                 value.player_name[keep] = 0;
                 value.player_name_length = (int32_t) keep;
-                r.offset += len;
+                r.offset += (int64_t) len;
                 break;
             }
-            case 0x44aa: // payload
+            case 0xcfb8a9d063b5e9e5ull: // payload
             {
                 if ( kind != 14 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                uint32_t body_len = r.get32();
-                if ( !r.has( body_len ) ) { r.report->malformed = true; return false; }
-                int64_t body_end = r.offset + body_len;
-                if ( body_len >= 5 )
+                uint64_t body_len = 0;
+                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
+                int64_t body_end = r.offset + (int64_t) body_len;
+                // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
+                // count, so fewer than two bytes — is INERT (§4): the field keeps the
+                // value it has, no counter is raised, and the walk continues past L.
+                if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
-                    uint32_t count = r.get32();
-                    if ( elem_kind != 6 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    uint32_t keep = count;
+                    uint64_t count = 0;
+                    const bool counted_ok = r.getleb( count );
+                    // A DAMAGED COUNT stops the elements and nothing else: the field
+                    // RODE, so an optional is still PRESENT (§2.3) — only a foreign
+                    // ELEMENT KIND says the payload is not this array's at all.
+                    if ( !counted_ok ) { r.report->malformed = true; }
+                    else if ( elem_kind != 6 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    else
+                    {
+                    uint64_t keep = count;
                     if ( keep > 16 ) { keep = 16; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
                     // cannot cover keeps the decoded prefix, flags malformed, and
                     // the parent continues at the next field — following fields'
                     // bytes are never fabricated into elements
-                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report );
-                    uint32_t decoded = 0;
-                    for ( uint32_t i = 0; i < keep; i++ )
+                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                    uint64_t decoded = 0;
+                    for ( uint64_t i = 0; i < keep; i++ )
                     {
                         if ( !sub.has( 1 ) ) { r.report->malformed = true; break; }
                         uint8_t decoded_v = uint8_t( sub.get8( ) );
-                        value.payload[i] = decoded_v;
+                        value.payload[(int32_t) i] = decoded_v;
                         decoded = i + 1;
                     }
                     value.payload_length = (int32_t) decoded;
+                    }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0x84e9: // aim_x
+            case 0xdbaf7be5e24296c9ull: // aim_x
             {
                 if ( kind != 10 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1861,10 +2493,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.aim_x = decoded_f;
                 break;
             }
-            case 0x8d96: // aim_y
+            case 0xdbaf7ae5e2429516ull: // aim_y
             {
                 if ( kind != 10 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1876,10 +2510,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.aim_y = decoded_f;
                 break;
             }
-            case 0x8e03: // aim_z
+            case 0xdbaf79e5e2429363ull: // aim_z
             {
                 if ( kind != 10 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1891,10 +2527,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.aim_z = decoded_f;
                 break;
             }
-            case 0x2d04: // recoil
+            case 0x9cef31fff7e2e457ull: // recoil
             {
                 if ( kind != 10 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1903,10 +2541,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.recoil = table_bits_to_float( r.get32() );
                 break;
             }
-            case 0xc023: // drift
+            case 0x5ab3f9c9341f6c04ull: // drift
             {
                 if ( kind != 11 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1915,10 +2555,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.drift = table_bits_to_double( r.get64() );
                 break;
             }
-            case 0x272f: // wide_key
+            case 0xa3348580461faf16ull: // wide_key
             {
                 if ( kind != 9 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1928,10 +2570,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.wide_key = decoded_v;
                 break;
             }
-            case 0x196a: // flux
+            case 0xd61bdd7908af2642ull: // flux
             {
                 if ( kind != 5 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1943,10 +2587,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.flux = decoded_v;
                 break;
             }
-            case 0xe6d4: // ping
+            case 0xbf30e00dc53307a9ull: // ping
             {
                 if ( kind != 10 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1958,10 +2604,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.ping = decoded_f;
                 break;
             }
-            case 0xd3dc: // crc_hint
+            case 0x560d6527ccd8515full: // crc_hint
             {
                 if ( kind != 8 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1972,10 +2620,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.crc_hint = decoded_v;
                 break;
             }
-            case 0xb023: // has_extra
+            case 0xc08292176cfd8672ull: // has_extra
             {
                 if ( kind != 1 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1984,10 +2634,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.has_extra = r.get8() != 0;
                 break;
             }
-            case 0xb579: // extra
+            case 0xfd29ee12a979cb69ull: // extra
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -1999,10 +2651,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.extra = decoded_v;
                 break;
             }
-            case 0x9555: // idle_ticks
+            case 0x78101ac0aa8cbcfeull: // idle_ticks
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -2024,53 +2678,101 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
     }
 }
 
-inline bool TableMixedLoad( TableMixed & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so a
+// file that is both a newer form and damaged is a REFUSAL and never damage.
+// A refusal moves none of the report's five counters, because nothing was
+// decoded and there is nothing to count (docs/SPEC-TABLES.md §3).
+inline TableOpenVerdict TableMixedLoadVerdict( TableMixed & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
-    TableReader r( buffer, bytes, report != NULL ? report : &ignored );
-    return TableMixedLoadBody( r, value );
+    TableReport * to = report != NULL ? report : &ignored;
+    TableIdTable table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        TableMixedReset( value );
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        else { to->refused = true; }
+        return verdict;
+    }
+    // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
+    // MALFORMED, because no field claims it and the two ends of the file
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
+    {
+        TableMixedReset( value );
+        to->malformed = true;
+        return TableOpenDamaged;
+    }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !TableMixedLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    return TableOpenOk;
+}
+
+// The bool is the BODY reaching its own terminator, and it is what it has
+// always been: framing damage inside a field keeps what it decoded, flags
+// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).
+// False is a wire nothing could be decoded from: a refusal, a table that
+// cannot be read whole, or a root body the walk could not finish.
+inline bool TableMixedLoad( TableMixed & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    return TableMixedLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
+}
+
+inline int64_t TableHitEventMeasureBody( TableIds & ids, const TableHitEvent & value )
+{
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xb7bc9ac015a25050ull ) ) + 1 + 2; } // target_id
+    if ( value.damage != 0 ) { bytes += TableLebBytes( ids.ref( 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
+    if ( value.hit_kind != 0 ) { bytes += TableLebBytes( ids.ref( 0x01fbc365b059b925ull ) ) + 1 + 4; } // hit_kind
+    if ( value.crit != false ) { bytes += TableLebBytes( ids.ref( 0x126167908c9aa52dull ) ) + 1 + 1; } // crit
+    return bytes;
 }
 
 inline int64_t TableHitEventMeasure( const TableHitEvent & value )
 {
-    int64_t bytes = 2; // terminator
-    if ( value.target_id != 0 ) { bytes += 3 + 2; } // target_id
-    if ( value.damage != 0 ) { bytes += 3 + 4; } // damage
-    if ( value.hit_kind != 0 ) { bytes += 3 + 4; } // hit_kind
-    if ( value.crit != false ) { bytes += 3 + 1; } // crit
-    return bytes;
+    TableIds ids;
+    const int64_t body = TableHitEventMeasureBody( ids, value );
+    if ( body < 0 || ids.overflow ) { return -1; }
+    return 1 + body + TableIdsBytes( ids );
 }
 
-BENCHTABLE_TABLE_INLINE bool TableHitEventSaveBody( TableWriter & w, const TableHitEvent & value )
+BENCHTABLE_TABLE_INLINE bool TableHitEventSaveBody( TableWriter & w, TableIds & ids, const TableHitEvent & value )
 {
     if ( value.target_id != 0 )
     {
-        w.put16( 0xdf6a ); w.put8( 7 ); // target_id
+        w.putleb( ids.ref( 0xb7bc9ac015a25050ull ) ); w.put8( 7 ); // target_id
         w.put16( uint16_t( value.target_id ) );
     }
     if ( value.damage != 0 )
     {
-        w.put16( 0x15a9 ); w.put8( 4 ); // damage
+        w.putleb( ids.ref( 0x7f6308be8ab37fc0ull ) ); w.put8( 4 ); // damage
         w.put32( uint32_t( value.damage ) );
     }
     if ( value.hit_kind != 0 )
     {
-        w.put16( 0xaf83 ); w.put8( 4 ); // hit_kind
+        w.putleb( ids.ref( 0x01fbc365b059b925ull ) ); w.put8( 4 ); // hit_kind
         w.put32( uint32_t( value.hit_kind ) );
     }
     if ( value.crit != false )
     {
-        w.put16( 0x93d9 ); w.put8( 1 ); // crit
+        w.putleb( ids.ref( 0x126167908c9aa52dull ) ); w.put8( 1 ); // crit
         w.put8( value.crit ? 1 : 0 );
     }
-    w.put16( 0 ); // terminator
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
 }
 
 inline int64_t TableHitEventSave( const TableHitEvent & value, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w( buffer, capacity );
-    if ( !TableHitEventSaveBody( w, value ) ) { return -1; }
+    TableIds ids;
+    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
+    if ( !TableHitEventSaveBody( w, ids, value ) || ids.overflow ) { return -1; }
+    TableIdsWrite( w, ids ); // the ID TABLE is the last thing in the file
+    if ( w.overflow ) { return -1; }
     return w.offset; // == TableHitEventMeasure( value )
 }
 
@@ -2079,17 +2781,30 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEve
     TableHitEventReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
-        if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
-        uint16_t field_id = r.get16();
-        if ( field_id == 0 ) return true;
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
+        if ( field_id == kTableNodeTableFieldId && r.nested )
+        {
+            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
+            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
+            // second numbering cannot exist, so a body claiming one is
+            // damaged — that body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
         switch ( field_id )
         {
-            case 0xdf6a: // target_id
+            case 0xb7bc9ac015a25050ull: // target_id
             {
                 if ( kind != 7 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -2100,10 +2815,12 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEve
                 value.target_id = decoded_v;
                 break;
             }
-            case 0x15a9: // damage
+            case 0x7f6308be8ab37fc0ull: // damage
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -2115,10 +2832,12 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEve
                 value.damage = decoded_v;
                 break;
             }
-            case 0xaf83: // hit_kind
+            case 0x01fbc365b059b925ull: // hit_kind
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -2130,10 +2849,12 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEve
                 value.hit_kind = decoded_v;
                 break;
             }
-            case 0x93d9: // crit
+            case 0x126167908c9aa52dull: // crit
             {
                 if ( kind != 1 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -2152,41 +2873,89 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEve
     }
 }
 
-inline bool TableHitEventLoad( TableHitEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so a
+// file that is both a newer form and damaged is a REFUSAL and never damage.
+// A refusal moves none of the report's five counters, because nothing was
+// decoded and there is nothing to count (docs/SPEC-TABLES.md §3).
+inline TableOpenVerdict TableHitEventLoadVerdict( TableHitEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
-    TableReader r( buffer, bytes, report != NULL ? report : &ignored );
-    return TableHitEventLoadBody( r, value );
+    TableReport * to = report != NULL ? report : &ignored;
+    TableIdTable table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        TableHitEventReset( value );
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        else { to->refused = true; }
+        return verdict;
+    }
+    // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
+    // MALFORMED, because no field claims it and the two ends of the file
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
+    {
+        TableHitEventReset( value );
+        to->malformed = true;
+        return TableOpenDamaged;
+    }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !TableHitEventLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    return TableOpenOk;
+}
+
+// The bool is the BODY reaching its own terminator, and it is what it has
+// always been: framing damage inside a field keeps what it decoded, flags
+// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).
+// False is a wire nothing could be decoded from: a refusal, a table that
+// cannot be read whole, or a root body the walk could not finish.
+inline bool TableHitEventLoad( TableHitEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    return TableHitEventLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
+}
+
+inline int64_t TableChatEventMeasureBody( TableIds & ids, const TableChatEvent & value )
+{
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    if ( value.channel != 0 ) { bytes += TableLebBytes( ids.ref( 0xa5013e9ad5caeda4ull ) ) + 1 + 4; } // channel
+    if ( value.speaker != 0 ) { bytes += TableLebBytes( ids.ref( 0xfbf1ac4d96ebd022ull ) ) + 1 + 2; } // speaker
+    return bytes;
 }
 
 inline int64_t TableChatEventMeasure( const TableChatEvent & value )
 {
-    int64_t bytes = 2; // terminator
-    if ( value.channel != 0 ) { bytes += 3 + 4; } // channel
-    if ( value.speaker != 0 ) { bytes += 3 + 2; } // speaker
-    return bytes;
+    TableIds ids;
+    const int64_t body = TableChatEventMeasureBody( ids, value );
+    if ( body < 0 || ids.overflow ) { return -1; }
+    return 1 + body + TableIdsBytes( ids );
 }
 
-BENCHTABLE_TABLE_INLINE bool TableChatEventSaveBody( TableWriter & w, const TableChatEvent & value )
+BENCHTABLE_TABLE_INLINE bool TableChatEventSaveBody( TableWriter & w, TableIds & ids, const TableChatEvent & value )
 {
     if ( value.channel != 0 )
     {
-        w.put16( 0x7366 ); w.put8( 4 ); // channel
+        w.putleb( ids.ref( 0xa5013e9ad5caeda4ull ) ); w.put8( 4 ); // channel
         w.put32( uint32_t( value.channel ) );
     }
     if ( value.speaker != 0 )
     {
-        w.put16( 0xce0b ); w.put8( 7 ); // speaker
+        w.putleb( ids.ref( 0xfbf1ac4d96ebd022ull ) ); w.put8( 7 ); // speaker
         w.put16( uint16_t( value.speaker ) );
     }
-    w.put16( 0 ); // terminator
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
 }
 
 inline int64_t TableChatEventSave( const TableChatEvent & value, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w( buffer, capacity );
-    if ( !TableChatEventSaveBody( w, value ) ) { return -1; }
+    TableIds ids;
+    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
+    if ( !TableChatEventSaveBody( w, ids, value ) || ids.overflow ) { return -1; }
+    TableIdsWrite( w, ids ); // the ID TABLE is the last thing in the file
+    if ( w.overflow ) { return -1; }
     return w.offset; // == TableChatEventMeasure( value )
 }
 
@@ -2195,17 +2964,30 @@ BENCHTABLE_TABLE_INLINE bool TableChatEventLoadBody( TableReader & r, TableChatE
     TableChatEventReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
-        if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
-        uint16_t field_id = r.get16();
-        if ( field_id == 0 ) return true;
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
+        if ( field_id == kTableNodeTableFieldId && r.nested )
+        {
+            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
+            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
+            // second numbering cannot exist, so a body claiming one is
+            // damaged — that body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
         switch ( field_id )
         {
-            case 0x7366: // channel
+            case 0xa5013e9ad5caeda4ull: // channel
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -2217,10 +2999,12 @@ BENCHTABLE_TABLE_INLINE bool TableChatEventLoadBody( TableReader & r, TableChatE
                 value.channel = decoded_v;
                 break;
             }
-            case 0xce0b: // speaker
+            case 0xfbf1ac4d96ebd022ull: // speaker
             {
                 if ( kind != 7 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -2241,41 +3025,89 @@ BENCHTABLE_TABLE_INLINE bool TableChatEventLoadBody( TableReader & r, TableChatE
     }
 }
 
-inline bool TableChatEventLoad( TableChatEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so a
+// file that is both a newer form and damaged is a REFUSAL and never damage.
+// A refusal moves none of the report's five counters, because nothing was
+// decoded and there is nothing to count (docs/SPEC-TABLES.md §3).
+inline TableOpenVerdict TableChatEventLoadVerdict( TableChatEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
-    TableReader r( buffer, bytes, report != NULL ? report : &ignored );
-    return TableChatEventLoadBody( r, value );
+    TableReport * to = report != NULL ? report : &ignored;
+    TableIdTable table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        TableChatEventReset( value );
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        else { to->refused = true; }
+        return verdict;
+    }
+    // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
+    // MALFORMED, because no field claims it and the two ends of the file
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
+    {
+        TableChatEventReset( value );
+        to->malformed = true;
+        return TableOpenDamaged;
+    }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !TableChatEventLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    return TableOpenOk;
+}
+
+// The bool is the BODY reaching its own terminator, and it is what it has
+// always been: framing damage inside a field keeps what it decoded, flags
+// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).
+// False is a wire nothing could be decoded from: a refusal, a table that
+// cannot be read whole, or a root body the walk could not finish.
+inline bool TableChatEventLoad( TableChatEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    return TableChatEventLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
+}
+
+inline int64_t TablePickupEventMeasureBody( TableIds & ids, const TablePickupEvent & value )
+{
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    if ( value.item_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x9e7fd06d864fbd56ull ) ) + 1 + 2; } // item_id
+    if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref( 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
+    return bytes;
 }
 
 inline int64_t TablePickupEventMeasure( const TablePickupEvent & value )
 {
-    int64_t bytes = 2; // terminator
-    if ( value.item_id != 0 ) { bytes += 3 + 2; } // item_id
-    if ( value.amount != 0 ) { bytes += 3 + 4; } // amount
-    return bytes;
+    TableIds ids;
+    const int64_t body = TablePickupEventMeasureBody( ids, value );
+    if ( body < 0 || ids.overflow ) { return -1; }
+    return 1 + body + TableIdsBytes( ids );
 }
 
-BENCHTABLE_TABLE_INLINE bool TablePickupEventSaveBody( TableWriter & w, const TablePickupEvent & value )
+BENCHTABLE_TABLE_INLINE bool TablePickupEventSaveBody( TableWriter & w, TableIds & ids, const TablePickupEvent & value )
 {
     if ( value.item_id != 0 )
     {
-        w.put16( 0xec67 ); w.put8( 7 ); // item_id
+        w.putleb( ids.ref( 0x9e7fd06d864fbd56ull ) ); w.put8( 7 ); // item_id
         w.put16( uint16_t( value.item_id ) );
     }
     if ( value.amount != 0 )
     {
-        w.put16( 0x39cc ); w.put8( 4 ); // amount
+        w.putleb( ids.ref( 0x8113fe7ea2b16969ull ) ); w.put8( 4 ); // amount
         w.put32( uint32_t( value.amount ) );
     }
-    w.put16( 0 ); // terminator
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
 }
 
 inline int64_t TablePickupEventSave( const TablePickupEvent & value, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w( buffer, capacity );
-    if ( !TablePickupEventSaveBody( w, value ) ) { return -1; }
+    TableIds ids;
+    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
+    if ( !TablePickupEventSaveBody( w, ids, value ) || ids.overflow ) { return -1; }
+    TableIdsWrite( w, ids ); // the ID TABLE is the last thing in the file
+    if ( w.overflow ) { return -1; }
     return w.offset; // == TablePickupEventMeasure( value )
 }
 
@@ -2284,17 +3116,30 @@ BENCHTABLE_TABLE_INLINE bool TablePickupEventLoadBody( TableReader & r, TablePic
     TablePickupEventReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
-        if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
-        uint16_t field_id = r.get16();
-        if ( field_id == 0 ) return true;
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
+        if ( field_id == kTableNodeTableFieldId && r.nested )
+        {
+            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
+            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
+            // second numbering cannot exist, so a body claiming one is
+            // damaged — that body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
         switch ( field_id )
         {
-            case 0xec67: // item_id
+            case 0x9e7fd06d864fbd56ull: // item_id
             {
                 if ( kind != 7 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -2305,10 +3150,12 @@ BENCHTABLE_TABLE_INLINE bool TablePickupEventLoadBody( TableReader & r, TablePic
                 value.item_id = decoded_v;
                 break;
             }
-            case 0x39cc: // amount
+            case 0x8113fe7ea2b16969ull: // amount
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -2330,11 +3177,47 @@ BENCHTABLE_TABLE_INLINE bool TablePickupEventLoadBody( TableReader & r, TablePic
     }
 }
 
-inline bool TablePickupEventLoad( TablePickupEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so a
+// file that is both a newer form and damaged is a REFUSAL and never damage.
+// A refusal moves none of the report's five counters, because nothing was
+// decoded and there is nothing to count (docs/SPEC-TABLES.md §3).
+inline TableOpenVerdict TablePickupEventLoadVerdict( TablePickupEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
-    TableReader r( buffer, bytes, report != NULL ? report : &ignored );
-    return TablePickupEventLoadBody( r, value );
+    TableReport * to = report != NULL ? report : &ignored;
+    TableIdTable table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        TablePickupEventReset( value );
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        else { to->refused = true; }
+        return verdict;
+    }
+    // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
+    // MALFORMED, because no field claims it and the two ends of the file
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
+    {
+        TablePickupEventReset( value );
+        to->malformed = true;
+        return TableOpenDamaged;
+    }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !TablePickupEventLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    return TableOpenOk;
+}
+
+// The bool is the BODY reaching its own terminator, and it is what it has
+// always been: framing damage inside a field keeps what it decoded, flags
+// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).
+// False is a wire nothing could be decoded from: a refusal, a table that
+// cannot be read whole, or a root body the walk could not finish.
+inline bool TablePickupEventLoad( TablePickupEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    return TablePickupEventLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
 // ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
@@ -2791,20 +3674,20 @@ inline const TableTypeInfo * TablePickupEventTableType();
 inline const TableTypeInfo * TableEntityTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "entity_id", "entity_id", "bits(12)", 0x5a13, 7, false, false, false, 0, (uint32_t) offsetof( TableEntity, entity_id ), (uint32_t) sizeof( TableEntity::entity_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "pos_x", "pos_x", "int32", 0xaaa3, 4, false, false, false, 0, (uint32_t) offsetof( TableEntity, pos_x ), (uint32_t) sizeof( TableEntity::pos_x ), 0xffffffffu, 0xffffffffu, NULL, true, -16383.0, 16383.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "pos_y", "pos_y", "int32", 0xa5cc, 4, false, false, false, 0, (uint32_t) offsetof( TableEntity, pos_y ), (uint32_t) sizeof( TableEntity::pos_y ), 0xffffffffu, 0xffffffffu, NULL, true, -16383.0, 16383.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "pos_z", "pos_z", "int32", 0xa985, 4, false, false, false, 0, (uint32_t) offsetof( TableEntity, pos_z ), (uint32_t) sizeof( TableEntity::pos_z ), 0xffffffffu, 0xffffffffu, NULL, true, -16383.0, 16383.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "yaw", "yaw", "bits(9)", 0x80c1, 7, false, false, false, 0, (uint32_t) offsetof( TableEntity, yaw ), (uint32_t) sizeof( TableEntity::yaw ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 511.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "pitch", "pitch", "bits(9)", 0xf783, 7, false, false, false, 0, (uint32_t) offsetof( TableEntity, pitch ), (uint32_t) sizeof( TableEntity::pitch ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 511.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "vel_x", "vel_x", "int32", 0x03e2, 4, false, false, false, 0, (uint32_t) offsetof( TableEntity, vel_x ), (uint32_t) sizeof( TableEntity::vel_x ), 0xffffffffu, 0xffffffffu, NULL, true, -2048.0, 2047.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "vel_y", "vel_y", "int32", 0x0151, 4, false, false, false, 0, (uint32_t) offsetof( TableEntity, vel_y ), (uint32_t) sizeof( TableEntity::vel_y ), 0xffffffffu, 0xffffffffu, NULL, true, -2048.0, 2047.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "vel_z", "vel_z", "int32", 0x0e88, 4, false, false, false, 0, (uint32_t) offsetof( TableEntity, vel_z ), (uint32_t) sizeof( TableEntity::vel_z ), 0xffffffffu, 0xffffffffu, NULL, true, -2048.0, 2047.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "health", "health", "int32", 0x8617, 4, false, false, false, 0, (uint32_t) offsetof( TableEntity, health ), (uint32_t) sizeof( TableEntity::health ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "weapon", "weapon", "TableWeapon", 0x4f72, 7, false, false, false, 0, (uint32_t) offsetof( TableEntity, weapon ), (uint32_t) sizeof( TableEntity::weapon ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 15, +[]( uint64_t v ) { return EnumName( TableWeapon( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( TableWeapon( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
-        { "damage", "damage", "TableDamage", 0x15a9, 9, false, false, false, 0, (uint32_t) offsetof( TableEntity, damage ), (uint32_t) sizeof( TableEntity::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 7, +[]( uint64_t v ) { return FlagNameTableDamage( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "" },
-        { "moving", "moving", "bool", 0xa4b2, 1, false, false, false, 0, (uint32_t) offsetof( TableEntity, moving ), (uint32_t) sizeof( TableEntity::moving ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "firing", "firing", "bool", 0x2302, 1, false, false, false, 0, (uint32_t) offsetof( TableEntity, firing ), (uint32_t) sizeof( TableEntity::firing ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "entity_id", "entity_id", "bits(12)", 0x23fcfd6678e36712ull, 7, false, false, false, 0, (uint32_t) offsetof( TableEntity, entity_id ), (uint32_t) sizeof( TableEntity::entity_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "pos_x", "pos_x", "int32", 0xcb4b37357667310eull, 4, false, false, false, 0, (uint32_t) offsetof( TableEntity, pos_x ), (uint32_t) sizeof( TableEntity::pos_x ), 0xffffffffu, 0xffffffffu, NULL, true, -16383.0, 16383.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "pos_y", "pos_y", "int32", 0xcb4b3835766732c1ull, 4, false, false, false, 0, (uint32_t) offsetof( TableEntity, pos_y ), (uint32_t) sizeof( TableEntity::pos_y ), 0xffffffffu, 0xffffffffu, NULL, true, -16383.0, 16383.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "pos_z", "pos_z", "int32", 0xcb4b353576672da8ull, 4, false, false, false, 0, (uint32_t) offsetof( TableEntity, pos_z ), (uint32_t) sizeof( TableEntity::pos_z ), 0xffffffffu, 0xffffffffu, NULL, true, -16383.0, 16383.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "yaw", "yaw", "bits(9)", 0xb54d8e19798e16e8ull, 7, false, false, false, 0, (uint32_t) offsetof( TableEntity, yaw ), (uint32_t) sizeof( TableEntity::yaw ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 511.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "pitch", "pitch", "bits(9)", 0x53a9f665a90cc1b1ull, 7, false, false, false, 0, (uint32_t) offsetof( TableEntity, pitch ), (uint32_t) sizeof( TableEntity::pitch ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 511.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "vel_x", "vel_x", "int32", 0x6cede6b6eb60ee67ull, 4, false, false, false, 0, (uint32_t) offsetof( TableEntity, vel_x ), (uint32_t) sizeof( TableEntity::vel_x ), 0xffffffffu, 0xffffffffu, NULL, true, -2048.0, 2047.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "vel_y", "vel_y", "int32", 0x6cede5b6eb60ecb4ull, 4, false, false, false, 0, (uint32_t) offsetof( TableEntity, vel_y ), (uint32_t) sizeof( TableEntity::vel_y ), 0xffffffffu, 0xffffffffu, NULL, true, -2048.0, 2047.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "vel_z", "vel_z", "int32", 0x6cede8b6eb60f1cdull, 4, false, false, false, 0, (uint32_t) offsetof( TableEntity, vel_z ), (uint32_t) sizeof( TableEntity::vel_z ), 0xffffffffu, 0xffffffffu, NULL, true, -2048.0, 2047.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "health", "health", "int32", 0x7f69d4b5288ba9cfull, 4, false, false, false, 0, (uint32_t) offsetof( TableEntity, health ), (uint32_t) sizeof( TableEntity::health ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "weapon", "weapon", "TableWeapon", 0xa0b610205f2c6e01ull, 30, false, false, false, 0, (uint32_t) offsetof( TableEntity, weapon ), (uint32_t) sizeof( TableEntity::weapon ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 15, +[]( uint64_t v ) { return EnumName( TableWeapon( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( TableWeapon( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
+        { "damage", "damage", "TableDamage", 0x7f6308be8ab37fc0ull, 9, false, false, false, 0, (uint32_t) offsetof( TableEntity, damage ), (uint32_t) sizeof( TableEntity::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 7, +[]( uint64_t v ) { return FlagNameTableDamage( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "" },
+        { "moving", "moving", "bool", 0x11a44fc1d1243da7ull, 1, false, false, false, 0, (uint32_t) offsetof( TableEntity, moving ), (uint32_t) sizeof( TableEntity::moving ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "firing", "firing", "bool", 0x7674cfd19b9031caull, 1, false, false, false, 0, (uint32_t) offsetof( TableEntity, firing ), (uint32_t) sizeof( TableEntity::firing ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "TableEntity", (uint32_t) sizeof( TableEntity ), 14, fields, +[]( void * p ) { TableEntityReset( *(TableEntity *) p ); } };
     return &info;
@@ -2813,8 +3696,8 @@ inline const TableTypeInfo * TableEntityTableType()
 inline const TableTypeInfo * TableStatTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "stat_id", "stat_id", "bits(8)", 0xfb6c, 6, false, false, false, 0, (uint32_t) offsetof( TableStat, stat_id ), (uint32_t) sizeof( TableStat::stat_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "delta", "delta", "int32", 0x1720, 4, false, false, false, 0, (uint32_t) offsetof( TableStat, delta ), (uint32_t) sizeof( TableStat::delta ), 0xffffffffu, 0xffffffffu, NULL, true, -512.0, 511.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "stat_id", "stat_id", "bits(8)", 0x80ab75f0866dbf65ull, 6, false, false, false, 0, (uint32_t) offsetof( TableStat, stat_id ), (uint32_t) sizeof( TableStat::stat_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "delta", "delta", "int32", 0x52076675ec13a0c1ull, 4, false, false, false, 0, (uint32_t) offsetof( TableStat, delta ), (uint32_t) sizeof( TableStat::delta ), 0xffffffffu, 0xffffffffu, NULL, true, -512.0, 511.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "TableStat", (uint32_t) sizeof( TableStat ), 2, fields, +[]( void * p ) { TableStatReset( *(TableStat *) p ); } };
     return &info;
@@ -2823,34 +3706,34 @@ inline const TableTypeInfo * TableStatTableType()
 inline const TableTypeInfo * TableMixedTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "protocol_magic", "protocol_magic", "uint16", 0xae30, 7, false, false, false, 0, (uint32_t) offsetof( TableMixed, protocol_magic ), (uint32_t) sizeof( TableMixed::protocol_magic ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "sequence", "sequence", "bits(16)", 0xd32b, 7, false, false, false, 0, (uint32_t) offsetof( TableMixed, sequence ), (uint32_t) sizeof( TableMixed::sequence ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "ack_sequence", "ack_sequence", "int32", 0x3363, 4, false, false, false, 0, (uint32_t) offsetof( TableMixed, ack_sequence ), (uint32_t) sizeof( TableMixed::ack_sequence ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "ack_bits", "ack_bits", "bits(32)", 0xebb9, 8, false, false, false, 0, (uint32_t) offsetof( TableMixed, ack_bits ), (uint32_t) sizeof( TableMixed::ack_bits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "session_id", "session_id", "uint64", 0x8790, 9, false, false, false, 0, (uint32_t) offsetof( TableMixed, session_id ), (uint32_t) sizeof( TableMixed::session_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "client_id", "client_id", "uint32", 0xd443, 8, false, false, false, 0, (uint32_t) offsetof( TableMixed, client_id ), (uint32_t) sizeof( TableMixed::client_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "nonce", "nonce", "uint64", 0x80f0, 9, false, false, false, 0, (uint32_t) offsetof( TableMixed, nonce ), (uint32_t) sizeof( TableMixed::nonce ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 9.223372036854776e+18, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "world_time", "world_time", "int64", 0x77f2, 5, false, false, false, 0, (uint32_t) offsetof( TableMixed, world_time ), (uint32_t) sizeof( TableMixed::world_time ), 0xffffffffu, 0xffffffffu, NULL, true, -1e+12, 1e+12, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "frame_tick", "frame_tick", "bits(48)", 0xcbc2, 9, false, false, false, 0, (uint32_t) offsetof( TableMixed, frame_tick ), (uint32_t) sizeof( TableMixed::frame_tick ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "server_time", "server_time", "float32", 0x27f9, 10, false, false, false, 0, (uint32_t) offsetof( TableMixed, server_time ), (uint32_t) sizeof( TableMixed::server_time ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "entities", "entities", "TableEntity", 0x25e3, 13, true, true, false, 8, (uint32_t) offsetof( TableMixed, entities ), (uint32_t) sizeof( TableMixed::entities[0] ), (uint32_t) offsetof( TableMixed, entities_count ), 0xffffffffu, TableEntityTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "stats", "stats", "TableStat", 0x76dd, 13, true, true, false, 80, (uint32_t) offsetof( TableMixed, stats ), (uint32_t) sizeof( TableMixed::stats[0] ), (uint32_t) offsetof( TableMixed, stats_count ), 0xffffffffu, TableStatTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "game_event", "game_event", "TableEvent", 0xa17e, 15, false, false, false, 0, (uint32_t) offsetof( TableMixed, game_event ), (uint32_t) sizeof( TableMixed::game_event ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "hit"; case 2: return "chat"; case 3: return "pickup"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0xba78; case 2: return 0x5be0; case 3: return 0x99dd; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( TableEvent, hit ), TableHitEventTableType(), NULL, 16 }, { (uint32_t) offsetof( TableEvent, chat ), TableChatEventTableType(), NULL, 8 }, { (uint32_t) offsetof( TableEvent, pickup ), TablePickupEventTableType(), NULL, 8 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( TableEvent, type ), (uint32_t) sizeof( TableEvent::type ), arms }; return &info; }, "" },
-        { "loadout", "loadout", "uint8", 0x9f78, 6, true, false, false, 4, (uint32_t) offsetof( TableMixed, loadout ), (uint32_t) sizeof( TableMixed::loadout[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "player_name", "player_name", "string", 0x2d3e, 12, false, true, false, 15, (uint32_t) offsetof( TableMixed, player_name ), (uint32_t) sizeof( TableMixed::player_name ), (uint32_t) offsetof( TableMixed, player_name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "payload", "payload", "bytes", 0x44aa, 6, true, true, false, 16, (uint32_t) offsetof( TableMixed, payload ), (uint32_t) sizeof( TableMixed::payload[0] ), (uint32_t) offsetof( TableMixed, payload_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "aim_x", "aim_x", "float32", 0x84e9, 10, false, false, false, 0, (uint32_t) offsetof( TableMixed, aim_x ), (uint32_t) sizeof( TableMixed::aim_x ), 0xffffffffu, 0xffffffffu, NULL, true, -1.0, 1.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "aim_y", "aim_y", "float32", 0x8d96, 10, false, false, false, 0, (uint32_t) offsetof( TableMixed, aim_y ), (uint32_t) sizeof( TableMixed::aim_y ), 0xffffffffu, 0xffffffffu, NULL, true, -1.0, 1.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "aim_z", "aim_z", "float32", 0x8e03, 10, false, false, false, 0, (uint32_t) offsetof( TableMixed, aim_z ), (uint32_t) sizeof( TableMixed::aim_z ), 0xffffffffu, 0xffffffffu, NULL, true, -1.0, 1.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "recoil", "recoil", "float32", 0x2d04, 10, false, false, false, 0, (uint32_t) offsetof( TableMixed, recoil ), (uint32_t) sizeof( TableMixed::recoil ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "drift", "drift", "float64", 0xc023, 11, false, false, false, 0, (uint32_t) offsetof( TableMixed, drift ), (uint32_t) sizeof( TableMixed::drift ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "wide_key", "wide_key", "uint64", 0x272f, 9, false, false, false, 0, (uint32_t) offsetof( TableMixed, wide_key ), (uint32_t) sizeof( TableMixed::wide_key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "flux", "flux", "int64", 0x196a, 5, false, false, false, 0, (uint32_t) offsetof( TableMixed, flux ), (uint32_t) sizeof( TableMixed::flux ), 0xffffffffu, 0xffffffffu, NULL, true, -1e+18, 1e+18, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "ping", "ping", "float32", 0xe6d4, 10, false, false, false, 0, (uint32_t) offsetof( TableMixed, ping ), (uint32_t) sizeof( TableMixed::ping ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 250.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "crc_hint", "crc_hint", "bits(24)", 0xd3dc, 8, false, false, false, 0, (uint32_t) offsetof( TableMixed, crc_hint ), (uint32_t) sizeof( TableMixed::crc_hint ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.6777215e+07, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "has_extra", "has_extra", "bool", 0xb023, 1, false, false, false, 0, (uint32_t) offsetof( TableMixed, has_extra ), (uint32_t) sizeof( TableMixed::has_extra ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "extra", "extra", "int32", 0xb579, 4, false, false, false, 0, (uint32_t) offsetof( TableMixed, extra ), (uint32_t) sizeof( TableMixed::extra ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "has_extra" },
-        { "idle_ticks", "idle_ticks", "int32", 0x9555, 4, false, false, false, 0, (uint32_t) offsetof( TableMixed, idle_ticks ), (uint32_t) sizeof( TableMixed::idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 15.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!has_extra" },
+        { "protocol_magic", "protocol_magic", "uint16", 0x6a5a70d91aa115fdull, 7, false, false, false, 0, (uint32_t) offsetof( TableMixed, protocol_magic ), (uint32_t) sizeof( TableMixed::protocol_magic ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "sequence", "sequence", "bits(16)", 0xaa38aca481f528a8ull, 7, false, false, false, 0, (uint32_t) offsetof( TableMixed, sequence ), (uint32_t) sizeof( TableMixed::sequence ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "ack_sequence", "ack_sequence", "int32", 0x0dbe005c56697c3eull, 4, false, false, false, 0, (uint32_t) offsetof( TableMixed, ack_sequence ), (uint32_t) sizeof( TableMixed::ack_sequence ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "ack_bits", "ack_bits", "bits(32)", 0x9bae0da8b829ee03ull, 8, false, false, false, 0, (uint32_t) offsetof( TableMixed, ack_bits ), (uint32_t) sizeof( TableMixed::ack_bits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "session_id", "session_id", "uint64", 0xb7d7b5650a590b05ull, 9, false, false, false, 0, (uint32_t) offsetof( TableMixed, session_id ), (uint32_t) sizeof( TableMixed::session_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "client_id", "client_id", "uint32", 0x6d7b98e2d095967eull, 8, false, false, false, 0, (uint32_t) offsetof( TableMixed, client_id ), (uint32_t) sizeof( TableMixed::client_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "nonce", "nonce", "uint64", 0x73a94c71d60dc0d8ull, 9, false, false, false, 0, (uint32_t) offsetof( TableMixed, nonce ), (uint32_t) sizeof( TableMixed::nonce ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 9.223372036854776e+18, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "world_time", "world_time", "int64", 0x3eee6b51be54fc85ull, 5, false, false, false, 0, (uint32_t) offsetof( TableMixed, world_time ), (uint32_t) sizeof( TableMixed::world_time ), 0xffffffffu, 0xffffffffu, NULL, true, -1e+12, 1e+12, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "frame_tick", "frame_tick", "bits(48)", 0x7bbc035f7b6d0112ull, 9, false, false, false, 0, (uint32_t) offsetof( TableMixed, frame_tick ), (uint32_t) sizeof( TableMixed::frame_tick ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "server_time", "server_time", "float32", 0x3c460475f9be69c6ull, 10, false, false, false, 0, (uint32_t) offsetof( TableMixed, server_time ), (uint32_t) sizeof( TableMixed::server_time ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "entities", "entities", "TableEntity", 0x935d0fb07bb3822aull, 13, true, true, false, 8, (uint32_t) offsetof( TableMixed, entities ), (uint32_t) sizeof( TableMixed::entities[0] ), (uint32_t) offsetof( TableMixed, entities_count ), 0xffffffffu, TableEntityTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "stats", "stats", "TableStat", 0xee639cad45b1994cull, 13, true, true, false, 80, (uint32_t) offsetof( TableMixed, stats ), (uint32_t) sizeof( TableMixed::stats[0] ), (uint32_t) offsetof( TableMixed, stats_count ), 0xffffffffu, TableStatTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "game_event", "game_event", "TableEvent", 0x2e35dc5321aa5790ull, 15, false, false, false, 0, (uint32_t) offsetof( TableMixed, game_event ), (uint32_t) sizeof( TableMixed::game_event ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "hit"; case 2: return "chat"; case 3: return "pickup"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x33732819300680aaull; case 2: return 0xf2a38d910b5b348bull; case 3: return 0x9fa3a41c86ecb765ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( TableEvent, hit ), TableHitEventTableType(), NULL, 16 }, { (uint32_t) offsetof( TableEvent, chat ), TableChatEventTableType(), NULL, 8 }, { (uint32_t) offsetof( TableEvent, pickup ), TablePickupEventTableType(), NULL, 8 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( TableEvent, type ), (uint32_t) sizeof( TableEvent::type ), arms }; return &info; }, "" },
+        { "loadout", "loadout", "uint8", 0x5759ce7586bbb5a3ull, 6, true, false, false, 4, (uint32_t) offsetof( TableMixed, loadout ), (uint32_t) sizeof( TableMixed::loadout[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "player_name", "player_name", "string", 0x13a62f542cf8e86eull, 12, false, true, false, 15, (uint32_t) offsetof( TableMixed, player_name ), (uint32_t) sizeof( TableMixed::player_name ), (uint32_t) offsetof( TableMixed, player_name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, true, true, false, 16, (uint32_t) offsetof( TableMixed, payload ), (uint32_t) sizeof( TableMixed::payload[0] ), (uint32_t) offsetof( TableMixed, payload_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "aim_x", "aim_x", "float32", 0xdbaf7be5e24296c9ull, 10, false, false, false, 0, (uint32_t) offsetof( TableMixed, aim_x ), (uint32_t) sizeof( TableMixed::aim_x ), 0xffffffffu, 0xffffffffu, NULL, true, -1.0, 1.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "aim_y", "aim_y", "float32", 0xdbaf7ae5e2429516ull, 10, false, false, false, 0, (uint32_t) offsetof( TableMixed, aim_y ), (uint32_t) sizeof( TableMixed::aim_y ), 0xffffffffu, 0xffffffffu, NULL, true, -1.0, 1.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "aim_z", "aim_z", "float32", 0xdbaf79e5e2429363ull, 10, false, false, false, 0, (uint32_t) offsetof( TableMixed, aim_z ), (uint32_t) sizeof( TableMixed::aim_z ), 0xffffffffu, 0xffffffffu, NULL, true, -1.0, 1.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "recoil", "recoil", "float32", 0x9cef31fff7e2e457ull, 10, false, false, false, 0, (uint32_t) offsetof( TableMixed, recoil ), (uint32_t) sizeof( TableMixed::recoil ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "drift", "drift", "float64", 0x5ab3f9c9341f6c04ull, 11, false, false, false, 0, (uint32_t) offsetof( TableMixed, drift ), (uint32_t) sizeof( TableMixed::drift ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "wide_key", "wide_key", "uint64", 0xa3348580461faf16ull, 9, false, false, false, 0, (uint32_t) offsetof( TableMixed, wide_key ), (uint32_t) sizeof( TableMixed::wide_key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "flux", "flux", "int64", 0xd61bdd7908af2642ull, 5, false, false, false, 0, (uint32_t) offsetof( TableMixed, flux ), (uint32_t) sizeof( TableMixed::flux ), 0xffffffffu, 0xffffffffu, NULL, true, -1e+18, 1e+18, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "ping", "ping", "float32", 0xbf30e00dc53307a9ull, 10, false, false, false, 0, (uint32_t) offsetof( TableMixed, ping ), (uint32_t) sizeof( TableMixed::ping ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 250.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "crc_hint", "crc_hint", "bits(24)", 0x560d6527ccd8515full, 8, false, false, false, 0, (uint32_t) offsetof( TableMixed, crc_hint ), (uint32_t) sizeof( TableMixed::crc_hint ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.6777215e+07, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "has_extra", "has_extra", "bool", 0xc08292176cfd8672ull, 1, false, false, false, 0, (uint32_t) offsetof( TableMixed, has_extra ), (uint32_t) sizeof( TableMixed::has_extra ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "extra", "extra", "int32", 0xfd29ee12a979cb69ull, 4, false, false, false, 0, (uint32_t) offsetof( TableMixed, extra ), (uint32_t) sizeof( TableMixed::extra ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "has_extra" },
+        { "idle_ticks", "idle_ticks", "int32", 0x78101ac0aa8cbcfeull, 4, false, false, false, 0, (uint32_t) offsetof( TableMixed, idle_ticks ), (uint32_t) sizeof( TableMixed::idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 15.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!has_extra" },
     };
     static const TableTypeInfo info = { "TableMixed", (uint32_t) sizeof( TableMixed ), 28, fields, +[]( void * p ) { TableMixedReset( *(TableMixed *) p ); } };
     return &info;
@@ -2859,10 +3742,10 @@ inline const TableTypeInfo * TableMixedTableType()
 inline const TableTypeInfo * TableHitEventTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "target_id", "target_id", "bits(12)", 0xdf6a, 7, false, false, false, 0, (uint32_t) offsetof( TableHitEvent, target_id ), (uint32_t) sizeof( TableHitEvent::target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "damage", "damage", "int32", 0x15a9, 4, false, false, false, 0, (uint32_t) offsetof( TableHitEvent, damage ), (uint32_t) sizeof( TableHitEvent::damage ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "hit_kind", "hit_kind", "int32", 0xaf83, 4, false, false, false, 0, (uint32_t) offsetof( TableHitEvent, hit_kind ), (uint32_t) sizeof( TableHitEvent::hit_kind ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 7.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "crit", "crit", "bool", 0x93d9, 1, false, false, false, 0, (uint32_t) offsetof( TableHitEvent, crit ), (uint32_t) sizeof( TableHitEvent::crit ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "target_id", "target_id", "bits(12)", 0xb7bc9ac015a25050ull, 7, false, false, false, 0, (uint32_t) offsetof( TableHitEvent, target_id ), (uint32_t) sizeof( TableHitEvent::target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, false, false, false, 0, (uint32_t) offsetof( TableHitEvent, damage ), (uint32_t) sizeof( TableHitEvent::damage ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "hit_kind", "hit_kind", "int32", 0x01fbc365b059b925ull, 4, false, false, false, 0, (uint32_t) offsetof( TableHitEvent, hit_kind ), (uint32_t) sizeof( TableHitEvent::hit_kind ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 7.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "crit", "crit", "bool", 0x126167908c9aa52dull, 1, false, false, false, 0, (uint32_t) offsetof( TableHitEvent, crit ), (uint32_t) sizeof( TableHitEvent::crit ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "TableHitEvent", (uint32_t) sizeof( TableHitEvent ), 4, fields, +[]( void * p ) { TableHitEventReset( *(TableHitEvent *) p ); } };
     return &info;
@@ -2871,8 +3754,8 @@ inline const TableTypeInfo * TableHitEventTableType()
 inline const TableTypeInfo * TableChatEventTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "channel", "channel", "int32", 0x7366, 4, false, false, false, 0, (uint32_t) offsetof( TableChatEvent, channel ), (uint32_t) sizeof( TableChatEvent::channel ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 3.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "speaker", "speaker", "bits(12)", 0xce0b, 7, false, false, false, 0, (uint32_t) offsetof( TableChatEvent, speaker ), (uint32_t) sizeof( TableChatEvent::speaker ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "channel", "channel", "int32", 0xa5013e9ad5caeda4ull, 4, false, false, false, 0, (uint32_t) offsetof( TableChatEvent, channel ), (uint32_t) sizeof( TableChatEvent::channel ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 3.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "speaker", "speaker", "bits(12)", 0xfbf1ac4d96ebd022ull, 7, false, false, false, 0, (uint32_t) offsetof( TableChatEvent, speaker ), (uint32_t) sizeof( TableChatEvent::speaker ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "TableChatEvent", (uint32_t) sizeof( TableChatEvent ), 2, fields, +[]( void * p ) { TableChatEventReset( *(TableChatEvent *) p ); } };
     return &info;
@@ -2881,8 +3764,8 @@ inline const TableTypeInfo * TableChatEventTableType()
 inline const TableTypeInfo * TablePickupEventTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "item_id", "item_id", "bits(10)", 0xec67, 7, false, false, false, 0, (uint32_t) offsetof( TablePickupEvent, item_id ), (uint32_t) sizeof( TablePickupEvent::item_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1023.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "amount", "amount", "int32", 0x39cc, 4, false, false, false, 0, (uint32_t) offsetof( TablePickupEvent, amount ), (uint32_t) sizeof( TablePickupEvent::amount ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "item_id", "item_id", "bits(10)", 0x9e7fd06d864fbd56ull, 7, false, false, false, 0, (uint32_t) offsetof( TablePickupEvent, item_id ), (uint32_t) sizeof( TablePickupEvent::item_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1023.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, false, false, false, 0, (uint32_t) offsetof( TablePickupEvent, amount ), (uint32_t) sizeof( TablePickupEvent::amount ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "TablePickupEvent", (uint32_t) sizeof( TablePickupEvent ), 2, fields, +[]( void * p ) { TablePickupEventReset( *(TablePickupEvent *) p ); } };
     return &info;

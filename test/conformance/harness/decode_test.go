@@ -108,8 +108,7 @@ func decodeWire(t *testing.T, u *units, unitKey, root, wire string) (*tabletext.
 	inst := m.New(def)
 	var report tabletext.Report
 	_, err = tablewire.Decode(m, inst, data, &report)
-	var refusal *tablewire.FormRefusal
-	if errors.As(err, &refusal) {
+	if _, refused := errors.AsType[*tablewire.FormRefusal](err); refused {
 		// A REFUSAL IS THE ANSWER (docs/SPEC-TABLES.md §3): the verdict rides
 		// on the report and nothing was decoded to count over
 		return inst, report

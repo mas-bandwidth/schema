@@ -71,9 +71,6 @@ const (
 	tkNoPayload = ir.TableKindNoPayload
 )
 
-// tableElemKind is the element kind an array body opens with.
-func tableElemKind(f *ir.Field) int { return ir.TableWireElemKind(f) }
-
 // tableFieldWireId is a field's effective id on this wire: fnv1a64 of its
 // `was` alias where one is declared, and of its own name otherwise (§5).
 func tableFieldWireId(f *ir.Field) uint64 { return ir.TableFieldWireId(f) }

@@ -116,10 +116,7 @@ func setInt(inst *tabletext.Instance, field int, v int64) {
 func hexDump(b []byte) string {
 	var out strings.Builder
 	for i := 0; i < len(b); i += 8 {
-		end := i + 8
-		if end > len(b) {
-			end = len(b)
-		}
+		end := min(i+8, len(b))
 		out.WriteString("\n  ")
 		out.WriteString(hex.EncodeToString(b[i:end]))
 	}

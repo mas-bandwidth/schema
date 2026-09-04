@@ -680,22 +680,22 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 func (g *tableGen) emitArrayBodyMeasure(f *ir.Field, elemKind int, into, n, access, ind, onBad, sfx string) {
 	i := "elem_i" + sfx
 	g.pf("%s%s += 1 + TableLebBytes( (uint64_t) ( %s ) ); // the element kind byte and the count\n", ind, into, n)
-	switch {
-	case elemKind == tkTable:
+	switch elemKind {
+	case tkTable:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
 		g.pf("%s    const int64_t elem_bytes%s = %s;\n", ind, sfx, g.measureCall(f.Type.Name, fmt.Sprintf(access, i)))
 		g.pf("%s    if ( elem_bytes%s < 0 ) { %s }\n", ind, sfx, onBad)
 		g.pf("%s    %s += %s;\n%s}\n", ind, into, framed("elem_bytes"+sfx), ind)
-	case elemKind == tkEnum:
+	case tkEnum:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
 		g.pf("%s    uint64_t elem_ref%s = 0;\n", ind, sfx)
 		g.pf("%s    if ( !TableEnumRef( ids, %s, elem_ref%s ) ) { %s } // no variant names this value\n", ind, fmt.Sprintf(access, i), sfx, onBad)
 		g.pf("%s    %s += TableLebBytes( elem_ref%s );\n%s}\n", ind, into, sfx, ind)
-	case elemKind == tkNodeIndex:
+	case tkNodeIndex:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
 		g.emitSlotIndexMeasure(f, fmt.Sprintf(access, i), into, ind+"    ", onBad, sfx)
 		g.pf("%s}\n", ind)
-	case elemKind == tkUnion:
+	case tkUnion:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
 		g.emitUnionElementMeasure(f, fmt.Sprintf(access, i), into, ind+"    ", sfx+"u")
 		g.pf("%s}\n", ind)
@@ -774,10 +774,10 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        int64_t pairs_%s = 0, body_%s = 0;\n", f.Name, f.Name)
 		g.pf("        for ( int32_t i = 0; i < %d; i++ ) // [%s]: every stored slot is a named variant's\n        {\n", f.ArrayBound, f.KeyEnum)
 		g.emitKeyedSlotRides(f, kind, "            ", "return -1;")
-		switch {
-		case kind == tkTable:
+		switch kind {
+		case tkTable:
 			g.pf("            pairs_%s++; body_%s += TableLebBytes( key_ref ) + %s;\n", f.Name, f.Name, framed("elem_bytes"))
-		case kind == tkEnum:
+		case tkEnum:
 			g.pf("            pairs_%s++; body_%s += TableLebBytes( key_ref ) + %s;\n", f.Name, f.Name, framed("TableLebBytes( element_ref )"))
 		default:
 			g.pf("            pairs_%s++; body_%s += TableLebBytes( key_ref ) + TableLebBytes( %d ) + %d;\n", f.Name, f.Name, width, width)
@@ -964,8 +964,8 @@ func (g *tableGen) emitUnionElementMeasure(f *ir.Field, expr, into, ind, sfx str
 func (g *tableGen) emitKeyedSlotRides(f *ir.Field, kind int, ind, onBad string) {
 	expr := g.keyedSlots("value.", f) + "[i]"
 	if kind != tkTable {
-		switch {
-		case kind == tkEnum:
+		switch kind {
+		case tkEnum:
 			g.pf("%sif ( %s == %s ) { continue; } // a default slot elides\n", ind, expr, g.fieldDefaultExpr(f))
 			g.pf("%sif ( !TableEnumNamed( %s ) ) { %s } // no variant names this value\n", ind, expr, onBad)
 		default:
@@ -980,28 +980,23 @@ func (g *tableGen) emitKeyedSlotRides(f *ir.Field, kind int, ind, onBad string) 
 	g.pf("%suint64_t key_ref = 0;\n", ind)
 	g.pf("%sif ( !TableEnumRef( ids, %s( i + 1 ), key_ref ) || key_ref == 0 ) { %s } // i is the STORAGE index; the key it holds is i + 1\n",
 		ind, f.KeyEnum, onBad)
-	switch {
-	case kind == tkTable:
+	switch kind {
+	case tkTable:
 		g.pf("%sconst int64_t elem_bytes = %s;\n", ind, g.measureCall(f.Type.Name, expr))
 		g.pf("%sif ( elem_bytes < 0 ) { %s }\n", ind, onBad)
 		g.pf("%sif ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides\n", ind)
-	case kind == tkEnum:
+	case tkEnum:
 		g.pf("%suint64_t element_ref = 0;\n", ind)
 		g.pf("%sif ( !TableEnumRef( ids, %s, element_ref ) ) { %s }\n", ind, expr, onBad)
 	}
 }
 
-// emitEnumElementCheck validates an enum ARRAY's elements before they ride: a
+// emitEnumElementCheckAt validates an enum ARRAY's elements before they ride: a
 // value no variant names has no wire identity, so the value is refused rather
-// than silently written as None (the union tag's rule, applied to enums).
-func (g *tableGen) emitEnumElementCheck(f *ir.Field, expr, count, ind, onBad string) {
-	g.emitEnumElementCheckAt(f, expr, count, ind, onBad, "")
-}
-
-// emitEnumElementCheckAt is that check with SUFFIXED locals, which an ARM's
-// elements need: an arm nests inside walks that already spell `i`
-// (docs/SPEC-TABLES.md §2.6). `expr` may carry one %s, which takes the loop
-// variable.
+// than silently written as None (the union tag's rule, applied to enums). Its
+// locals carry the `sfx` SUFFIX, which an ARM's elements need: an arm nests
+// inside walks that already spell `i` (docs/SPEC-TABLES.md §2.6). `expr` may
+// carry one %s, which takes the loop variable.
 func (g *tableGen) emitEnumElementCheckAt(f *ir.Field, expr, count, ind, onBad, sfx string) {
 	if enumRef(f) == nil {
 		return
@@ -1169,10 +1164,10 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        int64_t pairs_%s = 0, body_%s = 0;\n", f.Name, f.Name)
 		g.pf("        for ( int32_t i = 0; i < %d; i++ ) // [%s]: every stored slot is a named variant's\n        {\n", f.ArrayBound, f.KeyEnum)
 		g.emitKeyedSlotRides(f, kind, "            ", "return false;")
-		switch {
-		case kind == tkTable:
+		switch kind {
+		case tkTable:
 			g.pf("            pairs_%s++; body_%s += TableLebBytes( key_ref ) + %s;\n", f.Name, f.Name, framed("elem_bytes"))
-		case kind == tkEnum:
+		case tkEnum:
 			g.pf("            pairs_%s++; body_%s += TableLebBytes( key_ref ) + %s;\n", f.Name, f.Name, framed("TableLebBytes( element_ref )"))
 		default:
 			g.pf("            pairs_%s++; body_%s += TableLebBytes( key_ref ) + TableLebBytes( %d ) + %d;\n", f.Name, f.Name, tableKindWidth(kind), tableKindWidth(kind))
@@ -1191,11 +1186,11 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("            for ( int32_t i = 0; i < %d; i++ )\n            {\n", f.ArrayBound)
 		g.emitKeyedSlotRides(f, kind, "                ", "return false;")
 		g.pf("                w.putleb( key_ref ); // the slot's VARIANT reference, not its position\n")
-		switch {
-		case kind == tkTable:
+		switch kind {
+		case tkTable:
 			g.pf("                w.putleb( (uint64_t) elem_bytes );\n")
 			g.pf("                if ( !%s ) return false;\n", g.saveCall(f.Type.Name, g.keyedSlots("value.", f)+"[i]"))
-		case kind == tkEnum:
+		case tkEnum:
 			// the slot's reference is already resolved above, like key_ref:
 			// writing it here rather than resolving the same value twice
 			g.pf("                w.putleb( TableLebBytes( element_ref ) ); w.putleb( element_ref );\n")
@@ -1620,10 +1615,10 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s        {\n%s            TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );\n", ind, ind)
 		// the key k lives at STORAGE INDEX k-1 (docs/SPEC-TABLES.md §2.4)
 		slot := g.keyedSlots("value.", f) + "[int32_t( slot ) - 1]"
-		switch {
-		case kind == tkTable:
+		switch kind {
+		case tkTable:
 			g.pf("%s            %s;\n", ind, g.loadCall(f.Type.Name, "elem", slot))
-		case kind == tkEnum:
+		case tkEnum:
 			g.emitEnumRefLoad(f, slot, ind+"            ", "elem",
 				"r.report->malformed = true; sub.offset += (int64_t) elem_len; continue;")
 		default:

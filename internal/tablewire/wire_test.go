@@ -324,8 +324,7 @@ func TestUnknownFormIsARefusal(t *testing.T) {
 		back := m.New(m.Lookup("GlobalSettings"))
 		var r tabletext.Report
 		ok, err := tablewire.Decode(m, back, damaged, &r)
-		var refusal *tablewire.FormRefusal
-		if !errors.As(err, &refusal) {
+		if _, refused := errors.AsType[*tablewire.FormRefusal](err); !refused {
 			t.Fatalf("form %d: expected a named refusal, got %v", form, err)
 		}
 		if ok || !r.Silent() {

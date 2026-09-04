@@ -387,7 +387,7 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE 0x0adbc6e7f9c4605dull
+#define SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE 0x6e4b803407267d82ull
 
 #endif /* SCHEMA_BLOCKDEMO_BUILD_VERSION */
 

@@ -11,17 +11,6 @@
 // tolerate.
 package tablewire
 
-// lebSize is the byte count one value takes, which a measure needs before the
-// bytes exist.
-func lebSize(v uint64) int {
-	n := 1
-	for v >= 0x80 {
-		v >>= 7
-		n++
-	}
-	return n
-}
-
 // appendLeb writes one value in its one legal spelling.
 func appendLeb(b []byte, v uint64) []byte {
 	for v >= 0x80 {

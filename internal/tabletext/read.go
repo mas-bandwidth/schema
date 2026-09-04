@@ -1614,19 +1614,20 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 		in.pos++
 		entry := in.m.New(f.MapEntry)
 		placed := in.placeMapKey(entry, keyField, key)
-		if !placed {
+		switch {
+		case !placed:
 			in.report.KindMismatch++ // a key that is not the kind's spelling
 			if !in.skipValue(depth) {
 				return false
 			}
-		} else if !MapKeyFits(f, MapKeyOf(f, entry)) {
+		case !MapKeyFits(f, MapKeyOf(f, entry)):
 			in.report.Clamped++ // the entry is dropped WHOLE: keys never clamp
 			if !in.skipValue(depth) {
 				return false
 			}
-		} else if !in.readField(&entry.Fields[1], depth) {
+		case !in.readField(&entry.Fields[1], depth):
 			return false
-		} else {
+		default:
 			at := -1
 			for i := range fv.Entries {
 				if MapKeyOrder(f, MapKeyOf(f, fv.Entries[i].Tab), MapKeyOf(f, entry)) == 0 {

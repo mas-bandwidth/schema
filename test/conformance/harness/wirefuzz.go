@@ -131,8 +131,7 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	inst := r.model.New(r.def)
 	var rep tabletext.Report
 	ok, derr := tablewire.Decode(r.model, inst, data, &rep)
-	var refusal *tablewire.FormRefusal
-	if errors.As(derr, &refusal) {
+	if _, refused := errors.AsType[*tablewire.FormRefusal](derr); refused {
 		// A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL, and the refusal
 		// is the answer: nothing was decoded, no counter moved, and no damage
 		// is reported (docs/SPEC-TABLES.md §3). A leg must say the same.
