@@ -350,6 +350,8 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 func (r *wireReader) field(fv *tabletext.Field) bool {
 	f := fv.Def
 	switch {
+	case f.IsMap():
+		return r.mapField(fv)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		// A pointer field's payload is a NUMBER: it is bounds-checked and
 		// stored, never followed. There is no traversal on the load path, and
@@ -435,6 +437,165 @@ func (r *wireReader) enumCell(cell *tabletext.Cell, f *ir.Field) bool {
 	}
 	cell.U = uint64(v)
 	return true
+}
+
+// mapField decodes one map (docs/SPEC-TABLES.md §2.8), and it is where every
+// reader rule the section states lands: the key BEFORE the slot is chosen,
+// ascending against the key of the last entry that LANDED, a repeated key
+// last-wins and counted `duplicate`, a descending key stopping the map with
+// what it has and flagging `malformed`, a key past the reader's bound dropping
+// its entry and counting `clamped`, and a key KIND the reader does not declare
+// emptying the map for one `kind_mismatch`.
+func (r *wireReader) mapField(fv *tabletext.Field) bool {
+	f := fv.Def
+	n, ok := r.leb()
+	if !ok || n > uint64(len(r.buf)) || !r.has(int(n)) {
+		r.report.Malformed = true
+		return false
+	}
+	bodyLen := int(n)
+	end := r.off + bodyLen
+	fv.Entries = nil
+	if bodyLen >= 2 {
+		elemKind := r.u8()
+		count, good := r.leb()
+		if !good {
+			r.report.Malformed = true
+			r.off = end
+			return true
+		}
+		// A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array kind
+		// mismatch of §4, and nothing about a map is special-cased
+		if int(elemKind) != ir.TableKindTable {
+			r.report.KindMismatch++
+			r.off = end
+			return true
+		}
+		sub := r.sub(end - r.off)
+		var last tabletext.MapKey
+		landed := false
+		for range count {
+			elemLen, good := sub.leb()
+			if !good || elemLen > uint64(len(sub.buf)) || !sub.has(int(elemLen)) {
+				r.report.Malformed = true
+				break
+			}
+			body := sub.sub(int(elemLen))
+			sub.off += int(elemLen)
+			entry := r.m.NewMapEntry(f)
+			kindBad := false
+			key, keyOk := body.mapKey(f, entry, &kindBad)
+			if kindBad {
+				// A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets
+				// to EMPTY, ONE kind_mismatch counts for it, and the rest is
+				// skipped. Events counted inside earlier entries stand.
+				r.report.KindMismatch++
+				fv.Entries = nil
+				break
+			}
+			if !keyOk {
+				r.report.Malformed = true
+				break
+			}
+			if !tabletext.MapKeyFits(f, key) {
+				// KEYS NEVER CLAMP: the entry is dropped whole, one count per
+				// entry, and the rest of the map lands normally
+				r.report.Clamped++
+				continue
+			}
+			order := -1
+			if landed {
+				order = tabletext.MapKeyOrder(f, last, key)
+			}
+			if order > 0 {
+				// DESCENDING: not a body any conforming writer produced. The
+				// map keeps the ascending prefix it has, the rest skips by the
+				// map's L, and the PARENT reads on past the field's length.
+				r.report.Malformed = true
+				break
+			}
+			// the entry's body is read WHOLE now the key has chosen its place
+			whole := body.sub(0)
+			whole.buf = body.buf
+			whole.off = 0
+			decoded := r.m.NewMapEntry(f)
+			whole.bodyAt(decoded, true)
+			if order == 0 {
+				// EQUAL: a DUPLICATE. Last wins WHOLE — the slot the earlier
+				// entry took is replaced by this one's decode, so a field the
+				// repeat elides reads its default. The map's count excludes it.
+				fv.Entries[len(fv.Entries)-1] = tabletext.Cell{Tab: decoded}
+				r.report.Duplicate++
+				continue
+			}
+			fv.Entries = append(fv.Entries, tabletext.Cell{Tab: decoded})
+			last = tabletext.MapKeyOf(f, decoded)
+			landed = true
+		}
+	}
+	r.off = end // the remaining entries skip by the map's L
+	return true
+}
+
+// mapKey is the KEY SCAN (docs/SPEC-TABLES.md §2.8): the reader does not
+// assume where the key sits, so before an entry's body decodes it scans that
+// body's field headers for the key's id and reads the key. Where the body
+// carries the id more than once the scan reads the occurrence §3's
+// repeated-field rule keeps, the last one; a body with no key field at all has
+// the key's declared default.
+//
+// THE KEY KIND IS THE READER'S DECLARATION, never the first entry's: a key
+// under another kind desynchronizes the rest of the scan, and the honest
+// answer is the KIND rather than the framing damage that follows from it.
+func (r *wireReader) mapKey(f *ir.Field, entry *tabletext.Instance, kindBad *bool) (tabletext.MapKey, bool) {
+	keyField := ir.MapKeyField(f)
+	want := ir.TableWireScalarKind(keyField)
+	key := tabletext.MapKeyOf(f, entry)
+	scan := &wireReader{buf: r.buf, report: &tabletext.Report{}, m: r.m, ids: r.ids, st: r.st}
+	for {
+		ref, ok := scan.leb()
+		if !ok {
+			return key, false
+		}
+		if ref == 0 {
+			return key, true // no key field is the key's DEFAULT
+		}
+		id, named := scan.id(ref)
+		if !named || !scan.has(1) {
+			return key, false
+		}
+		kind := scan.u8()
+		if id == ir.MapKeyWireId {
+			if int(kind) != want {
+				*kindBad = true
+				return key, false
+			}
+			cell := &entry.Fields[0].Cell
+			if !scan.scalarOrString(cell, keyField) {
+				return key, false
+			}
+			key = tabletext.MapKeyOf(f, entry)
+			continue // the LAST occurrence is the one §3 keeps
+		}
+		if !scan.skip(kind) {
+			return key, false
+		}
+	}
+}
+
+// scalarOrString reads one key value: a `string(N)`'s length and bytes, or a
+// scalar at its own width. A key is one or the other (§2.8).
+func (r *wireReader) scalarOrString(cell *tabletext.Cell, f *ir.Field) bool {
+	if f.Type.Kind == ir.TString {
+		n, ok := r.leb()
+		if !ok || n > uint64(len(r.buf)) || !r.has(int(n)) {
+			return false
+		}
+		cell.Str = append([]byte(nil), r.buf[r.off:r.off+int(n)]...)
+		r.off += int(n)
+		return true
+	}
+	return r.scalar(cell, f, false)
 }
 
 func (r *wireReader) array(fv *tabletext.Field) bool {

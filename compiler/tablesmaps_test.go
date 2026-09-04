@@ -270,22 +270,18 @@ func TestMapEntryIsNotARoot(t *testing.T) {
 	}
 }
 
-// TestToolRefusesMapsByName: the tool's engines do not carry the construct
-// yet, and every table surface it has refuses a map-bearing unit BY NAME
-// (docs/SPEC-TABLES.md §2.8, §15). Without the refusal the engine meets a kind
-// 14 field over element kind 13, decodes nothing into a slot it has no shape
-// for, and reports FRAMING DAMAGE — which sends its reader looking for a
-// corrupt file when the file is fine and the reader is the one that is short.
+// TestToolRefusesMapsByName: the tool's WIRE and TEXT halves carry maps now
+// (docs/SPEC-TABLES.md §2.8), and its COOK half does not — so the cook
+// surfaces refuse a map-bearing unit BY NAME rather than laying out an entry
+// array they have no placement for. Without the refusal a caller gets a cook
+// whose region is short of the entries, which is worse than a diagnostic.
 func TestToolRefusesMapsByName(t *testing.T) {
 	u := unitFromSource(t, mapSrc)
 	c := New()
 	surfaces := map[string]func() error{
-		"Pack":          func() error { _, _, _, err := c.Pack(u, "Fleet", t.TempDir()); return err },
-		"Unpack":        func() error { _, err := c.Unpack(u, "Fleet", nil, t.TempDir()); return err },
-		"UnpackOneFile": func() error { _, err := c.UnpackOneFile(u, "Fleet", nil, t.TempDir()); return err },
-		"ReadReport":    func() error { _, err := c.ReadReport(u, "Fleet", nil); return err },
-		"Cook":          func() error { _, _, _, err := c.Cook(u, "Fleet", nil, CookOptions{}); return err },
-		"Uncook":        func() error { _, err := c.Uncook(u, "Fleet", nil); return err },
+		"Cook":      func() error { _, _, _, err := c.Cook(u, "Fleet", nil, CookOptions{}); return err },
+		"Uncook":    func() error { _, err := c.Uncook(u, "Fleet", nil); return err },
+		"CookCheck": func() error { _, err := c.CookCheck(u, "Fleet", nil); return err },
 	}
 	for name, call := range surfaces {
 		t.Run(name, func(t *testing.T) {

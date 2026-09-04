@@ -12,6 +12,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -161,6 +162,9 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 	}
 
 	switch {
+	case f.IsMap():
+		return encodeMap(e, w, fv, id)
+
 	case f.Type.Optional:
 		// PRESENCE is the payload: a present optional ALWAYS rides, even when
 		// its value is entirely default — otherwise absent and
@@ -650,4 +654,43 @@ func narrowF32(v float64) uint32 {
 		return sign | 0x7F800000 | payload
 	}
 	return math.Float32bits(float32(v))
+}
+
+// encodeMap writes one map field (docs/SPEC-TABLES.md §2.8): kind 14 over
+// element kind 13, an array of the generated `{ key, value }` entry. ITS
+// ENTRIES ARE WRITTEN IN ASCENDING KEY ORDER WITH NO KEY TWICE, and that is a
+// writer's rule — byte-identical output requires it, as it requires
+// declaration order. An EMPTY map elides, the by-value rule (§3).
+func encodeMap(e *encoder, w *buf, fv *tabletext.Field, id uint64) error {
+	f := fv.Def
+	if len(fv.Entries) == 0 {
+		return nil
+	}
+	order := make([]int, len(fv.Entries))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		return tabletext.MapKeyOrder(f,
+			tabletext.MapKeyOf(f, fv.Entries[order[a]].Tab),
+			tabletext.MapKeyOf(f, fv.Entries[order[b]].Tab)) < 0
+	})
+	w.leb(e.ids.ref(id))
+	w.u8(uint8(ir.TableKindArray))
+	body := &buf{}
+	body.u8(uint8(ir.TableKindTable))
+	body.leb(uint64(len(order)))
+	for _, at := range order {
+		// BUT THE ENTRY ALWAYS RIDES: identity here is the key, so an entry
+		// whose value is entirely default is not an absence (§2.8)
+		entry, err := encodeBody(e, fv.Entries[at].Tab)
+		if err != nil {
+			return err
+		}
+		body.leb(uint64(len(entry)))
+		body.raw(entry)
+	}
+	w.leb(uint64(len(body.b)))
+	w.raw(body.b)
+	return nil
 }
