@@ -12,20 +12,20 @@ Fourteen parts. Each part adds one thing, and each part ends with something
 that builds and runs. Every command on this page is shown with the output it
 actually prints.
 
-1. [A file, a package, and your first constants](#part-1--a-file-a-package-and-your-first-constants)
-2. [Naming things: enums and flags](#part-2--naming-things-enums-and-flags)
-3. [The first packet: types and ranged integers](#part-3--the-first-packet-types-and-ranged-integers)
-4. [The rest of the field types](#part-4--the-rest-of-the-field-types)
-5. [Branches, unions, and your protocol](#part-5--branches-unions-and-your-protocol)
-6. [Tables: data that outlives the build](#part-6--tables-data-that-outlives-the-build)
-7. [Shaping real data: optionals, keyed arrays, and a config format](#part-7--shaping-real-data-optionals-keyed-arrays-and-a-config-format)
-8. [Pointers and maps: when data is a graph](#part-8--pointers-and-maps-when-data-is-a-graph)
-9. [The text form: designers edit JSON, the game loads bytes](#part-9--the-text-form-designers-edit-json-the-game-loads-bytes)
-10. [Evolution you can trust: `was` and the baseline](#part-10--evolution-you-can-trust-was-and-the-baseline)
-11. [The cook: point at a file instead of parsing it](#part-11--the-cook-point-at-a-file-instead-of-parsing-it)
-12. [The block form: a frame another language reads in place](#part-12--the-block-form-a-frame-another-language-reads-in-place)
-13. [One schema, every language, and tools that walk it](#part-13--one-schema-every-language-and-tools-that-walk-it)
-14. [The tool belt, and where the edges are](#part-14--the-tool-belt-and-where-the-edges-are)
+1. [A file, a package, and your first constants](#part-1-a-file-a-package-and-your-first-constants)
+2. [Naming things: enums and flags](#part-2-naming-things-enums-and-flags)
+3. [The first packet: types and ranged integers](#part-3-the-first-packet-types-and-ranged-integers)
+4. [The rest of the field types](#part-4-the-rest-of-the-field-types)
+5. [Branches, unions, and your protocol](#part-5-branches-unions-and-your-protocol)
+6. [Tables: data that outlives the build](#part-6-tables-data-that-outlives-the-build)
+7. [Shaping real data: optionals, keyed arrays, and a config format](#part-7-shaping-real-data-optionals-keyed-arrays-and-a-config-format)
+8. [Pointers and maps: when data is a graph](#part-8-pointers-and-maps-when-data-is-a-graph)
+9. [The text form: designers edit JSON, the game loads bytes](#part-9-the-text-form-designers-edit-json-the-game-loads-bytes)
+10. [Evolution you can trust: `was` and the baseline](#part-10-evolution-you-can-trust-was-and-the-baseline)
+11. [The cook: point at a file instead of parsing it](#part-11-the-cook-point-at-a-file-instead-of-parsing-it)
+12. [The block form: a frame another language reads in place](#part-12-the-block-form-a-frame-another-language-reads-in-place)
+13. [One schema, every language, and tools that walk it](#part-13-one-schema-every-language-and-tools-that-walk-it)
+14. [The tool belt, and where the edges are](#part-14-the-tool-belt-and-where-the-edges-are)
 
 [USAGE.md](USAGE.md) describes every feature on its own terms. This page is
 the path through the same material in the order a newcomer walks it.
@@ -34,7 +34,7 @@ references, and nothing here contradicts them.
 
 ---
 
-## Part 1 — a file, a package, and your first constants
+## Part 1: A file, a package, and your first constants
 
 ### The problem
 
@@ -265,7 +265,7 @@ numbers in every language you generate.
 
 ---
 
-## Part 2 — naming things: enums and flags
+## Part 2: Naming things: enums and flags
 
 ### The problem
 
@@ -509,7 +509,7 @@ every language, and no hand-maintained constants.
 
 ---
 
-## Part 3 — the first packet: types and ranged integers
+## Part 3: The first packet: types and ranged integers
 
 ### The problem
 
@@ -728,7 +728,7 @@ refused, in any of nine languages.
 
 ---
 
-## Part 4 — the rest of the field types
+## Part 4: The rest of the field types
 
 The ship state is about to grow. Each addition below is a problem Starlight
 actually has, and each introduces one field kind.
@@ -995,7 +995,7 @@ state that costs a fraction of its struct size on the wire.
 
 ---
 
-## Part 5 — branches, unions, and your protocol
+## Part 5: Branches, unions, and your protocol
 
 ### The problem
 
@@ -1344,7 +1344,7 @@ construction.
 
 ---
 
-## Part 6 — tables: data that outlives the build
+## Part 6: Tables: data that outlives the build
 
 ### The problem
 
@@ -1621,7 +1621,7 @@ reported.
 
 ---
 
-## Part 7 — shaping real data: optionals, keyed arrays, and a config format
+## Part 7: Shaping real data: optionals, keyed arrays, and a config format
 
 ### The problem
 
@@ -1936,7 +1936,7 @@ channel that tolerates version skew.
 
 ---
 
-## Part 8 — pointers and maps: when data is a graph
+## Part 8: Pointers and maps: when data is a graph
 
 ### The problem
 
@@ -2208,7 +2208,7 @@ tolerant wire as everything else, with sharing preserved.
 
 ---
 
-## Part 9 — the text form: designers edit JSON, the game loads bytes
+## Part 9: The text form: designers edit JSON, the game loads bytes
 
 ### The problem
 
@@ -2434,7 +2434,7 @@ schema driving both, and drift counted at every crossing.
 
 ---
 
-## Part 10 — evolution you can trust: `was` and the baseline
+## Part 10: Evolution you can trust: `was` and the baseline
 
 ### The problem
 
@@ -2607,7 +2607,7 @@ errors with recorded reasons.
 
 ---
 
-## Part 11 — the cook: point at a file instead of parsing it
+## Part 11: The cook: point at a file instead of parsing it
 
 ### The problem
 
@@ -2800,7 +2800,7 @@ wire as the fallback that never breaks.
 
 ---
 
-## Part 12 — the block form: a frame another language reads in place
+## Part 12: The block form: a frame another language reads in place
 
 ### The problem
 
@@ -2966,7 +2966,7 @@ frame rate, read in place from another language, guarded by one comparison.
 
 ---
 
-## Part 13 — one schema, every language, and tools that walk it
+## Part 13: One schema, every language, and tools that walk it
 
 ### The problem
 
@@ -3143,7 +3143,7 @@ opinionated.
 
 ---
 
-## Part 14 — the tool belt, and where the edges are
+## Part 14: The tool belt, and where the edges are
 
 ### Every command you now know
 
