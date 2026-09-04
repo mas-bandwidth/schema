@@ -3219,3 +3219,343 @@ customization surface.
 and fleets keyed by name in the tools unit: built in parallel, locked into one
 relocatable region, saved on the same tolerant wire as everything else, with
 sharing preserved and a clear line around what the loader promises.
+
+---
+
+## Part 9: The text form: designers edit JSON, the game loads bytes
+
+### The problem
+
+`GameConfig` is a binary format now, and binary is exactly what a designer
+cannot open. Starlight's tuning workflow wants text that is diffable,
+mergeable, and editable in anything, without maintaining a hand-written JSON
+mapping beside the real schema.
+
+Nothing in this part changes the schema. It is all surface you already
+generated.
+
+### Every table reads and writes JSON
+
+The reflection descriptors every table carries, which Part 13 walks directly,
+drive a generic JSON codec, so there is no per-table code to write. In C++ the
+walk lives in the generated `ConfigTable.cpp`, so add that to your build once.
+That is the whole cost, and a project that never touches text does not compile
+it.
+
+`json.cpp`, entire:
+
+```cpp
+#include "ConfigTable.h"
+#include "SceneTable.h"
+#include <cstdio>
+#include <cstring>
+#include <vector>
+
+using namespace starlight;
+
+int main()
+{
+    // a fixed table, out and back
+    ShipConfig ship;
+    memcpy( ship.display_name, "Kestrel", 7 );
+    ship.display_name_length = 7;
+    ship.max_health = 250.0f;
+    ship.armor = 8;
+    ship.ship_type = ShipType::Corvette;
+
+    int64_t size = ShipConfigToJsonMeasure( ship );   // exact, writes nothing
+    std::vector<char> text( size + 1, 0 );
+    ShipConfigToJson( ship, text.data(), size );
+    printf( "%s", text.data() );
+
+    const char * edited =
+        "{\n"
+        "  \"display_name\": \"Kestrel II\",\n"
+        "  \"max_helth\": 300,\n"
+        "  \"armor\": 4,\n"
+        "  \"armor\": 6,\n"
+        "  \"ship_type\": \"Corvette\"\n"
+        "}\n";
+    TableReport report;
+    ShipConfig loaded;
+    bool ok = ShipConfigFromJson( loaded, edited, (int64_t) strlen( edited ), &report );
+    printf( "from json: %s  name=%s health=%g armor=%d\n", ok ? "ok" : "stopped",
+        loaded.display_name, loaded.max_health, loaded.armor );
+    printf( "report: unknown=%d duplicate=%d clamped=%d\n",
+        report.unknown, report.duplicate, report.clamped );
+
+    ShipConfig bad;
+    bad.ship_type = (ShipType) 99;
+    printf( "ToJsonMeasure on an unnamed enum value: %lld\n",
+        (long long) ShipConfigToJsonMeasure( bad ) );
+
+    // a graph, out and back
+    RouteBuilder builder;
+    Route * route = builder.GetRoot();
+    auto gate = builder.Alloc<Waypoint>();
+    memcpy( gate->name, "Gate", 4 );
+    gate->name_length = 4;
+    gate->x = 5;
+    route->stops_count = 3;
+    route->stops[0] = gate;
+    route->stops[1] = gate;
+    builder.Lock();
+    const Route * locked = builder.AsConst();
+
+    int64_t graph_size = RouteToJsonMeasure( locked );
+    std::vector<char> graph( graph_size + 1, 0 );
+    RouteToJson( locked, graph.data(), graph_size );
+    printf( "%s", graph.data() );
+
+    RouteBuilder back;
+    TableReport graph_report;
+    bool graph_ok = RouteFromJson( back, graph.data(), graph_size, &graph_report );
+    back.Lock();
+    const Route * again = back.AsConst();
+    printf( "from json: %s  shared=%s null=%s\n", graph_ok ? "ok" : "stopped",
+        WaypointAt( again->stops[0] ) == WaypointAt( again->stops[1] ) ? "YES" : "no",
+        WaypointAt( again->stops[2] ) == NULL ? "yes" : "no" );
+    return 0;
+}
+```
+
+```
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o json json.cpp gen/ConfigTable.cpp gen/SceneTable.cpp
+$ ./json
+{
+  "display_name": "Kestrel",
+  "max_health": 250,
+  "max_speed": 500,
+  "armor": 8,
+  "ship_type": "Corvette"
+}
+from json: ok  name=Kestrel II health=100 armor=6
+report: unknown=1 duplicate=1 clamped=0
+ToJsonMeasure on an unnamed enum value: -1
+{
+  "head": null,
+  "stops": [
+    {
+      "&node": 1,
+      "name": "Gate",
+      "x": 5,
+      "y": 0,
+      "next": null
+    },
+    {
+      "&node": 1
+    },
+    null
+  ],
+  "loops": false
+}
+from json: ok  shared=YES null=yes
+```
+
+Four things in that output.
+
+**`ToJson` writes every field, defaults included**, because a text is for
+people and a person reading a config wants the whole state. `max_speed: 500`
+is a default the binary wire would have elided. The absent optionals,
+`settings` and `tier`, are the exception: absence has nothing to print. Enums
+render by variant name, the output is pretty-printed with a two-space indent,
+and it ends in one newline.
+
+**Reading text uses the same report as the wire.** `max_helth` is `unknown`,
+and `max_health` stayed at its declared 100, so the typo did not vanish
+silently. The doubled `armor` reads last wins and counts `duplicate`, which is
+the counter Part 6 said belongs to the text form. Mentioned-fields-only
+semantics match the wire: what the text omits takes its declared default.
+
+**The writer refuses to lie.** Hand `ToJson` an enum value no variant names and
+it returns -1 rather than inventing JSON.
+
+**Graphs have a text form too**, and it handles what plain JSON cannot:
+sharing. The first reference to a node is its body, labeled `"&node": 1`. The
+second reference is the label alone. A null pointer is `null`. `RouteFromJson`
+reads into a **builder**, because text becomes a graph and graphs are built,
+and the shared node comes back shared.
+
+If your text has to meet an existing convention, `| json = "type"` renames the
+key in text only, and no wire byte moves:
+
+```
+package jname
+
+table Prop
+{
+    kind  string(16) | json = "type"
+    solid bool
+}
+```
+
+```
+$ ./j
+{
+  "type": "rock",
+  "solid": false
+}
+```
+
+### `schema pack` and `schema unpack`: the tree workflow
+
+One JSON file per root works. A **directory** per root works better with
+version control, because designers touch one small file per edit and diffs stay
+readable. The tool speaks that shape directly. Start from `config.bin`, which
+Part 7 wrote, and let `unpack` show you the layout:
+
+```
+$ schema unpack --root GameConfig --in config.bin --verbose tree .
+report: silent — the data matched the schema exactly
+unpacked config.bin into tree
+$ find tree -type f | sort
+tree/friendly_fire.json
+tree/level_name.json
+tree/ships/Corvette.json
+tree/ships/Fighter.json
+tree/ships/Freighter.json
+tree/weapons.json
+```
+
+A directory named for a field holds that field's value, an enum-keyed array is
+one `<Variant>.json` per slot, and there is no `None.json` because a `None` key
+names no slot. Anything can collapse to a single `<field>.json`:
+
+```
+$ cat tree/weapons.json
+[
+  {
+    "damage": 35,
+    "homing": false
+  },
+  {
+    "damage": 21,
+    "homing": true
+  }
+]
+```
+
+Now be the designer. Rename the level and tune the corvette:
+
+```
+$ cat tree/level_name.json
+"Kuiper Run"
+$ cat tree/ships/Corvette.json
+{
+  "display_name": "Corvette",
+  "max_health": 500,
+  "max_speed": 500,
+  "armor": 1,
+  "ship_type": "Corvette",
+  "settings": { "sensitivity": 0.8 }
+}
+```
+
+and the build packs the tree back into the root's wire bytes:
+
+```
+$ schema pack --root GameConfig --out packed.bin tree .
+$ echo $?
+0
+```
+
+Silent, as always. The game loads `packed.bin` with the same `GameConfigLoad`
+as ever. `loadpacked.cpp`, entire:
+
+```cpp
+#include "ConfigTable.h"
+#include <cstdio>
+#include <vector>
+
+static std::vector<uint8_t> Slurp( const char * path )
+{
+    FILE * f = fopen( path, "rb" );
+    std::vector<uint8_t> bytes;
+    uint8_t chunk[512];
+    size_t n;
+    while ( ( n = fread( chunk, 1, sizeof( chunk ), f ) ) > 0 )
+    {
+        bytes.insert( bytes.end(), chunk, chunk + n );
+    }
+    fclose( f );
+    return bytes;
+}
+
+int main( int, char ** argv )
+{
+    using namespace starlight;
+    std::vector<uint8_t> buffer = Slurp( argv[1] );
+    TableReport report;
+    GameConfig config;
+    bool ok = GameConfigLoad( config, buffer.data(), (int64_t) buffer.size(), &report );
+    const ShipConfig & corvette = config.ships[ShipType::Corvette];
+    printf( "%s: level=%s weapons=%d w0.damage=%g corvette=%g sensitivity=%g (present=%d)\n",
+        ok ? "ok" : "stopped", config.level_name, config.weapons_count,
+        config.weapons[0].damage, corvette.max_health,
+        corvette.settings.sensitivity, (int) corvette.settings_present );
+    return 0;
+}
+```
+
+```
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o loadpacked loadpacked.cpp gen/ConfigTable.cpp
+$ ./loadpacked packed.bin
+ok: level=Kuiper Run weapons=2 w0.damage=35 corvette=500 sensitivity=0.8 (present=1)
+```
+
+The optional the designer wrote is present, with the value they typed. The
+output is the table's wire bytes and nothing else. No magic, no hash, because
+envelopes stay yours.
+
+`--one-file` gives you the single-JSON shape instead:
+
+```
+$ schema unpack --root GameConfig --in packed.bin --one-file --verbose one .
+report: silent — the data matched the schema exactly
+unpacked packed.bin into one
+$ ls one
+GameConfig.json
+```
+
+`unpack` prunes files it owns and did not write, so a deleted field's stale
+`.json` cannot haunt the tree.
+
+Both verbs are strict by default, and any non-silent report is a nonzero exit.
+Tune a Freighter badly:
+
+```
+$ cat tree/ships/Freighter.json
+{
+  "max_health": "very strong"
+}
+$ schema pack --root GameConfig --out packed2.bin tree .
+report: unknown 0, kind_mismatch 1, clamped 0, duplicate 0, malformed false
+schema: the report is not silent — pass --tolerate to accept it
+$ echo $?
+1
+```
+
+A string where a float belongs is a kind mismatch, and your CI stops until
+someone fixes the text or explicitly tolerates it. JSON has one number type, so
+`2` and `2.0` both read into an integer field, a genuinely fractional value
+into an integer field is a mismatch, and `1.2.3` is malformed. Numbers never
+get quietly mangled.
+
+Put the Freighter back before you go on, because Part 11 cooks this tree:
+
+```
+$ cat tree/ships/Freighter.json
+{
+  "display_name": "",
+  "max_health": 100,
+  "max_speed": 500,
+  "armor": 1,
+  "ship_type": "None"
+}
+$ schema pack --root GameConfig --out packed.bin tree .
+$ echo $?
+0
+```
+
+**You now have** the designer loop: binary for the game, text for people, one
+schema driving both, and drift counted at every crossing.
