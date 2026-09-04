@@ -5538,8 +5538,9 @@ The builder is designed to go wide, lock-free by ownership:
   can refuse a number it did not expect; nothing in the runtime decides
   that for it.
 - **A `-1` CARRIES A REASON, and it is the SAME ENUM the accelerators'
-  refusals carry.** `Open` and `BlockOpen` answer a null beside a refusal
-  reason (§7, §19.2), and a call that answers `-1` answers the same way, as an
+  refusals carry: `TableOpenReason`** (§7, §11). `Open` and `BlockOpen` answer
+  a null beside a value of it (§7, §19.2), and a call that answers `-1`
+  answers the same way, as an
   enum out-parameter, with the same spellings in every target. One enum covers
   both, because a caller asking "why can I not have this file" is asking one
   question whichever call refused it, and two enums would be two vocabularies
@@ -6198,14 +6199,21 @@ the wire, and keeps the flexibility that comes with it.
   language's own convention for an enumerator the way §11 leaves every claimed
   verb its own shape, and `TableOpenReason` joins §11's claimed names.
 
-  **It is not the message form's vocabulary, and the two are worth telling
-  apart.** §3.3's `no_vocabulary`, `second_announcement`,
+  **The enum is WIDER than `Open`, and §6.5 is why.** `LoadMeasure`'s `-1`
+  carries a value of this same enum, over five refusal values of its own
+  (§6.5), on the ground that a caller asking "why can I not have this file" is
+  asking one question whichever call refused it. The eight values above are
+  the ACCELERATOR's clauses and those five are the MEASURE's, in one
+  vocabulary, and no call returns a value belonging to the other's clauses.
+
+  **It is not the MESSAGE FORM's vocabulary, though, and the two are worth
+  telling apart.** §3.3's `no_vocabulary`, `second_announcement`,
   `vocabulary_too_large` and `message_form_as_file`, and the form byte's own
-  `newer_form`, are the TOLERANT WIRE's refusals: a load that never began.
-  `TableOpenReason` is the ACCELERATOR's: a header match that did not match.
-  They are different enums on different paths, no call returns both, and a
-  caller meeting a `TableOpenReason` falls back to the wire while a caller
-  meeting one of the others has already failed there.
+  `newer_form`, ride on the message path and are stated there. A caller
+  meeting a `TableOpenReason` has been refused a FILE, by a header match or by
+  a measure, and falls back or gives up; a caller meeting one of the message
+  form's has been refused a MESSAGE on a connection, which is a different
+  recovery with a different owner (§3.3).
 
   **No existing call site moves.** In C++ the parameter is last and defaults to
   null, `const Scene * SceneOpen( const void * bytes, uint64_t length,
@@ -8571,8 +8579,9 @@ in build version (§20.5).
     a `type` body: this document's own `ScoreBoard` declares one),
     `TableList` (an unbounded array's storage, §2.9),
     `TableMap` (a map's storage) and `TableMapIndex` (the optional index's
-    handle, §2.8), `TableRef`, `TableReport`, `TableOpenReason` (the refusal
-    both accelerators name, §7, §19.2), the BLOB surface — `TableBytesView`,
+    handle, §2.8), `TableRef`, `TableReport`, `TableOpenReason` (the one
+    refusal vocabulary both accelerators and `LoadMeasure`'s `-1` name, §6.5,
+    §7, §19.2), the BLOB surface — `TableBytesView`,
     `TableStringView` and `TableWStringView` with `TableBytesAt`,
     `TableStringAt` and `TableWStringAt` over them (§2.5), and `AllocBytes`,
     `AllocString` and `AllocWString` on the builder (§6.2), the wide member of
