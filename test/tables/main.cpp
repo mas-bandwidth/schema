@@ -6977,8 +6977,12 @@ static void test_form_byte_refusals()
     const int64_t bytes = tblv1::CfgSave( src, wire, sizeof( wire ) );
     CHECK( bytes > 0 );
 
-    const uint8_t forms[3] = { 0, 2, 0xFF };
-    const char * names[3] = { "form_zero", "form_two", "form_ff" };
+    // THE FORMS NO READER KNOWS. Form 2 is not among them: it is the MESSAGE
+    // FORM (docs/SPEC-TABLES.md §3.3), a form this build carries, and reading
+    // one where a FILE was expected is its own refusal under its own reason,
+    // pinned by the message_as_file row and by test_message_form_refusals.
+    const uint8_t forms[3] = { 0, 3, 0xFF };
+    const char * names[3] = { "form_zero", "form_three", "form_ff" };
     for ( int i = 0; i < 3; i++ )
     {
         static uint8_t forged[256];
@@ -6989,7 +6993,7 @@ static void test_form_byte_refusals()
         tblv1::Cfg out;
         tblv1::TableReport report;
         CHECK( tblv1::CfgLoadVerdict( out, forged, bytes, &report ) == tblv1::TableOpenRefused );
-        CHECK( report.refused );
+        CHECK( report.refused && report.reason == tblv1::newer_form );
         CHECK( !report.malformed );
         CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
         CHECK( report.clamped == 0 && report.duplicate == 0 );

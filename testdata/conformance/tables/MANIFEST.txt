@@ -171,14 +171,23 @@ report p3_as_p1       tblp1 Chain testdata/wire/tables/chain_optional.bin
 report p1_empty_as_p3 tblp3 Chain testdata/wire/tables/chain_value_empty.bin
 report p3_empty_as_p1 tblp1 Chain testdata/wire/tables/chain_optional_empty.bin
 
-# THE FORM BYTE, AND THE REFUSAL ABOVE IT (§3): one row each for form 0, form 2
-# and form 0xFF, over a wire that is otherwise a good v1 Cfg. A reader that
+# THE FORM BYTE, AND THE REFUSAL ABOVE IT (§3): one row each for form 0, form 3
+# and form 0xFF, the three forms no reader knows, over a wire that is otherwise
+# a good v1 Cfg. Form 2 is not among them, because it is a form this build
+# carries: the MESSAGE FORM has its own row below (§3.3). A reader that
 # meets a byte it does not know refuses by name and NEVER reports damage — the
 # refusal moves none of §4's five counters, because nothing was decoded. It is
 # why a report carries a VERDICT: a clean read prints the same five zeros.
 report form_zero      tblv1 Cfg   testdata/wire/tables/form_zero.bin
-report form_two       tblv1 Cfg   testdata/wire/tables/form_two.bin
+report form_three     tblv1 Cfg   testdata/wire/tables/form_three.bin
 report form_ff        tblv1 Cfg   testdata/wire/tables/form_ff.bin
+
+# AND A REAL MESSAGE READ AS A FILE (docs/SPEC-TABLES.md §3.3): the whole of
+# one message, handed to a reader that expected a file. A message stored on its
+# own is not readable, because its id table is somewhere else, so the read
+# REFUSES by name and decodes nothing. The root is any root, because the form
+# byte is read FIRST.
+report message_as_file tblv1 Cfg  testdata/wire/tables/login_full_message.bin
 
 # THE POINTER SPELLING IS ITS OWN FRAMING (§3.1). T and ?T are wire-identical
 # and read each other as instances above; *T rides as a u32 NODE INDEX under

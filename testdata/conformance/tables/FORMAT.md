@@ -137,8 +137,11 @@ The five counters of docs/SPEC-TABLES.md §4, `<malformed>` spelled `true` or
 reader that meets a FORM BYTE it does not carry refuses the wire by name: it
 decodes nothing, moves none of the five counters and reports no damage — so a
 refusal and a clean read print the same five zeros and the same false flag, and
-only the verdict tells them apart. `form_zero`, `form_two` and `form_ff` are the
-three rows that say so.
+only the verdict tells them apart. `form_zero`, `form_three` and `form_ff` are
+the three rows that say so, over the three forms no reader knows, and
+`message_as_file` is the fourth: form `2` is a form this build DOES carry
+(docs/SPEC-TABLES.md §3.3), and a message handed to a reader that expected a
+file refuses because its id table is somewhere else.
 
 A driver prints the verdict on its `report` surface beside the counters. A TEXT
 read never refuses — only a form byte does — so the `json-hostile` rows carry
