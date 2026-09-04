@@ -751,62 +751,61 @@ static uint64_t schema_perfgate_diag_count = 0;
 `
 
 var (
-	readFnStart  = regexp.MustCompile(`^SCHEMA_READ_INLINE bool Read`)
-	writeFnStart = regexp.MustCompile(`^SCHEMA_WRITE_INLINE bool Write`)
-	readMacro    = regexp.MustCompile(`^read_[a-z0-9_]+\(`)
-	loadFnStart  = regexp.MustCompile(`bool [A-Za-z0-9_]*Load(Body)?\(`)
-	saveFnStart  = regexp.MustCompile(`bool [A-Za-z0-9_]*(Save|Measure)[A-Za-z0-9_]*\(`)
-	caseLine     = regexp.MustCompile(`^case 0x[0-9a-fA-F]+ull:`)
+	// A top-level function definition in either generated header: a line that
+	// starts at column zero and opens a parameter list. Tracking THE CURRENT
+	// FUNCTION, rather than toggling a flag on the two kinds of function the
+	// plant cares about, is what makes the filter robust: a helper that is
+	// neither a read nor a write ends the read function it follows, instead of
+	// inheriting whatever the previous toggle left behind.
+	topLevelFn = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_ &*:<>]*\(`)
+
+	readFn    = regexp.MustCompile(`^SCHEMA_READ_INLINE bool Read`)
+	readMacro = regexp.MustCompile(`^read_[a-z0-9_]+\(`)
+
+	loadFn   = regexp.MustCompile(`bool [A-Za-z0-9_]*LoadBody\(`)
+	caseLine = regexp.MustCompile(`^case 0x[0-9a-fA-F]+ull:`)
 )
 
-// plantPacket: the packet wire's generated header. read_* is a macro and it
-// appears on the read path and nowhere else, so the site is the call.
-func plantPacket(src string) (string, int) {
-	lines := strings.Split(src, "\n")
-	inRead := false
+// plantAt walks a generated header, tracks which top-level function each line
+// belongs to, and inserts the plant at every site inside a function the filter
+// accepts. `before` puts the plant ahead of the site line rather than after it.
+func plantAt(src string, inFunction, isSite *regexp.Regexp, before bool) (string, int) {
 	planted := 0
 	var out []string
-	for _, line := range lines {
-		t := strings.TrimSpace(line)
-		switch {
-		case readFnStart.MatchString(line):
-			inRead = true
-		case writeFnStart.MatchString(line):
-			inRead = false
+	accepting := false
+	for line := range strings.SplitSeq(src, "\n") {
+		if topLevelFn.MatchString(line) {
+			accepting = inFunction.MatchString(line)
 		}
-		if inRead && readMacro.MatchString(t) {
+		site := accepting && isSite.MatchString(strings.TrimSpace(line))
+		if site && before {
 			out = append(out, indentOf(line)+"SCHEMA_PERFGATE_PLANT()")
 			planted++
 		}
 		out = append(out, line)
+		if site && !before {
+			out = append(out, indentOf(line)+"SCHEMA_PERFGATE_PLANT()")
+			planted++
+		}
 	}
 	return strings.Join(out, "\n"), planted
+}
+
+// plantPacket: the packet wire's generated header. Every field read is a
+// read_* macro call on a line of its own, so the site is the call and the
+// plant goes ahead of it.
+func plantPacket(src string) (string, int) {
+	return plantAt(src, readFn, readMacro, true)
 }
 
 // plantTable: the table wire's generated header. The read path dispatches on
-// field id, so the site is the case label: one plant per field, once.
+// field id, so the site is the case label inside a LoadBody: one plant per
+// field, once, placed where the field's own decode begins. The enum-id lookup
+// helper carries case labels too and is deliberately not a site, because a
+// plant there would price enum values rather than fields.
 func plantTable(src string) (string, int) {
-	lines := strings.Split(src, "\n")
-	inLoad := false
-	planted := 0
-	var out []string
-	for _, line := range lines {
-		t := strings.TrimSpace(line)
-		switch {
-		case loadFnStart.MatchString(line):
-			inLoad = true
-		case saveFnStart.MatchString(line):
-			inLoad = false
-		}
-		out = append(out, line)
-		if inLoad && caseLine.MatchString(t) {
-			out = append(out, indentOf(line)+"SCHEMA_PERFGATE_PLANT()")
-			planted++
-		}
-	}
-	return strings.Join(out, "\n"), planted
+	return plantAt(src, loadFn, caseLine, false)
 }
-
 func indentOf(line string) string {
 	return line[:len(line)-len(strings.TrimLeft(line, " \t"))]
 }
