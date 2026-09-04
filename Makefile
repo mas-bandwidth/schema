@@ -719,6 +719,50 @@ tables-blob-read-hooks-negative-control: bin/schema test/tables/hooks_main.cpp
 		  cat $(BLOB_READ_SABOTAGE)/log; exit 1; }
 	@echo "negative control: one allocation inside a blob view turns the hooks test red"
 
+# THE SPAN's NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.5, §6.5). A byte buffer
+# larger than one 64 KiB slab cannot be bump-allocated in a slab: it takes a
+# SPAN of the arena's address space. The sabotage removes exactly that choice —
+# the size test that sends a large blob to TableArenaGrabSpan is made never to
+# fire, and every other line of the allocator is the tree's — so the blob is
+# bump-allocated in a 64 KiB slab and runs off the end of it, over memory the
+# arena goes on to hand to the nodes allocated after it. The driver reads the
+# blob back after those allocations and the pattern does not survive. It builds
+# under the sanitizers, so an overrun that lands outside the slab's own block
+# is named at the byte rather than read back as a wrong value.
+#
+# Both halves run: the tree's own emitter through the same driver must be
+# GREEN, so a red below is the sabotage and not the driver.
+BLOB_SPAN_SABOTAGE := build/blob-span-control
+BLOB_SPAN_SANITIZE := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
+.PHONY: tables-blob-span-negative-control
+tables-blob-span-negative-control: bin/schema test/tables/blob_span_main.cpp
+	@rm -rf $(BLOB_SPAN_SABOTAGE) && mkdir -p $(BLOB_SPAN_SABOTAGE)
+	@sed -e 's|if ( bytes > (int64_t) kTableSlabBytes )|if ( false ) /* SABOTAGED: no blob takes a span */|' \
+		internal/codegen/cpptable/arena.go > $(BLOB_SPAN_SABOTAGE)/arena.go.txt
+	@cmp -s internal/codegen/cpptable/arena.go $(BLOB_SPAN_SABOTAGE)/arena.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the span sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/arena.go":"%s/$(BLOB_SPAN_SABOTAGE)/arena.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(BLOB_SPAN_SABOTAGE)/overlay.json
+	@go build -overlay=$(BLOB_SPAN_SABOTAGE)/overlay.json -o $(BLOB_SPAN_SABOTAGE)/schema ./cmd/schema
+	@$(BLOB_SPAN_SABOTAGE)/schema generate --lang cpp --out $(BLOB_SPAN_SABOTAGE)/blobs tables/blobs > /dev/null
+	@./bin/schema generate --lang cpp --out $(BLOB_SPAN_SABOTAGE)/blobs-good tables/blobs > /dev/null
+	$(CXX) $(TABLES_CXXFLAGS) $(BLOB_SPAN_SANITIZE) -I$(BLOB_SPAN_SABOTAGE)/blobs-good -Itest/tables \
+		test/tables/blob_span_main.cpp $$(ls $(BLOB_SPAN_SABOTAGE)/blobs-good/*Table.cpp) -o $(BLOB_SPAN_SABOTAGE)/span-good
+	@$(BLOB_SPAN_SABOTAGE)/span-good > $(BLOB_SPAN_SABOTAGE)/good.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the driver is red on the tree's own emitter"; \
+		  cat $(BLOB_SPAN_SABOTAGE)/good.log; exit 1; }
+	$(CXX) $(TABLES_CXXFLAGS) $(BLOB_SPAN_SANITIZE) -I$(BLOB_SPAN_SABOTAGE)/blobs -Itest/tables \
+		test/tables/blob_span_main.cpp $$(ls $(BLOB_SPAN_SABOTAGE)/blobs/*Table.cpp) -o $(BLOB_SPAN_SABOTAGE)/span
+	@if $(BLOB_SPAN_SABOTAGE)/span > $(BLOB_SPAN_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a blob bump-allocated in a slab it does not fit left the driver GREEN"; \
+		cat $(BLOB_SPAN_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "heap-buffer-overflow\|blob past the slab" $(BLOB_SPAN_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the driver went red, but not on the blob"; \
+		  cat $(BLOB_SPAN_SABOTAGE)/log; exit 1; }
+	@grep -m1 "heap-buffer-overflow\|blob past the slab" $(BLOB_SPAN_SABOTAGE)/log
+	@echo "negative control: a blob larger than a slab, denied its span, overruns the slab"
+
 # THE VALUED FIXTURE, cross-checked by the ENGINE's own uncook (§7.5, §7.4).
 #
 # `test/cookgen --values` fills every non-pointer leaf, so the conformance
@@ -2053,6 +2097,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-cook-write-negative-control
 	$(MAKE) tables-cook-write-hooks-negative-control
 	$(MAKE) tables-blob-read-hooks-negative-control
+	$(MAKE) tables-blob-span-negative-control
 	$(MAKE) tables-cook-valued
 	$(MAKE) tables-cook-open-lengths-negative-control
 	$(MAKE) tables-cook-open-root-negative-control
@@ -2172,6 +2217,8 @@ check: bin/schema
 	./bin/schema check tables/blockhome
 	./bin/schema check tables/messages
 	./bin/schema check tables/stream
+	./bin/schema check tables/blobs
+	./bin/schema check tables/scalars
 	./bin/schema check test/tables/V1.schema
 	./bin/schema check test/tables/V2.schema
 	./bin/schema check test/tables/P1.schema
@@ -2198,6 +2245,8 @@ fmt: bin/schema
 	./bin/schema fmt tables/blockhome
 	./bin/schema fmt tables/messages
 	./bin/schema fmt tables/stream
+	./bin/schema fmt tables/blobs
+	./bin/schema fmt tables/scalars
 	./bin/schema fmt test/tables/V1.schema
 	./bin/schema fmt test/tables/V2.schema
 	./bin/schema fmt test/tables/P1.schema

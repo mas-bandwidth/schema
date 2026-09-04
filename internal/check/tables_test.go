@@ -185,6 +185,13 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntype P { tier ?int32 }\n"},
 		{name: "an optional pointer is refused by name", want: "a pointer is ALREADY optional",
 			src: "package t\ntable Node { x int32 }\ntable Tab { head ?*Node }\n"},
+		// a BYTE BUFFER is a pointer, and the refusal must quote the spelling
+		// the author wrote — `?*bytes`, not the bounded `?bytes(N)` they did
+		// not write (docs/SPEC-TABLES.md §2.5)
+		{name: "an optional byte buffer names the spelling written", want: "field b: ?*bytes marks a pointer optional",
+			src: "package t\ntable Tab { b ?*bytes }\n"},
+		{name: "an optional string buffer names the spelling written", want: "field s: ?*string marks a pointer optional",
+			src: "package t\ntable Tab { s ?*string }\n"},
 		{name: "an optional array of pointers is a named follow-on", want: "? on an array of pointers is a named follow-on",
 			src: "package t\ntable Node { x int32 }\ntable Tab { xs ?[..4]*Node }\n"},
 		{name: "an optional array of unions is a named follow-on", want: "? on an array of unions is a named follow-on",

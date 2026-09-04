@@ -2415,11 +2415,21 @@ func boundIdent(b *ast.ArrayBound) (string, ast.Pos, bool) {
 // scalarSpelling renders a field type as the author wrote it, for a
 // diagnostic that quotes the spelling back.
 func scalarSpelling(t ast.ScalarType) string {
+	// a POINTER is spelled with its star, whatever it points at: `*Node`, and
+	// `*bytes` or `*string` for a byte buffer, which takes no bound and so is
+	// not the `bytes(N)` spelling (docs/SPEC-TABLES.md §2.5)
+	if t.Pointer {
+		switch t.Kind {
+		case ast.ScalarNamed:
+			return "*" + t.Name
+		case ast.ScalarString:
+			return "*string"
+		case ast.ScalarBytes:
+			return "*bytes"
+		}
+	}
 	switch t.Kind {
 	case ast.ScalarNamed:
-		if t.Pointer {
-			return "*" + t.Name
-		}
 		return t.Name
 	case ast.ScalarBool:
 		return "bool"

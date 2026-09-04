@@ -1168,6 +1168,16 @@ cook the view points INTO the region: one add, no base pointer, no copy
 into, as it copies every node — a gigabyte on the wire path is a gigabyte read
 — and the cooked path is the zero-copy one (§7).
 
+**A LAZY SUB-DOCUMENT is a PATTERN, not a construct.** Because schema never
+interprets a blob, a `*bytes` can hold a whole other document as its own wire
+bytes, decoded only when something asks for it: the holder's load, region and
+cook carry those bytes opaquely at whatever size they happen to be, and a
+reader hands them to that document's own `Load` at the moment it needs them.
+Nothing in the language names this — it is `*bytes` and a second call — and it
+is the buffer's own size argument one level up: a node pays for the
+sub-document it actually holds, and pays nothing to walk past one it never
+reads.
+
 **Backend status: the C++ REFERENCE and the TOOL carry it; every other backend
 refuses a unit that declares one, by name** (§11), and the ports are a named
 follow-on (§15). The corpus holds the construct in `tables/blobs`: a small

@@ -1794,6 +1794,11 @@ empty blob — and a blob named from two slots has no text spelling (a string
 has no first key to carry `&node`), so `ToJson` refuses that graph
 (SPEC-TABLES.md §16.7).
 
+Because schema never reads a blob, a `*bytes` is also where you put a LAZY
+SUB-DOCUMENT — another document's wire bytes, carried opaquely and handed to
+its own `Load` only when something asks for it. That is a pattern, not a
+construct: `*bytes` plus a second call (SPEC-TABLES.md §2.5).
+
 C++ and the tool carry the construct today; every other backend refuses a
 unit that declares one, by name, and the ports are a named follow-on
 (SPEC-TABLES.md §15).

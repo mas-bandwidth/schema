@@ -7540,6 +7540,76 @@ static void test_blob_reflection()
     CHECK( checked_fields == 4 );
 }
 
+// THE TERMINATOR IS THE NODE'S OWN (§6.3), at the two lengths that can see it.
+// A *string node carries one zero byte after its data and its extent is
+// rounded to the arena's alignment like every node's, so at a length that is
+// NOT a multiple of eight the rounding absorbs that byte and a node laid out
+// without it reads the same. At 8 and at 16 it does not: the byte at
+// `data[length]` is then the first byte of whatever the walk laid out next.
+// `alias` is declared after `note` and is given a short blob, so that next
+// byte is a length header whose low byte is NOT zero — which is what makes the
+// missing terminator readable instead of a zero that happened to be there.
+static void build_blob_terminated( blobdemo::CatalogBuilder & builder, int64_t length )
+{
+    blobdemo::Catalog * root = builder.GetRoot();
+    set_string( root->name, root->name_length, length == 8 ? "term8" : "term16" );
+    blobdemo::TableStringSlot note = builder.AllocString( length );
+    CHECK( !note.null() && note.length == length );
+    if ( note.null() ) { return; }
+    for ( int64_t i = 0; i < length; i++ ) { note.data[i] = (char) ( 'a' + ( i % 26 ) ); }
+    root->note = note;
+    blobdemo::TableBytesSlot alias = builder.AllocBytes( 5 ); // its header's low byte is 5
+    CHECK( !alias.null() );
+    if ( alias.null() ) { return; }
+    for ( int64_t i = 0; i < 5; i++ ) { alias.data[i] = (uint8_t) ( 0xa0 + i ); }
+    root->alias = alias;
+}
+
+static void check_blob_terminated( const blobdemo::Catalog * root, int64_t length, const char * where )
+{
+    if ( root == NULL ) { printf( "FAIL blob terminator %s: no root\n", where ); failures++; return; }
+    blobdemo::TableStringView note = blobdemo::TableStringAt( root->note );
+    if ( note.data == NULL || note.length != length || note.data[length] != 0 ||
+         (int64_t) strlen( note.data ) != length )
+    {
+        printf( "FAIL blob terminator %s at length %lld: data[%lld] is %d, strlen is %lld\n",
+                where, (long long) length, (long long) length,
+                note.data == NULL ? -1 : (int) (unsigned char) note.data[length],
+                note.data == NULL ? -1LL : (long long) strlen( note.data ) );
+        failures++;
+    }
+    blobdemo::TableBytesView alias = blobdemo::TableBytesAt( root->alias );
+    CHECK( alias.data != NULL && alias.length == 5 && alias.data[0] == 0xa0 );
+}
+
+// the same string at 8 and at 16, read back off the LOCKED region and off a
+// region a wire load sized and filled: the node pays for its own terminator on
+// both paths, or the byte after the data belongs to the next node
+static void test_blob_string_terminator()
+{
+    const int64_t lengths[2] = { 8, 16 };
+    for ( int k = 0; k < 2; k++ )
+    {
+        const int64_t length = lengths[k];
+        blobdemo::CatalogBuilder builder;
+        build_blob_terminated( builder, length );
+        CHECK( builder.Lock() );
+        check_blob_terminated( builder.AsConst(), length, "locked region" );
+
+        static uint8_t wire[1 << 12];
+        int64_t wrote = blobdemo::CatalogSave( builder.AsConst(), wire, sizeof( wire ) );
+        CHECK( wrote > 0 );
+        if ( wrote <= 0 ) { continue; }
+        int64_t need = blobdemo::CatalogLoadMeasure( wire, wrote );
+        std::vector<uint8_t> region( (size_t) need );
+        blobdemo::TableReport report;
+        const blobdemo::Catalog * loaded =
+            blobdemo::CatalogLoad( region.data(), need, wire, wrote, &report );
+        CHECK( loaded != NULL && !report.malformed );
+        check_blob_terminated( loaded, length, "loaded region" );
+    }
+}
+
 // the pinned wires the conformance harness reads (testdata/wire/tables)
 static void test_blob_golden_wire()
 {
@@ -7582,6 +7652,22 @@ static void test_blob_golden_wire()
         CHECK( wrote > 66000 );
         pin_table_golden( "blob_large", buffer, wrote );
     }
+    // THE TERMINATOR, at the two lengths that can see it (§6.3) — see
+    // build_blob_terminated for why the alias blob rides beside the string.
+    {
+        blobdemo::CatalogBuilder builder;
+        build_blob_terminated( builder, 8 );
+        int64_t wrote = blobdemo::CatalogSave( builder, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 );
+        pin_table_golden( "blob_str8", buffer, wrote );
+    }
+    {
+        blobdemo::CatalogBuilder builder;
+        build_blob_terminated( builder, 16 );
+        int64_t wrote = blobdemo::CatalogSave( builder, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 );
+        pin_table_golden( "blob_str16", buffer, wrote );
+    }
 }
 
 static void reload_blob_golden( const char * name )
@@ -7613,7 +7699,10 @@ static void test_blob_golden_reload()
     reload_blob_golden( "blob_small" );
     reload_blob_golden( "blob_empty" );
     reload_blob_golden( "blob_shared" );
-    reload_blob_golden( "blob_large" );}
+    reload_blob_golden( "blob_large" );
+    reload_blob_golden( "blob_str8" );
+    reload_blob_golden( "blob_str16" );
+}
 
 int main()
 {
@@ -7728,6 +7817,7 @@ int main()
     test_blob_shared_node();
     test_blob_null_and_empty();
     test_blob_past_slab();
+    test_blob_string_terminator();
     test_blob_record_length_off_by_one();
     test_blob_kind_mismatch();
     test_blob_cook();

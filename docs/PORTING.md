@@ -599,6 +599,42 @@ on the corpus rows that carry it.
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
 | ✅ `internal/codegen/cpptable/codecs.go:588` `test/tables/main.cpp:6814` `TestReportRowsDecodeThroughTheEngine` | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
+### M17 — A node larger than a slab takes a span of the address space
+
+**Method.** An arena hands out nodes by bumping inside a fixed-size slab, and a
+BYTE BUFFER (docs/SPEC-TABLES.md §2.5) is the one node whose size the schema
+does not bound — it is exactly the length the caller asked for. A blob that
+does not fit a slab is not chunked and does not enlarge the slab: it takes a
+SPAN of the arena's address space. Whole segment indices are reserved from the
+cursor, starting at the index AFTER the cursor's so nothing is ever handed out
+inside the span, and one contiguous block is published under the first of them;
+the indices the span covers past that one stay null, which is enough because
+only a node's START is resolved through the segment table and a blob's bytes
+follow its header inside the one allocation. The tail of the segment the cursor
+was in is slack, as a slab tail is. Exhaustion is a loud refusal — never a
+smaller blob. The shape to refuse is bump allocation with a bigger slab: it
+turns every node's cost into the largest blob the program ever writes.
+
+**Reference.** `internal/codegen/cpptable/arena.go:290-320`
+(`TableArenaGrabSpan`), taken at `internal/codegen/cpptable/arena.go:397`
+(`AllocBlob`, on the one branch a blob past `kTableSlabBytes` reaches).
+
+**Proven in.** C++ (#259).
+
+**Measured effect.** Structural: a `bytes(65536)` field costs 64 KB in every
+instance; a `*bytes` costs the eight-byte slot plus what the node holds, at any
+size, with one allocation per blob and no slab growth.
+
+**Negative control.** `tables-blob-span-negative-control` — the size test that
+sends a large blob to the span is made never to fire, so the blob is
+bump-allocated in a slab it does not fit; `test/tables/blob_span_main.cpp`
+reads it back after the nodes allocated behind it and the bytes are gone.
+
+**Targets:** blob-span-negative-control
+
+| cpp | c | rust | go | cs | java | js | dart | elixir |
+|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-blob-span-negative-control` | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 |
 
 ### I1 — The independent allocation gate
 

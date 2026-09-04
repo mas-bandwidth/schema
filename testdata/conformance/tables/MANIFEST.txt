@@ -132,6 +132,14 @@ instance blob_small           blobdemo    Catalog     testdata/wire/tables/blob_
 instance blob_empty           blobdemo    Catalog     testdata/wire/tables/blob_empty.bin
 instance blob_large           blobdemo    Catalog     testdata/wire/tables/blob_large.bin
 instance blob_shared          blobdemo    Catalog     testdata/wire/tables/blob_shared.bin  no-text
+# THE STRING TERMINATOR, at the two lengths that can see it (§6.3): a *string
+# node carries one zero byte after its data, and the node's extent is rounded
+# to the arena's alignment like every node's. At a length that is not a
+# multiple of eight the rounding absorbs that byte and a region laid out
+# without it is byte-identical; at 8 and at 16 it does not, so these two are
+# the rows that hold the terminator answerable.
+instance blob_str8            blobdemo    Catalog     testdata/wire/tables/blob_str8.bin
+instance blob_str16           blobdemo    Catalog     testdata/wire/tables/blob_str16.bin
 
 # THE EVOLUTION SEAMS (§4): every instance of one generation, read by the
 # other. The counters are generated into reports.txt by the Go engine and are
@@ -268,6 +276,8 @@ cook-write blob_small             testdata/conformance/tables/cook-write/blob_sm
 cook-write blob_empty             testdata/conformance/tables/cook-write/blob_empty.cook testdata/conformance/tables/cook-write/blob_empty-be.cook
 cook-write blob_large             testdata/conformance/tables/cook-write/blob_large.cook testdata/conformance/tables/cook-write/blob_large-be.cook
 cook-write blob_shared            testdata/conformance/tables/cook-write/blob_shared.cook testdata/conformance/tables/cook-write/blob_shared-be.cook
+cook-write blob_str8              testdata/conformance/tables/cook-write/blob_str8.cook testdata/conformance/tables/cook-write/blob_str8-be.cook
+cook-write blob_str16             testdata/conformance/tables/cook-write/blob_str16.cook testdata/conformance/tables/cook-write/blob_str16-be.cook
 
 # THE BLOCK FORGERY BATTERY as data (docs/SPEC-TABLES.md §19.2), pinned from
 # test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one
