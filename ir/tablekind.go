@@ -350,7 +350,70 @@ func TableTypeSpelling(f *Field) string {
 	return "?"
 }
 
+// ArmFixedWidth is the payload width a union ARM's `L` must equal, or 0 where
+// the arm's payload is length-shaped (docs/SPEC-TABLES.md §2.6, §3). AN ARM
+// CARRIES NO KIND BYTE, so this is the whole of what a reader can check about
+// an arm's declared type: a length that is not this width is a KIND MISMATCH,
+// and an arm retyped under one width is §4.1's silent class, which §18's
+// baseline refuses.
+func ArmFixedWidth(f *Field) int {
+	if f == nil || f.Array != ArrayNone || f.Type.Kind == TString || f.Type.Kind == TBytes {
+		return 0
+	}
+	if f.Type.Pointer {
+		return 4 // a node index (§3.1)
+	}
+	kind := TableScalarKind(f)
+	switch kind {
+	case TableKindTable, TableKindUnion:
+		return 0
+	}
+	if f.Type.Kind == TNamed {
+		if _, isEnum := f.Type.Ref.(*Enum); isEnum {
+			return 2 // the u16 hash of the variant's name (§3)
+		}
+	}
+	return TableKindWidth(kind)
+}
+
 func itoa(v int) string { return big.NewInt(int64(v)).String() }
+
+func itoa64(v int64) string { return big.NewInt(v).String() }
+
+// FieldTypeSpelling is a field's WHOLE declared type as the language spells it
+// — `[..8]float32`, `*Chunk`, `string(64)`, `fixed(16, 16)`, `Mode` — where
+// [TableTypeSpelling] gives the scalar alone. A union arm reports it as its
+// payload name (docs/SPEC-TABLES.md §8.2), and diagnostics name an arm with it.
+func FieldTypeSpelling(f *Field) string {
+	if f == nil {
+		return "?"
+	}
+	prefix := ""
+	switch {
+	case f.KeyEnum != "":
+		prefix = "[" + f.KeyEnum + "]"
+	case f.Array == ArrayFixed:
+		prefix = "[" + itoa64(f.ArrayBound) + "]"
+	case f.Array == ArrayCounted && f.ArrayMin > 0:
+		prefix = "[" + itoa64(f.ArrayMin) + ".." + itoa64(f.ArrayBound) + "]"
+	case f.Array == ArrayCounted:
+		prefix = "[.." + itoa64(f.ArrayBound) + "]"
+	}
+	if f.Type.Optional {
+		prefix = "?" + prefix
+	}
+	if f.Type.Pointer {
+		prefix += "*"
+	}
+	switch f.Type.Kind {
+	case TString, TBytes:
+		if f.Type.Pointer {
+			return prefix + TableTypeSpelling(f) // *bytes / *string: a buffer at its used size
+		}
+		return prefix + TableTypeSpelling(f) + "(" + itoa64(f.Type.Size) + ")"
+	}
+	return prefix + TableTypeSpelling(f)
+}
 
 // RefuseWideTableKinds is the refusal a backend without the wide kinds owes a
 // unit that declares them (docs/SPEC-TABLES.md §15): BY NAME, naming every

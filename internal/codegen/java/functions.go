@@ -556,7 +556,7 @@ func (g *gen) emitCheckUnion(u *ir.Union, expr, ind string) {
 	g.assertRange(loadUnsignedWidth(tagWidth, expr+".type"), big.NewInt(0), big.NewInt(u.Max), true, ind)
 	var armed []int
 	for i, vr := range u.Variants {
-		if g.hasCheckItems(vr.Ref.Items) {
+		if !vr.Void() && g.hasCheckItems(vr.Ref.Items) {
 			armed = append(armed, i)
 		}
 	}
@@ -1062,6 +1062,10 @@ func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 	g.pf("%sswitch (%s) {\n", ind, tagSwitchExpr(u, expr))
 	for i, vr := range u.Variants {
 		g.pf("%s    case %d:\n", ind, i+1)
+		if vr.Void() {
+			g.pf("%s        break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
+			continue
+		}
 		if len(vr.Ref.Items) == 0 {
 			g.pf("%s        break; // empty arm — presence is the payload (SPEC §4.6)\n", ind)
 			continue
@@ -1609,6 +1613,10 @@ func (g *gen) emitReadUnion(u *ir.Union, expr, ind string, bounded bool) {
 	for i, vr := range u.Variants {
 		arm := expr + "." + javaName(vr.Name)
 		g.pf("%s    case %d:\n", ind, i+1)
+		if vr.Void() {
+			g.pf("%s        break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
+			continue
+		}
 		// the selected arm starts from the zero form (SPEC §5)
 		empty := true
 		for _, nf := range vr.Ref.Fields {
@@ -1903,6 +1911,10 @@ func (g *gen) emitMeasureUnion(u *ir.Union, expr, ind string) {
 	for i, vr := range u.Variants {
 		arm := expr + "." + javaName(vr.Name)
 		g.pf("%s    case %d:\n", ind, i+1)
+		if vr.Void() {
+			g.pf("%s        break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
+			continue
+		}
 		inner := int64(0)
 		before := g.fn.Len()
 		g.emitMeasureItems(vr.Ref.Items, arm, ind+"        ", &inner)

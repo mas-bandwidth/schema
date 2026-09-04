@@ -80,10 +80,19 @@ struct TableTypeInfo;
 // and what its payload looks like. The arm's NAME and its table-wire id come
 // from the field's enum_name/variant_id functions at the same tag, so nothing
 // is spelled twice (docs/SPEC-TABLES.md §8).
+struct TableFieldInfo;
+
 struct TableUnionArmInfo
 {
     uint32_t offset;             // offsetof the arm's payload within the union storage
-    const TableTypeInfo * table; // the arm payload's descriptor
+    const TableTypeInfo * table; // the arm payload's descriptor, or NULL
+    // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an arm that names no
+    // declared type or table carries the FIELD descriptor a field of that
+    // type would carry instead — offsets taken within the union storage — so
+    // a generic walk meets an arm's kind, width, bounds and companions where
+    // it meets a field's. Exactly one of the two is non-NULL on a set arm.
+    const TableFieldInfo * field;
+    uint32_t size;               // the arm's whole storage, which selection zero-establishes
 };
 
 // A union field's shape: the tag, and the arms indexed by it. Arms run
@@ -1202,6 +1211,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera 
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderVector3LoadBody( sub, value.position );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderVector3Reset( value.position );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -1220,6 +1234,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera 
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderQuaternionLoadBody( sub, value.rotation );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderQuaternionReset( value.rotation );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -1435,6 +1454,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderVector3LoadBody( sub, value.position );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderVector3Reset( value.position );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -1453,6 +1477,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderQuaternionLoadBody( sub, value.rotation );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderQuaternionReset( value.rotation );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -1715,6 +1744,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderQuaternionLoadBody( sub, value.rotation );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderQuaternionReset( value.rotation );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -1964,6 +1998,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderVector3LoadBody( sub, value.position );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderVector3Reset( value.position );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -1982,6 +2021,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderQuaternionLoadBody( sub, value.rotation );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderQuaternionReset( value.rotation );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -2199,6 +2243,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderVector3LoadBody( sub, value.position );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderVector3Reset( value.position );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -2217,6 +2266,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderQuaternionLoadBody( sub, value.rotation );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderQuaternionReset( value.rotation );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -2434,6 +2488,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderVector3LoadBody( sub, value.position );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderVector3Reset( value.position );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -2452,6 +2511,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderQuaternionLoadBody( sub, value.rotation );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderQuaternionReset( value.rotation );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -2674,6 +2738,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderVector3LoadBody( sub, value.position );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderVector3Reset( value.position );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -2692,6 +2761,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderQuaternionLoadBody( sub, value.rotation );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderQuaternionReset( value.rotation );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -2915,6 +2989,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderVector3LoadBody( sub, value.start );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderVector3Reset( value.start );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -2933,6 +3012,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderVector3LoadBody( sub, value.finish );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderVector3Reset( value.finish );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -3136,6 +3220,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderVector3LoadBody( sub, value.position );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderVector3Reset( value.position );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -3154,6 +3243,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     RenderQuaternionLoadBody( sub, value.rotation );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        RenderQuaternionReset( value.rotation );
+                    }
                 }
                 r.offset += body_len;
                 break;

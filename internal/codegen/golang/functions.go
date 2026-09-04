@@ -38,6 +38,11 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 		g.pf("\t{\n\t\toffsetValue := uint32(tagValue)\n\t\tstream.SerializeBits(&offsetValue, %d)\n\t}\n", bits)
 		g.pf("\tswitch value.Type {\n")
 		for _, v := range d.Variants {
+			if v.Void() {
+				g.pf("\tcase %sType%s:\n\t\treturn stream.Err() // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n",
+					d.Name, ir.GoExportName(v.Name))
+				continue
+			}
 			g.pf("\tcase %sType%s:\n\t\treturn Write%s(stream, &value.%s)\n",
 				d.Name, ir.GoExportName(v.Name), v.Type, ir.GoExportName(v.Name))
 		}
@@ -57,6 +62,10 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.pf("\tswitch value.Type {\n")
 	for _, v := range d.Variants {
 		g.pf("\tcase %sType%s:\n", d.Name, ir.GoExportName(v.Name))
+		if v.Void() {
+			g.pf("\t\treturn stream.Err() // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n")
+			continue
+		}
 		g.pf("\t\tvalue.%s = %s{} // the selected arm starts from the zero form (SPEC §5)\n", ir.GoExportName(v.Name), v.Type)
 		g.pf("\t\treturn Read%s(stream, &value.%s)\n", v.Type, ir.GoExportName(v.Name))
 	}

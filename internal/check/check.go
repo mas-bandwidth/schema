@@ -61,6 +61,12 @@ type checker struct {
 	// generated Table* symbols)
 	tableClosure map[string]bool
 
+	// the arm being resolved as a field line, as "union U: arm a", else ""
+	// (docs/SPEC-TABLES.md §2.6). One diagnostic reads it: an arm takes no
+	// specified default, so the fix a FIELD is offered for a range that
+	// excludes zero is not a fix an arm has.
+	arm string
+
 	// enums currently being resolved — the cycle guard for | max = E.Max
 	// chains (resolveEnum memoizes only on completion, so recursion needs
 	// its own in-progress set, exactly as constants have one)
@@ -877,32 +883,67 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 		}
 		seen[exported] = v.Pos
 
-		pd, ok := c.astDecls[v.Type]
-		if !ok {
-			c.errf(v.TypePos, "undefined type %s in union %s", v.Type, d.Name)
-			continue
+		arm := c.resolveArm(d.Name, v)
+		if arm == nil && v.Arm != nil {
+			continue // the arm was diagnosed above
 		}
-		switch pd.(type) {
-		case *ast.TypeDecl:
-			un.Variants = append(un.Variants, ir.UnionVariant{Name: v.Name, Type: v.Type, Ref: c.structs[v.Type]})
-		case *ast.TableDecl:
-			// a TABLE arm (docs/SPEC-TABLES.md §2.6): legal inside a table
-			// closure, where it is what makes an evolvable message set
-			// expressible. The two refusals — a type body holding such a
-			// union, and a table arm no table closure reaches — are the
-			// field's and the closure's, below.
-			un.Variants = append(un.Variants, ir.UnionVariant{Name: v.Name, Type: v.Type, Ref: c.tables[v.Type]})
-		case *ast.EnumDecl, *ast.FlagsDecl:
-			c.errf(v.TypePos, "%s is not a union payload — a payload is a declared type; wrap the value in a type (SPEC §4.8)", v.Type)
-		case *ast.UnionDecl:
-			c.errf(v.TypePos, "a union is not a union payload in v1 — wrap it in a type (SPEC §4.8)")
-		default:
-			c.errf(v.TypePos, "%s is not a type", v.Type)
+		// Ref names the DECLARATION an arm's payload is, when it is one: a
+		// `type` or, inside a table closure, a `table` (docs/SPEC-TABLES.md
+		// §2.6). Every other arm carries its field line and nothing else.
+		out := ir.UnionVariant{Name: v.Name, F: arm}
+		if arm != nil && arm.Type.Kind == ir.TNamed {
+			if st, isStruct := arm.Type.Ref.(*ir.Struct); isStruct {
+				out.Type, out.Ref = arm.Type.Name, st
+			}
 		}
+		un.Variants = append(un.Variants, out)
 	}
 	// dropped variants (duplicates, bad payloads) already errored; Max and
 	// storage stay the DECLARED count so cascade diagnostics do not invent a
 	// second wire shape — the unit is refused either way.
+}
+
+// resolveArm resolves one arm as a FIELD LINE (SPEC §4.8,
+// docs/SPEC-TABLES.md §2.6) and refuses at the arm what an arm may not carry.
+// The field production admits every spelling, so each refusal here names the
+// arm and the reason, the way §2.3's `?` refusals do.
+//
+// `inTable` is true for every arm: a `table` arm and a POINTER arm are legal
+// spellings, and the two refusals that keep them inside a table closure — a
+// `type` body holding such a union, and one no table reaches — belong to the
+// field and the closure, not to the arm.
+func (c *checker) resolveArm(union string, v ast.UnionVariant) *ir.Field {
+	if v.Arm == nil {
+		return nil // a PAYLOAD-FREE arm: the name is the whole of it (SPEC §4.8)
+	}
+	where := fmt.Sprintf("union %s: arm %s", union, v.Name)
+	if v.Arm.Default != nil {
+		c.errf(v.Arm.Pos, "%s takes no specified default — an arm ZERO-ESTABLISHES at selection, which is the one rule (SPEC §5, §4.8); a default at selection is a named follow-on (docs/SPEC-TABLES.md §15)", where)
+		return nil
+	}
+	if v.Arm.Type.Optional {
+		c.errf(v.Arm.Pos, "%s: ? on an arm is refused — SELECTION IS THE ARM'S PRESENCE, and the union's None is the absence one level up; drop the ? (docs/SPEC-TABLES.md §2.6, §15)", where)
+		return nil
+	}
+
+	c.arm = where
+	f := c.resolveField(union, v.Arm, true)
+	c.arm = ""
+	if f == nil {
+		return nil
+	}
+	switch {
+	case f.WasName != "":
+		c.errf(v.Arm.Pos, "%s: was on an arm is a named follow-on — an arm's wire id is its NAME hash and arms already evolve by name, so a rename is a new arm today (docs/SPEC-TABLES.md §2.6, §5, §15)", where)
+		return nil
+	case f.JsonKey != "":
+		c.errf(v.Arm.Pos, "%s: json on an arm is a named follow-on — an arm's own name is its key in the text form (docs/SPEC-TABLES.md §2.6, §16.2, §15)", where)
+		return nil
+	case f.KeyEnum != "":
+		c.errf(v.Arm.Pos, "%s: an enum-keyed array is not an arm — a keyed body elides slots by name, and its None slot wants its rule stated before it is wire; declare [..N]T or [N]T (docs/SPEC-TABLES.md §2.6, §3.2, §15)", where)
+		return nil
+	}
+	return f
 }
 
 type scopeFrame struct {
@@ -1133,13 +1174,13 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.flagsD[f.Type.Name]}
 		case *ast.UnionDecl:
 			un := c.unions[f.Type.Name]
-			if !inTable && un.HasTableArm() {
+			if !inTable && un.TableClosureOnly() {
 				// a union declared for the TYPE wire takes `type` payloads
 				// only: types are value semantics and their wire is
-				// positional, and a table arm is a table-closure construct
-				// (docs/SPEC-TABLES.md §2.6, §11)
-				c.errf(f.Type.Pos, "%s has a table arm (%s), and a union in a `type` body takes `type` payloads only — types are value semantics; hold the union in a table body, or make the arm a type (docs/SPEC-TABLES.md §2.6, §11)",
-					f.Type.Name, tableArmName(un))
+				// positional, and an arm that is not a declared `type` is a
+				// table-closure construct (docs/SPEC-TABLES.md §2.6, §11)
+				c.errf(f.Type.Pos, "%s has the arm %s, and a union in a `type` body takes `type` payloads only — types are value semantics, and an arm that is not a declared type has no packet wire yet; hold the union in a table body, or make the arm a type (docs/SPEC-TABLES.md §2.6, §11, §15)",
+					f.Type.Name, un.GeneralArm())
 				return nil
 			}
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: un}
@@ -1302,6 +1343,13 @@ func (c *checker) requireDefaultInRange(f *ast.Field, out *ir.Field) {
 		fix = formatFloat(out.FMin)
 		rng = fmt.Sprintf("[%s, %s]", fix, formatFloat(out.FMax))
 	default:
+		return
+	}
+	if c.arm != "" {
+		// an ARM zero-establishes at selection (SPEC §5) and takes no
+		// specified default, so the field's fix is not one here
+		c.errf(f.Pos, "%s: its range %s excludes zero, so the value it establishes at selection is outside it — an arm takes no specified default, so widen the range to reach zero (docs/SPEC-TABLES.md §2.6, SPEC §4.6)",
+			c.arm, rng)
 		return
 	}
 	if out.Array != ir.ArrayNone {
@@ -1776,9 +1824,19 @@ func (c *checker) checkCycles() {
 			}
 		}
 		if un := c.unions[name]; un != nil {
+			// AN ARM IS AN EDGE like a field is (docs/SPEC-TABLES.md §2.6):
+			// by value it carries the payload's size, so an arm chain that
+			// returns to its own union has infinite size. A POINTER arm
+			// carries no size and is exempt, exactly as a pointer field is.
 			for _, v := range un.Variants {
-				if !visit(v.Type) {
-					break
+				if v.F == nil || v.F.Type.Pointer || v.F.Type.Kind != ir.TNamed {
+					continue
+				}
+				switch v.F.Type.Ref.(type) {
+				case *ir.Struct, *ir.Union:
+					if !visit(v.F.Type.Name) {
+						break
+					}
 				}
 			}
 		}
@@ -1827,6 +1885,28 @@ func (c *checker) closureMember(name string) *ir.Struct {
 // where one is declared — and two fields of one closure member whose
 // effective ids collide would be indistinguishable on the wire, so the
 // collision is a compile error.
+// walkArms calls visit on every DECLARATION a union's arms name, descending an
+// arm that is itself a union (docs/SPEC-TABLES.md §2.6). An arm is a field
+// line, so an arm names a declaration by value, through a pointer or as an
+// array's element, and each reaches the closure the same way.
+func walkArms(un *ir.Union, visit func(string), seen map[*ir.Union]bool) {
+	if seen[un] {
+		return
+	}
+	seen[un] = true
+	for _, v := range un.Variants {
+		if v.F == nil || v.F.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch ref := v.F.Type.Ref.(type) {
+		case *ir.Struct:
+			visit(ref.Name)
+		case *ir.Union:
+			walkArms(ref, visit, seen)
+		}
+	}
+}
+
 func (c *checker) checkTables() {
 	closure := map[string]bool{}
 	var walk func(name string)
@@ -1847,9 +1927,7 @@ func (c *checker) checkTables() {
 			case *ir.Struct:
 				walk(ref.Name)
 			case *ir.Union:
-				for _, v := range ref.Variants {
-					walk(v.Type)
-				}
+				walkArms(ref, walk, map[*ir.Union]bool{})
 			}
 		}
 	}
@@ -1980,6 +2058,32 @@ func (c *checker) checkTables() {
 // keeps the two writers byte-identical. The derivation mirrors
 // ir.VariableTables over the checker's own members, because the unit is not
 // assembled yet when this runs.
+// unionVariable mirrors ir.VariableTables' arm rule over the checker's own
+// members (docs/SPEC-TABLES.md §2.2, §2.6): a POINTER arm makes the holder
+// variable, as does an arm naming a variable member or an arm that is a union
+// which is itself variable.
+func unionVariable(un *ir.Union, variable map[string]bool, seen map[*ir.Union]bool) bool {
+	if seen[un] {
+		return false
+	}
+	seen[un] = true
+	for _, v := range un.Variants {
+		if v.F == nil {
+			continue
+		}
+		if v.F.Type.Pointer {
+			return true
+		}
+		if v.Type != "" && variable[v.Type] {
+			return true
+		}
+		if inner, ok := v.F.Type.Ref.(*ir.Union); ok && unionVariable(inner, variable, seen) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *checker) checkOptionalVariableClosures(names []string) {
 	variable := map[string]bool{}
 	for changed := true; changed; {
@@ -2004,11 +2108,11 @@ func (c *checker) checkOptionalVariableClosures(names []string) {
 				case *ir.Struct:
 					variable[name] = variable[name] || variable[ref.Name]
 				case *ir.Union:
-					for _, v := range ref.Variants {
-						if variable[v.Type] {
-							variable[name] = true
-							break
-						}
+					// mode derivation runs through ARMS (§2.2, §2.6): a
+					// POINTER arm, an arm naming a variable table, or an arm
+					// that is a union which is itself variable
+					if unionVariable(ref, variable, map[*ir.Union]bool{}) {
+						variable[name] = true
 					}
 				}
 				if variable[name] {
@@ -2139,8 +2243,12 @@ func (c *checker) checkTableFileDag() {
 			}
 			note(f.Type.Name)
 			if un, isUnion := f.Type.Ref.(*ir.Union); isUnion {
+				// an ARM names a declaration exactly as a field does (§2.6),
+				// through a pointer and an array bound too
 				for _, v := range un.Variants {
-					note(v.Type)
+					if v.F != nil && v.F.Type.Kind == ir.TNamed {
+						note(v.F.Type.Name)
+					}
 				}
 			}
 		}
@@ -2209,6 +2317,29 @@ func (c *checker) checkTableFileDag() {
 // Scoped to the TABLE CLOSURE. The packet wire identifies a variant by its
 // ordinal and is untouched by any of this: an enum nothing in a table reaches
 // keeps every spelling it ever had.
+// collectArmVocabularies adds every enum and union a union's ARMS name, and
+// those a nested union arm names in turn (docs/SPEC-TABLES.md §2.6).
+func collectArmVocabularies(un *ir.Union, enums map[string]*ir.Enum, unions map[string]*ir.Union, reachedBy map[string]string, site string) {
+	for _, v := range un.Variants {
+		if v.F == nil || v.F.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch ref := v.F.Type.Ref.(type) {
+		case *ir.Enum:
+			if _, seen := enums[ref.Name]; !seen {
+				enums[ref.Name] = ref
+				reachedBy[ref.Name] = site
+			}
+		case *ir.Union:
+			if _, seen := unions[ref.Name]; !seen {
+				unions[ref.Name] = ref
+				reachedBy[ref.Name] = site
+				collectArmVocabularies(ref, enums, unions, reachedBy, site)
+			}
+		}
+	}
+}
+
 func (c *checker) checkTableVariantIdentity(closureNames []string) {
 	enums := map[string]*ir.Enum{}
 	unions := map[string]*ir.Union{}
@@ -2252,6 +2383,12 @@ func (c *checker) checkTableVariantIdentity(closureNames []string) {
 					unions[ref.Name] = ref
 					reachedBy[ref.Name] = site
 				}
+				// AN ARM REACHES A VOCABULARY TOO (§2.6): an enum arm's enum
+				// rides under variant name hashes exactly as a field's does,
+				// and an arm that is a union brings its own arms with it, so
+				// both §5 refusals are owed to what an arm names
+				collectArmVocabularies(ref, enums, unions, reachedBy,
+					fmt.Sprintf("%s %s's field %s, through an arm of %s,", what, name, f.Name, ref.Name))
 			}
 		}
 	}
@@ -3195,11 +3332,11 @@ func (c *checker) assemble() {
 				u.Tables[d.Name] = tbl
 			case *ast.UnionDecl:
 				un := c.unions[d.Name]
-				if un.HasTableArm() {
-					// a union with a TABLE arm assembles BESIDE the decl stream,
+				if un.TableClosureOnly() {
+					// a TABLE-CLOSURE union assembles BESIDE the decl stream,
 					// as a table does (docs/SPEC-TABLES.md §2.6): it has no packet
 					// wire, so the packet backends and the projection never meet
-					// it, and adding a table arm moves no protocol id
+					// it, and adding such an arm moves no protocol id
 					irf.TableUnions = append(irf.TableUnions, un)
 					u.TableUnions[d.Name] = un
 					continue
@@ -3365,24 +3502,14 @@ func (c *checker) checkTableArmsReached(closure map[string]bool) {
 	sort.Strings(names)
 	for _, name := range names {
 		un := c.unions[name]
-		if !un.HasTableArm() || reached[name] {
+		if !un.TableClosureOnly() || reached[name] {
 			continue
 		}
 		pos := ast.Pos{}
 		if d, ok := c.astDecls[name]; ok {
 			pos = d.DeclPos()
 		}
-		c.errf(pos, "union %s: arm %s names a table, and no table reaches %s — a table arm is a table-closure construct, and a union outside one takes `type` payloads only; hold the union in a table body, or make the arm a type (docs/SPEC-TABLES.md §2.6, §11)",
-			name, tableArmName(un), name)
+		c.errf(pos, "union %s: the arm %s is not a declared type, and no table reaches %s — such an arm is a table-closure construct, and a union outside one takes `type` payloads only; hold the union in a table body, or make the arm a type (docs/SPEC-TABLES.md §2.6, §11, §15)",
+			name, un.GeneralArm(), name)
 	}
-}
-
-// tableArmName names a union's first table arm for a diagnostic.
-func tableArmName(un *ir.Union) string {
-	for _, v := range un.Variants {
-		if v.Ref != nil && v.Ref.IsTable {
-			return v.Name + " " + v.Type
-		}
-	}
-	return ""
 }

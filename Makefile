@@ -103,15 +103,17 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/jsonkeys test/tables/JsonKeys.schema
 	$(1) generate --lang cpp --out $(2)/m1 test/tables/M1.schema
 	$(1) generate --lang cpp --out $(2)/m2 test/tables/M2.schema
+	$(1) generate --lang cpp --out $(2)/a1 test/tables/A1.schema
+	$(1) generate --lang cpp --out $(2)/a2 test/tables/A2.schema
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
 	$(1) generate --lang cpp --out $(2)/scalars2 test/tables/Scalars2.schema
 endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/scalars -I$(1)/scalars2 -I$(SERIALIZE)
+	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/scalars -I$(1)/scalars2 -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/Scalars2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/Scalars2.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -2467,7 +2469,7 @@ CONFORMANCE_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generat
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
-	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -I$(SERIALIZE)
+	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -I$(SERIALIZE)
 CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/scalars/ScalarsTable.cpp build/tables-generated/scalars2/Scalars2Table.cpp \
 	build/tables-generated/examples/WideTable.cpp build/tables-generated/examples/NestedTable.cpp \
@@ -2478,7 +2480,8 @@ CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/pointers/MarksTable.cpp build/tables-generated/pointers/PartsTable.cpp \
 	build/tables-generated/messages/MessagesTable.cpp build/tables-generated/stream/StreamTable.cpp \
 	build/tables-generated/blobs/AssetsTable.cpp \
-	build/tables-generated/m1/M1Table.cpp build/tables-generated/m2/M2Table.cpp
+	build/tables-generated/m1/M1Table.cpp build/tables-generated/m2/M2Table.cpp \
+	build/tables-generated/a1/A1Table.cpp build/tables-generated/a2/A2Table.cpp
 
 # the harness LINKS the compiler's own engine — internal/tablewire and
 # internal/tabletext, reached through compiler/ — so its dependencies are the
@@ -2565,8 +2568,8 @@ tables-cpp-release:
 	$(MAKE) tables-wire-fuzz N=500000
 	$(MAKE) tables-wire-fuzz SEED=2 N=500000
 
-.PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control
-tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control
+.PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control
+tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control
 
 # the string read's `has( len )`: a length past the body is then copied, so the
 # sabotaged leg decodes a value out of a neighbor's bytes where the oracle stops
@@ -2577,6 +2580,20 @@ tables-wire-fuzz-length-negative-control: build/conformance-harness
 # reads a directory entry the region does not hold
 tables-wire-fuzz-index-negative-control: build/conformance-harness
 	$(call wire_fuzz_control,index,internal/codegen/cpptable/arena.go,s|if ( (int64_t) ( index - 1 ) >= map.count )|if ( false ) // NEGATIVE CONTROL: the range check is gone|,the report differs)
+
+# AN ARM CARRIES NO KIND BYTE (docs/SPEC-TABLES.md §2.6): the arm's `L` is the
+# whole of what a reader can check, so the fuzzer moves a fixed-width arm's `L`
+# to every width the closed set has and to zero. Without the check the arm
+# decodes a value out of a payload that is not its own.
+tables-wire-fuzz-arm-width-negative-control: build/conformance-harness
+	$(call wire_fuzz_control,arm-width,internal/codegen/cpptable/arms.go,s|if ( %s.size != %d ) { %s = %s; r.report->kind_mismatch++|if ( false \&\& %s.size != %d ) { %s = %s; r.report->kind_mismatch++|,the report differs)
+
+# A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3), for an arm whose payload
+# is a body as much as for a kind `13` field: the fuzzer writes the u16 zero
+# ahead of the payload's last two bytes, so the body ends inside its own `L`
+# and the bytes after it are claimed by no field.
+tables-wire-fuzz-arm-terminator-negative-control: build/conformance-harness
+	$(call wire_fuzz_control,arm-terminator,internal/codegen/cpptable/arms.go,s|if ( %s.offset != %s.size ) { %s = %s; r.report->malformed = true|if ( false \&\& %s.offset != %s.size ) { %s = %s; r.report->malformed = true|,the decoded value differs)
 
 # The GENERATED half of the data: the JSON text of every instance and the read
 # report of every evolution case, both from the compiler's own engine.

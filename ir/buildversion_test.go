@@ -143,8 +143,9 @@ type Debuff
 
 union Effect
 {
-    up   Buff
-    down Debuff
+    up    Buff
+    down  Debuff
+    count int32
 }
 
 table Row
@@ -179,7 +180,7 @@ table Row
 		{"a compressed float's resolution changed", "resolution = 0.01", "resolution = 0.02"},
 		{"an enum variant renamed", "enum Grade { Bronze, Silver, Gold }", "enum Grade { Bronze, Silver, Aurum }"},
 		{"two enum variants swapped", "enum Grade { Bronze, Silver, Gold }", "enum Grade { Silver, Bronze, Gold }"},
-		{"a union arm renamed", "    up   Buff", "    rise Buff"},
+		{"a union arm renamed", "    up    Buff", "    rise  Buff"},
 		// a flags DECLARATION is shared by both wires: its variant names are
 		// the bit positions, so they ride in the protocol id (SPEC.md §3.1)
 		// and the id rides here in whole (§20.1 group 1). The cook projection
@@ -193,7 +194,11 @@ table Row
 		// the REFERENT controls: same-shape swaps every other fact survives
 		{"a field retyped between two records of identical sizeof and alignof", "buff   Buff", "buff   Debuff"},
 		{"a keyed array's KEY enum swapped for another of the same variant count", "scores [Grade]int32", "scores [Rank]int32"},
-		{"a union arm's payload swapped for a same-shaped record", "    up   Buff", "    up   Debuff"},
+		{"a union arm's payload swapped for a same-shaped record", "    up    Buff", "    up    Debuff"},
+		// §4.1's FIFTH SILENT MEMBER: an arm retyped under one width moves no
+		// sizeof, no offset and no wire id, and nothing on either wire can see
+		// it — the build version is what does
+		{"an arm retyped under one width", "    count int32", "    count float32"},
 	}
 	for _, m := range moves {
 		edited := strings.Replace(src, m.from, m.to, 1)
@@ -227,14 +232,14 @@ table Row
 	}
 }
 
-// §20.8's ISOLATING control for group 3's union vocabulary. Every other union
-// and enum row above now moves the protocol id too (SPEC.md §3.1 projects
-// every vocabulary's ordered names), and the protocol id rides here in whole,
-// so those rows can no longer prove the cook projection carries `union=` and
-// `payload=` of its own. A TABLE-ARMED union can: it has no packet wire
-// (docs/SPEC-TABLES.md §2.6), so the protocol id cannot see it at all, and an
-// arm renamed there moves the build version through group 3 alone.
-func TestBuildVersionSeesATableArmedUnionArmRenamed(t *testing.T) {
+// §20.8's ARM ID CONTROL, in the direction the page states it: an arm is a
+// FIELD LINE in the wire-shape projection too (docs/SPEC-TABLES.md §2.6,
+// §20.8; SPEC.md §3.1), so EVERY union projects, the table-armed ones
+// included, and an arm renamed there moves the PROTOCOL id exactly as a field
+// renamed moves it. The build version moves with it, because the protocol id
+// rides in the cook projection whole (§20.1 group 1). It is red if either id
+// stands still.
+func TestTableArmedUnionArmRenameMovesBothIds(t *testing.T) {
 	const src = `package demo
 
 table User
@@ -261,9 +266,9 @@ table Insert
 	base := unitFrom(t, src)
 	renamed := unitFrom(t, strings.Replace(src, "    user   User", "    author User", 1))
 
-	if renamed.ProtocolId != base.ProtocolId {
-		t.Errorf("a table-armed union's arm rename moved the PROTOCOL id (0x%016x -> 0x%016x) — such a union has no packet wire (§2.6)",
-			base.ProtocolId, renamed.ProtocolId)
+	if renamed.ProtocolId == base.ProtocolId {
+		t.Errorf("a table-armed union's arm rename did NOT move the protocol id (0x%016x) — every arm projects as the field line it is (§2.6, §20.8)",
+			base.ProtocolId)
 	}
 	if ir.BuildVersion(renamed) == ir.BuildVersion(base) {
 		t.Error("a table-armed union's arm rename did not move the build version — group 3's union vocabulary is not in the digest, and nothing else covers this edit")

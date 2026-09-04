@@ -457,6 +457,9 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.pf("  constructor() {\n")
 	g.pf("    this.Type = %sType.None;\n", d.Name)
 	for _, v := range d.Variants {
+		if v.Void() {
+			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
+		}
 		g.addRef(v.Type, v.Type)
 		g.pf("    this.%s = new %s();\n", ir.GoExportName(v.Name), v.Type)
 	}

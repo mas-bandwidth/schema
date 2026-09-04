@@ -1,6 +1,6 @@
-0x2e7e8c6b14f7f107
+0xda0fca2693cc8f68
 schema-build-version 2
-protocol 4a7939657edfa4ab
+protocol ddbcdfad80ccdacc
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record Cursor sizeof=8 alignof=4
@@ -32,12 +32,12 @@ record Script sizeof=76 alignof=4
 record Selection sizeof=16 alignof=4
     field 61f4 kind=13 offset=0 size=8 type=Cursor
     field 1f24 kind=13 offset=8 size=8 type=Cursor
-record ToolMessage sizeof=5140 alignof=4
+record ToolMessage sizeof=5168 alignof=8
     field d32b kind=8 offset=0 size=4
-    field a2df kind=15 offset=4 size=1632 union=ToolBody
-    field cbae kind=15 offset=1636 size=3268 union=ToolBody elem=1632 array=bounded bound=2
-    field f493 kind=13 offset=4904 size=233 type=Script elem=76 array=bounded bound=3 optional=true
-    field e15f kind=7 offset=5137 size=3 enum=Mode elem=1 array=fixed bound=2 optional=true
+    field a2df kind=15 offset=8 size=1640 union=ToolBody
+    field cbae kind=15 offset=1648 size=3284 union=ToolBody elem=1640 array=bounded bound=2
+    field f493 kind=13 offset=4932 size=233 type=Script elem=76 array=bounded bound=3 optional=true
+    field e15f kind=7 offset=5165 size=3 enum=Mode elem=1 array=fixed bound=2 optional=true
 record Transaction sizeof=1628 alignof=4
     field a6ba kind=12 offset=0 size=24 bound=16
     field 3d33 kind=13 offset=24 size=940 type=Edit elem=312 array=bounded bound=3
@@ -52,11 +52,21 @@ enum Mode
 union EditBody
     arm 1 insert payload=InsertText
     arm 2 remove payload=RemoveText
+    arm 3 count kind=4 offset=4 size=4 min=0 max=100
+    arm 4 marks kind=7 offset=4 size=12 elem=2 array=bounded bound=3
+    arm 5 blob kind=14 offset=4 size=8 bound=4
+    arm 6 mode kind=7 offset=4 size=1 enum=Mode
 union Origin
     arm 1 user payload=User
     arm 2 script payload=Script
+    arm 3 pid kind=8 offset=4 size=4 min=0 max=1000
+    arm 4 note kind=12 offset=4 size=32 bound=24
 union ToolBody
     arm 1 open payload=OpenDocument
     arm 2 save payload=SaveDocument
     arm 3 transact payload=Transaction
     arm 4 ping payload=Ping
+    arm 5 caps kind=9 offset=8 size=8
+    arm 6 spans kind=4 offset=8 size=8 elem=4 array=fixed bound=2
+    arm 7 origin kind=15 offset=8 size=80 union=Origin
+    arm 8 ack kind=none

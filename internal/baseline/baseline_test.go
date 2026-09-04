@@ -77,10 +77,28 @@ type BoonWide
     multiplier float64 = 1.0
 }
 
+// a pointer arm's target: a pointer points at a TABLE (§3.1)
+table Chunk
+{
+    seq uint32
+}
+
 union Effect
 {
     buff   Buff
     debuff Debuff
+}
+
+// AN ARM IS A FIELD LINE (§2.6), so this union carries one arm of every shape
+// the arm refusal's sub-cases name (§18.6): a table body, a scalar, an array,
+// a body a pointer can move, and an arm with no payload at all
+union Shape
+{
+    body   Buff
+    count  int32
+    marks  [..8]float32
+    chunk  Chunk
+    ack
 }
 
 table Config
@@ -95,6 +113,7 @@ table Config
     slots   [..Slots]int32
     boost   Buff
     effect  Effect
+    shape   Shape
     swap_grade Grade
     swap_perks Perks
     swap Buff
@@ -330,6 +349,40 @@ func TestRefusals(t *testing.T) {
 			token:   "default",
 			control: replace(t, "    buff   Buff\n", "    buff   BuffPlus\n"),
 		},
+		// THE ARM REFUSAL'S SUB-CASES (§18.6). An arm is a field line, so each
+		// goes red for one reason, the token beside it.
+		{
+			name:    "a scalar arm's kind widened",
+			edited:  replace(t, "    count  int32\n", "    count  int64\n"),
+			where:   "union Shape.count",
+			what:    "wire kind 4 -> 5",
+			token:   "kind",
+			control: replace(t, "    ack\n", "    ack\n    extra  int32\n"), // an arm ADDED: an id no reader names
+		},
+		{
+			name:    "an array arm's element kind changed under one width",
+			edited:  replace(t, "    marks  [..8]float32\n", "    marks  [..8]int32\n"),
+			where:   "union Shape.marks",
+			what:    "array element kind 10 -> 4",
+			token:   "elem",
+			control: replace(t, "    marks  [..8]float32\n", "    marks  [..16]float32\n"), // a bound GROWN
+		},
+		{
+			name:    "a table arm moved to a pointer arm",
+			edited:  replace(t, "    chunk  Chunk\n", "    chunk  *Chunk\n"),
+			where:   "union Shape.chunk",
+			what:    "arm payload Chunk removed",
+			token:   "payload",
+			control: replace(t, "    ack\n", "    ack\n    spare  Chunk\n"),
+		},
+		{
+			name:    "a payload-free arm given a payload",
+			edited:  replace(t, "    ack\n", "    ack    int32\n"),
+			where:   "union Shape.ack",
+			what:    "wire kind none -> 4",
+			token:   "kind",
+			control: replace(t, "    ack\n", "    ack\n    ack2\n"),
+		},
 		{
 			// the keyed body and the positional body are different wire kinds
 			// (docs/SPEC-TABLES.md §3.2), so a reader meeting the other skips —
@@ -507,7 +560,7 @@ func TestVanishedMembers(t *testing.T) {
 			edited: strings.NewReplacer("table Config", "table Ship",
 				"damage  float32 = 21.0", "damage  float32 = 25.0").Replace(baseSrc),
 			warnAt:   "table Config",
-			warnWhat: "Ship carries 15 of its 15 identities",
+			warnWhat: "Ship carries 16 of its 16 identities",
 			verdict:  baseline.Refuse,
 			where:    "Ship.damage",
 			what:     "specified default 21.0 -> 25.0",
@@ -656,6 +709,7 @@ func TestUnpairedVanishedMemberNamesWhatItFound(t *testing.T) {
 		"    swap_grade Grade\n", "",
 		"    name    string(32)\n", "",
 		"    slots   [..Slots]int32\n", "",
+		"    per_grade [Grade]int32\n", "",
 		"    swap Buff\n", "").Replace(baseSrc)
 	got := diff(t, edited, baseline.DefaultTokenPolicy)
 	if !find(got, baseline.Warn, "table Config", "below the half needed to call it a rename") {
@@ -1453,7 +1507,7 @@ func TestNudge(t *testing.T) {
 	dir, paths := writeUnit(t, baseSrc)
 	msg := baseline.Nudge(unit(t, baseSrc), paths)
 	for _, want := range []string{
-		"fixture declares 1 table and",
+		"fixture declares 2 tables and",
 		"holds no tables.baseline",
 		"save-game evolution is unguarded (docs/SPEC-TABLES.md §18)",
 		`commit one with: schema tables-baseline --update --reason "first baseline"`,

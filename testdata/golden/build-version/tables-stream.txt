@@ -1,6 +1,6 @@
-0x4556b3579a442505
+0x7b179a03aa861b44
 schema-build-version 2
-protocol 0da6b010d5e2ade7
+protocol e490b0ccaa3672a2
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record Chunk sizeof=48 alignof=8
@@ -17,3 +17,5 @@ record Header sizeof=24 alignof=4
 union Frame
     arm 1 header payload=Header
     arm 2 chunk payload=Chunk
+    arm 3 link kind=17 offset=8 size=8 type=Chunk
+    arm 4 tag kind=8 offset=8 size=4

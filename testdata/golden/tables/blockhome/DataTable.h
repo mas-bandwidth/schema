@@ -62,10 +62,19 @@ struct TableTypeInfo;
 // and what its payload looks like. The arm's NAME and its table-wire id come
 // from the field's enum_name/variant_id functions at the same tag, so nothing
 // is spelled twice (docs/SPEC-TABLES.md §8).
+struct TableFieldInfo;
+
 struct TableUnionArmInfo
 {
     uint32_t offset;             // offsetof the arm's payload within the union storage
-    const TableTypeInfo * table; // the arm payload's descriptor
+    const TableTypeInfo * table; // the arm payload's descriptor, or NULL
+    // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an arm that names no
+    // declared type or table carries the FIELD descriptor a field of that
+    // type would carry instead — offsets taken within the union storage — so
+    // a generic walk meets an arm's kind, width, bounds and companions where
+    // it meets a field's. Exactly one of the two is non-NULL on a set arm.
+    const TableFieldInfo * field;
+    uint32_t size;               // the arm's whole storage, which selection zero-establishes
 };
 
 // A union field's shape: the tag, and the arms indexed by it. Arms run
@@ -702,6 +711,11 @@ BLOCKHOME_TABLE_INLINE bool ArmorConfigLoadBody( TableReader & r, ArmorConfig & 
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     ArmorPlateLoadBody( sub, value.front );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        ArmorPlateReset( value.front );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -720,6 +734,11 @@ BLOCKHOME_TABLE_INLINE bool ArmorConfigLoadBody( TableReader & r, ArmorConfig & 
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     ArmorPlateLoadBody( sub, value.rear );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        ArmorPlateReset( value.rear );
+                    }
                 }
                 r.offset += body_len;
                 break;

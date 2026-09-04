@@ -85,10 +85,11 @@ func refuseTables(u *ir.Unit, target string) error {
 }
 
 // refuseTableArms is the named refusal every target without the form gives a
-// unit whose union has a TABLE arm (docs/SPEC-TABLES.md §2.6, §11): the
-// targets that carry it are named, and each remaining port's is a named
-// follow-on — refused loudly here rather than emitted as a union naming a
-// type the port never declares.
+// unit whose TABLE CLOSURE holds a union (docs/SPEC-TABLES.md §2.6, §11). An
+// arm there is a FIELD LINE of any type — a table, a scalar, an array, a
+// pointer — and a port whose table codecs have met none of them would emit a
+// union naming a type it never declares. The targets that carry the form are
+// named, and each remaining port's is a named follow-on.
 func refuseTableArms(u *ir.Unit, target string) error {
 	if len(u.TableUnions) == 0 {
 		return nil
@@ -99,7 +100,7 @@ func refuseTableArms(u *ir.Unit, target string) error {
 	}
 	sort.Strings(names)
 	carry, flags := carriers(tableArmTargets)
-	return fmt.Errorf("unit declares a union whose arm is a table (%s) — a union with table arms is %s only today, and the %s form is a named follow-on; generate with %s, or move the union and its tables to their own unit (docs/SPEC-TABLES.md §2.6, §11)",
+	return fmt.Errorf("unit declares a union a TABLE CLOSURE holds (%s) — the table side of a union, whose arms are field lines of any type, is %s only today, and the %s form is a named follow-on; generate with %s, or move the union and its tables to their own unit (docs/SPEC-TABLES.md §2.6, §11)",
 		englishList(names), englishList(carry), target, englishList(flags))
 }
 
@@ -133,11 +134,29 @@ func refuseBlobs(u *ir.Unit, target string) error {
 		englishList(names), englishList(carry), target, englishList(flags))
 }
 
+// refuseVoidArms is the named refusal every target without the form gives a
+// unit whose TABLE CLOSURE holds a union with a PAYLOAD-FREE ARM (SPEC §4.8,
+// docs/SPEC-TABLES.md §2.6): such an arm has no storage and rides as the arm
+// id with L = 0, and a port whose table codecs have not met one would emit a
+// member for an arm that has none. The PACKET wire carries it in every target.
+func refuseVoidArms(u *ir.Unit, target string) error {
+	names := ir.TableVoidArmUnions(u)
+	if len(names) == 0 {
+		return nil
+	}
+	carry, flags := carriers(tableArmTargets)
+	return fmt.Errorf("unit puts a union with a payload-free arm in a table closure (%s) — the table side of a payload-free arm is %s only today, and the %s form is a named follow-on; generate with %s, or move the union and its tables to their own unit (docs/SPEC-TABLES.md §2.6, §11)",
+		englishList(names), englishList(carry), target, englishList(flags))
+}
+
 // refuseUnported bundles the refusals a port gives a unit that declares a
 // table-closure construct it does not carry: a union with table arms, an
-// array of unions, a byte buffer.
+// array of unions, a byte buffer, a payload-free arm.
 func refuseUnported(u *ir.Unit, target string) error {
 	if err := refuseTableArms(u, target); err != nil {
+		return err
+	}
+	if err := refuseVoidArms(u, target); err != nil {
 		return err
 	}
 	if err := refuseUnionArrays(u, target); err != nil {

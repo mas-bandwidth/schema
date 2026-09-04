@@ -227,6 +227,9 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.tf("public sealed class %s\n{\n", d.Name)
 	g.tf("    public %sType Type;\n", d.Name)
 	for _, v := range d.Variants {
+		if v.Void() {
+			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
+		}
 		g.tf("    public %s %s = new %s();\n", v.Type, ir.GoExportName(v.Name), v.Type)
 	}
 	g.tf("}\n\n")

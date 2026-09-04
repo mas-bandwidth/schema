@@ -50,6 +50,13 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 		g.pf("            stream.serialize_bits(&mut offset_value, %d)?;\n", bits)
 		g.pf("            Ok(()) // no payload — the tag is the whole wire (SPEC §4.8)\n        }\n")
 		for i, v := range d.Variants {
+			if v.Void() {
+				g.pf("        %s::%s => {\n", d.Name, ir.GoExportName(v.Name))
+				g.pf("            let mut offset_value: u32 = %d;\n", i+1)
+				g.pf("            stream.serialize_bits(&mut offset_value, %d)?;\n", bits)
+				g.pf("            Ok(()) // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n        }\n")
+				continue
+			}
 			g.pf("        %s::%s(arm) => {\n", d.Name, ir.GoExportName(v.Name))
 			g.pf("            let mut offset_value: u32 = %d;\n", i+1)
 			g.pf("            stream.serialize_bits(&mut offset_value, %d)?;\n", bits)
@@ -68,6 +75,10 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.pf("    stream.serialize_int(&mut tag_value, 0, %d)?; // rejects a tag above the count (SPEC §4.8)\n", d.Max)
 	g.pf("    match tag_value {\n")
 	for i, v := range d.Variants {
+		if v.Void() {
+			g.pf("        %d => *value = %s::%s, // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", i+1, d.Name, ir.GoExportName(v.Name))
+			continue
+		}
 		g.pf("        %d => {\n", i+1)
 		g.pf("            let mut arm = %s::default();\n", v.Type)
 		g.pf("            read_%s(stream, &mut arm)?;\n", ir.RustSnake(v.Type))

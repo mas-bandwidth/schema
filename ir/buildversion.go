@@ -140,6 +140,12 @@ func CookProjection(u *Unit) string {
 		}
 	}
 
+	// A UNION'S ARMS REACH VOCABULARIES OF THEIR OWN (§2.6): an enum arm, a
+	// flags arm, an arm that is another union. Close the two sets over the
+	// arms before either section renders, so a vocabulary reached only
+	// through an arm is projected exactly once and in name order.
+	collectArmRefs(enums, unions)
+
 	for _, name := range sortedKeysOf(enums) {
 		fmt.Fprintf(&b, "enum %s\n", name)
 		for i, v := range enums[name].Variants {
@@ -151,7 +157,7 @@ func CookProjection(u *Unit) string {
 	for _, name := range sortedKeysOf(unions) {
 		fmt.Fprintf(&b, "union %s\n", name)
 		for i, v := range unions[name].Variants {
-			fmt.Fprintf(&b, "    arm %d %s payload=%s\n", i+1, v.Name, v.Type)
+			b.WriteString(cookArmLine(u, unions[name], i+1, v, enums, unions))
 		}
 	}
 	return b.String()
@@ -173,6 +179,73 @@ func cookFieldLine(u *Unit, fl FieldLayout, enums map[string]*Enum, unions map[s
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "    field %04x kind=%d offset=%d size=%d", TableFieldId(f), kind, fl.Offset, fl.Size)
+	b.WriteString(cookFacts(u, fl, enums, unions))
+	b.WriteString("\n")
+	return b.String()
+}
+
+// collectArmRefs closes the enum and union sets over every union's ARMS
+// (docs/SPEC-TABLES.md §2.6): an enum arm names an enum, an arm that is
+// another union names a union, and each of those may name more. A `flags` arm
+// names nothing — there is deliberately no `flags=` token (§20.1).
+func collectArmRefs(enums map[string]*Enum, unions map[string]*Union) {
+	for grew := true; grew; {
+		grew = false
+		for _, name := range sortedKeysOf(unions) {
+			for _, v := range unions[name].Variants {
+				if v.F == nil || v.F.Type.Kind != TNamed {
+					continue
+				}
+				switch ref := v.F.Type.Ref.(type) {
+				case *Enum:
+					if _, seen := enums[ref.Name]; !seen {
+						enums[ref.Name] = ref
+						grew = true
+					}
+				case *Union:
+					if _, seen := unions[ref.Name]; !seen {
+						unions[ref.Name] = ref
+						grew = true
+					}
+				}
+			}
+		}
+	}
+}
+
+// cookArmLine renders one union arm (docs/SPEC-TABLES.md §20.2). AN ARM IS A
+// FIELD LINE (§2.6), so an arm that names a declared `type` or `table` by
+// value carries `payload=<Name>` and nothing else — the spelling every arm had
+// before an arm could be any field type, which is what keeps a unit that has
+// not moved projecting exactly as it did — and any other arm carries the
+// FIELD tokens for what it is, taken over the arm's own storage in the
+// overlay.
+func cookArmLine(u *Unit, un *Union, tag int, v UnionVariant, enums map[string]*Enum, unions map[string]*Union) string {
+	_, _, _, armOffset := UnionLayout(u, un)
+	if v.Void() {
+		// AN ARM WITH NO PAYLOAD carries `kind=none` (§20.2, §18.1): the kind
+		// token saying there is no kind to carry, and no storage to offset
+		return fmt.Sprintf("    arm %d %s kind=none\n", tag, v.Name)
+	}
+	if v.Body() {
+		// an arm that names a declared `type` or `table` carries `payload=`
+		// and nothing else, exactly as it always did — so a unit whose arms
+		// all name declared types projects exactly as it did before arms
+		// could be anything else, and its build version does not move
+		return fmt.Sprintf("    arm %d %s payload=%s\n", tag, v.Name, v.Type)
+	}
+	size, align := ArmLayout(u, v)
+	fl := FieldLayout{Field: v.F, Offset: armOffset, Size: size, Align: align}
+	return fmt.Sprintf("    arm %d %s kind=%d offset=%d size=%d%s\n",
+		tag, v.Name, TableScalarKind(v.F), armOffset, size, cookFacts(u, fl, enums, unions))
+}
+
+// cookFacts is the token tail a field line and an ARM line share: the scale,
+// the referent, the array shape and capacity, the presence companion, the
+// specified default and the effective range, in §20.2's order.
+func cookFacts(u *Unit, fl FieldLayout, enums map[string]*Enum, unions map[string]*Union) string {
+	f := fl.Field
+	var b strings.Builder
 	if f.Type.Kind == TFixed {
 		// a fixed field's SCALE: the slot holds units × 2^F, so F is a
 		// meaning fact like a bound (§20.1 group 3) and rides beside the kind
@@ -252,7 +325,6 @@ func cookFieldLine(u *Unit, fl FieldLayout, enums map[string]*Enum, unions map[s
 		// it, so the implied range is a meaning fact like any declared one
 		fmt.Fprintf(&b, " min=0 max=%d", (uint64(1)<<uint(f.Type.Width))-1)
 	}
-	b.WriteString("\n")
 	return b.String()
 }
 

@@ -931,10 +931,12 @@ func TestSpecSection11EqualsTheChecker(t *testing.T) {
 	}
 }
 
-// TestTableArmsMoveNoProtocolId is §2.6's independence requirement: a union
-// with a TABLE arm has no packet wire, so declaring one — or adding a table arm
-// to a union — moves neither the wire projection nor the protocol id.
-func TestTableArmsMoveNoProtocolId(t *testing.T) {
+// TestTableArmsProjectAndTablesDoNot is §2.6's rule beside §10's boundary. A
+// UNION is a declaration like any other and every arm projects as the field
+// line it is, so adding an arm moves the protocol id exactly as adding a field
+// does. A TABLE's own fields never project, so the independence that matters
+// holds: no table edit reaches this id.
+func TestTableArmsProjectAndTablesDoNot(t *testing.T) {
 	withTables := tablelessSrc + `
 table Open { path string(16) }
 table Save { path string(16) }
@@ -954,15 +956,29 @@ union Body
 }
 table Msg { body Body }
 `
+	grownTable := strings.Replace(moreArms, "table Open { path string(16) }", "table Open {\n    path string(16)\n    line uint32\n}", 1)
+	// §20.8's ARM id control: a union a table closure holds gains a SCALAR
+	// arm, and the id moves — an arm is a field line whatever its type
+	scalarArm := strings.Replace(moreArms, "    save Save\n", "    save Save\n    seq  uint32\n", 1)
+
 	base := buildUnit(t, tablelessSrc)
 	one := buildUnit(t, withTables)
 	two := buildUnit(t, moreArms)
-	if ir.WireProjection(base) != ir.WireProjection(one) || ir.WireProjection(one) != ir.WireProjection(two) {
-		t.Fatalf("a table-armed union changed the wire projection:\n--- without ---\n%s\n--- one arm ---\n%s\n--- two arms ---\n%s",
-			ir.WireProjection(base), ir.WireProjection(one), ir.WireProjection(two))
+	grown := buildUnit(t, grownTable)
+	scalar := buildUnit(t, scalarArm)
+	if base.ProtocolId == one.ProtocolId {
+		t.Fatalf("declaring a union did NOT move the protocol id %#x — a union is a declaration and its arms are wire facts", base.ProtocolId)
 	}
-	if base.ProtocolId != one.ProtocolId || one.ProtocolId != two.ProtocolId {
-		t.Fatalf("a table-armed union moved the protocol id %#x -> %#x -> %#x", base.ProtocolId, one.ProtocolId, two.ProtocolId)
+	if one.ProtocolId == two.ProtocolId {
+		t.Fatalf("adding an arm did NOT move the protocol id %#x — an arm projects as the field line it is", one.ProtocolId)
+	}
+	if two.ProtocolId == scalar.ProtocolId {
+		t.Fatalf("adding a SCALAR arm did NOT move the protocol id %#x — an arm is a field line whatever its type (§20.8)", two.ProtocolId)
+	}
+	// the independence that holds: a TABLE's own fields project nothing, so
+	// growing Open moves no packet byte and no packet id (§10)
+	if two.ProtocolId != grown.ProtocolId {
+		t.Fatalf("a table's own field moved the protocol id %#x -> %#x — no table edit may reach this id", two.ProtocolId, grown.ProtocolId)
 	}
 	un := two.TableUnions["Body"]
 	if un == nil || !un.HasTableArm() || len(un.Variants) != 2 || !un.Variants[1].Ref.IsTable {

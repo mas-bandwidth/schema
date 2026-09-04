@@ -945,6 +945,10 @@ func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 	g.pf("%sswitch (%s.type) {\n", ind, expr)
 	for i, vr := range u.Variants {
 		g.pf("%s  case %d:\n", ind, i+1)
+		if vr.Void() {
+			g.pf("%s    break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
+			continue
+		}
 		before := g.fn.Len()
 		g.emitWriteItems(vr.Ref.Items, expr+"."+dartName(vr.Name), ind+"    ")
 		g.chunkFlush(ind + "    ")
@@ -1565,6 +1569,10 @@ func (g *gen) emitReadUnion(u *ir.Union, expr, ind string, bounded bool) {
 	for i, vr := range u.Variants {
 		arm := expr + "." + dartName(vr.Name)
 		g.pf("%s  case %d:\n", ind, i+1)
+		if vr.Void() {
+			g.pf("%s    break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
+			continue
+		}
 		// the selected arm starts from the zero form (SPEC §5)
 		empty := true
 		for _, nf := range vr.Ref.Fields {
@@ -1854,6 +1862,10 @@ func (g *gen) emitMeasureUnion(u *ir.Union, expr, ind string) {
 	for i, vr := range u.Variants {
 		arm := expr + "." + dartName(vr.Name)
 		g.pf("%s  case %d:\n", ind, i+1)
+		if vr.Void() {
+			g.pf("%s    break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
+			continue
+		}
 		inner := int64(0)
 		before := g.fn.Len()
 		g.emitMeasureItems(vr.Ref.Items, arm, ind+"    ", &inner)

@@ -250,6 +250,14 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		sub := r.sub(n)
 		fv.Cell.Tab = r.m.New(tabletext.StructOf(f))
 		sub.body(fv.Cell.Tab)
+		// A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3): a body whose
+		// terminator is not the last two bytes of its L is framing damage —
+		// the payload stops, the field reads its declared defaults, and the
+		// enclosing body continues past it by L.
+		if sub.off != n {
+			r.report.Malformed = true
+			fv.Cell.Tab = r.m.New(tabletext.StructOf(f))
+		}
 		r.off += n
 		return true
 	}
@@ -257,20 +265,36 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 }
 
 func (r *wireReader) array(fv *tabletext.Field) bool {
+	ok, _ := r.arrayBody(fv, -1)
+	return ok
+}
+
+// arrayBody decodes an array payload. A FIELD carries its own length first; an
+// ARM does not — the arm's L already framed it (docs/SPEC-TABLES.md §2.6,
+// §3), so the caller passes the length it was framed by.
+//
+// `ok` is false where the framing is damaged and the walk stops. `selected` is
+// false where the body declares a DIFFERENT ELEMENT KIND: the payload is not
+// this array's, so a field keeps its declared default and an ARM holding it is
+// not selected — the union reads None (§3).
+func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bool) {
 	f := fv.Def
 	bound := int(f.ArrayBound)
 	if f.Type.Kind == ir.TBytes {
 		bound = int(f.Type.Size)
 	}
 	counted := f.Type.Kind == ir.TBytes || f.Array == ir.ArrayCounted
-	if !r.has(4) {
-		r.report.Malformed = true
-		return false
+	bodyLen := framed
+	if framed < 0 {
+		if !r.has(4) {
+			r.report.Malformed = true
+			return false, false
+		}
+		bodyLen = int(r.u32())
 	}
-	bodyLen := int(r.u32())
 	if !r.has(bodyLen) {
 		r.report.Malformed = true
-		return false
+		return false, false
 	}
 	end := r.off + bodyLen
 	// A body too short for its own header (element kind and count) is INERT
@@ -286,7 +310,7 @@ func (r *wireReader) array(fv *tabletext.Field) bool {
 			// that default is ABSENT, so Present is not set below
 			r.report.KindMismatch++
 			r.off = end
-			return true
+			return true, false
 		}
 		keep := count
 		if keep > bound {
@@ -328,7 +352,7 @@ func (r *wireReader) array(fv *tabletext.Field) bool {
 		fv.Present = true
 	}
 	r.off = end // excess elements and slack skip via the length
-	return true
+	return true, true
 }
 
 func (r *wireReader) element(fv *tabletext.Field, i int) bool {
@@ -461,6 +485,7 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 	if armID == 0 {
 		cell.U = 0
 		cell.Tab = nil
+		cell.Arm = nil
 		return true // empty: the id is the whole payload
 	}
 	if !r.has(4) {
@@ -487,14 +512,92 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 		// decoded standing (§4).
 		cell.U = 0
 		cell.Tab = nil
+		cell.Arm = nil
 		r.report.Unknown++
-	} else {
-		payload := r.m.New(un.Variants[tag-1].Ref)
+	} else if arm := un.Variants[tag-1]; arm.Body() {
+		payload := r.m.New(arm.Ref)
 		sub.body(payload)
-		cell.U = uint64(tag)
-		cell.Tab = payload
+		if sub.off != n {
+			// a body whose terminator is not the last two bytes of its L is
+			// framing damage: the union reads None and the enclosing body
+			// continues past the arm by L (§3)
+			r.report.Malformed = true
+			cell.U = 0
+			cell.Tab = nil
+		} else {
+			cell.U = uint64(tag)
+			cell.Tab = payload
+		}
+	} else {
+		cell.Tab = nil
+		if !sub.arm(cell, arm, tag, n) {
+			cell.U = 0
+			cell.Arm = nil
+		}
 	}
 	r.off += n
+	return true
+}
+
+// arm decodes ONE ARM's payload out of a reader bounded to the arm's `L`
+// (docs/SPEC-TABLES.md §3's arm payload table). AN ARM CARRIES NO KIND BYTE,
+// so the length is the whole of what a reader can check: a fixed-width arm
+// whose `L` is not its width is a KIND MISMATCH, counted, the union left None
+// and the parent reading on past `L` (§2.6, §4).
+func (r *wireReader) arm(cell *tabletext.Cell, arm ir.UnionVariant, tag, n int) bool {
+	if arm.Void() {
+		if n != 0 {
+			// a payload-free arm carries no payload: a length that is not
+			// zero is a KIND MISMATCH (§2.6, §4)
+			r.report.KindMismatch++
+			return false
+		}
+		cell.U = uint64(tag)
+		cell.Arm = nil
+		return true
+	}
+	f := arm.F
+	if w := ir.ArmFixedWidth(f); w > 0 && n != w {
+		r.report.KindMismatch++
+		return false
+	}
+	fv := r.m.NewArm(arm)
+	ok := true
+	switch {
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		if !r.has(4) {
+			r.report.Malformed = true
+			return false
+		}
+		r.resolveCell(&fv.Cell, f, r.u32())
+	case f.Type.Kind == ir.TString:
+		keep := n
+		if bound := int(f.Type.Size); keep > bound {
+			keep = bound
+			r.report.Clamped++
+		}
+		fv.Cell.Str = append([]byte(nil), r.buf[r.off:r.off+keep]...)
+		fv.Count = keep
+		r.off += n
+	case f.Type.Kind == ir.TBytes, f.Array != ir.ArrayNone:
+		var selected bool
+		ok, selected = r.arrayBody(fv, n)
+		if ok && !selected {
+			// the payload declares another array's element kind: the arm is
+			// not this one, so the union reads None and the parent reads on
+			// past L, exactly as a fixed-width arm off its width does (§2.6)
+			return false
+		}
+	case tabletext.UnionOf(f) != nil:
+		ok = r.unionCell(&fv.Cell, f)
+	default:
+		ok = r.scalar(&fv.Cell, f, true)
+	}
+	if !ok {
+		return false
+	}
+	cell.U = uint64(tag)
+	cell.Arm = fv
 	return true
 }
 

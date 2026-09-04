@@ -528,3 +528,51 @@ union Shape max=2
 		t.Fatalf("the neutrality probe's projection moved:\n%s\npinned:\n%s", got, pinnedProjection)
 	}
 }
+
+// EVERY ARM PROJECTS AS THE FIELD LINE IT IS (docs/SPEC-TABLES.md §2.6): an
+// arm's own facts are wire facts, so adding a scalar arm to a union a TABLE
+// holds moves the unit's protocol id exactly as adding a field does, and a
+// bound moved on an arm moves it too. An arm renamed does not: the ordinal is
+// the wire, the enum-variant rule (SPEC §3.1).
+func TestArmProjectsAsAFieldLine(t *testing.T) {
+	const armSchema = `package probe
+
+type Ring {
+    radius uint16
+}
+
+union Shape {
+    ring  Ring
+    count int32 | min = 0, max = 100
+}
+
+table Holder {
+    shape Shape
+}
+`
+	base := build(t, armSchema).ProtocolId
+
+	moves := []struct {
+		name   string
+		source string
+	}{
+		{"a scalar arm added", strings.Replace(armSchema, "    count int32 | min = 0, max = 100\n",
+			"    count int32 | min = 0, max = 100\n    tally int32 | min = 0, max = 100\n", 1)},
+		{"an arm's declared maximum moved", strings.Replace(armSchema, "max = 100", "max = 200", 1)},
+		{"an arm's type moved under one width", strings.Replace(armSchema,
+			"    count int32 | min = 0, max = 100\n", "    count float32\n", 1)},
+		{"a payload-free arm added", strings.Replace(armSchema, "    ring  Ring\n", "    ring  Ring\n    idle\n", 1)},
+	}
+	for _, tc := range moves {
+		if got := build(t, tc.source).ProtocolId; got == base {
+			t.Errorf("%s did NOT move the protocol id (0x%016x) — two incompatible builds would claim compatibility", tc.name, base)
+		}
+	}
+	// an arm's NAME is a wire fact of its own (#491): two arms of ONE payload
+	// type reorder invisibly without it, so a rename moves the id as an enum
+	// or flags variant's rename does
+	renamed := strings.Replace(armSchema, "    ring  Ring\n", "    hoop  Ring\n", 1)
+	if got := build(t, renamed).ProtocolId; got == base {
+		t.Errorf("an arm renamed did NOT move the protocol id (0x%016x) — an arm's name is projected beside its payload", base)
+	}
+}

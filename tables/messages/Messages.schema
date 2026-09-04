@@ -14,6 +14,14 @@
 // snapshots a fixed optional array of tables beside it, modes a counted
 // optional array of enums inside an insert.
 //
+// GENERAL ARMS ride at those same three depths (§2.6): an arm is a FIELD
+// LINE, so ToolBody carries a flags arm, a fixed-array arm and a NESTED UNION
+// arm; EditBody a bounded scalar arm, a counted-array arm, a bytes arm and an
+// enum arm; and Origin a scalar arm and a string arm — which puts a scalar arm
+// in every element of the arrays of unions above. ToolBody also carries a
+// PAYLOAD-FREE arm, `ack`: a bare name, no storage, the arm id with L = 0 on
+// the wire and { "ack": null } in the text (SPEC §4.8).
+//
 // Every table here is FIXED-SIZE: a union of fixed table arms leaves its
 // holder fixed, and the zero-cost gate holds over this unit as it does over
 // tables/examples.
@@ -22,6 +30,8 @@ package messagedemo
 const MaxPath = 64
 
 enum Mode { Read, Write }
+
+flags Capabilities { Trace, Verbose }
 
 // a type beside the tables: a type arm and a table arm are one framing
 type Cursor
@@ -51,6 +61,8 @@ union Origin
 {
     user   User
     script Script
+    pid    uint32     | min = 0, max = 1000
+    note   string(24)
 }
 
 // depth two: an edit's body
@@ -78,6 +90,10 @@ union EditBody
 {
     insert InsertText
     remove RemoveText
+    count  int32       | min = 0, max = 100
+    marks  [..3]uint16
+    blob   bytes(4)
+    mode   Mode
 }
 
 table Edit
@@ -115,6 +131,10 @@ union ToolBody
     save     SaveDocument
     transact Transaction
     ping     Ping
+    caps     Capabilities
+    spans    [2]int32
+    origin   Origin
+    ack
 }
 
 table ToolMessage

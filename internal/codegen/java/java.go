@@ -757,6 +757,9 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.bpf("    public static final class %s {\n", d.Name)
 	g.bpf("        public %s type = %sType.none;\n", typ, d.Name)
 	for _, v := range d.Variants {
+		if v.Void() {
+			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
+		}
 		q := g.qualifyType(v.Type)
 		g.bpf("        public final %s %s = new %s();\n", q, javaName(v.Name), q)
 	}

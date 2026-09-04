@@ -263,23 +263,30 @@ func (g *tableGen) emitCookWriteBody(st *ir.Struct) {
 }
 
 func (g *tableGen) emitCookWriteField(st *ir.Struct, f *ir.Field, offset int64) {
+	g.emitCookWriteFieldAs(st, f, offset, "value."+f.Name, "at", "")
+}
+
+// emitCookWriteFieldAs is that write with the STORAGE NAMED, which a union ARM
+// needs: an arm is a field line whose storage lives in the overlay rather than
+// in a member of the record (docs/SPEC-TABLES.md §2.6), and its pieces sit at
+// the arms' shared offset.
+func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64, name, base, sfx string) {
 	pieces := ir.FieldPieces(g.unit, f, offset)
 	if len(pieces) == 0 {
 		return
 	}
 	value := pieces[0]
-	name := "value." + f.Name
 	if f.Type.Optional {
 		// the presence companion is the LAST piece, and it is a slot the other
 		// side reads (§20.2's `optional=true`)
 		p := pieces[len(pieces)-1]
-		g.pf("    table_cook_put( at + %d, (uint64_t) ( %s_present ? 1 : 0 ), 1, order ); // ?T's presence companion\n", p.Offset, name)
+		g.pf("    table_cook_put( %s + %d, (uint64_t) ( %s_present ? 1 : 0 ), 1, order ); // ?T's presence companion\n", base, p.Offset, name)
 	}
 	switch {
 	case f.Type.Blob():
 		// a byte buffer's slot is the same delta, to the blob node the
 		// numbering reached under its reserved type id (§2.5)
-		g.pf("    if ( !table_cook_ref( region, at + %d, (const void *) TableBlobAt( ctx, %s ), order ) ) { return false; } // %s\n", value.Offset, name, f.Name)
+		g.pf("    if ( !table_cook_ref( region, %s + %d, (const void *) TableBlobAt( ctx, %s ), order ) ) { return false; } // %s\n", base, value.Offset, name, f.Name)
 	case f.Type.Pointer:
 		// the self-relative delta of §6.3, or a refusal for a node the numbering
 		// did not reach; the pointee is resolved through the same context the
@@ -288,28 +295,28 @@ func (g *tableGen) emitCookWriteField(st *ir.Struct, f *ir.Field, offset int64) 
 		// slot past a counted array's live count riding as it lies (§7.2).
 		t := f.Type.Name
 		if f.Array == ir.ArrayNone {
-			g.pf("    if ( !table_cook_ref( region, at + %d, (const void *) %sAt( ctx, %s ), order ) ) { return false; } // %s\n", value.Offset, t, name, f.Name)
+			g.pf("    if ( !table_cook_ref( region, %s + %d, (const void *) %sAt( ctx, %s ), order ) ) { return false; } // %s\n", base, value.Offset, t, name, f.Name)
 		} else {
-			g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s: an array of pointers, every slot\n    {\n", f.ArrayBound, f.Name)
-			g.pf("        if ( !table_cook_ref( region, at + %d + i * 8, (const void *) %sAt( ctx, %s[ i ] ), order ) ) { return false; }\n", value.Offset, t, name)
+			g.pf("    for ( int32_t i%s = 0; i%s < %d; i%s++ ) // %s: an array of pointers, every slot\n    {\n", sfx, sfx, f.ArrayBound, sfx, f.Name)
+			g.pf("        if ( !table_cook_ref( region, %s + %d + i%s * 8, (const void *) %sAt( ctx, %s[ i%s ] ), order ) ) { return false; }\n", base, value.Offset, sfx, t, name, sfx)
 			g.pf("    }\n")
 			if f.Array == ir.ArrayCounted {
-				g.pf("    table_cook_put( at + %d, (uint64_t) (uint32_t) %s_count, 4, order );\n", pieces[1].Offset, name)
+				g.pf("    table_cook_put( %s + %d, (uint64_t) (uint32_t) %s_count, 4, order );\n", base, pieces[1].Offset, name)
 			}
 		}
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		// the buffer, then the int32 used length beside it — two pieces, each
 		// aligned on its own, which is what the generated record declares
-		g.pf("    table_cook_bytes( at + %d, %s, %s_length, %d );\n", value.Offset, name, name, value.Size)
-		g.pf("    table_cook_put( at + %d, (uint64_t) (uint32_t) %s_length, 4, order );\n", pieces[1].Offset, name)
+		g.pf("    table_cook_bytes( %s + %d, %s, %s_length, %d );\n", base, value.Offset, name, name, value.Size)
+		g.pf("    table_cook_put( %s + %d, (uint64_t) (uint32_t) %s_length, 4, order );\n", base, pieces[1].Offset, name)
 	case f.KeyEnum != "", f.Array == ir.ArrayFixed, f.Array == ir.ArrayCounted:
 		stride := cookElementBytes(g.unit, f)
-		element := fmt.Sprintf("%s[ i ]", name)
+		element := fmt.Sprintf("%s[ i%s ]", name, sfx)
 		if f.KeyEnum != "" {
-			if st.IsTable {
+			if st != nil && st.IsTable {
 				// a TABLE body's keyed array is TableKeyed<T, E>, whose storage
 				// is its one member; a `type` body's is the plain array (§2.4)
-				element = fmt.Sprintf("%s.slots[ i ]", name)
+				element = fmt.Sprintf("%s.slots[ i%s ]", name, sfx)
 			}
 			g.pf("    // [%s]: E.Max slots at the SHIFTED positions the storage has (§2.4, §7.2)\n", f.KeyEnum)
 		}
@@ -319,20 +326,20 @@ func (g *tableGen) emitCookWriteField(st *ir.Struct, f *ir.Field, offset int64) 
 			// value a wire load or Reset produced, the value-initialized element
 			g.pf("    // all %d slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)\n", f.ArrayBound)
 		}
-		g.pf("    for ( int32_t i = 0; i < %d; i++ )\n    {\n", f.ArrayBound)
-		g.emitCookWriteElement(f, fmt.Sprintf("at + %d + i * %d", value.Offset, stride), element, "        ")
+		g.pf("    for ( int32_t i%s = 0; i%s < %d; i%s++ )\n    {\n", sfx, sfx, f.ArrayBound, sfx)
+		g.emitCookWriteElement(f, fmt.Sprintf("%s + %d + i%s * %d", base, value.Offset, sfx, stride), element, "        ", sfx)
 		g.pf("    }\n")
 		if f.Array == ir.ArrayCounted {
-			g.pf("    table_cook_put( at + %d, (uint64_t) (uint32_t) %s_count, 4, order );\n", pieces[1].Offset, name)
+			g.pf("    table_cook_put( %s + %d, (uint64_t) (uint32_t) %s_count, 4, order );\n", base, pieces[1].Offset, name)
 		}
 	default:
-		g.emitCookWriteElement(f, fmt.Sprintf("at + %d", value.Offset), name, "    ")
+		g.emitCookWriteElement(f, fmt.Sprintf("%s + %d", base, value.Offset), name, "    ", sfx)
 	}
 }
 
 // emitCookWriteElement writes one VALUE of a field's declared type — an array
 // element, or the scalar itself.
-func (g *tableGen) emitCookWriteElement(f *ir.Field, at, value, indent string) {
+func (g *tableGen) emitCookWriteElement(f *ir.Field, at, value, indent, sfx string) {
 	t := f.Type
 	switch t.Kind {
 	case ir.TBool:
@@ -368,7 +375,7 @@ func (g *tableGen) emitCookWriteElement(f *ir.Field, at, value, indent string) {
 		case *ir.Struct:
 			g.pf("%s%s\n", indent, g.cookBodyCall(ref, at, value))
 		case *ir.Union:
-			g.emitCookWriteUnion(ref, at, value, indent)
+			g.emitCookWriteUnion(ref, at, value, indent, sfx)
 		}
 	}
 }
@@ -389,17 +396,29 @@ func (g *tableGen) cookBodyCall(ref *ir.Struct, at, value string) string {
 // base, the SET ARM at the arms' shared offset, and NOTHING ELSE — every byte
 // of the extent outside the set arm stays zero, which is the arm-zeroing shape
 // §13.2 pins, taken to a region (§7.2).
-func (g *tableGen) emitCookWriteUnion(un *ir.Union, at, value, indent string) {
+func (g *tableGen) emitCookWriteUnion(un *ir.Union, at, value, indent, sfx string) {
 	_, _, tag, armOffset := ir.UnionLayout(g.unit, un)
 	g.pf("%s{\n", indent)
 	g.pf("%s    table_cook_put( %s, (uint64_t) %s.type, %d, order ); // the tag; None is the tag alone\n", indent, at, value, tag)
 	g.pf("%s    switch ( %s.type )\n%s    {\n", indent, value, indent)
 	for _, v := range un.Variants {
-		if v.Ref == nil {
-			continue
+		switch {
+		case v.Void():
+			// a payload-free arm writes the tag and nothing else (§2.6)
+		case v.Body():
+			g.pf("%s        case %sType::%s: %s break;\n", indent, un.Name, ir.GoExportName(v.Name),
+				g.cookBodyCall(v.Ref, fmt.Sprintf("%s + %d", at, armOffset), fmt.Sprintf("%s.%s", value, v.Name)))
+		case v.F != nil:
+			// AN ARM IS A FIELD LINE (§2.6): its pieces sit at the arms'
+			// shared offset and ride exactly as a field's do, through the
+			// same writer
+			g.pf("%s        case %sType::%s:\n%s        {\n", indent, un.Name, ir.GoExportName(v.Name), indent)
+			saved := g.indent
+			g.indent = indent + "        "
+			g.emitCookWriteFieldAs(nil, v.F, armOffset, armValue(value, v), at, sfx+"a")
+			g.indent = saved
+			g.pf("%s            break;\n%s        }\n", indent, indent)
 		}
-		g.pf("%s        case %sType::%s: %s break;\n", indent, un.Name, ir.GoExportName(v.Name),
-			g.cookBodyCall(v.Ref, fmt.Sprintf("%s + %d", at, armOffset), fmt.Sprintf("%s.%s", value, v.Name)))
 	}
 	g.pf("%s        default: break; // every byte outside the set arm stays zero\n", indent)
 	g.pf("%s    }\n%s}\n", indent, indent)

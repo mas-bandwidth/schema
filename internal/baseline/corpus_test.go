@@ -13,8 +13,10 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/baseline"
 )
 
-// the tables corpora, from this package's directory.
-var corpora = []string{"../../tables/examples", "../../tables/pointers"}
+// the tables corpora, from this package's directory. tables/messages is where
+// an arm of every shape lives (§2.6), so its file pins the ARM LINE's three
+// spellings (§18.1) as the others pin the field line's.
+var corpora = []string{"../../tables/examples", "../../tables/pointers", "../../tables/messages"}
 
 // TestCorpusBaselinesAreCurrent regenerates each committed baseline and
 // compares byte for byte — the idempotence the `--update` path promises,

@@ -192,10 +192,8 @@ func VariableTables(u *Unit) map[string]bool {
 						variable[name] = true
 					}
 				case *Union:
-					for _, v := range ref.Variants {
-						if variable[v.Type] {
-							variable[name] = true
-						}
+					if unionIsVariable(ref, variable, map[*Union]bool{}) {
+						variable[name] = true
 					}
 				}
 				if variable[name] {
@@ -208,6 +206,32 @@ func VariableTables(u *Unit) map[string]bool {
 		}
 	}
 	return variable
+}
+
+// unionIsVariable reports whether a union makes its holder VARIABLE-LENGTH
+// (docs/SPEC-TABLES.md §2.2, §2.6): mode derivation runs through arms, so an
+// arm that is a POINTER, that names a variable-length table, or that is a
+// union which is itself variable, makes the holder variable.
+func unionIsVariable(un *Union, variable map[string]bool, seen map[*Union]bool) bool {
+	if seen[un] {
+		return false
+	}
+	seen[un] = true
+	for _, v := range un.Variants {
+		if v.F == nil {
+			continue
+		}
+		if v.F.Type.Pointer {
+			return true
+		}
+		if v.Type != "" && variable[v.Type] {
+			return true
+		}
+		if inner, ok := v.F.Type.Ref.(*Union); ok && unionIsVariable(inner, variable, seen) {
+			return true
+		}
+	}
+	return false
 }
 
 // PointerTargets is the set of tables some pointer field targets — the tables
@@ -227,9 +251,35 @@ func PointerTargets(u *Unit) map[string]bool {
 			if f.Type.Pointer && f.Type.Kind == TNamed {
 				targets[f.Type.Name] = true // a byte buffer names no table (§2.5)
 			}
+			// a POINTER ARM targets a node exactly as a pointer field does
+			// (§2.6): the arm is the edge, so its pointee needs the same
+			// allocation surface and the same cooked accessor
+			if un, ok := f.Type.Ref.(*Union); ok && f.Type.Kind == TNamed {
+				unionPointerTargets(un, targets, map[*Union]bool{})
+			}
 		}
 	}
 	return targets
+}
+
+// unionPointerTargets adds every table a POINTER ARM of un targets, through
+// nested union arms too (docs/SPEC-TABLES.md §2.6).
+func unionPointerTargets(un *Union, targets map[string]bool, seen map[*Union]bool) {
+	if seen[un] {
+		return
+	}
+	seen[un] = true
+	for _, v := range un.Variants {
+		if v.F == nil || v.F.Type.Kind != TNamed {
+			continue
+		}
+		if v.F.Type.Pointer {
+			targets[v.F.Type.Name] = true // a byte buffer names no table (§2.5)
+		}
+		if inner, ok := v.F.Type.Ref.(*Union); ok {
+			unionPointerTargets(inner, targets, seen)
+		}
+	}
 }
 
 // TableClosure is the set of structs that carry table codecs and reflection
@@ -238,7 +288,29 @@ func PointerTargets(u *Unit) map[string]bool {
 // transitively. Plain types outside the closure stay packet-wire only.
 func TableClosure(u *Unit) map[string]bool {
 	closure := map[string]bool{}
+	seenUnion := map[*Union]bool{}
 	var walk func(name string)
+	var walkUnion func(un *Union)
+	walkUnion = func(un *Union) {
+		if seenUnion[un] {
+			return
+		}
+		seenUnion[un] = true
+		// an ARM reaches a declaration exactly as a field does (§2.6): by
+		// value, through a pointer, or as an array's element — and an arm
+		// that is another union reaches through that union's own arms
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Kind != TNamed {
+				continue
+			}
+			switch ref := v.F.Type.Ref.(type) {
+			case *Struct:
+				walk(ref.Name)
+			case *Union:
+				walkUnion(ref)
+			}
+		}
+	}
 	walk = func(name string) {
 		if closure[name] {
 			return
@@ -266,9 +338,7 @@ func TableClosure(u *Unit) map[string]bool {
 			case *Struct:
 				walk(ref.Name)
 			case *Union:
-				for _, v := range ref.Variants {
-					walk(v.Type)
-				}
+				walkUnion(ref)
 			}
 		}
 	}
@@ -315,6 +385,56 @@ func TableUnionArrays(u *Unit) []string {
 			}
 			if _, isUnion := f.Type.Ref.(*Union); isUnion {
 				out = append(out, name+"."+f.Name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// TableVoidArmUnions names every union in a unit's TABLE CLOSURE that carries
+// a PAYLOAD-FREE ARM (SPEC §4.8), sorted. Such a union has a packet wire —
+// the tag alone — so it is not a table-closure construct, and a port that
+// carries table codecs still has to know the arm has no storage: the ports
+// refuse a unit that puts one in a table closure, by name
+// (docs/SPEC-TABLES.md §2.6, §11).
+func TableVoidArmUnions(u *Unit) []string {
+	seen := map[string]bool{}
+	var out []string
+	var note func(un *Union)
+	note = func(un *Union) {
+		if seen[un.Name] {
+			return
+		}
+		seen[un.Name] = true
+		for _, v := range un.Variants {
+			if v.Void() {
+				out = append(out, un.Name)
+				break
+			}
+		}
+		for _, v := range un.Variants {
+			if v.F != nil && v.F.Type.Kind == TNamed {
+				if inner, ok := v.F.Type.Ref.(*Union); ok {
+					note(inner)
+				}
+			}
+		}
+	}
+	for name := range TableClosure(u) {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.Type.Kind != TNamed {
+				continue
+			}
+			if un, ok := f.Type.Ref.(*Union); ok {
+				note(un)
 			}
 		}
 	}

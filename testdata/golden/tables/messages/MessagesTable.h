@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package messagedemo — protocol id 0x4a7939657edfa4ab (packets only: tables version by field id, not by protocol id)
+// package messagedemo — protocol id 0xddbcdfad80ccdacc (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -62,10 +62,19 @@ struct TableTypeInfo;
 // and what its payload looks like. The arm's NAME and its table-wire id come
 // from the field's enum_name/variant_id functions at the same tag, so nothing
 // is spelled twice (docs/SPEC-TABLES.md §8).
+struct TableFieldInfo;
+
 struct TableUnionArmInfo
 {
     uint32_t offset;             // offsetof the arm's payload within the union storage
-    const TableTypeInfo * table; // the arm payload's descriptor
+    const TableTypeInfo * table; // the arm payload's descriptor, or NULL
+    // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an arm that names no
+    // declared type or table carries the FIELD descriptor a field of that
+    // type would carry instead — offsets taken within the union storage — so
+    // a generic walk meets an arm's kind, width, bounds and companions where
+    // it meets a field's. Exactly one of the two is non-NULL on a set arm.
+    const TableFieldInfo * field;
+    uint32_t size;               // the arm's whole storage, which selection zero-establishes
 };
 
 // A union field's shape: the tag, and the arms indexed by it. Arms run
@@ -265,7 +274,7 @@ namespace messagedemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x2e7e8c6b14f7f107ull;
+static const uint64_t BuildVersion = 0xda0fca2693cc8f68ull;
 
 } // namespace messagedemo
 
@@ -508,14 +517,19 @@ enum class OriginType : uint8_t {
     None = 0,
     User = 1,
     Script = 2,
-    Max = 2, // the exported extent (SPEC §4.2)
+    Pid = 3,
+    Note = 4,
+    Max = 4, // the exported extent (SPEC §4.2)
 };
 
-// union Origin — at most one of the arms; the tag says which. An arm is a TABLE
-// where it names one (docs/SPEC-TABLES.md §2.6), so the union has no packet wire and
-// lives here, after its arms. Construction is None: the tag alone is
-// initialized; an arm's storage is established when the arm is selected — by
-// OriginLoadBody before it decodes, or by assigning it: value.user = User{}.
+// union Origin — at most one of the arms; the tag says which. AN ARM IS A FIELD
+// LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage
+// overlaid — and an arm whose storage needs a companion, a string's length or
+// a counted array's count, is one member of an unnamed struct, `value` beside
+// `value_length` or `value_count`. Such a union has no packet wire and lives
+// here, after its arms. Construction is None: the tag alone is initialized; an
+// arm's storage is established when the arm is selected — by OriginLoadBody
+// before it decodes, or by assigning it: value.user = User{}.
 // Bytes of unselected arms are indeterminate.
 struct Origin
 {
@@ -525,6 +539,8 @@ struct Origin
     {
         User user;
         Script script;
+        uint32_t pid;
+        struct { char value[24 + 1]; int32_t value_length; } note; // string(24)
     };
 
     Origin() : type( OriginType::None ) {} // the tag only — arms are established at selection
@@ -555,14 +571,21 @@ enum class EditBodyType : uint8_t {
     None = 0,
     Insert = 1,
     Remove = 2,
-    Max = 2, // the exported extent (SPEC §4.2)
+    Count = 3,
+    Marks = 4,
+    Blob = 5,
+    Mode = 6,
+    Max = 6, // the exported extent (SPEC §4.2)
 };
 
-// union EditBody — at most one of the arms; the tag says which. An arm is a TABLE
-// where it names one (docs/SPEC-TABLES.md §2.6), so the union has no packet wire and
-// lives here, after its arms. Construction is None: the tag alone is
-// initialized; an arm's storage is established when the arm is selected — by
-// EditBodyLoadBody before it decodes, or by assigning it: value.insert = InsertText{}.
+// union EditBody — at most one of the arms; the tag says which. AN ARM IS A FIELD
+// LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage
+// overlaid — and an arm whose storage needs a companion, a string's length or
+// a counted array's count, is one member of an unnamed struct, `value` beside
+// `value_length` or `value_count`. Such a union has no packet wire and lives
+// here, after its arms. Construction is None: the tag alone is initialized; an
+// arm's storage is established when the arm is selected — by EditBodyLoadBody
+// before it decodes, or by assigning it: value.insert = InsertText{}.
 // Bytes of unselected arms are indeterminate.
 struct EditBody
 {
@@ -572,6 +595,10 @@ struct EditBody
     {
         InsertText insert;
         RemoveText remove;
+        int32_t count;
+        struct { uint16_t value[3]; int32_t value_count; } marks; // [..3]uint16
+        struct { uint8_t value[4]; int32_t value_length; } blob; // bytes(4)
+        Mode mode;
     };
 
     EditBody() : type( EditBodyType::None ) {} // the tag only — arms are established at selection
@@ -622,14 +649,21 @@ enum class ToolBodyType : uint8_t {
     Save = 2,
     Transact = 3,
     Ping = 4,
-    Max = 4, // the exported extent (SPEC §4.2)
+    Caps = 5,
+    Spans = 6,
+    Origin = 7,
+    Ack = 8,
+    Max = 8, // the exported extent (SPEC §4.2)
 };
 
-// union ToolBody — at most one of the arms; the tag says which. An arm is a TABLE
-// where it names one (docs/SPEC-TABLES.md §2.6), so the union has no packet wire and
-// lives here, after its arms. Construction is None: the tag alone is
-// initialized; an arm's storage is established when the arm is selected — by
-// ToolBodyLoadBody before it decodes, or by assigning it: value.open = OpenDocument{}.
+// union ToolBody — at most one of the arms; the tag says which. AN ARM IS A FIELD
+// LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage
+// overlaid — and an arm whose storage needs a companion, a string's length or
+// a counted array's count, is one member of an unnamed struct, `value` beside
+// `value_length` or `value_count`. Such a union has no packet wire and lives
+// here, after its arms. Construction is None: the tag alone is initialized; an
+// arm's storage is established when the arm is selected — by ToolBodyLoadBody
+// before it decodes, or by assigning it: value.open = OpenDocument{}.
 // Bytes of unselected arms are indeterminate.
 struct ToolBody
 {
@@ -641,6 +675,9 @@ struct ToolBody
         SaveDocument save;
         Transaction transact;
         Ping ping;
+        Capabilities caps;
+        int32_t spans[2]; // [2]int32
+        Origin origin;
     };
 
     ToolBody() : type( ToolBodyType::None ) {} // the tag only — arms are established at selection
@@ -1081,6 +1118,11 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionLoadBody( TableReader & r, Selection & va
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     CursorLoadBody( sub, value.start );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        CursorReset( value.start );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -1099,6 +1141,11 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionLoadBody( TableReader & r, Selection & va
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     CursorLoadBody( sub, value.end );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        CursorReset( value.end );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -1135,16 +1182,35 @@ inline int64_t InsertTextMeasure( const InsertText & value )
         case OriginType::None: break; // None elides — TLV absence is the None
         case OriginType::User:
         {
-            int64_t arm_origin = UserMeasure( value.origin.user );
-            if ( arm_origin < 0 ) { return -1; }
-            bytes += 3 + 2 + 4 + arm_origin; // the u16 ARM ID, then the arm length-prefixed
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            {
+                int64_t arm_body = UserMeasure( value.origin.user );
+                if ( arm_body < 0 ) { return -1; }
+                bytes += arm_body; // the arm's own table body (§3)
+            }
             break;
         }
         case OriginType::Script:
         {
-            int64_t arm_origin = ScriptMeasure( value.origin.script );
-            if ( arm_origin < 0 ) { return -1; }
-            bytes += 3 + 2 + 4 + arm_origin; // the u16 ARM ID, then the arm length-prefixed
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            {
+                int64_t arm_body = ScriptMeasure( value.origin.script );
+                if ( arm_body < 0 ) { return -1; }
+                bytes += arm_body; // the arm's own table body (§3)
+            }
+            break;
+        }
+        case OriginType::Pid:
+        {
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            bytes += 4; // uint32
+            break;
+        }
+        case OriginType::Note:
+        {
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return -1; } // storage invariant
+            bytes += value.origin.note.value_length; // the string's bytes under the arm's L
             break;
         }
         default: return -1; // invalid tag — the write side refuses it too
@@ -1160,16 +1226,35 @@ inline int64_t InsertTextMeasure( const InsertText & value )
                 case OriginType::None: bytes += 2; break; // a None element is the arm id 0 in its place
                 case OriginType::User:
                 {
-                    int64_t arm_bytes = UserMeasure( value.origins[i].user );
-                    if ( arm_bytes < 0 ) { return -1; }
-                    bytes += 2 + 4 + arm_bytes; // the u16 ARM ID, then the arm length-prefixed
+                    bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                    {
+                        int64_t arm_bodya = UserMeasure( value.origins[i].user );
+                        if ( arm_bodya < 0 ) { return -1; }
+                        bytes += arm_bodya; // the arm's own table body (§3)
+                    }
                     break;
                 }
                 case OriginType::Script:
                 {
-                    int64_t arm_bytes = ScriptMeasure( value.origins[i].script );
-                    if ( arm_bytes < 0 ) { return -1; }
-                    bytes += 2 + 4 + arm_bytes; // the u16 ARM ID, then the arm length-prefixed
+                    bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                    {
+                        int64_t arm_bodya = ScriptMeasure( value.origins[i].script );
+                        if ( arm_bodya < 0 ) { return -1; }
+                        bytes += arm_bodya; // the arm's own table body (§3)
+                    }
+                    break;
+                }
+                case OriginType::Pid:
+                {
+                    bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                    bytes += 4; // uint32
+                    break;
+                }
+                case OriginType::Note:
+                {
+                    bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                    if ( value.origins[i].note.value_length < 0 || value.origins[i].note.value_length > 24 ) { return -1; } // storage invariant
+                    bytes += value.origins[i].note.value_length; // the string's bytes under the arm's L
                     break;
                 }
                 default: return -1; // invalid tag — the write side refuses it too
@@ -1217,13 +1302,34 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, const InsertT
         {
             case OriginType::User: w.put16( 0x3e8a ); break;
             case OriginType::Script: w.put16( 0x4f94 ); break;
+            case OriginType::Pid: w.put16( 0x9462 ); break;
+            case OriginType::Note: w.put16( 0x9da7 ); break;
             default: return false; // write validates the tag before it rides
         }
         int64_t len_at_origin = w.offset; w.put32( 0 );
         switch ( value.origin.type )
         {
-            case OriginType::User: if ( !UserSaveBody( w, value.origin.user ) ) return false; break;
-            case OriginType::Script: if ( !ScriptSaveBody( w, value.origin.script ) ) return false; break;
+            case OriginType::User:
+            {
+                if ( !UserSaveBody( w, value.origin.user ) ) { return false; }
+                break;
+            }
+            case OriginType::Script:
+            {
+                if ( !ScriptSaveBody( w, value.origin.script ) ) { return false; }
+                break;
+            }
+            case OriginType::Pid:
+            {
+                w.put32( uint32_t( value.origin.pid ) );
+                break;
+            }
+            case OriginType::Note:
+            {
+                if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return false; } // storage invariant
+                w.raw( value.origin.note.value, value.origin.note.value_length );
+                break;
+            }
             default: return false; // write validates the tag before it rides
         }
         w.patch32( len_at_origin, uint32_t( w.offset - len_at_origin - 4 ) );
@@ -1243,7 +1349,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, const InsertT
                 {
                     w.put16( 0x3e8a ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                     int64_t arm_len_at = w.offset; w.put32( 0 );
-                    if ( !UserSaveBody( w, value.origins[i].user ) ) return false;
+                    if ( !UserSaveBody( w, value.origins[i].user ) ) { return false; }
                     w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
                     break;
                 }
@@ -1251,7 +1357,24 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, const InsertT
                 {
                     w.put16( 0x4f94 ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                     int64_t arm_len_at = w.offset; w.put32( 0 );
-                    if ( !ScriptSaveBody( w, value.origins[i].script ) ) return false;
+                    if ( !ScriptSaveBody( w, value.origins[i].script ) ) { return false; }
+                    w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
+                    break;
+                }
+                case OriginType::Pid:
+                {
+                    w.put16( 0x9462 ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                    int64_t arm_len_at = w.offset; w.put32( 0 );
+                    w.put32( uint32_t( value.origins[i].pid ) );
+                    w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
+                    break;
+                }
+                case OriginType::Note:
+                {
+                    w.put16( 0x9da7 ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                    int64_t arm_len_at = w.offset; w.put32( 0 );
+                    if ( value.origins[i].note.value_length < 0 || value.origins[i].note.value_length > 24 ) { return false; } // storage invariant
+                    w.raw( value.origins[i].note.value, value.origins[i].note.value_length );
                     w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
                     break;
                 }
@@ -1313,6 +1436,11 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     CursorLoadBody( sub, value.at );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        CursorReset( value.at );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -1355,13 +1483,44 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                     switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                     {
                         case 0x3e8a: // user
+                        {
                             value.origin.type = OriginType::User;
                             UserLoadBody( sub, value.origin.user );
+                            if ( sub.offset != sub.size ) { value.origin.type = OriginType::None; r.report->malformed = true; break; }
                             break;
+                        }
                         case 0x4f94: // script
+                        {
                             value.origin.type = OriginType::Script;
                             ScriptLoadBody( sub, value.origin.script );
+                            if ( sub.offset != sub.size ) { value.origin.type = OriginType::None; r.report->malformed = true; break; }
                             break;
+                        }
+                        case 0x9462: // pid
+                        {
+                            value.origin.type = OriginType::Pid;
+                            if ( sub.size != 4 ) { value.origin.type = OriginType::None; r.report->kind_mismatch++; break; } // an arm carries no kind byte: the length is the check (§2.6)
+                            if ( !sub.has( 4 ) ) { value.origin.type = OriginType::None; r.report->malformed = true; break; }
+                            uint32_t decoded_v = uint32_t( sub.get32( ) );
+                            if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->clamped++; }
+                            value.origin.pid = decoded_v;
+                            break;
+                        }
+                        case 0x9da7: // note
+                        {
+                            value.origin.type = OriginType::Note;
+                            memset( &value.origin.note, 0, sizeof( value.origin.note ) ); // selection establishes the arm (§2.6)
+                            {
+                                uint32_t arm_len = uint32_t( sub.size );
+                                uint32_t arm_keep = arm_len;
+                                if ( arm_keep > 24 ) { arm_keep = 24; r.report->clamped++; }
+                                memcpy( value.origin.note.value, sub.buffer + sub.offset, arm_keep );
+                                value.origin.note.value[arm_keep] = 0;
+                                value.origin.note.value_length = (int32_t) arm_keep;
+                                sub.offset += arm_len;
+                            }
+                            break;
+                        }
                         default:
                             // an arm this reader cannot name: the value reads EMPTY and
                             // the body is skipped by its length, never misdecoded. The
@@ -1416,13 +1575,44 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                                 switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                                 {
                                     case 0x3e8a: // user
+                                    {
                                         value.origins[i].type = OriginType::User;
                                         UserLoadBody( arm, value.origins[i].user );
+                                        if ( arm.offset != arm.size ) { value.origins[i].type = OriginType::None; r.report->malformed = true; break; }
                                         break;
+                                    }
                                     case 0x4f94: // script
+                                    {
                                         value.origins[i].type = OriginType::Script;
                                         ScriptLoadBody( arm, value.origins[i].script );
+                                        if ( arm.offset != arm.size ) { value.origins[i].type = OriginType::None; r.report->malformed = true; break; }
                                         break;
+                                    }
+                                    case 0x9462: // pid
+                                    {
+                                        value.origins[i].type = OriginType::Pid;
+                                        if ( arm.size != 4 ) { value.origins[i].type = OriginType::None; r.report->kind_mismatch++; break; } // an arm carries no kind byte: the length is the check (§2.6)
+                                        if ( !arm.has( 4 ) ) { value.origins[i].type = OriginType::None; r.report->malformed = true; break; }
+                                        uint32_t decoded_v = uint32_t( arm.get32( ) );
+                                        if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->clamped++; }
+                                        value.origins[i].pid = decoded_v;
+                                        break;
+                                    }
+                                    case 0x9da7: // note
+                                    {
+                                        value.origins[i].type = OriginType::Note;
+                                        memset( &value.origins[i].note, 0, sizeof( value.origins[i].note ) ); // selection establishes the arm (§2.6)
+                                        {
+                                            uint32_t arm_lena = uint32_t( arm.size );
+                                            uint32_t arm_keepa = arm_lena;
+                                            if ( arm_keepa > 24 ) { arm_keepa = 24; r.report->clamped++; }
+                                            memcpy( value.origins[i].note.value, arm.buffer + arm.offset, arm_keepa );
+                                            value.origins[i].note.value[arm_keepa] = 0;
+                                            value.origins[i].note.value_length = (int32_t) arm_keepa;
+                                            arm.offset += arm_lena;
+                                        }
+                                        break;
+                                    }
                                     default: r.report->unknown++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                 }
                                 sub.offset += arm_len;
@@ -1556,6 +1746,11 @@ MESSAGEDEMO_TABLE_INLINE bool RemoveTextLoadBody( TableReader & r, RemoveText & 
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     SelectionLoadBody( sub, value.span );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        SelectionReset( value.span );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -1586,16 +1781,53 @@ inline int64_t EditMeasure( const Edit & value )
         case EditBodyType::None: break; // None elides — TLV absence is the None
         case EditBodyType::Insert:
         {
-            int64_t arm_body = InsertTextMeasure( value.body.insert );
-            if ( arm_body < 0 ) { return -1; }
-            bytes += 3 + 2 + 4 + arm_body; // the u16 ARM ID, then the arm length-prefixed
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            {
+                int64_t arm_body = InsertTextMeasure( value.body.insert );
+                if ( arm_body < 0 ) { return -1; }
+                bytes += arm_body; // the arm's own table body (§3)
+            }
             break;
         }
         case EditBodyType::Remove:
         {
-            int64_t arm_body = RemoveTextMeasure( value.body.remove );
-            if ( arm_body < 0 ) { return -1; }
-            bytes += 3 + 2 + 4 + arm_body; // the u16 ARM ID, then the arm length-prefixed
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            {
+                int64_t arm_body = RemoveTextMeasure( value.body.remove );
+                if ( arm_body < 0 ) { return -1; }
+                bytes += arm_body; // the arm's own table body (§3)
+            }
+            break;
+        }
+        case EditBodyType::Count:
+        {
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            bytes += 4; // int32
+            break;
+        }
+        case EditBodyType::Marks:
+        {
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            if ( value.body.marks.value_count < 0 || value.body.marks.value_count > 3 ) { return -1; } // storage invariant
+            bytes += 5; // element kind, N
+            bytes += (int64_t) value.body.marks.value_count * 2;
+            break;
+        }
+        case EditBodyType::Blob:
+        {
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            if ( value.body.blob.value_length < 0 || value.body.blob.value_length > 4 ) { return -1; } // storage invariant
+            bytes += 5 + value.body.blob.value_length; // element kind 6, N, then the bytes
+            break;
+        }
+        case EditBodyType::Mode:
+        {
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            {
+                uint16_t arm_named = 0;
+                if ( !TableEnumId( value.body.mode, arm_named ) ) { return -1; } // no variant names this value
+                bytes += 2; // the variant's name hash
+            }
             break;
         }
         default: return -1; // invalid tag — the write side refuses it too
@@ -1619,13 +1851,56 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, const Edit & value 
         {
             case EditBodyType::Insert: w.put16( 0x508b ); break;
             case EditBodyType::Remove: w.put16( 0xce6f ); break;
+            case EditBodyType::Count: w.put16( 0xe445 ); break;
+            case EditBodyType::Marks: w.put16( 0xe15f ); break;
+            case EditBodyType::Blob: w.put16( 0xd316 ); break;
+            case EditBodyType::Mode: w.put16( 0x0c7c ); break;
             default: return false; // write validates the tag before it rides
         }
         int64_t len_at_body = w.offset; w.put32( 0 );
         switch ( value.body.type )
         {
-            case EditBodyType::Insert: if ( !InsertTextSaveBody( w, value.body.insert ) ) return false; break;
-            case EditBodyType::Remove: if ( !RemoveTextSaveBody( w, value.body.remove ) ) return false; break;
+            case EditBodyType::Insert:
+            {
+                if ( !InsertTextSaveBody( w, value.body.insert ) ) { return false; }
+                break;
+            }
+            case EditBodyType::Remove:
+            {
+                if ( !RemoveTextSaveBody( w, value.body.remove ) ) { return false; }
+                break;
+            }
+            case EditBodyType::Count:
+            {
+                w.put32( uint32_t( value.body.count ) );
+                break;
+            }
+            case EditBodyType::Marks:
+            {
+                if ( value.body.marks.value_count < 0 || value.body.marks.value_count > 3 ) { return false; } // storage invariant
+                w.put8( 7 ); w.put32( uint32_t( value.body.marks.value_count ) );
+                for ( int32_t arm_i = 0; arm_i < value.body.marks.value_count; arm_i++ )
+                {
+                    w.put16( uint16_t( value.body.marks.value[arm_i] ) );
+                }
+                break;
+            }
+            case EditBodyType::Blob:
+            {
+                if ( value.body.blob.value_length < 0 || value.body.blob.value_length > 4 ) { return false; } // storage invariant
+                w.put8( 6 ); w.put32( uint32_t( value.body.blob.value_length ) ); // bytes ride as an array of u8 (§2.5)
+                w.raw( value.body.blob.value, value.body.blob.value_length );
+                break;
+            }
+            case EditBodyType::Mode:
+            {
+                {
+                    uint16_t element_id = 0;
+                    if ( !TableEnumId( value.body.mode, element_id ) ) { return false; }
+                    w.put16( element_id );
+                }
+                break;
+            }
             default: return false; // write validates the tag before it rides
         }
         w.patch32( len_at_body, uint32_t( w.offset - len_at_body - 4 ) );
@@ -1685,13 +1960,88 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                     switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                     {
                         case 0x508b: // insert
+                        {
                             value.body.type = EditBodyType::Insert;
                             InsertTextLoadBody( sub, value.body.insert );
+                            if ( sub.offset != sub.size ) { value.body.type = EditBodyType::None; r.report->malformed = true; break; }
                             break;
+                        }
                         case 0xce6f: // remove
+                        {
                             value.body.type = EditBodyType::Remove;
                             RemoveTextLoadBody( sub, value.body.remove );
+                            if ( sub.offset != sub.size ) { value.body.type = EditBodyType::None; r.report->malformed = true; break; }
                             break;
+                        }
+                        case 0xe445: // count
+                        {
+                            value.body.type = EditBodyType::Count;
+                            if ( sub.size != 4 ) { value.body.type = EditBodyType::None; r.report->kind_mismatch++; break; } // an arm carries no kind byte: the length is the check (§2.6)
+                            if ( !sub.has( 4 ) ) { value.body.type = EditBodyType::None; r.report->malformed = true; break; }
+                            int32_t decoded_v = int32_t( sub.get32( ) );
+                            if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
+                            else if ( decoded_v > 100 ) { decoded_v = 100; r.report->clamped++; }
+                            value.body.count = decoded_v;
+                            break;
+                        }
+                        case 0xe15f: // marks
+                        {
+                            value.body.type = EditBodyType::Marks;
+                            memset( &value.body.marks, 0, sizeof( value.body.marks ) ); // selection establishes the arm (§2.6)
+                            if ( !sub.has( 5 ) ) { break; }
+                            {
+                                uint8_t arm_kind = sub.get8();
+                                uint32_t arm_count = sub.get32();
+                                if ( arm_kind != 7 ) { value.body.type = EditBodyType::None; r.report->kind_mismatch++; break; }
+                                uint32_t arm_keep = arm_count;
+                                if ( arm_keep > 3 ) { arm_keep = 3; r.report->clamped++; }
+                                const uint8_t * arm_elems = sub.buffer + sub.offset;
+                                int64_t arm_left = sub.size - sub.offset;
+                                TableReader arm_sub( arm_elems, arm_left, r.report );
+                                uint32_t arm_decoded = 0;
+                                for ( uint32_t arm_i = 0; arm_i < arm_keep; arm_i++ )
+                                {
+                                    if ( !arm_sub.has( 2 ) ) { r.report->malformed = true; break; }
+                                    uint16_t decoded_v = uint16_t( arm_sub.get16( ) );
+                                    value.body.marks.value[arm_i] = decoded_v;
+                                    arm_decoded = arm_i + 1;
+                                }
+                                value.body.marks.value_count = (int32_t) arm_decoded;
+                            }
+                            break;
+                        }
+                        case 0xd316: // blob
+                        {
+                            value.body.type = EditBodyType::Blob;
+                            memset( &value.body.blob, 0, sizeof( value.body.blob ) ); // selection establishes the arm (§2.6)
+                            if ( !sub.has( 5 ) ) { break; }
+                            {
+                                uint8_t arm_kind = sub.get8();
+                                uint32_t arm_count = sub.get32();
+                                if ( arm_kind != 6 ) { value.body.type = EditBodyType::None; r.report->kind_mismatch++; break; }
+                                uint32_t arm_keep = arm_count;
+                                if ( arm_keep > 4 ) { arm_keep = 4; r.report->clamped++; }
+                                if ( !sub.has( arm_keep ) ) { arm_keep = uint32_t( sub.size - sub.offset ); r.report->malformed = true; }
+                                memcpy( value.body.blob.value, sub.buffer + sub.offset, arm_keep );
+                                value.body.blob.value_length = (int32_t) arm_keep;
+                            }
+                            break;
+                        }
+                        case 0x0c7c: // mode
+                        {
+                            value.body.type = EditBodyType::Mode;
+                            if ( sub.size != 2 ) { value.body.type = EditBodyType::None; r.report->kind_mismatch++; break; } // an arm carries no kind byte: the length is the check (§2.6)
+                            if ( !sub.has( 2 ) ) { value.body.type = EditBodyType::None; r.report->malformed = true; break; }
+                            {
+                                uint16_t variant = sub.get16();
+                                if ( !TableEnumValue( variant, value.body.mode ) )
+                                {
+                                    value.body.mode = Mode::None;
+                                    r.report->unknown++;
+                                }
+                            }
+                            break;
+                        }
                         default:
                             // an arm this reader cannot name: the value reads EMPTY and
                             // the body is skipped by its length, never misdecoded. The
@@ -1843,6 +2193,11 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBody( TableReader & r, OpenDocumen
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     CursorLoadBody( sub, value.cursor );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        CursorReset( value.cursor );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -1987,16 +2342,53 @@ inline int64_t TransactionMeasure( const Transaction & value )
                     case EditBodyType::None: bytes += 2; break; // a None element is the arm id 0 in its place
                     case EditBodyType::Insert:
                     {
-                        int64_t arm_bytes = InsertTextMeasure( value.pending[i].insert );
-                        if ( arm_bytes < 0 ) { return -1; }
-                        bytes += 2 + 4 + arm_bytes; // the u16 ARM ID, then the arm length-prefixed
+                        bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                        {
+                            int64_t arm_bodya = InsertTextMeasure( value.pending[i].insert );
+                            if ( arm_bodya < 0 ) { return -1; }
+                            bytes += arm_bodya; // the arm's own table body (§3)
+                        }
                         break;
                     }
                     case EditBodyType::Remove:
                     {
-                        int64_t arm_bytes = RemoveTextMeasure( value.pending[i].remove );
-                        if ( arm_bytes < 0 ) { return -1; }
-                        bytes += 2 + 4 + arm_bytes; // the u16 ARM ID, then the arm length-prefixed
+                        bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                        {
+                            int64_t arm_bodya = RemoveTextMeasure( value.pending[i].remove );
+                            if ( arm_bodya < 0 ) { return -1; }
+                            bytes += arm_bodya; // the arm's own table body (§3)
+                        }
+                        break;
+                    }
+                    case EditBodyType::Count:
+                    {
+                        bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                        bytes += 4; // int32
+                        break;
+                    }
+                    case EditBodyType::Marks:
+                    {
+                        bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                        if ( value.pending[i].marks.value_count < 0 || value.pending[i].marks.value_count > 3 ) { return -1; } // storage invariant
+                        bytes += 5; // element kind, N
+                        bytes += (int64_t) value.pending[i].marks.value_count * 2;
+                        break;
+                    }
+                    case EditBodyType::Blob:
+                    {
+                        bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                        if ( value.pending[i].blob.value_length < 0 || value.pending[i].blob.value_length > 4 ) { return -1; } // storage invariant
+                        bytes += 5 + value.pending[i].blob.value_length; // element kind 6, N, then the bytes
+                        break;
+                    }
+                    case EditBodyType::Mode:
+                    {
+                        bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                        {
+                            uint16_t arm_nameda = 0;
+                            if ( !TableEnumId( value.pending[i].mode, arm_nameda ) ) { return -1; } // no variant names this value
+                            bytes += 2; // the variant's name hash
+                        }
                         break;
                     }
                     default: return -1; // invalid tag — the write side refuses it too
@@ -2063,7 +2455,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, const Transa
                     {
                         w.put16( 0x508b ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                         int64_t arm_len_at = w.offset; w.put32( 0 );
-                        if ( !InsertTextSaveBody( w, value.pending[i].insert ) ) return false;
+                        if ( !InsertTextSaveBody( w, value.pending[i].insert ) ) { return false; }
                         w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
                         break;
                     }
@@ -2071,7 +2463,50 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, const Transa
                     {
                         w.put16( 0xce6f ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                         int64_t arm_len_at = w.offset; w.put32( 0 );
-                        if ( !RemoveTextSaveBody( w, value.pending[i].remove ) ) return false;
+                        if ( !RemoveTextSaveBody( w, value.pending[i].remove ) ) { return false; }
+                        w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
+                        break;
+                    }
+                    case EditBodyType::Count:
+                    {
+                        w.put16( 0xe445 ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                        int64_t arm_len_at = w.offset; w.put32( 0 );
+                        w.put32( uint32_t( value.pending[i].count ) );
+                        w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
+                        break;
+                    }
+                    case EditBodyType::Marks:
+                    {
+                        w.put16( 0xe15f ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                        int64_t arm_len_at = w.offset; w.put32( 0 );
+                        if ( value.pending[i].marks.value_count < 0 || value.pending[i].marks.value_count > 3 ) { return false; } // storage invariant
+                        w.put8( 7 ); w.put32( uint32_t( value.pending[i].marks.value_count ) );
+                        for ( int32_t arm_ia = 0; arm_ia < value.pending[i].marks.value_count; arm_ia++ )
+                        {
+                            w.put16( uint16_t( value.pending[i].marks.value[arm_ia] ) );
+                        }
+                        w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
+                        break;
+                    }
+                    case EditBodyType::Blob:
+                    {
+                        w.put16( 0xd316 ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                        int64_t arm_len_at = w.offset; w.put32( 0 );
+                        if ( value.pending[i].blob.value_length < 0 || value.pending[i].blob.value_length > 4 ) { return false; } // storage invariant
+                        w.put8( 6 ); w.put32( uint32_t( value.pending[i].blob.value_length ) ); // bytes ride as an array of u8 (§2.5)
+                        w.raw( value.pending[i].blob.value, value.pending[i].blob.value_length );
+                        w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
+                        break;
+                    }
+                    case EditBodyType::Mode:
+                    {
+                        w.put16( 0x0c7c ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                        int64_t arm_len_at = w.offset; w.put32( 0 );
+                        {
+                            uint16_t element_ida = 0;
+                            if ( !TableEnumId( value.pending[i].mode, element_ida ) ) { return false; }
+                            w.put16( element_ida );
+                        }
                         w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
                         break;
                     }
@@ -2230,13 +2665,88 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                 switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                                 {
                                     case 0x508b: // insert
+                                    {
                                         value.pending[i].type = EditBodyType::Insert;
                                         InsertTextLoadBody( arm, value.pending[i].insert );
+                                        if ( arm.offset != arm.size ) { value.pending[i].type = EditBodyType::None; r.report->malformed = true; break; }
                                         break;
+                                    }
                                     case 0xce6f: // remove
+                                    {
                                         value.pending[i].type = EditBodyType::Remove;
                                         RemoveTextLoadBody( arm, value.pending[i].remove );
+                                        if ( arm.offset != arm.size ) { value.pending[i].type = EditBodyType::None; r.report->malformed = true; break; }
                                         break;
+                                    }
+                                    case 0xe445: // count
+                                    {
+                                        value.pending[i].type = EditBodyType::Count;
+                                        if ( arm.size != 4 ) { value.pending[i].type = EditBodyType::None; r.report->kind_mismatch++; break; } // an arm carries no kind byte: the length is the check (§2.6)
+                                        if ( !arm.has( 4 ) ) { value.pending[i].type = EditBodyType::None; r.report->malformed = true; break; }
+                                        int32_t decoded_v = int32_t( arm.get32( ) );
+                                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
+                                        else if ( decoded_v > 100 ) { decoded_v = 100; r.report->clamped++; }
+                                        value.pending[i].count = decoded_v;
+                                        break;
+                                    }
+                                    case 0xe15f: // marks
+                                    {
+                                        value.pending[i].type = EditBodyType::Marks;
+                                        memset( &value.pending[i].marks, 0, sizeof( value.pending[i].marks ) ); // selection establishes the arm (§2.6)
+                                        if ( !arm.has( 5 ) ) { break; }
+                                        {
+                                            uint8_t arm_kinda = arm.get8();
+                                            uint32_t arm_counta = arm.get32();
+                                            if ( arm_kinda != 7 ) { value.pending[i].type = EditBodyType::None; r.report->kind_mismatch++; break; }
+                                            uint32_t arm_keepa = arm_counta;
+                                            if ( arm_keepa > 3 ) { arm_keepa = 3; r.report->clamped++; }
+                                            const uint8_t * arm_elemsa = arm.buffer + arm.offset;
+                                            int64_t arm_lefta = arm.size - arm.offset;
+                                            TableReader arm_suba( arm_elemsa, arm_lefta, r.report );
+                                            uint32_t arm_decodeda = 0;
+                                            for ( uint32_t arm_ia = 0; arm_ia < arm_keepa; arm_ia++ )
+                                            {
+                                                if ( !arm_suba.has( 2 ) ) { r.report->malformed = true; break; }
+                                                uint16_t decoded_v = uint16_t( arm_suba.get16( ) );
+                                                value.pending[i].marks.value[arm_ia] = decoded_v;
+                                                arm_decodeda = arm_ia + 1;
+                                            }
+                                            value.pending[i].marks.value_count = (int32_t) arm_decodeda;
+                                        }
+                                        break;
+                                    }
+                                    case 0xd316: // blob
+                                    {
+                                        value.pending[i].type = EditBodyType::Blob;
+                                        memset( &value.pending[i].blob, 0, sizeof( value.pending[i].blob ) ); // selection establishes the arm (§2.6)
+                                        if ( !arm.has( 5 ) ) { break; }
+                                        {
+                                            uint8_t arm_kinda = arm.get8();
+                                            uint32_t arm_counta = arm.get32();
+                                            if ( arm_kinda != 6 ) { value.pending[i].type = EditBodyType::None; r.report->kind_mismatch++; break; }
+                                            uint32_t arm_keepa = arm_counta;
+                                            if ( arm_keepa > 4 ) { arm_keepa = 4; r.report->clamped++; }
+                                            if ( !arm.has( arm_keepa ) ) { arm_keepa = uint32_t( arm.size - arm.offset ); r.report->malformed = true; }
+                                            memcpy( value.pending[i].blob.value, arm.buffer + arm.offset, arm_keepa );
+                                            value.pending[i].blob.value_length = (int32_t) arm_keepa;
+                                        }
+                                        break;
+                                    }
+                                    case 0x0c7c: // mode
+                                    {
+                                        value.pending[i].type = EditBodyType::Mode;
+                                        if ( arm.size != 2 ) { value.pending[i].type = EditBodyType::None; r.report->kind_mismatch++; break; } // an arm carries no kind byte: the length is the check (§2.6)
+                                        if ( !arm.has( 2 ) ) { value.pending[i].type = EditBodyType::None; r.report->malformed = true; break; }
+                                        {
+                                            uint16_t variant = arm.get16();
+                                            if ( !TableEnumValue( variant, value.pending[i].mode ) )
+                                            {
+                                                value.pending[i].mode = Mode::None;
+                                                r.report->unknown++;
+                                            }
+                                        }
+                                        break;
+                                    }
                                     default: r.report->unknown++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                 }
                                 sub.offset += arm_len;
@@ -2348,30 +2858,105 @@ inline int64_t ToolMessageMeasure( const ToolMessage & value )
         case ToolBodyType::None: break; // None elides — TLV absence is the None
         case ToolBodyType::Open:
         {
-            int64_t arm_body = OpenDocumentMeasure( value.body.open );
-            if ( arm_body < 0 ) { return -1; }
-            bytes += 3 + 2 + 4 + arm_body; // the u16 ARM ID, then the arm length-prefixed
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            {
+                int64_t arm_body = OpenDocumentMeasure( value.body.open );
+                if ( arm_body < 0 ) { return -1; }
+                bytes += arm_body; // the arm's own table body (§3)
+            }
             break;
         }
         case ToolBodyType::Save:
         {
-            int64_t arm_body = SaveDocumentMeasure( value.body.save );
-            if ( arm_body < 0 ) { return -1; }
-            bytes += 3 + 2 + 4 + arm_body; // the u16 ARM ID, then the arm length-prefixed
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            {
+                int64_t arm_body = SaveDocumentMeasure( value.body.save );
+                if ( arm_body < 0 ) { return -1; }
+                bytes += arm_body; // the arm's own table body (§3)
+            }
             break;
         }
         case ToolBodyType::Transact:
         {
-            int64_t arm_body = TransactionMeasure( value.body.transact );
-            if ( arm_body < 0 ) { return -1; }
-            bytes += 3 + 2 + 4 + arm_body; // the u16 ARM ID, then the arm length-prefixed
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            {
+                int64_t arm_body = TransactionMeasure( value.body.transact );
+                if ( arm_body < 0 ) { return -1; }
+                bytes += arm_body; // the arm's own table body (§3)
+            }
             break;
         }
         case ToolBodyType::Ping:
         {
-            int64_t arm_body = PingMeasure( value.body.ping );
-            if ( arm_body < 0 ) { return -1; }
-            bytes += 3 + 2 + 4 + arm_body; // the u16 ARM ID, then the arm length-prefixed
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            {
+                int64_t arm_body = PingMeasure( value.body.ping );
+                if ( arm_body < 0 ) { return -1; }
+                bytes += arm_body; // the arm's own table body (§3)
+            }
+            break;
+        }
+        case ToolBodyType::Caps:
+        {
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            bytes += 8; // Capabilities
+            break;
+        }
+        case ToolBodyType::Spans:
+        {
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            bytes += 5; // element kind, N
+            bytes += (int64_t) 2 * 4;
+            break;
+        }
+        case ToolBodyType::Origin:
+        {
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            bytes += 2; // the nested union's arm id
+            switch ( value.body.origin.type )
+            {
+                case OriginType::None: break;
+                case OriginType::User:
+                {
+                    bytes += 4;
+                    {
+                        int64_t arm_bodya = UserMeasure( value.body.origin.user );
+                        if ( arm_bodya < 0 ) { return -1; }
+                        bytes += arm_bodya; // the arm's own table body (§3)
+                    }
+                    break;
+                }
+                case OriginType::Script:
+                {
+                    bytes += 4;
+                    {
+                        int64_t arm_bodya = ScriptMeasure( value.body.origin.script );
+                        if ( arm_bodya < 0 ) { return -1; }
+                        bytes += arm_bodya; // the arm's own table body (§3)
+                    }
+                    break;
+                }
+                case OriginType::Pid:
+                {
+                    bytes += 4;
+                    bytes += 4; // uint32
+                    break;
+                }
+                case OriginType::Note:
+                {
+                    bytes += 4;
+                    if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return -1; } // storage invariant
+                    bytes += value.body.origin.note.value_length; // the string's bytes under the arm's L
+                    break;
+                }
+                default: return -1;
+            }
+            break;
+        }
+        case ToolBodyType::Ack:
+        {
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            // a payload-free arm: the arm id and L = 0 are the whole of it (§2.6)
             break;
         }
         default: return -1; // invalid tag — the write side refuses it too
@@ -2387,30 +2972,105 @@ inline int64_t ToolMessageMeasure( const ToolMessage & value )
                 case ToolBodyType::None: bytes += 2; break; // a None element is the arm id 0 in its place
                 case ToolBodyType::Open:
                 {
-                    int64_t arm_bytes = OpenDocumentMeasure( value.history[i].open );
-                    if ( arm_bytes < 0 ) { return -1; }
-                    bytes += 2 + 4 + arm_bytes; // the u16 ARM ID, then the arm length-prefixed
+                    bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                    {
+                        int64_t arm_bodya = OpenDocumentMeasure( value.history[i].open );
+                        if ( arm_bodya < 0 ) { return -1; }
+                        bytes += arm_bodya; // the arm's own table body (§3)
+                    }
                     break;
                 }
                 case ToolBodyType::Save:
                 {
-                    int64_t arm_bytes = SaveDocumentMeasure( value.history[i].save );
-                    if ( arm_bytes < 0 ) { return -1; }
-                    bytes += 2 + 4 + arm_bytes; // the u16 ARM ID, then the arm length-prefixed
+                    bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                    {
+                        int64_t arm_bodya = SaveDocumentMeasure( value.history[i].save );
+                        if ( arm_bodya < 0 ) { return -1; }
+                        bytes += arm_bodya; // the arm's own table body (§3)
+                    }
                     break;
                 }
                 case ToolBodyType::Transact:
                 {
-                    int64_t arm_bytes = TransactionMeasure( value.history[i].transact );
-                    if ( arm_bytes < 0 ) { return -1; }
-                    bytes += 2 + 4 + arm_bytes; // the u16 ARM ID, then the arm length-prefixed
+                    bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                    {
+                        int64_t arm_bodya = TransactionMeasure( value.history[i].transact );
+                        if ( arm_bodya < 0 ) { return -1; }
+                        bytes += arm_bodya; // the arm's own table body (§3)
+                    }
                     break;
                 }
                 case ToolBodyType::Ping:
                 {
-                    int64_t arm_bytes = PingMeasure( value.history[i].ping );
-                    if ( arm_bytes < 0 ) { return -1; }
-                    bytes += 2 + 4 + arm_bytes; // the u16 ARM ID, then the arm length-prefixed
+                    bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                    {
+                        int64_t arm_bodya = PingMeasure( value.history[i].ping );
+                        if ( arm_bodya < 0 ) { return -1; }
+                        bytes += arm_bodya; // the arm's own table body (§3)
+                    }
+                    break;
+                }
+                case ToolBodyType::Caps:
+                {
+                    bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                    bytes += 8; // Capabilities
+                    break;
+                }
+                case ToolBodyType::Spans:
+                {
+                    bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                    bytes += 5; // element kind, N
+                    bytes += (int64_t) 2 * 4;
+                    break;
+                }
+                case ToolBodyType::Origin:
+                {
+                    bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                    bytes += 2; // the nested union's arm id
+                    switch ( value.history[i].origin.type )
+                    {
+                        case OriginType::None: break;
+                        case OriginType::User:
+                        {
+                            bytes += 4;
+                            {
+                                int64_t arm_bodyaa = UserMeasure( value.history[i].origin.user );
+                                if ( arm_bodyaa < 0 ) { return -1; }
+                                bytes += arm_bodyaa; // the arm's own table body (§3)
+                            }
+                            break;
+                        }
+                        case OriginType::Script:
+                        {
+                            bytes += 4;
+                            {
+                                int64_t arm_bodyaa = ScriptMeasure( value.history[i].origin.script );
+                                if ( arm_bodyaa < 0 ) { return -1; }
+                                bytes += arm_bodyaa; // the arm's own table body (§3)
+                            }
+                            break;
+                        }
+                        case OriginType::Pid:
+                        {
+                            bytes += 4;
+                            bytes += 4; // uint32
+                            break;
+                        }
+                        case OriginType::Note:
+                        {
+                            bytes += 4;
+                            if ( value.history[i].origin.note.value_length < 0 || value.history[i].origin.note.value_length > 24 ) { return -1; } // storage invariant
+                            bytes += value.history[i].origin.note.value_length; // the string's bytes under the arm's L
+                            break;
+                        }
+                        default: return -1;
+                    }
+                    break;
+                }
+                case ToolBodyType::Ack:
+                {
+                    bytes += 2 + 4; // the u16 ARM ID, then the arm length-prefixed
+                    // a payload-free arm: the arm id and L = 0 are the whole of it (§2.6)
                     break;
                 }
                 default: return -1; // invalid tag — the write side refuses it too
@@ -2458,15 +3118,96 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, const ToolMe
             case ToolBodyType::Save: w.put16( 0xb2b7 ); break;
             case ToolBodyType::Transact: w.put16( 0x968c ); break;
             case ToolBodyType::Ping: w.put16( 0xe6d4 ); break;
+            case ToolBodyType::Caps: w.put16( 0xacfb ); break;
+            case ToolBodyType::Spans: w.put16( 0x8156 ); break;
+            case ToolBodyType::Origin: w.put16( 0x4330 ); break;
+            case ToolBodyType::Ack: w.put16( 0x6048 ); break;
             default: return false; // write validates the tag before it rides
         }
         int64_t len_at_body = w.offset; w.put32( 0 );
         switch ( value.body.type )
         {
-            case ToolBodyType::Open: if ( !OpenDocumentSaveBody( w, value.body.open ) ) return false; break;
-            case ToolBodyType::Save: if ( !SaveDocumentSaveBody( w, value.body.save ) ) return false; break;
-            case ToolBodyType::Transact: if ( !TransactionSaveBody( w, value.body.transact ) ) return false; break;
-            case ToolBodyType::Ping: if ( !PingSaveBody( w, value.body.ping ) ) return false; break;
+            case ToolBodyType::Open:
+            {
+                if ( !OpenDocumentSaveBody( w, value.body.open ) ) { return false; }
+                break;
+            }
+            case ToolBodyType::Save:
+            {
+                if ( !SaveDocumentSaveBody( w, value.body.save ) ) { return false; }
+                break;
+            }
+            case ToolBodyType::Transact:
+            {
+                if ( !TransactionSaveBody( w, value.body.transact ) ) { return false; }
+                break;
+            }
+            case ToolBodyType::Ping:
+            {
+                if ( !PingSaveBody( w, value.body.ping ) ) { return false; }
+                break;
+            }
+            case ToolBodyType::Caps:
+            {
+                w.put64( uint64_t( value.body.caps ) );
+                break;
+            }
+            case ToolBodyType::Spans:
+            {
+                w.put8( 4 ); w.put32( uint32_t( 2 ) );
+                for ( int32_t arm_i = 0; arm_i < 2; arm_i++ )
+                {
+                    w.put32( uint32_t( value.body.spans[arm_i] ) );
+                }
+                break;
+            }
+            case ToolBodyType::Origin:
+            {
+                switch ( value.body.origin.type ) // the nested union's payload in place (§3)
+                {
+                    case OriginType::None: w.put16( 0 ); break;
+                    case OriginType::User:
+                    {
+                        w.put16( 0x3e8a ); // the arm's NAME hash (§5)
+                        int64_t arm_inner_at = w.offset; w.put32( 0 );
+                        if ( !UserSaveBody( w, value.body.origin.user ) ) { return false; }
+                        w.patch32( arm_inner_at, uint32_t( w.offset - arm_inner_at - 4 ) );
+                        break;
+                    }
+                    case OriginType::Script:
+                    {
+                        w.put16( 0x4f94 ); // the arm's NAME hash (§5)
+                        int64_t arm_inner_at = w.offset; w.put32( 0 );
+                        if ( !ScriptSaveBody( w, value.body.origin.script ) ) { return false; }
+                        w.patch32( arm_inner_at, uint32_t( w.offset - arm_inner_at - 4 ) );
+                        break;
+                    }
+                    case OriginType::Pid:
+                    {
+                        w.put16( 0x9462 ); // the arm's NAME hash (§5)
+                        int64_t arm_inner_at = w.offset; w.put32( 0 );
+                        w.put32( uint32_t( value.body.origin.pid ) );
+                        w.patch32( arm_inner_at, uint32_t( w.offset - arm_inner_at - 4 ) );
+                        break;
+                    }
+                    case OriginType::Note:
+                    {
+                        w.put16( 0x9da7 ); // the arm's NAME hash (§5)
+                        int64_t arm_inner_at = w.offset; w.put32( 0 );
+                        if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return false; } // storage invariant
+                        w.raw( value.body.origin.note.value, value.body.origin.note.value_length );
+                        w.patch32( arm_inner_at, uint32_t( w.offset - arm_inner_at - 4 ) );
+                        break;
+                    }
+                    default: return false;
+                }
+                break;
+            }
+            case ToolBodyType::Ack:
+            {
+                // a payload-free arm writes nothing under its L (§2.6)
+                break;
+            }
             default: return false; // write validates the tag before it rides
         }
         w.patch32( len_at_body, uint32_t( w.offset - len_at_body - 4 ) );
@@ -2486,7 +3227,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, const ToolMe
                 {
                     w.put16( 0x1797 ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                     int64_t arm_len_at = w.offset; w.put32( 0 );
-                    if ( !OpenDocumentSaveBody( w, value.history[i].open ) ) return false;
+                    if ( !OpenDocumentSaveBody( w, value.history[i].open ) ) { return false; }
                     w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
                     break;
                 }
@@ -2494,7 +3235,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, const ToolMe
                 {
                     w.put16( 0xb2b7 ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                     int64_t arm_len_at = w.offset; w.put32( 0 );
-                    if ( !SaveDocumentSaveBody( w, value.history[i].save ) ) return false;
+                    if ( !SaveDocumentSaveBody( w, value.history[i].save ) ) { return false; }
                     w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
                     break;
                 }
@@ -2502,7 +3243,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, const ToolMe
                 {
                     w.put16( 0x968c ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                     int64_t arm_len_at = w.offset; w.put32( 0 );
-                    if ( !TransactionSaveBody( w, value.history[i].transact ) ) return false;
+                    if ( !TransactionSaveBody( w, value.history[i].transact ) ) { return false; }
                     w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
                     break;
                 }
@@ -2510,7 +3251,80 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, const ToolMe
                 {
                     w.put16( 0xe6d4 ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                     int64_t arm_len_at = w.offset; w.put32( 0 );
-                    if ( !PingSaveBody( w, value.history[i].ping ) ) return false;
+                    if ( !PingSaveBody( w, value.history[i].ping ) ) { return false; }
+                    w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
+                    break;
+                }
+                case ToolBodyType::Caps:
+                {
+                    w.put16( 0xacfb ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                    int64_t arm_len_at = w.offset; w.put32( 0 );
+                    w.put64( uint64_t( value.history[i].caps ) );
+                    w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
+                    break;
+                }
+                case ToolBodyType::Spans:
+                {
+                    w.put16( 0x8156 ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                    int64_t arm_len_at = w.offset; w.put32( 0 );
+                    w.put8( 4 ); w.put32( uint32_t( 2 ) );
+                    for ( int32_t arm_ia = 0; arm_ia < 2; arm_ia++ )
+                    {
+                        w.put32( uint32_t( value.history[i].spans[arm_ia] ) );
+                    }
+                    w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
+                    break;
+                }
+                case ToolBodyType::Origin:
+                {
+                    w.put16( 0x4330 ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                    int64_t arm_len_at = w.offset; w.put32( 0 );
+                    switch ( value.history[i].origin.type ) // the nested union's payload in place (§3)
+                    {
+                        case OriginType::None: w.put16( 0 ); break;
+                        case OriginType::User:
+                        {
+                            w.put16( 0x3e8a ); // the arm's NAME hash (§5)
+                            int64_t arm_inner_ata = w.offset; w.put32( 0 );
+                            if ( !UserSaveBody( w, value.history[i].origin.user ) ) { return false; }
+                            w.patch32( arm_inner_ata, uint32_t( w.offset - arm_inner_ata - 4 ) );
+                            break;
+                        }
+                        case OriginType::Script:
+                        {
+                            w.put16( 0x4f94 ); // the arm's NAME hash (§5)
+                            int64_t arm_inner_ata = w.offset; w.put32( 0 );
+                            if ( !ScriptSaveBody( w, value.history[i].origin.script ) ) { return false; }
+                            w.patch32( arm_inner_ata, uint32_t( w.offset - arm_inner_ata - 4 ) );
+                            break;
+                        }
+                        case OriginType::Pid:
+                        {
+                            w.put16( 0x9462 ); // the arm's NAME hash (§5)
+                            int64_t arm_inner_ata = w.offset; w.put32( 0 );
+                            w.put32( uint32_t( value.history[i].origin.pid ) );
+                            w.patch32( arm_inner_ata, uint32_t( w.offset - arm_inner_ata - 4 ) );
+                            break;
+                        }
+                        case OriginType::Note:
+                        {
+                            w.put16( 0x9da7 ); // the arm's NAME hash (§5)
+                            int64_t arm_inner_ata = w.offset; w.put32( 0 );
+                            if ( value.history[i].origin.note.value_length < 0 || value.history[i].origin.note.value_length > 24 ) { return false; } // storage invariant
+                            w.raw( value.history[i].origin.note.value, value.history[i].origin.note.value_length );
+                            w.patch32( arm_inner_ata, uint32_t( w.offset - arm_inner_ata - 4 ) );
+                            break;
+                        }
+                        default: return false;
+                    }
+                    w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
+                    break;
+                }
+                case ToolBodyType::Ack:
+                {
+                    w.put16( 0x6048 ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                    int64_t arm_len_at = w.offset; w.put32( 0 );
+                    // a payload-free arm writes nothing under its L (§2.6)
                     w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );
                     break;
                 }
@@ -2605,21 +3419,132 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                     switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                     {
                         case 0x1797: // open
+                        {
                             value.body.type = ToolBodyType::Open;
                             OpenDocumentLoadBody( sub, value.body.open );
+                            if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->malformed = true; break; }
                             break;
+                        }
                         case 0xb2b7: // save
+                        {
                             value.body.type = ToolBodyType::Save;
                             SaveDocumentLoadBody( sub, value.body.save );
+                            if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->malformed = true; break; }
                             break;
+                        }
                         case 0x968c: // transact
+                        {
                             value.body.type = ToolBodyType::Transact;
                             TransactionLoadBody( sub, value.body.transact );
+                            if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->malformed = true; break; }
                             break;
+                        }
                         case 0xe6d4: // ping
+                        {
                             value.body.type = ToolBodyType::Ping;
                             PingLoadBody( sub, value.body.ping );
+                            if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->malformed = true; break; }
                             break;
+                        }
+                        case 0xacfb: // caps
+                        {
+                            value.body.type = ToolBodyType::Caps;
+                            if ( sub.size != 8 ) { value.body.type = ToolBodyType::None; r.report->kind_mismatch++; break; } // an arm carries no kind byte: the length is the check (§2.6)
+                            if ( !sub.has( 8 ) ) { value.body.type = ToolBodyType::None; r.report->malformed = true; break; }
+                            uint64_t decoded_v = uint64_t( sub.get64( ) );
+                            value.body.caps = decoded_v;
+                            break;
+                        }
+                        case 0x8156: // spans
+                        {
+                            value.body.type = ToolBodyType::Spans;
+                            memset( &value.body.spans, 0, sizeof( value.body.spans ) ); // selection establishes the arm (§2.6)
+                            if ( !sub.has( 5 ) ) { break; }
+                            {
+                                uint8_t arm_kind = sub.get8();
+                                uint32_t arm_count = sub.get32();
+                                if ( arm_kind != 4 ) { value.body.type = ToolBodyType::None; r.report->kind_mismatch++; break; }
+                                uint32_t arm_keep = arm_count;
+                                if ( arm_keep > 2 ) { arm_keep = 2; r.report->clamped++; }
+                                const uint8_t * arm_elems = sub.buffer + sub.offset;
+                                int64_t arm_left = sub.size - sub.offset;
+                                TableReader arm_sub( arm_elems, arm_left, r.report );
+                                for ( uint32_t arm_i = 0; arm_i < arm_keep; arm_i++ )
+                                {
+                                    if ( !arm_sub.has( 4 ) ) { r.report->malformed = true; break; }
+                                    int32_t decoded_v = int32_t( arm_sub.get32( ) );
+                                    value.body.spans[arm_i] = decoded_v;
+                                }
+                            }
+                            break;
+                        }
+                        case 0x4330: // origin
+                        {
+                            value.body.type = ToolBodyType::Origin;
+                            if ( !sub.has( 2 ) ) { value.body.type = ToolBodyType::None; r.report->malformed = true; break; }
+                            {
+                                uint16_t arm_inner_id = sub.get16();
+                                value.body.origin.type = OriginType::None;
+                                if ( arm_inner_id != 0 )
+                                {
+                                    if ( !sub.has( 4 ) ) { value.body.type = ToolBodyType::None; r.report->malformed = true; break; }
+                                    uint32_t arm_inner_len = sub.get32();
+                                    if ( !sub.has( arm_inner_len ) ) { value.body.type = ToolBodyType::None; r.report->malformed = true; break; }
+                                    TableReader arm_inner( sub.buffer + sub.offset, arm_inner_len, r.report );
+                                    switch ( arm_inner_id ) // the arm's NAME hash (§5)
+                                    {
+                                        case 0x3e8a: // user
+                                        {
+                                            value.body.origin.type = OriginType::User;
+                                            UserLoadBody( arm_inner, value.body.origin.user );
+                                            if ( arm_inner.offset != arm_inner.size ) { value.body.origin.type = OriginType::None; r.report->malformed = true; break; }
+                                            break;
+                                        }
+                                        case 0x4f94: // script
+                                        {
+                                            value.body.origin.type = OriginType::Script;
+                                            ScriptLoadBody( arm_inner, value.body.origin.script );
+                                            if ( arm_inner.offset != arm_inner.size ) { value.body.origin.type = OriginType::None; r.report->malformed = true; break; }
+                                            break;
+                                        }
+                                        case 0x9462: // pid
+                                        {
+                                            value.body.origin.type = OriginType::Pid;
+                                            if ( arm_inner.size != 4 ) { value.body.origin.type = OriginType::None; r.report->kind_mismatch++; break; } // an arm carries no kind byte: the length is the check (§2.6)
+                                            if ( !arm_inner.has( 4 ) ) { value.body.origin.type = OriginType::None; r.report->malformed = true; break; }
+                                            uint32_t decoded_v = uint32_t( arm_inner.get32( ) );
+                                            if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->clamped++; }
+                                            value.body.origin.pid = decoded_v;
+                                            break;
+                                        }
+                                        case 0x9da7: // note
+                                        {
+                                            value.body.origin.type = OriginType::Note;
+                                            memset( &value.body.origin.note, 0, sizeof( value.body.origin.note ) ); // selection establishes the arm (§2.6)
+                                            {
+                                                uint32_t arm_lena = uint32_t( arm_inner.size );
+                                                uint32_t arm_keepa = arm_lena;
+                                                if ( arm_keepa > 24 ) { arm_keepa = 24; r.report->clamped++; }
+                                                memcpy( value.body.origin.note.value, arm_inner.buffer + arm_inner.offset, arm_keepa );
+                                                value.body.origin.note.value[arm_keepa] = 0;
+                                                value.body.origin.note.value_length = (int32_t) arm_keepa;
+                                                arm_inner.offset += arm_lena;
+                                            }
+                                            break;
+                                        }
+                                        default: r.report->unknown++; break; // an arm this reader cannot name
+                                    }
+                                    sub.offset += arm_inner_len;
+                                }
+                            }
+                            break;
+                        }
+                        case 0x6048: // ack
+                        {
+                            value.body.type = ToolBodyType::Ack;
+                            if ( sub.size != 0 ) { value.body.type = ToolBodyType::None; r.report->kind_mismatch++; break; } // a payload-free arm carries no payload (§2.6)
+                            break;
+                        }
                         default:
                             // an arm this reader cannot name: the value reads EMPTY and
                             // the body is skipped by its length, never misdecoded. The
@@ -2674,21 +3599,132 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                 switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                                 {
                                     case 0x1797: // open
+                                    {
                                         value.history[i].type = ToolBodyType::Open;
                                         OpenDocumentLoadBody( arm, value.history[i].open );
+                                        if ( arm.offset != arm.size ) { value.history[i].type = ToolBodyType::None; r.report->malformed = true; break; }
                                         break;
+                                    }
                                     case 0xb2b7: // save
+                                    {
                                         value.history[i].type = ToolBodyType::Save;
                                         SaveDocumentLoadBody( arm, value.history[i].save );
+                                        if ( arm.offset != arm.size ) { value.history[i].type = ToolBodyType::None; r.report->malformed = true; break; }
                                         break;
+                                    }
                                     case 0x968c: // transact
+                                    {
                                         value.history[i].type = ToolBodyType::Transact;
                                         TransactionLoadBody( arm, value.history[i].transact );
+                                        if ( arm.offset != arm.size ) { value.history[i].type = ToolBodyType::None; r.report->malformed = true; break; }
                                         break;
+                                    }
                                     case 0xe6d4: // ping
+                                    {
                                         value.history[i].type = ToolBodyType::Ping;
                                         PingLoadBody( arm, value.history[i].ping );
+                                        if ( arm.offset != arm.size ) { value.history[i].type = ToolBodyType::None; r.report->malformed = true; break; }
                                         break;
+                                    }
+                                    case 0xacfb: // caps
+                                    {
+                                        value.history[i].type = ToolBodyType::Caps;
+                                        if ( arm.size != 8 ) { value.history[i].type = ToolBodyType::None; r.report->kind_mismatch++; break; } // an arm carries no kind byte: the length is the check (§2.6)
+                                        if ( !arm.has( 8 ) ) { value.history[i].type = ToolBodyType::None; r.report->malformed = true; break; }
+                                        uint64_t decoded_v = uint64_t( arm.get64( ) );
+                                        value.history[i].caps = decoded_v;
+                                        break;
+                                    }
+                                    case 0x8156: // spans
+                                    {
+                                        value.history[i].type = ToolBodyType::Spans;
+                                        memset( &value.history[i].spans, 0, sizeof( value.history[i].spans ) ); // selection establishes the arm (§2.6)
+                                        if ( !arm.has( 5 ) ) { break; }
+                                        {
+                                            uint8_t arm_kinda = arm.get8();
+                                            uint32_t arm_counta = arm.get32();
+                                            if ( arm_kinda != 4 ) { value.history[i].type = ToolBodyType::None; r.report->kind_mismatch++; break; }
+                                            uint32_t arm_keepa = arm_counta;
+                                            if ( arm_keepa > 2 ) { arm_keepa = 2; r.report->clamped++; }
+                                            const uint8_t * arm_elemsa = arm.buffer + arm.offset;
+                                            int64_t arm_lefta = arm.size - arm.offset;
+                                            TableReader arm_suba( arm_elemsa, arm_lefta, r.report );
+                                            for ( uint32_t arm_ia = 0; arm_ia < arm_keepa; arm_ia++ )
+                                            {
+                                                if ( !arm_suba.has( 4 ) ) { r.report->malformed = true; break; }
+                                                int32_t decoded_v = int32_t( arm_suba.get32( ) );
+                                                value.history[i].spans[arm_ia] = decoded_v;
+                                            }
+                                        }
+                                        break;
+                                    }
+                                    case 0x4330: // origin
+                                    {
+                                        value.history[i].type = ToolBodyType::Origin;
+                                        if ( !arm.has( 2 ) ) { value.history[i].type = ToolBodyType::None; r.report->malformed = true; break; }
+                                        {
+                                            uint16_t arm_inner_ida = arm.get16();
+                                            value.history[i].origin.type = OriginType::None;
+                                            if ( arm_inner_ida != 0 )
+                                            {
+                                                if ( !arm.has( 4 ) ) { value.history[i].type = ToolBodyType::None; r.report->malformed = true; break; }
+                                                uint32_t arm_inner_lena = arm.get32();
+                                                if ( !arm.has( arm_inner_lena ) ) { value.history[i].type = ToolBodyType::None; r.report->malformed = true; break; }
+                                                TableReader arm_innera( arm.buffer + arm.offset, arm_inner_lena, r.report );
+                                                switch ( arm_inner_ida ) // the arm's NAME hash (§5)
+                                                {
+                                                    case 0x3e8a: // user
+                                                    {
+                                                        value.history[i].origin.type = OriginType::User;
+                                                        UserLoadBody( arm_innera, value.history[i].origin.user );
+                                                        if ( arm_innera.offset != arm_innera.size ) { value.history[i].origin.type = OriginType::None; r.report->malformed = true; break; }
+                                                        break;
+                                                    }
+                                                    case 0x4f94: // script
+                                                    {
+                                                        value.history[i].origin.type = OriginType::Script;
+                                                        ScriptLoadBody( arm_innera, value.history[i].origin.script );
+                                                        if ( arm_innera.offset != arm_innera.size ) { value.history[i].origin.type = OriginType::None; r.report->malformed = true; break; }
+                                                        break;
+                                                    }
+                                                    case 0x9462: // pid
+                                                    {
+                                                        value.history[i].origin.type = OriginType::Pid;
+                                                        if ( arm_innera.size != 4 ) { value.history[i].origin.type = OriginType::None; r.report->kind_mismatch++; break; } // an arm carries no kind byte: the length is the check (§2.6)
+                                                        if ( !arm_innera.has( 4 ) ) { value.history[i].origin.type = OriginType::None; r.report->malformed = true; break; }
+                                                        uint32_t decoded_v = uint32_t( arm_innera.get32( ) );
+                                                        if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->clamped++; }
+                                                        value.history[i].origin.pid = decoded_v;
+                                                        break;
+                                                    }
+                                                    case 0x9da7: // note
+                                                    {
+                                                        value.history[i].origin.type = OriginType::Note;
+                                                        memset( &value.history[i].origin.note, 0, sizeof( value.history[i].origin.note ) ); // selection establishes the arm (§2.6)
+                                                        {
+                                                            uint32_t arm_lenaa = uint32_t( arm_innera.size );
+                                                            uint32_t arm_keepaa = arm_lenaa;
+                                                            if ( arm_keepaa > 24 ) { arm_keepaa = 24; r.report->clamped++; }
+                                                            memcpy( value.history[i].origin.note.value, arm_innera.buffer + arm_innera.offset, arm_keepaa );
+                                                            value.history[i].origin.note.value[arm_keepaa] = 0;
+                                                            value.history[i].origin.note.value_length = (int32_t) arm_keepaa;
+                                                            arm_innera.offset += arm_lenaa;
+                                                        }
+                                                        break;
+                                                    }
+                                                    default: r.report->unknown++; break; // an arm this reader cannot name
+                                                }
+                                                arm.offset += arm_inner_lena;
+                                            }
+                                        }
+                                        break;
+                                    }
+                                    case 0x6048: // ack
+                                    {
+                                        value.history[i].type = ToolBodyType::Ack;
+                                        if ( arm.size != 0 ) { value.history[i].type = ToolBodyType::None; r.report->kind_mismatch++; break; } // a payload-free arm carries no payload (§2.6)
+                                        break;
+                                    }
                                     default: r.report->unknown++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                 }
                                 sub.offset += arm_len;
@@ -3257,6 +4293,17 @@ inline void InsertTextCookBody( uint8_t * at, const InsertText & value, TableByt
         {
             case OriginType::User: UserCookBody( at + 48 + 4, value.origin.user, order ); break;
             case OriginType::Script: ScriptCookBody( at + 48 + 4, value.origin.script, order ); break;
+            case OriginType::Pid:
+            {
+                table_cook_put( at + 48 + 4, (uint64_t) value.origin.pid, 4, order );
+                break;
+            }
+            case OriginType::Note:
+            {
+                table_cook_bytes( at + 48 + 4, value.origin.note.value, value.origin.note.value_length, 25 );
+                table_cook_put( at + 48 + 32, (uint64_t) (uint32_t) value.origin.note.value_length, 4, order );
+                break;
+            }
             default: break; // every byte outside the set arm stays zero
         }
     }
@@ -3269,6 +4316,17 @@ inline void InsertTextCookBody( uint8_t * at, const InsertText & value, TableByt
             {
                 case OriginType::User: UserCookBody( at + 128 + i * 80 + 4, value.origins[ i ].user, order ); break;
                 case OriginType::Script: ScriptCookBody( at + 128 + i * 80 + 4, value.origins[ i ].script, order ); break;
+                case OriginType::Pid:
+                {
+                    table_cook_put( at + 128 + i * 80 + 4, (uint64_t) value.origins[ i ].pid, 4, order );
+                    break;
+                }
+                case OriginType::Note:
+                {
+                    table_cook_bytes( at + 128 + i * 80 + 4, value.origins[ i ].note.value, value.origins[ i ].note.value_length, 25 );
+                    table_cook_put( at + 128 + i * 80 + 32, (uint64_t) (uint32_t) value.origins[ i ].note.value_length, 4, order );
+                    break;
+                }
                 default: break; // every byte outside the set arm stays zero
             }
         }
@@ -3297,6 +4355,32 @@ inline void EditCookBody( uint8_t * at, const Edit & value, TableByteOrder order
         {
             case EditBodyType::Insert: InsertTextCookBody( at + 4 + 4, value.body.insert, order ); break;
             case EditBodyType::Remove: RemoveTextCookBody( at + 4 + 4, value.body.remove, order ); break;
+            case EditBodyType::Count:
+            {
+                table_cook_put( at + 4 + 4, (uint64_t) value.body.count, 4, order );
+                break;
+            }
+            case EditBodyType::Marks:
+            {
+                // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+                for ( int32_t ia = 0; ia < 3; ia++ )
+                {
+                    table_cook_put( at + 4 + 4 + ia * 2, (uint64_t) value.body.marks.value[ ia ], 2, order );
+                }
+                table_cook_put( at + 4 + 12, (uint64_t) (uint32_t) value.body.marks.value_count, 4, order );
+                break;
+            }
+            case EditBodyType::Blob:
+            {
+                table_cook_bytes( at + 4 + 4, value.body.blob.value, value.body.blob.value_length, 4 );
+                table_cook_put( at + 4 + 8, (uint64_t) (uint32_t) value.body.blob.value_length, 4, order );
+                break;
+            }
+            case EditBodyType::Mode:
+            {
+                table_cook_put( at + 4 + 4, (uint64_t) value.body.mode, 1, order );
+                break;
+            }
             default: break; // every byte outside the set arm stays zero
         }
     }
@@ -3335,6 +4419,32 @@ inline void TransactionCookBody( uint8_t * at, const Transaction & value, TableB
             {
                 case EditBodyType::Insert: InsertTextCookBody( at + 964 + i * 308 + 4, value.pending[ i ].insert, order ); break;
                 case EditBodyType::Remove: RemoveTextCookBody( at + 964 + i * 308 + 4, value.pending[ i ].remove, order ); break;
+                case EditBodyType::Count:
+                {
+                    table_cook_put( at + 964 + i * 308 + 4, (uint64_t) value.pending[ i ].count, 4, order );
+                    break;
+                }
+                case EditBodyType::Marks:
+                {
+                    // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+                    for ( int32_t ia = 0; ia < 3; ia++ )
+                    {
+                        table_cook_put( at + 964 + i * 308 + 4 + ia * 2, (uint64_t) value.pending[ i ].marks.value[ ia ], 2, order );
+                    }
+                    table_cook_put( at + 964 + i * 308 + 12, (uint64_t) (uint32_t) value.pending[ i ].marks.value_count, 4, order );
+                    break;
+                }
+                case EditBodyType::Blob:
+                {
+                    table_cook_bytes( at + 964 + i * 308 + 4, value.pending[ i ].blob.value, value.pending[ i ].blob.value_length, 4 );
+                    table_cook_put( at + 964 + i * 308 + 8, (uint64_t) (uint32_t) value.pending[ i ].blob.value_length, 4, order );
+                    break;
+                }
+                case EditBodyType::Mode:
+                {
+                    table_cook_put( at + 964 + i * 308 + 4, (uint64_t) value.pending[ i ].mode, 1, order );
+                    break;
+                }
                 default: break; // every byte outside the set arm stays zero
             }
         }
@@ -3355,13 +4465,50 @@ inline void ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
 {
     table_cook_put( at + 0, (uint64_t) value.sequence, 4, order );
     {
-        table_cook_put( at + 4, (uint64_t) value.body.type, 1, order ); // the tag; None is the tag alone
+        table_cook_put( at + 8, (uint64_t) value.body.type, 1, order ); // the tag; None is the tag alone
         switch ( value.body.type )
         {
-            case ToolBodyType::Open: OpenDocumentCookBody( at + 4 + 4, value.body.open, order ); break;
-            case ToolBodyType::Save: SaveDocumentCookBody( at + 4 + 4, value.body.save, order ); break;
-            case ToolBodyType::Transact: TransactionCookBody( at + 4 + 4, value.body.transact, order ); break;
-            case ToolBodyType::Ping: PingCookBody( at + 4 + 4, value.body.ping, order ); break;
+            case ToolBodyType::Open: OpenDocumentCookBody( at + 8 + 8, value.body.open, order ); break;
+            case ToolBodyType::Save: SaveDocumentCookBody( at + 8 + 8, value.body.save, order ); break;
+            case ToolBodyType::Transact: TransactionCookBody( at + 8 + 8, value.body.transact, order ); break;
+            case ToolBodyType::Ping: PingCookBody( at + 8 + 8, value.body.ping, order ); break;
+            case ToolBodyType::Caps:
+            {
+                table_cook_put( at + 8 + 8, (uint64_t) value.body.caps, 8, order ); // a mask rides raw, in every target
+                break;
+            }
+            case ToolBodyType::Spans:
+            {
+                for ( int32_t ia = 0; ia < 2; ia++ )
+                {
+                    table_cook_put( at + 8 + 8 + ia * 4, (uint64_t) value.body.spans[ ia ], 4, order );
+                }
+                break;
+            }
+            case ToolBodyType::Origin:
+            {
+                {
+                    table_cook_put( at + 8 + 8, (uint64_t) value.body.origin.type, 1, order ); // the tag; None is the tag alone
+                    switch ( value.body.origin.type )
+                    {
+                        case OriginType::User: UserCookBody( at + 8 + 8 + 4, value.body.origin.user, order ); break;
+                        case OriginType::Script: ScriptCookBody( at + 8 + 8 + 4, value.body.origin.script, order ); break;
+                        case OriginType::Pid:
+                        {
+                table_cook_put( at + 8 + 8 + 4, (uint64_t) value.body.origin.pid, 4, order );
+                            break;
+                        }
+                        case OriginType::Note:
+                        {
+                table_cook_bytes( at + 8 + 8 + 4, value.body.origin.note.value, value.body.origin.note.value_length, 25 );
+                table_cook_put( at + 8 + 8 + 32, (uint64_t) (uint32_t) value.body.origin.note.value_length, 4, order );
+                            break;
+                        }
+                        default: break; // every byte outside the set arm stays zero
+                    }
+                }
+                break;
+            }
             default: break; // every byte outside the set arm stays zero
         }
     }
@@ -3369,29 +4516,66 @@ inline void ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
     for ( int32_t i = 0; i < 2; i++ )
     {
         {
-            table_cook_put( at + 1636 + i * 1632, (uint64_t) value.history[ i ].type, 1, order ); // the tag; None is the tag alone
+            table_cook_put( at + 1648 + i * 1640, (uint64_t) value.history[ i ].type, 1, order ); // the tag; None is the tag alone
             switch ( value.history[ i ].type )
             {
-                case ToolBodyType::Open: OpenDocumentCookBody( at + 1636 + i * 1632 + 4, value.history[ i ].open, order ); break;
-                case ToolBodyType::Save: SaveDocumentCookBody( at + 1636 + i * 1632 + 4, value.history[ i ].save, order ); break;
-                case ToolBodyType::Transact: TransactionCookBody( at + 1636 + i * 1632 + 4, value.history[ i ].transact, order ); break;
-                case ToolBodyType::Ping: PingCookBody( at + 1636 + i * 1632 + 4, value.history[ i ].ping, order ); break;
+                case ToolBodyType::Open: OpenDocumentCookBody( at + 1648 + i * 1640 + 8, value.history[ i ].open, order ); break;
+                case ToolBodyType::Save: SaveDocumentCookBody( at + 1648 + i * 1640 + 8, value.history[ i ].save, order ); break;
+                case ToolBodyType::Transact: TransactionCookBody( at + 1648 + i * 1640 + 8, value.history[ i ].transact, order ); break;
+                case ToolBodyType::Ping: PingCookBody( at + 1648 + i * 1640 + 8, value.history[ i ].ping, order ); break;
+                case ToolBodyType::Caps:
+                {
+                    table_cook_put( at + 1648 + i * 1640 + 8, (uint64_t) value.history[ i ].caps, 8, order ); // a mask rides raw, in every target
+                    break;
+                }
+                case ToolBodyType::Spans:
+                {
+                    for ( int32_t ia = 0; ia < 2; ia++ )
+                    {
+                        table_cook_put( at + 1648 + i * 1640 + 8 + ia * 4, (uint64_t) value.history[ i ].spans[ ia ], 4, order );
+                    }
+                    break;
+                }
+                case ToolBodyType::Origin:
+                {
+                    {
+                        table_cook_put( at + 1648 + i * 1640 + 8, (uint64_t) value.history[ i ].origin.type, 1, order ); // the tag; None is the tag alone
+                        switch ( value.history[ i ].origin.type )
+                        {
+                            case OriginType::User: UserCookBody( at + 1648 + i * 1640 + 8 + 4, value.history[ i ].origin.user, order ); break;
+                            case OriginType::Script: ScriptCookBody( at + 1648 + i * 1640 + 8 + 4, value.history[ i ].origin.script, order ); break;
+                            case OriginType::Pid:
+                            {
+                table_cook_put( at + 1648 + i * 1640 + 8 + 4, (uint64_t) value.history[ i ].origin.pid, 4, order );
+                                break;
+                            }
+                            case OriginType::Note:
+                            {
+                table_cook_bytes( at + 1648 + i * 1640 + 8 + 4, value.history[ i ].origin.note.value, value.history[ i ].origin.note.value_length, 25 );
+                table_cook_put( at + 1648 + i * 1640 + 8 + 32, (uint64_t) (uint32_t) value.history[ i ].origin.note.value_length, 4, order );
+                                break;
+                            }
+                            default: break; // every byte outside the set arm stays zero
+                        }
+                    }
+                    break;
+                }
                 default: break; // every byte outside the set arm stays zero
             }
         }
     }
-    table_cook_put( at + 4900, (uint64_t) (uint32_t) value.history_count, 4, order );
-    table_cook_put( at + 5136, (uint64_t) ( value.trace_present ? 1 : 0 ), 1, order ); // ?T's presence companion
+    table_cook_put( at + 4928, (uint64_t) (uint32_t) value.history_count, 4, order );
+    table_cook_put( at + 5164, (uint64_t) ( value.trace_present ? 1 : 0 ), 1, order ); // ?T's presence companion
     // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
     for ( int32_t i = 0; i < 3; i++ )
     {
-        ScriptCookBody( at + 4904 + i * 76, value.trace[ i ], order );
+        ScriptCookBody( at + 4932 + i * 76, value.trace[ i ], order );
     }
-    table_cook_put( at + 5132, (uint64_t) (uint32_t) value.trace_count, 4, order );
-    table_cook_put( at + 5139, (uint64_t) ( value.marks_present ? 1 : 0 ), 1, order ); // ?T's presence companion
+    table_cook_put( at + 5160, (uint64_t) (uint32_t) value.trace_count, 4, order );
+    table_cook_put( at + 5167, (uint64_t) ( value.marks_present ? 1 : 0 ), 1, order ); // ?T's presence companion
     for ( int32_t i = 0; i < 2; i++ )
     {
-        table_cook_put( at + 5137 + i * 1, (uint64_t) value.marks[ i ], 1, order );
+        table_cook_put( at + 5165 + i * 1, (uint64_t) value.marks[ i ], 1, order );
     }
 }
 
@@ -3885,7 +5069,7 @@ inline bool TransactionCook( const Transaction & value, void * out, uint64_t cap
 inline int64_t ToolMessageCookMeasure( const ToolMessage & value )
 {
     (void) value;
-    return 5224; // 64 header + 5144 data + 16 attribution
+    return 5248; // 64 header + 5168 data + 16 attribution
 }
 
 // ToolMessageCook: write one cooked file for the build this code is compiled into,
@@ -3912,7 +5096,7 @@ inline bool ToolMessageCook( const ToolMessage & value, void * out, uint64_t cap
     table_cook_put( raw + 0, TableCookMagic, 8, order );
     table_cook_put( raw + 8, BuildVersion, 8, order );
     table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
-    table_cook_put( raw + 24, 5144, 8, order ); // data_length, rounded to the region's alignment
+    table_cook_put( raw + 24, 5168, 8, order ); // data_length, rounded to the region's alignment
     table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
@@ -3921,8 +5105,8 @@ inline bool ToolMessageCook( const ToolMessage & value, void * out, uint64_t cap
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
-    table_cook_put( raw + 5208, 0, 8, order );
-    table_cook_put( raw + 5216, 0x0c9280db78a0a306ull, 8, order );
+    table_cook_put( raw + 5232, 0, 8, order );
+    table_cook_put( raw + 5240, 0x0c9280db78a0a306ull, 8, order );
     return true;
 }
 
@@ -4009,13 +5193,13 @@ static_assert( offsetof( Transaction, edits ) == 24, "Transaction's field edits 
 static_assert( offsetof( Transaction, pending ) == 964, "Transaction's field pending moved: the build version was taken over offset 964 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Transaction, checkpoints ) == 1580, "Transaction's field checkpoints moved: the build version was taken over offset 1580 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Transaction, snapshots ) == 1592, "Transaction's field snapshots moved: the build version was taken over offset 1592 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( ToolMessage ) == 5140, "ToolMessage's sizeof moved: the build version was taken over 5140, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
-static_assert( alignof( ToolMessage ) == 4, "ToolMessage's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( ToolMessage ) == 5168, "ToolMessage's sizeof moved: the build version was taken over 5168, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( ToolMessage ) == 8, "ToolMessage's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( ToolMessage, sequence ) == 0, "ToolMessage's field sequence moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ToolMessage, body ) == 4, "ToolMessage's field body moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ToolMessage, history ) == 1636, "ToolMessage's field history moved: the build version was taken over offset 1636 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ToolMessage, trace ) == 4904, "ToolMessage's field trace moved: the build version was taken over offset 4904 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ToolMessage, marks ) == 5137, "ToolMessage's field marks moved: the build version was taken over offset 5137 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ToolMessage, body ) == 8, "ToolMessage's field body moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ToolMessage, history ) == 1648, "ToolMessage's field history moved: the build version was taken over offset 1648 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ToolMessage, trace ) == 4932, "ToolMessage's field trace moved: the build version was taken over offset 4932 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ToolMessage, marks ) == 5165, "ToolMessage's field marks moved: the build version was taken over offset 5165 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( sizeof( Cursor ) == 8, "Cursor's sizeof moved: the build version was taken over 8, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Cursor ) == 4, "Cursor's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Cursor, line ) == 0, "Cursor's field line moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
@@ -4073,8 +5257,8 @@ inline const TableTypeInfo * InsertTextTableType()
     static const TableFieldInfo fields[] = {
         { "at", "at", "Cursor", 0x42ad, 13, false, false, false, 0, (uint32_t) offsetof( InsertText, at ), (uint32_t) sizeof( InsertText::at ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "text", "text", "string", 0xf3d8, 12, false, true, false, 32, (uint32_t) offsetof( InsertText, text ), (uint32_t) sizeof( InsertText::text ), (uint32_t) offsetof( InsertText, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "origin", "origin", "Origin", 0x4330, 15, false, false, false, 0, (uint32_t) offsetof( InsertText, origin ), (uint32_t) sizeof( InsertText::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0x3e8a; case 2: return 0x4f94; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL }, { (uint32_t) offsetof( Origin, user ), UserTableType() }, { (uint32_t) offsetof( Origin, script ), ScriptTableType() }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "" },
-        { "origins", "origins", "Origin", 0x53ab, 15, true, true, false, 2, (uint32_t) offsetof( InsertText, origins ), (uint32_t) sizeof( InsertText::origins[0] ), (uint32_t) offsetof( InsertText, origins_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0x3e8a; case 2: return 0x4f94; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL }, { (uint32_t) offsetof( Origin, user ), UserTableType() }, { (uint32_t) offsetof( Origin, script ), ScriptTableType() }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "" },
+        { "origin", "origin", "Origin", 0x4330, 15, false, false, false, 0, (uint32_t) offsetof( InsertText, origin ), (uint32_t) sizeof( InsertText::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0x3e8a; case 2: return 0x4f94; case 3: return 0x9462; case 4: return 0x9da7; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x9462, 8, false, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, { "note", "note", "string", 0x9da7, 12, false, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), UserTableType(), NULL, 24 }, { (uint32_t) offsetof( Origin, script ), ScriptTableType(), NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "" },
+        { "origins", "origins", "Origin", 0x53ab, 15, true, true, false, 2, (uint32_t) offsetof( InsertText, origins ), (uint32_t) sizeof( InsertText::origins[0] ), (uint32_t) offsetof( InsertText, origins_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0x3e8a; case 2: return 0x4f94; case 3: return 0x9462; case 4: return 0x9da7; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x9462, 8, false, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, { "note", "note", "string", 0x9da7, 12, false, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), UserTableType(), NULL, 24 }, { (uint32_t) offsetof( Origin, script ), ScriptTableType(), NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "" },
         { "modes", "modes", "Mode", 0xab38, 7, true, true, true, 2, (uint32_t) offsetof( InsertText, modes ), (uint32_t) sizeof( InsertText::modes[0] ), (uint32_t) offsetof( InsertText, modes_count ), (uint32_t) offsetof( InsertText, modes_present ), NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "InsertText", (uint32_t) sizeof( InsertText ), 5, fields, +[]( void * p ) { InsertTextReset( *(InsertText *) p ); } };
@@ -4094,7 +5278,7 @@ inline const TableTypeInfo * EditTableType()
 {
     static const TableFieldInfo fields[] = {
         { "revision", "revision", "uint32", 0xb98e, 8, false, false, false, 0, (uint32_t) offsetof( Edit, revision ), (uint32_t) sizeof( Edit::revision ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "body", "body", "EditBody", 0xa2df, 15, false, false, false, 0, (uint32_t) offsetof( Edit, body ), (uint32_t) sizeof( Edit::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0x508b; case 2: return 0xce6f; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL }, { (uint32_t) offsetof( EditBody, insert ), InsertTextTableType() }, { (uint32_t) offsetof( EditBody, remove ), RemoveTextTableType() }, }; static const TableUnionInfo info = { (uint32_t) offsetof( EditBody, type ), (uint32_t) sizeof( EditBody::type ), arms }; return &info; }, "" },
+        { "body", "body", "EditBody", 0xa2df, 15, false, false, false, 0, (uint32_t) offsetof( Edit, body ), (uint32_t) sizeof( Edit::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 6, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; case 3: return "count"; case 4: return "marks"; case 5: return "blob"; case 6: return "mode"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0x508b; case 2: return 0xce6f; case 3: return 0xe445; case 4: return 0xe15f; case 5: return 0xd316; case 6: return 0x0c7c; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_EditBody[] = { { "count", "count", "int32", 0xe445, 4, false, false, false, 0, (uint32_t) offsetof( EditBody, count ), (uint32_t) sizeof( EditBody::count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, { "marks", "marks", "uint16", 0xe15f, 7, true, true, false, 3, (uint32_t) offsetof( EditBody, marks.value ), (uint32_t) sizeof( EditBody::marks.value[0] ), (uint32_t) offsetof( EditBody, marks.value_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, { "blob", "blob", "bytes", 0xd316, 6, true, true, false, 4, (uint32_t) offsetof( EditBody, blob.value ), (uint32_t) sizeof( EditBody::blob.value[0] ), (uint32_t) offsetof( EditBody, blob.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, { "mode", "mode", "Mode", 0x0c7c, 7, false, false, false, 0, (uint32_t) offsetof( EditBody, mode ), (uint32_t) sizeof( EditBody::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( EditBody, insert ), InsertTextTableType(), NULL, 304 }, { (uint32_t) offsetof( EditBody, remove ), RemoveTextTableType(), NULL, 16 }, { (uint32_t) offsetof( EditBody, count ), NULL, &arm_fields_EditBody[0], 4 }, { (uint32_t) offsetof( EditBody, marks ), NULL, &arm_fields_EditBody[1], 12 }, { (uint32_t) offsetof( EditBody, blob ), NULL, &arm_fields_EditBody[2], 8 }, { (uint32_t) offsetof( EditBody, mode ), NULL, &arm_fields_EditBody[3], 1 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( EditBody, type ), (uint32_t) sizeof( EditBody::type ), arms }; return &info; }, "" },
     };
     static const TableTypeInfo info = { "Edit", (uint32_t) sizeof( Edit ), 2, fields, +[]( void * p ) { EditReset( *(Edit *) p ); } };
     return &info;
@@ -4126,7 +5310,7 @@ inline const TableTypeInfo * TransactionTableType()
     static const TableFieldInfo fields[] = {
         { "reason", "reason", "string", 0xa6ba, 12, false, true, false, 16, (uint32_t) offsetof( Transaction, reason ), (uint32_t) sizeof( Transaction::reason ), (uint32_t) offsetof( Transaction, reason_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "edits", "edits", "Edit", 0x3d33, 13, true, true, false, 3, (uint32_t) offsetof( Transaction, edits ), (uint32_t) sizeof( Transaction::edits[0] ), (uint32_t) offsetof( Transaction, edits_count ), 0xffffffffu, EditTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "pending", "pending", "EditBody", 0xe683, 15, true, false, false, 2, (uint32_t) offsetof( Transaction, pending ), (uint32_t) sizeof( Transaction::pending[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0x508b; case 2: return 0xce6f; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL }, { (uint32_t) offsetof( EditBody, insert ), InsertTextTableType() }, { (uint32_t) offsetof( EditBody, remove ), RemoveTextTableType() }, }; static const TableUnionInfo info = { (uint32_t) offsetof( EditBody, type ), (uint32_t) sizeof( EditBody::type ), arms }; return &info; }, "" },
+        { "pending", "pending", "EditBody", 0xe683, 15, true, false, false, 2, (uint32_t) offsetof( Transaction, pending ), (uint32_t) sizeof( Transaction::pending[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 6, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; case 3: return "count"; case 4: return "marks"; case 5: return "blob"; case 6: return "mode"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0x508b; case 2: return 0xce6f; case 3: return 0xe445; case 4: return 0xe15f; case 5: return 0xd316; case 6: return 0x0c7c; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_EditBody[] = { { "count", "count", "int32", 0xe445, 4, false, false, false, 0, (uint32_t) offsetof( EditBody, count ), (uint32_t) sizeof( EditBody::count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, { "marks", "marks", "uint16", 0xe15f, 7, true, true, false, 3, (uint32_t) offsetof( EditBody, marks.value ), (uint32_t) sizeof( EditBody::marks.value[0] ), (uint32_t) offsetof( EditBody, marks.value_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, { "blob", "blob", "bytes", 0xd316, 6, true, true, false, 4, (uint32_t) offsetof( EditBody, blob.value ), (uint32_t) sizeof( EditBody::blob.value[0] ), (uint32_t) offsetof( EditBody, blob.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, { "mode", "mode", "Mode", 0x0c7c, 7, false, false, false, 0, (uint32_t) offsetof( EditBody, mode ), (uint32_t) sizeof( EditBody::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( EditBody, insert ), InsertTextTableType(), NULL, 304 }, { (uint32_t) offsetof( EditBody, remove ), RemoveTextTableType(), NULL, 16 }, { (uint32_t) offsetof( EditBody, count ), NULL, &arm_fields_EditBody[0], 4 }, { (uint32_t) offsetof( EditBody, marks ), NULL, &arm_fields_EditBody[1], 12 }, { (uint32_t) offsetof( EditBody, blob ), NULL, &arm_fields_EditBody[2], 8 }, { (uint32_t) offsetof( EditBody, mode ), NULL, &arm_fields_EditBody[3], 1 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( EditBody, type ), (uint32_t) sizeof( EditBody::type ), arms }; return &info; }, "" },
         { "checkpoints", "checkpoints", "uint32", 0x990b, 8, true, false, true, 2, (uint32_t) offsetof( Transaction, checkpoints ), (uint32_t) sizeof( Transaction::checkpoints[0] ), 0xffffffffu, (uint32_t) offsetof( Transaction, checkpoints_present ), NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "snapshots", "snapshots", "Selection", 0x7daf, 13, true, false, true, 2, (uint32_t) offsetof( Transaction, snapshots ), (uint32_t) sizeof( Transaction::snapshots[0] ), 0xffffffffu, (uint32_t) offsetof( Transaction, snapshots_present ), SelectionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
@@ -4138,8 +5322,8 @@ inline const TableTypeInfo * ToolMessageTableType()
 {
     static const TableFieldInfo fields[] = {
         { "sequence", "sequence", "uint32", 0xd32b, 8, false, false, false, 0, (uint32_t) offsetof( ToolMessage, sequence ), (uint32_t) sizeof( ToolMessage::sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "body", "body", "ToolBody", 0xa2df, 15, false, false, false, 0, (uint32_t) offsetof( ToolMessage, body ), (uint32_t) sizeof( ToolMessage::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "open"; case 2: return "save"; case 3: return "transact"; case 4: return "ping"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0x1797; case 2: return 0xb2b7; case 3: return 0x968c; case 4: return 0xe6d4; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL }, { (uint32_t) offsetof( ToolBody, open ), OpenDocumentTableType() }, { (uint32_t) offsetof( ToolBody, save ), SaveDocumentTableType() }, { (uint32_t) offsetof( ToolBody, transact ), TransactionTableType() }, { (uint32_t) offsetof( ToolBody, ping ), PingTableType() }, }; static const TableUnionInfo info = { (uint32_t) offsetof( ToolBody, type ), (uint32_t) sizeof( ToolBody::type ), arms }; return &info; }, "" },
-        { "history", "history", "ToolBody", 0xcbae, 15, true, true, false, 2, (uint32_t) offsetof( ToolMessage, history ), (uint32_t) sizeof( ToolMessage::history[0] ), (uint32_t) offsetof( ToolMessage, history_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "open"; case 2: return "save"; case 3: return "transact"; case 4: return "ping"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0x1797; case 2: return 0xb2b7; case 3: return 0x968c; case 4: return 0xe6d4; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL }, { (uint32_t) offsetof( ToolBody, open ), OpenDocumentTableType() }, { (uint32_t) offsetof( ToolBody, save ), SaveDocumentTableType() }, { (uint32_t) offsetof( ToolBody, transact ), TransactionTableType() }, { (uint32_t) offsetof( ToolBody, ping ), PingTableType() }, }; static const TableUnionInfo info = { (uint32_t) offsetof( ToolBody, type ), (uint32_t) sizeof( ToolBody::type ), arms }; return &info; }, "" },
+        { "body", "body", "ToolBody", 0xa2df, 15, false, false, false, 0, (uint32_t) offsetof( ToolMessage, body ), (uint32_t) sizeof( ToolMessage::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 8, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "open"; case 2: return "save"; case 3: return "transact"; case 4: return "ping"; case 5: return "caps"; case 6: return "spans"; case 7: return "origin"; case 8: return "ack"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0x1797; case 2: return 0xb2b7; case 3: return 0x968c; case 4: return 0xe6d4; case 5: return 0xacfb; case 6: return 0x8156; case 7: return 0x4330; case 8: return 0x6048; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_ToolBody[] = { { "caps", "caps", "Capabilities", 0xacfb, 9, false, false, false, 0, (uint32_t) offsetof( ToolBody, caps ), (uint32_t) sizeof( ToolBody::caps ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 1, +[]( uint64_t v ) { return FlagNameCapabilities( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "" }, { "spans", "spans", "int32", 0x8156, 4, true, false, false, 2, (uint32_t) offsetof( ToolBody, spans ), (uint32_t) sizeof( ToolBody::spans[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, { "origin", "origin", "Origin", 0x4330, 15, false, false, false, 0, (uint32_t) offsetof( ToolBody, origin ), (uint32_t) sizeof( ToolBody::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0x3e8a; case 2: return 0x4f94; case 3: return 0x9462; case 4: return 0x9da7; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x9462, 8, false, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, { "note", "note", "string", 0x9da7, 12, false, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), UserTableType(), NULL, 24 }, { (uint32_t) offsetof( Origin, script ), ScriptTableType(), NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "" }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( ToolBody, open ), OpenDocumentTableType(), NULL, 84 }, { (uint32_t) offsetof( ToolBody, save ), SaveDocumentTableType(), NULL, 76 }, { (uint32_t) offsetof( ToolBody, transact ), TransactionTableType(), NULL, 1628 }, { (uint32_t) offsetof( ToolBody, ping ), PingTableType(), NULL, 4 }, { (uint32_t) offsetof( ToolBody, caps ), NULL, &arm_fields_ToolBody[0], 8 }, { (uint32_t) offsetof( ToolBody, spans ), NULL, &arm_fields_ToolBody[1], 8 }, { (uint32_t) offsetof( ToolBody, origin ), NULL, &arm_fields_ToolBody[2], 80 }, { 8, NULL, NULL, 0 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( ToolBody, type ), (uint32_t) sizeof( ToolBody::type ), arms }; return &info; }, "" },
+        { "history", "history", "ToolBody", 0xcbae, 15, true, true, false, 2, (uint32_t) offsetof( ToolMessage, history ), (uint32_t) sizeof( ToolMessage::history[0] ), (uint32_t) offsetof( ToolMessage, history_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 8, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "open"; case 2: return "save"; case 3: return "transact"; case 4: return "ping"; case 5: return "caps"; case 6: return "spans"; case 7: return "origin"; case 8: return "ack"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0x1797; case 2: return 0xb2b7; case 3: return 0x968c; case 4: return 0xe6d4; case 5: return 0xacfb; case 6: return 0x8156; case 7: return 0x4330; case 8: return 0x6048; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_ToolBody[] = { { "caps", "caps", "Capabilities", 0xacfb, 9, false, false, false, 0, (uint32_t) offsetof( ToolBody, caps ), (uint32_t) sizeof( ToolBody::caps ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 1, +[]( uint64_t v ) { return FlagNameCapabilities( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "" }, { "spans", "spans", "int32", 0x8156, 4, true, false, false, 2, (uint32_t) offsetof( ToolBody, spans ), (uint32_t) sizeof( ToolBody::spans[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, { "origin", "origin", "Origin", 0x4330, 15, false, false, false, 0, (uint32_t) offsetof( ToolBody, origin ), (uint32_t) sizeof( ToolBody::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0x3e8a; case 2: return 0x4f94; case 3: return 0x9462; case 4: return 0x9da7; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x9462, 8, false, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, { "note", "note", "string", 0x9da7, 12, false, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), UserTableType(), NULL, 24 }, { (uint32_t) offsetof( Origin, script ), ScriptTableType(), NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "" }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( ToolBody, open ), OpenDocumentTableType(), NULL, 84 }, { (uint32_t) offsetof( ToolBody, save ), SaveDocumentTableType(), NULL, 76 }, { (uint32_t) offsetof( ToolBody, transact ), TransactionTableType(), NULL, 1628 }, { (uint32_t) offsetof( ToolBody, ping ), PingTableType(), NULL, 4 }, { (uint32_t) offsetof( ToolBody, caps ), NULL, &arm_fields_ToolBody[0], 8 }, { (uint32_t) offsetof( ToolBody, spans ), NULL, &arm_fields_ToolBody[1], 8 }, { (uint32_t) offsetof( ToolBody, origin ), NULL, &arm_fields_ToolBody[2], 80 }, { 8, NULL, NULL, 0 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( ToolBody, type ), (uint32_t) sizeof( ToolBody::type ), arms }; return &info; }, "" },
         { "trace", "trace", "Script", 0xf493, 13, true, true, true, 3, (uint32_t) offsetof( ToolMessage, trace ), (uint32_t) sizeof( ToolMessage::trace[0] ), (uint32_t) offsetof( ToolMessage, trace_count ), (uint32_t) offsetof( ToolMessage, trace_present ), ScriptTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "marks", "marks", "Mode", 0xe15f, 7, true, false, true, 2, (uint32_t) offsetof( ToolMessage, marks ), (uint32_t) sizeof( ToolMessage::marks[0] ), 0xffffffffu, (uint32_t) offsetof( ToolMessage, marks_present ), NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
     };

@@ -317,6 +317,11 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.pf("pub enum %s {\n", d.Name)
 	g.pf("    #[default]\n    None,\n")
 	for _, v := range d.Variants {
+		if v.Void() {
+			// a PAYLOAD-FREE arm is a UNIT variant: no payload to hold (SPEC §4.8)
+			g.pf("    %s,\n", ir.GoExportName(v.Name))
+			continue
+		}
 		g.pf("    %s(%s),\n", ir.GoExportName(v.Name), v.Type)
 	}
 	g.pf("}\n\n")

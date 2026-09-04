@@ -578,9 +578,13 @@ func fpDecl(b *strings.Builder, d ast.Decl) {
 		fmt.Fprintf(b, "table %s\n", d.Name)
 		fpBlock(b, d.Body)
 	case *ast.UnionDecl:
+		// AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6), so an arm's
+		// fingerprint is a FIELD's: the type, the bound and the attributes,
+		// or the formatter could move one and the safety net would not see it
 		fmt.Fprintf(b, "union %s\n{\n", d.Name)
 		for _, v := range d.Variants {
-			fmt.Fprintf(b, "variant %s %s\n", v.Name, v.Type)
+			b.WriteString("variant ")
+			fpField(b, v.Arm)
 		}
 		b.WriteString("}\n")
 	}
@@ -591,11 +595,8 @@ func fpBlock(b *strings.Builder, blk *ast.Block) {
 	for _, item := range blk.Items {
 		switch item := item.(type) {
 		case *ast.Field:
-			def := ""
-			if item.Default != nil {
-				def = " = " + fpExpr(item.Default)
-			}
-			fmt.Fprintf(b, "field %s %s %s%s\n", item.Name, fpFieldType(item), fpAttrs(item.Attrs), def)
+			b.WriteString("field ")
+			fpField(b, item)
 		case *ast.ConstField:
 			fmt.Fprintf(b, "const(%s,%s)\n", fpExpr(item.Value), fpExpr(item.Bits))
 		case *ast.ReservedItem:
@@ -761,4 +762,18 @@ func fpExpr(e ast.Expr) string {
 		return "(paren " + fpExpr(e.X) + ")"
 	}
 	return "?"
+}
+
+// fpField fingerprints one FIELD LINE — a table or type field, or a union ARM
+// (docs/SPEC-TABLES.md §2.6), which is the same production.
+func fpField(b *strings.Builder, f *ast.Field) {
+	if f == nil {
+		b.WriteString("<none>\n")
+		return
+	}
+	def := ""
+	if f.Default != nil {
+		def = " = " + fpExpr(f.Default)
+	}
+	fmt.Fprintf(b, "%s %s %s%s\n", f.Name, fpFieldType(f), fpAttrs(f.Attrs), def)
 }

@@ -52,6 +52,8 @@ unit streamdemo tables/stream
 unit blobdemo  tables/blobs
 unit tblm1     test/tables/M1.schema
 unit tblm2     test/tables/M2.schema
+unit tbla1     test/tables/A1.schema
+unit tbla2     test/tables/A2.schema
 
 instance root_full            tabledemo RootConfig    testdata/wire/tables/root_full.bin
 instance root_default         tabledemo RootConfig    testdata/wire/tables/root_default.bin
@@ -103,6 +105,15 @@ instance message_save         messagedemo ToolMessage testdata/wire/tables/messa
 instance message_empty        messagedemo ToolMessage testdata/wire/tables/message_empty.bin
 instance message_batch        messagedemo ToolMessage testdata/wire/tables/message_batch.bin
 instance message_trace        messagedemo ToolMessage testdata/wire/tables/message_trace.bin
+# THE GENERAL ARMS (§2.6): an arm is a field line, so an arm may be a scalar, a
+# string, an enum, a flags mask, a bytes buffer, a bounded array, another union
+# or a POINTER. message_arms carries a fixed-array arm in the root body, a flags
+# arm and a nested-union arm in the batch; message_arm_edits carries the bounded
+# scalar, counted-array, bytes and enum arms inside a transaction's edits;
+# message_ack is the PAYLOAD-FREE arm, the arm id with L = 0.
+instance message_arms         messagedemo ToolMessage testdata/wire/tables/message_arms.bin
+instance message_arm_edits    messagedemo ToolMessage testdata/wire/tables/message_arm_edits.bin
+instance message_ack          messagedemo ToolMessage testdata/wire/tables/message_ack.bin
 instance m1_open              tblm1       Msg         testdata/wire/tables/m1_open.bin
 instance m1_save              tblm1       Msg         testdata/wire/tables/m1_save.bin
 instance m2_close             tblm2       Msg         testdata/wire/tables/m2_close.bin
@@ -121,6 +132,10 @@ instance stream_parts         streamdemo  Feed        testdata/wire/tables/strea
 # on. The wire is the TOOL's (`schema pack` of the text), and the reference is
 # held to it.
 instance stream_arm_first     streamdemo  Feed        testdata/wire/tables/stream_arm_first.bin
+# A POINTER ARM IS THE EDGE ITSELF (§2.6, §3.1), in the union field's own
+# declaration-order position: the arm names x, parts names y then x again, so
+# the walk numbers x, y as 2, 3 and one node is named from an arm and a slot.
+instance stream_arm_pointer   streamdemo  Feed        testdata/wire/tables/stream_arm_pointer.bin
 
 # THE BYTE BUFFER corpus (§2.5): a blob at its used size, pointed at. blob_small
 # carries every field once; blob_empty holds a present blob and string of length
@@ -204,6 +219,24 @@ report m1_save_as_m2  tblm2 Msg testdata/wire/tables/m1_save.bin
 report m2_close_as_m1 tblm1 Msg testdata/wire/tables/m2_close.bin
 report m2_open_as_m1  tblm1 Msg testdata/wire/tables/m2_open.bin
 
+# THE ARM EVOLUTION ROWS (§4), each red for one reason. A1 and A2 declare the
+# same five arms under the same names at different types, so one wire written
+# under A1 and read under A2 names each of the reader's answers to a retyped
+# arm exactly once: a moved width is a kind mismatch with the union None and
+# the siblings intact; one width and one length is SILENT, §4.1's fifth
+# member, and the row is red the moment a counter fires; a scalar read as a
+# string is silent too, the string holding the scalar's bytes; four bytes read
+# as a BODY is that arm's own framing damage, malformed with the parent
+# reading on past L; and the body arm beside them still round-trips.
+report a1_arm_moved_width_as_a2 tbla2 Root testdata/wire/tables/a1_arm_moved_width.bin
+report a1_arm_one_width_as_a2   tbla2 Root testdata/wire/tables/a1_arm_one_width.bin
+report a1_arm_as_string_as_a2   tbla2 Root testdata/wire/tables/a1_arm_as_string.bin
+report a1_arm_as_body_as_a2     tbla2 Root testdata/wire/tables/a1_arm_as_body.bin
+report a1_arm_body_as_a2        tbla2 Root testdata/wire/tables/a1_arm_body.bin
+# and the PAYLOAD-FREE arm A2 does not declare at all: the arm id with L = 0,
+# which a reader that cannot name it counts unknown and reads None (§2.6)
+report a1_arm_unknown_as_a2     tbla2 Root testdata/wire/tables/a1_arm_unknown.bin
+
 block block_render blockdemo testdata/wire/tables/block_render.bin testdata/conformance/tables/block/block_render.dump
 block block_padded blockdemo testdata/wire/tables/block_padded.bin testdata/conformance/tables/block/block_padded.dump
 
@@ -265,6 +298,9 @@ cook-write message_ping           testdata/conformance/tables/cook-write/message
 cook-write message_save           testdata/conformance/tables/cook-write/message_save.cook testdata/conformance/tables/cook-write/message_save-be.cook
 cook-write message_empty          testdata/conformance/tables/cook-write/message_empty.cook testdata/conformance/tables/cook-write/message_empty-be.cook
 cook-write message_batch          testdata/conformance/tables/cook-write/message_batch.cook testdata/conformance/tables/cook-write/message_batch-be.cook
+cook-write message_arms           testdata/conformance/tables/cook-write/message_arms.cook testdata/conformance/tables/cook-write/message_arms-be.cook
+cook-write message_arm_edits      testdata/conformance/tables/cook-write/message_arm_edits.cook testdata/conformance/tables/cook-write/message_arm_edits-be.cook
+cook-write message_ack            testdata/conformance/tables/cook-write/message_ack.cook testdata/conformance/tables/cook-write/message_ack-be.cook
 cook-write message_trace          testdata/conformance/tables/cook-write/message_trace.cook testdata/conformance/tables/cook-write/message_trace-be.cook
 cook-write m1_open                testdata/conformance/tables/cook-write/m1_open.cook testdata/conformance/tables/cook-write/m1_open-be.cook
 cook-write m2_open                testdata/conformance/tables/cook-write/m2_open.cook testdata/conformance/tables/cook-write/m2_open-be.cook
@@ -272,6 +308,7 @@ cook-write stream_chain           testdata/conformance/tables/cook-write/stream_
 cook-write stream_header          testdata/conformance/tables/cook-write/stream_header.cook testdata/conformance/tables/cook-write/stream_header-be.cook
 cook-write stream_parts           testdata/conformance/tables/cook-write/stream_parts.cook testdata/conformance/tables/cook-write/stream_parts-be.cook
 cook-write stream_arm_first       testdata/conformance/tables/cook-write/stream_arm_first.cook testdata/conformance/tables/cook-write/stream_arm_first-be.cook
+cook-write stream_arm_pointer     testdata/conformance/tables/cook-write/stream_arm_pointer.cook testdata/conformance/tables/cook-write/stream_arm_pointer-be.cook
 cook-write blob_small             testdata/conformance/tables/cook-write/blob_small.cook testdata/conformance/tables/cook-write/blob_small-be.cook
 cook-write blob_empty             testdata/conformance/tables/cook-write/blob_empty.cook testdata/conformance/tables/cook-write/blob_empty-be.cook
 cook-write blob_large             testdata/conformance/tables/cook-write/blob_large.cook testdata/conformance/tables/cook-write/blob_large-be.cook
@@ -514,8 +551,17 @@ json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conform
 json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,false
 json-hostile union-table-arm-unknown        messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown        1,0,0,0,false
 json-hostile union-table-arm-two-keys       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys       refused
-json-hostile union-table-arm-wrong-shape    messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-wrong-shape    refused
+json-hostile union-table-arm-wrong-shape    messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-wrong-shape    0,1,0,0,false
 json-hostile union-table-arm-nested-unknown messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-nested-unknown 1,0,0,0,false
+# THE GENERAL ARMS in the text (§16.2): an arm value takes the arm's own row,
+# and a value of the wrong shape for that row is a KIND MISMATCH — the union
+# reads None and the enclosing object continues. A payload-free arm's value is
+# null, and anything else is that same mismatch; a POINTER arm's null is a null
+# pointer with the arm SELECTED, not None.
+json-hostile arm-scalar-string             messagedemo ToolMessage testdata/conformance/tables/json-hostile/arm-scalar-string             0,1,0,0,false
+json-hostile arm-scalar-null               messagedemo ToolMessage testdata/conformance/tables/json-hostile/arm-scalar-null               0,1,0,0,false
+json-hostile arm-void-not-null             messagedemo ToolMessage testdata/conformance/tables/json-hostile/arm-void-not-null             0,1,0,0,false
+json-hostile arm-pointer-null              streamdemo  Feed        testdata/conformance/tables/json-hostile/arm-pointer-null              0,0,0,0,false
 json-hostile pointer-array-element-shape    streamdemo  Feed        testdata/conformance/tables/json-hostile/pointer-array-element-shape    0,1,0,0,false
 json-hostile pointer-array-shared-label     streamdemo  Feed        testdata/conformance/tables/json-hostile/pointer-array-shared-label     0,0,0,0,false
 json-hostile union-array-element-shape      messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-shape      0,1,0,0,false

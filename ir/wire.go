@@ -133,7 +133,18 @@ func MaxBitsUnion(u *Union) int64 {
 	bits := BitsRequired(big.NewInt(0), big.NewInt(u.Max))
 	var largest int64
 	for _, v := range u.Variants {
-		if b := MaxBitsStruct(v.Ref); b > largest {
+		// AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): a by-value
+		// declared type is its struct's path, a PAYLOAD-FREE arm costs the tag
+		// alone (SPEC §4.8), and any other arm is its field's own path.
+		var b int64
+		switch {
+		case v.Void():
+		case v.Body():
+			b = MaxBitsStruct(v.Ref)
+		default:
+			b = MaxBitsField(v.F)
+		}
+		if b > largest {
 			largest = b
 		}
 	}

@@ -836,6 +836,9 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.bpf("final class %s {\n", d.Name)
 	g.bpf("  int type = %sType.none;\n", d.Name)
 	for _, v := range d.Variants {
+		if v.Void() {
+			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
+		}
 		g.addRef(v.Type, v.Type)
 		g.bpf("  final %s %s = %s();\n", v.Type, dartName(v.Name), v.Type)
 	}

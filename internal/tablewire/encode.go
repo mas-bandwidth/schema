@@ -228,11 +228,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 			return fmt.Errorf("union %s: tag %d names no arm — save refuses it (docs/SPEC-TABLES.md §5)", un.Name, fv.Cell.U)
 		}
 		arm := un.Variants[fv.Cell.U-1]
-		payload := fv.Cell.Tab
-		if payload == nil {
-			payload = e.m.New(arm.Ref)
-		}
-		body, err := encodeBody(e, payload)
+		body, err := encodeArm(e, arm, &fv.Cell)
 		if err != nil {
 			return err
 		}
@@ -402,11 +398,7 @@ func encodeElement(e *encoder, w *buf, f *ir.Field, kind int, cell *tabletext.Ce
 			return fmt.Errorf("union %s: tag %d names no arm — save refuses it (docs/SPEC-TABLES.md §5)", un.Name, cell.U)
 		}
 		arm := un.Variants[cell.U-1]
-		payload := cell.Tab
-		if payload == nil {
-			payload = e.m.New(arm.Ref)
-		}
-		body, err := encodeBody(e, payload)
+		body, err := encodeArm(e, arm, cell)
 		if err != nil {
 			return err
 		}
@@ -424,6 +416,85 @@ func encodeElement(e *encoder, w *buf, f *ir.Field, kind int, cell *tabletext.Ce
 		w.width(tabletext.KindWidth(kind), cell.U)
 	}
 	return nil
+}
+
+// encodeArm writes ONE ARM's payload — the bytes under the arm's `L`
+// (docs/SPEC-TABLES.md §3's arm payload table). AN ARM IS A FIELD LINE
+// (§2.6), so the payload is exactly what a FIELD of that type puts after its
+// own framing prefix: a table body for a declared type or table, the value at
+// its width for a scalar, the bytes for a string, the array body for an array
+// or a `bytes(N)`, a node index for a pointer, and the union payload in place
+// for a nested union.
+func encodeArm(e *encoder, arm ir.UnionVariant, cell *tabletext.Cell) ([]byte, error) {
+	if arm.Void() {
+		return nil, nil // a payload-free arm: the arm id and L = 0 (§2.6)
+	}
+	if arm.Body() {
+		payload := cell.Tab
+		if payload == nil {
+			payload = e.m.New(arm.Ref)
+		}
+		return encodeBody(e, payload)
+	}
+	f := arm.F
+	fv := cell.Arm
+	if fv == nil {
+		fv = e.m.NewArm(arm)
+	}
+	w := &buf{}
+	kind := ir.TableScalarKind(f)
+	switch {
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		index := e.g.Index(fv.Cell.Node)
+		if f.Type.Blob() {
+			index = e.g.BlobIndex(fv.Cell.Blob)
+		}
+		w.u32(index)
+	case f.Type.Kind == ir.TString:
+		w.raw(fv.Cell.Str)
+	case f.Type.Kind == ir.TBytes:
+		w.u8(uint8(ir.TableKindU8)) // bytes ride as an array of u8 (§2.5)
+		w.u32(uint32(len(fv.Cell.Str)))
+		w.raw(fv.Cell.Str)
+	case f.Array != ir.ArrayNone:
+		count := int(f.ArrayBound)
+		if f.Array == ir.ArrayCounted {
+			count = fv.Count
+		}
+		elemKind := kind
+		if f.Type.Pointer {
+			elemKind = ir.TableKindPointer
+		}
+		w.u8(uint8(elemKind))
+		w.u32(uint32(count))
+		for i := range count {
+			if err := encodeElement(e, w, f, elemKind, &fv.Elems[i]); err != nil {
+				return nil, err
+			}
+		}
+	case tabletext.UnionOf(f) != nil:
+		inner := tabletext.UnionOf(f)
+		if fv.Cell.U == 0 {
+			w.u16(0)
+			break
+		}
+		if int(fv.Cell.U) > len(inner.Variants) {
+			return nil, fmt.Errorf("union %s: tag %d names no arm — save refuses it (docs/SPEC-TABLES.md §5)", inner.Name, fv.Cell.U)
+		}
+		nested := inner.Variants[fv.Cell.U-1]
+		body, err := encodeArm(e, nested, &fv.Cell)
+		if err != nil {
+			return nil, err
+		}
+		w.u16(ir.VariantId(nested.Name))
+		w.u32(uint32(len(body)))
+		w.raw(body)
+	default:
+		if err := encodeElement(e, w, f, kind, &fv.Cell); err != nil {
+			return nil, err
+		}
+	}
+	return w.b, nil
 }
 
 // subInstance is a nested table or type's instance, materialized at its
