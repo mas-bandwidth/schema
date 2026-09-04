@@ -58,8 +58,8 @@ func TestTheAnnouncementIsTheUnitsOwn(t *testing.T) {
 		}
 		want := ir.TableAnnouncement(unit)
 		if string(want) != string(data) {
-			t.Errorf("%s: the committed announcement is %d bytes and the unit derives %d — run: make update-goldens",
-				c.Key, len(data), len(want))
+			t.Errorf("%s: the committed announcement is %d bytes and the unit derives %d, first difference at byte %d — run: make update-goldens",
+				c.Key, len(data), len(want), firstDifference(data, want))
 			continue
 		}
 		if vocabulary.BuildVersion() != c.BuildVersion {
@@ -180,8 +180,8 @@ func TestTheTwoFormsResolveAlike(t *testing.T) {
 			continue
 		}
 		if string(resolvedFile) != string(resolvedMessage) {
-			t.Errorf("%s: the two forms do not resolve alike (%d bytes against %d)",
-				msg.Name, len(resolvedFile), len(resolvedMessage))
+			t.Errorf("%s: the two forms do not resolve alike (%d bytes against %d, first difference at byte %d)",
+				msg.Name, len(resolvedFile), len(resolvedMessage), firstDifference(resolvedFile, resolvedMessage))
 			continue
 		}
 		// THE REFERENCE BYTES THEMSELVES ARE EXPECTED TO DIFFER, and a corpus
@@ -235,7 +235,8 @@ func TestTheMessageFormRoundTripsThroughTheEngine(t *testing.T) {
 			continue
 		}
 		if string(again) != string(data) {
-			t.Errorf("%s: the engine re-saves %d bytes where the golden is %d", msg.Name, len(again), len(data))
+			t.Errorf("%s: the engine re-saves %d bytes where the golden is %d, first difference at byte %d",
+				msg.Name, len(again), len(data), firstDifference(again, data))
 		}
 	}
 }
@@ -396,6 +397,17 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 			t.Errorf("a reserved id in a body counts malformed and nothing else: %+v", report)
 		}
 	}
+}
+
+// firstDifference is where two byte strings part, which is what a reader of a
+// failure needs when the two are the same length.
+func firstDifference(a, b []byte) int {
+	for i := 0; i < len(a) && i < len(b); i++ {
+		if a[i] != b[i] {
+			return i
+		}
+	}
+	return min(len(a), len(b))
 }
 
 // asRefusal is errors.As for the message path's refusal, spelled here so the

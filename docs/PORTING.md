@@ -804,12 +804,20 @@ bytes where it was two. The win grows with the file — a pointer-heavy graph of
 7,301 bytes becomes 3,319 — and a file with many distinct ids and few fields
 under each pays.
 
+**The message form's negative controls** are
+`tables-message-form-negative-control`: the tail's node-table id, the
+projection order the vocabulary takes, the substitution the resolved form IS,
+the announcement's bound, the second announcement's refusal and the writer's
+slot constant, each removed and each turning one named gate red, and the same
+slot removed from the C++ EMITTER, which turns the pinned message wire red.
+
 **Negative control.** `tables-wire-fuzz-negative-control`: the string read's
 unsigned fit check, the numbering's index range check, an arm's `L` against its
 kind's width, and an arm body's terminator, each removed from the emitter
 through `go build -overlay` and each turning the fuzzer red on its own verdict.
 
-**Targets:** tables-wire-fuzz, tables-wire-fuzz-negative-control
+**Targets:** tables-wire-fuzz, tables-wire-fuzz-negative-control,
+tables-message-form-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|

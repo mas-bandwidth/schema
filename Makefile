@@ -2290,6 +2290,10 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	# is `make tables-cpp-release`.
 	$(MAKE) tables-wire-fuzz N=20000
 	$(MAKE) tables-wire-fuzz-negative-control N=0
+	# THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): its rules are refusals and an
+	# ORDER, and a green run cannot be read for either, so each control removes
+	# one and names the gate that must go red.
+	$(MAKE) tables-message-form-negative-control
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-zero-cost-negative-control
 	$(MAKE) tables-maps
@@ -2877,6 +2881,119 @@ tables-wire-fuzz-oracle-negative-control: build/conformance-harness build/wire-f
 		  cat $(ORACLE_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(ORACLE_NC)/log
 	@echo "negative control: removing the oracle's body-span clamp turns the pinned vector RED"
+
+# ---- THE MESSAGE FORM's NEGATIVE CONTROLS (docs/SPEC-TABLES.md §3.3) --------
+#
+# The rules this form adds are refusals and an ORDER, and neither leaves a
+# trace a green run can be read for: a slot that moved still resolves, a bound
+# that is gone still reads a table, and a second announcement that was accepted
+# still decodes. So each control removes ONE of them and names the gate that
+# must go red, through `go test -overlay` and `go build -overlay`, so no
+# tracked file is written and an interrupt cannot leave a sabotaged tree.
+#
+# $(1) the control's name  $(2) the file  $(3) the sed program
+# $(4) the test the sabotage must turn red
+define message_form_control
+	@mkdir -p build/message-nc
+	@sed -e '$(3)' $(2) > build/message-nc/$(1).gotext
+	@cmp -s $(2) build/message-nc/$(1).gotext && \
+		{ echo "NEGATIVE CONTROL: the $(1) sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/$(2)":"%s/build/message-nc/$(1).gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/message-nc/$(1)-overlay.json
+	@if go test -count=1 -overlay=build/message-nc/$(1)-overlay.json \
+			./test/conformance/harness -run $(4) > build/message-nc/$(1).log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage landed and $(4) stayed green"; \
+		cat build/message-nc/$(1).log; exit 1; \
+	fi
+	@grep -q -- "--- FAIL" build/message-nc/$(1).log || \
+		{ echo "NEGATIVE CONTROL FAILED: the $(1) run went red without $(4) failing — the sabotage did not compile"; \
+		  cat build/message-nc/$(1).log; exit 1; }
+	@grep -m1 -A 1 -- "--- FAIL" build/message-nc/$(1).log
+	@echo "negative control: the $(1) sabotage turns $(4) RED"
+endef
+
+.PHONY: tables-message-form-negative-control
+tables-message-form-negative-control: tables-message-form-tail-negative-control \
+	tables-message-form-order-negative-control tables-message-form-substitution-negative-control \
+	tables-message-form-bound-negative-control \
+	tables-message-form-second-negative-control tables-message-form-writer-negative-control \
+	tables-message-form-emitter-negative-control
+
+# THE TAIL IS UNCONDITIONAL (§3.3): a unit with no pointer announces the
+# node-table id and the three blob ids all the same, so that an ordinary edit
+# only ever grows the tail at its end. Take the node-table id out and every
+# slot after it moves.
+.PHONY: tables-message-form-tail-negative-control
+tables-message-form-tail-negative-control:
+	$(call message_form_control,tail,ir/tablewire.go,s|	place(TableNodeWireId)|	// NEGATIVE CONTROL: the tail'"'"'s node-table id is gone|,TestTheTailIsUnconditional)
+
+# THE ORDER IS THE COOK PROJECTION'S (§3.3), and the committed announcement is
+# what pins it: reverse the projection's record order and the table this unit
+# derives is no longer the one the corpus carries, entry for entry.
+.PHONY: tables-message-form-order-negative-control
+tables-message-form-order-negative-control:
+	$(call message_form_control,order,ir/tablewire.go,s|return ProjectionMemberName(u, names\[i\]) < ProjectionMemberName(u, names\[j\])|return ProjectionMemberName(u, names[i]) > ProjectionMemberName(u, names[j]) // NEGATIVE CONTROL: the projection order reversed|,TestTheAnnouncementIsTheUnitsOwn)
+
+# THE RESOLVED FORM IS THE SUBSTITUTION (§3.3): every reference replaced by the
+# sixty-four-bit id it names, and every length recomputed to frame it. Leave
+# the reference in place of the id and the two forms stop resolving alike,
+# because a file's slots are its first-use order and a connection's are the
+# unit's projection order.
+.PHONY: tables-message-form-substitution-negative-control
+tables-message-form-substitution-negative-control:
+	$(call message_form_control,substitution,internal/tablewire/resolve.go,s|return r.ids\[ref-1\]|return ref|,TestTheTwoFormsResolveAlike)
+
+# A TABLE PAST A BOUND IS REFUSED BEFORE ANYTHING IS ALLOCATED (§3.3): the
+# count is a fixed u64 at the end, read and compared before an entry is
+# touched. Remove the comparison and an announcement of any size is read.
+.PHONY: tables-message-form-bound-negative-control
+tables-message-form-bound-negative-control:
+	$(call message_form_control,bound,internal/tablewire/message.go,s|if count > uint64(v.bound()) {|if count > uint64(v.bound()) \&\& false { // NEGATIVE CONTROL: the bound is gone|,TestTheMessageFormRefusesByName)
+
+# A SECOND ANNOUNCEMENT ON A CONNECTION IS REFUSED BY NAME (§3.3). It does not
+# replace the table, it does not amend it and it changes nothing, so removing
+# the refusal is the whole re-announcement state machine this form rules out.
+.PHONY: tables-message-form-second-negative-control
+tables-message-form-second-negative-control:
+	$(call message_form_control,second,internal/tablewire/message.go,s|	if v.announced {|	if false { // NEGATIVE CONTROL: the second announcement is accepted|,TestTheMessageFormRefusesByName)
+
+# THE WRITER'S SLOT NUMBERS ARE COMPILE-TIME CONSTANTS (§3.3), and a slot that
+# moved writes a legal body that names another field. The engine's own writer
+# is the first place that can happen.
+.PHONY: tables-message-form-writer-negative-control
+tables-message-form-writer-negative-control:
+	$(call message_form_control,writer,internal/tablewire/message.go,s|		slots\[id\] = uint64(i + 1)|		slots[id] = uint64(i + 2) // NEGATIVE CONTROL: every slot off by one|,TestTheMessageFormRoundTripsThroughTheEngine)
+
+# AND THE SAME SLOT IN THE C++ EMITTER, which is the one the reference reads
+# and writes. The sabotage is one line of the emitter and the instrument is the
+# pinned wire: the golden still LOADS under a moved slot, because the reader
+# resolves whatever the writer named, so what goes red is the round trip
+# against the corpus's own bytes.
+.PHONY: tables-message-form-emitter-negative-control
+tables-message-form-emitter-negative-control: bin/schema test/tables/message_negative_main.cpp build/tables-generated/.stamp
+	@mkdir -p build/message-nc
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/backend -Itest/tables -I$(SERIALIZE) \
+		test/tables/message_negative_main.cpp build/tables-generated/backend/BackendTable.cpp \
+		-o build/message-nc/slot-true
+	./build/message-nc/slot-true
+	@sed -e 's|		slots\[id\] = uint64(i + 1)|		slots[id] = uint64(i + 2) // NEGATIVE CONTROL: every emitted slot off by one|' \
+		internal/codegen/cpptable/cpptable.go > build/message-nc/emitter.gotext
+	@cmp -s internal/codegen/cpptable/cpptable.go build/message-nc/emitter.gotext && \
+		{ echo "NEGATIVE CONTROL: the emitter sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/message-nc/emitter.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/message-nc/emitter-overlay.json
+	go build -overlay build/message-nc/emitter-overlay.json -o build/message-nc/schema ./cmd/schema
+	@rm -rf build/message-nc/generated && mkdir -p build/message-nc/generated
+	./build/message-nc/schema generate --lang cpp --out build/message-nc/generated tables/backend
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/message-nc/generated -Itest/tables -I$(SERIALIZE) \
+		test/tables/message_negative_main.cpp build/message-nc/generated/BackendTable.cpp \
+		-o build/message-nc/slot-moved
+	@if ./build/message-nc/slot-moved > build/message-nc/emitter.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: every emitted slot moved and the pinned message round tripped"; \
+		cat build/message-nc/emitter.log; exit 1; \
+	fi
+	@cat build/message-nc/emitter.log
+	@echo "negative control: moving every emitted slot turns the pinned message RED"
 
 # The GENERATED half of the data: the JSON text of every instance and the read
 # report of every evolution case, both from the compiler's own engine.
