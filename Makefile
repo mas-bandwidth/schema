@@ -2490,7 +2490,7 @@ tables-maps-clamp-negative-control: bin/schema build/tables-generated/.stamp
 # dropped.
 .PHONY: tables-maps-fit-negative-control
 tables-maps-fit-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,fit,'s@if ( n > rest / kTableMapEntryFloor ) { return false; }@if ( n > rest / kTableMapEntryFloor \&\& false ) { return false; }@',internal/codegen/cpptable/maps.go,an N the map L cannot carry left the map gate GREEN)
+	$(call map_negative_control,fit,'s@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { return false; }@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) \&\& false ) { return false; }@',internal/codegen/cpptable/maps.go,an N the map L cannot carry left the map gate GREEN)
 
 # LOADMEASURE OVER A MAP OF MAPS, summed at ONE DEPTH only. The instance whose
 # value is itself a map meets it, and the measure goes red against the region
