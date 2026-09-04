@@ -1341,3 +1341,280 @@ for, and they are the next part.
 **You now have** a complete network protocol: conditional layouts, typed
 messages, framing, and a handshake rule that makes wire mismatch impossible by
 construction.
+
+---
+
+## Part 6 — tables: data that outlives the build
+
+### The problem
+
+Everything so far is exact match: same protocol id or refuse. That is perfect
+for packets, because both ends redeploy together. Now Starlight needs a save
+game. A player's file gets written today and read by the build you ship next
+year, and "same or refuse" would mean every update deletes every save. Config
+files have the same shape, because designers tune `ShipConfig` weekly and last
+week's files must keep loading.
+
+The packet wire cannot do this, on purpose. For data that outlives the build
+that wrote it, the language has a second declaration: `table`.
+
+### Declaring one
+
+```
+table ShipConfig
+{
+    display_name string(32)
+    max_health   float32 = 100.0
+    max_speed    float32 = 500.0
+    armor        int32 = 1 | min = 0, max = 10
+    ship_type    ShipType
+}
+```
+
+The body grammar is the type body's: same fields, same defaults, same ranges.
+What changes is the wire and the lifecycle. Generation produces more files
+beside the packet headers:
+
+```
+$ schema generate --lang cpp --out gen --verbose .
+wrote gen/Config.h
+wrote gen/ConfigBlock.cpp
+wrote gen/ConfigBlock.h
+wrote gen/ConfigTable.cpp
+wrote gen/ConfigTable.h
+wrote gen/ConfigWire.h
+```
+
+`ConfigTable.h` and `ConfigTable.cpp` are the table surface. The Block pair is
+Part 12, so ignore it until then. The table header is includable from any
+translation unit and depends on nothing but the C standard headers:
+
+```cpp
+// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
+// dependency — includable from any TU.
+```
+
+The storage struct lives there, and it looks exactly like a type's:
+
+```cpp
+struct ShipConfig {
+    char display_name[32 + 1] = {}; // string(32): max length, used length beside it
+    int32_t display_name_length = 0;
+    float max_health = 100.0f;
+    float max_speed = 500.0f;
+    int32_t armor = 1;
+    ShipType ship_type = ShipType::None;
+};
+```
+
+### Save and load
+
+The encode surface is a measure and save split, and you own every buffer,
+because generated table code allocates nothing:
+
+```cpp
+    ShipConfig ship;
+    memcpy( ship.display_name, "Kestrel", 7 );
+    ship.display_name_length = 7;
+    ship.max_health = 250.0f;
+    ship.max_speed = 900.0f;
+    ship.armor = 8;
+    ship.ship_type = ShipType::Corvette;
+
+    int64_t size = ShipConfigMeasure( ship );          // exact, writes nothing
+    std::vector<uint8_t> buffer( size );
+    int64_t wrote = ShipConfigSave( ship, buffer.data(), size );
+    printf( "measured %lld, saved %lld bytes\n", (long long) size, (long long) wrote );
+
+    ShipConfig blank;
+    printf( "an all-default ShipConfig measures %lld bytes\n", (long long) ShipConfigMeasure( blank ) );
+```
+
+```
+$ c++ -std=c++17 -Wall -Wextra -Werror -o save save.cpp gen/ConfigTable.cpp
+$ ./save
+measured 42, saved 42 bytes
+an all-default ShipConfig measures 2 bytes
+```
+
+Measure is exact, so a buffer of exactly its answer always suffices. `Save`
+returns the size, or -1 for a buffer too small or a value that violates a
+storage bound.
+
+One fact explains both numbers: **values at their defaults stay off the wire.**
+`max_health = 250` rides, and a ship left at 100 would not. An all-default
+table saves as 2 bytes and loads back complete.
+
+### The point: any build reads any data
+
+Time passes, and Starlight 2.0's schema has evolved:
+
+```
+enum ShipType { Fighter, Interceptor, Freighter, Corvette }   // new variant, in the MIDDLE
+
+table ShipConfig
+{
+    display_name string(32)
+    max_health   float32 = 100.0
+    armor        int32 = 1 | min = 0, max = 5     // bound shrunk from 10
+    ship_type    ShipType
+    shield       float32 = 50.0                   // new field
+}
+```
+
+`max_speed` is gone, `shield` is new, the armor cap dropped from 10 to 5, and
+`Interceptor` landed in the middle of the enum. On the packet wire any one of
+those edits is a new protocol id. Here, load the 1.0 file with the 2.0 build:
+
+```cpp
+    TableReport report;
+    ShipConfig loaded;
+    bool ok = ShipConfigLoad( loaded, buffer.data(), bytes, &report );
+```
+
+```
+$ ./load ../v1/ship.bin
+load: ok
+  name=Kestrel health=250 armor=5 type=Corvette shield=50
+  report: unknown=1 kind_mismatch=0 clamped=1 malformed=0
+```
+
+Read that slowly, because each value is a rule.
+
+`name=Kestrel` and `health=250`: fields that still exist load as written.
+
+`shield=50`: a field the file never heard of takes its declared default.
+
+`armor=5`: the stored 8 is **clamped** to the new `[0, 5]`, and counted.
+
+`type=Corvette`: an enum value rides as the hash of its variant's **name**, so
+inserting `Interceptor` in the middle moved nothing. On a packet wire, stored
+value 3 would now silently mean a different ship.
+
+`unknown=1`: the file's `max_speed` has no home here, so it was skipped by its
+length and counted, never misdecoded.
+
+It works in the other direction too, with the **old** build reading a **new**
+file:
+
+```
+$ ./load ../v2/dart.bin
+load: ok  name=Dart type=None speed=500
+  report: unknown=2 kind_mismatch=0 clamped=0
+```
+
+The 1.0 build skipped `shield` as unknown, and the `Interceptor` variant it has
+no name for loaded as `None`, also counted, never as a neighbor. Both
+directions, any distance apart.
+
+Field identity on the table wire is a hash of the field name, every field is
+length prefixed, and enum values and union arms ride under their name hashes
+too. Unknown is skippable, absent is defaultable, and out of range is
+clampable. Contrast that with the packet wire, which **refuses** out-of-range
+values because the sender is an untrusted peer. Tables **clamp and count**,
+because the data is yours and half a config is better than none.
+
+### The report is the witness
+
+`TableReport` is five counters:
+
+```cpp
+struct TableReport
+{
+    int32_t unknown = 0;       // unknown field ids skipped (newer data)
+    int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
+    int32_t clamped = 0;       // out-of-range values clamped to declared bounds
+    int32_t duplicate = 0;     // the text form saw a key twice: last wins, and the repeat is counted
+    bool malformed = false;    // framing damage; decode stopped, partial result kept
+};
+```
+
+You can see `kind_mismatch` by changing `armor` to a `float32` in a third
+revision and loading the 1.0 file again:
+
+```
+$ ./load ../v1/ship.bin
+load: ok  armor=1 (float now)
+  report: unknown=1 kind_mismatch=1 clamped=0
+```
+
+The stored int under the `armor` id is not an int as far as this reader is
+concerned, so it is skipped and the field keeps its declared default. Never
+misdecoded.
+
+`malformed` is the only counter that stops a load. Truncate the file at byte 17:
+
+```
+$ ./load ../v1/ship.bin 17
+load: malformed
+  name=Kestrel health=100 armor=1 type=None shield=50
+  report: unknown=0 kind_mismatch=0 clamped=0 malformed=1
+```
+
+`Load` returned false and the good prefix was kept, so `Kestrel` survived and
+the fields after the cut sit at their defaults. Only structural damage does
+this, and every schema-drift event above is a counter rather than a failure.
+
+Adopt this discipline on day one: **log the counters**. A nonzero report means
+the data came from a different schema generation. It is still fully usable, but
+that is drift you want visible on a dashboard rather than invisible in a save
+file.
+
+### Two rules the wire cannot enforce for you
+
+First, **a default is part of the wire contract.** An absent field means "the
+reader's declared default", and elision means fields at their default are
+absent. So changing `max_health = 100.0` to `= 120.0` changes what every
+already-written file says, silently, with no report event, because files that
+elided a genuine 100 now load 120. Change a default the way you would change
+data, or add a new field instead. Part 10 shows the tool that catches this
+edit.
+
+Second, **`flags` appends at the end, forever.** A mask rides as raw bits and
+there are no per-bit names on the wire, so a variant's identity is its bit
+position:
+
+```
+flags Perks { Shielded, Cloaked, Turbo }           // v1: bits 0, 1, 2
+flags Perks { Shielded, Hardened, Cloaked, Turbo } // wrong: stored Cloaked reads Hardened
+flags Perks { Shielded, Cloaked, Turbo, Hardened } // right: appended, nothing moves
+```
+
+Enums insert anywhere because they are name hashed. Flags append at the end
+because they are positional. Two declarations, two laws. Removing a flags
+variant frees no bit either, so retire the name and keep the position. Part 10's
+baseline turns this law into a compile error.
+
+### Where tables stand next to types
+
+Edit a table, add fields, grow enums, reshape at will, and your protocol id
+**does not move**. Tables never touch it, and packets never pay for tolerance.
+The costs live where the tolerance lives: a table's wire is byte granular
+rather than bit packed, 42 bytes here against Part 3's three, and the read
+walks and matches ids instead of streaming bits. A fixed-size table like this
+one still allocates nothing and stays a plain struct. What "fixed size" means,
+and what the other class costs, is Part 8's story.
+
+Every target generates the table surface:
+
+```
+$ for l in c cpp cs dart elixir go java js rust; do printf "%-8s " $l; schema generate --lang $l --out /tmp/gg-$l . && echo ok; done
+c        ok
+cpp      ok
+cs       ok
+dart     ok
+elixir   ok
+go       ok
+java     ok
+js       ok
+rust     ok
+```
+
+Every scalar the packet wire carries rides in a table too, `fixed`, `ufixed`
+and the 128-bit integers included. Two structural rules stand: a `type` cannot
+reference a table, because packets stay exact match while a table may reference
+types freely, and a table cannot nest itself by value.
+
+**You now have** a save format. Write it with any build of Starlight, read it
+with any other, and every difference between them is absorbed, counted and
+reported.
