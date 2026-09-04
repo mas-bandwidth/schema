@@ -24,7 +24,7 @@ func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	}
 	// the UNBOUNDED ARRAY is OWED in this target (docs/SPEC-TABLES.md §2.9):
 	// the reference lands the codec first and registers through
-	// registerListCarrier when it does. Until then it refuses one by name
+	// registers a carrier when it does. Until then it refuses one by name
 	// rather than emitting an array whose elements it never laid out.
 	if err := refuseLists(u, "cpp"); err != nil {
 		return nil, err

@@ -55,7 +55,7 @@ table Save
 }
 `
 
-// the section's own text, `null` slot and shared `&node` included
+// the section's own text, with a `null` slot and a shared `&node`.
 const listText = `{
   "placements": [ { "x": 1.0, "y": 2.0, "model": 3 },
                   { "x": 3.0, "y": 4.0, "model": 7 } ],
