@@ -95,15 +95,18 @@ instances: a backend with no variable class still answers the wire surface over
 every FIXED instance, and a leg that failed the whole surface for them would say
 nothing about what it does carry.
 
-**THE REFERENCE LEG MAY NOT ANSWER ABSENT**, and that rule is what makes
-per-case absence safe rather than a place to hide: an absence from the
+**THE REFERENCE LEG MAY NOT ANSWER ABSENT, AT EITHER GRAIN**, and that rule is
+what makes absence safe rather than a place to hide: an absence from the
 reference leg — `cpp`, first in the discovered registry, and the one
 `conformance-pin` takes its pins from — is the corpus losing its own
-expectation, not a port's missing feature. It belongs to that registry alone:
-a run handed a SUBSTITUTED one with
-`--drivers`, as the big-endian leg does for its single Go driver, is one leg of
-a port and not the matrix, so its first line is not the reference and its
-absences are ordinary.
+expectation, not a port's missing feature. All three ways of saying it are a
+FAILURE there, named in the matrix and in the failure list: a surface left out
+of `list`, exit code 2 on a surface, and `<case>.absent` for a single case. The
+harness prints `FAIL absent` for the two coarse ones, and the success footer
+cannot print beside any of them. The rule belongs to that registry alone: a run
+handed a SUBSTITUTED one with `--drivers`, as the big-endian leg does for its
+single Go driver, is one leg of a port and not the matrix, so its first line is
+not the reference and its absences are ordinary.
 
 **THE MATRIX IS THE COMPLETION TRACKER.** Green cells over total cells is what
 "done" means for the tables layer, and an absence — per surface or per case — is

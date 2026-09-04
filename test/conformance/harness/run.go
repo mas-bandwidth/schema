@@ -12,6 +12,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -300,7 +301,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 	return out, nil
 }
 
-func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only string) (bool, error) {
+func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only string) (bool, error) {
 	drivers, discovered, err := loadDrivers(driversPath)
 	if err != nil {
 		return false, err
@@ -329,14 +330,16 @@ func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, onl
 	results := map[string]map[string]*result{}
 	var langs []string
 	for i, d := range drivers {
-		// THE REFERENCE LEG MAY NOT ANSWER ABSENT. It is the first driver in
-		// the COMMITTED registry — the discovered one, where the reference
-		// sorts first — and the one `conformance-pin` takes its pins from, so
-		// an absence there is not a port's missing feature: it is the corpus
-		// losing its own expectation, quietly, while every other leg keeps
-		// comparing against nothing. Per-case absence is safe exactly because
-		// this rule stands beside it, and a SUBSTITUTED registry is one leg of
-		// a port rather than the matrix, so the rule does not reach it.
+		// THE REFERENCE LEG MAY NOT ANSWER ABSENT, AT EITHER GRAIN. It is the
+		// first driver in the COMMITTED registry — the discovered one, where
+		// the reference sorts first — and the one `conformance-pin` takes its
+		// pins from, so an absence there is not a port's missing feature: it is
+		// the corpus losing its own expectation, quietly, while every other leg
+		// keeps comparing against nothing. That holds whether the absence is a
+		// whole SURFACE (left out of `list`, or exit code 2) or a single CASE
+		// (`<case>.absent`); per-case absence is safe exactly because this rule
+		// stands beside it. A SUBSTITUTED registry is one leg of a port rather
+		// than the matrix, so the rule does not reach it.
 		reference := i == 0 && discovered
 		if only != "" && d.lang != only {
 			continue
@@ -353,6 +356,9 @@ func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, onl
 			results[d.lang][s] = r
 			if !listed[s] {
 				r.absent = true
+				if reference {
+					r.failures = append(r.failures, absentReference(s, "`list` does not name it"))
+				}
 				continue
 			}
 			out := filepath.Join(work, "out", d.lang, s)
@@ -368,6 +374,9 @@ func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, onl
 			}
 			if code == 2 {
 				r.absent = true
+				if reference {
+					r.failures = append(r.failures, absentReference(s, "the driver exited 2"))
+				}
 				continue
 			}
 			if code != 0 {
@@ -401,7 +410,17 @@ func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, onl
 		}
 	}
 
-	return report(langs, results), nil
+	return report(w, langs, results), nil
+}
+
+// absentReference is what the REFERENCE leg's absence reads as in the failure
+// list: the surface, how it went absent, and why that is red where the same
+// answer from a port is an ordinary missing feature.
+func absentReference(surface, how string) string {
+	return fmt.Sprintf(
+		"the REFERENCE leg is ABSENT on the whole %s surface (%s) — an absence here is the corpus "+
+			"losing its own expectation, not a missing feature; every other leg would keep comparing "+
+			"against a surface nothing pins", surface, how)
 }
 
 func listSurfaces(d driver, manifest string) (map[string]bool, error) {
@@ -452,8 +471,11 @@ func describeDiff(name string, want, got []byte) string {
 	return name + ": differs"
 }
 
-func report(langs []string, results map[string]map[string]*result) bool {
-	ok := true
+// report prints the matrix and returns the verdict. THE VERDICT IS THE FAILURE
+// LIST and nothing else, so that a cell printing something other than FAIL — an
+// ABSENT one — cannot lose a failure recorded against it and the success footer
+// cannot print beside one.
+func report(w io.Writer, langs []string, results map[string]map[string]*result) bool {
 	// wide enough for "pass 111/111 +4a", the widest cell the matrix can print
 	width := 18
 	for _, s := range surfaces {
@@ -461,35 +483,39 @@ func report(langs []string, results map[string]map[string]*result) bool {
 			width = len(s) + 2
 		}
 	}
-	fmt.Printf("\nTABLES CONFORMANCE — surface x language\n\n")
-	fmt.Printf("%-14s", "surface")
+	fmt.Fprintf(w, "\nTABLES CONFORMANCE — surface x language\n\n")
+	fmt.Fprintf(w, "%-14s", "surface")
 	for _, l := range langs {
-		fmt.Printf("%-*s", width, l)
+		fmt.Fprintf(w, "%-*s", width, l)
 	}
-	fmt.Println()
-	fmt.Printf("%s\n", strings.Repeat("-", 14+width*len(langs)))
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "%s\n", strings.Repeat("-", 14+width*len(langs)))
 	for _, s := range surfaces {
-		fmt.Printf("%-14s", s)
+		fmt.Fprintf(w, "%-14s", s)
 		for _, l := range langs {
 			r := results[l][s]
 			switch {
-			case r.absent:
-				fmt.Printf("%-*s", width, "absent")
+			case len(r.failures) > 0 && r.absent:
+				// the REFERENCE leg's absence: what it did, and what that is.
+				// "FAIL 0/13" would claim it ran the surface and answered
+				// nothing, and it never ran the surface at all.
+				fmt.Fprintf(w, "%-*s", width, "FAIL absent")
 			case len(r.failures) > 0:
-				fmt.Printf("%-*s", width, fmt.Sprintf("FAIL %d/%d", r.pass, r.total))
-				ok = false
+				fmt.Fprintf(w, "%-*s", width, fmt.Sprintf("FAIL %d/%d", r.pass, r.total))
+			case r.absent:
+				fmt.Fprintf(w, "%-*s", width, "absent")
 			case r.missing > 0:
 				// what it answered, and what it said it cannot: the cell is the
 				// completion tracker, so an absence stays visible rather than
 				// being rounded away into a smaller total
-				fmt.Printf("%-*s", width, fmt.Sprintf("pass %d/%d +%da", r.pass, r.total-r.missing, r.missing))
+				fmt.Fprintf(w, "%-*s", width, fmt.Sprintf("pass %d/%d +%da", r.pass, r.total-r.missing, r.missing))
 			default:
-				fmt.Printf("%-*s", width, fmt.Sprintf("pass %d/%d", r.pass, r.total))
+				fmt.Fprintf(w, "%-*s", width, fmt.Sprintf("pass %d/%d", r.pass, r.total))
 			}
 		}
-		fmt.Println()
+		fmt.Fprintln(w)
 	}
-	fmt.Println()
+	fmt.Fprintln(w)
 
 	var lines []string
 	for _, l := range langs {
@@ -501,10 +527,9 @@ func report(langs []string, results map[string]map[string]*result) bool {
 	}
 	sort.Strings(lines)
 	if len(lines) > 0 {
-		fmt.Printf("FAILURES\n%s\n\n", strings.Join(lines, "\n"))
+		fmt.Fprintf(w, "FAILURES\n%s\n\n", strings.Join(lines, "\n"))
+		return false
 	}
-	if ok {
-		fmt.Printf("tables conformance: every registered surface passes\n")
-	}
-	return ok
+	fmt.Fprintf(w, "tables conformance: every registered surface passes\n")
+	return true
 }
