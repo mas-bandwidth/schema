@@ -2041,6 +2041,19 @@ any other.
 - It is the same order `Lock` lays a region out in (§6.3), because it is
   the same walk. Neither depends on the other: nothing that checks a
   region reads that order (§7).
+- **The order is pinned by a value that tells it from the nearest wrong
+  one.** The walk is easy to write as three grouped passes — every pointer
+  field, then every by-value nesting, then every union arm — and that walk
+  is self-consistent: it re-reads its own bytes, and it numbers every other
+  value in the corpus exactly as this one does, until a by-value edge
+  declared BEFORE a pointer field reaches a shared node first.
+  `stream_arm_first` (streamdemo) is that value: its union arm, declared
+  before its pointer fields, reaches three nodes that `parts` then names in
+  reverse, so the two orders write different bytes from one value. Its wire
+  is the tool's, and the reference is held to it on every surface a
+  numbering reaches — the wire, the text read back, the cook (§7.6) — and
+  in its own battery's region layout. A port carries the walk in this one
+  shape (docs/PORTING.md, M15).
 
 **The node table rides under a RESERVED field id**, framed so that a
 reader which cannot name it skips it and says so:

@@ -3259,7 +3259,8 @@ inline bool AlbumLoadBody( TableReader & r, const TableNodeMap & nodes, Album & 
     }
 }
 
-// SettingsNumber: number everything Settings POINTS AT, in first-visit order.
+// SettingsNumber: number everything Settings POINTS AT, in first-visit order —
+// the fields in declaration order, a by-value edge descended in place.
 // A reference to an entry whose descent is still OPEN is a data cycle,
 // named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
 template <typename Ctx>
@@ -3298,7 +3299,8 @@ inline bool SettingsPack( const Ctx & ctx, TablePackMap & seen, const Settings &
     return true;
 }
 
-// ListNodeNumber: number everything ListNode POINTS AT, in first-visit order.
+// ListNodeNumber: number everything ListNode POINTS AT, in first-visit order —
+// the fields in declaration order, a by-value edge descended in place.
 // A reference to an entry whose descent is still OPEN is a data cycle,
 // named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
 template <typename Ctx>
@@ -3407,7 +3409,8 @@ inline bool ListNodePack( const Ctx & ctx, TablePackMap & seen, const ListNode &
     return true;
 }
 
-// TreeNodeNumber: number everything TreeNode POINTS AT, in first-visit order.
+// TreeNodeNumber: number everything TreeNode POINTS AT, in first-visit order —
+// the fields in declaration order, a by-value edge descended in place.
 // A reference to an entry whose descent is still OPEN is a data cycle,
 // named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
 template <typename Ctx>
@@ -3589,7 +3592,8 @@ inline bool TreeNodePack( const Ctx & ctx, TablePackMap & seen, const TreeNode &
     return true;
 }
 
-// LayerNumber: number everything Layer POINTS AT, in first-visit order.
+// LayerNumber: number everything Layer POINTS AT, in first-visit order —
+// the fields in declaration order, a by-value edge descended in place.
 // A reference to an entry whose descent is still OPEN is a data cycle,
 // named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
 template <typename Ctx>
@@ -3698,7 +3702,8 @@ inline bool LayerPack( const Ctx & ctx, TablePackMap & seen, const Layer & src, 
     return true;
 }
 
-// SceneNumber: number everything Scene POINTS AT, in first-visit order.
+// SceneNumber: number everything Scene POINTS AT, in first-visit order —
+// the fields in declaration order, a by-value edge descended in place.
 // A reference to an entry whose descent is still OPEN is a data cycle,
 // named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
 template <typename Ctx>
@@ -4051,12 +4056,17 @@ inline bool ScenePack( const Ctx & ctx, TablePackMap & seen, const Scene & src, 
     return true;
 }
 
-// DepotNumber: number everything Depot POINTS AT, in first-visit order.
+// DepotNumber: number everything Depot POINTS AT, in first-visit order —
+// the fields in declaration order, a by-value edge descended in place.
 // A reference to an entry whose descent is still OPEN is a data cycle,
 // named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
 template <typename Ctx>
 inline bool DepotNumber( const Ctx & ctx, TableNumbering & numbering, const Depot & value )
 {
+    for ( int32_t i = 0; i < 2; i++ ) // banks
+    {
+        if ( !LayerNumber( ctx, numbering, value.banks.slots[i] ) ) { return false; }
+    }
     {
         const ListNode * pointee = ListNodeAt( ctx, value.head ); // head
         if ( pointee != NULL )
@@ -4083,10 +4093,6 @@ inline bool DepotNumber( const Ctx & ctx, TableNumbering & numbering, const Depo
             }
         }
     }
-    for ( int32_t i = 0; i < 2; i++ ) // banks
-    {
-        if ( !LayerNumber( ctx, numbering, value.banks.slots[i] ) ) { return false; }
-    }
     return true;
 }
 
@@ -4098,6 +4104,12 @@ template <typename Ctx>
 inline int64_t DepotPackMeasure( const Ctx & ctx, TablePackMap & seen, const Depot & value )
 {
     int64_t bytes = 0;
+    for ( int32_t i = 0; i < 2; i++ ) // banks
+    {
+        int64_t inner = LayerPackMeasure( ctx, seen, value.banks.slots[i] );
+        if ( inner < 0 ) { return -1; }
+        bytes += inner;
+    }
     {
         const ListNode * pointee = ListNodeAt( ctx, value.head ); // head
         if ( pointee != NULL )
@@ -4119,12 +4131,6 @@ inline int64_t DepotPackMeasure( const Ctx & ctx, TablePackMap & seen, const Dep
             }
         }
     }
-    for ( int32_t i = 0; i < 2; i++ ) // banks
-    {
-        int64_t inner = LayerPackMeasure( ctx, seen, value.banks.slots[i] );
-        if ( inner < 0 ) { return -1; }
-        bytes += inner;
-    }
     return bytes;
 }
 
@@ -4141,6 +4147,10 @@ template <typename Ctx>
 inline bool DepotPack( const Ctx & ctx, TablePackMap & seen, const Depot & src, Depot & dst, uint8_t * base, int64_t capacity, int64_t & used )
 {
     memcpy( (void *) &dst, (const void *) &src, sizeof( Depot ) ); // trivially copyable, by construction
+    for ( int32_t i = 0; i < 2; i++ ) // banks
+    {
+        if ( !LayerPack( ctx, seen, src.banks.slots[i], dst.banks.slots[i], base, capacity, used ) ) { return false; }
+    }
     {
         dst.head.value = 0; // head
         const ListNode * pointee = ListNodeAt( ctx, src.head );
@@ -4167,19 +4177,19 @@ inline bool DepotPack( const Ctx & ctx, TablePackMap & seen, const Depot & src, 
             }
         }
     }
-    for ( int32_t i = 0; i < 2; i++ ) // banks
-    {
-        if ( !LayerPack( ctx, seen, src.banks.slots[i], dst.banks.slots[i], base, capacity, used ) ) { return false; }
-    }
     return true;
 }
 
-// AlbumNumber: number everything Album POINTS AT, in first-visit order.
+// AlbumNumber: number everything Album POINTS AT, in first-visit order —
+// the fields in declaration order, a by-value edge descended in place.
 // A reference to an entry whose descent is still OPEN is a data cycle,
 // named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
 template <typename Ctx>
 inline bool AlbumNumber( const Ctx & ctx, TableNumbering & numbering, const Album & value )
 {
+    { // marker (nested by value)
+        if ( !MarkerNumber( ctx, numbering, value.marker ) ) { return false; }
+    }
     {
         const Marker * pointee = MarkerAt( ctx, value.pin ); // pin
         if ( pointee != NULL )
@@ -4232,9 +4242,6 @@ inline bool AlbumNumber( const Ctx & ctx, TableNumbering & numbering, const Albu
             }
         }
     }
-    { // marker (nested by value)
-        if ( !MarkerNumber( ctx, numbering, value.marker ) ) { return false; }
-    }
     return true;
 }
 
@@ -4246,6 +4253,11 @@ template <typename Ctx>
 inline int64_t AlbumPackMeasure( const Ctx & ctx, TablePackMap & seen, const Album & value )
 {
     int64_t bytes = 0;
+    { // marker (nested by value)
+        int64_t inner = MarkerPackMeasure( ctx, seen, value.marker );
+        if ( inner < 0 ) { return -1; }
+        bytes += inner;
+    }
     {
         const Marker * pointee = MarkerAt( ctx, value.pin ); // pin
         if ( pointee != NULL )
@@ -4288,11 +4300,6 @@ inline int64_t AlbumPackMeasure( const Ctx & ctx, TablePackMap & seen, const Alb
             }
         }
     }
-    { // marker (nested by value)
-        int64_t inner = MarkerPackMeasure( ctx, seen, value.marker );
-        if ( inner < 0 ) { return -1; }
-        bytes += inner;
-    }
     return bytes;
 }
 
@@ -4309,6 +4316,9 @@ template <typename Ctx>
 inline bool AlbumPack( const Ctx & ctx, TablePackMap & seen, const Album & src, Album & dst, uint8_t * base, int64_t capacity, int64_t & used )
 {
     memcpy( (void *) &dst, (const void *) &src, sizeof( Album ) ); // trivially copyable, by construction
+    { // marker (nested by value)
+        if ( !MarkerPack( ctx, seen, src.marker, dst.marker, base, capacity, used ) ) { return false; }
+    }
     {
         dst.pin.value = 0; // pin
         const Marker * pointee = MarkerAt( ctx, src.pin );
@@ -4360,9 +4370,6 @@ inline bool AlbumPack( const Ctx & ctx, TablePackMap & seen, const Album & src, 
                 TablePackMapClose( seen, (const void *) pointee, slot );
             }
         }
-    }
-    { // marker (nested by value)
-        if ( !MarkerPack( ctx, seen, src.marker, dst.marker, base, capacity, used ) ) { return false; }
     }
     return true;
 }
