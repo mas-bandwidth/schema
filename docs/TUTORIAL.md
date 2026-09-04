@@ -3051,7 +3051,8 @@ arrive through `new_ship_state()`, because C structs have no member
 initializers. Each target gets its own idiom. Note the read slack too: the C
 buffer is `SHIP_STATE_MAX_BYTES + 8`, since C and C++ read 64-bit windows.
 
-**The table wire.** Part 6's C++ saved `ship.bin`, and C loads it:
+**The table wire, and where it stands right now.** Part 6's C++ saved
+`ship.bin`, and C loads it with the same surface in C spelling:
 
 ```c
     TableReport report = { 0, 0, 0, 0, 0 };
@@ -3062,17 +3063,41 @@ buffer is `SHIP_STATE_MAX_BYTES + 8`, since C and C++ read 64-bit windows.
 
 ```
 $ ./ctable
-c load: ok=1 name=Kestrel health=250 armor=8 type=Corvette unknown=0
+c load: ok=0 bytes=89 unknown=1 kind_mismatch=0 clamped=0 malformed=1
 ```
 
-Same surface, C spelling, same report counters. A table's defaults arrive
-through `ship_config_reset( &value )` in place rather than through a
+That is not the answer this part wants, and it is worth reading rather than
+skipping. The table wire's framing is being rewritten, the C++ reference is on
+the new form, and the eight ports have not moved to it yet. C++ reads the same
+89 bytes cleanly:
+
+```
+$ ./selfload
+c++ load: ok=1 name=Kestrel health=250 armor=8 unknown=0 kind_mismatch=0 malformed=0 refused=0
+```
+
+and Go answers the way C does:
+
+```
+$ ./goread ship.bin
+go load: ok=false name= health=100 armor=1 unknown=1 malformed=true
+```
+
+Note **what** the ports do with bytes they cannot read: they report `malformed`
+and return false. Nothing is misdecoded and no field takes a wrong value, which
+is the property the wire's design is actually for. Two other seams sit on the
+same line: only C++ carries the report's sixth member, the refusal verdict Part
+6 introduced, and the ports' reports are still the five counters.
+
+Until the ports land, treat the table wire as C++'s within one build and reach
+for the packet wire, the cook or the block when you need another language in
+the loop today. All three of those cross languages now, and Part 12 showed the
+block doing it by pointer.
+
+Note the shape of the C table surface while you are here. A table's defaults
+arrive through `ship_config_reset( &value )` in place rather than through a
 `new_<table>()` returning a value, so the two declaration kinds have two
 spellings for the same idea in this target.
-
-Part 12 already showed the third wire, the block, crossing C++ to C by pointer.
-Cook, block, JSON and reflection all ride the same goldens, which keep every
-port byte identical to the C++ reference.
 
 ### Reflection: tools without hand-written mirrors
 
@@ -3087,8 +3112,8 @@ RTTI and no schema files shipped at runtime:
     for ( int32_t i = 0; i < type->num_fields; i++ )
     {
         const TableFieldInfo & field = type->fields[i];
-        printf( "  %-14s %-10s id=0x%04x kind=%-2d @%u", field.name, field.type_name,
-            field.id, field.kind, field.offset );
+        printf( "  %-14s %-10s id=0x%016llx kind=%-2d @%u", field.name, field.type_name,
+            (unsigned long long) field.id, field.kind, field.offset );
         if ( field.has_range ) { printf( "  [%g, %g]", field.range_min, field.range_max ); }
         for ( int64_t v = 1; field.enum_name && v <= field.enum_max; v++ )
         {
@@ -3101,11 +3126,11 @@ RTTI and no schema files shipped at runtime:
 ```
 $ ./reflect
 table ShipConfig (56 bytes, 5 fields)
-  display_name   string     id=0xcb8b kind=12 @0
-  max_health     float32    id=0x7770 kind=10 @40
-  max_speed      float32    id=0xae53 kind=10 @44
-  armor          int32      id=0x7c9d kind=4  @48  [0, 10]
-  ship_type      ShipType   id=0x38e9 kind=7  @52 Fighter Freighter Corvette
+  display_name   string     id=0x2d21d7cd66bd5a5d kind=12 @0
+  max_health     float32    id=0xbe5aae184d021138 kind=10 @40
+  max_speed      float32    id=0x65052cb2d1409505 kind=10 @44
+  armor          int32      id=0xd19988b67e699194 kind=4  @48  [0, 10]
+  ship_type      ShipType   id=0x1f7d2e86a2e77268 kind=30 @52 Fighter Freighter Corvette
 ```
 
 The descriptor carries more than the walk above prints: the JSON key beside the
