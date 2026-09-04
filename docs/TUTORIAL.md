@@ -53,7 +53,7 @@ Clone the repository and run `make`:
 
 ```
 $ make
-go build -ldflags "-X github.com/mas-bandwidth/schema/v2/internal/version.version=v2.4.0-143-g1e3c53b" -o bin/schema ./cmd/schema
+go build -ldflags "-X github.com/mas-bandwidth/schema/v2/internal/version.version=v2.4.0-146-gb74a7d4" -o bin/schema ./cmd/schema
 ```
 
 That is the whole install. `make` builds `bin/schema` and nothing else: no
@@ -63,7 +63,7 @@ binary what it is:
 
 ```
 $ schema version
-schema v2.4.0-143-g1e3c53b (go1.27.0)
+schema v2.4.0-146-gb74a7d4 (go1.27.0)
 ```
 
 Write that number down. The language moves, and a diagnostic that cites a
