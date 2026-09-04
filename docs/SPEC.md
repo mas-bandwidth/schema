@@ -129,6 +129,11 @@ the churn and introduce the dangerous direction: any wire-affecting fact the
 walk forgot becomes two incompatible builds shaking hands. The projection is
 TEXT: what the id depends on can be printed, read and diffed, and a fact
 missing from it is a review question rather than an implementation detail.
+**The compiler now reads one comment kind** — §4.1's `///` doc block — and
+the projection is exactly why that is safe: a source-text hash would have
+turned every edit to an author's prose into a coordinated redeploy, while a
+projection carries the facts the bytes depend on and a doc comment is not
+one of them (Excluded, below).
 
 **Included — each fact moves the wire, for every declaration the closure
 below carries:** the package; every type's field order; field NAMES; type
@@ -165,10 +170,14 @@ order is spelled in names and nothing else. That is the price and it is free:
 both sides of a connection redeploy together, so the rename buys the redeploy
 that was already happening.
 
-**Excluded — each has no effect on the bytes:** comments and whitespace; file
-names, file layout and declaration order; `const`
-declarations (their values are already resolved into the bounds above); type
-tags and native-type attributes.
+**Excluded — each has no effect on the bytes:** comments and whitespace, DOC
+comments among them (§4.1); file names, file layout and declaration order;
+`const` declarations (their values are already resolved into the bounds
+above); TAGS, wherever they are written — on a declaration, a field, a
+variant or an arm (§4.2) — and native-type attributes. The two exclusions
+that carry a promise are the last: a doc comment and a tag are metadata a
+tool reads, never a fact a codec reads, so annotating a shipped schema costs
+no redeploy and is safe to do at any time.
 
 **A union with a `table` arm is excluded WHOLE**, as the table itself is. A
 table has no packet wire, so an arm that names one has no packet encoding to
@@ -379,13 +388,63 @@ from this projection rather than carried in it.
 ### 4.1 Lexical structure
 
 - **Encoding:** UTF-8 source; a UTF-8 BOM is rejected at parse. `//` line
-  comments and `/* */` block comments (non-nesting). Comments are invisible to
-  code generation and preserved by `schemafmt`.
-- **Doc comments are deferred**, with the design pinned for when they land: a
-  `//` comment block whose last line immediately precedes a declaration,
-  field, or enum variant — no blank line between — becomes that item's doc
-  comment, carried through the IR and emitted in each target's own idiom
-  (`///` Rust, `/// <summary>` C#, preceding-line `//` Go, `//` C++).
+  comments and `/* */` block comments (non-nesting). Comments are invisible
+  to code generation and preserved by `schemafmt` — with the one exception
+  below, the `///` DOC comment, which is the only comment the compiler reads
+  and the only one an author opts into.
+- **Doc comments are OPT-IN, and the marker is `///`.** A DOC COMMENT is a
+  contiguous run of `///` lines, each carrying nothing but the comment, whose
+  last line immediately precedes a declaration, a field, an enum or flags
+  variant, or a union arm. **A `//` block above the same item stays an
+  ordinary comment and never reaches a descriptor**, and that is the whole
+  reason the marker exists: a schema tree is full of working notes written
+  directly above things — 166 such lines, above a declaration, a field, a
+  variant or an arm, in 40 of this repo's 47 corpus files — and under an
+  implicit rule every one of them would become a descriptor string, a comment
+  in nine generated languages, and read-only data in the binary of every game
+  that links the table headers (SPEC-TABLES.md §8.1). What a build carries is
+  what an author asked it to carry. The marker costs the language nothing:
+  `///` is a `//` line by ordinary lexing, so a reader that does not know the
+  rule sees a comment, and `schemafmt` and every editor already treat it as
+  one. A `/* */` block is never a doc comment in any spelling.
+- **Every `///` line is part of a doc comment or is REFUSED BY NAME**, and
+  that one rule closes every trap at once, because silently dropping an
+  author's opt-in is the outcome opt-in exists to prevent. Refused: a `///`
+  block above `package`, above a `const( )`, `reserved( )` or `align` item,
+  or above a closing brace, none of which has a descriptor row to carry one
+  (SPEC-TABLES.md §8) — "nothing here carries a doc comment; write `//`"; a
+  `///` block separated from its item by a blank line or by an ordinary `//`
+  line — "a doc comment touches the item it documents"; and a `///` that
+  TRAILS code on the item's own line, `health int16 /// hp` or one sitting
+  past a qualification section (§4.2) — "a doc comment stands on its own line
+  above the item". Each is a diagnostic naming the spelling that works, and
+  `//` is always that spelling.
+- **The doc TEXT is the block verbatim, with the marker removed.** Each line
+  contributes what follows its `///`, with at most one leading space dropped
+  and trailing whitespace dropped; the lines join with a single newline and
+  the text ends without one. Nothing else is interpreted — no markup, no
+  keywords, no reflow, no escape sequences — so what the author wrote is what
+  a tool prints, two leading spaces and an empty line in the middle included.
+  The text rides the IR into the `doc` descriptor column (SPEC-TABLES.md
+  §8.1, §8.3).
+- **There is ONE escaping rule, and it is the string literal's.** The text
+  reaches a descriptor column as a string literal, so each target escapes it
+  by its own language's rule and by nothing else — a quote, a backslash, and
+  the newline that joins the lines are what that rule covers. It reaches
+  GENERATED CODE as ordinary LINE comments above the declaration: `//` in
+  C++, C, C#, Go, JS and Java, `///` in Rust and Dart. A line comment ends
+  where the line does, so a `*/` or a `<` in an author's text needs no rule
+  at all — which is why no target emits `/** */` or a `/// <summary>`
+  element, and why a C# reader gets the text as comments rather than as XML
+  documentation. **Elixir carries the descriptor column alone for a field and
+  for a variant** — a struct field and an enum variant have no attribute to
+  hang a doc on — and emits `@moduledoc` / `@typedoc` for a declaration.
+- **A doc comment moves nothing.** It is excluded from the wire shape
+  projection (§3.1) and from the cook projection (SPEC-TABLES.md §20.2), so
+  it moves neither the protocol id nor the build version; it enters no
+  baseline row (SPEC-TABLES.md §18); and it is not a member of the silent
+  class (SPEC-TABLES.md §4.1), because a comment cannot change what a stored
+  byte means.
 - **Identifiers:** `[A-Za-z_][A-Za-z0-9_]*`. Conventions: type and enum names
   `UpperCamelCase`, enum variants `UpperCamelCase`, fields
   `lower_snake_case`, constants `UpperCamelCase`. The compiler does not
@@ -438,8 +497,19 @@ from this projection rather than carried in it.
   below, a trailing `NL` is satisfied by an actual newline or by the
   immediately following `}` — and **end-of-file synthesizes a terminator**,
   so a file without a trailing newline still parses. Within an enum or flags
-  body, newlines around commas are ordinary whitespace (suppression after
-  `,`) — variants are not items and need no terminator.
+  body a variant is separated from the next by a COMMA or by a NEWLINE. The
+  newline earns its place at one line kind: a variant carrying a
+  qualification section is terminated by the newline like every other pipe,
+  so it is the last variant on its line and no comma can follow it (§4.2).
+  **Two lexer rules keep every comma list ever written parsing exactly as it
+  did.** A newline immediately AFTER a `,` is suppressed, as it always was;
+  and inside a variant list a newline immediately BEFORE a `,` is suppressed
+  too, so a list that puts its separators at the head of the line still sees
+  one separator rather than two. **A `}` on the same line as a QUALIFIED
+  variant is refused by name** — `{ Laser | beam }` draws "a qualified
+  variant ends its own line: write the list one variant per line" — because
+  the pipe claims the rest of the line and the brace would be arguing with
+  it. Both rules have a named negative control (§7.2).
 
 ### 4.2 Grammar
 
@@ -455,36 +525,46 @@ Flags       = "flags" ident ( VariantList
             | AttrSection NL VariantList ) NL .                // "flags" contextual, §4.2;
                                                                    // a qualified declaration's
                                                                    // body opens on the NEXT line
-Union       = "union" ident UnionBlock NL .                        // "union" contextual, §4.8
+Union       = "union" ident ( UnionBlock
+            | AttrSection NL UnionBlock ) NL .                     // "union" contextual, §4.8;
+                                                                   // the qualification carries TAGS
+                                                                   // and nothing else (§4.2)
 UnionBlock  = "{" { UnionVariant } "}" .
-UnionVariant = ident [ ArmType [ AttrSection ] ] NL .              // AN ARM IS A FIELD LINE (§4.8):
+UnionVariant = ident [ ArmType ] [ AttrSection ] NL .              // AN ARM IS A FIELD LINE (§4.8):
                                                                    // the arm's name, any field type,
                                                                    // and the value-shaping attributes
                                                                    // that type takes. A BARE NAME is an
-                                                                   // arm with NO PAYLOAD. No "= Default",
-                                                                   // no "?", no was/json: each is
-                                                                   // refused at the arm (§4.8,
-                                                                   // SPEC-TABLES.md §2.6)
+                                                                   // arm with NO PAYLOAD, and it takes a
+                                                                   // qualification of its own — tags
+                                                                   // only, since it shapes no value.
+                                                                   // No "= Default", no "?", no
+                                                                   // was/json: each is refused at the
+                                                                   // arm (§4.8, SPEC-TABLES.md §2.6)
 ArmType     = [ "[" Bound "]" ] Scalar .                           // the field Type without its "?".
                                                                    // An arm that names neither a
                                                                    // declared `type` nor nothing at all
                                                                    // is legal inside a table closure
                                                                    // only (SPEC-TABLES.md §2.6)
 Package     = "package" ident NL .
-Const       = "const" ident [ ConstType ] "=" ConstExpr NL .
+Const       = "const" ident [ ConstType ] "=" ConstExpr [ AttrSection ] NL .
 ConstType   = IntType | "float32" | "float64" .
 ConstExpr   = IntExpr | FloatExpr .
 Enum        = "enum" ident ( VariantList
             | AttrSection NL VariantList ) NL .
-VariantList = "{" [ ident { "," ident } [ "," ] ] "}" .            // commas; trailing comma OK
+VariantList = "{" [ Variant { VariantSep Variant } [ VariantSep ] ] "}" .
+Variant     = ident [ AttrSection ] .                              // the qualification carries TAGS
+                                                                   // and nothing else (§4.2)
+VariantSep  = "," | NL .                                           // a comma, or the newline that
+                                                                   // ends a qualified variant's line;
+                                                                   // a trailing separator is OK
 TypeDecl    = "type" ident ( Block
             | AttrSection NL Block ) NL .               // qualifiers = the type TAG and the
                                                         // cpp_* pair, §4.2
 TableDecl   = "table" ident ( Block
             | AttrSection NL Block ) NL .               // the TABLE wire, SPEC-TABLES.md —
                                                         // a type body, plus pointers and `was`.
-                                                        // A table declaration takes no
-                                                        // qualifier of its own (§4.2)
+                                                        // A table declaration's qualification
+                                                        // carries TAGS and nothing else (§4.2)
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If .
@@ -545,7 +625,9 @@ AttrSection = "|" Attr { "," Attr } .                            // runs to END 
                                                                  // nothing follows a qualification
 Attr        = ident "=" ( ConstExpr | ident | string )           // valued:    min = 0, max = 100,
                                                                  //            cpp_include = "a.h"
-            | ident .                                            // valueless: a type tag (§4.2)
+            | ident .                                            // valueless: a TAG (§4.2) — legal
+                                                                 // in every qualification section,
+                                                                 // in an open namespace
                                                                  // (ident values are keyword-like:
                                                                  // each valued key declares whether
                                                                  // it takes an expression, a word,
@@ -701,19 +783,22 @@ sequence    uint16
   in `foo uint8 // c | min = 0` the `|` is comment text and the field carries
   no qualification.) A `|` with no qualifier before the terminator is a
   parse error ("empty qualification section — write the qualifiers after |
-  or drop it"), and `|` on a line that admits no qualification — a
-  constant or a `union` declaration — is
-  refused with the reason named (`|` is never an operator; the language has
-  no bitwise-or). It cannot wrap: the pipe claims the rest of the line and
-  nothing else can follow it. That **no-exit property is a guarantee**, not
-  an accident — nothing can be appended past the qualifiers, so the
+  or drop it"). **Every declaration line and every declared item admits the
+  section**, because a TAG (below) is legal on all of them: a constant and a
+  `union` declaration take one where they once refused one, and no line kind
+  has to be remembered as the exception. What differs per line is the VALUED
+  vocabulary, which stays closed and per-line exactly as it is. `|` is never
+  an operator; the language has no bitwise-or. It cannot wrap: the pipe
+  claims the rest of the line and nothing else can follow it. That
+  **no-exit property is a guarantee**, not an accident — nothing can be
+  appended past the qualifiers, so the
   definition/qualification partition cannot erode; and the zone right of
   the pipe is deliberately reserved room ("we can get much more creative in
   future after `|` ... if we need to" — the design's stated headroom).
 - **The specified default sits BEFORE the pipe** — `= 1.0` defines what a
   fresh value holds, so it belongs to the definition, not the
   qualification: `w fixed(2, 30) = 1.0 | min = -1, max = 1`.
-- **Declaration lines take the same section**: a type tag or native-type
+- **Declaration lines take the same section**: a tag or a native-type
   binding, an enum's or flags' `max` headroom —
   `type Quat | quat4`, `enum Weapon | max = 15`, `flags Damage | max = 8` —
   and the body brace opens on the next line — with a qualification section
@@ -740,9 +825,15 @@ sequence    uint16
   RETIRED trailing attribute block; the parser refuses it with the `|`
   spelling named. Scalar
   constraints like `min`/`max` apply per element.
-- **Valueless qualifiers** (a type tag, §4.2) and valued keys sit side by
-  side in one flat list — `| vec3, cpp_native = VecMath` — valueless
-  markers first, then valued keys; there is no nested argument syntax.
+- **Valueless qualifiers** (a tag, §4.2) and valued keys sit side by
+  side in one flat list — `| vec3, cpp_native = VecMath` — valueless markers
+  first, then valued keys; there is no nested argument syntax. **That order
+  is a FORMATTER NORMALIZATION, not a refusal** (§7.4): the parser takes the
+  entries in any order and `schema fmt` writes them in this one, because a
+  qualification is a set and an ordering rule the compiler enforced would be
+  a diagnostic that teaches nothing. Canonical output reads
+  `health int16 | ui_tuned, min = 0, max = MaxHealth`, with the open
+  namespace ahead of the closed one.
 - **The line between positional and attribute:** a *size* that defines the
   type's shape stays positional — `bits(64)`, `string(64)`, `wstring(64)`,
   `bytes(N)`, `fixed(I, F)`, array bounds. A *constraint or refinement* of a
@@ -751,14 +842,31 @@ sequence    uint16
   owns its spelling, and familiarity to other languages' readers is not a
   design constraint where clarity is better served ("let's be bold and do
   our own shit! It's a DSL anyway").
-- **The vocabulary is typed and closed per compiler version — an unknown
-  attribute is a compile error**, never a silently ignored string. The
-  vocabulary: integers take `min`/`max` (both together or neither); `float32`
-  takes `min`/`max`/`resolution` (all three together — §4.3: this IS the
-  compressed float); `fixed`/`ufixed`/`int128` take `min`/`max` (required —
-  §4.3); enum declarations take `max`; type declarations take a tag and the
-  `cpp_native`/`cpp_include` pair (below); a field of a **table** body takes
-  `was` (below); and a **table declaration** takes none.
+- **The VALUED vocabulary is typed and closed per compiler version — an
+  unknown valued key is a compile error**, never a silently ignored string.
+  The vocabulary: integers take `min`/`max` (both together or neither);
+  `float32` takes `min`/`max`/`resolution` (all three together — §4.3: this
+  IS the compressed float); `fixed`/`ufixed`/`int128` take `min`/`max`
+  (required — §4.3); enum and flags declarations take `max`; type
+  declarations take the `cpp_native`/`cpp_include` pair (below); a field of a
+  **table** body takes `was` (below) and `json` (SPEC-TABLES.md §16.4); and a
+  **table** declaration, a **union** declaration, a **constant**, an enum or
+  flags **variant** and a union **arm** take no valued key at all. **The
+  VALUELESS half is open at every one of them** — that is the tag, below.
+- **A bare identifier that spells a known valued key is refused by name**,
+  never taken as a tag: `| min` draws "min takes a value: write min = 0". The
+  open namespace must not be able to swallow a typo in the closed one.
+  **The lookup is against the UNION of every valued key the language has, on
+  every line kind** — `min`, `max`, `resolution`, `was`, `json`,
+  `cpp_native`, `cpp_include` — **plus the keys refused by name**
+  (`doc`, `round`; §4.11). It is deliberately not the line's own vocabulary:
+  `| min` on a `string(N)` field, where `min` was never legal, is the exact
+  case a per-line check would wave through as a tag, and one union table
+  spares a reader the question of which line kind forgives which typo.
+  **Reserved words are not identifiers here** (§4.1) and are refused with the
+  word named, so `| table` draws "table is a reserved word" rather than
+  becoming a tag. **A repeated tag on one line is refused by name** too, and
+  so is a tag that repeats a valued key already on the line.
 - **`was = "old_name"` — the rename attribute, table bodies only**
   (SPEC-TABLES.md §5). A table field's wire id is the hash of its name, so a
   bare rename would orphan every byte ever written under the old one; `was`
@@ -769,7 +877,7 @@ sequence    uint16
   edit — field NAMES ride in the projection (§3.1), so renaming a `type`
   field moves the protocol id and both sides redeploy together.
 
-### Type tags — types are the user's; meaning is claimed later
+### Tags — the vocabulary is the user's; meaning is claimed later
 
 **The language pre-defines no composite types** — no built-in vec3, no
 built-in quat, no privileged class list. A user declares a type and may
@@ -795,18 +903,59 @@ type Quat | quat4
 - **The type is entirely the user's** — name, body, component precision. The
   body alone defines storage and wire, like any type; a declared type
   composes anywhere in the unit, order-free.
-- **The tag is one user-chosen identifier, in its own namespace** — any
-  identifier is legal there, unlike field-attribute keys, which stay closed
-  and checked. **In v1 a tag is inert**: parsed, carried through the IR,
-  emitted as an annotation on the generated type, and it changes zero
-  generated code.
+- **A tag is one user-chosen identifier, in its own namespace** — any
+  identifier is legal there, unlike valued attribute keys, which stay closed
+  and checked (a bare identifier spelling one of those keys is refused rather
+  than taken as a tag, above). **A tag is inert**: parsed, carried through
+  the IR, carried into the descriptors (SPEC-TABLES.md §8.1, §8.3), and it
+  changes zero generated wire code.
+- **Every declaration and every declared item may carry tags** — a `type`, a
+  `table`, an `enum`, a `flags`, a `union`, a `const`, a field, an enum or
+  flags variant, and a union arm — because the metadata a game wants to hang
+  on its data is field-level and item-level far more often than it is
+  type-level, and one rule at every line kind is the whole of the mechanism:
+
+  ```
+  const StarterGold = 500 | tuning
+
+  enum Rarity | loot
+  {
+      Common
+      Uncommon
+      Rare      | celebrate
+      Legendary | celebrate
+  }
+
+  table ShipConfig | designer_facing
+  {
+      /// The hull's structural health. A hull at zero is destroyed.
+      health   float32 = 100.0 | ui_slider, min = 0.0, max = 1000.0
+      texture  uint64          | asset_ref
+      nickname string(32)      | localized
+  }
+  ```
+
+- **Tags are ID-NEUTRAL and they change no byte.** They are excluded from the
+  wire shape projection (§3.1) and from the cook projection
+  (SPEC-TABLES.md §20.2), so adding, removing or renaming one moves neither
+  the protocol id nor the build version; they enter no baseline row
+  (SPEC-TABLES.md §18); and they are not in the silent class
+  (SPEC-TABLES.md §4.1), because nothing about a stored byte's meaning is in
+  reach of them. Tagging an existing schema is therefore a free edit, and
+  that is what makes the namespace safe to leave open.
 - **Meaning arrives by claiming.** A future pass — the delta pass first —
   claims a tag and assigns its semantics and generated actions
   (interpolation, prediction, normalization, render mapping). Claiming is an
-  ordinary compiler-version event, and the protocol id never moves for it:
-  tags are excluded from the wire shape projection (§3.1). The claiming pass
-  defines its own shape validation for claimed tags (e.g. `| quat4` requiring
-  four float components) and its own policy toward unclaimed strangers.
+  ordinary compiler-version event, and the protocol id never moves for it.
+  The claiming pass defines its own shape validation for claimed tags (e.g.
+  `| quat4` requiring four float components) and its own policy toward
+  unclaimed strangers. Until a pass claims a tag the compiler does not ask
+  what it means, and a tool that reads the tag out of a descriptor is the
+  claiming pass a project writes for itself.
+- **Declared order is kept**, at every line kind: a tool that lists a
+  declaration's tags lists them as they were written, so a listing is a
+  function of the source and the corpus gate (SPEC-TABLES.md §8.7) has one
+  answer to compare against.
 - The architecture: types on one side; a layer that defines the needed
   actions for those types on the other. v1 ships the types; each schema
   declares its own, and each application's actions bind to them by claiming.
@@ -1264,10 +1413,12 @@ union Value
   `UnionVariant` carries neither. A row is a variant name (field-style
   lower_snake, unique within the union), then the arm's type, then the
   value-shaping attributes that type takes: `| min`, `| max`, a compressed
-  float's range and resolution. **A row that is a BARE NAME is an arm with
-  no payload** (below). **What a row may not take is SPEC-TABLES.md §2.6's
-  list**, each refused by name. A union FIELD likewise takes no
-  attributes and no `= default` (it zero-initializes to None, joining
+  float's range and resolution — plus TAGS, which every declared item takes
+  (§4.2), including a bare-name arm, whose qualification section can hold
+  nothing else. **A row that is a BARE NAME is an arm with no payload**
+  (below). **What a row may not take is SPEC-TABLES.md §2.6's list**, each
+  refused by name. A union FIELD likewise takes no valued
+  attribute and no `= default` (it zero-initializes to None, joining
   arrays, strings, wide strings, bytes and composites in §4.2's no-override
   list).
 - **An arm is any field type, or none.** A variant's payload is what a
@@ -1480,6 +1631,9 @@ NAME rather than falling into a generic parse error:
   of the language; every field of a type is identical on every peer.
 - **`round`** (the attribute) — rounding is not an attribute: it is the one
   fixed-point rule, half away from zero, everywhere (§4.3).
+- **`doc`** (the attribute) — documentation is not an attribute: it is the
+  `///` doc comment above the item (§4.1), and one text has one spelling.
+  `| doc = "..."` is refused with the comment form named.
 
 The projection (§3.1) keeps FROZEN tokens — `table=false message=false` on
 every type line, `round=nearest` on every compressed-float field line — so
@@ -2220,7 +2374,20 @@ The conformance program is seven gates. `make test` runs all of it;
    every diagnostic in the suite asserted by exact message and position. The
    diagnostics suite covers generated-name collisions: companion length/count
    names, the dispatch surface, and the per-declaration generated symbols are
-   claimed names the checker refuses (§4.6).
+   claimed names the checker refuses (§4.6). **Each refusal the annotation
+   rules add carries its accepting twin**, so no case can go green by the
+   checker forgetting it: a `///` block above `package`, above a `const( )`,
+   `reserved( )` or `align` item, and above a closing brace; a `///` block
+   held off its item by a blank line and by a `//` line; and a `///`
+   trailing code on an item's own line — each beside the same text written
+   `//` and accepted as an ordinary comment (§4.1); a `}`
+   on the same line as a qualified variant, beside the two-line spelling
+   accepted; a bare `min` on a `string(N)` field, beside `min = 0` on a
+   ranged integer accepted (§4.2); a reserved word written as a tag; a
+   repeated tag; and a tag repeating a valued key already on the line. **The
+   two variant-list LEXER rules are held here too**: a list whose commas lead
+   their lines parses as one separator per variant rather than two, and a
+   mixed comma-and-newline list parses and re-emits under §7.4's rule 5.
 7. **Golden wire bytes**: per conformance schema, fixed instances with
    checked-in expected wire bytes, every target. This is the one artifact
    that survives a coordinated emitter-plus-oracle change, and a golden-wire
@@ -2261,11 +2428,16 @@ schema file. Rules:
    lines and by comment lines — pad names to align the type column, and pad
    past the longest DEFINITION (the type plus any `= default`) to align the
    `|` qualification column. The same rule aligns `=` in const runs. Single
-   space minimum between columns.
+   space minimum between columns. **A `///` DOC comment does not break the
+   group** (§4.1): it belongs to the field under it rather than standing between two
+   fields, and a run whose every field is documented would otherwise become a
+   run of one-field groups and lose the column the rule exists to produce.
+   Any other comment line breaks the group as before.
 3. **Qualifications**: `| min = 0, max = MaxHealth` — a space each side of
    `|`, spaces around `=`, comma-space between entries. Valueless markers
-   first, then valued keys. A trailing `//` comment survives after the
-   section.
+   first, then valued keys — the PARSER accepts any order and this rule is
+   where the one order comes from (§4.2). A trailing `//` comment survives
+   after the section.
 3b. **Migration is a one-shot mode, not the formatter's default**:
    `schema fmt -migrate` additionally accepts the two RETIRED spellings —
    the trailing `[ ... ]` attribute block (with its default after the
@@ -2281,7 +2453,17 @@ schema file. Rules:
 5. **Enums**: the variant list is one line while it fits (a qualified enum
    is two lines by grammar — the list is the measured unit); the wrap
    trigger is decided at the first multi-line instance (no line-length
-   limit exists).
+   limit exists). **A list in which any variant carries a qualification or a
+   doc comment is one variant per line with NO commas**, the separator being
+   the newline (§4.1), and the `|` column is aligned across the list by rule
+   2. That is the one form in which the comma and the pipe would compete for
+   the end of a line, and the formatter answers it the same way at every
+   list rather than mixing the two spellings inside one. **A MIXED list — a
+   comma after one variant and a newline after the next — is accepted by the
+   parser and normalized here**, to this rule when any variant is qualified
+   or documented and to the comma form otherwise. Two separators is what
+   admitting the newline cost, and the formatter is where that cost is paid
+   rather than in a diagnostic.
 6. **switch/case** (reserved for `switch`'s return): `case` at the same
    indent as its `switch`; a single-item case body inline after the label,
    bodies column-aligned across the cases of one switch; multi-item bodies on
@@ -2354,7 +2536,12 @@ Every row to date is settled, deferred with its design banked, or discarded.
    which is replicant's and serialize.pro's.
 4. ~~`schemafmt` timing~~ — settled: built early, as the parser's first
    consumer; rules in §7.4.
-5. ~~Doc comments~~ — deferred; the design is kept at §4.1.
+5. ~~Doc comments~~ — settled: §4.1, and OPT-IN. A `///` block binds to the
+   declaration, field, variant or arm below it and rides the IR verbatim into
+   the `doc` descriptor column (SPEC-TABLES.md §8) and into line comments in
+   the generated code; a plain `//` block above the same item stays an
+   ordinary comment and reaches nothing. No id moves either way.
+   `| doc = "..."` is refused by name (§4.11) — one text, one spelling.
 6. ~~A root/packet marker~~ — discarded.
 7. ~~Const expressions over enum counts~~ — settled: `E.Max` (§4.2);
    `const NumTeams = Team.Max`. `len(Team)` was declined: it has three
