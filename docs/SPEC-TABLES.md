@@ -506,8 +506,10 @@ order-word check (`test/js-tables/main.mjs`): a file whose magic is intact and
 whose order word records the other order, which is exactly the file a reader
 leaning on one check would open.
 
-**The BLOCK FORM (§2.7, §19) is live in C++, C, C#, Go, Rust, Java and Elixir,
-and READ by JavaScript and Dart**, and it took C++ and C# TOGETHER to land, because the
+**The BLOCK FORM (§2.7, §19) is BUILT by C++ and C, and READ by the other
+seven** — C#, Dart, Elixir, Go, Java, JavaScript and Rust each emit the open
+path, the projection and the accessors, and none emits a fill path — and it
+took C++ and C# TOGETHER to land, because the
 form is an ABI between two languages and one
 language alone cannot hold the gate it exists for (§12.1). C++ emits
 `<Base>Block.h` (the projection, the generated layout asserts, the fill path

@@ -221,7 +221,7 @@ the source list at the end.
 | Conditional groups | `if guard { }` elided when false (SPEC §4.4, §3) | — | — |
 | Units and includes | one `package` per unit, all files compiled together, order-free; cross-file table references form a DAG (SPEC §3.2, §11) | `include`, nested `namespace` (FB-schema) | `import`, `import public`, `package` (PB-editions) |
 | Attributes | closed typed vocabulary right of `\|`; unknown is a compile error; type tags inert until claimed (SPEC §4.2) | user attributes declarable, read via reflection (FB-schema) | custom options with retention and targets (PB-editions) |
-| Doc comments | deferred, design pinned (SPEC §4.1) | `///` into generated code and the binary schema (FB-flatc) | preserved in descriptors' source info |
+| Doc comments | deferred, design pinned (SPEC §4.1) | `///` into generated code and the binary schema (FB-flatc) | the descriptor carries source info — `SourceCodeInfo`, whose `leading_comments` and `trailing_comments` a generator reads (PB-descriptor) |
 | Reserved names | after 3.0.0, a retired list in the baseline | — ; never remove, deprecate instead (FB-evolution) | `reserved` numbers and names (PB-proto3) |
 | Deprecation | — ; removal is free and counted | `(deprecated)`: accessors dropped, slot kept (FB-schema) | `[deprecated = true]` (PB-proto3) |
 | Required | — ; every field optional with a default (§4) | `(required)`, verifier-checked (FB-schema) | removed; `LEGACY_REQUIRED` only (PB-ed-overview) |
@@ -292,7 +292,7 @@ the source list at the end.
 | Classes | fixed and variable derived from the declaration, held by a gate (§2.2) | struct and table declared; a table is always by offset (FB-schema) | one |
 | Performance obligations | the ladder: a fixed table beside its type on the ledger; the block matches hand-written scatter both sides; unexplained slowness is a defect (§12.1) | a benchmarks page | "fast parsing" (PB-overview) |
 | Big-endian targets | C++ proves wire, cook and block on an emulated target; Go, Rust, Java checked | accessors swap (FB-cpp) | neutral by varints (PB-encoding) |
-| Generated code dependencies | C++ tables: C-like, no STL, C headers, hooks for assert, fatal, allocate, release (§13.9) | header-only runtime; STL in the object API (FB-cpp) | `libprotobuf` (PB-message) |
+| Generated code dependencies | C++ tables: C-like, no STL, C headers, hooks for assert, fatal, allocate, release (§13.9) | `flatbuffers/flatbuffers.h` on the include path for generated code; the text and schema parsers link further runtime sources, and the object API uses the STL (FB-cpp) | `libprotobuf` (PB-message) |
 
 ### Validation of untrusted data
 
@@ -310,7 +310,7 @@ the source list at the end.
 |---|---|---|---|
 | Runtime reflection | descriptors in every table's generated header: name, kind, id, offset, bounds, guards, nesting; no schema files, no RTTI (§8.1); the type view and registry specified (§8) | binary schema plus `reflection.h` in C++, basic in C; mini-reflection (FB-IR, FB-support) | descriptors, `Reflection`, `DynamicMessage` (PB-message) |
 | Reflection cost | on the side; a game build never compiles the view (§8.4) | 2 to 6 bytes per field for mini-reflection (FB-cpp) | in the full runtime always |
-| Text form | JSON in and out by one walk, mapping pinned per kind, `\| json = "key"`, report counters; a shared node labeled `&node` (§16.7, landing with [#388](https://github.com/mas-bandwidth/schema/pull/388)) | JSON in `flatc`; parsing in C++ and C (FB-support) | ProtoJSON in every runtime; text format (PB-json, PB-text) |
+| Text form | JSON in and out by one walk, mapping pinned per kind, `\| json = "key"`, report counters; a shared node labeled `&node` (§16.7, landing with [#388](https://github.com/mas-bandwidth/schema/pull/388)) | JSON in `flatc`; parsing in C++ and C (FB-support) | ProtoJSON, whose own page lists the implementations that do not conform to it — C++, Java and Python as of v25.x; text format (PB-json, PB-text) |
 | Whole-tree packing | `schema pack` and `unpack`: a directory mirrors the root; keyed arrays as one file per variant; byte-stable both ways (§17) | `flatc -b` (FB-flatc) | `protoc --encode` and `--decode` |
 | Dump, diff, check | `cook-check`, `uncook`, `build-version --facts`, `projection` (§7, §20.7); generic dump and diff over the registry a follow-on (§15) | `flatc --json`, `FlatBufferToString` (FB-flatc) | `DebugString`, third-party explorers (PB-3p) |
 | Lint, breaking, registry | the baseline and the checker; no registry by design (§18) | `--conform` (FB-flatc) | `buf lint`, `buf breaking`, the BSR (buf) |
@@ -323,7 +323,8 @@ the source list at the end.
 ## Sources
 
 Every FlatBuffers and Protocol Buffers claim above was read from one of these
-pages on 2026-09-03.
+pages on 2026-09-03, and the rows citing PB-dos, PB-enum, PB-json,
+PB-descriptor, FB-support and FB-cpp were re-read on 2026-09-04.
 
 | short | page |
 |---|---|
@@ -352,6 +353,7 @@ pages on 2026-09-03.
 | PB-limits | https://protobuf.dev/programming-guides/proto-limits/ |
 | PB-dos | https://protobuf.dev/best-practices/dos-donts/ |
 | PB-message | https://protobuf.dev/reference/cpp/api-docs/google.protobuf.message/ |
+| PB-descriptor | https://github.com/protocolbuffers/protobuf/blob/main/src/google/protobuf/descriptor.proto (`SourceCodeInfo`) |
 | PB-overview | https://protobuf.dev/overview/ |
 | PB-3p | https://github.com/protocolbuffers/protobuf/blob/main/docs/third_party.md |
 | buf | https://buf.build/docs/breaking/ |
