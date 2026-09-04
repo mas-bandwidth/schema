@@ -244,6 +244,100 @@ func TestTableRefusals(t *testing.T) {
 		{name: "the key refusal names the keying field as the reaching edge", want: "field s, which keys an array by E, reaches it",
 			src: "package t\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
 
+		// ---- maps, `map[K]V` (docs/SPEC-TABLES.md §2.8, §11) ----
+		//
+		// Keys are BOUNDED STRINGS and INTEGERS, and nothing else: a key is an
+		// identity, so everything below is refused because it cannot BE one.
+		{name: "a map in a type body is refused by name", want: "a MAP is a table-only construct",
+			src: "package t\ntype P { m map[uint32]int32 }\n"},
+		// the fixture enum is NOT named E, so the row proves the diagnostic
+		// SUBSTITUTES the enum the author wrote rather than printing a literal
+		{name: "an enum key is refused naming [E]T", want: "an ENUM key is refused — that is [ShipType]T's job",
+			src: "package t\nenum ShipType { Fighter, Bomber }\ntable Tab { m map[ShipType]int32 }\n"},
+		{name: "the enum-key suggestion names the value the author wrote", want: "declare [ShipType]int32, and [ShipType]?int32",
+			src: "package t\nenum ShipType { Fighter, Bomber }\ntable Tab { m map[ShipType]int32 }\n"},
+		// AND IT NEVER SUGGESTS A SPELLING THIS CHECKER REFUSES: [E]*T and
+		// [E]U are named follow-ons, an array of arrays has no spelling, and
+		// a bound silently dropped would name a different declaration
+		{name: "the enum-key suggestion keeps the value's array bound", want: "[..4]int32 is not one",
+			src: "package t\nenum ShipType { Fighter, Bomber }\ntable Tab { m map[ShipType][..4]int32 }\n"},
+		{name: "the enum-key suggestion never names a keyed array of pointers", want: "*V is not one",
+			src: "package t\nenum ShipType { Fighter, Bomber }\ntable V { a int32 }\ntable Tab { m map[ShipType]*V }\n"},
+		{name: "the enum-key suggestion never names a keyed array of unions", want: "U is not one",
+			src: "package t\nenum ShipType { Fighter, Bomber }\ntype A { x int32 }\nunion U { a A }\ntable Tab { m map[ShipType]U }\n"},
+		{name: "the enum-key suggestion never names a keyed array of maps", want: "map[uint8]int32 is not one",
+			src: "package t\nenum ShipType { Fighter, Bomber }\ntable Tab { m map[ShipType]map[uint8]int32 }\n"},
+		{name: "a bool key is refused by name", want: "a `bool` key is refused — two slots",
+			src: "package t\ntable Tab { m map[bool]int32 }\n"},
+		{name: "a float32 key is refused by name", want: "no total order survives a byte compare",
+			src: "package t\ntable Tab { m map[float32]int32 }\n"},
+		{name: "a float64 key is refused by name", want: "no total order survives a byte compare",
+			src: "package t\ntable Tab { m map[float64]int32 }\n"},
+		{name: "a flags key is refused by name", want: "a mask names a SET, not one thing",
+			src: "package t\nflags F { A, B }\ntable Tab { m map[F]int32 }\n"},
+		{name: "a bits(N) key is refused by name", want: "a bits(N) key is refused",
+			src: "package t\ntable Tab { m map[bits(9)]int32 }\n"},
+		{name: "a bytes(N) key is refused by name", want: "a bytes(N) key is refused",
+			src: "package t\ntable Tab { m map[bytes(4)]int32 }\n"},
+		{name: "a fixed-point key is refused by name", want: "a fixed-point key is refused",
+			src: "package t\ntable Tab { m map[fixed(16, 16)]int32 }\n"},
+		{name: "a 128-bit integer key is refused by name", want: "a 128-bit integer is not a map key",
+			src: "package t\ntable Tab { m map[int128]int32 }\n"},
+		{name: "a type key is refused by name", want: "a `type` key is refused",
+			src: "package t\ntype P { a int32 }\ntable Tab { m map[P]int32 }\n"},
+		{name: "a table key is refused by name", want: "a `table` key is refused",
+			src: "package t\ntable K { a int32 }\ntable Tab { m map[K]int32 }\n"},
+		{name: "a pointer key is refused by name", want: "a POINTER key is refused",
+			src: "package t\ntable K { a int32 }\ntable Tab { m map[*K]int32 }\n"},
+		{name: "a union key is refused by name", want: "a UNION key is refused",
+			src: "package t\ntype A { x int32 }\nunion U { a A }\ntable Tab { m map[U]int32 }\n"},
+		{name: "an optional key is refused by name", want: "an OPTIONAL key is refused",
+			src: "package t\ntable Tab { m map[?uint32]int32 }\n"},
+		// NOTHING QUALIFIES A KEY: the grammar takes the spelling so the
+		// diagnostic is the page's sentence rather than a parse error
+		{name: "a qualification on the key is refused by name", want: "`| max` does not apply to a map KEY",
+			src: "package t\ntable Tab { m map[uint32 | max = 4]int32 }\n"},
+		{name: "a min on the key is refused by name", want: "`| min` does not apply to a map KEY",
+			src: "package t\ntable Tab { m map[uint32 | min = 1]int32 }\n"},
+		{name: "a default on the key is refused by name", want: "a map KEY takes no default",
+			src: "package t\ntable Tab { m map[uint32 = 5]int32 }\n"},
+		// the map itself takes no bound, no ?, no default and no attribute: a
+		// map's count is unbounded by design and its empty IS its absence
+		{name: "a bounded map is refused by name", want: "a map takes no array bound",
+			src: "package t\ntable Tab { m [..4]map[uint32]int32 }\n"},
+		{name: "a fixed array of maps is refused by name", want: "a map takes no array bound",
+			src: "package t\ntable Tab { m [4]map[uint32]int32 }\n"},
+		{name: "an optional map is refused by name", want: "there is no ?map",
+			src: "package t\ntable Tab { m ?map[uint32]int32 }\n"},
+		{name: "a default on a map is refused by name", want: "a map takes no specified default",
+			src: "package t\ntable Tab { m map[uint32]int32 = 0 }\n"},
+		{name: "an attribute on a map is refused by name", want: "does not apply to a map",
+			src: "package t\ntable Tab { m map[uint32]int32 | max = 4 }\n"},
+		// the by-value cycle reaches THROUGH the entry, and a map of *Self is
+		// the ordinary legal recursion through a pointer
+		{name: "a map of ITSELF closes a by-value cycle", want: "type composition cycle",
+			src: "package t\ntable Tab { m map[uint32]Tab }\n"},
+		{name: "a map of a table that holds the map closes one too", want: "type composition cycle",
+			src: "package t\ntable A { m map[uint32]B }\ntable B { n map[uint32]A }\n"},
+		// the <Table><Field>Entry name is CLAIMED on the table that declares
+		// the map, on the terms <field>_present is claimed for an optional
+		{name: "a declared table under the claimed entry name is refused", want: "the entry name is CLAIMED",
+			src: "package t\ntable TabShipsEntry { x int32 }\ntable Tab { ships map[uint32]int32 }\n"},
+		{name: "a declared type under the claimed entry name is refused", want: "the entry name is CLAIMED",
+			src: "package t\ntype TabShipsEntry { x int32 }\ntable Tab { ships map[uint32]int32 }\n"},
+		// and the REST of the map surface is claimed on the declaring table
+		// the same way the block form's row accessors are (§2.8, §11)
+		{name: "a declaration under the claimed Find name is refused", want: "TabShipsFind",
+			src: "package t\ntype TabShipsFind { x int32 }\ntable Tab { ships map[uint32]int32 }\n"},
+		{name: "a declaration under the claimed IndexFind name is refused", want: "TabShipsIndexFind",
+			src: "package t\nenum TabShipsIndexFind { A, B }\ntable Tab { ships map[uint32]int32 }\n"},
+		// and the map's RUNTIME names are claimed as every other runtime
+		// name is: whenever a unit declares a table
+		{name: "a declaration named TableMap is refused", want: "TABLE-wire runtime",
+			src: "package t\nenum TableMap { A, B }\ntable Tab { x int32 }\n"},
+		{name: "a declaration named TableMapIndex is refused", want: "TABLE-wire runtime",
+			src: "package t\nenum TableMapIndex { A, B }\ntable Tab { x int32 }\n"},
+
 		{name: "a pointer to an undeclared table", want: "undefined type",
 			src: "package t\ntable Tab { head *Ghost }\n"},
 		{name: "by-value recursion stays refused with pointers in the language",

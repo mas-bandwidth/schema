@@ -85,6 +85,10 @@ const (
 	RuleRaise
 	// RuleLoss — something present in the baseline is gone; it warns.
 	RuleLoss
+	// RuleShape — the array SHAPE token. Fixed and bounded are one framing
+	// and pass; a move into or out of `map` is the one that costs, and
+	// mapShapeFinding says what it costs.
+	RuleShape
 	// RuleRefs — the token names another declaration. Dropping it refuses;
 	// changing it to the declaration a rename paired it with is left to that
 	// declaration's own walk; changing it to any other is judged on whether
@@ -106,10 +110,21 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// a tightened range is an extent shrinking like any other — a maximum
 	// lowered or a minimum raised. Loosening passes: nothing already written
 	// falls outside a wider range.
-	"max":   RuleShrink,
-	"min":   RuleRaise,
-	"array": RulePass, // fixed and bounded frame identically on the wire (docs/SPEC-TABLES.md §3)
-	"was":   RulePass, // `was` is the rename that PRESERVES identity — that is its whole job
+	"max": RuleShrink,
+	"min": RuleRaise,
+	// THE ARRAY SHAPE. Fixed and bounded frame identically on the wire
+	// (docs/SPEC-TABLES.md §3), and moving between them passes. A MAP is the
+	// one shape move that is not free in both directions, so the row is
+	// RuleShape rather than RulePass: see mapShapeFinding.
+	"array": RuleShape,
+	// A MAP'S KEY, which is the map's own pair of facts (docs/SPEC-TABLES.md
+	// §2.8). A key kind the reader does not declare resets the map to EMPTY
+	// and counts one kind_mismatch, so it is fixed exactly as `kind` is; a
+	// tightened key bound skips whole entries and counts them, so it is an
+	// extent exactly as `bound` is.
+	"keykind":  RuleFixed,
+	"keybound": RuleShrink,
+	"was":      RulePass, // `was` is the rename that PRESERVES identity — that is its whole job
 	// PRESENCE IS RECORDED AND JUDGED ON NOTHING: T, ?T and *T are one
 	// framing, so a field moving between them moves no byte (§3.1, §18.1)
 	"optional": RulePass,
@@ -578,11 +593,49 @@ func (d *differ) renamePair(bt, lt Table, gone []string) []Finding {
 		strings.Join(gone, ", "), strings.Join(added, ", "), added[0], gone[0], gone[0])}}
 }
 
+// mapOwnedTokens are the tokens a MAP SHAPE MOVE owns. When a field moves
+// between `[..N]Entry` and `map[K]V`, these three describe the construct that
+// arrived or left, and the shape row is the one judgment on that move — so
+// judging them too would say the same thing three times, and say it harsher
+// (a dropped `type` refuses, an added `keykind` refuses). Everything else on
+// the line keeps judging: `kind` and `elem` are what make the shape row's
+// claim conditional, and a `bound` appearing where an unbounded map was is a
+// real tightening.
+var mapOwnedTokens = map[string]bool{"array": true, "type": true, "keykind": true, "keybound": true}
+
+// mapShapeFinding judges a move of the array SHAPE token. Fixed and bounded
+// are one framing and pass (docs/SPEC-TABLES.md §3). A move between a map and
+// the `[..N]Pair` its entries already are is THE SAME BYTES IN BOTH
+// DIRECTIONS, where `Pair`'s fields are exactly a `key` and a `value` — which
+// is what the `kind` and `elem` rows on this same line hold — and the MAP
+// DIRECTION GAINS THE ORDER CHECK, so a wire whose pairs were not ascending
+// reads short and says so. §18.2 warns on the edit for that reason: nothing
+// already written changes meaning, and something is lost that the read
+// reports.
+func mapShapeFinding(where, was, now string, present bool) []Finding {
+	if !present || was == now || (was != "map" && now != "map") {
+		return nil
+	}
+	if now == "map" {
+		return []Finding{{Warn, where, fmt.Sprintf(
+			"array shape %s -> map — the same bytes in both directions where the element's fields are exactly a `key` and a `value`, and the MAP DIRECTION GAINS THE ORDER CHECK: a wire whose pairs were not ascending keeps the ascending prefix, reads short and says so (docs/SPEC-TABLES.md §2.8, §18.2)", was)}}
+	}
+	return []Finding{{Warn, where, fmt.Sprintf(
+		"array shape map -> %s — the same bytes in both directions where the element's fields are exactly a `key` and a `value`, and the array direction LOSES the order check and the duplicate merge: repeated keys arrive as ordinary elements (docs/SPEC-TABLES.md §2.8, §18.2)", now)}}
+}
+
 func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 	var out []Finding
+	// a MAP SHAPE MOVE is judged once, by the shape row (see mapOwnedTokens)
+	baseShape, _ := bf.Get("array")
+	liveShape, _ := lf.Get("array")
+	mapMove := d.policy["array"] == RuleShape && (baseShape == "map") != (liveShape == "map")
 	seen := map[string]bool{}
 	for _, bt := range bf.Tokens {
 		seen[bt.Key] = true
+		if mapMove && bt.Key != "array" && mapOwnedTokens[bt.Key] {
+			continue
+		}
 		lv, present := lf.Get(bt.Key)
 		switch d.policy[bt.Key] {
 		case RuleFixed:
@@ -609,6 +662,8 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 				continue
 			}
 			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s -> %s (%s)", tokenNoun(bt.Key), bt.Value, lv, tightenNote(bt.Key))})
+		case RuleShape:
+			out = append(out, mapShapeFinding(where, bt.Value, lv, present)...)
 		case RuleRefs:
 			out = append(out, d.refsFindings(where, bt.Key, bt.Value, lv, present)...)
 		}
@@ -619,6 +674,9 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 	// domain onto a narrower one.
 	for _, lt := range lf.Tokens {
 		if seen[lt.Key] {
+			continue
+		}
+		if mapMove && mapOwnedTokens[lt.Key] {
 			continue
 		}
 		switch d.policy[lt.Key] {
@@ -858,6 +916,8 @@ func tightenNote(key string) string {
 		return "a stored count past the new bound keeps the bounded prefix and counts clamped"
 	case "size":
 		return "a stored value longer than the new capacity is truncated and counts clamped"
+	case "keybound":
+		return "an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)"
 	case "min":
 		return "a stored value below the new minimum reads back AS the minimum and counts clamped"
 	case "max":
@@ -883,6 +943,10 @@ func tokenNoun(key string) string {
 		return "capacity"
 	case "key":
 		return "array key enum"
+	case "keykind":
+		return "map key kind"
+	case "keybound":
+		return "map key capacity"
 	case "min":
 		return "declared minimum"
 	case "max":

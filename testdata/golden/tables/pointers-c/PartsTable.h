@@ -722,7 +722,7 @@ typedef struct TableSink
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0xe7c54936602ceecaull
+#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0x8b3fa61285c77990ull
 
 #endif /* SCHEMA_GRAPHDEMO_BUILD_VERSION */
 

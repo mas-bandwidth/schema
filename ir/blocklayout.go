@@ -177,16 +177,28 @@ func (b *BlockUnit) SkippedReason(name string) string {
 // it does not. Two answers, and both are properties of the DECLARATION rather
 // than of anything an author writes to ask for the form:
 //
-//   - a VARIABLE-LENGTH table has none: a pointer anywhere in its by-value
-//     closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+//   - a MAP's generated ENTRY has none, whatever its key and value are: a
+//     map's entries are never rows (docs/SPEC-TABLES.md §2.8). A block form
+//     is a fixed pitch over a table's own out-of-line arrays; a map's entry
+//     array is an extent inside its HOLDER's node, reached through the
+//     holder's map slot, and an entry of a fixed key and a fixed value is
+//     still one of those. The rule is categorical rather than derived,
+//     because the entry can look perfectly fixed.
+//   - a VARIABLE-LENGTH table has none: a pointer or a map anywhere in its
+//     by-value closure means no fixed pitch anywhere in it (§19), and the
+//     reason NAMES the edge it found rather than assuming which one it was.
 //   - a table whose closure carries a UNION has none: §19.3 pins the C# side
 //     to Sequential with generated padding, and Sequential cannot overlay
 //     arms. Emitting the form on one side only would break the two-language
 //     contract the form exists to be, so neither side emits it and both say
 //     so. A union in a block closure is a named follow-on (§15).
 func blockFormable(u *Unit, st *Struct, variable map[string]bool) (bool, string) {
+	if st.MapEntryOf != "" {
+		return false, "it is the generated ENTRY of the map " + st.MapEntryOf +
+			", and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own"
+	}
 	if variable[st.Name] {
-		return false, "it is VARIABLE-LENGTH: a pointer in its by-value closure means no fixed pitch anywhere in it"
+		return false, "it is VARIABLE-LENGTH: " + variableEdge(u, st)
 	}
 	seen := map[string]bool{}
 	var walk func(name string) string
@@ -218,6 +230,52 @@ func blockFormable(u *Unit, st *Struct, variable map[string]bool) (bool, string)
 		return false, why
 	}
 	return true, ""
+}
+
+// variableEdge names the edge that makes one member variable-length: the
+// first pointer or map a depth-first walk of its BY-VALUE closure reaches, in
+// declaration order — the same walk [VariableTables] takes to answer the same
+// question, so the reason a table has no block form always names something a
+// reader can find in a source file. A member the caller has already found
+// variable always has such an edge.
+func variableEdge(u *Unit, st *Struct) string {
+	seen := map[string]bool{}
+	var walk func(cur *Struct) string
+	walk = func(cur *Struct) string {
+		if cur == nil || seen[cur.Name] {
+			return ""
+		}
+		seen[cur.Name] = true
+		for _, f := range cur.Fields {
+			where := cur.Name + "." + f.Name
+			switch {
+			case f.Type.Pointer:
+				return where + " is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it"
+			case f.IsMap():
+				return where + " is a map, and a map's entries are an extent inside the holder's own node, so there is no fixed pitch anywhere in it"
+			}
+			if f.Type.Kind != TNamed {
+				continue
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *Struct:
+				if why := walk(ref); why != "" {
+					return why
+				}
+			case *Union:
+				for _, v := range ref.Variants {
+					if why := walk(memberStruct(u, v.Type)); why != "" {
+						return why
+					}
+				}
+			}
+		}
+		return ""
+	}
+	if why := walk(st); why != "" {
+		return why
+	}
+	return "a pointer or a map in its by-value closure means no fixed pitch anywhere in it"
 }
 
 // Blocks computes the whole block surface of a unit, or nil when the unit
@@ -543,6 +601,17 @@ func fieldPieces(u *Unit, f *Field, projection bool) []storagePiece {
 	}
 	var pieces []storagePiece
 	switch {
+	case f.IsMap():
+		// A MAP FIELD IS SIXTEEN BYTES (docs/SPEC-TABLES.md §2.8, §7.2): an
+		// int64 self-relative reference to the entry array and an int32 count
+		// — the width every companion count takes (§2.8),
+		// then padding to eight. ONE piece and not two, for the reason the
+		// out-of-line triple above is one: both backends spell it as one
+		// member of a TableMap type, and a port that walked two would account
+		// for twelve bytes where sixteen are written. The ENTRIES are not
+		// here — they are by-value records inside the holder's node extent,
+		// after the record's own storage.
+		pieces = append(pieces, storagePiece{size: 16, align: 8})
 	case f.Type.Pointer && f.Array == ArrayNone:
 		// TableRef: EIGHT bytes at eight (docs/SPEC-TABLES.md §6.3). The slot holds
 		// an arena offset in one form and a self-relative region delta in the

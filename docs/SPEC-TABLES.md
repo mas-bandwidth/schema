@@ -5703,7 +5703,8 @@ in build version (§20.5).
   (§3.2).
 - **Maps** (§2.8): a map in a `type` body; a key that is an enum (the
   diagnostic names `[E]T`), a `bool`, a float, a `flags`, a `bits(N)`, a
-  `bytes(N)`, a `type`, a `table`, a pointer, an optional or a union; an
+  `bytes(N)`, an `int128` or `uint128`, a `fixed`/`ufixed`, a `type`, a
+  `table`, a pointer, an optional or a union; an
   attribute on the key (`| min`, `| max`, a default); `?map`, a default on a
   map, `| max` on a map and the bounded spellings `[..N]map` and `[N]map`; a
   table that holds a map of ITSELF by value, directly or through any chain
@@ -9419,7 +9420,7 @@ keep, so it belongs in `none` with its reason or the token belongs on the line.
 | a union arm's declared `min`/`max`, or a compressed float arm's range and resolution | **meaning** | `min=` / `max=` / `step=` on the `arm` line — §4 clamps a load to the reader's bounds at an arm exactly as at a field |
 | array class and bound; string/`bytes` capacity | layout | `array=`, `bound=`, and the `size=` they produce |
 | a keyed array's KEY enum | layout | `key=` — its slots ride by that enum's variant-name hashes (§3.2) |
-| a MAP field's class and its ELEMENT | layout | `kind=14`, `elem=13` and `array=map` on the field line, and the `size=` the sixteen-byte slot produces (§2.8) |
+| a MAP field's class and its ELEMENT | layout | `kind=14`, `array=map` and `elem=` the generated entry's own storage size on the field line, the pitch its entries lie at, and the `size=` the sixteen-byte slot produces (§2.8) |
 | a MAP's generated ENTRY, its layout and its two fields | layout | its own `record` line, keyed by the holder's wire id and the map field's wire id and never by the entry's generated name, with the `key` and `value` `field` lines under it (§2.8) |
 | a MAP's KEY kind and KEY capacity | layout | `kind=` and `bound=` on the entry's `key` line, which is where a key edit moves the id |
 | an out-of-line array's pitch | layout | `stride=` on the `slot` line |
@@ -9518,8 +9519,11 @@ of declaration it names"*:
 - **`array=` and `bound=`** name the array's CLASS and its evaluated extent,
   so a fixed array and a bounded one of the same width are distinguishable and
   a moved bound is visible beside the `size` it produced. **`array=map` is a
-  map field** (§2.8), which carries `elem=13` and no `bound=`, because a map
-  declares no extent and its count is a wire fact.
+  map field** (§2.8). `elem=` is the ELEMENT'S STORAGE SIZE on every array
+  line this projection writes — `elem=4` for a `float32` — so a map's is the
+  generated entry's own `sizeof`, the pitch its entries lie at inside the
+  holder's node. A map carries no `bound=`, because it declares no extent and
+  its count is a wire fact.
 - **A MAP's generated ENTRY takes a `record` line of its own, and it is
   ANONYMOUS.** The line carries the HOLDER's wire id and the MAP FIELD's wire
   id, joined by a dot, in place of a name, and it sorts with the named records
@@ -9655,7 +9659,7 @@ With the protocol id `0x0123456789abcdef` and a little-endian target, the
 whole projection is:
 
 ```
-schema-build-version 1
+schema-build-version 2
 protocol 0123456789abcdef
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -9670,12 +9674,12 @@ enum Grade
     variant 3 Gold
 ```
 
-and the build version is **`0xc211ce2f3414aa7c`**. `ShipConfig` gets no
+and the build version is **`0xfa09afbc0cb0f3de`**. `ShipConfig` gets no
 `block` line: it declares no bounded array, so its block form lays nothing out
 of line and its projection is the prologue the header already carries plus the
 `record` line's own layout. The same unit with no table at all — its four
 header lines, that same protocol id, and nothing else — is
-**`0xe2eeb510ec9621cb`**, deliberately not equal to the protocol id, so no
+**`0x6b4bbe97986b055b`**, deliberately not equal to the protocol id, so no
 caller can substitute one for the other by accident.
 
 

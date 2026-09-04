@@ -109,6 +109,35 @@ type Field struct {
 	Type    ScalarType
 	Attrs   []Attr
 	Default Expr // optional "= expr" after the attributes (zero init otherwise)
+
+	// Map is the `map[K]V` spelling (docs/SPEC-TABLES.md §2.8): a lookup over
+	// entries the wire carries as a sorted array of one generated
+	// `{ key, value }` table. Set instead of Type, which the checker leaves at
+	// its zero value on a map field. Table bodies only; the checker refuses
+	// every other placement, every key that is not a bounded string or an
+	// integer, and every bound or attribute on the map itself, by name.
+	Map *MapType
+}
+
+// MapType is a `map[K]V` field's two halves (docs/SPEC-TABLES.md §2.8). The
+// VALUE is a whole field spelling rather than a scalar type, so a map of
+// arrays, of optionals and of maps are one production and the checker resolves
+// a value with the same code that resolves any field: Value.Name is always
+// "value", and it carries no attributes and no default because the grammar
+// gives a value nowhere to spell one.
+type MapType struct {
+	Pos   Pos
+	Key   ScalarType
+	Value *Field
+
+	// KeyAttrs and KeyDefault are a qualification and a default written ON
+	// THE KEY — `map[uint32 | max = 4]int32`, `map[uint32 = 5]int32`. The
+	// grammar takes them so the CHECKER can refuse them by name: a key is an
+	// identity, and clamping an identity merges two entries
+	// (docs/SPEC-TABLES.md §2.8, §11). Nothing downstream of the checker ever
+	// sees a key that carries one.
+	KeyAttrs   []Attr
+	KeyDefault Expr
 }
 
 type ArrayKind int

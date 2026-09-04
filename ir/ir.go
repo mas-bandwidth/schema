@@ -136,8 +136,15 @@ func (u *Union) HasTableArm() bool {
 // lives in Unit.Tables/File.Tables instead of the packet decl stream.
 type Struct struct {
 	Name    string
-	IsTable bool     // declared with `table`: a table-wire root
-	Tags    []string // inert in v1 (SPEC §4.2)
+	IsTable bool // declared with `table`: a table-wire root
+	// MapEntryOf names the `Table.field` whose `map[K]V` GENERATED this table
+	// (docs/SPEC-TABLES.md §2.8), and is empty on every declared table. A
+	// generated entry is a real table of the closure — it has a record, a
+	// Reset, a descriptor and the two constant field ids — and it is never
+	// spelled in a schema: the name is CLAIMED on the declaring table, so a
+	// unit that declares one beside the map is refused.
+	MapEntryOf string
+	Tags       []string // inert in v1 (SPEC §4.2)
 	// C++ native type mapping (SPEC §4.2, Native type mapping): when set,
 	// generated C++ declares fields of this type as ::CppNative (a hand type
 	// deriving from the generated basis struct — same layout, plus behavior)
@@ -242,6 +249,15 @@ type Field struct {
 	KeyEnum    string
 	KeyEnumRef *Enum
 
+	// MapEntry is the generated `{ key, value }` table of a `map[K]V` field
+	// (docs/SPEC-TABLES.md §2.8), and is nil on every other field. Its two
+	// fields are the KEY — a `string(N)` or an integer, bare — and the VALUE,
+	// a whole field spelling, so a map of arrays, of pointers and of maps all
+	// resolve through the ordinary field path. The field's own Type.Kind is
+	// [TMap], so nothing that switches on a kind can read a map as something
+	// else by accident.
+	MapEntry *Struct
+
 	Type FieldType
 
 	// specified default (SPEC §5: zero initialization everywhere unless a
@@ -283,6 +299,12 @@ const (
 	TBytes
 	TFixed // fixed(I, F) / ufixed(I, F) — fixed point per Signed, storage I+F bits (SPEC §4.3)
 	TNamed
+	// TMap is a `map[K]V` field (docs/SPEC-TABLES.md §2.8). The construct's
+	// two halves live on the FIELD, in MapEntry, because a map's value is a
+	// whole field spelling rather than a type; the kind is distinct so that a
+	// switch which has no case for a map falls through to its default rather
+	// than reading a map as a named type.
+	TMap
 )
 
 type FieldType struct {

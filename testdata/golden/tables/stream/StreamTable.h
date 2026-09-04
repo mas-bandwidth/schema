@@ -1302,7 +1302,7 @@ namespace streamdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xace5a1257f2e4831ull;
+static const uint64_t BuildVersion = 0x093e4bddde5575deull;
 
 } // namespace streamdemo
 

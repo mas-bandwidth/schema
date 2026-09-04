@@ -298,6 +298,14 @@ func needSpace(prev, cur scanner.Token, tokens []scanner.Token, i int) bool {
 	switch cur.Kind {
 	case scanner.RParen, scanner.RBrack, scanner.Comma, scanner.Dot, scanner.DotDot:
 		return false
+	case scanner.LBrack:
+		// THE MAP's bracket binds to its keyword — `map[K]V`, never
+		// `map [K]V` (docs/SPEC-TABLES.md §2.8). Every other `[` opens an
+		// array bound at the head of a type and takes the ordinary answer
+		// below.
+		if prev.Kind == scanner.KwMap {
+			return false
+		}
 	case scanner.LParen:
 		// tight after a callee (bits(, string(, const(, reserved() and after
 		// unary minus; spaced after operators and separators
@@ -322,9 +330,9 @@ func needSpace(prev, cur scanner.Token, tokens []scanner.Token, i int) bool {
 		return false
 	case scanner.Star:
 		// the POINTER star binds to the type it targets — `next *Node`, never
-		// `next * Node` (docs/SPEC-TABLES.md). A star in TYPE POSITION (directly
-		// after the field name that opens the line) is the pointer spelling;
-		// every other star is multiplication and keeps its spaces.
+		// `next * Node` (docs/SPEC-TABLES.md). A star in TYPE POSITION is the
+		// pointer spelling; every other star is multiplication and keeps its
+		// spaces.
 		return !isPointerStar(tokens, i-1)
 	case scanner.LBrack:
 		return false
@@ -334,8 +342,17 @@ func needSpace(prev, cur scanner.Token, tokens []scanner.Token, i int) bool {
 		}
 		return true
 	case scanner.RBrack:
-		// ]Type is the array-bound junction; anything else gets a space
-		return cur.Kind != scanner.Ident && !cur.Kind.IsKeyword()
+		// `]Type` is the junction that closes an array bound or a MAP KEY,
+		// and what follows it is a TYPE, tight against the bracket: an ident,
+		// a type keyword (`map` included), another bound, the optional `?` or
+		// the pointer `*` (docs/SPEC-TABLES.md §2.1, §2.3, §2.8). No
+		// expression in this grammar ends in `]`, so anything else is a line
+		// that has left the type and gets a space.
+		switch cur.Kind {
+		case scanner.Ident, scanner.Question, scanner.Star, scanner.LBrack:
+			return false
+		}
+		return !cur.Kind.IsKeyword()
 	case scanner.LBrace:
 		return true // one-line lists open with `{ `
 	}
@@ -343,10 +360,24 @@ func needSpace(prev, cur scanner.Token, tokens []scanner.Token, i int) bool {
 }
 
 // isPointerStar reports whether the star at index i is the POINTER spelling
-// rather than multiplication. A field line opens with its name, so type
-// position is index 1; multiplication never appears there.
+// rather than multiplication. TYPE POSITION is three places and no others: a
+// field line opens with its name, so index 1 is one; the `]` that closes an
+// array bound or a map key is another (`[..4]*Node`,
+// `map[uint32]*ShipConfig`); and the optional `?` is the third. Multiplication
+// never appears in any of them, because no expression in this grammar ends in
+// `]` or `?`.
 func isPointerStar(tokens []scanner.Token, i int) bool {
-	return i == 1 && tokens[i].Kind == scanner.Star && tokens[0].Kind == scanner.Ident
+	if i <= 0 || tokens[i].Kind != scanner.Star {
+		return false
+	}
+	if i == 1 {
+		return tokens[0].Kind == scanner.Ident
+	}
+	switch tokens[i-1].Kind {
+	case scanner.RBrack, scanner.Question:
+		return true
+	}
+	return false
 }
 
 // isUnary reports whether the minus at index i is unary.
@@ -560,22 +591,11 @@ func fpBlock(b *strings.Builder, blk *ast.Block) {
 	for _, item := range blk.Items {
 		switch item := item.(type) {
 		case *ast.Field:
-			bound := ""
-			if item.Array != nil {
-				switch item.Array.Kind {
-				case ast.ArrayFixed:
-					bound = fmt.Sprintf("[%s]", fpExpr(item.Array.Hi))
-				case ast.ArrayUpTo:
-					bound = fmt.Sprintf("[..%s]", fpExpr(item.Array.Hi))
-				case ast.ArrayRange:
-					bound = fmt.Sprintf("[%s..%s]", fpExpr(item.Array.Lo), fpExpr(item.Array.Hi))
-				}
-			}
 			def := ""
 			if item.Default != nil {
 				def = " = " + fpExpr(item.Default)
 			}
-			fmt.Fprintf(b, "field %s %s%s %s%s\n", item.Name, bound, fpScalar(item.Type), fpAttrs(item.Attrs), def)
+			fmt.Fprintf(b, "field %s %s %s%s\n", item.Name, fpFieldType(item), fpAttrs(item.Attrs), def)
 		case *ast.ConstField:
 			fmt.Fprintf(b, "const(%s,%s)\n", fpExpr(item.Value), fpExpr(item.Bits))
 		case *ast.ReservedItem:
@@ -596,6 +616,49 @@ func fpBlock(b *strings.Builder, blk *ast.Block) {
 		}
 	}
 	b.WriteString("}\n")
+}
+
+// fpFieldType renders a field's WHOLE type spelling: its array bound and
+// either its `map[K]V` or its scalar. A map is spelled here and not in
+// fpScalar because a map's VALUE is a whole field spelling rather than a type
+// (docs/SPEC-TABLES.md §2.8) — and it has to be spelled somewhere, or the
+// structural comparison that makes this formatter safe would be blind to
+// every map it reformats.
+func fpFieldType(f *ast.Field) string {
+	if f.Map == nil {
+		return fpBound(f.Array) + fpScalar(f.Type)
+	}
+	// the map's own `?` rides outside the spelling, as the value's does: the
+	// checker refuses `?map`, and the fingerprint has to see the difference
+	// before the checker ever runs
+	opt := ""
+	if f.Type.Optional {
+		opt = "?"
+	}
+	key := f.Map.Key
+	attrs := ""
+	if len(f.Map.KeyAttrs) > 0 || f.Map.KeyDefault != nil {
+		attrs = fpAttrs(f.Map.KeyAttrs)
+		if f.Map.KeyDefault != nil {
+			attrs += "=" + fpExpr(f.Map.KeyDefault)
+		}
+	}
+	return opt + fpBound(f.Array) + "map[" + fpScalar(key) + attrs + "]" + fpFieldType(f.Map.Value)
+}
+
+func fpBound(a *ast.ArrayBound) string {
+	if a == nil {
+		return ""
+	}
+	switch a.Kind {
+	case ast.ArrayFixed:
+		return fmt.Sprintf("[%s]", fpExpr(a.Hi))
+	case ast.ArrayUpTo:
+		return fmt.Sprintf("[..%s]", fpExpr(a.Hi))
+	case ast.ArrayRange:
+		return fmt.Sprintf("[%s..%s]", fpExpr(a.Lo), fpExpr(a.Hi))
+	}
+	return ""
 }
 
 func fpScalar(t ast.ScalarType) string {

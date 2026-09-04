@@ -1,4 +1,4 @@
-schema-tables-baseline 4
+schema-tables-baseline 5
 package graphdemo
 
 table Album
@@ -91,3 +91,6 @@ enum Tier
 
 ### 2026-09-04 — schema#443: the baseline records each ranged field's effective min and max, so a tightened range is seen before it ships; the rendering version moves to 4 and this file is regenerated with its history intact
 - baseline REGENERATED over an unreadable one (baseline version 3, this compiler writes 4); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
+
+### 2026-09-04 — schema#380: the baseline records a map field as an array whose shape is map, with the key kind and the key bound beside it, and a generated entry under the anonymous key of its holder and its field rather than under a name a rename moves; the rendering version moves to 5 and this file is regenerated with its history intact
+- baseline REGENERATED over an unreadable one (baseline version 4, this compiler writes 5); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow

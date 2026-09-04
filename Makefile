@@ -122,6 +122,13 @@ build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POI
 # corpus's generated headers must not contain one symbol of it. (The stronger
 # one-time proof — byte-identical emission against the pre-pointer baseline —
 # is recorded in the round log; this is the standing gate.)
+#
+# THE MAP MACHINERY TAKES THE SAME GATE (docs/SPEC-TABLES.md §2.2, §2.8): "not
+# one symbol of the map machinery in a map-free unit's generated headers, held
+# by the zero-cost gate's header scan — with the map symbols added to its
+# list." A map makes its holder variable-length, so every unit scanned here is
+# map-free by construction, and the map symbols below say so mechanically
+# rather than by inspection.
 .PHONY: tables-zero-cost
 tables-zero-cost: build/tables-generated/.stamp
 	@for f in build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
@@ -129,11 +136,11 @@ tables-zero-cost: build/tables-generated/.stamp
 	          build/tables-generated/p3/*Table.h \
 	          build/tables-generated/messages/*Table.h build/tables-generated/m1/*Table.h \
 	          build/tables-generated/m2/*Table.h build/tables-generated/scalars/*Table.h; do \
-		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|TablePack|TableNode|is_pointer|Builder|PackMeasure|LoadMeasure|TableBlob|TableBytesView|TableStringView|AllocBytes|AllocString|BytesEmplace|StringEmplace" $$f; then \
-			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
+		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|TablePack|TableNode|is_pointer|Builder|PackMeasure|LoadMeasure|TableBlob|TableBytesView|TableStringView|AllocBytes|AllocString|BytesEmplace|StringEmplace|TableMap|TableMapHead|TableMapSegment|TableMapOrder|TableMapCursor|TableEntryKey|TableKeyOrder|TableResetMapValue|TableEntrySetKey|kTableMapSegment" $$f; then \
+			echo "ZERO-COST GATE FAILED: pointer or map machinery leaked into $$f"; exit 1; \
 		fi; \
 	done
-	@echo "tables zero-cost gate: value-only tables carry no pointer machinery"
+	@echo "tables zero-cost gate: value-only tables carry no pointer or map machinery"
 
 .PHONY: tables-json-walk
 tables-json-walk: build/tables-generated/.stamp

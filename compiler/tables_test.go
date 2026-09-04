@@ -797,7 +797,7 @@ table ShipConfig
 	u := unitFromSource(t, workedSource)
 	u.ProtocolId = 0x0123456789abcdef // the id §20.2 works the example under
 
-	const want = "0xc211ce2f3414aa7c"
+	const want = "0xfa09afbc0cb0f3de"
 	if got := ir.BuildVersion(u); fmt.Sprintf("0x%016x", got) != want {
 		t.Fatalf("the compiler's build version is 0x%016x, and docs/SPEC-TABLES.md §20.2 states %s", got, want)
 	}
@@ -819,7 +819,7 @@ table ShipConfig
 				if !strings.Contains(line, "BuildVersion = 0x") {
 					continue
 				}
-				if !strings.Contains(strings.ToLower(line), "c211ce2f3414aa7c") {
+				if !strings.Contains(strings.ToLower(line), "fa09afbc0cb0f3de") {
 					t.Errorf("%s emits %q — docs/SPEC-TABLES.md §20.2's number for this unit is %s", name, strings.TrimSpace(line), want)
 				}
 				found = true

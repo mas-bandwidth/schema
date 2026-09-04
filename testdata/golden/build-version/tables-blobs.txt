@@ -1,5 +1,5 @@
-0x73d756fe041d0e93
-schema-build-version 1
+0xc20a8501aaedb152
+schema-build-version 2
 protocol ec78e4ce7f5dd962
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8

@@ -31,7 +31,13 @@ import (
 // bump it when the cook's own form changes — the region's pack order, the node
 // directory's encoding, the header's shape — because without a version for
 // those a cook's bytes could diverge with the id unmoved.
-const BuildVersionForm = 1
+//
+// FORM 2 (schema#380, MAPS): the rendering gained `array=map` on a map field's
+// line and the anonymous `record <holder id>.<field id>` line its generated
+// entry takes (§20.2). Every unit's build version moves with it, map-free ones
+// included, which is what a form version is for: the text a cook's id is taken
+// over is not the text it was taken over before.
+const BuildVersionForm = 2
 
 // blockPrologueFacts renders the block projection's generated prologue as the
 // digest sees it: each word in order, named, with its width in bytes.
@@ -96,7 +102,13 @@ func CookProjection(u *Unit) string {
 	for name := range closure {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	// SORTED BY THE NAME ON THE LINE (§20.2), which for a map's generated
+	// entry is its anonymous key: the generated name is derived from the
+	// field's SOURCE spelling, so ordering by it would let a `was` rename
+	// move every line after it.
+	sort.Slice(names, func(i, j int) bool {
+		return ProjectionMemberName(u, names[i]) < ProjectionMemberName(u, names[j])
+	})
 
 	enums := map[string]*Enum{}
 	unions := map[string]*Union{}
@@ -107,9 +119,9 @@ func CookProjection(u *Unit) string {
 			continue
 		}
 		ml := layoutRecord(u, st)
-		fmt.Fprintf(&b, "record %s sizeof=%d alignof=%d\n", name, ml.Size, ml.Align)
+		fmt.Fprintf(&b, "record %s sizeof=%d alignof=%d\n", ProjectionMemberName(u, name), ml.Size, ml.Align)
 		for _, fl := range ml.Fields {
-			b.WriteString(cookFieldLine(fl, enums, unions))
+			b.WriteString(cookFieldLine(u, fl, enums, unions))
 		}
 		// Every record whose block form MOVES something is followed by its
 		// PROJECTION, whose slots are the other side's contract (§19). A record
@@ -148,9 +160,17 @@ func CookProjection(u *Unit) string {
 // cookFieldLine renders one field's line, collecting the vocabularies it
 // reaches. The optional tokens appear in §20.2's order and only where the fact
 // exists.
-func cookFieldLine(fl FieldLayout, enums map[string]*Enum, unions map[string]*Union) string {
+func cookFieldLine(u *Unit, fl FieldLayout, enums map[string]*Enum, unions map[string]*Union) string {
 	f := fl.Field
 	kind := TableScalarKind(f)
+	if f.IsMap() {
+		// A MAP FIELD IS AN ARRAY LINE (docs/SPEC-TABLES.md §20.1, §20.2):
+		// `kind=14`, `array=map` and the entry's own storage size in `elem=`,
+		// plus the `size=` its sixteen-byte slot produces. The KEY's kind and
+		// capacity are NOT here: they ride on the entry's own `key` line,
+		// which is where a key edit moves the id (§20.1).
+		kind = TableKindArray
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "    field %04x kind=%d offset=%d size=%d", TableFieldId(f), kind, fl.Offset, fl.Size)
 	if f.Type.Kind == TFixed {
@@ -190,6 +210,14 @@ func cookFieldLine(fl FieldLayout, enums map[string]*Enum, unions map[string]*Un
 	}
 
 	switch {
+	case f.IsMap():
+		// `array=map` is the shape and `elem=` the ELEMENT'S STORAGE SIZE, as
+		// on every other array line here: the generated entry's own `sizeof`,
+		// which is the pitch its entries lie at inside the holder's node
+		// extent (docs/SPEC-TABLES.md §20.2). There is no `bound=`: a map
+		// declares no extent, and its count is a wire fact. The entry's own
+		// record line carries everything else, keyed by this field's id.
+		fmt.Fprintf(&b, " elem=%d array=map", layoutRecord(u, f.MapEntry).Size)
 	case f.KeyEnum != "":
 		fmt.Fprintf(&b, " elem=%d array=keyed bound=%d key=%s", cookElemSize(fl), f.ArrayBound, f.KeyEnum)
 		if f.KeyEnumRef != nil {

@@ -44,7 +44,7 @@ table ShipConfig
 // §20.2's worked example, to the character. Every number in it derives from a
 // rule on a page and none of it is declared, so a second implementation
 // reproduces it — and a reader did, independently, before this one existed.
-const workedProjection = `schema-build-version 1
+const workedProjection = `schema-build-version 2
 protocol 0123456789abcdef
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -69,8 +69,8 @@ func TestCookProjectionMatchesThePagesWorkedExample(t *testing.T) {
 	if got != workedProjection {
 		t.Errorf("the cook projection is not the page's (docs/SPEC-TABLES.md §20.2).\n--- got ---\n%s\n--- want ---\n%s", got, workedProjection)
 	}
-	if v := ir.BuildVersion(u); v != 0xc211ce2f3414aa7c {
-		t.Errorf("build version = 0x%016x, want 0xc211ce2f3414aa7c (docs/SPEC-TABLES.md §20.2)", v)
+	if v := ir.BuildVersion(u); v != 0xfa09afbc0cb0f3de {
+		t.Errorf("build version = 0x%016x, want 0xfa09afbc0cb0f3de (docs/SPEC-TABLES.md §20.2)", v)
 	}
 }
 
@@ -80,13 +80,13 @@ func TestCookProjectionMatchesThePagesWorkedExample(t *testing.T) {
 func TestCookProjectionOfATablelessUnit(t *testing.T) {
 	u := unitFrom(t, "package demo\n\ntype Point\n{\n    x float32\n}\n")
 	u.ProtocolId = 0x0123456789abcdef
-	want := "schema-build-version 1\nprotocol 0123456789abcdef\nbyteorder little\n" +
+	want := "schema-build-version 2\nprotocol 0123456789abcdef\nbyteorder little\n" +
 		"block prologue=magic:8,build_version:8,byte_order:8\n"
 	if got := ir.CookProjection(u); got != want {
 		t.Errorf("a table-free unit projects its header lines alone.\n--- got ---\n%s", got)
 	}
-	if v := ir.BuildVersion(u); v != 0xe2eeb510ec9621cb {
-		t.Errorf("build version = 0x%016x, want 0xe2eeb510ec9621cb (docs/SPEC-TABLES.md §20.2)", v)
+	if v := ir.BuildVersion(u); v != 0x6b4bbe97986b055b {
+		t.Errorf("build version = 0x%016x, want 0x6b4bbe97986b055b (docs/SPEC-TABLES.md §20.2)", v)
 	}
 	if v := ir.BuildVersion(u); v == u.ProtocolId {
 		t.Error("the two ids are equal — one could be substituted for the other by accident")

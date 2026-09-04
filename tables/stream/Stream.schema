@@ -15,7 +15,7 @@ table Chunk
 {
     data  bytes(8)
     next  *Chunk
-    links [..2] * Chunk // an array of pointers inside a NODE, and inside the union arm that holds a Chunk by value
+    links [..2]*Chunk // an array of pointers inside a NODE, and inside the union arm that holds a Chunk by value
 }
 
 union Frame
@@ -28,6 +28,6 @@ table Feed
 {
     id    uint32
     frame Frame
-    parts [..4] * Chunk
-    pair  [2] * Chunk
+    parts [..4]*Chunk
+    pair  [2]*Chunk
 }
