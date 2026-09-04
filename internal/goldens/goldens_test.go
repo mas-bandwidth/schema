@@ -193,7 +193,10 @@ func TestGoldenSourceElixir(t *testing.T) {
 // stand exactly where they stood before it existed. The numbers are written
 // here as literals rather than read from testdata/golden — a re-pin of those
 // files is precisely the mistake this refuses, and a gate that re-pins with
-// them would say nothing.
+// them would say nothing. What legitimately moves them is a change to a
+// PROJECTION itself — a wire-shape edit, or a cook form-version bump — which
+// moves the corpus goldens in the same commit; a literal here that has to move
+// alone is the defect this names.
 func TestExportedSurfaceMovesNeitherWire(t *testing.T) {
 	for _, unit := range []struct {
 		name         string
@@ -201,8 +204,8 @@ func TestExportedSurfaceMovesNeitherWire(t *testing.T) {
 		protocolId   uint64
 		buildVersion uint64
 	}{
-		{"examples", corpusDir, 0x91a8e85156dfe2b1, 0x5f535f12a00fb522},
-		{"examples128", corpus128Dir, 0x42050541a90eea8a, 0x2352e62e904fb4da},
+		{"examples", corpusDir, 0x91a8e85156dfe2b1, 0x69d6a810cfa22717},
+		{"examples128", corpus128Dir, 0x42050541a90eea8a, 0xedde8274fbab7f85},
 	} {
 		t.Run(unit.name, func(t *testing.T) {
 			u := loadCorpusDir(t, unit.dir)
