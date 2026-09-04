@@ -1342,13 +1342,17 @@ map machinery in a map-free unit's generated headers, held by the zero-cost
 gate's header scan — the build failure §2.2 states, the same scan that holds
 §13.9's hook rule — with the map symbols added to its list.
 
-**Backend status for this section: the C++ REFERENCE and the TOOL carry it;
-every other backend refuses a unit that declares one, by name** (§11), and the
-ports are a named follow-on (§15). The construct lands BEFORE 3.0.0, in the
-same sitting as the rest of the C++ finalization (schema#380, reversing the
-after-3.0.0 sequencing): a construct that touches framing is cheaper in the
-reference now than as nine ports later, and it re-pins with the wire rewrite
-(schema#435) rather than after it. The corpus holds it in `tables/maps`.
+**Backend status for this section: the LANGUAGE carries it and the CODECS are
+landing.** The construct lands BEFORE 3.0.0, in the same sitting as the rest of
+the C++ finalization (schema#380, reversing the after-3.0.0 sequencing): a
+construct that touches framing is cheaper in the reference now than as nine
+ports later, and it re-pins with the wire rewrite (schema#435) rather than
+after it. Today the parser takes `map[K]V`, the checker holds every rule below
+and refuses each violation by name, and the generated ENTRY is a table of the
+closure with its record, its Reset, its descriptor and its two constant ids —
+and EVERY backend, the C++ reference included, refuses a unit that declares a
+map (§11) until its own codec lands. The C++ reference and the tool are first,
+then every port as a row on the parity matrix (§15, schema#380).
 
 **The spelling is `map[K]V`.** It reads as what it is, and the bracket is the
 one the language already uses for every extent. Two alternatives were weighed:
@@ -1902,11 +1906,14 @@ Where a row is not achievable it says so in the row: zero allocation is a
 claim about a language with caller-owned buffers, and the reading tier holds a
 pinned count instead, the same honest number it holds for every other read.
 
-**THE SEQUENCING.** Maps land NOW, BEFORE 3.0.0 and before the port sweep, in
-the C++ reference and the tool — the builder surface, the sort in the four
-walks, the region load's check, `Find`, the text form and the cook-check
-rule — then every port as a row on the parity matrix (schema#366), each
-holding the same goldens and the same allocation audit. **The construct
+**THE SEQUENCING.** Maps land NOW, BEFORE 3.0.0 and before the port sweep: the
+language first — the spelling, the key rules, the generated entry and the name
+it claims — then the C++ reference and the tool, which are the builder surface,
+the sort in the four walks, the region load's check, `Find`, the text form and
+the cook-check rule; then every port as a row on the parity matrix
+(schema#366), each holding the same goldens and the same allocation audit.
+Until a backend's codec lands it refuses a map-bearing unit by name (§11), so
+no half-codec is ever emitted. **The construct
 spends nothing the release freezes, and this is the explicit confirmation**:
 the wire's kind set is untouched (a map is `14` over `13`); the entry's field
 ids are the ordinary hash of two ordinary names, computable by any reader from
@@ -6794,14 +6801,14 @@ inspects everything in the schema built:
   else identifies a build — a compiler version, a build stamp — is settled
   where build versioning is settled, and the registry gains a column then
   rather than inventing one first.
-- **MAPS IN EVERY PORTED BACKEND** (§2.8), tracked as schema#380. The C++
-  reference and the tool carry the construct — the parser's `map[K]V`, the
-  checker's refusals, the generated entry table, the builder surface (insert,
-  erase, find, iterate), the sort in the four walks, the region load's
-  ascending check with its `duplicate` and `malformed` events, the const
-  `Find`, the text form's object and `schema cook-check`'s order check — and
-  every other backend refuses a unit that declares one, by name (§11). What a
-  port needs is the entry as an ordinary array-of-tables element in its
+- **MAPS IN EVERY BACKEND** (§2.8), tracked as schema#380. The LANGUAGE carries
+  the construct — the parser's `map[K]V`, the checker's refusals, the generated
+  entry table with its record and its two constant ids — and every backend
+  refuses a unit that declares one, by name (§11), until its codec lands. The
+  C++ reference and the tool are first: the builder surface (insert, erase,
+  find, iterate), the sort in the four walks, the region load's ascending check
+  with its `duplicate` and `malformed` events, the const `Find`, the text
+  form's object and `schema cook-check`'s order check. What a port needs is the entry as an ordinary array-of-tables element in its
   measure, save and load, the writer's sort, the reader's one compare with its
   two events, the const `Find` as a binary search that allocates nothing,
   ascending iteration, and the text form's keyed object; each holds the same
