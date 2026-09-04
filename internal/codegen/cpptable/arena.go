@@ -717,15 +717,17 @@ inline char * TableStringEmplace( TableWorker & worker, TableRef & slot, const c
 // ---- the FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1) ----
 //
 // A pointered save writes every reachable node ONCE, into a node table, and a
-// pointer field rides as a u32 INDEX into it under kind 17. The encoding is
+// pointer field rides as an INDEX into it under kind 17. The encoding is
 // flat: no pointer edge is a nesting level, so a chain's length is not a depth,
 // and two references to one node are one node.
+//
+// THE FIELD RIDES ONCE: an L with sixty-four bits of capability frames a
+// numbering of any size, so the whole numbering is one contiguous payload and a
+// save's node bodies have no aggregate ceiling.
 
-static const uint16_t kTableNodeTableFieldId = 0xFFFF; // the RESERVED field id it rides under
-static const uint32_t kTableNodeIndexNull = 0;         // absence and null are one value
-static const uint32_t kTableNodeIndexRoot = 1;         // the body that hosts the table
-static const int64_t kTableNodeRecordHeader = 12;      // type id (u64), length (u32)
-static const int64_t kTableNodeFieldMax = 0xFFFFFFFF;  // a field's L is a u32, and so is a record's
+static const uint64_t kTableNodeTableFieldId = 0xFFFFFFFFFFFFFFFFull; // the RESERVED id it rides under
+static const uint64_t kTableNodeIndexNull = 0;         // absence and null are one value
+static const uint64_t kTableNodeIndexRoot = 1;         // the body that hosts the table
 
 // The not-materialized sentinel (§6.3): a record whose type id this build could
 // not name. Distinct from every real offset including the root's 0, so an index
@@ -744,8 +746,8 @@ struct TableNodeEntry
 {
     const void * node;
     uint64_t type_id;
-    int64_t ( * measure )( const void * ctx, const void * node );
-    bool ( * save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, const void * node );
+    int64_t ( * measure )( const void * ctx, const TableNumbering & numbering, TableIds & ids, const void * node );
+    bool ( * save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node );
 };
 
 struct TableNumbering
@@ -779,12 +781,12 @@ inline void TableNumberingShutdown( TableNumbering & n )
 // The index a numbered node was given, for the save that writes it into a
 // pointer slot. False means the two walks disagree about the graph, which is a
 // refusal and never a guess.
-inline bool TableNumberingIndex( const TableNumbering & n, const void * node, uint32_t & index )
+inline bool TableNumberingIndex( const TableNumbering & n, const void * node, uint64_t & index )
 {
     if ( n.seen.capacity == 0 ) { return false; }
     const TablePackEntry & entry = n.seen.entries[ TablePackMapSlot( n.seen, node ) ];
     if ( entry.key != node ) { return false; }
-    index = (uint32_t) entry.offset;
+    index = (uint64_t) entry.offset;
     return true;
 }
 
@@ -818,15 +820,15 @@ inline bool TableNumberingAppend( TableNumbering & n, const TableNodeEntry & ent
 // the arena's TableReset uses, and the reason a numbering may span the files of
 // one unit without any file naming another's members.
 template <typename Ctx, typename T>
-inline int64_t TableNodeMeasureThunk( const void * ctx, const void * node )
+inline int64_t TableNodeMeasureThunk( const void * ctx, const TableNumbering & numbering, TableIds & ids, const void * node )
 {
-    return TableNodeMeasure( *(const Ctx *) ctx, *(const T *) node );
+    return TableNodeMeasure( *(const Ctx *) ctx, numbering, ids, *(const T *) node );
 }
 
 template <typename Ctx, typename T>
-inline bool TableNodeSaveThunk( const void * ctx, const TableNumbering & numbering, TableWriter & w, const void * node )
+inline bool TableNodeSaveThunk( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node )
 {
-    return TableNodeSave( *(const Ctx *) ctx, numbering, w, *(const T *) node );
+    return TableNodeSave( *(const Ctx *) ctx, numbering, w, ids, *(const T *) node );
 }
 
 // ---- a BYTE BUFFER's record (docs/SPEC-TABLES.md §2.5, §3.1) ----
@@ -836,17 +838,17 @@ inline bool TableNodeSaveThunk( const void * ctx, const TableNumbering & numberi
 // can be named — with the bytes as its body and nothing framed inside. These
 // two thunks are what the numbering stores for a blob, as it stores a
 // member's codec for a table: the length, and the bytes verbatim.
-static const uint64_t kTableBytesTypeId = ` + fmt.Sprintf("0x%016xull", ir.BytesTypeId) + `;  // fnv1a64( "bytes" )
-static const uint64_t kTableStringTypeId = ` + fmt.Sprintf("0x%016xull", ir.StringTypeId) + `; // fnv1a64( "string" )
+static const uint64_t kTableBytesTypeId = ` + fmt.Sprintf("0x%016xull", ir.BytesWireTypeId) + `;  // fnv1a64( "bytes" )
+static const uint64_t kTableStringTypeId = ` + fmt.Sprintf("0x%016xull", ir.StringWireTypeId) + `; // fnv1a64( "string" )
 
 template <typename Ctx>
-inline int64_t TableBlobMeasureThunk( const void *, const void * node )
+inline int64_t TableBlobMeasureThunk( const void *, const TableNumbering &, TableIds &, const void * node )
 {
     return (int64_t) ( (const TableBlob *) node )->length;
 }
 
 template <typename Ctx>
-inline bool TableBlobSaveThunk( const void *, const TableNumbering &, TableWriter & w, const void * node )
+inline bool TableBlobSaveThunk( const void *, const TableNumbering &, TableWriter & w, TableIds &, const void * node )
 {
     const TableBlob * blob = (const TableBlob *) node;
     w.raw( (const void *) ( blob + 1 ), (int64_t) blob->length );
@@ -854,69 +856,58 @@ inline bool TableBlobSaveThunk( const void *, const TableNumbering &, TableWrite
 }
 
 // TableNodeTableMeasure and TableNodeTableSave are the framing, and they are
-// ONE fill rule written twice — measure derives the chunking from the graph and
-// save derives the same one, which is what makes measure == save hold across a
+// ONE fill rule written twice — measure derives it from the graph and save
+// derives the same one, which is what makes measure == save hold across a
 // pointer graph (§3.1).
 //
-// A RECORD NEVER STRADDLES A FIELD: the next field opens when the record about
-// to be written would not fit in this one, so every multi-byte read a reader
-// makes lies inside one contiguous payload.
+// The field rides ONCE, under the reserved id, kind 12: the payload opens with
+// the count and then carries the records back to back, each a type id
+// REFERENCE, a length and a body. The reserved id is interned BEFORE the
+// records, and a record's type id before its body, which is the first-use order
+// the trailer is written in (§3).
 template <typename Ctx>
-inline int64_t TableNodeTableMeasure( const Ctx & ctx, const TableNumbering & n )
+inline int64_t TableNodeTablePayload( const Ctx & ctx, TableIds & ids, const TableNumbering & n )
 {
-    if ( n.count == 0 ) { return 0; } // a root that reaches no nodes writes none of them
-    int64_t bytes = 0;
-    int64_t field = 8; // the FIRST field's payload opens with node_count (u64)
+    int64_t payload = TableLebBytes( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
     {
-        int64_t body = n.entries[k].measure( (const void *) &ctx, n.entries[k].node );
-        if ( body < 0 || body > kTableNodeFieldMax ) { return -1; }
-        if ( field > 0 && field + kTableNodeRecordHeader + body > kTableNodeFieldMax )
-        {
-            bytes += 7 + field; // id (u16), kind (u8), L (u32)
-            field = 0;
-        }
-        field += kTableNodeRecordHeader + body;
+        payload += TableLebBytes( ids.ref( n.entries[k].type_id ) );
+        const int64_t body = n.entries[k].measure( (const void *) &ctx, n, ids, n.entries[k].node );
+        if ( body < 0 ) { return -1; }
+        payload += TableLebBytes( (uint64_t) body ) + body;
     }
-    return bytes + 7 + field;
+    return payload;
 }
 
 template <typename Ctx>
-inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, const TableNumbering & n )
+inline int64_t TableNodeTableMeasure( const Ctx & ctx, TableIds & ids, const TableNumbering & n )
+{
+    if ( n.count == 0 ) { return 0; } // a root that reaches no nodes writes none of them
+    const uint64_t ref = ids.ref( kTableNodeTableFieldId );
+    const int64_t payload = TableNodeTablePayload( ctx, ids, n );
+    if ( payload < 0 ) { return -1; }
+    return TableLebBytes( ref ) + 1 + TableLebBytes( (uint64_t) payload ) + payload;
+}
+
+template <typename Ctx>
+inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, TableIds & ids, const TableNumbering & n )
 {
     if ( n.count == 0 ) { return true; }
-    int64_t length_at = 0;
-    int64_t payload_at = 0;
-    int64_t field = 0;
-    bool open = false;
+    const uint64_t ref = ids.ref( kTableNodeTableFieldId );
+    const int64_t payload = TableNodeTablePayload( ctx, ids, n );
+    if ( payload < 0 ) { return false; }
+    w.putleb( ref );
+    w.put8( 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
+    w.putleb( (uint64_t) payload );
+    w.putleb( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
     {
-        int64_t body = n.entries[k].measure( (const void *) &ctx, n.entries[k].node );
-        if ( body < 0 || body > kTableNodeFieldMax ) { return false; }
-        if ( !open )
-        {
-            w.put16( kTableNodeTableFieldId );
-            w.put8( 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
-            length_at = w.offset;
-            w.put32( 0 );
-            payload_at = w.offset;
-            open = true;
-            field = 0;
-            if ( k == 0 ) { w.put64( (uint64_t) n.count ); field = 8; }
-        }
-        else if ( field + kTableNodeRecordHeader + body > kTableNodeFieldMax )
-        {
-            w.patch32( length_at, uint32_t( w.offset - payload_at ) );
-            open = false;
-            k--; // this record opens the next field instead
-            continue;
-        }
-        w.put64( n.entries[k].type_id );
-        w.put32( uint32_t( body ) );
-        if ( !n.entries[k].save( (const void *) &ctx, n, w, n.entries[k].node ) ) { return false; }
-        field += kTableNodeRecordHeader + body;
+        w.putleb( ids.ref( n.entries[k].type_id ) );
+        const int64_t body = n.entries[k].measure( (const void *) &ctx, n, ids, n.entries[k].node );
+        if ( body < 0 ) { return false; }
+        w.putleb( (uint64_t) body );
+        if ( !n.entries[k].save( (const void *) &ctx, n, w, ids, n.entries[k].node ) ) { return false; }
     }
-    w.patch32( length_at, uint32_t( w.offset - payload_at ) );
     return true;
 }
 
@@ -950,11 +941,11 @@ struct TableNodeMap
 // is checked at every index, the root's included: the root carries no record
 // and therefore no wire type id, so the READER'S OWN root type is what the
 // claim is checked against.
-inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint32_t index, uint64_t target, TableReport * report )
+inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_t index, uint64_t target, TableReport * report )
 {
     slot.value = 0;
     if ( index == kTableNodeIndexNull || !map.good ) { return; }
-    if ( (int64_t) ( index - 1 ) >= map.count )
+    if ( index - 1 >= (uint64_t) map.count )
     {
         report->malformed = true; // an index above node_count + 1
         return;
@@ -979,58 +970,55 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint32_
 // ---- the record SCAN, and it is the whole of load's bound (§3.1) ----
 //
 // Reading follows no reference. The scan walks the root body's top-level fields,
-// takes every one under the reserved id, and reads records out of their payloads
-// in order — a record never straddles a field, so nothing is copied to make a
-// body contiguous and the generated body decoder never learns that chunking
-// exists.
+// finds the ONE under the reserved id, and reads records out of its payload in
+// order — the field rides once, so nothing is copied to make a body contiguous
+// and the generated body decoder never learns the transport exists.
 struct TableNodeScan
 {
     TableReader fields;        // over the ROOT body, skipping past everything else
-    const uint8_t * payload;   // the field currently being read out of
+    const uint8_t * payload;   // the node-table field's payload
     int64_t payload_size;
     int64_t payload_offset;
-    bool first;                // the next field opened carries node_count
+    bool opened;               // the root body has been walked for the field
     uint64_t declared;
     int64_t records;
     bool present;              // the root body carries a node table at all
     bool malformed;
+    const TableIdTable * ids;
 };
 
-inline TableNodeScan TableNodeScanBegin( const uint8_t * body, int64_t size, TableReport * report )
+inline TableNodeScan TableNodeScanBegin( const uint8_t * body, int64_t size, TableReport * report, const TableIdTable * ids )
 {
-    TableNodeScan s = { TableReader( body, size, report ), NULL, 0, 0, true, 0, 0, false, false };
+    TableNodeScan s = { TableReader( body, size, report, ids ), NULL, 0, 0, false, 0, 0, false, false, ids };
     return s;
 }
 
-// open the next node-table field, or answer false when the root body has no more
+// find the ONE node-table field, or answer false when the root body has none
 inline bool TableNodeScanOpen( TableNodeScan & s )
 {
+    if ( s.opened ) { return false; }
+    s.opened = true;
     for ( ;; )
     {
-        if ( !s.fields.has( 2 ) ) { return false; }
-        uint16_t id = s.fields.get16();
-        if ( id == 0 ) { return false; } // the terminator
+        uint64_t ref = 0;
+        if ( !s.fields.getleb( ref ) ) { return false; }
+        if ( ref == 0 ) { return false; } // the terminator
+        if ( s.ids == NULL || ref > (uint64_t) s.ids->count ) { return false; }
+        const uint64_t id = s.ids->at( ref );
         if ( !s.fields.has( 1 ) ) { return false; }
-        uint8_t kind = s.fields.get8();
+        const uint8_t kind = s.fields.get8();
         if ( id == kTableNodeTableFieldId )
         {
             s.present = true;
             if ( kind != 12 ) { s.malformed = true; return false; }
-            if ( !s.fields.has( 4 ) ) { s.malformed = true; return false; }
-            uint32_t length = s.fields.get32();
-            if ( !s.fields.has( length ) ) { s.malformed = true; return false; }
+            uint64_t length = 0;
+            if ( !s.fields.getleb( length ) || !s.fields.has( (int64_t) length ) ) { s.malformed = true; return false; }
             s.payload = s.fields.buffer + s.fields.offset;
             s.payload_size = (int64_t) length;
-            s.payload_offset = 0;
-            s.fields.offset += length;
-            if ( s.first )
-            {
-                if ( s.payload_size < 8 ) { s.malformed = true; return false; }
-                s.declared = 0;
-                for ( int i = 0; i < 8; i++ ) { s.declared |= (uint64_t) s.payload[i] << ( 8 * i ); }
-                s.payload_offset = 8;
-                s.first = false;
-            }
+            s.fields.offset += (int64_t) length;
+            TableReader head( s.payload, s.payload_size, s.fields.report, s.ids );
+            if ( !head.getleb( s.declared ) ) { s.malformed = true; return false; }
+            s.payload_offset = head.offset;
             return true;
         }
         if ( !s.fields.skip( kind ) ) { return false; }
@@ -1041,39 +1029,33 @@ inline bool TableNodeScanOpen( TableNodeScan & s )
 // the end was the end or the framing giving out
 inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint8_t * & body, int64_t & length )
 {
-    for ( ;; )
+    if ( !s.opened && !TableNodeScanOpen( s ) ) { return false; }
+    if ( s.payload == NULL || s.payload_offset >= s.payload_size ) { return false; }
+    TableReader rec( s.payload, s.payload_size, s.fields.report, s.ids );
+    rec.offset = s.payload_offset;
+    uint64_t ref = 0;
+    if ( !rec.getleb( ref ) || ref == 0 || s.ids == NULL || ref > (uint64_t) s.ids->count )
     {
-        if ( s.payload == NULL || s.payload_offset >= s.payload_size )
-        {
-            if ( s.payload != NULL && s.payload_offset != s.payload_size )
-            {
-                s.malformed = true; // bytes left over inside a field
-                return false;
-            }
-            if ( !TableNodeScanOpen( s ) ) { return false; }
-            continue;
-        }
-        if ( s.payload_offset + kTableNodeRecordHeader > s.payload_size )
-        {
-            s.malformed = true; // a record whose header runs past its field
-            return false;
-        }
-        const uint8_t * at = s.payload + s.payload_offset;
-        type_id = 0;
-        for ( int i = 0; i < 8; i++ ) { type_id |= (uint64_t) at[i] << ( 8 * i ); }
-        uint32_t declared_length = (uint32_t) at[8] | (uint32_t) at[9] << 8 | (uint32_t) at[10] << 16 | (uint32_t) at[11] << 24;
-        s.payload_offset += kTableNodeRecordHeader;
-        if ( s.payload_offset + (int64_t) declared_length > s.payload_size )
-        {
-            s.malformed = true; // a record whose length runs past its field
-            return false;
-        }
-        body = s.payload + s.payload_offset;
-        length = (int64_t) declared_length;
-        s.payload_offset += length;
-        s.records++;
-        return true;
+        s.malformed = true; // a type id reference of 0, or one past the table
+        return false;
     }
+    type_id = s.ids->at( ref );
+    uint64_t declared_length = 0;
+    if ( !rec.getleb( declared_length ) )
+    {
+        s.malformed = true; // a record whose length is damaged
+        return false;
+    }
+    if ( declared_length > (uint64_t) ( s.payload_size - rec.offset ) )
+    {
+        s.malformed = true; // a record whose length runs past its field
+        return false;
+    }
+    body = s.payload + rec.offset;
+    length = (int64_t) declared_length;
+    s.payload_offset = rec.offset + length;
+    s.records++;
+    return true;
 }
 
 // The record scan is AUTHORITATIVE: node_count is data from the wire, and a

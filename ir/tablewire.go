@@ -163,3 +163,68 @@ func ArmWireFixedWidth(f *Field) int {
 	}
 	return TableKindWidth(kind)
 }
+
+// TableWireIdCapacity is the number of DISTINCT ids a unit's table closure can
+// spell, which is the size a save's id table is declared at
+// (docs/SPEC-TABLES.md §3): every field's effective id, every enum variant's
+// and union arm's the closure reaches, every table's own name id, the two
+// reserved blob ids, and the node table's reserved id. It is a compile-time
+// fact, so a save allocates nothing for the table it writes.
+func TableWireIdCapacity(u *Unit) int {
+	ids := map[uint64]bool{
+		TableNodeWireId:  true,
+		BytesWireTypeId:  true,
+		StringWireTypeId: true,
+	}
+	var noteUnion func(un *Union)
+	noteField := func(f *Field) {
+		ids[TableFieldWireId(f)] = true
+		if f.IsMap() {
+			ids[MapKeyWireId] = true
+			ids[MapValueWireId] = true
+		}
+		if f.KeyEnumRef != nil {
+			for _, v := range f.KeyEnumRef.Variants {
+				ids[TableWireId(v)] = true
+			}
+		}
+		if f.Type.Kind != TNamed {
+			return
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *Enum:
+			for _, v := range ref.Variants {
+				ids[TableWireId(v)] = true
+			}
+		case *Union:
+			noteUnion(ref)
+		}
+	}
+	seen := map[*Union]bool{}
+	noteUnion = func(un *Union) {
+		if seen[un] {
+			return
+		}
+		seen[un] = true
+		for _, v := range un.Variants {
+			ids[TableWireId(v.Name)] = true
+			if v.F != nil {
+				noteField(v.F)
+			}
+		}
+	}
+	for name := range TableClosure(u) {
+		ids[TableWireId(name)] = true
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			noteField(f)
+		}
+	}
+	return len(ids)
+}

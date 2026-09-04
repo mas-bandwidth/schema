@@ -35,16 +35,16 @@ func (g *tableGen) isVar(name string) bool { return g.variable[name] }
 // table's codec is character-for-character what it was before pointers existed.
 func (g *tableGen) measureCall(name, expr string) string {
 	if g.isVar(name) {
-		return fmt.Sprintf("%sMeasureBody( ctx, %s )", name, expr)
+		return fmt.Sprintf("%sMeasureBody( ctx, numbering, ids, %s )", name, expr)
 	}
-	return fmt.Sprintf("%sMeasure( %s )", name, expr)
+	return fmt.Sprintf("%sMeasureBody( ids, %s )", name, expr)
 }
 
 func (g *tableGen) saveCall(name, expr string) string {
 	if g.isVar(name) {
-		return fmt.Sprintf("%sSaveBody( ctx, numbering, w, %s )", name, expr)
+		return fmt.Sprintf("%sSaveBody( ctx, numbering, w, ids, %s )", name, expr)
 	}
-	return fmt.Sprintf("%sSaveBody( w, %s )", name, expr)
+	return fmt.Sprintf("%sSaveBody( w, ids, %s )", name, expr)
 }
 
 func (g *tableGen) loadCall(name, reader, expr string) string {
@@ -306,14 +306,14 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 	g.pf("// ---- codecs: measure/save/load per closure member ----\n\n")
 	for _, st := range members {
 		if g.isVar(st.Name) {
-			g.pf("template <typename Ctx> inline int64_t %sMeasureBody( const Ctx & ctx, const %s & value );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx> inline bool %sSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, const %s & value );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx> inline bool %sSaveBody( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, const %s & value );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline int64_t %sMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const %s & value );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline bool %sSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const %s & value );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline bool %sSaveBody( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const %s & value );\n", st.Name, st.Name)
 			g.pf("inline bool %sLoadBody( TableReader & r, const TableNodeMap & nodes, %s & value );\n", st.Name, st.Name)
 			continue
 		}
-		g.pf("inline int64_t %sMeasure( const %s & value );\n", st.Name, st.Name)
-		g.pf("%s bool %sSaveBody( TableWriter & w, const %s & value );\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
+		g.pf("inline int64_t %sMeasureBody( TableIds & ids, const %s & value );\n", st.Name, st.Name)
+		g.pf("%s bool %sSaveBody( TableWriter & w, TableIds & ids, const %s & value );\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
 		g.pf("%s bool %sLoadBody( TableReader & r, %s & value );\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
 	}
 	g.pf("\n")
@@ -346,12 +346,12 @@ func (g *tableGen) emitNodeThunkOverloads(vars []*ir.Struct) {
 			// a pointer target may itself be pointer-free, and a FIXED table's
 			// codec is character-for-character what it was before pointers
 			// existed — it takes neither the context nor the numbering
-			g.pf("template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx &, const %s & value ) { return %sMeasure( value ); }\n", st.Name, st.Name)
-			g.pf("template <typename Ctx> inline bool TableNodeSave( const Ctx &, const TableNumbering &, TableWriter & w, const %s & value ) { return %sSaveBody( w, value ); }\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx &, const TableNumbering &, TableIds & ids, const %s & value ) { return %sMeasureBody( ids, value ); }\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline bool TableNodeSave( const Ctx &, const TableNumbering &, TableWriter & w, TableIds & ids, const %s & value ) { return %sSaveBody( w, ids, value ); }\n", st.Name, st.Name)
 			continue
 		}
-		g.pf("template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx & ctx, const %s & value ) { return %sMeasureBody( ctx, value ); }\n", st.Name, st.Name)
-		g.pf("template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, const %s & value ) { return %sSaveBody( ctx, numbering, w, value ); }\n", st.Name, st.Name)
+		g.pf("template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const %s & value ) { return %sMeasureBody( ctx, numbering, ids, value ); }\n", st.Name, st.Name)
+		g.pf("template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const %s & value ) { return %sSaveBody( ctx, numbering, w, ids, value ); }\n", st.Name, st.Name)
 	}
 	g.pf("\n")
 }
@@ -473,7 +473,7 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 			g.pf("            }\n            else\n            {\n")
 			g.pf("                TableNodeEntry node;\n")
 			g.pf("                node.node = (const void *) pointee;\n")
-			g.pf("                node.type_id = 0x%016xull; // fnv1a64( \"%s\" )\n", ir.TableTypeId(t), t)
+			g.pf("                node.type_id = 0x%016xull; // fnv1a64( \"%s\" )\n", ir.TableWireId(t), t)
 			g.pf("                node.measure = &TableNodeMeasureThunk<Ctx, %s>;\n", t)
 			g.pf("                node.save = &TableNodeSaveThunk<Ctx, %s>;\n", t)
 			g.pf("                if ( !TableNumberingAppend( numbering, node ) ) { return false; }\n")
@@ -827,10 +827,13 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    TableNumberingInit( numbering, allocator );\n")
 	g.pf("    int64_t bytes = -1;\n")
 	g.pf("    if ( %sNumberFrom( ctx, numbering, root ) )\n    {\n", n)
-	g.pf("        bytes = %sMeasureBody( ctx, root );\n", n)
+	g.pf("        TableIds ids;\n")
+	g.pf("        bytes = %sMeasureBody( ctx, numbering, ids, root );\n", n)
 	g.pf("        if ( bytes >= 0 )\n        {\n")
-	g.pf("            int64_t table = TableNodeTableMeasure( ctx, numbering );\n")
-	g.pf("            bytes = table < 0 ? -1 : bytes + table;\n")
+	g.pf("            const int64_t table = TableNodeTableMeasure( ctx, ids, numbering );\n")
+	g.pf("            // the FORM BYTE, the ROOT BODY — its own fields, the node table\n")
+	g.pf("            // and the terminator — and the ID TABLE (docs/SPEC-TABLES.md §3)\n")
+	g.pf("            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + TableIdsBytes( ids );\n")
 	g.pf("        }\n    }\n")
 	g.pf("    TableNumberingShutdown( numbering );\n")
 	g.pf("    return bytes;\n}\n\n")
@@ -840,13 +843,16 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    TableNumberingInit( numbering, allocator );\n")
 	g.pf("    if ( !%sNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }\n", n)
 	g.pf("    TableWriter w( buffer, capacity );\n")
-	g.pf("    // the root's own fields, then the node table's fields, then the\n")
+	g.pf("    TableIds ids;\n")
+	g.pf("    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)\n")
+	g.pf("    // the root's own fields, then the node table's field, then the\n")
 	g.pf("    // terminator: a reader that gives up inside the table has already\n")
 	g.pf("    // decoded the ROOT'S OWN FIELDS (§3.1)\n")
-	g.pf("    bool ok = %sSaveBodyFields( ctx, numbering, w, root ) && TableNodeTableSave( ctx, w, numbering );\n", n)
+	g.pf("    bool ok = %sSaveBodyFields( ctx, numbering, w, ids, root ) && TableNodeTableSave( ctx, w, ids, numbering );\n", n)
 	g.pf("    TableNumberingShutdown( numbering );\n")
-	g.pf("    if ( !ok ) { return -1; }\n")
-	g.pf("    w.put16( 0 );\n")
+	g.pf("    if ( !ok || ids.overflow ) { return -1; }\n")
+	g.pf("    w.put8( 0 ); // the ZERO REFERENCE that ends the root body\n")
+	g.pf("    TableIdsWrite( w, ids ); // the ID TABLE is the last thing in the file\n")
 	g.pf("    if ( w.overflow ) { return -1; } // the caller's buffer was too small\n")
 	g.pf("    return w.offset; // == %sMeasure( root )\n}\n\n", n)
 
@@ -883,9 +889,14 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("// It reports the DATA bytes and the ATTRIBUTION bytes separately, because the\n")
 	g.pf("// attribution is the wire's numbering made resident (§6.3) and a caller may\n")
 	g.pf("// release it once Load returns. The answer is their sum.\n")
-	g.pf("inline int64_t %sLoadMeasure( const uint8_t * wire, int64_t wire_bytes, int64_t * attribution_bytes = NULL )\n{\n", n)
+	g.pf("inline int64_t %sLoadMeasure( const uint8_t * wire_file, int64_t wire_file_bytes, int64_t * attribution_bytes = NULL )\n{\n", n)
 	g.pf("    TableReport ignored;\n")
-	g.pf("    TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored );\n")
+	g.pf("    TableIdTable ids_table;\n")
+	g.pf("    int64_t body_bytes = 0;\n")
+	g.pf("    if ( TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes ) != TableOpenOk ) { return -1; }\n")
+	g.pf("    const uint8_t * const wire = wire_file + 1;\n")
+	g.pf("    const int64_t wire_bytes = body_bytes;\n")
+	g.pf("    TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );\n")
 	g.emitRootDataBytes(st, "    ", "return -1;")
 	g.pf("    int64_t records = 0;\n")
 	g.pf("    uint64_t type_id = 0;\n")
@@ -909,9 +920,20 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("// ordering rule on the indices. Partial results are kept, as everywhere on\n")
 	g.pf("// this wire — the report says what happened. NULL means the CALLER's buffer\n")
 	g.pf("// was wrong.\n")
-	g.pf("inline const %s * %sLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )\n{\n", n, n)
+	g.pf("inline const %s * %sLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )\n{\n", n, n)
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
+	g.pf("    // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:\n")
+	g.pf("    // a file that is both a newer form and damaged is a REFUSAL and never\n")
+	g.pf("    // damage (docs/SPEC-TABLES.md §3).\n")
+	g.pf("    TableIdTable ids_table;\n")
+	g.pf("    int64_t body_bytes = 0;\n")
+	g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")
+	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
+	g.pf("        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; }\n")
+	g.pf("        return NULL;\n    }\n")
+	g.pf("    const uint8_t * const wire = wire_file + 1;\n")
+	g.pf("    const int64_t wire_bytes = body_bytes;\n")
 	g.pf("    if ( region == NULL || region_bytes < (int64_t) sizeof( %s ) ) { out->malformed = true; return NULL; }\n", n)
 	g.pf("    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return NULL; }\n")
 	g.pf("    memset( region, 0, (size_t) region_bytes );\n")
@@ -923,7 +945,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    int64_t records = 0;\n")
 	g.pf("    {\n")
 	g.pf("        TableReport counting;\n")
-	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting );\n")
+	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );\n")
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
 	g.pf("            records++;\n")
 	g.pf("            int64_t storage = %sNodeStorage( type_id, %slength );\n", n, g.nodeStorageArg(st))
@@ -940,13 +962,13 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    nodes.count = records + 1;\n")
 	g.pf("    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );\n")
 	g.pf("    directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)\n")
-	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableTypeId(st.Name))
+	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableWireId(st.Name))
 	g.pf("    %s * root = new ( region ) %s; // lifetime only: LoadBody's first act is %sReset\n", n, n, n)
 	g.pf("    %sReset( *root );\n\n", n)
 	g.pf("    // PASS ONE: fill the numbering from the framing, so that an index\n")
 	g.pf("    // resolves whichever way it points. It reads no body.\n")
 	g.pf("    {\n")
-	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );\n")
+	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );\n")
 	if g.anyMap {
 		g.pf("        int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + root_extent );\n", n)
 	} else {
@@ -980,18 +1002,18 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    // PASS TWO: decode each body into its own storage. A forward index\n")
 	g.pf("    // resolves without scratch, because pass one already placed every node.\n")
 	g.pf("    if ( nodes.good )\n    {\n")
-	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );\n")
+	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );\n")
 	g.pf("        int64_t k = 0;\n")
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
 	g.pf("            if ( directory[k + 1].offset != kTableNodeAbsent )\n            {\n")
-	g.pf("                TableReader sub( body, length, out );\n")
+	g.pf("                TableReader sub( body, length, out, &ids_table );\n")
 	g.pf("                %sNodeBody( type_id, sub, nodes, region + directory[k + 1].offset );\n", n)
 	g.pf("            }\n")
 	g.pf("            k++;\n")
 	g.pf("        }\n    }\n\n")
 	g.pf("    // and the ROOT's own body last, so every index it carries resolves\n")
 	g.pf("    // against a numbering already known good or already known bad\n")
-	g.pf("    TableReader r( wire, wire_bytes, out );\n")
+	g.pf("    TableReader r( wire, wire_bytes, out, &ids_table );\n")
 	if g.anyMap {
 		g.pf("    TableMapCarve root_carve;\n")
 		g.pf("    root_carve.at = region + TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
@@ -1005,9 +1027,17 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("// builder, so loaded data can be edited and locked again. The numbering is\n")
 	g.pf("// the same one; what differs is where a node lives and therefore what a\n")
 	g.pf("// resolved slot holds — an arena offset here, a self-relative delta there.\n")
-	g.pf("inline bool %sLoadBuilder( %sBuilder & builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )\n{\n", n, n)
+	g.pf("inline bool %sLoadBuilder( %sBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )\n{\n", n, n)
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
+	g.pf("    TableIdTable ids_table;\n")
+	g.pf("    int64_t body_bytes = 0;\n")
+	g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")
+	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
+	g.pf("        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; }\n")
+	g.pf("        return false;\n    }\n")
+	g.pf("    const uint8_t * const wire = wire_file + 1;\n")
+	g.pf("    const int64_t wire_bytes = body_bytes;\n")
 	g.pf("    %s * root = builder.GetRoot();\n", n)
 	g.pf("    if ( root == NULL ) { out->malformed = true; return false; }\n")
 	g.pf("    uint64_t type_id = 0;\n")
@@ -1016,7 +1046,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    int64_t records = 0;\n")
 	g.pf("    {\n")
 	g.pf("        TableReport counting;\n")
-	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting );\n")
+	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );\n")
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) ) { records++; }\n")
 	g.pf("    }\n")
 	g.pf("    // the AUTHORING side may allocate (§6.5), and this is the tool's path.\n")
@@ -1026,7 +1056,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    TableNodeDirEntry * directory = (TableNodeDirEntry *) allocator.alloc( allocator.context, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );\n")
 	g.pf("    if ( directory == NULL ) { out->malformed = true; return false; }\n")
 	g.pf("    directory[0].offset = (uint64_t) builder.root_ref.value;\n")
-	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableTypeId(st.Name))
+	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableWireId(st.Name))
 	g.pf("    TableNodeMap nodes;\n")
 	g.pf("    nodes.base = NULL;\n")
 	g.pf("    nodes.entries = directory;\n")
@@ -1036,7 +1066,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 		g.pf("    nodes.worker = &builder.main; // and a map's entries are the arena's, not a node extent's (§2.8)\n")
 	}
 	g.pf("    {\n")
-	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );\n")
+	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );\n")
 	g.pf("        int64_t k = 0;\n")
 	g.pf("        int32_t unknown_records = 0; // counted once the scan is known whole\n")
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
@@ -1054,16 +1084,16 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }\n")
 	g.pf("    }\n")
 	g.pf("    if ( nodes.good )\n    {\n")
-	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );\n")
+	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );\n")
 	g.pf("        int64_t k = 0;\n")
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
 	g.pf("            if ( directory[k + 1].offset != kTableNodeAbsent )\n            {\n")
-	g.pf("                TableReader sub( body, length, out );\n")
+	g.pf("                TableReader sub( body, length, out, &ids_table );\n")
 	g.pf("                %sNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );\n", n)
 	g.pf("            }\n")
 	g.pf("            k++;\n")
 	g.pf("        }\n    }\n")
-	g.pf("    TableReader r( wire, wire_bytes, out );\n")
+	g.pf("    TableReader r( wire, wire_bytes, out, &ids_table );\n")
 	if g.anyMap {
 		g.pf("    TableMapCarve root_carve;\n")
 		g.pf("    root_carve.worker = &builder.main;\n")
@@ -1112,13 +1142,13 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	g.pf("    switch ( type_id )\n    {\n")
 	for _, t := range reachable {
 		if g.anyMap && g.hasMapExtent(t) {
-			g.pf("        case 0x%016xull: // %s\n        {\n", ir.TableTypeId(t.Name), t.Name)
+			g.pf("        case 0x%016xull: // %s\n        {\n", ir.TableWireId(t.Name), t.Name)
 			g.pf("            int64_t extent = 0;\n")
 			g.pf("            if ( !%sWireExtent( body, length, extent ) ) { return kTableNodeRefused; }\n", t.Name)
 			g.pf("            return TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + extent );\n        }\n", t.Name)
 			continue
 		}
-		g.pf("        case 0x%016xull: return TableAlignUp64( (int64_t) sizeof( %s ) ); // %s\n", ir.TableTypeId(t.Name), t.Name, t.Name)
+		g.pf("        case 0x%016xull: return TableAlignUp64( (int64_t) sizeof( %s ) ); // %s\n", ir.TableWireId(t.Name), t.Name, t.Name)
 	}
 	for _, b := range blobs {
 		g.pf("        case %s: return TableBlobStorage( length, %v ); // *%s\n", b.constant, b.terminated, b.word)
@@ -1141,7 +1171,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	g.pf("    switch ( type_id )\n    {\n")
 	for _, t := range reachable {
 		g.pf("        case 0x%016xull: { %s * node = new ( at ) %s; %sReset( *node ); break; } // %s\n",
-			ir.TableTypeId(t.Name), t.Name, t.Name, t.Name, t.Name)
+			ir.TableWireId(t.Name), t.Name, t.Name, t.Name, t.Name)
 	}
 	for _, b := range blobs {
 		g.pf("        case %s: { TableBlob * blob = (TableBlob *) at; blob->length = (uint32_t) length; blob->zero = 0; break; } // *%s\n", b.constant, b.word)
@@ -1154,7 +1184,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 		g.pf("inline int64_t %sNodeRecordBytes( uint64_t type_id )\n{\n", n)
 		g.pf("    switch ( type_id )\n    {\n")
 		for _, t := range reachable {
-			g.pf("        case 0x%016xull: return TableAlignUp64( (int64_t) sizeof( %s ) ); // %s\n", ir.TableTypeId(t.Name), t.Name, t.Name)
+			g.pf("        case 0x%016xull: return TableAlignUp64( (int64_t) sizeof( %s ) ); // %s\n", ir.TableWireId(t.Name), t.Name, t.Name)
 		}
 		g.pf("        default: break;\n    }\n")
 		g.pf("    return 0;\n}\n\n")
@@ -1172,7 +1202,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	}
 	g.pf("    switch ( type_id )\n    {\n")
 	for _, t := range reachable {
-		g.pf("        case 0x%016xull: return (uint32_t) worker.Alloc<%s>().ref.value; // %s\n", ir.TableTypeId(t.Name), t.Name, t.Name)
+		g.pf("        case 0x%016xull: return (uint32_t) worker.Alloc<%s>().ref.value; // %s\n", ir.TableWireId(t.Name), t.Name, t.Name)
 	}
 	for _, b := range blobs {
 		if b.terminated {
@@ -1216,7 +1246,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 		if !g.isVar(t.Name) {
 			call = fmt.Sprintf("%sLoadBody( r, *(%s *) at )", t.Name, t.Name)
 		}
-		g.pf("        case 0x%016xull: %s; break; // %s\n", ir.TableTypeId(t.Name), call, t.Name)
+		g.pf("        case 0x%016xull: %s; break; // %s\n", ir.TableWireId(t.Name), call, t.Name)
 	}
 	for _, b := range blobs {
 		// the bytes verbatim; the storage's zeros are a string's terminator

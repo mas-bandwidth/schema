@@ -180,11 +180,15 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 			}
 			return encodeArray(e, w, fv, id, kind, count)
 		case kind == ir.TableKindTable:
+			// THE FIELD'S ID IS INTERNED FIRST, because the header rides
+			// before the body and first-use order follows the write order (§3)
+			ref := e.ids.ref(id)
 			body, err := encodeBody(e, subInstance(e, f, &fv.Cell))
 			if err != nil {
 				return err
 			}
-			e.header(w, id, ir.TableKindTable)
+			w.leb(ref)
+			w.u8(uint8(ir.TableKindTable))
 			w.leb(uint64(len(body)))
 			w.raw(body)
 		default:
