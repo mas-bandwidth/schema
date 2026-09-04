@@ -70,7 +70,7 @@ const TableBlockFieldInfo tableentity_block_projection_fields[] = {
     { "vel_y", 52u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 4u, 0xffffffffu, NULL },
     { "vel_z", 56u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 4u, 0xffffffffu, NULL },
     { "health", 60u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 4u, 0xffffffffu, NULL },
-    { "weapon", 64u, 1u, 7, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 1u, 0xffffffffu, NULL },
+    { "weapon", 64u, 1u, 30, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 1u, 0xffffffffu, NULL },
     { "damage", 72u, 8u, 9, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 8u, 0xffffffffu, NULL },
     { "moving", 80u, 1u, 1, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 1u, 0xffffffffu, NULL },
     { "firing", 81u, 1u, 1, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 1u, 0xffffffffu, NULL },

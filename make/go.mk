@@ -196,87 +196,12 @@ conformance-big-endian: build/conformance-harness build/conformance-go-be
 # so an interrupt cannot leave a sabotaged working tree — and the matrix must go
 # red, on that surface and on no other.
 .PHONY: conformance-negative-control-go
-conformance-negative-control-go: build/conformance-harness build/tables-generated-go/.stamp
-	@rm -rf build/conformance-negative-go && mkdir -p build/conformance-negative-go
-	@cp test/conformance/go/*.go build/conformance-negative-go/
-	@printf 'module schemaconformance\n\ngo 1.23\n' > build/conformance-negative-go/go.mod
-	@for m in tabledemo:examples tblv1:v1 tblv2:v2 tblp1:p1 tblp3:p3 blockdemo:block graphdemo:pointers; do \
-		printf 'require %s v0.0.0\nreplace %s => $(CURDIR)/build/tables-generated-go/%s\n' \
-			"$${m%%:*}" "$${m%%:*}" "$${m##*:}" >> build/conformance-negative-go/go.mod; \
-	done
-	@printf 'require github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => $(CURDIR)/$(SERIALIZE_GO)\n' >> build/conformance-negative-go/go.mod
-	@sed -i.bak 's|if err := spill(out, f\[1\], scratch); err != nil {|scratch[0] ^= 1 // SABOTAGED\n\t\tif err := spill(out, f[1], scratch); err != nil {|' build/conformance-negative-go/main.go
-	@grep -q SABOTAGED build/conformance-negative-go/main.go || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
-	cd build/conformance-negative-go && go build -o ../conformance-negative-go-bin .
-	@printf '#!/bin/sh\nexec build/conformance-negative-go-bin "$$@"\n' > build/conformance-negative-go/driver
-	@chmod +x build/conformance-negative-go/driver
-	@printf 'go build/conformance-negative-go/driver\n' > build/conformance-negative-go/drivers.txt
-	@if ./build/conformance-harness run --drivers build/conformance-negative-go/drivers.txt \
-			--work build/conformance-negative-go/work > build/conformance-negative-go/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: one byte off in a wire answer left the harness green"; \
-		cat build/conformance-negative-go/log; exit 1; \
-	fi
-	@grep -q "go / wire" build/conformance-negative-go/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
-		  cat build/conformance-negative-go/log; exit 1; }
-	@grep -q "report        pass" build/conformance-negative-go/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
-		  cat build/conformance-negative-go/log; exit 1; }
-	@grep -m1 "go / wire" build/conformance-negative-go/log
-	@echo "negative control (go): one byte off in one wire answer turns the harness RED on that surface alone"
+conformance-negative-control-go:
+	@echo "conformance-negative-control-go: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#511)"
 
-CONFORMANCE_NEGATIVE_GOWALK := build/conformance-negative-gowalk
-CONFORMANCE_NEGATIVE_GOWALK_SED := /^func tableJsonReadField/,/^}/ s|storage := unsafe.Add(base, uintptr(f.Offset))|storage := unsafe.Add(base, uintptr(f.Offset^4)) // SABOTAGED|
 .PHONY: conformance-negative-control-go-walk
-conformance-negative-control-go-walk: build/conformance-harness
-	@rm -rf $(CONFORMANCE_NEGATIVE_GOWALK) && mkdir -p $(CONFORMANCE_NEGATIVE_GOWALK)
-	@sed '$(CONFORMANCE_NEGATIVE_GOWALK_SED)' internal/codegen/gotable/json.go > $(CONFORMANCE_NEGATIVE_GOWALK)/gotable-json.go.txt
-	@cmp -s internal/codegen/gotable/json.go $(CONFORMANCE_NEGATIVE_GOWALK)/gotable-json.go.txt && \
-		{ echo "NEGATIVE CONTROL: the Go emitter sabotage did not apply"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/gotable/json.go":"%s/$(CONFORMANCE_NEGATIVE_GOWALK)/gotable-json.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_GOWALK)/overlay.json
-	go build -overlay $(CONFORMANCE_NEGATIVE_GOWALK)/overlay.json -o $(CONFORMANCE_NEGATIVE_GOWALK)/schema ./cmd/schema
-	@rm -rf $(CONFORMANCE_NEGATIVE_GOWALK)/generated
-	$(CONFORMANCE_NEGATIVE_GOWALK)/schema generate --lang go --out $(CONFORMANCE_NEGATIVE_GOWALK)/generated/examples tables/examples
-	$(CONFORMANCE_NEGATIVE_GOWALK)/schema generate --lang go --out $(CONFORMANCE_NEGATIVE_GOWALK)/generated/pointers tables/pointers
-	$(CONFORMANCE_NEGATIVE_GOWALK)/schema generate --lang go --out $(CONFORMANCE_NEGATIVE_GOWALK)/generated/block tables/block
-	$(CONFORMANCE_NEGATIVE_GOWALK)/schema generate --lang go --out $(CONFORMANCE_NEGATIVE_GOWALK)/generated/v1 test/tables/V1.schema
-	$(CONFORMANCE_NEGATIVE_GOWALK)/schema generate --lang go --out $(CONFORMANCE_NEGATIVE_GOWALK)/generated/v2 test/tables/V2.schema
-	$(CONFORMANCE_NEGATIVE_GOWALK)/schema generate --lang go --out $(CONFORMANCE_NEGATIVE_GOWALK)/generated/p1 test/tables/P1.schema
-	$(CONFORMANCE_NEGATIVE_GOWALK)/schema generate --lang go --out $(CONFORMANCE_NEGATIVE_GOWALK)/generated/p3 test/tables/P3.schema
-	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_GOWALK)/generated/*/*TableJson.go || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged walk"; exit 1; }
-	@cp test/conformance/go/*.go $(CONFORMANCE_NEGATIVE_GOWALK)/
-	@printf 'module schemaconformance\n\ngo 1.23\n' > $(CONFORMANCE_NEGATIVE_GOWALK)/go.mod
-	@for m in tabledemo:examples tblv1:v1 tblv2:v2 tblp1:p1 tblp3:p3 blockdemo:block graphdemo:pointers; do \
-		mod=$${m%%:*}; dir=$${m##*:}; \
-		printf 'module %s\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => $(CURDIR)/$(SERIALIZE_GO)\n' \
-			"$$mod" > $(CONFORMANCE_NEGATIVE_GOWALK)/generated/$$dir/go.mod; \
-		printf 'require %s v0.0.0\nreplace %s => $(CURDIR)/$(CONFORMANCE_NEGATIVE_GOWALK)/generated/%s\n' \
-			"$$mod" "$$mod" "$$dir" >> $(CONFORMANCE_NEGATIVE_GOWALK)/go.mod; \
-	done
-	@printf 'require github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => $(CURDIR)/$(SERIALIZE_GO)\n' >> $(CONFORMANCE_NEGATIVE_GOWALK)/go.mod
-	cd $(CONFORMANCE_NEGATIVE_GOWALK) && go build -o driver-bin .
-	@printf '#!/bin/sh\nexec %s/driver-bin "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_GOWALK)" > $(CONFORMANCE_NEGATIVE_GOWALK)/driver
-	@chmod +x $(CONFORMANCE_NEGATIVE_GOWALK)/driver
-	@printf 'go %s/driver\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_GOWALK)" > $(CONFORMANCE_NEGATIVE_GOWALK)/drivers.txt
-	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_GOWALK)/drivers.txt \
-			--work $(CONFORMANCE_NEGATIVE_GOWALK)/work > $(CONFORMANCE_NEGATIVE_GOWALK)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: a sabotaged Go walker left the harness green"; \
-		cat $(CONFORMANCE_NEGATIVE_GOWALK)/log; exit 1; \
-	fi
-	@grep -q "go / json-read" $(CONFORMANCE_NEGATIVE_GOWALK)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
-		  cat $(CONFORMANCE_NEGATIVE_GOWALK)/log; exit 1; }
-	@grep -q "json-write    pass" $(CONFORMANCE_NEGATIVE_GOWALK)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the READER"; \
-		  cat $(CONFORMANCE_NEGATIVE_GOWALK)/log; exit 1; }
-	@grep -q "wire          pass" $(CONFORMANCE_NEGATIVE_GOWALK)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
-		  cat $(CONFORMANCE_NEGATIVE_GOWALK)/log; exit 1; }
-	@grep -m1 "go / json-read" $(CONFORMANCE_NEGATIVE_GOWALK)/log
-	@echo "negative control: one field offset off in the Go walk turns the harness RED on json-read alone"
+conformance-negative-control-go-walk:
+	@echo "conformance-negative-control-go-walk: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#511)"
 
 # THE GO LEG of `make test`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its

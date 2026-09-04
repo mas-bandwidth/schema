@@ -113,19 +113,19 @@ func MapEntryProjectionName(u *Unit, st *Struct) string {
 		return ""
 	}
 	owner, field := splitMapEntryOf(st.MapEntryOf)
-	id := FieldId(field)
+	id := TableWireId(field)
 	if holder := memberStruct(u, owner); holder != nil {
 		for _, f := range holder.Fields {
 			if f.Name == field {
-				id = TableFieldId(f)
+				id = TableFieldWireId(f)
 				break
 			}
 		}
 		if holder.MapEntryOf != "" {
-			return MapEntryProjectionName(u, holder) + fmt.Sprintf(".%04x", id)
+			return MapEntryProjectionName(u, holder) + fmt.Sprintf(".%016x", id)
 		}
 	}
-	return fmt.Sprintf("%016x.%04x", TableTypeId(owner), id)
+	return fmt.Sprintf("%016x.%016x", TableWireId(owner), id)
 }
 
 // ProjectionMemberName is the name one closure member takes in the two

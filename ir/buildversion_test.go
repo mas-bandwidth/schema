@@ -44,15 +44,15 @@ table ShipConfig
 // §20.2's worked example, to the character. Every number in it derives from a
 // rule on a page and none of it is declared, so a second implementation
 // reproduces it — and a reader did, independently, before this one existed.
-const workedProjection = `schema-build-version 2
+const workedProjection = `schema-build-version 3
 protocol 0123456789abcdef
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record ShipConfig sizeof=12 alignof=4
-    field 15a9 kind=10 offset=0 size=4 default=21.0
-    field 2e46 kind=10 offset=4 size=4 default=500.0
-    field 7c9d kind=6 offset=8 size=1 min=0 max=100
-    field d272 kind=7 offset=9 size=1 enum=Grade default=Silver
+    field 7f6308be8ab37fc0 kind=10 offset=0 size=4 default=21.0
+    field 1733055702acb1d2 kind=10 offset=4 size=4 default=500.0
+    field d19988b67e699194 kind=6 offset=8 size=1 min=0 max=100
+    field 32a89b2977c48ad4 kind=30 offset=9 size=1 enum=Grade default=Silver
 enum Grade
     variant 1 Bronze
     variant 2 Silver
@@ -69,8 +69,8 @@ func TestCookProjectionMatchesThePagesWorkedExample(t *testing.T) {
 	if got != workedProjection {
 		t.Errorf("the cook projection is not the page's (docs/SPEC-TABLES.md §20.2).\n--- got ---\n%s\n--- want ---\n%s", got, workedProjection)
 	}
-	if v := ir.BuildVersion(u); v != 0xfa09afbc0cb0f3de {
-		t.Errorf("build version = 0x%016x, want 0xfa09afbc0cb0f3de (docs/SPEC-TABLES.md §20.2)", v)
+	if v := ir.BuildVersion(u); v != 0xa9df771f6051391f {
+		t.Errorf("build version = 0x%016x, want 0xa9df771f6051391f (docs/SPEC-TABLES.md §20.2)", v)
 	}
 }
 
@@ -80,13 +80,13 @@ func TestCookProjectionMatchesThePagesWorkedExample(t *testing.T) {
 func TestCookProjectionOfATablelessUnit(t *testing.T) {
 	u := unitFrom(t, "package demo\n\ntype Point\n{\n    x float32\n}\n")
 	u.ProtocolId = 0x0123456789abcdef
-	want := "schema-build-version 2\nprotocol 0123456789abcdef\nbyteorder little\n" +
+	want := "schema-build-version 3\nprotocol 0123456789abcdef\nbyteorder little\n" +
 		"block prologue=magic:8,build_version:8,byte_order:8\n"
 	if got := ir.CookProjection(u); got != want {
 		t.Errorf("a table-free unit projects its header lines alone.\n--- got ---\n%s", got)
 	}
-	if v := ir.BuildVersion(u); v != 0x6b4bbe97986b055b {
-		t.Errorf("build version = 0x%016x, want 0x6b4bbe97986b055b (docs/SPEC-TABLES.md §20.2)", v)
+	if v := ir.BuildVersion(u); v != 0xc4adaacfe6cb2809 {
+		t.Errorf("build version = 0x%016x, want 0xc4adaacfe6cb2809 (docs/SPEC-TABLES.md §20.2)", v)
 	}
 	if v := ir.BuildVersion(u); v == u.ProtocolId {
 		t.Error("the two ids are equal — one could be substituted for the other by accident")
@@ -182,9 +182,10 @@ table Row
 		{"two enum variants swapped", "enum Grade { Bronze, Silver, Gold }", "enum Grade { Silver, Bronze, Gold }"},
 		{"a union arm renamed", "    up    Buff", "    rise  Buff"},
 		// a flags DECLARATION is shared by both wires: its variant names are
-		// the bit positions, so they ride in the protocol id (SPEC.md §3.1)
-		// and the id rides here in whole (§20.1 group 1). The cook projection
-		// gains the bit positions of its own under #435.
+		// the bit positions, which ride in the protocol id (SPEC.md §3.1) and
+		// in the cook projection's own `flags` block (§20.2): a mask rides raw
+		// and a load copies it verbatim, so a reorder or an in-place rename
+		// remaps every cooked bit with nothing on either wire to say so.
 		{"a flags variant reordered", "flags Perks { Shielded, Cloaked }", "flags Perks { Cloaked, Shielded }"},
 		{"a flags variant renamed", "flags Perks { Shielded, Cloaked }", "flags Perks { Warded, Cloaked }"},
 		// the LAYOUT group's own controls
@@ -199,6 +200,12 @@ table Row
 		// sizeof, no offset and no wire id, and nothing on either wire can see
 		// it — the build version is what does
 		{"an arm retyped under one width", "    count int32", "    count float32"},
+		// A FLAGS FIELD'S REFERENT is a MEANING fact through the block it
+		// reaches (§20.1, §20.2): the field line carries no `flags=` token,
+		// because a slot is a raw u64 copied through — but the declaration it
+		// names projects its bit positions, and swapping one for another with
+		// different variants changes what every stored bit means.
+		{"a flags field's referent swapped for one with other variants", "perks  Perks", "perks  Boons"},
 	}
 	for _, m := range moves {
 		edited := strings.Replace(src, m.from, m.to, 1)
@@ -216,7 +223,6 @@ table Row
 		to   string
 	}{
 		{"a was rename", "slot   int32 | min = 0, max = 10", "position int32 | was = \"slot\", min = 0, max = 10"},
-		{"a flags field's referent swapped for a same-width other", "perks  Perks", "perks  Boons"},
 		{"a guard removed", "    if guard\n    {\n        extra int32\n    }\n", "    extra int32\n"},
 		{"a json key changed", `json = "name"`, `json = "label"`},
 		{"a comment added", "table Row", "// a comment\ntable Row"},

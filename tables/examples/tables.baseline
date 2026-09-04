@@ -1,196 +1,196 @@
-schema-tables-baseline 6
+schema-tables-baseline 7
 package tabledemo
 
 table ArchiveConfig
-    field root id=0x2eb8 kind=13 type=RootConfig
-    field count id=0xe445 kind=4 min=0 max=100 default=1
+    field root id=0xa354fd1ff0c467c5 kind=13 type=RootConfig
+    field count id=0xb1e5e28e4479a274 kind=4 min=0 max=100 default=1
 
 table Attachment
-    field slot id=0x37e4 kind=4 min=0 max=7 default=0
-    field power id=0xd609 kind=10 default=1.0
+    field slot id=0x6a771618f6fe31d1 kind=4 min=0 max=7 default=0
+    field power id=0xeef9d1358ae7b4e6 kind=10 default=1.0
 
 table Buff
-    field multiplier id=0x32e0 kind=10 default=1.0
+    field multiplier id=0x9adc623a805c87c6 kind=10 default=1.0
 
 table Debuff
-    field amount id=0x39cc kind=4 min=0 max=100 default=0
+    field amount id=0x8113fe7ea2b16969 kind=4 min=0 max=100 default=0
 
 table GlobalSettings
-    field tick_rate id=0x1953 kind=8 min=1 max=240 default=60
-    field difficulty id=0xd53f kind=7 enum=Difficulty default=Normal
-    field build_note id=0xb2d4 kind=12 size=48
-    field spawn_delays id=0x7c01 kind=14 elem=10 array=fixed bound=3
+    field tick_rate id=0xa65f859b617deaf3 kind=8 min=1 max=240 default=60
+    field difficulty id=0x467f35a74c6e4a70 kind=7 enum=Difficulty default=Normal
+    field build_note id=0x14ec921cc2549d60 kind=12 size=48
+    field spawn_delays id=0x09ae5613b0051271 kind=14 elem=10 array=fixed bound=3
 
 table GunnerConfig
-    field reaction id=0x900f kind=10 default=0.2
-    field tracking id=0x53d5 kind=1
+    field reaction id=0xb75aa3662201646a kind=10 default=0.2
+    field tracking id=0xa6bf719a4602b0bc kind=1
 
 table GunnerSettings
-    field reaction id=0x900f kind=10 default=0.2
-    field tracking id=0x53d5 kind=1
-    field callsign id=0x74dc kind=12 size=24
+    field reaction id=0xb75aa3662201646a kind=10 default=0.2
+    field tracking id=0xa6bf719a4602b0bc kind=1
+    field callsign id=0x5bc44627b9848818 kind=12 size=24
 
 table HullConfig
-    field health id=0x8617 kind=10 default=100.0
-    field mass id=0xe7a6 kind=10 default=1.0
-    field turrets id=0x48ad kind=16 elem=13 type=TurretConfig array=keyed bound=3 key=Weapon
+    field health id=0x7f69d4b5288ba9cf kind=10 default=100.0
+    field mass id=0x1f3757a2ce7b0ab1 kind=10 default=1.0
+    field turrets id=0x84f8260bc283608c kind=16 elem=13 type=TurretConfig array=keyed bound=3 key=Weapon
 
 table KeyedConfig
-    field teams id=0x9ae1 kind=16 elem=13 type=TeamConfig array=keyed bound=3 key=Team
-    field hulls id=0xeff5 kind=16 elem=13 type=HullConfig array=keyed bound=3 key=Hull
-    field scores id=0xdcf3 kind=13 type=ScoreBoard
+    field teams id=0xbaaeb048a5a8fa6d kind=16 elem=13 type=TeamConfig array=keyed bound=3 key=Team
+    field hulls id=0xce0ac3c25694d8ff kind=16 elem=13 type=HullConfig array=keyed bound=3 key=Hull
+    field scores id=0x01986b0b27400fb2 kind=13 type=ScoreBoard
 
 table LoadoutConfig
-    field grade id=0xd272 kind=7 enum=Grade default=Silver
-    field grades id=0x301a kind=14 elem=7 enum=Grade array=bounded bound=4
-    field podium id=0x088a kind=14 elem=7 enum=Grade array=fixed bound=3
-    field perks id=0x2fc5 kind=9 flags=Perks
-    field primary id=0x05f7 kind=13 type=WeaponConfig
-    field backups id=0x1647 kind=14 elem=13 type=WeaponConfig array=fixed bound=2
-    field attachments id=0x44d5 kind=14 elem=13 type=Attachment array=bounded bound=8
+    field grade id=0x32a89b2977c48ad4 kind=7 enum=Grade default=Silver
+    field grades id=0xd90a4e7682f799c5 kind=14 elem=7 enum=Grade array=bounded bound=4
+    field podium id=0xb46ff45a23d72549 kind=14 elem=7 enum=Grade array=fixed bound=3
+    field perks id=0x4b06f5847096e54a kind=9 flags=Perks
+    field primary id=0xbf31137ff783e939 kind=13 type=WeaponConfig
+    field backups id=0xde28f0f5118acc24 kind=14 elem=13 type=WeaponConfig array=fixed bound=2
+    field attachments id=0xf901aa0340249a41 kind=14 elem=13 type=Attachment array=bounded bound=8
 
 table PackConfig
-    field version id=0xe8e6 kind=8 default=1
-    field global id=0x1b51 kind=13 type=GlobalSettings
-    field ships id=0x2d39 kind=16 elem=13 type=ShipEntry array=keyed bound=3 key=ShipType
-    field thresholds id=0xb2eb kind=16 elem=4 array=keyed bound=3 key=Difficulty min=0 max=1000
-    field reserves id=0x049d kind=14 elem=13 type=ShipEntry array=bounded bound=3
+    field version id=0xbb62c62c9808ea37 kind=8 default=1
+    field global id=0x7fb43557b54149ce kind=13 type=GlobalSettings
+    field ships id=0x294a5c4913e1ad44 kind=16 elem=13 type=ShipEntry array=keyed bound=3 key=ShipType
+    field thresholds id=0x9cda940a344e1571 kind=16 elem=4 array=keyed bound=3 key=Difficulty min=0 max=1000
+    field reserves id=0x77707fccd201c228 kind=14 elem=13 type=ShipEntry array=bounded bound=3
 
 table Patrol
-    field active id=0x405a kind=1
-    field speed id=0xbc00 kind=10 default=1.0
-    field has_target id=0xb0a7 kind=1
-    field target_id id=0xdf6a kind=4 min=0 max=1000 default=0
-    field wander id=0x832f kind=10 default=0.5
-    field note id=0x9da7 kind=12 size=8
+    field active id=0x6580790b036f0c6f kind=1
+    field speed id=0x2281498aa0200e40 kind=10 default=1.0
+    field has_target id=0x247f0e7f55aacfbd kind=1
+    field target_id id=0xb7bc9ac015a25050 kind=4 min=0 max=1000 default=0
+    field wander id=0xb8c758d8bd1845d4 kind=10 default=0.5
+    field note id=0x3bf8fbbad1587cdd kind=12 size=8
 
 table ProfileConfig
-    field name id=0x30df kind=12 size=32
-    field icon id=0xf3b0 kind=14 elem=6 size=16
-    field experience id=0x61d8 kind=8 default=0
-    field tilt id=0x023c kind=2
-    field heading id=0x885d kind=3
-    field timestamp id=0x67a0 kind=5
-    field badge id=0xb71c kind=6
-    field port id=0x6942 kind=7
-    field epoch id=0xf4bd kind=9
-    field precision id=0x96e0 kind=11
-    field ratings id=0x97dd kind=14 elem=10 array=fixed bound=4
-    field has_loadout id=0xb4db kind=1
-    field loadout id=0x9f78 kind=13 type=LoadoutConfig
+    field name id=0xc4bcadba8e631b86 kind=12 size=32
+    field icon id=0xdbff4cc56c2092f0 kind=14 elem=6 size=16
+    field experience id=0xab8b6d521f80b969 kind=8 default=0
+    field tilt id=0x1e5088ef2e9bafc6 kind=2
+    field heading id=0xb128829190ca0f75 kind=3
+    field timestamp id=0x5ddc92338ef53403 kind=5
+    field badge id=0x10bda981fe095518 kind=6
+    field port id=0x8c2cdb0da8933fa6 kind=7
+    field epoch id=0xfc9697d1196e6ba6 kind=9
+    field precision id=0x288427f5babd05f7 kind=11
+    field ratings id=0xb921eb8a3d0cb0f9 kind=14 elem=10 array=fixed bound=4
+    field has_loadout id=0xa06f5e0a148e253c kind=1
+    field loadout id=0x5759ce7586bbb5a3 kind=13 type=LoadoutConfig
 
 table RangedSigned
-    field i8_span id=0x8d4f kind=2 min=-128 max=127
-    field i8_low id=0xe337 kind=2 min=-128 max=126
-    field i8_high id=0x6a5f kind=2 min=-127 max=127
-    field i8_inside id=0x8eee kind=2 min=-127 max=126
-    field i16_span id=0x0a1e kind=3 min=-32768 max=32767
-    field i16_low id=0xaaae kind=3 min=-32768 max=32766
-    field i16_high id=0xe8f2 kind=3 min=-32767 max=32767
-    field i16_inside id=0x1a0e kind=3 min=-32767 max=32766
-    field i32_span id=0x6bd1 kind=4 min=-2147483648 max=2147483647
-    field i32_low id=0xb8e0 kind=4 min=-2147483648 max=2147483646
-    field i32_high id=0x3806 kind=4 min=-2147483647 max=2147483647
-    field i32_inside id=0x9a24 kind=4 min=-2147483647 max=2147483646
-    field i64_span id=0xf086 kind=5 min=-9223372036854775808 max=9223372036854775807
-    field i64_low id=0xc705 kind=5 min=-9223372036854775808 max=9223372036854775806
-    field i64_high id=0x328e kind=5 min=-9223372036854775807 max=9223372036854775807
-    field i64_inside id=0x7d51 kind=5 min=-9223372036854775807 max=9223372036854775806
-    field edges id=0xb1cb kind=14 elem=3 array=bounded bound=4 min=-32768 max=32767
+    field i8_span id=0x48121511bf702eb5 kind=2 min=-128 max=127
+    field i8_low id=0x942bfe3168090f7d kind=2 min=-128 max=126
+    field i8_high id=0xd182acd105b55dd1 kind=2 min=-127 max=127
+    field i8_inside id=0xef9ded23c8912a81 kind=2 min=-127 max=126
+    field i16_span id=0xb655574ea23760b4 kind=3 min=-32768 max=32767
+    field i16_low id=0xd217b3af8d7a2bde kind=3 min=-32768 max=32766
+    field i16_high id=0x90652f70c9127900 kind=3 min=-32767 max=32767
+    field i16_inside id=0x6a659d7c354db158 kind=3 min=-32767 max=32766
+    field i32_span id=0xe693bd88532c91d6 kind=4 min=-2147483648 max=2147483647
+    field i32_low id=0x065ee827cf99fbb4 kind=4 min=-2147483648 max=2147483646
+    field i32_high id=0xc9b121c4c2a186ee kind=4 min=-2147483647 max=2147483647
+    field i32_inside id=0xd363dfa465acf27a kind=4 min=-2147483647 max=2147483646
+    field i64_span id=0x7549c70700c49d6f kind=5 min=-9223372036854775808 max=9223372036854775807
+    field i64_low id=0x1cce6617419771db kind=5 min=-9223372036854775808 max=9223372036854775806
+    field i64_high id=0x3b54fa60620b5597 kind=5 min=-9223372036854775807 max=9223372036854775807
+    field i64_inside id=0xd308fcb98ece5d23 kind=5 min=-9223372036854775807 max=9223372036854775806
+    field edges id=0xc70cde6b85b6197d kind=14 elem=3 array=bounded bound=4 min=-32768 max=32767
 
 table RangedUnsigned
-    field u8_span id=0x6434 kind=6 min=0 max=255
-    field u8_low id=0xb24e kind=6 min=0 max=254
-    field u8_high id=0x202a kind=6 min=1 max=255 default=1
-    field u8_inside id=0x8fbf kind=6 min=1 max=254 default=1
-    field u16_span id=0xd410 kind=7 min=0 max=65535
-    field u16_low id=0x6f72 kind=7 min=0 max=65534
-    field u16_high id=0x1364 kind=7 min=1 max=65535 default=1
-    field u16_inside id=0xbf32 kind=7 min=1 max=65534 default=1
-    field u32_span id=0x0513 kind=8 min=0 max=4294967295
-    field u32_low id=0x4cce kind=8 min=0 max=4294967294
-    field u32_high id=0xa2da kind=8 min=1 max=4294967295 default=1
-    field u32_inside id=0xf596 kind=8 min=1 max=4294967294 default=1
-    field u64_span id=0x6e8d kind=9 min=0 max=18446744073709551615
-    field u64_low id=0x95b5 kind=9 min=0 max=18446744073709551614
-    field u64_high id=0x15e4 kind=9 min=1 max=18446744073709551615 default=1
-    field u64_inside id=0x2ce0 kind=9 min=1 max=18446744073709551614 default=1
-    field counts id=0xe27a kind=14 elem=9 array=bounded bound=4 min=0 max=18446744073709551615
+    field u8_span id=0x0f8897557f37c021 kind=6 min=0 max=255
+    field u8_low id=0x2e17553f8200a2a1 kind=6 min=0 max=254
+    field u8_high id=0xa0e5c60df9301b7d kind=6 min=1 max=255 default=1
+    field u8_inside id=0x1cb2c073a6f5844d kind=6 min=1 max=254 default=1
+    field u16_span id=0x4ca0c150b1790960 kind=7 min=0 max=65535
+    field u16_low id=0xf252136836b04cb2 kind=7 min=0 max=65534
+    field u16_high id=0x4f37e1f216e7610c kind=7 min=1 max=65535 default=1
+    field u16_inside id=0xd176b605978f3304 kind=7 min=1 max=65534 default=1
+    field u32_span id=0x200b924de7479cda kind=8 min=0 max=4294967295
+    field u32_low id=0xa53d2f2a31b5acb0 kind=8 min=0 max=4294967294
+    field u32_high id=0x9759be8ea1a4e3d2 kind=8 min=1 max=4294967295 default=1
+    field u32_inside id=0x8dc515fc082e3c0e kind=8 min=1 max=4294967294 default=1
+    field u64_span id=0xbeecef11dbdf8973 kind=9 min=0 max=18446744073709551615
+    field u64_low id=0x0117ad66e0fff227 kind=9 min=0 max=18446744073709551614
+    field u64_high id=0xf2b45af3b50689db kind=9 min=1 max=18446744073709551615 default=1
+    field u64_inside id=0x713e12017eebcaf7 kind=9 min=1 max=18446744073709551614 default=1
+    field counts id=0xc341febe5aae51e5 kind=14 elem=9 array=bounded bound=4 min=0 max=18446744073709551615
 
 table RangedWidths
-    field b8 id=0xa7cb kind=6
-    field b16 id=0xb643 kind=7
-    field b32 id=0x33f2 kind=8
-    field b64 id=0x75dc kind=9
-    field b12 id=0xbcf7 kind=7
-    field b48 id=0x9797 kind=9
+    field b8 id=0x08a60c07b54d8dc7 kind=6
+    field b16 id=0xff95701912ad97be kind=7
+    field b32 id=0xff9c5c1912b39470 kind=8
+    field b64 id=0xff92701912ab61e7 kind=9
+    field b12 id=0xff95741912ad9e8a kind=7
+    field b48 id=0xff8b681912a535a1 kind=9
 
 table RootConfig
-    field version_note id=0xe726 kind=12 size=16
-    field weapons id=0x91cd kind=14 elem=13 type=WeaponConfig array=bounded bound=8
-    field profiles id=0x73fd kind=14 elem=13 type=ProfileConfig array=bounded bound=4
+    field version_note id=0x8a67c9728746d394 kind=12 size=16
+    field weapons id=0x41cbd901b87fabb6 kind=14 elem=13 type=WeaponConfig array=bounded bound=8
+    field profiles id=0x8181e61fc0436767 kind=14 elem=13 type=ProfileConfig array=bounded bound=4
 
 table ScoreBoard
-    field per_team id=0x443f kind=16 elem=4 array=keyed bound=3 key=Team min=0 max=100000
+    field per_team id=0xf10fad739a0e1660 kind=16 elem=4 array=keyed bound=3 key=Team min=0 max=100000
 
 table ShipEntry
-    field display_name id=0xcb8b kind=12 size=32
-    field health id=0x8617 kind=10 default=100.0
-    field mass id=0xe7a6 kind=10 default=1.0
-    field hardpoints id=0xc4b2 kind=14 elem=4 array=bounded bound=4 min=0 max=8
-    field gunner id=0x2bc9 kind=13 type=GunnerSettings optional=true
+    field display_name id=0x2d21d7cd66bd5a5d kind=12 size=32
+    field health id=0x7f69d4b5288ba9cf kind=10 default=100.0
+    field mass id=0x1f3757a2ce7b0ab1 kind=10 default=1.0
+    field hardpoints id=0x95d0cce09ca82b73 kind=14 elem=4 array=bounded bound=4 min=0 max=8
+    field gunner id=0x40dbb648c0cd44aa kind=13 type=GunnerSettings optional=true
 
 table TeamConfig
-    field spawn_count id=0x3668 kind=4 min=0 max=64 default=4
-    field banner id=0x80e4 kind=12 size=16
+    field spawn_count id=0xceec99e2d65db674 kind=4 min=0 max=64 default=4
+    field banner id=0xbca0dab1c7a00ccf kind=12 size=16
 
 table TurretConfig
-    field damage id=0x15a9 kind=10 default=10.0
-    field cooldown id=0x2230 kind=10 default=0.5
-    field gunner id=0x2bc9 kind=13 type=GunnerConfig optional=true
+    field damage id=0x7f6308be8ab37fc0 kind=10 default=10.0
+    field cooldown id=0xdc2cbe6953343d48 kind=10 default=0.5
+    field gunner id=0x40dbb648c0cd44aa kind=13 type=GunnerConfig optional=true
 
 table WeaponConfig
-    field damage id=0x15a9 kind=10 default=21.0
-    field speed id=0x2e46 kind=10 default=500.0 was=velocity
-    field penetration id=0x6557 kind=4 min=0 max=10 default=1
-    field channel id=0x7366 kind=6
-    field homing id=0xab40 kind=1
-    field effect id=0xe33a kind=15 union=Effect
+    field damage id=0x7f6308be8ab37fc0 kind=10 default=21.0
+    field speed id=0x1733055702acb1d2 kind=10 default=500.0 was=velocity
+    field penetration id=0x4f31c5309e13e932 kind=4 min=0 max=10 default=1
+    field channel id=0xa5013e9ad5caeda4 kind=6
+    field homing id=0xad6587bc602e3f59 kind=1
+    field effect id=0x36c1c83b51f24394 kind=15 union=Effect
 
 table WideBlob
-    field label id=0xe16a kind=12 size=70000
-    field payload id=0x44aa kind=14 elem=6 size=70000
-    field samples id=0xaf9a kind=14 elem=7 array=bounded bound=70000
+    field label id=0x39f7fcec8fcb623d kind=12 size=70000
+    field payload id=0xcfb8a9d063b5e9e5 kind=14 elem=6 size=70000
+    field samples id=0xe3b1ca6a3b48dddc kind=14 elem=7 array=bounded bound=70000
 
 enum Difficulty
-    variant Easy id=0x7d08
-    variant Normal id=0x7fac
-    variant Hard id=0xc313
+    variant Easy id=0x483d9e6c1ccd1f9b
+    variant Normal id=0x9ff3121d30f88d52
+    variant Hard id=0x58c7b5d87587287c
 
 enum Grade
-    variant Bronze id=0x3407
-    variant Silver id=0xa3e7
-    variant Gold id=0xda27
+    variant Bronze id=0xc4927739aac4c591
+    variant Silver id=0xc3e51adeeaf12580
+    variant Gold id=0xc416c97e0d3218b3
 
 enum Hull
-    variant Interceptor id=0xf0f0
-    variant Gunship id=0xb534
-    variant Freighter id=0xb617
+    variant Interceptor id=0xae61a6cbe88c2cf4
+    variant Gunship id=0x334d24e1420dbc1f
+    variant Freighter id=0x6c2321a3d00e23db
 
 enum ShipType
-    variant Fighter id=0x412b
-    variant Bomber id=0xb7ce
-    variant Scout id=0xd97a
+    variant Fighter id=0xd011f7c3c15285c2
+    variant Bomber id=0xa8216aa1c554cb8a
+    variant Scout id=0x7d573c625719c1a5
 
 enum Team
-    variant Red id=0xbb03
-    variant Blue id=0xf630
-    variant Green id=0x6e0f
+    variant Red id=0x9ff1de19feac1b7c
+    variant Blue id=0xecf3d3a7c1693e2d
+    variant Green id=0xcf00d78fd5953f1c
 
 enum Weapon
-    variant Cannon id=0xf055
-    variant Missile id=0x16b3
-    variant Mine id=0x61bf
+    variant Cannon id=0x5854debe3b2e767c
+    variant Missile id=0xb528592e5a4583e3
+    variant Mine id=0x04dc16aea8ff5276
 
 flags Perks
     variant Shielded bit=0
@@ -198,8 +198,8 @@ flags Perks
     variant Turbo bit=2
 
 union Effect
-    arm buff id=0xeae6 payload=Buff
-    arm debuff id=0xb0d3 payload=Debuff
+    arm buff id=0xffb5be9be2e469cc payload=Buff
+    arm debuff id=0x13cdc5ede73d2fd7 payload=Debuff
 
 ## history
 ### 2026-09-02 — the first baseline over the tables corpus
@@ -225,3 +225,6 @@ union Effect
 
 ### 2026-09-04 — schema#396 adopt item 1: a union arm is a field line, so an arm's line carries the FIELD tokens for what it is beside the payload= spelling a declared type keeps; the rendering version moves to 6 and this file is regenerated with its history intact
 - baseline REGENERATED over an unreadable one (baseline version 5, this compiler writes 6); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
+
+### 2026-09-04 — the id-table wire: sixty-four-bit identity, the enum kind, and rendering version 7 (docs/SPEC-TABLES.md §3, §5, §18.1)
+- baseline REGENERATED over an unreadable one (baseline version 6, this compiler writes 7); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow

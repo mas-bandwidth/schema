@@ -40,11 +40,11 @@ func (n Node) Key() any {
 func (n Node) TypeId() uint64 {
 	if n.Blob != nil {
 		if n.Kind == ir.TString {
-			return ir.StringTypeId
+			return ir.StringWireTypeId
 		}
-		return ir.BytesTypeId
+		return ir.BytesWireTypeId
 	}
-	return ir.TableTypeId(n.Inst.Def.Name)
+	return ir.TableWireId(n.Inst.Def.Name)
 }
 
 // Name spells the node for a diagnostic.
@@ -63,22 +63,22 @@ func (n Node) Name() string {
 // so Nodes[i] is node index `i + 1` and Nodes[0] is the root (§3.1).
 type NodeGraph struct {
 	Nodes []Node
-	index map[any]uint32
+	index map[any]uint64
 }
 
-// Index is the node index of one instance, or [ir.NodeIndexNull] for a nil
+// Index is the node index of one instance, or [ir.NodeWireIndexNull] for a nil
 // referent — absence and null are one value (§3.1).
-func (g *NodeGraph) Index(inst *tabletext.Instance) uint32 {
+func (g *NodeGraph) Index(inst *tabletext.Instance) uint64 {
 	if inst == nil {
-		return ir.NodeIndexNull
+		return ir.NodeWireIndexNull
 	}
 	return g.index[inst]
 }
 
-// BlobIndex is the node index of one blob, or [ir.NodeIndexNull] for nil.
-func (g *NodeGraph) BlobIndex(blob *tabletext.Blob) uint32 {
+// BlobIndex is the node index of one blob, or [ir.NodeWireIndexNull] for nil.
+func (g *NodeGraph) BlobIndex(blob *tabletext.Blob) uint64 {
 	if blob == nil {
-		return ir.NodeIndexNull
+		return ir.NodeWireIndexNull
 	}
 	return g.index[blob]
 }
@@ -103,10 +103,10 @@ func (g *NodeGraph) Records() []Node { return g.Nodes[1:] }
 // costs one bit. A reference to an entry still open is a cycle, named, and
 // measure, save, Cook and Lock all return failure. Nothing recurses away.
 func Number(m *tabletext.Model, root *tabletext.Instance) (*NodeGraph, error) {
-	g := &NodeGraph{index: map[any]uint32{}}
+	g := &NodeGraph{index: map[any]uint64{}}
 	open := map[any]bool{}
 	g.Nodes = append(g.Nodes, Node{Inst: root})
-	g.index[root] = ir.NodeIndexRoot
+	g.index[root] = ir.NodeWireIndexRoot
 	open[root] = true
 	if err := g.descend(m, root, open); err != nil {
 		return nil, err
@@ -133,7 +133,7 @@ func (g *NodeGraph) descend(m *tabletext.Model, inst *tabletext.Instance, open m
 		if _, seen := g.index[key]; seen {
 			return true // one index, one node: a shared node is reached again and numbered once
 		}
-		g.index[key] = uint32(len(g.Nodes)) + 1
+		g.index[key] = uint64(len(g.Nodes)) + 1
 		g.Nodes = append(g.Nodes, target)
 		if target.Blob != nil {
 			return true

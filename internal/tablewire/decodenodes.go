@@ -29,13 +29,13 @@ type decodeState struct {
 // BUFFER's slot resolves the same way, against its reserved type id (§2.5): a
 // table's record under a `*bytes` slot, a blob under a `*T` slot, or a
 // `*string` blob under a `*bytes` slot is a kind mismatch.
-func (r *wireReader) resolve(fv *tabletext.Field, index uint32) {
+func (r *wireReader) resolve(fv *tabletext.Field, index uint64) {
 	r.resolveCell(&fv.Cell, fv.Def, index)
 }
 
 // resolveCell resolves one pointer SLOT — a field's cell, or an element of an
 // array of pointers (§2.1) — against the numbering.
-func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint32) {
+func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint64) {
 	cell.Node = nil
 	cell.Blob = nil
 	st := r.st
@@ -45,9 +45,9 @@ func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint32
 	blob := f.Type.Blob()
 	target := f.Type.Name
 	switch {
-	case index == ir.NodeIndexNull:
+	case index == ir.NodeWireIndexNull:
 		return
-	case index == ir.NodeIndexRoot:
+	case index == ir.NodeWireIndexRoot:
 		// the root carries no record and therefore no wire type id, so the
 		// READER'S OWN root type is what the claim is checked against — and it
 		// is checked
@@ -56,7 +56,7 @@ func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint32
 			return
 		}
 		cell.Node = st.root
-	case int(index)-2 < len(st.nodes):
+	case index >= 2 && index-2 < uint64(len(st.nodes)):
 		node := st.nodes[index-2]
 		if node.Inst == nil && node.Blob == nil {
 			// a node whose type id this reader cannot name KEEPS ITS INDEX, and
@@ -86,13 +86,13 @@ func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint32
 // decodeVariable reads a pointered root: the node table first, because a reader
 // has already read `head = 2` before it learns whether the table can be read at
 // all, then the records, then every body.
-func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) (bool, error) {
+func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, ids []uint64, report *tabletext.Report) (bool, error) {
 	st := &decodeState{root: inst}
 
-	payload, present, framed := nodeTableBytes(data, report)
+	payload, present, framed := nodeTableBytes(data, ids, report)
 	records, scanned := []nodeRecord(nil), true
 	if framed && present {
-		records, scanned = scanNodeRecords(payload)
+		records, scanned = scanNodeRecords(payload, ids)
 	}
 	switch {
 	case !framed && present:
@@ -109,7 +109,7 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, r
 	byTypeId := map[uint64]*ir.Struct{}
 	for name := range ir.TableClosure(m.Unit) {
 		if sd := m.Lookup(name); sd != nil {
-			byTypeId[ir.TableTypeId(name)] = sd
+			byTypeId[ir.TableWireId(name)] = sd
 		}
 	}
 
@@ -120,10 +120,10 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, r
 	st.nodes = make([]Node, len(records))
 	for i, rec := range records {
 		switch rec.TypeId {
-		case ir.BytesTypeId:
+		case ir.BytesWireTypeId:
 			st.nodes[i] = Node{Blob: &tabletext.Blob{Data: append([]byte(nil), rec.Body...)}, Kind: ir.TBytes}
 			continue
-		case ir.StringTypeId:
+		case ir.StringWireTypeId:
 			st.nodes[i] = Node{Blob: &tabletext.Blob{Data: append([]byte(nil), rec.Body...)}, Kind: ir.TString}
 			continue
 		}
@@ -140,11 +140,11 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, r
 		if st.nodes[i].Inst == nil {
 			continue
 		}
-		sub := &wireReader{buf: rec.Body, report: report, m: m, st: st}
-		sub.body(st.nodes[i].Inst)
+		sub := &wireReader{buf: rec.Body, report: report, m: m, ids: ids, st: st}
+		sub.bodyAt(st.nodes[i].Inst, true)
 	}
 
-	r := &wireReader{buf: data, report: report, m: m, st: st}
+	r := &wireReader{buf: data, report: report, m: m, ids: ids, st: st}
 	ok := r.body(inst)
 	return ok, nil
 }

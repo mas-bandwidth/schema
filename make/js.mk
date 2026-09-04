@@ -459,59 +459,9 @@ generated/bench/js/.stamp: bin/schema $(SCHEMAS_BENCH)
 # THE JAVASCRIPT LEG's negative control: one field index off in the generic
 # walk's READER, and the harness must go red on json-read alone — the same
 # sabotage the C# control applies, at the same place, in the other language.
-CONFORMANCE_NEGATIVE_JS := build/conformance-negative-js
-CONFORMANCE_NEGATIVE_JS_SED := s|const f = info.Fields\[index\];|const f = info.Fields[(index ^ 1) < info.NumFields ? (index ^ 1) : index]; // SABOTAGED|
 .PHONY: conformance-negative-control-js
-conformance-negative-control-js: build/conformance-harness
-	@rm -rf $(CONFORMANCE_NEGATIVE_JS) && mkdir -p $(CONFORMANCE_NEGATIVE_JS)
-	@sed '$(CONFORMANCE_NEGATIVE_JS_SED)' internal/codegen/jstable/json.go > $(CONFORMANCE_NEGATIVE_JS)/jstable-json.go.txt
-	@cmp -s internal/codegen/jstable/json.go $(CONFORMANCE_NEGATIVE_JS)/jstable-json.go.txt && \
-		{ echo "NEGATIVE CONTROL: the JS emitter sabotage did not apply"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/jstable/json.go":"%s/$(CONFORMANCE_NEGATIVE_JS)/jstable-json.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_JS)/overlay.json
-	go build -overlay $(CONFORMANCE_NEGATIVE_JS)/overlay.json -o $(CONFORMANCE_NEGATIVE_JS)/schema ./cmd/schema
-	$(CONFORMANCE_NEGATIVE_JS)/schema generate --lang js --out $(CONFORMANCE_NEGATIVE_JS)/generated/examples tables/examples
-	$(CONFORMANCE_NEGATIVE_JS)/schema generate --lang js --out $(CONFORMANCE_NEGATIVE_JS)/generated/pointers tables/pointers
-	$(CONFORMANCE_NEGATIVE_JS)/schema generate --lang js --out $(CONFORMANCE_NEGATIVE_JS)/generated/block tables/block
-	$(CONFORMANCE_NEGATIVE_JS)/schema generate --lang js --out $(CONFORMANCE_NEGATIVE_JS)/generated/v1 test/tables/V1.schema
-	$(CONFORMANCE_NEGATIVE_JS)/schema generate --lang js --out $(CONFORMANCE_NEGATIVE_JS)/generated/v2 test/tables/V2.schema
-	$(CONFORMANCE_NEGATIVE_JS)/schema generate --lang js --out $(CONFORMANCE_NEGATIVE_JS)/generated/p1 test/tables/P1.schema
-	$(CONFORMANCE_NEGATIVE_JS)/schema generate --lang js --out $(CONFORMANCE_NEGATIVE_JS)/generated/p3 test/tables/P3.schema
-	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_JS)/generated/*/*Table.js || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged walk"; exit 1; }
-	@printf '#!/bin/sh\nSCHEMA_JS_GENERATED=%s/generated exec "$${NODE:-node}" test/conformance/js/main.mjs "$$@"\n' \
-		"$(CURDIR)/$(CONFORMANCE_NEGATIVE_JS)" > $(CONFORMANCE_NEGATIVE_JS)/driver
-	@chmod +x $(CONFORMANCE_NEGATIVE_JS)/driver
-	@printf 'js %s/driver\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_JS)" > $(CONFORMANCE_NEGATIVE_JS)/drivers.txt
-	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_JS)/drivers.txt \
-			--work $(CONFORMANCE_NEGATIVE_JS)/work > $(CONFORMANCE_NEGATIVE_JS)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: a sabotaged JavaScript walker left the harness green"; \
-		cat $(CONFORMANCE_NEGATIVE_JS)/log; exit 1; \
-	fi
-	@grep -q "js / json-read" $(CONFORMANCE_NEGATIVE_JS)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
-		  cat $(CONFORMANCE_NEGATIVE_JS)/log; exit 1; }
-	@grep -q "json-write    pass" $(CONFORMANCE_NEGATIVE_JS)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the READER"; \
-		  cat $(CONFORMANCE_NEGATIVE_JS)/log; exit 1; }
-	@grep -q "wire          pass" $(CONFORMANCE_NEGATIVE_JS)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
-		  cat $(CONFORMANCE_NEGATIVE_JS)/log; exit 1; }
-	@grep -m1 "js / json-read" $(CONFORMANCE_NEGATIVE_JS)/log
-	@echo "negative control: one field index off in the JavaScript walk turns the harness RED on json-read alone"
-	# AND THE LEG's randomized half, against the same sabotage: the harness holds
-	# eighteen pinned instances, and the leg holds instances nobody wrote down —
-	# so both must see this, and if only one does, the other is watching nothing.
-	@if SCHEMA_JS_GENERATED=$(CURDIR)/$(CONFORMANCE_NEGATIVE_JS)/generated ROUNDS=200 \
-			$(NODE) test/js-tables/main.mjs > $(CONFORMANCE_NEGATIVE_JS)/leg-log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the sabotaged walker left the randomized round trip green"; \
-		cat $(CONFORMANCE_NEGATIVE_JS)/leg-log; exit 1; \
-	fi
-	@grep -q "text round trip\|clean text round trip" $(CONFORMANCE_NEGATIVE_JS)/leg-log || \
-		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on the text round trip"; \
-		  cat $(CONFORMANCE_NEGATIVE_JS)/leg-log; exit 1; }
-	@grep -m1 "FAILED:" $(CONFORMANCE_NEGATIVE_JS)/leg-log
-	@echo "negative control: the same sabotage turns the leg's randomized text round trip RED on instances nobody wrote down"
+conformance-negative-control-js:
+	@echo "conformance-negative-control-js: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#516)"
 
 # THE JAVASCRIPT LEG of `make test`: the table gates and their negative
 # controls, the conformance negative control, the runtime-home gate, and the

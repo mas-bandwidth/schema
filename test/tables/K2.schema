@@ -1,0 +1,15 @@
+// K2.schema — the READER of the ENUM-AGAINST-INTEGER pair (docs/SPEC-TABLES.md
+// §3, §4). `grade` is respelled as the raw `uint16` an enum's storage happens
+// to be, and `raw` is respelled as the enum: one wire read here meets kind 30
+// where it declares kind 7 and kind 7 where it declares kind 30, and counts
+// both. No raw value is ever read as a variant name, and no variant reference
+// as a number.
+package tblk2
+
+enum Grade { Bronze, Silver, Gold }
+
+table Root
+{
+    grade uint16
+    raw   Grade
+}

@@ -37,26 +37,37 @@ type Instance struct {
 	NoText bool
 }
 
-// Counts is a read report (docs/SPEC-TABLES.md §4), which is the whole expectation
-// a report case carries.
+// Counts is a read report (docs/SPEC-TABLES.md §4), which is the whole
+// expectation a report case carries — and the VERDICT beside it (§3).
+//
+// THE VERDICT IS DISTINCT FROM A CLEAN READ, because five zero counters and a
+// false flag are what a clean read prints too: a FORM BYTE this reader does not
+// carry is a refusal, it moves none of §4's counters, and it never reports
+// damage. Without the verdict a refusal and a clean read are the same row.
 type Counts struct {
 	Unknown      int
 	KindMismatch int
 	Clamped      int
 	Duplicate    int
 	Malformed    bool
+	Refused      bool
 }
 
 func (c Counts) String() string {
-	return fmt.Sprintf("%d,%d,%d,%d,%t", c.Unknown, c.KindMismatch, c.Clamped, c.Duplicate, c.Malformed)
+	verdict := "read"
+	if c.Refused {
+		verdict = "refused"
+	}
+	return fmt.Sprintf("%d,%d,%d,%d,%t,%s", c.Unknown, c.KindMismatch, c.Clamped, c.Duplicate, c.Malformed, verdict)
 }
 
-// ParseCounts reads the "u,k,c,d,m" spelling every leg of the harness uses.
+// ParseCounts reads the "u,k,c,d,m,verdict" spelling every leg of the harness
+// uses.
 func ParseCounts(text string) (Counts, error) {
 	var c Counts
 	parts := strings.Split(strings.TrimSpace(text), ",")
-	if len(parts) != 5 {
-		return c, fmt.Errorf("a report is five fields, not %d: %q", len(parts), text)
+	if len(parts) != 6 {
+		return c, fmt.Errorf("a report is five counters and a verdict, not %d fields: %q", len(parts), text)
 	}
 	nums := []*int{&c.Unknown, &c.KindMismatch, &c.Clamped, &c.Duplicate}
 	for i, p := range nums {
@@ -73,6 +84,14 @@ func ParseCounts(text string) (Counts, error) {
 		c.Malformed = false
 	default:
 		return c, fmt.Errorf("%q is not true or false", parts[4])
+	}
+	switch parts[5] {
+	case "refused":
+		c.Refused = true
+	case "read":
+		c.Refused = false
+	default:
+		return c, fmt.Errorf("%q is not a verdict: a read is `read` or `refused` (docs/SPEC-TABLES.md §3)", parts[5])
 	}
 	return c, nil
 }

@@ -626,7 +626,10 @@ if (args.length < 2) {
 const lines = readManifest(args[0]);
 const surface = args[1];
 if (surface === "list") {
-  process.stdout.write("wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n");
+  // the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
+  // PREVIOUS form and the corpus is pinned in the id-table form
+  // (docs/SPEC-TABLES.md §3). schema#516 is the port's row.
+  process.stdout.write("cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n");
   process.exit(0);
 }
 if (args.length < 3) {

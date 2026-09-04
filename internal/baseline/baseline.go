@@ -55,7 +55,7 @@ import (
 // every judged row — so an unbumped rendering greets an untouched schema with
 // a diagnostic per field. Recording a fact nothing judges (an `optional`) does
 // not need a bump; adding a rule does.
-const Version = 6
+const Version = 7
 
 // FileName is the baseline's name in the unit directory. Its presence is what
 // turns the check on: no file, no check.
@@ -97,7 +97,7 @@ type Table struct {
 // tokens.
 type Field struct {
 	Name   string
-	Id     uint16
+	Id     uint64
 	Tokens []Token
 
 	// JsonKey is the field's `json = "key"` text key, and it is the one fact
@@ -136,7 +136,7 @@ type Enum struct {
 // A Variant is one enum variant or union arm, with its name-hash id.
 type Variant struct {
 	Name    string
-	Id      uint16
+	Id      uint64
 	Payload string // union arms only
 }
 
@@ -238,7 +238,7 @@ func Render(u *ir.Unit) *Unit {
 func renderEnum(e *ir.Enum) Enum {
 	out := Enum{Name: e.Name}
 	for _, v := range e.Variants {
-		out.Variants = append(out.Variants, Variant{Name: v, Id: ir.VariantId(v)})
+		out.Variants = append(out.Variants, Variant{Name: v, Id: ir.TableWireId(v)})
 	}
 	return out
 }
@@ -257,7 +257,7 @@ func renderUnion(un *ir.Union) Union {
 		// else still reads; an arm with NO PAYLOAD carries `kind=none`; every
 		// other arm carries the FIELD tokens for what it is, judged by the one
 		// policy table a field is judged by.
-		arm := Field{Name: v.Name, Id: ir.VariantId(v.Name)}
+		arm := Field{Name: v.Name, Id: ir.TableWireId(v.Name)}
 		switch {
 		case v.Body():
 			arm.Tokens = []Token{{Key: "payload", Value: v.Type}}
@@ -274,7 +274,7 @@ func renderUnion(un *ir.Union) Union {
 // renderField lists a field's wire facts. The token ORDER here is the file's
 // column order; every key it can emit has a row in [DefaultTokenPolicy].
 func renderField(f *ir.Field) Field {
-	out := Field{Name: f.Name, Id: ir.TableFieldId(f), JsonKey: f.JsonKey}
+	out := Field{Name: f.Name, Id: ir.TableFieldWireId(f), JsonKey: f.JsonKey}
 	add := func(k, v string) { out.Tokens = append(out.Tokens, Token{Key: k, Value: v}) }
 
 	add("kind", strconv.Itoa(ir.TableFieldKind(f)))
@@ -424,7 +424,7 @@ func (u *Unit) Text() string {
 	for _, t := range u.Tables {
 		fmt.Fprintf(&b, "\ntable %s\n", t.Name)
 		for _, f := range t.Fields {
-			fmt.Fprintf(&b, "    field %s id=0x%04x", f.Name, f.Id)
+			fmt.Fprintf(&b, "    field %s id=0x%016x", f.Name, f.Id)
 			for _, tok := range f.Tokens {
 				fmt.Fprintf(&b, " %s=%s", tok.Key, tok.Value)
 			}
@@ -434,7 +434,7 @@ func (u *Unit) Text() string {
 	for _, e := range u.Enums {
 		fmt.Fprintf(&b, "\nenum %s\n", e.Name)
 		for _, v := range e.Variants {
-			fmt.Fprintf(&b, "    variant %s id=0x%04x\n", v.Name, v.Id)
+			fmt.Fprintf(&b, "    variant %s id=0x%016x\n", v.Name, v.Id)
 		}
 	}
 	for _, f := range u.Flags {
@@ -446,7 +446,7 @@ func (u *Unit) Text() string {
 	for _, un := range u.Unions {
 		fmt.Fprintf(&b, "\nunion %s\n", un.Name)
 		for _, a := range un.Arms {
-			fmt.Fprintf(&b, "    arm %s id=0x%04x", a.Name, a.Id)
+			fmt.Fprintf(&b, "    arm %s id=0x%016x", a.Name, a.Id)
 			for _, tok := range a.Tokens {
 				fmt.Fprintf(&b, " %s=%s", tok.Key, tok.Value)
 			}
@@ -550,11 +550,11 @@ func (u *Unit) parseMemberLine(path string, lineno int, section string, fields [
 				return bad()
 			}
 			if k == "id" {
-				id, err := strconv.ParseUint(strings.TrimPrefix(val, "0x"), 16, 16)
+				id, err := strconv.ParseUint(strings.TrimPrefix(val, "0x"), 16, 64)
 				if err != nil {
 					return bad()
 				}
-				f.Id, haveId = uint16(id), true
+				f.Id, haveId = id, true
 				continue
 			}
 			f.Tokens = append(f.Tokens, Token{Key: k, Value: val})
@@ -626,11 +626,10 @@ func (u *Unit) parseMemberLine(path string, lineno int, section string, fields [
 	return nil
 }
 
-func parseIdToken(fields []string) (uint16, error) {
+func parseIdToken(fields []string) (uint64, error) {
 	for _, tok := range fields[2:] {
 		if k, val, ok := strings.Cut(tok, "="); ok && k == "id" {
-			id, err := strconv.ParseUint(strings.TrimPrefix(val, "0x"), 16, 16)
-			return uint16(id), err
+			return strconv.ParseUint(strings.TrimPrefix(val, "0x"), 16, 64)
 		}
 	}
 	return 0, fmt.Errorf("no id")

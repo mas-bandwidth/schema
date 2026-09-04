@@ -1,77 +1,77 @@
-schema-tables-baseline 6
+schema-tables-baseline 7
 package mapdemo
 
-table 0a53e00afba279af.2d39
-    field key id=0xa079 kind=12 size=32
-    field value id=0x9194 kind=13 type=ShipConfig
+table 0a53e00afba279af.294a5c4913e1ad44
+    field key id=0x3dc94a19365b10ec kind=12 size=32
+    field value id=0x7ce4fd9430e80cea kind=13 type=ShipConfig
 
-table 0a53e00afba279af.61ae
-    field key id=0xa079 kind=3
-    field value id=0x9194 kind=13 type=Item
+table 0a53e00afba279af.294fa1b3f0f5f070
+    field key id=0x3dc94a19365b10ec kind=12 size=16
+    field value id=0x7ce4fd9430e80cea kind=14 elem=13 array=map keykind=6
 
-table 0a53e00afba279af.d91b
-    field key id=0xa079 kind=12 size=16
-    field value id=0x9194 kind=14 elem=13 array=map keykind=6
+table 0a53e00afba279af.294fa1b3f0f5f070.7ce4fd9430e80cea
+    field key id=0x3dc94a19365b10ec kind=6
+    field value id=0x7ce4fd9430e80cea kind=13 type=Item
 
-table 0a53e00afba279af.d91b.9194
-    field key id=0xa079 kind=6
-    field value id=0x9194 kind=13 type=Item
+table 0a53e00afba279af.6dd8dc6c5fdae3ce
+    field key id=0x3dc94a19365b10ec kind=3
+    field value id=0x7ce4fd9430e80cea kind=13 type=Item
 
-table 0a53e00afba279af.ff83
-    field key id=0xa079 kind=8
-    field value id=0x9194 kind=17 type=ShipConfig
+table 0a53e00afba279af.7b024c46e98d3404
+    field key id=0x3dc94a19365b10ec kind=8
+    field value id=0x7ce4fd9430e80cea kind=17 type=ShipConfig
 
 table Depth
-    field one id=0xa3c8 kind=13 type=Squad
-    field many id=0x6e35 kind=14 elem=13 type=Squad array=bounded bound=3
-    field keyed id=0x9208 kind=16 elem=13 type=Squad array=keyed bound=2 key=Slot
-    field arm id=0x1fda kind=15 union=Force
-    field after id=0x66a7 kind=4
+    field one id=0x1a08aa1921ca5caf kind=13 type=Squad
+    field many id=0x1f6459a2cea1fc02 kind=14 elem=13 type=Squad array=bounded bound=3
+    field keyed id=0x70551ff29550f15d kind=16 elem=13 type=Squad array=keyed bound=2 key=Slot
+    field arm id=0xe756c0190570ccb5 kind=15 union=Force
+    field after id=0xbf82010f6f71eae9 kind=4
 
 table Fleet
-    field ships id=0x2d39 kind=14 elem=13 array=map keykind=12 keybound=32
-    field by_id id=0xff83 kind=14 elem=13 array=map keykind=8
-    field flagship id=0x78df kind=17 type=ShipConfig
-    field loadouts id=0xd91b kind=14 elem=13 array=map keykind=12 keybound=16
-    field tiers id=0x61ae kind=14 elem=13 array=map keykind=3
+    field ships id=0x294a5c4913e1ad44 kind=14 elem=13 array=map keykind=12 keybound=32
+    field by_id id=0x7b024c46e98d3404 kind=14 elem=13 array=map keykind=8
+    field flagship id=0x63dfa0c4a4b3815d kind=17 type=ShipConfig
+    field loadouts id=0x294fa1b3f0f5f070 kind=14 elem=13 array=map keykind=12 keybound=16
+    field tiers id=0x6dd8dc6c5fdae3ce kind=14 elem=13 array=map keykind=3
 
 table Item
-    field count id=0xe445 kind=4
+    field count id=0xb1e5e28e4479a274 kind=4
 
 table Row
-    field entries id=0xedab kind=14 elem=13 array=map keykind=12 keybound=8
-    field after id=0x66a7 kind=4
+    field entries id=0xc5b2a72c0845a253 kind=14 elem=13 array=map keykind=12 keybound=8
+    field after id=0xbf82010f6f71eae9 kind=4
 
 table ShipConfig
-    field name id=0x30df kind=12 size=64
-    field health id=0x8617 kind=4
+    field name id=0xc4bcadba8e631b86 kind=12 size=64
+    field health id=0x7f69d4b5288ba9cf kind=4
 
 table Squad
-    field roster id=0xa526 kind=14 elem=13 array=map keykind=6
+    field roster id=0x1c84390d304f4f42 kind=14 elem=13 array=map keykind=6
 
 table WideRow
-    field entries id=0xedab kind=14 elem=13 array=map keykind=8
-    field after id=0x66a7 kind=4
+    field entries id=0xc5b2a72c0845a253 kind=14 elem=13 array=map keykind=8
+    field after id=0xbf82010f6f71eae9 kind=4
 
-table a013e119fec906fb.edab
-    field key id=0xa079 kind=12 size=8
-    field value id=0x9194 kind=13 type=Item
+table a013e119fec906fb.c5b2a72c0845a253
+    field key id=0x3dc94a19365b10ec kind=12 size=8
+    field value id=0x7ce4fd9430e80cea kind=13 type=Item
 
-table b413964e3571a316.edab
-    field key id=0xa079 kind=8
-    field value id=0x9194 kind=13 type=Item
+table b413964e3571a316.c5b2a72c0845a253
+    field key id=0x3dc94a19365b10ec kind=8
+    field value id=0x7ce4fd9430e80cea kind=13 type=Item
 
-table ec07a2f760550a91.a526
-    field key id=0xa079 kind=6
-    field value id=0x9194 kind=13 type=Item
+table ec07a2f760550a91.1c84390d304f4f42
+    field key id=0x3dc94a19365b10ec kind=6
+    field value id=0x7ce4fd9430e80cea kind=13 type=Item
 
 enum Slot
-    variant Alpha id=0x7103
-    variant Beta id=0x6d86
+    variant Alpha id=0x4fda04cbc245e18b
+    variant Beta id=0xa0b562a796b69487
 
 union Force
-    arm squad id=0xde0e payload=Squad
-    arm plain id=0xecd9 kind=4
+    arm squad id=0xd5c2bb95d63e6331 payload=Squad
+    arm plain id=0xfd4d194e1652b207 kind=4
 
 ## history
 ### 2026-09-04 — the map corpus's first baseline: the generated entry is ANONYMOUS in the projection, keyed by the holder's wire id and the map field's (docs/SPEC-TABLES.md §2.8, §18.1)
@@ -79,3 +79,6 @@ union Force
 
 ### 2026-09-04 — the map corpus's Depth unit: a map inside a nested table, an array of them, an enum-keyed array of them and a union arm (docs/SPEC-TABLES.md §2.8, §2.6)
 - no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-09-04 — the id-table wire: sixty-four-bit identity, the enum kind, and rendering version 7 (docs/SPEC-TABLES.md §3, §5, §18.1)
+- baseline REGENERATED over an unreadable one (baseline version 6, this compiler writes 7); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow

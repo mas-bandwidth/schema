@@ -438,7 +438,7 @@ func (d *differ) factDistance(baseName, candidate string) int {
 	if before == nil || after == nil {
 		return 0
 	}
-	liveFields := map[uint16]Field{}
+	liveFields := map[uint64]Field{}
 	for _, f := range after.Fields {
 		liveFields[f.Id] = f
 	}
@@ -476,7 +476,7 @@ func tableIdents(u *Unit) idents {
 		out.names = append(out.names, t.Name)
 		set := map[string]bool{}
 		for _, f := range t.Fields {
-			set[fmt.Sprintf("%04x", f.Id)] = true
+			set[fmt.Sprintf("%016x", f.Id)] = true
 		}
 		out.sets[t.Name] = set
 	}
@@ -499,7 +499,7 @@ func (d *differ) diffTables() []Finding {
 		if !ok {
 			continue
 		}
-		liveFields := map[uint16]Field{}
+		liveFields := map[uint64]Field{}
 		for _, f := range lt.Fields {
 			liveFields[f.Id] = f
 		}
@@ -557,7 +557,7 @@ func (d *differ) wasChain(bt, lt Table) []Finding {
 			continue
 		}
 		out = append(out, Finding{Refuse, lt.Name + "." + lf.Name, fmt.Sprintf(
-			"was = %q names %s, which itself rode under was = %q — `was` names the FIRST wire name, forever, so this field now rides under id 0x%04x, an id no byte was ever written under; write was = %q",
+			"was = %q names %s, which itself rode under was = %q — `was` names the FIRST wire name, forever, so this field now rides under id 0x%016x, an id no byte was ever written under; write was = %q",
 			now, now, first, lf.Id, first)})
 	}
 	return out
@@ -574,7 +574,7 @@ func (d *differ) renamePair(bt, lt Table, gone []string) []Finding {
 	if d.policy["field-pair"] != RuleLoss || len(gone) == 0 {
 		return nil
 	}
-	baseIds := map[uint16]bool{}
+	baseIds := map[uint64]bool{}
 	for _, f := range bt.Fields {
 		baseIds[f.Id] = true
 	}
@@ -818,7 +818,7 @@ func (d *differ) bodyRides(was, now string) []Finding {
 	if before == nil {
 		return nil
 	}
-	liveFields := map[uint16]Field{}
+	liveFields := map[uint64]Field{}
 	for _, f := range after.Fields {
 		liveFields[f.Id] = f
 	}
@@ -970,7 +970,7 @@ func enumIdents(u *Unit) idents {
 		out.names = append(out.names, e.Name)
 		set := map[string]bool{}
 		for _, v := range e.Variants {
-			set[fmt.Sprintf("%04x", v.Id)] = true
+			set[fmt.Sprintf("%016x", v.Id)] = true
 		}
 		out.sets[e.Name] = set
 	}
@@ -1015,7 +1015,7 @@ func unionIdents(u *Unit) idents {
 		out.names = append(out.names, un.Name)
 		set := map[string]bool{}
 		for _, a := range un.Arms {
-			set[fmt.Sprintf("%04x", a.Id)] = true
+			set[fmt.Sprintf("%016x", a.Id)] = true
 		}
 		out.sets[un.Name] = set
 	}

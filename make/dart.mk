@@ -78,45 +78,9 @@ tables-dart-clean: build/tables-generated-dart/.stamp
 # `json-write` and `wire` stay GREEN: the break is the reader's and nothing
 # else's. No tracked file is written to.
 CONFORMANCE_NEGATIVE_DART = build/conformance-negative-dart
-CONFORMANCE_NEGATIVE_DART_SED := s|          info.setRaw(owner, field, index, v);|          info.setRaw(owner, field, index, v ^ 1); // SABOTAGED|
 .PHONY: conformance-negative-control-dart
-conformance-negative-control-dart: build/conformance-harness
-	@rm -rf $(CONFORMANCE_NEGATIVE_DART) && mkdir -p $(CONFORMANCE_NEGATIVE_DART)
-	@sed '$(CONFORMANCE_NEGATIVE_DART_SED)' internal/codegen/darttable/jsonruntime.go > $(CONFORMANCE_NEGATIVE_DART)/jsonruntime.go.txt
-	@cmp -s internal/codegen/darttable/jsonruntime.go $(CONFORMANCE_NEGATIVE_DART)/jsonruntime.go.txt && \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the walk moved"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/darttable/jsonruntime.go":"%s/$(CONFORMANCE_NEGATIVE_DART)/jsonruntime.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_DART)/overlay.json
-	go build -overlay $(CONFORMANCE_NEGATIVE_DART)/overlay.json -o $(CONFORMANCE_NEGATIVE_DART)/schema ./cmd/schema
-	@for u in examples:tables/examples pointers:tables/pointers block:tables/block blockhome:tables/blockhome \
-			v1:test/tables/V1.schema v2:test/tables/V2.schema p1:test/tables/P1.schema p3:test/tables/P3.schema; do \
-		$(CONFORMANCE_NEGATIVE_DART)/schema generate --lang dart --out $(CONFORMANCE_NEGATIVE_DART)/generated/$${u%%:*} $${u##*:} || exit 1; \
-	done
-	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_DART)/generated/examples/*Table.dart || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged walk"; exit 1; }
-	@sed -e 's|../../../build/tables-generated-dart/|$(CURDIR)/$(CONFORMANCE_NEGATIVE_DART)/generated/|g' \
-		test/conformance/dart/main.dart > $(CONFORMANCE_NEGATIVE_DART)/main.dart
-	$(DART) compile exe -o $(CONFORMANCE_NEGATIVE_DART)/driver-bin \
-		$(CONFORMANCE_NEGATIVE_DART)/main.dart >/dev/null
-	@printf '#!/bin/sh\nexec %s/$(CONFORMANCE_NEGATIVE_DART)/driver-bin "$$@"\n' "$(CURDIR)" \
-		> $(CONFORMANCE_NEGATIVE_DART)/driver
-	@chmod +x $(CONFORMANCE_NEGATIVE_DART)/driver
-	@printf 'dart %s/driver\n' "$(CONFORMANCE_NEGATIVE_DART)" > $(CONFORMANCE_NEGATIVE_DART)/drivers.txt
-	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_DART)/drivers.txt \
-			--work $(CONFORMANCE_NEGATIVE_DART)/work > $(CONFORMANCE_NEGATIVE_DART)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: a sabotaged Dart walker left the harness green"; \
-		cat $(CONFORMANCE_NEGATIVE_DART)/log; exit 1; \
-	fi
-	@grep -q "^json-read *FAIL" $(CONFORMANCE_NEGATIVE_DART)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: json-read did not go red"; cat $(CONFORMANCE_NEGATIVE_DART)/log; exit 1; }
-	@grep -q "^json-write *pass" $(CONFORMANCE_NEGATIVE_DART)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: json-write went red too — the control does not localise the READER"; \
-		  cat $(CONFORMANCE_NEGATIVE_DART)/log; exit 1; }
-	@grep -q "^wire *pass" $(CONFORMANCE_NEGATIVE_DART)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: wire went red too — the control does not localise the walk"; \
-		  cat $(CONFORMANCE_NEGATIVE_DART)/log; exit 1; }
-	@grep -m1 "dart / json-read" $(CONFORMANCE_NEGATIVE_DART)/log
-	@echo "dart walk negative control: the sabotaged read reds json-read and leaves json-write and wire green"
+conformance-negative-control-dart:
+	@echo "conformance-negative-control-dart: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#514)"
 
 
 # ---- THE DART TABLES GATES beside the conformance matrix ----

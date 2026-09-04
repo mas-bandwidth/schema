@@ -13,6 +13,7 @@ package tabletext
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -101,6 +102,15 @@ func (m *Model) countField(g *graphOut, fv *Field, open map[*Instance]bool) erro
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return m.countNode(g, fv.Cell.Node, open)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		return nil
+	case f.IsMap():
+		// A MAP'S ENTRIES ARE BY-VALUE RECORDS (§2.8), and the value inside
+		// one reaches nodes exactly as a nested table's fields do
+		for i := range fv.Entries {
+			if err := m.countInstance(g, fv.Entries[i].Tab, open); err != nil {
+				return err
+			}
+		}
 		return nil
 	case f.KeyEnum != "":
 		for slot := KeyedFirstSlot(); slot < KeyedSlotCount(f); slot++ {
@@ -299,6 +309,8 @@ func (m *Model) writeField(w *writer, fv *Field, depth int) error {
 	case f.Type.Kind == ir.TBytes:
 		writeBase64(w, fv.Cell.Str)
 		return nil
+	case f.IsMap():
+		return m.writeMap(w, fv, depth)
 	case f.KeyEnum != "":
 		return m.writeKeyed(w, fv, depth)
 	case f.Array != ir.ArrayNone:
@@ -325,6 +337,56 @@ func (m *Model) writeField(w *writer, fv *Field, depth int) error {
 		return nil
 	}
 	return m.writeScalar(w, &fv.Cell, f, depth)
+}
+
+// writeMap renders a MAP as a plain JSON object keyed by the KEY
+// (docs/SPEC-TABLES.md §2.8, §16), in ASCENDING KEY ORDER with no key twice —
+// the same order the wire is written in, because the order is the map's and
+// not the projection's. JSON has no integer keys, so an integer-keyed map
+// spells its keys as strings of digits.
+func (m *Model) writeMap(w *writer, fv *Field, depth int) error {
+	f := fv.Def
+	if len(fv.Entries) == 0 {
+		w.raw("{}")
+		return nil
+	}
+	order := make([]int, len(fv.Entries))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		return MapKeyOrder(f, MapKeyOf(f, fv.Entries[order[a]].Tab), MapKeyOf(f, fv.Entries[order[b]].Tab)) < 0
+	})
+	w.put('{')
+	for i, at := range order {
+		if i > 0 {
+			w.put(',')
+		}
+		w.line(depth + 1)
+		entry := fv.Entries[at].Tab
+		writeString(w, mapKeyText(f, entry))
+		w.raw(": ")
+		if err := m.writeField(w, &entry.Fields[1], depth+1); err != nil {
+			return err
+		}
+	}
+	w.line(depth)
+	w.put('}')
+	return nil
+}
+
+// mapKeyText is one entry's key as the object's key: the bytes for a
+// `string(N)`, and the decimal digits for an integer key.
+func mapKeyText(f *ir.Field, entry *Instance) []byte {
+	keyField := ir.MapKeyField(f)
+	cell := &entry.Fields[0].Cell
+	if keyField.Type.Kind == ir.TString {
+		return cell.Str
+	}
+	if keyField.Type.Kind == ir.TInt && keyField.Type.Signed {
+		return []byte(strconv.FormatInt(cell.I, 10))
+	}
+	return []byte(strconv.FormatUint(cell.U, 10))
 }
 
 // writeKeyed renders an enum-keyed array as an OBJECT keyed by variant name

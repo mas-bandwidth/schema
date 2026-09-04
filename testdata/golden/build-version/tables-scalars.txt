@@ -1,33 +1,33 @@
-0xa8b581f9ab3e8580
-schema-build-version 2
+0x617072f9aa017b7c
+schema-build-version 3
 protocol aa2ae3fa9f005efc
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record Pose sizeof=24 alignof=8
-    field ad8b kind=23 offset=0 size=8 frac=16 default=32768 min=-30000 max=30000
-    field b2f8 kind=23 offset=8 size=8 frac=16 min=-30000 max=30000
-    field 885d kind=27 offset=16 size=4 frac=16 min=0 max=360
+    field af63f54c86021707 kind=23 offset=0 size=8 frac=16 default=32768 min=-30000 max=30000
+    field af63f44c86021554 kind=23 offset=8 size=8 frac=16 min=-30000 max=30000
+    field b128829190ca0f75 kind=27 offset=16 size=4 frac=16 min=0 max=360
 record SimState sizeof=304 alignof=16
-    field 023c kind=20 offset=0 size=1 frac=4 min=-8 max=7
-    field e94c kind=22 offset=4 size=4 frac=16 min=-180 max=180
-    field dd45 kind=23 offset=8 size=8 frac=16 min=-30000 max=30000
-    field 1c85 kind=24 offset=16 size=16 frac=16 min=-1000000 max=1000000
-    field 7ddb kind=22 offset=32 size=4 frac=0 min=0 max=1000000
-    field df96 kind=25 offset=36 size=1 frac=4 min=0 max=15
-    field bc00 kind=27 offset=40 size=4 frac=16 min=0 max=1000
-    field abc0 kind=28 offset=48 size=8 frac=16 min=0 max=281474976710655
-    field e7a6 kind=29 offset=64 size=16 frac=16 min=0 max=2000000
-    field 493e kind=27 offset=80 size=4 frac=0 min=0 max=4294967295
-    field 196a kind=18 offset=96 size=16 min=-1267650600228229401496703205376 max=1267650600228229401496703205376
-    field 7959 kind=18 offset=112 size=16 default=-250 min=-5000000000 max=5000000000
-    field 5a13 kind=19 offset=128 size=16
-    field 9ee6 kind=22 offset=144 size=4 frac=16 default=65536 min=-8 max=8
-    field af9a kind=22 offset=148 size=12 frac=16 elem=4 array=fixed bound=3 min=-8 max=8
-    field 4127 kind=26 offset=160 size=12 frac=8 elem=2 array=bounded bound=4 min=0 max=100
-    field 4b8e kind=23 offset=176 size=24 frac=32 elem=8 array=keyed bound=3 key=Axis min=-100 max=100
-    field 6fc5 kind=19 offset=208 size=36 elem=16 array=bounded bound=2
-    field a763 kind=13 offset=248 size=24 type=Pose
-    field 77ba kind=13 offset=272 size=25 type=Pose optional=true
+    field 1e5088ef2e9bafc6 kind=20 offset=0 size=1 frac=4 min=-8 max=7
+    field 401ab8cd06158638 kind=22 offset=4 size=4 frac=16 min=-180 max=180
+    field 4cbf3a26fca1d74a kind=23 offset=8 size=8 frac=16 min=-30000 max=30000
+    field 891da1f305deb858 kind=24 offset=16 size=16 frac=16 min=-1000000 max=1000000
+    field 7fd9266c6a3e25b5 kind=22 offset=32 size=4 frac=0 min=0 max=1000000
+    field fbc924118177ade4 kind=25 offset=36 size=1 frac=4 min=0 max=15
+    field 2281498aa0200e40 kind=27 offset=40 size=4 frac=16 min=0 max=1000
+    field 8b7dc019093cd0e1 kind=28 offset=48 size=8 frac=16 min=0 max=281474976710655
+    field 1f3757a2ce7b0ab1 kind=29 offset=64 size=16 frac=16 min=0 max=2000000
+    field 23e5906728b4e66f kind=27 offset=80 size=4 frac=0 min=0 max=4294967295
+    field d61bdd7908af2642 kind=18 offset=96 size=16 min=-1267650600228229401496703205376 max=1267650600228229401496703205376
+    field f2fd4f9140ef2f15 kind=18 offset=112 size=16 default=-250 min=-5000000000 max=5000000000
+    field 23fcfd6678e36712 kind=19 offset=128 size=16
+    field 6aacb9fbb71a1d91 kind=22 offset=144 size=4 frac=16 default=65536 min=-8 max=8
+    field e3b1ca6a3b48dddc kind=22 offset=148 size=12 frac=16 elem=4 array=fixed bound=3 min=-8 max=8
+    field b1494b6ef08a411e kind=26 offset=160 size=12 frac=8 elem=2 array=bounded bound=4 min=0 max=100
+    field 32969e840d9c67b8 kind=23 offset=176 size=24 frac=32 elem=8 array=keyed bound=3 key=Axis min=-100 max=100
+    field 5af1ac301b4ae16d kind=19 offset=208 size=36 elem=16 array=bounded bound=2
+    field 8c2fd80da8957064 kind=13 offset=248 size=24 type=Pose
+    field 4328f78ab20e1f98 kind=13 offset=272 size=25 type=Pose optional=true
 enum Axis
     variant 1 X
     variant 2 Y

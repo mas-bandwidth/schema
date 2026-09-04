@@ -65,6 +65,11 @@ struct TableReport
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
+    // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
+    // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
+    // zero counters and a false flag are what a clean read prints too, so the
+    // verdict is what tells the two apart.
+    bool refused = false;
 };
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
@@ -117,7 +122,7 @@ struct TableFieldInfo
     const char * name;      // schema field name, e.g. "health"
     const char * json;      // the TEXT form's key: the json = "key" attribute, else name (§16.3)
     const char * type_name; // schema type name, e.g. "float32", "Grade"
-    uint16_t id;            // table-wire field id (name hash; the was alias's hash after a rename)
+    uint64_t id;            // table-wire field id: fnv1a64 of the name, of the was alias after a rename (§5)
     uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
     bool is_array;          // fixed or counted array (bytes included)
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
@@ -154,7 +159,7 @@ struct TableFieldInfo
     // other kind — a FLAGS field's variants have no per-variant wire id (§4),
     // so a NULL here beside a non-NULL enum_name is what says "flags".
     // Walk [0, enum_max] to enumerate a vocabulary and its ids.
-    uint16_t (*variant_id)( uint64_t value );
+    uint64_t (*variant_id)( uint64_t value );
     // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
     // ride under variant ids rather than positions. key_name and key_id are
@@ -162,7 +167,7 @@ struct TableFieldInfo
     // NULL on every other field.
     const char * key_type_name;
     const char * (*key_name)( uint64_t value );
-    uint16_t (*key_id)( uint64_t value );
+    uint64_t (*key_id)( uint64_t value );
     // union fields: the tag and its arms, behind a function so the whole
     // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
     // a function pointer at compile time; the arms themselves are a static
@@ -210,11 +215,116 @@ struct TableWriter
     TABLEDEMO_TABLE_INLINE void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
     // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
     TABLEDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
-    TABLEDEMO_TABLE_INLINE void patch32( int64_t at, uint32_t v )
+    // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
+    // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
+    // group first, the high bit set on every byte but the last. One value has
+    // one spelling, so two conforming writers agree byte for byte.
+    TABLEDEMO_TABLE_INLINE void putleb( uint64_t v )
     {
-        if ( at + 4 > capacity ) { overflow = true; return; }
-        buffer[at] = uint8_t( v ); buffer[at+1] = uint8_t( v >> 8 );
-        buffer[at+2] = uint8_t( v >> 16 ); buffer[at+3] = uint8_t( v >> 24 );
+        while ( v >= 0x80 ) { put8( uint8_t( v ) | 0x80 ); v >>= 7; }
+        put8( uint8_t( v ) );
+    }
+};
+
+// TableLebBytes is one value's spelling length, which a MEASURE needs before
+// the bytes exist — the length of a body has to be known before it is written,
+// because a length whose own width moves cannot be patched in place.
+inline int64_t TableLebBytes( uint64_t v )
+{
+    int64_t n = 1;
+    while ( v >= 0x80 ) { v >>= 7; n++; }
+    return n;
+}
+
+// THE ID TABLE, WRITER SIDE (docs/SPEC-TABLES.md §3). It holds every id the
+// body used, once each, in FIRST-USE order over the whole wire, and the body
+// names them by position: reference k is the kth entry, counted from 1, and
+// reference 0 names NO ID.
+//
+// Its capacity is a COMPILE-TIME fact of the unit — the distinct names its
+// table closure can spell — so a save allocates nothing: the table is a local
+// of Measure and of Save. The bucket chain makes ref constant time and makes
+// truncate constant time too, which is what an ELIDED field needs: a field
+// that turns out not to ride costs nothing in the id table either, so the walk
+// interns its id, builds the payload that decides, and undoes the entry when
+// nothing rides.
+struct TableIds
+{
+    static const int32_t kCapacity = 155;
+    static const int32_t kBuckets = 512;
+
+    uint64_t ids[ kCapacity ];
+    int32_t chain[ kCapacity ];
+    int32_t head[ kBuckets ];
+    int32_t count;
+    bool overflow;
+
+    TableIds() : count( 0 ), overflow( false )
+    {
+        for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+    }
+
+    static TABLEDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
+    {
+        return uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> 55 ) & uint32_t( kBuckets - 1 );
+    }
+
+    // the reference an id takes, appending it on first use
+    uint64_t ref( uint64_t id )
+    {
+        const uint32_t b = bucket_of( id );
+        for ( int32_t i = head[b]; i >= 0; i = chain[i] )
+        {
+            if ( ids[i] == id ) { return uint64_t( i ) + 1; }
+        }
+        if ( count >= kCapacity ) { overflow = true; return 1; }
+        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        return uint64_t( count );
+    }
+
+    // undo every entry appended since mark. An entry removed is the most
+    // recent one in its bucket, so it sits at that bucket's head.
+    void truncate( int32_t mark )
+    {
+        while ( count > mark )
+        {
+            count--;
+            head[ bucket_of( ids[count] ) ] = chain[count];
+        }
+    }
+};
+
+// TableIdsBytes is the trailer's own size: the entries, each a fixed
+// little-endian u64, and the ENTRY COUNT, the one fixed-width number on the
+// wire (docs/SPEC-TABLES.md §3).
+inline int64_t TableIdsBytes( const TableIds & ids ) { return int64_t( ids.count ) * 8 + 8; }
+
+// TableIdsWrite puts the trailer where the walk ended: a writer never patches,
+// because first-use order is known only when the walk ends.
+inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
+{
+    for ( int32_t i = 0; i < ids.count; i++ ) { w.put64( ids.ids[i] ); }
+    w.put64( uint64_t( ids.count ) );
+}
+
+// THE ID TABLE, READER SIDE (docs/SPEC-TABLES.md §3). A reader locates it from
+// the END of the wire and resolves it ONCE, at open: the entries are eight
+// bytes each and a body names them by position, so every field dispatches
+// through an index rather than through a search over hashes.
+struct TableIdTable
+{
+    const uint8_t * entries = NULL;
+    int64_t count = 0;
+
+    // the id a reference names. ref is 1-based and bounds-checked by the
+    // caller: a reference ABOVE the entry count is framing damage on the body
+    // that carries it, and 0 names no id at all.
+    uint64_t at( uint64_t ref ) const
+    {
+        const uint8_t * e = entries + ( ref - 1 ) * 8;
+        uint64_t lo = uint64_t( e[0] ) | uint64_t( e[1] ) << 8 | uint64_t( e[2] ) << 16 | uint64_t( e[3] ) << 24;
+        uint64_t hi = uint64_t( e[4] ) | uint64_t( e[5] ) << 8 | uint64_t( e[6] ) << 16 | uint64_t( e[7] ) << 24;
+        return lo | ( hi << 32 );
     }
 };
 
@@ -224,18 +334,78 @@ struct TableReader
     int64_t size;
     int64_t offset = 0;
     TableReport * report;
+    const TableIdTable * ids = NULL;
+    // ONLY THE ROOT BODY CARRIES THE NODE TABLE (docs/SPEC-TABLES.md §3.1), so
+    // a body has to know which it is: the reserved id inside a NESTED body is
+    // malformed, because a second numbering cannot exist. Every reader made
+    // for a payload is nested; the two the wire surfaces make for a root say so.
+    bool nested = true;
 
     TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report )
         : buffer( from_buffer ), size( from_size ), report( to_report ) {}
 
+    TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report, const TableIdTable * to_ids )
+        : buffer( from_buffer ), size( from_size ), report( to_report ), ids( to_ids ) {}
+
     TABLEDEMO_TABLE_INLINE bool has( int64_t bytes ) const { return offset + bytes <= size; }
+    // A LENGTH IS A 64-BIT NUMBER AND A BUFFER IS NOT (docs/SPEC-TABLES.md
+    // §3): every length, count and index on this wire has sixty-four bits of
+    // capability, so one past what remains must be compared UNSIGNED. Casting
+    // it to int64 first turns 0xFFFFFFFFFFFFFFFF into -1, and a negative
+    // length looks like room.
+    TABLEDEMO_TABLE_INLINE bool room( uint64_t bytes ) const { return bytes <= (uint64_t) ( size - offset ); }
     TABLEDEMO_TABLE_INLINE uint8_t get8()   { return buffer[offset++]; }
     TABLEDEMO_TABLE_INLINE uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
     TABLEDEMO_TABLE_INLINE uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
     TABLEDEMO_TABLE_INLINE uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
     TABLEDEMO_TABLE_INLINE void get128( uint64_t & lo, uint64_t & hi ) { lo = get64(); hi = get64(); }
 
-    // skip one payload by kind; false = framing damage
+    // ONE CANONICAL UNSIGNED LEB128 (docs/SPEC-TABLES.md §3), and a
+    // non-minimal spelling is MALFORMED: 0x80 0x00 and 0x00 both spell zero,
+    // and only the second is legal input. An encoding past ten bytes, or a
+    // tenth byte with a bit above the 64th value bit, is malformed on the same
+    // rule. false = framing damage on the body carrying it.
+    bool getleb( uint64_t & value )
+    {
+        // A NUMBER THIS READER REFUSES LEAVES THE CURSOR WHERE IT WAS. The
+        // caller's next question is often "did this body end exactly at its
+        // L", and a rejected number that had moved the cursor would answer
+        // that question with the damage already stepped over.
+        const int64_t at = offset;
+        value = 0;
+        uint32_t shift = 0;
+        for ( int32_t i = 0; i < 10; i++ )
+        {
+            if ( !has( 1 ) ) { offset = at; return false; }
+            const uint8_t b = get8();
+            if ( i == 9 && b > 1 ) { offset = at; return false; }
+            value |= uint64_t( b & 0x7F ) << shift;
+            if ( ( b & 0x80 ) == 0 )
+            {
+                if ( i > 0 && b == 0 ) { offset = at; return false; } // a redundant continuation
+                return true;
+            }
+            shift += 7;
+        }
+        offset = at;
+        return false;
+    }
+
+    // resolve one id reference against the file's table. false = a reference
+    // ABOVE the entry count, or a 0 where an id is required, both of which
+    // are framing damage on the body that carries it.
+    bool getid( uint64_t & id )
+    {
+        uint64_t ref = 0;
+        if ( !getleb( ref ) ) { return false; }
+        if ( ref == 0 || ids == NULL || ref > (uint64_t) ids->count ) { return false; }
+        id = ids->at( ref );
+        return true;
+    }
+
+    // skip one payload by kind; false = framing damage. FOUR RULES COVER THE
+    // SET (docs/SPEC-TABLES.md §3), and a kind outside it is not skippable —
+    // which is why the set is closed and why kind 31 exists.
     bool skip( uint8_t kind )
     {
         switch ( kind )
@@ -244,27 +414,112 @@ struct TableReader
             // the fixed-point family at every storage width (docs/SPEC-TABLES.md §3)
             case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
             case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
-            case 4: case 8: case 10: case 17: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false; // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1)
+            case 4: case 8: case 10: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false;
             case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
             case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
-            case 12: case 13: case 14: case 16:
+            case 17: case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
-                if ( !has( 4 ) ) return false;
-                uint32_t n = get32();
-                return has( n ) ? ( offset += n, true ) : false;
+                uint64_t ignored = 0;
+                return getleb( ignored );
             }
-            case 15: // union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body)
+            case 12: case 13: case 14: case 16: case 31: case 32: // 31 is the ESCAPE, 32 the payload-free kind
             {
-                if ( !has( 2 ) ) return false;
-                if ( get16() == 0 ) return true;
-                if ( !has( 4 ) ) return false;
-                uint32_t n = get32();
-                return has( n ) ? ( offset += n, true ) : false;
+                uint64_t n = 0;
+                if ( !getleb( n ) ) return false;
+                return room( n ) ? ( offset += (int64_t) n, true ) : false;
+            }
+            case 15: // union: the arm id reference, then its kind, its L and its payload (reference 0 = empty)
+            {
+                uint64_t arm = 0;
+                if ( !getleb( arm ) ) return false;
+                if ( arm == 0 ) return true;
+                if ( !has( 1 ) ) return false;
+                offset += 1; // the arm's kind byte
+                uint64_t n = 0;
+                if ( !getleb( n ) ) return false;
+                return room( n ) ? ( offset += (int64_t) n, true ) : false;
             }
         }
         return false;
     }
 };
+
+// The RESERVED node-table id, the one id the language holds back
+// (docs/SPEC-TABLES.md §3.1, §5). It rides in every unit, pointered or not,
+// because every body has to know that a NESTED body claiming one is damaged.
+static const uint64_t kTableNodeTableFieldId = 0xFFFFFFFFFFFFFFFFull;
+
+// TableWireForm is the FORM BYTE, and it is the whole header
+// (docs/SPEC-TABLES.md §3). A reader that meets a byte it does not know
+// refuses the wire by name and never reports damage.
+const uint8_t kTableWireForm = 1;
+
+// TableOpen reads the form byte and the trailer, in that order, and hands back
+// the ROOT BODY. It answers one of three verdicts, because five zero counters
+// and a false flag are what a clean read prints too:
+//
+//   TableOpenOk       the form is known and the table read whole
+//   TableOpenRefused  a FORM BYTE this reader does not carry: nothing is
+//                     decoded, nothing is counted, and no damage is reported
+//   TableOpenDamaged  a table that cannot be read whole — fewer than eight
+//                     bytes, a count whose entries run past the front of the
+//                     file, a count that leaves no room for the form byte, or
+//                     ONE ID IN TWO ENTRIES. The whole wire is malformed,
+//                     nothing is decoded, and one event is counted.
+//   TableOpenBodyStopped  the form and the table were good and the ROOT BODY
+//                     could not be walked to its own terminator. What it
+//                     decoded before that is kept, as everywhere on this wire.
+enum TableOpenVerdict { TableOpenOk, TableOpenRefused, TableOpenDamaged, TableOpenBodyStopped };
+
+inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
+{
+    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
+    if ( bytes < 9 ) { return TableOpenDamaged; }
+    const uint8_t * tail = buffer + bytes - 8;
+    uint64_t lo = uint64_t( tail[0] ) | uint64_t( tail[1] ) << 8 | uint64_t( tail[2] ) << 16 | uint64_t( tail[3] ) << 24;
+    uint64_t hi = uint64_t( tail[4] ) | uint64_t( tail[5] ) << 8 | uint64_t( tail[6] ) << 16 | uint64_t( tail[7] ) << 24;
+    uint64_t count = lo | ( hi << 32 );
+    if ( count > (uint64_t) ( bytes / 8 ) ) { return TableOpenDamaged; }
+    const int64_t span = (int64_t) count * 8 + 8;
+    if ( span + 1 > bytes ) { return TableOpenDamaged; }
+    table.entries = buffer + bytes - span;
+    table.count = (int64_t) count;
+    // THE ENTRIES ARE DISTINCT: a table that carries one id twice is malformed
+    // for the whole wire, because no wire this schema writes carries a repeat
+    // and it would leave one more shape of table for a hostile writer to aim
+    // at (docs/SPEC-TABLES.md §3).
+    for ( int64_t i = 1; i < table.count; i++ )
+    {
+        const uint64_t id = table.at( uint64_t( i ) + 1 );
+        for ( int64_t j = 0; j < i; j++ )
+        {
+            if ( table.at( uint64_t( j ) + 1 ) == id ) { return TableOpenDamaged; }
+        }
+    }
+    body_bytes = bytes - span - 1;
+    return TableOpenOk;
+}
+
+// TableBodyExtent walks a body's framing to the zero reference that ends it,
+// so a reader can tell a body that ENDED EARLY — leaving bytes no field claims
+// — from one that is merely damaged. ANY BYTE BETWEEN THE ROOT'S TERMINATOR
+// AND THE TABLE'S FIRST ENTRY IS MALFORMED, because no field claims it and the
+// two ends of the file have met (docs/SPEC-TABLES.md §3).
+inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const TableIdTable & table )
+{
+    TableReport ignored;
+    TableReader r( body, bytes, &ignored, &table );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.getleb( ref ) ) { return false; }
+        if ( ref == 0 ) { return r.offset != bytes; }
+        if ( ref > (uint64_t) table.count ) { return false; }
+        if ( !r.has( 1 ) ) { return false; }
+        if ( !r.skip( r.get8() ) ) { return false; }
+    }
+}
 
 
 // An ENUM-KEYED array's storage: E.Max slots, ONE PER NAMED VARIANT, with the
@@ -396,7 +651,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x0d48f2a53a826273ull;
+static const uint64_t BuildVersion = 0x913551e66dc67157ull;
 
 } // namespace tabledemo
 
@@ -653,50 +908,58 @@ inline void PatrolReset( Patrol & value )
 
 // ---- codecs: measure/save/load per closure member ----
 
-inline int64_t PatrolMeasure( const Patrol & value );
-TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, const Patrol & value );
+inline int64_t PatrolMeasureBody( TableIds & ids, const Patrol & value );
+TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, TableIds & ids, const Patrol & value );
 TABLEDEMO_TABLE_INLINE bool PatrolLoadBody( TableReader & r, Patrol & value );
 
-inline int64_t PatrolMeasure( const Patrol & value )
+inline int64_t PatrolMeasureBody( TableIds & ids, const Patrol & value )
 {
-    int64_t bytes = 2; // terminator
-    if ( value.active != false ) { bytes += 3 + 1; } // active
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    if ( value.active != false ) { bytes += TableLebBytes( ids.ref( 0x6580790b036f0c6full ) ) + 1 + 1; } // active
     if ( value.active )
     {
-        if ( value.speed != 1.0f ) { bytes += 3 + 4; } // speed
+        if ( value.speed != 1.0f ) { bytes += TableLebBytes( ids.ref( 0x2281498aa0200e40ull ) ) + 1 + 4; } // speed
     }
     if ( value.active )
     {
-        if ( value.has_target != false ) { bytes += 3 + 1; } // has_target
+        if ( value.has_target != false ) { bytes += TableLebBytes( ids.ref( 0x247f0e7f55aacfbdull ) ) + 1 + 1; } // has_target
     }
     if ( value.active && value.has_target )
     {
-        if ( value.target_id != 0 ) { bytes += 3 + 4; } // target_id
+        if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xb7bc9ac015a25050ull ) ) + 1 + 4; } // target_id
     }
     if ( value.active && !value.has_target )
     {
-        if ( value.wander != 0.5f ) { bytes += 3 + 4; } // wander
+        if ( value.wander != 0.5f ) { bytes += TableLebBytes( ids.ref( 0xb8c758d8bd1845d4ull ) ) + 1 + 4; } // wander
     }
     if ( !value.active )
     {
         if ( value.note_length < 0 || value.note_length > 8 ) { return -1; } // storage invariant
-        if ( value.note_length > 0 ) { bytes += 3 + 4 + value.note_length; } // note
+        if ( value.note_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( (uint64_t) ( value.note_length ) ) + ( value.note_length ); } // note
     }
     return bytes;
 }
 
-TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, const Patrol & value )
+inline int64_t PatrolMeasure( const Patrol & value )
+{
+    TableIds ids;
+    const int64_t body = PatrolMeasureBody( ids, value );
+    if ( body < 0 || ids.overflow ) { return -1; }
+    return 1 + body + TableIdsBytes( ids );
+}
+
+TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, TableIds & ids, const Patrol & value )
 {
     if ( value.active != false )
     {
-        w.put16( 0x405a ); w.put8( 1 ); // active
+        w.putleb( ids.ref( 0x6580790b036f0c6full ) ); w.put8( 1 ); // active
         w.put8( value.active ? 1 : 0 );
     }
     if ( value.active )
     {
         if ( value.speed != 1.0f )
         {
-            w.put16( 0xbc00 ); w.put8( 10 ); // speed
+            w.putleb( ids.ref( 0x2281498aa0200e40ull ) ); w.put8( 10 ); // speed
             w.put32( table_float_to_bits( value.speed ) );
         }
     }
@@ -704,7 +967,7 @@ TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, const Patrol & valu
     {
         if ( value.has_target != false )
         {
-            w.put16( 0xb0a7 ); w.put8( 1 ); // has_target
+            w.putleb( ids.ref( 0x247f0e7f55aacfbdull ) ); w.put8( 1 ); // has_target
             w.put8( value.has_target ? 1 : 0 );
         }
     }
@@ -712,7 +975,7 @@ TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, const Patrol & valu
     {
         if ( value.target_id != 0 )
         {
-            w.put16( 0xdf6a ); w.put8( 4 ); // target_id
+            w.putleb( ids.ref( 0xb7bc9ac015a25050ull ) ); w.put8( 4 ); // target_id
             w.put32( uint32_t( value.target_id ) );
         }
     }
@@ -720,7 +983,7 @@ TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, const Patrol & valu
     {
         if ( value.wander != 0.5f )
         {
-            w.put16( 0x832f ); w.put8( 10 ); // wander
+            w.putleb( ids.ref( 0xb8c758d8bd1845d4ull ) ); w.put8( 10 ); // wander
             w.put32( table_float_to_bits( value.wander ) );
         }
     }
@@ -729,19 +992,23 @@ TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, const Patrol & valu
         if ( value.note_length < 0 || value.note_length > 8 ) { return false; } // storage invariant
         if ( value.note_length > 0 )
         {
-            w.put16( 0x9da7 ); w.put8( 12 ); // note
-            w.put32( uint32_t( value.note_length ) );
+            w.putleb( ids.ref( 0x3bf8fbbad1587cddull ) ); w.put8( 12 ); // note
+            w.putleb( (uint64_t) value.note_length );
             w.raw( value.note, value.note_length );
         }
     }
-    w.put16( 0 ); // terminator
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
 }
 
 inline int64_t PatrolSave( const Patrol & value, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w( buffer, capacity );
-    if ( !PatrolSaveBody( w, value ) ) { return -1; }
+    TableIds ids;
+    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
+    if ( !PatrolSaveBody( w, ids, value ) || ids.overflow ) { return -1; }
+    TableIdsWrite( w, ids ); // the ID TABLE is the last thing in the file
+    if ( w.overflow ) { return -1; }
     return w.offset; // == PatrolMeasure( value )
 }
 
@@ -750,17 +1017,30 @@ TABLEDEMO_TABLE_INLINE bool PatrolLoadBody( TableReader & r, Patrol & value )
     PatrolReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
-        if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
-        uint16_t field_id = r.get16();
-        if ( field_id == 0 ) return true;
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
+        if ( field_id == kTableNodeTableFieldId && r.nested )
+        {
+            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
+            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
+            // second numbering cannot exist, so a body claiming one is
+            // damaged — that body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
         switch ( field_id )
         {
-            case 0x405a: // active
+            case 0x6580790b036f0c6full: // active
             {
                 if ( kind != 1 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -769,10 +1049,12 @@ TABLEDEMO_TABLE_INLINE bool PatrolLoadBody( TableReader & r, Patrol & value )
                 value.active = r.get8() != 0;
                 break;
             }
-            case 0xbc00: // speed
+            case 0x2281498aa0200e40ull: // speed
             {
                 if ( kind != 10 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -781,10 +1063,12 @@ TABLEDEMO_TABLE_INLINE bool PatrolLoadBody( TableReader & r, Patrol & value )
                 value.speed = table_bits_to_float( r.get32() );
                 break;
             }
-            case 0xb0a7: // has_target
+            case 0x247f0e7f55aacfbdull: // has_target
             {
                 if ( kind != 1 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -793,10 +1077,12 @@ TABLEDEMO_TABLE_INLINE bool PatrolLoadBody( TableReader & r, Patrol & value )
                 value.has_target = r.get8() != 0;
                 break;
             }
-            case 0xdf6a: // target_id
+            case 0xb7bc9ac015a25050ull: // target_id
             {
                 if ( kind != 4 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -808,10 +1094,12 @@ TABLEDEMO_TABLE_INLINE bool PatrolLoadBody( TableReader & r, Patrol & value )
                 value.target_id = decoded_v;
                 break;
             }
-            case 0x832f: // wander
+            case 0xb8c758d8bd1845d4ull: // wander
             {
                 if ( kind != 10 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
@@ -820,23 +1108,24 @@ TABLEDEMO_TABLE_INLINE bool PatrolLoadBody( TableReader & r, Patrol & value )
                 value.wander = table_bits_to_float( r.get32() );
                 break;
             }
-            case 0x9da7: // note
+            case 0x3bf8fbbad1587cddull: // note
             {
                 if ( kind != 12 )
                 {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                uint32_t len = r.get32();
-                if ( !r.has( len ) ) { r.report->malformed = true; return false; }
-                uint32_t keep = len;
+                uint64_t len = 0;
+                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
+                uint64_t keep = len;
                 if ( keep > 8 ) { keep = 8; r.report->clamped++; }
-                memcpy( value.note, r.buffer + r.offset, keep );
+                memcpy( value.note, r.buffer + r.offset, (size_t) keep );
                 value.note[keep] = 0;
                 value.note_length = (int32_t) keep;
-                r.offset += len;
+                r.offset += (int64_t) len;
                 break;
             }
             default:
@@ -849,11 +1138,47 @@ TABLEDEMO_TABLE_INLINE bool PatrolLoadBody( TableReader & r, Patrol & value )
     }
 }
 
-inline bool PatrolLoad( Patrol & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so a
+// file that is both a newer form and damaged is a REFUSAL and never damage.
+// A refusal moves none of the report's five counters, because nothing was
+// decoded and there is nothing to count (docs/SPEC-TABLES.md §3).
+inline TableOpenVerdict PatrolLoadVerdict( Patrol & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
-    TableReader r( buffer, bytes, report != NULL ? report : &ignored );
-    return PatrolLoadBody( r, value );
+    TableReport * to = report != NULL ? report : &ignored;
+    TableIdTable table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        PatrolReset( value );
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        else { to->refused = true; }
+        return verdict;
+    }
+    // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
+    // MALFORMED, because no field claims it and the two ends of the file
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
+    {
+        PatrolReset( value );
+        to->malformed = true;
+        return TableOpenDamaged;
+    }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !PatrolLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    return TableOpenOk;
+}
+
+// The bool is the BODY reaching its own terminator, and it is what it has
+// always been: framing damage inside a field keeps what it decoded, flags
+// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).
+// False is a wire nothing could be decoded from: a refusal, a table that
+// cannot be read whole, or a root body the walk could not finish.
+inline bool PatrolLoad( Patrol & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    return PatrolLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
 // ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
@@ -991,12 +1316,12 @@ inline const TableTypeInfo * PatrolTableType();
 inline const TableTypeInfo * PatrolTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "active", "active", "bool", 0x405a, 1, false, false, false, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( Patrol::active ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "speed", "speed", "float32", 0xbc00, 10, false, false, false, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( Patrol::speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active" },
-        { "has_target", "has_target", "bool", 0xb0a7, 1, false, false, false, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( Patrol::has_target ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active" },
-        { "target_id", "target_id", "int32", 0xdf6a, 4, false, false, false, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( Patrol::target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && has_target" },
-        { "wander", "wander", "float32", 0x832f, 10, false, false, false, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( Patrol::wander ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && !has_target" },
-        { "note", "note", "string", 0x9da7, 12, false, true, false, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( Patrol::note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!active" },
+        { "active", "active", "bool", 0x6580790b036f0c6full, 1, false, false, false, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( Patrol::active ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "speed", "speed", "float32", 0x2281498aa0200e40ull, 10, false, false, false, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( Patrol::speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active" },
+        { "has_target", "has_target", "bool", 0x247f0e7f55aacfbdull, 1, false, false, false, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( Patrol::has_target ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active" },
+        { "target_id", "target_id", "int32", 0xb7bc9ac015a25050ull, 4, false, false, false, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( Patrol::target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && has_target" },
+        { "wander", "wander", "float32", 0xb8c758d8bd1845d4ull, 10, false, false, false, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( Patrol::wander ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && !has_target" },
+        { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, true, false, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( Patrol::note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!active" },
     };
     static const TableTypeInfo info = { "Patrol", (uint32_t) sizeof( Patrol ), 6, fields, +[]( void * p ) { PatrolReset( *(Patrol *) p ); } };
     return &info;

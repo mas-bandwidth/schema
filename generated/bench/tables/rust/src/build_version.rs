@@ -17,4 +17,4 @@
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
 
-pub const BUILD_VERSION: u64 = 0x5f2254539e3ad47d;
+pub const BUILD_VERSION: u64 = 0xf4b855b89df191ed;

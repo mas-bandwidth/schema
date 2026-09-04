@@ -139,9 +139,9 @@ struct TableCookRegion
 inline bool table_cook_ref( const TableCookRegion & region, uint8_t * at, const void * pointee, TableByteOrder order )
 {
     if ( pointee == NULL ) { table_cook_put( at, 0, 8, order ); return true; }
-    uint32_t index = 0;
+    uint64_t index = 0;
     if ( !TableNumberingIndex( *region.numbering, pointee, index ) ) { return false; }
-    if ( index == 0 || (int64_t) index > region.count ) { return false; }
+    if ( index == 0 || index > (uint64_t) region.count ) { return false; }
     const int64_t delta = region.offsets[index - 1] - (int64_t) ( at - region.base );
     table_cook_put( at, (uint64_t) delta, 8, order );
     return true;
@@ -501,7 +501,7 @@ func (g *tableGen) emitCookWriteRoot(st *ir.Struct) {
 	g.pf("    // for `schema cook-check` — one entry, the root at offset zero, and its type\n")
 	g.pf("    // id is the fnv1a64 of the table's name (§3.1)\n")
 	g.pf("    table_cook_put( raw + %d, 0, 8, order );\n", attribOffset)
-	g.pf("    table_cook_put( raw + %d, 0x%016xull, 8, order );\n", attribOffset+8, ir.TableTypeId(st.Name))
+	g.pf("    table_cook_put( raw + %d, 0x%016xull, 8, order );\n", attribOffset+8, ir.TableWireId(st.Name))
 	g.pf("    return true;\n")
 	g.pf("}\n\n")
 }
@@ -560,12 +560,12 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	for _, t := range reachable {
 		tl := ir.RecordLayout(g.unit, t)
 		if g.anyMap && g.hasMapExtent(t) {
-			g.pf("            case 0x%016xull: // %s\n", ir.TableTypeId(t.Name), t.Name)
+			g.pf("            case 0x%016xull: // %s\n", ir.TableWireId(t.Name), t.Name)
 			g.emitCookNodeBytes(t, "                ", fmt.Sprintf("*(const %s *) numbering.entries[k].node", t.Name), "return false;")
 			g.pf("                break;\n")
 			continue
 		}
-		g.pf("            case 0x%016xull: size = %d; node_align = %d; break; // %s\n", ir.TableTypeId(t.Name), tl.Size, tl.Align, t.Name)
+		g.pf("            case 0x%016xull: size = %d; node_align = %d; break; // %s\n", ir.TableWireId(t.Name), tl.Size, tl.Align, t.Name)
 	}
 	for _, b := range blobs {
 		// a byte buffer's node is its header and its bytes, at eight (§7.2)
@@ -661,13 +661,13 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	}
 	for _, t := range reachable {
 		if g.anyMap {
-			g.pf("                    case 0x%016xull: ok = %sCookNode( ctx, region, at, *(const %s *) node, order ); break; // %s\n", ir.TableTypeId(t.Name), t.Name, t.Name, t.Name)
+			g.pf("                    case 0x%016xull: ok = %sCookNode( ctx, region, at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.Name), t.Name, t.Name, t.Name)
 			continue
 		}
 		if g.isVar(t.Name) {
-			g.pf("                    case 0x%016xull: ok = %sCookBody( ctx, region, at, *(const %s *) node, order ); break; // %s\n", ir.TableTypeId(t.Name), t.Name, t.Name, t.Name)
+			g.pf("                    case 0x%016xull: ok = %sCookBody( ctx, region, at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.Name), t.Name, t.Name, t.Name)
 		} else {
-			g.pf("                    case 0x%016xull: %sCookBody( at, *(const %s *) node, order ); break; // %s\n", ir.TableTypeId(t.Name), t.Name, t.Name, t.Name)
+			g.pf("                    case 0x%016xull: %sCookBody( at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.Name), t.Name, t.Name, t.Name)
 		}
 	}
 	for _, b := range blobs {
@@ -687,7 +687,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("            // in index order, for `schema cook-check`\n")
 	g.pf("            uint8_t * entry = raw + data_offset + region.bytes;\n")
 	g.pf("            table_cook_put( entry, 0, 8, order );\n")
-	g.pf("            table_cook_put( entry + 8, 0x%016xull, 8, order ); // the root: fnv1a64( \"%s\" )\n", ir.TableTypeId(st.Name), n)
+	g.pf("            table_cook_put( entry + 8, 0x%016xull, 8, order ); // the root: fnv1a64( \"%s\" )\n", ir.TableWireId(st.Name), n)
 	g.pf("            for ( int64_t k = 0; k < numbering.count; k++ )\n            {\n")
 	g.pf("                entry += sizeof( TableNodeDirEntry );\n")
 	g.pf("                table_cook_put( entry, (uint64_t) region.offsets[k + 1], 8, order );\n")

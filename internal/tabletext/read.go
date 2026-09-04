@@ -10,6 +10,7 @@ import (
 	"errors"
 	"math"
 	"math/big"
+	"sort"
 	"strconv"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -125,6 +126,8 @@ func Shape(f *ir.Field) byte {
 	switch {
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		return 's'
+	case f.IsMap():
+		return 'o' // a plain JSON object keyed by the KEY (§2.8, §16)
 	case f.KeyEnum != "":
 		return 'o'
 	case f.Array != ir.ArrayNone:
@@ -629,6 +632,8 @@ func (in *reader) readField(fv *Field, depth int) bool {
 		return true
 	case f.Type.Kind == ir.TBytes:
 		return in.readBase64(fv)
+	case f.IsMap():
+		return in.readMap(fv, depth)
 	case f.KeyEnum != "":
 		return in.readKeyed(fv, depth)
 	case f.Array != ir.ArrayNone:
@@ -1567,5 +1572,125 @@ func (in *reader) placeWide(cell *Cell, f *ir.Field, token string, kind int) boo
 		in.report.Clamped++
 	}
 	cell.Wide = raw
+	return true
+}
+
+// readMap places a MAP's entries from a JSON object (docs/SPEC-TABLES.md §2.8,
+// §16): the object's KEY is the map's key and its value is the entry's value.
+// JSON has no integer keys, so an INTEGER-keyed map spells its keys as strings
+// of digits, and a key that is not one is the wrong shape for the kind —
+// counted, the entry skipped, never coerced.
+//
+// KEYS NEVER CLAMP: a key past the declaration's capacity drops its whole
+// entry and counts `clamped`, because a clamped key would merge two identities
+// into one. A repeated key is `duplicate` and the LAST occurrence wins whole.
+func (in *reader) readMap(fv *Field, depth int) bool {
+	f := fv.Def
+	if in.peek() != '{' {
+		in.bad = true
+		return false
+	}
+	in.pos++
+	fv.Entries = nil
+	keyField := ir.MapKeyField(f)
+	for {
+		c := in.peek()
+		if c == '}' {
+			in.pos++
+			break
+		}
+		if c == 0 {
+			in.bad = true
+			return false
+		}
+		key, _, ok := in.scanString(maxJsonKey)
+		if !ok {
+			return false
+		}
+		if in.peek() != ':' {
+			in.bad = true
+			return false
+		}
+		in.pos++
+		entry := in.m.New(f.MapEntry)
+		placed := in.placeMapKey(entry, keyField, key)
+		switch {
+		case !placed:
+			in.report.KindMismatch++ // a key that is not the kind's spelling
+			if !in.skipValue(depth) {
+				return false
+			}
+		case !MapKeyFits(f, MapKeyOf(f, entry)):
+			in.report.Clamped++ // the entry is dropped WHOLE: keys never clamp
+			if !in.skipValue(depth) {
+				return false
+			}
+		case !in.readField(&entry.Fields[1], depth):
+			return false
+		default:
+			at := -1
+			for i := range fv.Entries {
+				if MapKeyOrder(f, MapKeyOf(f, fv.Entries[i].Tab), MapKeyOf(f, entry)) == 0 {
+					at = i
+					break
+				}
+			}
+			if at >= 0 {
+				in.report.Duplicate++
+				fv.Entries[at] = Cell{Tab: entry}
+			} else {
+				fv.Entries = append(fv.Entries, Cell{Tab: entry})
+			}
+		}
+		c = in.peek()
+		if c == ',' {
+			in.pos++ // a trailing comma is accepted
+			continue
+		}
+		if c == '}' {
+			in.pos++
+			break
+		}
+		in.bad = true
+		return false
+	}
+	// ASCENDING KEY ORDER is the wire's and the text's alike (§2.8), and the
+	// text may arrive in any order: the model holds what a writer writes.
+	sort.SliceStable(fv.Entries, func(a, b int) bool {
+		return MapKeyOrder(f, MapKeyOf(f, fv.Entries[a].Tab), MapKeyOf(f, fv.Entries[b].Tab)) < 0
+	})
+	return true
+}
+
+// placeMapKey writes the object's key into the entry's `key` field: the bytes
+// for a `string(N)`, and the digits parsed for an integer key. False is a key
+// that is not the declared kind's spelling.
+func (in *reader) placeMapKey(entry *Instance, keyField *ir.Field, key []byte) bool {
+	cell := &entry.Fields[0].Cell
+	if keyField.Type.Kind == ir.TString {
+		cell.Str = key
+		entry.Fields[0].Count = len(key)
+		return true
+	}
+	text := string(key)
+	if text == "" {
+		return false
+	}
+	signed := keyField.Type.Kind == ir.TInt && keyField.Type.Signed
+	if signed {
+		v, err := strconv.ParseInt(text, 10, 64)
+		if err != nil {
+			return false
+		}
+		cell.I = v
+		cell.U = uint64(v)
+		return true
+	}
+	v, err := strconv.ParseUint(text, 10, 64)
+	if err != nil {
+		return false
+	}
+	cell.U = v
+	cell.I = int64(v)
 	return true
 }

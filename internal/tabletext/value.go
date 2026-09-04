@@ -28,6 +28,10 @@ type Report struct {
 	Clamped      int
 	Duplicate    int
 	Malformed    bool
+	// Refused is the VERDICT, not one of §4's events (docs/SPEC-TABLES.md §3):
+	// a FORM BYTE this reader does not carry. It moves no counter and reports
+	// no damage, so without it a refusal and a clean read are the same answer.
+	Refused bool
 }
 
 // Add folds another report into this one, which is how a pack over a tree of
@@ -115,6 +119,13 @@ type Field struct {
 
 	Cell  Cell   // the value, when the field is not an array
 	Elems []Cell // the slots, when it is: len == the declared bound
+
+	// Entries are a MAP's entries (docs/SPEC-TABLES.md §2.8), each Cell.Tab
+	// an instance of the generated `{ key, value }` table. A map declares no
+	// extent, so this is the one field storage with no bound: it holds what
+	// the value holds, in ASCENDING KEY ORDER with no key twice, which is the
+	// order the wire and the text are both written in.
+	Entries []Cell
 }
 
 // Instance is one table or type value with its fields in declaration order.
@@ -197,7 +208,10 @@ func (m *Model) reset(fv *Field) {
 	fv.Count = 0
 	fv.Cell = Cell{}
 	fv.Elems = nil
+	fv.Entries = nil
 	switch {
+	case f.IsMap():
+		return // an empty map: no entry, and the field elides (§3)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		return
 	case f.Array != ir.ArrayNone:

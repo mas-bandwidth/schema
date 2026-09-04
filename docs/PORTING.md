@@ -722,7 +722,12 @@ writing walks read, the load-side fill), the extent's two walks at
 the reader at `emitMapReadField`. The walk's map edge is
 `internal/codegen/cpptable/pointers.go`'s `edgeMap`.
 
-**Proven in.** C++ (#380).
+**Proven in.** C++ (#380), and the TOOL's wire and text halves (#435): the
+compiler's own engine sorts, writes and reads a map at three depths — a map of
+maps with a keyed array and a union arm holding one included — and agrees with
+the reference byte for byte on all three pinned wires and on the text round
+trip. The tool's COOK half is what remains, and its surfaces refuse a
+map-bearing unit by name until it lands.
 
 **Measured effect.** Zero bytes past the entries themselves in a region and a
 cook, `Open` still O(1), `Find` in place at `floor( log2 n ) + 1` key compares
@@ -743,7 +748,56 @@ map slot instead of refusing it.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
+| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls`, and the TOOL's wire and text halves (`TestTheToolWritesTheReferencesMapBytes`) | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
+
+### M20 — The id-table wire
+
+**Method.** A saved table is THREE PARTS (docs/SPEC-TABLES.md §3): the FORM
+BYTE, the ROOT BODY, and the ID TABLE the reader finds from the END. A body is
+`id reference, kind, payload` terminated by the ZERO REFERENCE, every length,
+count, index and reference is one CANONICAL LEB128, and identity is
+`fnv1a64( name )` at sixty-four bits for a field, an enum variant, a union arm
+and a table's own name alike. The table holds every id the body used, once
+each, in FIRST-USE order, and the body names them by 1-based position — so a
+file that names forty ids across ten thousand fields carries forty ids and
+spends one byte a header on the reference. A length whose own width moves
+cannot be patched in place, so every body's length is MEASURED before it rides.
+Three kinds ride with it: `30` an enum, carrying the reference to its variant
+name's id; `31` the escape; `32` the payload-free arm. An ARM HEADER IS A FIELD
+HEADER and carries the arm's kind. The node table rides in ONE field under the
+reserved id `0xFFFFFFFFFFFFFFFF`, whose 64-bit `L` frames a numbering of any
+size. The form byte is read FIRST, so a byte a reader does not know is a
+REFUSAL by name and never damage, and the read report carries that verdict
+beside its five counters.
+
+**Reference.** `internal/codegen/cpptable/cpptable.go` — `putleb`/`getleb` with
+the canonical check, `TableIds` (the writer's table, its capacity a
+compile-time fact of the unit's closure so a save still allocates nothing),
+`TableIdTable`, `TableOpen` and `TableBodyEndsEarly`; the codecs at
+`internal/codegen/cpptable/codecs.go` and `arms.go`; the node table's framing at
+`arena.go`. The compiler's own engine is `internal/tablewire`, written from §3
+rather than from the reference, and §3.1's worked save is its golden.
+
+**Proven in.** C++ and the tool (#435). All 46 text-carrying conformance
+instances agree byte for byte between the two, and the wire fuzzer runs 93,651
+enumerated mutants over 89 seeds with no divergence, plain and sanitized.
+
+**Measured effect.** 0.98x the corpus's bytes without its 210 KB blob and 0.99x
+over the whole of it, against 1.80x over the tiny class: an empty table is ten
+bytes where it was two. The win grows with the file — a pointer-heavy graph of
+7,301 bytes becomes 3,319 — and a file with many distinct ids and few fields
+under each pays.
+
+**Negative control.** `tables-wire-fuzz-negative-control`: the string read's
+unsigned fit check, the numbering's index range check, an arm's `L` against its
+kind's width, and an arm body's terminator, each removed from the emitter
+through `go build -overlay` and each turning the fuzzer red on its own verdict.
+
+**Targets:** tables-wire-fuzz, tables-wire-fuzz-negative-control
+
+| cpp | c | rust | go | cs | java | js | dart | elixir |
+|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #512 | ❌ #518 | ❌ #511 | ❌ #513 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
 
 ### I1 — The independent allocation gate
 

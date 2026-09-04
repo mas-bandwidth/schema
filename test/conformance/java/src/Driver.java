@@ -955,7 +955,10 @@ public final class Driver {
         readManifest(args[0]);
         String surface = args[1];
         if (surface.equals("list")) {
-            System.out.print("wire\nreport\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\n"
+            // the five WIRE-CARRYING surfaces are ABSENT: this port writes the
+            // wire's PREVIOUS form and the corpus is pinned in the id-table form
+            // (docs/SPEC-TABLES.md §3). schema#517 is the port's row.
+            System.out.print("block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-foreign\ncook-forgery\n");
             return 0;
         }

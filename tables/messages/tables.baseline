@@ -1,93 +1,96 @@
-schema-tables-baseline 6
+schema-tables-baseline 7
 package messagedemo
 
 table Cursor
-    field line id=0x01fc kind=8
-    field column id=0x27df kind=8
+    field line id=0xbf4ba5ad694f5907 kind=8
+    field column id=0x5f531287628bf287 kind=8
 
 table Edit
-    field revision id=0xb98e kind=8
-    field body id=0xa2df kind=15 union=EditBody
+    field revision id=0xd6a4dbc46c8e8658 kind=8
+    field body id=0xcd4de79bc6c93295 kind=15 union=EditBody
 
 table InsertText
-    field at id=0x42ad kind=13 type=Cursor
-    field text id=0xf3d8 kind=12 size=32
-    field origin id=0x4330 kind=15 union=Origin
-    field origins id=0x53ab kind=14 elem=15 union=Origin array=bounded bound=2
-    field modes id=0xab38 kind=14 elem=7 enum=Mode optional=true array=bounded bound=2
+    field at id=0x089c4e07b545a968 kind=13 type=Cursor
+    field text id=0xfa04f4ef1995407e kind=12 size=32
+    field origin id=0xb9eae4fe785a14cf kind=15 union=Origin
+    field origins id=0x4437d86681113b74 kind=14 elem=15 union=Origin array=bounded bound=2
+    field modes id=0x9de526933e6e3ef3 kind=14 elem=7 enum=Mode optional=true array=bounded bound=2
 
 table OpenDocument
-    field path id=0xc9b1 kind=12 size=64
-    field mode id=0x0c7c kind=7 enum=Mode default=Read
-    field cursor id=0xd139 kind=13 type=Cursor
+    field path id=0x03c52d0debd70676 kind=12 size=64
+    field mode id=0x0d3deba2c41dadb2 kind=7 enum=Mode default=Read
+    field cursor id=0xf927453fbe6252ef kind=13 type=Cursor
 
 table Ping
-    field nonce id=0x80f0 kind=8
+    field nonce id=0x73a94c71d60dc0d8 kind=8
 
 table RemoveText
-    field span id=0xabc0 kind=13 type=Selection
+    field span id=0x8b7dc019093cd0e1 kind=13 type=Selection
 
 table SaveDocument
-    field path id=0xc9b1 kind=12 size=64
-    field force id=0xf12d kind=1
+    field path id=0x03c52d0debd70676 kind=12 size=64
+    field force id=0xe75ad8afb3eeebe4 kind=1
 
 table Script
-    field path id=0xc9b1 kind=12 size=64
-    field line id=0x01fc kind=8
+    field path id=0x03c52d0debd70676 kind=12 size=64
+    field line id=0xbf4ba5ad694f5907 kind=8
 
 table Selection
-    field start id=0x61f4 kind=13 type=Cursor
-    field end id=0x1f24 kind=13 type=Cursor
+    field start id=0xee5d97ad45ad251f kind=13 type=Cursor
+    field end id=0xc2f00318f053500a kind=13 type=Cursor
 
 table ToolMessage
-    field sequence id=0xd32b kind=8
-    field body id=0xa2df kind=15 union=ToolBody
-    field history id=0xcbae kind=14 elem=15 union=ToolBody array=bounded bound=2
-    field trace id=0xf493 kind=14 elem=13 type=Script optional=true array=bounded bound=3
-    field marks id=0xe15f kind=14 elem=7 enum=Mode optional=true array=fixed bound=2
+    field sequence id=0xaa38aca481f528a8 kind=8
+    field body id=0xcd4de79bc6c93295 kind=15 union=ToolBody
+    field history id=0x33428945bbd5f2ff kind=14 elem=15 union=ToolBody array=bounded bound=2
+    field trace id=0xdec59ea6c4eb9aee kind=14 elem=13 type=Script optional=true array=bounded bound=3
+    field marks id=0x9077d4a4e1726e29 kind=14 elem=7 enum=Mode optional=true array=fixed bound=2
 
 table Transaction
-    field reason id=0xa6ba kind=12 size=16
-    field edits id=0x3d33 kind=14 elem=13 type=Edit array=bounded bound=3
-    field pending id=0xe683 kind=14 elem=15 union=EditBody array=fixed bound=2
-    field checkpoints id=0x990b kind=14 elem=8 optional=true array=fixed bound=2
-    field snapshots id=0x7daf kind=14 elem=13 type=Selection optional=true array=fixed bound=2
+    field reason id=0x65e8d7f3474f2639 kind=12 size=16
+    field edits id=0x9478d06b697549e6 kind=14 elem=13 type=Edit array=bounded bound=3
+    field pending id=0x52dea0d6eeb5083c kind=14 elem=15 union=EditBody array=fixed bound=2
+    field checkpoints id=0x028afa1c4d757704 kind=14 elem=8 optional=true array=fixed bound=2
+    field snapshots id=0x99dc6354a681403a kind=14 elem=13 type=Selection optional=true array=fixed bound=2
 
 table User
-    field name id=0x30df kind=12 size=16
+    field name id=0xc4bcadba8e631b86 kind=12 size=16
 
 enum Mode
-    variant Read id=0xa0ee
-    variant Write id=0x1fa0
+    variant Read id=0x740d542bbe696de5
+    variant Write id=0x78f9fa174282015c
 
 flags Capabilities
     variant Trace bit=0
     variant Verbose bit=1
 
 union EditBody
-    arm insert id=0x508b payload=InsertText
-    arm remove id=0xce6f payload=RemoveText
-    arm count id=0xe445 kind=4 min=0 max=100
-    arm marks id=0xe15f kind=14 elem=7 array=bounded bound=3
-    arm blob id=0xd316 kind=14 elem=6 size=4
-    arm mode id=0x0c7c kind=7 enum=Mode
+    arm insert id=0x7271c68759916228 payload=InsertText
+    arm remove id=0xfff83d536a1d457d payload=RemoveText
+    arm count id=0xb1e5e28e4479a274 kind=4 min=0 max=100
+    arm marks id=0x9077d4a4e1726e29 kind=14 elem=7 array=bounded bound=3
+    arm blob id=0xc573b39bc29148ca kind=14 elem=6 size=4
+    arm mode id=0x0d3deba2c41dadb2 kind=7 enum=Mode
 
 union Origin
-    arm user id=0x3e8a payload=User
-    arm script id=0x4f94 payload=Script
-    arm pid id=0x9462 kind=8 min=0 max=1000
-    arm note id=0x9da7 kind=12 size=24
+    arm user id=0x7d6780e4032b48f2 payload=User
+    arm script id=0xacfc82293c04634a payload=Script
+    arm pid id=0x77af701956600122 kind=8 min=0 max=1000
+    arm note id=0x3bf8fbbad1587cdd kind=12 size=24
 
 union ToolBody
-    arm open id=0x1797 payload=OpenDocument
-    arm save id=0xb2b7 payload=SaveDocument
-    arm transact id=0x968c payload=Transaction
-    arm ping id=0xe6d4 payload=Ping
-    arm caps id=0xacfb kind=9 flags=Capabilities
-    arm spans id=0x8156 kind=14 elem=4 array=fixed bound=2
-    arm origin id=0x4330 kind=15 union=Origin
-    arm ack id=0x6048 kind=none
+    arm open id=0xf84f97b4633670e9 payload=OpenDocument
+    arm save id=0x096a5e18bf857c28 payload=SaveDocument
+    arm transact id=0xed96bbf4dc6ff587 payload=Transaction
+    arm ping id=0xbf30e00dc53307a9 payload=Ping
+    arm caps id=0xb55a6b90e87557f8 kind=9 flags=Capabilities
+    arm spans id=0x437dfc8ab2566816 kind=14 elem=4 array=fixed bound=2
+    arm origin id=0xb9eae4fe785a14cf kind=15 union=Origin
+    arm ack id=0xe723c21905457682 kind=none
 
 ## history
 ### 2026-09-04 — the first baseline over the message corpus, where a union arm of every shape rides (docs/SPEC-TABLES.md §2.6)
 - baseline created over 12 tables — data written BEFORE this point is not covered by it
+
+### 2026-09-04 — the id-table wire: sixty-four-bit identity, the enum kind, and rendering version 7 (docs/SPEC-TABLES.md §3, §5, §18.1)
+- baseline REGENERATED over an unreadable one (baseline version 6, this compiler writes 7); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow

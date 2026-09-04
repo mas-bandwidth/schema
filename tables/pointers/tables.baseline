@@ -1,72 +1,72 @@
-schema-tables-baseline 6
+schema-tables-baseline 7
 package graphdemo
 
 table Album
-    field name id=0x30df kind=12 size=16
-    field tint id=0x82b9 kind=13 type=Colour
-    field stamp id=0x0dc6 kind=13 type=Stamp
-    field marker id=0x866f kind=13 type=Marker
-    field pin id=0x69d5 kind=17 type=Marker
-    field head id=0x79aa kind=17 type=ListNode
+    field name id=0xc4bcadba8e631b86 kind=12 size=16
+    field tint id=0x1e4984ef2e958a4c kind=13 type=Colour
+    field stamp id=0xee7ba9ad45c64144 kind=13 type=Stamp
+    field marker id=0xeddcb72b15486e77 kind=13 type=Marker
+    field pin id=0x77af761956600b54 kind=17 type=Marker
+    field head id=0x0a8f12cc5f9a0c03 kind=17 type=ListNode
 
 table Colour
-    field r id=0xb019 kind=6
-    field g id=0xc40a kind=6
-    field b id=0xcae9 kind=6
+    field r id=0xaf63ef4c86020cd5 kind=6
+    field g id=0xaf63da4c8601e926 kind=6
+    field b id=0xaf63df4c8601f1a5 kind=6
 
 table Depot
-    field name id=0x30df kind=12 size=12
-    field banks id=0x7f34 kind=16 elem=13 type=Layer array=keyed bound=2 key=Tier
-    field spare id=0x3a4f kind=13 type=Meta optional=true
-    field head id=0x79aa kind=17 type=ListNode
+    field name id=0xc4bcadba8e631b86 kind=12 size=12
+    field banks id=0xdd9eb981e152e90c kind=16 elem=13 type=Layer array=keyed bound=2 key=Tier
+    field spare id=0x4339ee8ab21c8380 kind=13 type=Meta optional=true
+    field head id=0x0a8f12cc5f9a0c03 kind=17 type=ListNode
 
 table Layer
-    field depth id=0x609f kind=4 min=0 max=64 default=0
-    field head id=0x79aa kind=17 type=ListNode
+    field depth id=0x75d8e97600b296ea kind=4 min=0 max=64 default=0
+    field head id=0x0a8f12cc5f9a0c03 kind=17 type=ListNode
 
 table ListNode
-    field value id=0x9194 kind=4
-    field name id=0x30df kind=12 size=12
-    field next id=0xd15e kind=17 type=ListNode
+    field value id=0x7ce4fd9430e80cea kind=4
+    field name id=0xc4bcadba8e631b86 kind=12 size=12
+    field next id=0xe5316cbaa025f028 kind=17 type=ListNode
 
 table Marker
-    field label id=0xe16a kind=12 size=8
-    field note id=0x9da7 kind=17 type=Tally
+    field label id=0x39f7fcec8fcb623d kind=12 size=8
+    field note id=0x3bf8fbbad1587cdd kind=17 type=Tally
 
 table Meta
-    field build id=0x3138 kind=4 min=0 max=1000 default=1
-    field tag id=0xbc64 kind=12 size=8
+    field build id=0x802517e298c70b03 kind=4 min=0 max=1000 default=1
+    field tag id=0x56d7ab194448a4f3 kind=12 size=8
 
 table Scene
-    field name id=0x30df kind=12 size=24
-    field version id=0xe8e6 kind=4 min=0 max=99 default=1
-    field head id=0x79aa kind=17 type=ListNode
-    field tree id=0x595e kind=17 type=TreeNode
-    field settings id=0x130e kind=17 type=Settings
-    field alias id=0xfc71 kind=17 type=ListNode
-    field ground id=0x5bdf kind=13 type=Layer
-    field layers id=0x1ee8 kind=14 elem=13 type=Layer array=bounded bound=4
-    field meta id=0xcea6 kind=13 type=Meta
+    field name id=0xc4bcadba8e631b86 kind=12 size=24
+    field version id=0xbb62c62c9808ea37 kind=4 min=0 max=99 default=1
+    field head id=0x0a8f12cc5f9a0c03 kind=17 type=ListNode
+    field tree id=0x5b25b8ef511eb395 kind=17 type=TreeNode
+    field settings id=0xee5f6d7b48b44de8 kind=17 type=Settings
+    field alias id=0x509220bb65a646b7 kind=17 type=ListNode
+    field ground id=0x60839e2395be697e kind=13 type=Layer
+    field layers id=0x4554e34a747022df kind=14 elem=13 type=Layer array=bounded bound=4
+    field meta id=0x4320e9a2e32eac38 kind=13 type=Meta
 
 table Settings
-    field quality id=0xcaf3 kind=4 min=0 max=4 default=2
-    field label id=0xe16a kind=12 size=16
+    field quality id=0x7a8060916400fe66 kind=4 min=0 max=4 default=2
+    field label id=0x39f7fcec8fcb623d kind=12 size=16
 
 table Stamp
-    field tag id=0xbc64 kind=12 size=8
-    field seq id=0xc29b kind=4 min=0 max=1000 default=0
+    field tag id=0x56d7ab194448a4f3 kind=12 size=8
+    field seq id=0x823b8a195ce2133c kind=4 min=0 max=1000 default=0
 
 table Tally
-    field hits id=0xb723 kind=4 min=0 max=10000 default=0
+    field hits id=0x732dfbcc9b0cf0bb kind=4 min=0 max=10000 default=0
 
 table TreeNode
-    field label id=0xe16a kind=12 size=12
-    field left id=0xfe3a kind=17 type=TreeNode
-    field right id=0x5506 kind=17 type=TreeNode
+    field label id=0x39f7fcec8fcb623d kind=12 size=12
+    field left id=0x24b070ada2041cb0 kind=17 type=TreeNode
+    field right id=0x76aaaa535714d805 kind=17 type=TreeNode
 
 enum Tier
-    variant Low id=0x24fc
-    variant High id=0xb817
+    variant Low id=0x24f3a319b88552c1
+    variant High id=0x9deeefd89ca8a81d
 
 ## history
 ### 2026-09-02 — the first baseline over the pointers corpus
@@ -97,3 +97,6 @@ enum Tier
 
 ### 2026-09-04 — schema#396 adopt item 1: a union arm is a field line, so an arm's line carries the FIELD tokens for what it is beside the payload= spelling a declared type keeps; the rendering version moves to 6 and this file is regenerated with its history intact
 - baseline REGENERATED over an unreadable one (baseline version 5, this compiler writes 6); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
+
+### 2026-09-04 — the id-table wire: sixty-four-bit identity, the enum kind, and rendering version 7 (docs/SPEC-TABLES.md §3, §5, §18.1)
+- baseline REGENERATED over an unreadable one (baseline version 6, this compiler writes 7); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow

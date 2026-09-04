@@ -58,6 +58,9 @@
 #include "M2Table.h"
 #include "A1Table.h"
 #include "A2Table.h"
+#include "K1Table.h"
+#include "K2Table.h"
+#include "G1Table.h"
 // the BYTE BUFFER unit (docs/SPEC-TABLES.md §2.5): a blob at its used size,
 // pointed at — a variable root like any pointered one
 #include "AssetsTable.h"
@@ -151,11 +154,13 @@ static bool spill( const std::string & dir, const std::string & name, const void
 // Each unit declares its OWN TableReport — the generated surface is namespaced
 // whole (§6.1) — so the driver carries one report shape of its own and each row
 // copies into it. Five counters is the whole of §4's report, and a row that
-// stopped copying one would be caught by the first case that counts it.
+// stopped copying one would be caught by the first case that counts it. The
+// REFUSAL VERDICT rides beside them (§3) and is not a counter.
 struct Report
 {
     int unknown, kind_mismatch, clamped, duplicate;
     bool malformed;
+    bool refused;
 };
 
 struct Codec
@@ -186,6 +191,7 @@ static void copy_report( const T & from, Report * to )
     to->clamped = from.clamped;
     to->duplicate = from.duplicate;
     to->malformed = from.malformed;
+    to->refused = from.refused;
 }
 
 template <typename T>
@@ -250,6 +256,8 @@ static const Codec codecs[] = {
     CODEC( "tblm2", tblm2, Msg ),
     CODEC( "tbla1", tbla1, Root ),
     CODEC( "tbla2", tbla2, Root ),
+    CODEC( "tblk1", tblk1, Root ),
+    CODEC( "tblk2", tblk2, Root ),
     CODEC( "scalars", scalardemo, SimState ),
     CODEC( "tblscalars2", scalardemo2, SimState ),
 };
@@ -328,6 +336,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "tblp2", tblp2, Chain ),
     VARCODEC( "streamdemo", streamdemo, Feed ),
     VARCODEC( "blobdemo", blobdemo, Catalog ),
+    VARCODEC( "tblg1", tblg1, Guarded ),
 };
 
 static const VarCodec * find_var_codec( const std::string & unit, const std::string & root )
@@ -700,10 +709,14 @@ static int surface_report( const std::string & out )
             codec->reset( value );
             ok = codec->load( value, wire.data(), (int64_t) wire.size(), &report );
         }
+        // THE VERDICT RIDES BESIDE THE COUNTERS (docs/SPEC-TABLES.md §3): a
+        // form byte this reader does not carry moves none of them and reports
+        // no damage, and a clean read prints the same five zeros.
         char text[128];
-        int n = snprintf( text, sizeof( text ), "%d,%d,%d,%d,%s\n",
+        int n = snprintf( text, sizeof( text ), "%d,%d,%d,%d,%s,%s\n",
                           report.unknown, report.kind_mismatch, report.clamped, report.duplicate,
-                          ( report.malformed || !ok ) ? "true" : "false" );
+                          ( report.malformed || ( !ok && !report.refused ) ) ? "true" : "false",
+                          report.refused ? "refused" : "read" );
         if ( !spill( out, f[1], text, (size_t) n ) ) return 1;
     }
     return 0;
@@ -920,7 +933,7 @@ static int surface_json_hostile( const std::string & out )
         if ( !ok || report.malformed )
             n = snprintf( verdict, sizeof( verdict ), "refused\n" );
         else
-            n = snprintf( verdict, sizeof( verdict ), "%d,%d,%d,%d,false\n",
+            n = snprintf( verdict, sizeof( verdict ), "%d,%d,%d,%d,false,read\n",
                           report.unknown, report.kind_mismatch, report.clamped, report.duplicate );
         if ( !spill( out, f[1], verdict, (size_t) n ) ) return 1;
     }

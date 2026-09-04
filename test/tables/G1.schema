@@ -1,0 +1,28 @@
+// G1.schema — A FIELD THE WRITER DOES NOT WRITE IS NOT AN EDGE
+// (docs/SPEC-TABLES.md §3.1, schema#440). A pointer under a false guard, or
+// inside an absent optional, is not visited by the numbering: its target takes
+// no index, so a save never writes a record no written field names, and the
+// region `Lock` lays out holds no such node either — it is the same walk.
+//
+// The GUARD is here beside a pointer that always rides, so a value with both
+// slots filled writes ONE record when the guard is false and two when it is
+// true. The other half of §3.1's sentence — a pointer inside an ABSENT
+// OPTIONAL — cannot be declared yet: `?T` over a variable-length closure is a
+// named follow-on (§2.3, §15), and the walks gating on the presence companion
+// is the precondition its diagnostic names.
+package tblg1
+
+table Node
+{
+    value int32
+}
+
+table Guarded
+{
+    at_rest bool
+    always  *Node
+    if at_rest
+    {
+        resting *Node
+    }
+}

@@ -1,0 +1,18 @@
+// K1.schema — the WRITER of the ENUM-AGAINST-INTEGER pair (docs/SPEC-TABLES.md
+// §3, §4). AN ENUM VALUE RIDES UNDER ITS OWN KIND 30, carrying the reference
+// to its variant name's id, whatever the declaration-side storage width. The
+// kind closes an edit a shared integer kind left open: an enum field respelled
+// as its raw `uint16`, or the reverse, is an ordinary kind mismatch in both
+// directions, counted, with the field taking its default.
+//
+// K2 declares the same two field names with the two spellings SWAPPED, so one
+// wire written here and read there names both directions at once.
+package tblk1
+
+enum Grade { Bronze, Silver, Gold }
+
+table Root
+{
+    grade Grade
+    raw   uint16
+}

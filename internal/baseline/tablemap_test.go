@@ -73,10 +73,10 @@ func TestTheEntryIsAnonymousInTheBaseline(t *testing.T) {
 			t.Errorf("the baseline names the generated entry %s:\n%s", generated, text)
 		}
 	}
-	if !strings.Contains(text, "field ships id=0x2d39 kind=14 elem=13 array=map keykind=12 keybound=32\n") {
+	if !strings.Contains(text, "field ships id=0x294a5c4913e1ad44 kind=14 elem=13 array=map keykind=12 keybound=32\n") {
 		t.Errorf("the map field's line does not carry the shape and the key's facts:\n%s", text)
 	}
-	if !strings.Contains(text, "field by_id id=0xff83 kind=14 elem=13 array=map keykind=8\n") {
+	if !strings.Contains(text, "field by_id id=0x7b024c46e98d3404 kind=14 elem=13 array=map keykind=8\n") {
 		t.Errorf("an integer-keyed map's line does not carry the key kind alone:\n%s", text)
 	}
 

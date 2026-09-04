@@ -1358,7 +1358,7 @@ func TestRangeRemovedIsAbsorbed(t *testing.T) {
 func TestRangeIsRecorded(t *testing.T) {
 	text := baseline.Render(unit(t, rangeSrc)).Text()
 	for _, want := range []string{
-		"field hull id=0x1612 kind=4 min=0 max=1000 default=50",
+		"field hull id=0x80da8ccc11daadf6 kind=4 min=0 max=1000 default=50",
 		"min=-180 max=180",
 		"min=0.0 max=100.0",
 	} {
@@ -1564,7 +1564,7 @@ func TestPreBumpBaselineRepairs(t *testing.T) {
 package ranged
 
 table Ship
-    field hull id=0x1612 kind=4 default=50
+    field hull id=0x80da8ccc11daadf6 kind=4 default=50
 
 %s
 ### 2024-01-01 — the break we are never allowed to forget
@@ -1596,7 +1596,7 @@ table Ship
 	}
 	for _, want := range []string{
 		fmt.Sprintf("schema-tables-baseline %d", baseline.Version),
-		"field hull id=0x1612 kind=4 min=0 max=1000 default=50", // the new judged token
+		"field hull id=0x80da8ccc11daadf6 kind=4 min=0 max=1000 default=50", // the new judged token
 		"### 2024-01-01 — the break we are never allowed to forget",
 		"- Ship.hull: specified default 10 -> 50 [refuse]", // salvaged verbatim
 		"the range facts landed",

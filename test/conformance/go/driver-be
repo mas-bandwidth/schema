@@ -27,11 +27,8 @@
 set -e
 
 if [ "$2" = "list" ]; then
-    echo wire
-    echo report
-    echo json-read
-    echo json-write
-    echo json-hostile
+    # the WIRE-CARRYING surfaces are ABSENT while the Go port writes the
+    # wire's previous form (docs/SPEC-TABLES.md §3, schema#511)
     echo cook-foreign
     echo block-foreign
     exit 0

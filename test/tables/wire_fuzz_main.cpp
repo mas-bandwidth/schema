@@ -12,7 +12,7 @@
 //   out: one byte per root — 1 when this leg has a codec for it, else 0
 //   in:  per mutant: u32 roster index, u32 length, the bytes; EOF ends it
 //   out: per mutant: u8 loaded; i32 unknown, kind_mismatch, clamped,
-//        duplicate; u8 malformed; i64 measure; i64 saved length (-1 when Save
+//        duplicate; u8 malformed; u8 refused; i64 measure; i64 saved length (-1 when Save
 //        refused the value), the saved bytes
 //
 // `measure` is the region a VARIABLE root's LoadMeasure asked for, which the
@@ -53,6 +53,7 @@ struct Reply
     bool loaded;
     int32_t unknown, kind_mismatch, clamped, duplicate;
     bool malformed;
+    bool refused; // the VERDICT, not a counter (docs/SPEC-TABLES.md §3)
     int64_t measure;
     int64_t saved; // -1: Save refused
     uint8_t * bytes;
@@ -66,6 +67,7 @@ static void copy_report( const T & from, Reply & to )
     to.clamped = from.clamped;
     to.duplicate = from.duplicate;
     to.malformed = from.malformed;
+    to.refused = from.refused;
 }
 
 typedef void ( *Run )( const uint8_t * wire, int64_t bytes, Reply & reply );
@@ -91,7 +93,9 @@ struct Fixed
         Report report;
         bool ok = load( *value, wire, bytes, &report );
         copy_report( report, reply );
-        reply.malformed = reply.malformed || !ok;
+        // A REFUSAL IS NOT DAMAGE (§3): a form byte this reader does not carry
+        // moves no counter and reports nothing, so it must not fold into the flag
+        reply.malformed = reply.malformed || ( !ok && !reply.refused );
         reply.loaded = true;
         reply.measure = -1;
         int64_t size = measure( *value );
@@ -247,12 +251,14 @@ int main()
 
         uint8_t loaded = reply.loaded ? 1 : 0;
         uint8_t malformed = reply.malformed ? 1 : 0;
+        uint8_t refused = reply.refused ? 1 : 0;
         fwrite( &loaded, 1, 1, stdout );
         write_i32( reply.unknown );
         write_i32( reply.kind_mismatch );
         write_i32( reply.clamped );
         write_i32( reply.duplicate );
         fwrite( &malformed, 1, 1, stdout );
+        fwrite( &refused, 1, 1, stdout );
         write_i64( reply.measure );
         write_i64( reply.saved );
         if ( reply.saved > 0 ) { fwrite( reply.bytes, 1, (size_t) reply.saved, stdout ); }

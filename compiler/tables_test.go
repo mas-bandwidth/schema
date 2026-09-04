@@ -513,7 +513,7 @@ func TestPointerSurfaceEmitted(t *testing.T) {
 	// per table, exactly as the parameter list is.
 	for _, want := range []string{
 		"inline int64_t PlainMeasure( const Plain & value )",
-		"PROBE_TABLE_INLINE bool PlainSaveBody( TableWriter & w, const Plain & value )",
+		"PROBE_TABLE_INLINE bool PlainSaveBody( TableWriter & w, TableIds & ids, const Plain & value )",
 		"PROBE_TABLE_INLINE bool PlainLoadBody( TableReader & r, Plain & value )",
 		"inline bool PlainLoad( Plain & value, const uint8_t * buffer, int64_t bytes, TableReport * report )",
 	} {
@@ -797,7 +797,7 @@ table ShipConfig
 	u := unitFromSource(t, workedSource)
 	u.ProtocolId = 0x0123456789abcdef // the id §20.2 works the example under
 
-	const want = "0xfa09afbc0cb0f3de"
+	const want = "0xa9df771f6051391f"
 	if got := ir.BuildVersion(u); fmt.Sprintf("0x%016x", got) != want {
 		t.Fatalf("the compiler's build version is 0x%016x, and docs/SPEC-TABLES.md §20.2 states %s", got, want)
 	}
@@ -819,7 +819,7 @@ table ShipConfig
 				if !strings.Contains(line, "BuildVersion = 0x") {
 					continue
 				}
-				if !strings.Contains(strings.ToLower(line), "fa09afbc0cb0f3de") {
+				if !strings.Contains(strings.ToLower(line), "a9df771f6051391f") {
 					t.Errorf("%s emits %q — docs/SPEC-TABLES.md §20.2's number for this unit is %s", name, strings.TrimSpace(line), want)
 				}
 				found = true

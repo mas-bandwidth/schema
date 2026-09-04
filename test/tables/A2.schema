@@ -1,12 +1,15 @@
 // A2.schema — the READER of the ARM-RETYPE pair (docs/SPEC-TABLES.md §2.6,
-// §3, §4.1). Every arm keeps A1's name and moves its type:
+// §3, §4). AN ARM HEADER IS A FIELD HEADER and carries the arm's KIND, so a
+// retyped arm is judged by the field rules and NO RETYPE IS SILENT. Every arm
+// keeps A1's name and moves its type:
 //
-//   a: int32 -> int64    the arm's L is not the declared width — KIND MISMATCH
-//   b: int32 -> float32  one width, one length — SILENT, §4.1's fifth member
-//   c: int32 -> string   any length reads as bytes — SILENT (a string clamps
-//                        only past its own N)
-//   d: float32 -> Body   four bytes read as a body: the terminator is not the
-//                        last two bytes of L — MALFORMED, the union None
+//   a: int32 -> int64    kind 4 against kind 5 — KIND MISMATCH
+//   b: int32 -> float32  kind 4 against kind 10 — KIND MISMATCH, where a form
+//                        without an arm kind byte read one width as the other
+//   c: int32 -> string   kind 4 against kind 12 — KIND MISMATCH, where a form
+//                        without one read the scalar's bytes as a string
+//   d: float32 -> Body   kind 10 against kind 13 — KIND MISMATCH, the union
+//                        None and the parent reading on past L
 //   e: Body -> Body      the sane arm beside them, which must still round-trip
 package tbla2
 

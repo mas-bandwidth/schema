@@ -38,7 +38,7 @@ func refuseMaps(u *ir.Unit, target string) error {
 		englishList(fields), englishList(carry), target, englishList(flags))
 }
 
-// refuseToolMaps is the TOOL's refusal (docs/SPEC-TABLES.md §2.8, §15): a unit
+// refuseToolMaps is the TOOL's COOK refusal (docs/SPEC-TABLES.md §2.8, §15): a unit
 // whose table closure declares a map is refused by name at every table surface
 // the tool has — pack, unpack, cook, cook-check and uncook — because
 // internal/tablewire does not carry the construct yet.
@@ -54,6 +54,6 @@ func refuseToolMaps(u *ir.Unit) error {
 	if len(fields) == 0 {
 		return nil
 	}
-	return fmt.Errorf("unit declares a map in a table closure (%s) — the tool's engines do not carry the construct yet, so this command would read the map's bytes as framing damage rather than as the array of entries they are; the C++ reference carries it (--lang cpp), and the tool's half is schema#380's next PR (docs/SPEC-TABLES.md §2.8, §15)",
+	return fmt.Errorf("unit declares a map in a table closure (%s) — the tool's WIRE and TEXT halves carry the construct, and its COOK half does not, so this command would lay out a region short of the entry arrays rather than refusing; the C++ reference carries the cook (--lang cpp), and the tool's half is schema#380's next PR (docs/SPEC-TABLES.md §2.8, §15)",
 		englishList(fields))
 }
