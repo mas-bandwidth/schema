@@ -480,12 +480,18 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 		ek := r.u8()
 		count, good := r.leb()
 		if !good {
+			// A DAMAGED COUNT is framing damage inside the body's own length.
+			// A FIELD rode, so an optional is still PRESENT and the array
+			// keeps its declared default (§2.3, §4); an ARM whose payload is
+			// damaged inside its `L` is that arm's own framing damage, so the
+			// union reads None and the parent reads on past `L` (§3) — which
+			// is what `selected` false says to the caller.
 			r.report.Malformed = true
 			r.off = end
 			if f.Type.Optional {
 				fv.Present = true
 			}
-			return true, true
+			return true, false
 		}
 		if int(ek) != ir.TableWireElemKind(f) {
 			// the element kind is part of the array's identity (§3): counted,

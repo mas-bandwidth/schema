@@ -54,6 +54,8 @@ unit tblm1     test/tables/M1.schema
 unit tblm2     test/tables/M2.schema
 unit tbla1     test/tables/A1.schema
 unit tbla2     test/tables/A2.schema
+unit tblk1     test/tables/K1.schema
+unit tblk2     test/tables/K2.schema
 
 instance root_full            tabledemo RootConfig    testdata/wire/tables/root_full.bin
 instance root_default         tabledemo RootConfig    testdata/wire/tables/root_default.bin
@@ -228,6 +230,37 @@ report m1_open_as_m2  tblm2 Msg testdata/wire/tables/m1_open.bin
 report m1_save_as_m2  tblm2 Msg testdata/wire/tables/m1_save.bin
 report m2_close_as_m1 tblm1 Msg testdata/wire/tables/m2_close.bin
 report m2_open_as_m1  tblm1 Msg testdata/wire/tables/m2_open.bin
+
+# THE ENUM KIND AGAINST THE RAW INTEGER (§3, §4). K2 declares K1's two field
+# names with the spellings swapped, so one wire read the other way names both
+# directions at once: kind 30 where the reader declares kind 7, and kind 7 where
+# it declares kind 30. Two kind mismatches, both fields at their defaults, and
+# no raw value ever read as a variant name.
+report k1_as_k2  tblk2 Root testdata/wire/tables/k1_as_k2.bin
+report k2_as_k1  tblk1 Root testdata/wire/tables/k2_as_k1.bin
+
+# KIND 31 AND KIND 32, AT EVERY POSITION (§3). Where the reader meets them
+# decides which event it counts: at a position it CANNOT name the escape is
+# skipped by its L and counted unknown, and at a position it DOES name — a
+# field, an arm, an array's element kind — it is an ordinary kind mismatch, on
+# the rule every other kind already takes. The bytes are the reference leg's,
+# built from §3's grammar and pinned by test/tables/main.cpp.
+report escape_unnamed_field   messagedemo ToolMessage testdata/wire/tables/escape_unnamed_field.bin
+report escape_named_field     messagedemo ToolMessage testdata/wire/tables/escape_named_field.bin
+report escape_arm             messagedemo ToolMessage testdata/wire/tables/escape_arm.bin
+report escape_element         messagedemo ToolMessage testdata/wire/tables/escape_element.bin
+report nopayload_named_field  messagedemo ToolMessage testdata/wire/tables/nopayload_named_field.bin
+
+# THE ARM'S KIND BYTE, at the four pins §3 names. A2 declares `a` as an int64
+# arm, `b` as a float32 arm and `c` as a string(8) arm; each row puts a payload
+# of another kind under one of those arm ids. The first three are kind
+# mismatches with the union None and the siblings intact; the fourth is the
+# LENGTH pin — an arm whose L is not its kind's width is that arm's own framing
+# damage, malformed, with the parent reading on past L.
+report a2_arm_enum_as_int      tbla2 Root testdata/wire/tables/a2_arm_enum_as_int.bin
+report a2_arm_pointer_as_int   tbla2 Root testdata/wire/tables/a2_arm_pointer_as_int.bin
+report a2_arm_bytes_as_string  tbla2 Root testdata/wire/tables/a2_arm_bytes_as_string.bin
+report a2_arm_length_off_width tbla2 Root testdata/wire/tables/a2_arm_length_off_width.bin
 
 # THE ARM EVOLUTION ROWS (§4), each red for one reason. A1 and A2 declare the
 # same five arms under the same names at different types, so one wire written

@@ -291,13 +291,32 @@ func (s *frameScanner) arm(off, end int) int {
 	s.spotByte(spotKind, off, end)
 	off++
 	// AN ARM HEADER IS A FIELD HEADER (§3), so the payload under its L is what
-	// a FIELD of the arm's type puts after its own prefix — but the scanner is
-	// a LOCATOR, and a body is the only arm payload it can walk further into.
-	return s.framedAs(off, end, true, kind == ir.TableKindTable, func(a, b int) {
-		if kind == ir.TableKindTable {
-			s.body(a, b, false)
-		}
-	})
+	// a FIELD of the arm's type puts after its own prefix. Two of them are
+	// walkable: a body, and a NESTED UNION, whose payload is the union in its
+	// place and carries an arm reference of its own.
+	return s.framedAs(off, end, true, kind == ir.TableKindTable, func(a, b int) { s.framedPayload(int(kind), a, b) })
+}
+
+// framedPayload walks what sits under an L once the kind is known: a body, a
+// nested union in its place, an array or keyed body, or one of the two
+// REFERENCE-shaped payloads. Everything else frames no number the mutators can
+// aim at, and the scanner is a LOCATOR — a spot it cannot frame is a spot it
+// does not record.
+func (s *frameScanner) framedPayload(kind, a, b int) {
+	switch kind {
+	case ir.TableKindTable:
+		s.body(a, b, false)
+	case ir.TableKindUnion:
+		s.arm(a, b)
+	case ir.TableKindArray:
+		s.array(a, b)
+	case ir.TableKindKeyed:
+		s.keyed(a, b)
+	case ir.TableKindEnum:
+		s.spotLeb(spotVariant, a, b)
+	case ir.TableKindPointer:
+		s.spotLeb(spotIndex, a, b)
+	}
 }
 
 // nodeTable walks the node table's payload (§3.1): node_count, then whole
@@ -308,12 +327,22 @@ func (s *frameScanner) nodeTable(off, end int) {
 		return
 	}
 	for off < end {
+		before := len(s.f.spots)
 		off = s.spotLeb(spotRecordType, off, end)
 		if off < 0 {
 			return
 		}
+		// A BLOB RECORD'S BODY IS THE BYTES THEMSELVES (§2.5, §3.1) — no
+		// fields, no terminator and no framing inside — so the scan stops at
+		// its length rather than walking bytes that frame nothing
+		id, named := s.f.entryOf(s.f.spots[before].value)
+		blob := named && (id == ir.BytesWireTypeId || id == ir.StringWireTypeId)
 		s.f.records++
-		off = s.framed(off, end, func(a, b int) { s.body(a, b, false) })
+		if blob {
+			off = s.framed(off, end, nil)
+		} else {
+			off = s.framed(off, end, func(a, b int) { s.body(a, b, false) })
+		}
 		if off < 0 {
 			return
 		}
@@ -382,11 +411,7 @@ func (s *frameScanner) keyed(off, end int) {
 		if off < 0 {
 			return
 		}
-		var inner func(int, int)
-		if ek == ir.TableKindTable {
-			inner = func(a, b int) { s.body(a, b, false) }
-		}
-		off = s.framed(off, end, inner)
+		off = s.framed(off, end, func(a, b int) { s.framedPayload(ek, a, b) })
 		if off < 0 {
 			return
 		}

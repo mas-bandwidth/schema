@@ -38,6 +38,8 @@
 #include "M2Table.h"
 #include "A1Table.h"
 #include "A2Table.h"
+#include "K1Table.h"
+#include "K2Table.h"
 #include "ScalarsTable.h"
 #include "wirebuilder.h"
 
@@ -7007,6 +7009,220 @@ static void test_form_byte_refusals()
     }
 }
 
+// ---- THE ENUM KIND AGAINST THE RAW INTEGER (docs/SPEC-TABLES.md §3, §4) ---
+//
+// An enum rides under its OWN kind 30 carrying the reference to its variant
+// name's id, whatever the declaration-side storage width. K2 declares K1's two
+// field names with the spellings swapped, so one wire written under K1 and read
+// under K2 names both directions at once: kind 30 where the reader declares
+// kind 7, and kind 7 where it declares kind 30. Two kind mismatches, both
+// fields at their declared defaults, and no raw value ever read as a variant
+// name. The wire is pinned as a shared report row every leg reads.
+static void test_enum_kind_against_the_raw_integer()
+{
+    tblk1::Root src;
+    src.grade = tblk1::Grade::Gold;
+    src.raw = 3;
+    uint8_t wire[128];
+    const int64_t n = tblk1::RootSave( src, wire, sizeof( wire ) );
+    CHECK( n > 0 );
+    pin_table_golden( "k1_as_k2", wire, n );
+
+    tblk2::Root out;
+    tblk2::TableReport report;
+    CHECK( tblk2::RootLoad( out, wire, n, &report ) );
+    CHECK( report.kind_mismatch == 2 && report.unknown == 0 && !report.malformed );
+    CHECK( out.grade == 0 );                       // the enum's reference is not a number
+    CHECK( out.raw == tblk2::Grade::None );        // and the number is not a variant
+    // and the reverse direction, written under K2 and read under K1
+    tblk2::Root back;
+    back.grade = 3;
+    back.raw = tblk2::Grade::Gold;
+    uint8_t other[128];
+    const int64_t m = tblk2::RootSave( back, other, sizeof( other ) );
+    CHECK( m > 0 );
+    pin_table_golden( "k2_as_k1", other, m );
+    tblk1::Root out2;
+    tblk1::TableReport report2;
+    CHECK( tblk1::RootLoad( out2, other, m, &report2 ) );
+    CHECK( report2.kind_mismatch == 2 && report2.unknown == 0 && !report2.malformed );
+    CHECK( out2.grade == tblk1::Grade::None );
+    CHECK( out2.raw == 0 );
+}
+
+// ---- KIND 31 AND KIND 32, AT EVERY POSITION (docs/SPEC-TABLES.md §3) ------
+//
+// WHERE THE READER MEETS THEM DECIDES WHICH EVENT IT COUNTS. At a position it
+// CANNOT name, the escape kind is skipped by its L and counted `unknown`,
+// exactly as a field whose id the reader cannot name is. At a position it DOES
+// name, a field or an arm arriving under kind 31 or kind 32 where the
+// declaration says otherwise is an ordinary kind mismatch. One rule decides it,
+// and it is the rule every other kind already takes. Each row is pinned so
+// every leg answers the same bytes.
+static void test_escape_and_payload_free_kinds()
+{
+    // (1) AT A FIELD THE READER CANNOT NAME: skipped by its L, counted unknown
+    {
+        uint8_t wire[256];
+        WireBuilder b;
+        b.field( 0xBEEFBEEFBEEFBEEFull, 31 ); // the escape, under an id no build names
+        b.leb( 3 );
+        b.u8( 1 ); b.u8( 2 ); b.u8( 3 );      // opaque: a kind a later major added
+        b.end();
+        const int64_t n = b.finish( wire );
+        pin_table_golden( "escape_unnamed_field", wire, n );
+        messagedemo::ToolMessage out;
+        messagedemo::TableReport report;
+        CHECK( messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( report.unknown == 1 && report.kind_mismatch == 0 && !report.malformed );
+    }
+    // (2) AT A FIELD IT DOES NAME: an ordinary kind mismatch, the field at its default
+    {
+        uint8_t wire[256];
+        WireBuilder b;
+        b.field( "sequence", 31 );
+        b.leb( 4 );
+        b.u32( 99 );
+        b.end();
+        const int64_t n = b.finish( wire );
+        pin_table_golden( "escape_named_field", wire, n );
+        messagedemo::ToolMessage out;
+        messagedemo::TableReport report;
+        CHECK( messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
+        CHECK( out.sequence == 0 );
+    }
+    // (3) AT AN ARM: the arm skips by its L, the union reads None, one mismatch
+    {
+        uint8_t wire[256];
+        WireBuilder b;
+        b.field( "body", 15 );
+        b.leb( b.ref( "ping" ) );
+        b.u8( 31 );                           // the escape where a body is declared
+        b.leb( 2 );
+        b.u8( 7 ); b.u8( 7 );
+        b.end();
+        const int64_t n = b.finish( wire );
+        pin_table_golden( "escape_arm", wire, n );
+        messagedemo::ToolMessage out;
+        messagedemo::TableReport report;
+        CHECK( messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
+        CHECK( out.body.type == messagedemo::ToolBodyType::None );
+    }
+    // (4) AS AN ELEMENT KIND: the array's own identity, so the same rule one
+    // level in — the array reads empty and the field is skipped whole by its L
+    {
+        uint8_t wire[256];
+        WireBuilder b;
+        b.field( "history", 14 );
+        const int64_t body = b.open_len();
+        b.u8( 31 );                           // no declaration produces one
+        b.leb( 1 );
+        b.leb( 2 ); b.u8( 0 ); b.u8( 0 );
+        b.close_len( body );
+        b.end();
+        const int64_t n = b.finish( wire );
+        pin_table_golden( "escape_element", wire, n );
+        messagedemo::ToolMessage out;
+        messagedemo::TableReport report;
+        CHECK( messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
+        CHECK( out.history_count == 0 );
+    }
+    // (5) KIND 32 AT A NAMED FIELD: the payload-free kind is the arm position's
+    // alone, so a field arriving under it takes the same rule
+    {
+        uint8_t wire[256];
+        WireBuilder b;
+        b.field( "sequence", 32 );
+        b.leb( 0 );
+        b.end();
+        const int64_t n = b.finish( wire );
+        pin_table_golden( "nopayload_named_field", wire, n );
+        messagedemo::ToolMessage out;
+        messagedemo::TableReport report;
+        CHECK( messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
+        CHECK( out.sequence == 0 );
+    }
+}
+
+// ---- THE ARM'S KIND BYTE, at the four pins §3 names ------------------------
+//
+// A2 declares `a` as an int64 arm and `c` as a string(8) arm. Each row below
+// puts a payload of ANOTHER kind under one of those arm ids, from the grammar:
+// the arm skips by its L, the union reads None, and one kind mismatch counts.
+// The fourth is the LENGTH pin — a reference-shaped arm whose L is not the
+// byte count of the reference it frames is that arm's own framing damage.
+static void test_arm_kind_pins()
+{
+    struct Row { const char * name; const char * arm; uint8_t kind; };
+    // an ENUM arm and a POINTER arm read as an integer arm, and a `bytes` arm
+    // read as a `string` arm
+    const Row rows[3] = {
+        { "a2_arm_enum_as_int", "a", 30 },
+        { "a2_arm_pointer_as_int", "a", 17 },
+        { "a2_arm_bytes_as_string", "c", 14 },
+    };
+    for ( int i = 0; i < 3; i++ )
+    {
+        uint8_t wire[256];
+        WireBuilder b;
+        b.field( "id", 8 );
+        b.u32( 11 );
+        b.field( "value", 15 );
+        b.leb( b.ref( rows[i].arm ) );
+        b.u8( rows[i].kind );
+        if ( rows[i].kind == 14 )
+        {
+            const int64_t body = b.open_len();
+            b.u8( 6 ); b.leb( 2 ); b.u8( 'h' ); b.u8( 'i' );
+            b.close_len( body );
+        }
+        else
+        {
+            b.leb( 1 );
+            b.leb( b.ref( "Gold" ) ); // a reference: kinds 17 and 30 both frame one
+        }
+        b.field( "tail", 8 );
+        b.u32( 22 );
+        b.end();
+        const int64_t n = b.finish( wire );
+        pin_table_golden( rows[i].name, wire, n );
+        tbla2::Root out;
+        tbla2::TableReport report;
+        CHECK( tbla2::RootLoad( out, wire, n, &report ) );
+        CHECK( report.kind_mismatch == 1 && !report.malformed );
+        CHECK( out.value.type == tbla2::ValueType::None );
+        CHECK( out.id == 11 && out.tail == 22 ); // the siblings still land
+    }
+    // AND THE LENGTH PIN: a kind 30 arm whose L is not the byte count of the
+    // reference it frames is MALFORMED, the union None, the parent reading on
+    {
+        uint8_t wire[256];
+        WireBuilder b;
+        b.field( "id", 8 );
+        b.u32( 11 );
+        b.field( "value", 15 );
+        b.leb( b.ref( "b" ) );  // A2 declares `b` as a float32 arm, kind 10
+        b.u8( 10 );
+        b.leb( 3 );             // and a float32's width is four
+        b.u8( 0 ); b.u8( 0 ); b.u8( 0 );
+        b.field( "tail", 8 );
+        b.u32( 22 );
+        b.end();
+        const int64_t n = b.finish( wire );
+        pin_table_golden( "a2_arm_length_off_width", wire, n );
+        tbla2::Root out;
+        tbla2::TableReport report;
+        CHECK( tbla2::RootLoad( out, wire, n, &report ) );
+        CHECK( report.malformed && report.kind_mismatch == 0 );
+        CHECK( out.value.type == tbla2::ValueType::None );
+        CHECK( out.id == 11 && out.tail == 22 );
+    }
+}
+
 // the element-kind separation (§3, §3.1): `parts` arriving as an array of
 // uint32 — element kind 8 where this reader declares 17 — is a kind mismatch,
 // counted, and the field stays empty; nothing reads a number as an index
@@ -8431,6 +8647,9 @@ int main()
     test_pointer_arrays();
     test_pointer_arrays_elision();
     test_form_byte_refusals();
+    test_enum_kind_against_the_raw_integer();
+    test_escape_and_payload_free_kinds();
+    test_arm_kind_pins();
     test_pointer_arrays_element_kind_mismatch();
     test_pointer_arrays_count_past_bound();
     test_pointer_arrays_index_out_of_range();
