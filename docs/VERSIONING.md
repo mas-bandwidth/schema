@@ -247,6 +247,7 @@ does today.
 | a flags variant reordered or renamed in place | **silent** | **refuses** | moves once #435's rule lands; **nothing today**, and the protocol id moves once #462 lands |
 | a keyed array made positional | `kind_mismatch` | refuses | moves |
 | a keyed array's key enum swapped for another | `unknown`, one per slot; the kind stays | refuses | moves |
+| a map's KEY kind changed, or its KEY bound tightened (SPEC-TABLES.md §2.8) | a changed kind is one `kind_mismatch` for the map, which reads empty. A tightened bound drops the entries that no longer fit and counts `clamped`, one per entry | **refuses** a changed kind, warns on a tightened bound | moves |
 | a guard added or removed | nothing | passes | nothing |
 | a `json =` key changed | nothing on the wire | passes | nothing |
 | a table renamed | nothing when it is held by value (a declaration name is not on the wire); every pointer to it reads null and counts `unknown` when it is a pointer target | warns | moves, until table `was` lands (#396); then a `was` rename moves nothing |
@@ -260,8 +261,10 @@ some rows move the protocol id as well: see the packet wire section.
 
 A load fills the report and returns; nothing on the table wire is fatal on
 data from another build. `unknown` is the ordinary sound of evolution and
-fires on every cross-version load by design; `duplicate` is the text form's
-counter. `kind_mismatch`, `clamped` and `malformed` are damage or a decision,
+fires on every cross-version load by design. `duplicate` counts a REPEATED
+KEY, and it has one source on each side: a repeated JSON key in the text
+form, and a MAP's repeated key on the wire, which is the one wire event that
+raises it (SPEC-TABLES.md §2.8, §4). `kind_mismatch`, `clamped` and `malformed` are damage or a decision,
 and a game that alarms on those three and logs the others has the severity
 split it needs. A tool that wants to know *which* field was clamped re-walks
 the file with the descriptors, the per-field facts every table's generated

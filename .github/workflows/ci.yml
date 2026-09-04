@@ -92,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check out the C/C++ serialize runtimes (pinned releases)
         run: |
@@ -100,7 +100,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"   https://github.com/mas-bandwidth/serialize.git   serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
           cache: false
@@ -131,8 +131,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
           cache: false
@@ -160,6 +160,9 @@ jobs:
             echo "::error::the generator emitted files that are not committed under generated/ — add them."
             exit 1
           fi
+
+      - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
+        run: make tables-block-zero-cost
 
   # THE CONFORMANCE MATRIX (test/conformance/README.md), one job per registered
   # driver. The same corpus as data, one driver per language, and the matrix
@@ -189,8 +192,8 @@ jobs:
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
           cache: false
@@ -211,7 +214,7 @@ jobs:
       matrix: ${{ fromJSON(needs.conformance-matrix.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Siblings cloned exactly where README.md tells a newcomer to put them —
       # CI exercises the documented path rather than a special one. The
@@ -227,7 +230,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$tag" "https://github.com/mas-bandwidth/${{ matrix.runtime }}.git" "../${{ matrix.runtime }}"
 
       # bin/schema and the generated table units come out of Go in every leg.
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
           cache: false
@@ -235,25 +238,35 @@ jobs:
       # One step per toolchain, each keyed on the row's field for it. The
       # version is the leg's to name, and it is the same pin the leg's
       # make/<lang>.mk documents for the repo-local dist/.
-      - uses: actions/setup-dotnet@v6
+      #
+      # .NET IS THE ONE VERSION THAT IS NOT THE LEG'S ALONE: nine csproj files
+      # under test/ and bench/ name the same TargetFramework, and certify.yml
+      # builds all of them. So the row names WHERE the pin lives and
+      # .github/dotnet-version holds it, read by both files; internal/ci's gate
+      # fails when a csproj and that pin disagree (issue #470).
+      - name: read the .NET SDK pin
+        if: matrix.dotnet != ''
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         if: matrix.dotnet != ''
         with:
-          dotnet-version: ${{ matrix.dotnet }}
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: matrix.node != ''
         with:
           node-version: ${{ matrix.node }}
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
         if: matrix.rust != ''
 
-      - uses: dart-lang/setup-dart@v1
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         if: matrix.dart != ''
         with:
           sdk: ${{ matrix.dart }}
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         if: matrix.java != ''
         with:
           distribution: 'temurin'
@@ -262,7 +275,7 @@ jobs:
       # The BEAM is two versions and one step. No ELIXIRC override is needed:
       # make/elixir.mk's default prefixes the repo-local dist/ onto PATH and
       # falls through to the toolchain this step installed.
-      - uses: erlef/setup-beam@v1
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         if: matrix.otp != ''
         with:
           otp-version: ${{ matrix.otp }}
@@ -308,9 +321,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
           cache: false
@@ -371,7 +384,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # PINNED to the module's own Go version, and it moves WITH the
       # golangci-lint pin below. golangci-lint links a copy of the Go
       # typechecker, so a linter release can only typecheck the toolchains
@@ -379,7 +392,7 @@ jobs:
       # that goes red on its own, with no commit, the day Go releases.
       # Bumping the linter is a two-line, deliberate act: this version and
       # that one, together.
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
           cache: false
@@ -393,14 +406,24 @@ jobs:
           fi
       - name: go mod tidy
         run: go mod tidy -diff
+      # CI LINTS ITSELF (issues #470, #472). Two invariants a reader cannot hold
+      # by hand across three workflow files: every `uses:` names a full commit
+      # SHA and no tool runs `@latest`, and every csproj's TargetFramework
+      # matches the one .NET SDK pin. It is a Go test, so `go test ./...` and
+      # `make test` carry it too; this step is where the verdict is named.
+      - name: CI lints itself — action pins and the .NET SDK pin
+        run: go test ./internal/ci/
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           # pinned so releases with new checks break CI deliberately, not
           # randomly; bump by hand
           version: v2.12.2
+      # PINNED for the same reason as golangci-lint above: a release with new
+      # rules breaks CI deliberately, not overnight. The version is gopls's own
+      # module tag; bump by hand.
       - name: modernize
-        run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest ./...
+        run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.23.0 ./...
       - name: bench scripts parse
         run: bash -n bench/run.sh
       - name: absolute ledger — the cpp curve holds or goes red
@@ -424,13 +447,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable
           cache: false
+      # PINNED to a govulncheck release, bumped by hand. What has to change
+      # on its own is the VULNERABILITY DATABASE, which the tool fetches at run
+      # time — so the pin costs this gate nothing, and a red run can no longer
+      # mean the scanner moved under us rather than a new CVE landing.
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 
   # The compiler that generates C++ for a Windows-targeting game engine, run on
   # Windows: vet + build, cheap enough to ride every pull request. What it
@@ -439,8 +466,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable
           cache: false
@@ -495,8 +522,8 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable
           cache: false
@@ -627,8 +654,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
           cache: false
@@ -651,7 +678,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: refuse locked-path changes

@@ -118,7 +118,7 @@ the other format for this one thing.
 | 2 | **A service or SDK that only speaks Protobuf.** | certain, for that one edge | Never removable. A foreign endpoint's format is what you use at that endpoint. Tables inside, the foreign format only at the boundary. |
 | 3 | **Maps with string or integer keys.** Protobuf has `map<K,V>`; FlatBuffers has the sorted-vector idiom. | likely for a team raised on Protobuf | After 3.0.0, in tables only, never in types, and a map makes the table variable: it rides with the pointers, never in a fixed record ([#380](https://github.com/mas-bandwidth/schema/issues/380)). Enum keys are already better served by `[E]T` (§2.4). |
 | 4 | **Unbounded strings and bytes at used size.** | closed | Landed as `*bytes` and `*string`, the byte-buffer primitive (§2.5, [#259](https://github.com/mas-bandwidth/schema/issues/259)): an image lives inside a table at its own size and a mapped cook points at it with no copy. C++ and the tool carry it; the ports follow as a row on [#366](https://github.com/mas-bandwidth/schema/issues/366). |
-| 5 | **A verifier for untrusted bytes.** FlatBuffers ships a separate `Verifier` pass, in C++, C and Swift of its thirteen languages (FB-support). | possible | Table reads are untrusted: they arrive over the network and carry the type wire's security posture; only the cook open is trusted. So the tolerant read IS the verifier, in every language, and [#391](https://github.com/mas-bandwidth/schema/issues/391) is the fuzzer with an independent oracle that proves it in CI. Before 3.0.0, since the release makes the claim. |
+| 5 | **A verifier for untrusted bytes.** FlatBuffers ships a separate `Verifier` pass, in C++, C and Swift of its thirteen languages (FB-support), and in Rust, whose safe table functions "verify the data first" (FB-rust). | possible | Table reads are untrusted: they arrive over the network and carry the type wire's security posture; only the cook open is trusted. So the tolerant read IS the verifier, in every language, and the fuzzer with an independent oracle that proves it in CI runs against the C++ reference today ([#429](https://github.com/mas-bandwidth/schema/pull/429), §4.2); each port's leg is its PORTING.md I15 cell. Before 3.0.0, since the release makes the claim. |
 | 6 | **Every type in tables.** Nothing here is ahead of schema: `fixed`, `ufixed` and the 128-bit integers ride in a table under kinds of their own (§3), which is what a deterministic simulation's save holds. | closed | Landed in the C++ reference and the tool ([#390](https://github.com/mas-bandwidth/schema/issues/390)); the ports follow as a row on [#366](https://github.com/mas-bandwidth/schema/issues/366). |
 | 7 | **Sorted lookup inside a buffer.** FlatBuffers' `key` attribute and `LookupByKey`. | possible, for a large catalog opened by id | Library-side, after 3.0.0: a sort the cook writer holds and a generated `Find` over the cooked rows. Never stored semantics. |
 | 8 | **Reflection in more languages.** | possible, for an editor in Python or C# | Descriptors are built into every table's generated code with no schema files and no RTTI (§8). They reach every language with the parity matrix on [#366](https://github.com/mas-bandwidth/schema/issues/366). |
@@ -154,7 +154,7 @@ Each with the section that defines it and the reason a game cares.
 |---|---|---|
 | **Bounds in the type.** `\| min, max` is part of the type; the type wire sizes bits from it and the table wire clamps and counts on load. | SPEC §4.3, §4 | A health capped at 1000 is ten bits on a packet, and a save cannot carry an out-of-range value. |
 | **Two classes derived from the declaration.** A table with no pointer is a plain struct; one with a pointer gets an arena. A build-failing gate holds the fixed class to zero cost. | §2.2 | A config struct pays nothing for the machinery a scene graph needs. |
-| **No allocation on read, every class, every form, nine languages.** | ladder, §6.5 | No GC pressure and no allocator on the load path. |
+| **No allocation on read, every class, every form, in eight of the nine languages.** Elixir is the exception: a decoded BEAM term is an allocation and no buffer is caller-owned there, so that leg pins the per-case COUNT instead (PORTING.md M1). | ladder, §6.5 | No GC pressure and no allocator on the load path. |
 | **`Measure` equals `Save` at exact capacity**, held by a mandatory battery. | §9 | Caller-owned buffers, parallel scatter writes, never a realloc. |
 | **Pointers with sharing preserved.** A node written once however many times it is named; a flat node table, so a 260-node chain is not a recursion; cycles refused by name. | §2.1, §3.1 | Trees, graphs, palettes shared by many nodes. Neither competitor shares a node, and Protobuf has no pointer at all. |
 | **Enum-keyed arrays that ride by name** and refuse a bad key in every build. | §2.4, §3.2 | Per-ship-type config survives inserting a ship type in the middle. |
@@ -186,7 +186,7 @@ Each with the section that defines it and the reason a game cares.
 | Explicit or sparse enum values | both | On the table wire a variant rides by name, so its number is invisible (SPEC §9). |
 | Varint compaction | Protobuf | The type wire is the compact wire; tables trade bytes for tolerance by design, and the ladder states the price. |
 | Deprecation markers | both | Removal is free and reported, which is what deprecation exists to fake elsewhere. |
-| Reserved numbers | Protobuf | Ids are name hashes and cannot be reused by number. Re-adding a retired name with a new meaning is the baseline's job, and a retired-names list is a small addition to it after 3.0.0. |
+| Reserved numbers | Protobuf | Ids are name hashes and cannot be reused by number. Re-adding a retired name with a new meaning is the baseline's job, and the retired-names ledger it needs is [#441](https://github.com/mas-bandwidth/schema/issues/441), before 3.0.0. |
 | RPC and gRPC | both | Out of scope, by the owner's word. Add it on top if you care. |
 
 ## The feature table
@@ -222,7 +222,7 @@ the source list at the end.
 | Units and includes | one `package` per unit, all files compiled together, order-free; cross-file table references form a DAG (SPEC §3.2, §11) | `include`, nested `namespace` (FB-schema) | `import`, `import public`, `package` (PB-editions) |
 | Attributes | closed typed vocabulary right of `\|`; unknown is a compile error; type tags inert until claimed (SPEC §4.2) | user attributes declarable, read via reflection (FB-schema) | custom options with retention and targets (PB-editions) |
 | Doc comments | deferred, design pinned (SPEC §4.1) | `///` into generated code and the binary schema (FB-flatc) | the descriptor carries source info — `SourceCodeInfo`, whose `leading_comments` and `trailing_comments` a generator reads (PB-descriptor) |
-| Reserved names | after 3.0.0, a retired list in the baseline | — ; never remove, deprecate instead (FB-evolution) | `reserved` numbers and names (PB-proto3) |
+| Reserved names | the retired-names ledger in the baseline, before 3.0.0 ([#441](https://github.com/mas-bandwidth/schema/issues/441)) | — ; never remove, deprecate instead (FB-evolution) | `reserved` numbers and names (PB-proto3) |
 | Deprecation | — ; removal is free and counted | `(deprecated)`: accessors dropped, slot kept (FB-schema) | `[deprecated = true]` (PB-proto3) |
 | Required | — ; every field optional with a default (§4) | `(required)`, verifier-checked (FB-schema) | removed; `LEGACY_REQUIRED` only (PB-ed-overview) |
 | Rename | `\| was = "old"` keeps the id; a bare rename is a removal plus an addition, and a committed baseline warns on the pair (§5, §18.2) | free; names not serialized (FB-evolution) | free on binary; reserve the old name for JSON (PB-proto3) |
@@ -281,7 +281,7 @@ the source list at the end.
 |---|---|---|---|
 | Point at the bytes | the cook: `Open` is O(1), mmap-friendly, order settled offline (§7); the block: rows at a fixed pitch (§19); the tolerant wire always parses | always (FB-home) | never (PB-overview) |
 | Parse into a struct | `Load` into caller-owned storage; a fixed table is a struct (§6.1) | object API `UnPack()` into STL-backed classes (FB-cpp) | generated message classes (PB-message) |
-| Allocation on read | none, every class, every form (§6.5) | none in place; the object API allocates (FB-cpp) | per message, string and repeated field; arenas mitigate (PB-message) |
+| Allocation on read | none, every class, every form (§6.5), in eight of the nine backends; Elixir pins a per-case count instead, because a decoded BEAM term is an allocation (PORTING.md M1) | none in place; the object API allocates (FB-cpp) | per message, string and repeated field; arenas mitigate (PB-message) |
 | Allocation on write | fixed class none; variable class an arena in bulk, thread-local, never per node; block takes a caller allocator (§6.4, §6.5, §19.1) | the builder grows a buffer; custom allocator (FB-cpp) | into caller memory; the message objects allocate (PB-message) |
 | Exact size before writing | `Measure` equals `Save`, held by a battery (§9) | after `Finish` | `ByteSizeLong()` (PB-message) |
 | Mutate in place | — ; regenerate | `--gen-mutable` scalars; reflection resizes (FB-flatc) | — |
@@ -298,7 +298,7 @@ the source list at the end.
 
 | feature | schema tables | FlatBuffers | Protocol Buffers |
 |---|---|---|---|
-| Untrusted bytes on the tolerant wire | the read is the validator: every length bounds-checked against its body, counts against the body, ranges clamped, a bad level stops itself; `LoadMeasure` lets the caller refuse a region size before allocating (§4, §6.5). The independent-oracle fuzzer that proves it in every language is #391 | a separate `Verifier`, required before access, in C++, C and Swift (FB-support); `max_depth` 64, `max_tables` 1M (FB-cpp) | the parser validates structure; recursion limit 100; UTF-8 verify (PB-features) |
+| Untrusted bytes on the tolerant wire | the read is the validator: every length bounds-checked against its body, counts against the body, ranges clamped, a bad level stops itself; `LoadMeasure` lets the caller refuse a region size before allocating (§4, §6.5). The independent-oracle fuzzer that proves it runs against the C++ reference today (§4.2, [#429](https://github.com/mas-bandwidth/schema/pull/429)); each port's leg is its PORTING.md I15 cell | a separate `Verifier`, required before access, in C++, C and Swift (FB-support) and in Rust, whose safe table functions "verify the data first" (FB-rust); `max_depth` 64, `max_tables` 1M (FB-cpp) | the parser validates structure; recursion limit 100; UTF-8 verify (PB-features) |
 | Trusted fast path | cook and block are trusted by design; `Open` checks identity, not hostility; a signature over the file is the integrity answer (§7, §13.4) | skip the verifier for trusted buffers (FB-cpp) | — |
 | Value-range enforcement | clamp and count on the table wire; reject on the type wire (§4, SPEC §5) | — | — |
 | Depth and DoS bounds | by-value depth is fixed by the schema; a pointer graph is flat, so a chain is not a depth (§3.1) | verifier caps (FB-cpp) | recursion depth 100 (PB-limits) |
@@ -310,7 +310,7 @@ the source list at the end.
 |---|---|---|---|
 | Runtime reflection | descriptors in every table's generated header: name, kind, id, offset, bounds, guards, nesting; no schema files, no RTTI (§8.1); the type view and registry specified (§8) | binary schema plus `reflection.h` in C++, basic in C; mini-reflection (FB-IR, FB-support) | descriptors, `Reflection`, `DynamicMessage` (PB-message) |
 | Reflection cost | on the side; a game build never compiles the view (§8.4) | 2 to 6 bytes per field for mini-reflection (FB-cpp) | in the full runtime always |
-| Text form | JSON in and out by one walk, mapping pinned per kind, `\| json = "key"`, report counters; a shared node labeled `&node` (§16.7, landing with [#388](https://github.com/mas-bandwidth/schema/pull/388)) | JSON in `flatc`; parsing in C++ and C (FB-support) | ProtoJSON, whose own page lists the implementations that do not conform to it — C++, Java and Python as of v25.x; text format (PB-json, PB-text) |
+| Text form | JSON in and out by one walk, mapping pinned per kind, `\| json = "key"`, report counters; a shared node labeled `&node` (§16.7, landing with [#388](https://github.com/mas-bandwidth/schema/pull/388)) | JSON in `flatc`; parsing in C++, C and Lobster (FB-support) | ProtoJSON, whose own page lists the implementations that do not conform to it — C++, Java and Python as of v25.x; text format (PB-json, PB-text) |
 | Whole-tree packing | `schema pack` and `unpack`: a directory mirrors the root; keyed arrays as one file per variant; byte-stable both ways (§17) | `flatc -b` (FB-flatc) | `protoc --encode` and `--decode` |
 | Dump, diff, check | `cook-check`, `uncook`, `build-version --facts`, `projection` (§7, §20.7); generic dump and diff over the registry a follow-on (§15) | `flatc --json`, `FlatBufferToString` (FB-flatc) | `DebugString`, third-party explorers (PB-3p) |
 | Lint, breaking, registry | the baseline and the checker; no registry by design (§18) | `--conform` (FB-flatc) | `buf lint`, `buf breaking`, the BSR (buf) |
@@ -324,7 +324,7 @@ the source list at the end.
 
 Every FlatBuffers and Protocol Buffers claim above was read from one of these
 pages on 2026-09-03, and the rows citing PB-dos, PB-enum, PB-json,
-PB-descriptor, FB-support and FB-cpp were re-read on 2026-09-04.
+PB-descriptor, FB-support, FB-rust and FB-cpp were re-read on 2026-09-04.
 
 | short | page |
 |---|---|
@@ -335,6 +335,7 @@ PB-descriptor, FB-support and FB-cpp were re-read on 2026-09-04.
 | FB-flatc | https://flatbuffers.dev/flatc/ |
 | FB-flex | https://flatbuffers.dev/flexbuffers/ |
 | FB-support | https://flatbuffers.dev/support/ |
+| FB-rust | https://flatbuffers.dev/languages/rust/ |
 | FB-home | https://flatbuffers.dev/ |
 | FB-IR | https://flatbuffers.dev/intermediate_representation/ |
 | FB-64 | https://github.com/google/flatbuffers/issues/7537 and https://github.com/google/flatbuffers/issues/8555 |

@@ -2479,6 +2479,7 @@ inline const Marker * MarkerLoad( uint8_t * region, int64_t region_bytes, const 
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
         int64_t used = TableAlignUp64( (int64_t) sizeof( Marker ) );
         int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             int64_t storage = MarkerNodeStorage( type_id, length );
@@ -2487,7 +2488,7 @@ inline const Marker * MarkerLoad( uint8_t * region, int64_t region_bytes, const 
                 // a record whose type id this build cannot name KEEPS ITS
                 // INDEX, is counted once here and not once per pointer, and
                 // every reference to it reads null (§3.1)
-                out->unknown++;
+                unknown_records++;
                 directory[k + 1].offset = kTableNodeAbsent;
                 directory[k + 1].type_id = type_id;
             }
@@ -2501,7 +2502,10 @@ inline const Marker * MarkerLoad( uint8_t * region, int64_t region_bytes, const 
             k++;
         }
         nodes.good = TableNodeScanWhole( scan );
-        if ( !nodes.good ) { out->malformed = true; } // the table is whole or it is nothing
+        // the table is whole or it is nothing: a scan that failed counts
+        // malformed and NOT the unknowns it met on the way, because the
+        // numbering they belonged to does not exist (§3.1)
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
     }
 
     // PASS TWO: decode each body into its own storage. A forward index
@@ -2563,12 +2567,13 @@ inline bool MarkerLoadBuilder( MarkerBuilder & builder, const uint8_t * wire, in
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
         int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             uint32_t at = MarkerNodeAlloc( type_id, builder.main, length );
             if ( at == 0 )
             {
-                out->unknown++;
+                unknown_records++;
                 directory[k + 1].offset = kTableNodeAbsent;
             }
             else
@@ -2579,7 +2584,7 @@ inline bool MarkerLoadBuilder( MarkerBuilder & builder, const uint8_t * wire, in
             k++;
         }
         nodes.good = TableNodeScanWhole( scan );
-        if ( !nodes.good ) { out->malformed = true; }
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
     }
     if ( nodes.good )
     {

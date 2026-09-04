@@ -741,16 +741,19 @@ implements writes `<case>.absent` — an empty file beside where the answer
 would go — and the harness counts it: `pass 16/16 +4a`. A missing FEATURE per
 case, not a failing test, so a backend with no variable class still answers
 the wire surface over every fixed instance. The reference leg may not answer
-absent: an absence from the first driver in the registry is the corpus losing
-its own expectation.
+absent AT EITHER GRAIN — a whole surface left out of `list` or exited 2 on, or
+one case — because an absence from the first driver in the registry is the
+corpus losing its own expectation.
 
-**Reference.** `test/conformance/README.md`; `test/conformance/harness/run.go:35-42`.
+**Reference.** `test/conformance/README.md`; `test/conformance/harness/run.go:36-43`.
 
 **Proven in.** C# (the first port with a text surface absent).
 
 **Measured effect.** Structural; the matrix is the completion tracker.
 
-**Negative control.** `conformance-negative-control-absent`.
+**Negative control.** `conformance-negative-control-absent` for a case, and
+`conformance-negative-control-reference-surface` for a whole surface the
+reference leg never registers.
 
 **Targets:** none
 
@@ -1051,7 +1054,7 @@ check removed reds on the report.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #391 | ❌ #391 | ❌ #391 | ❌ #391 | ❌ #391 | ❌ #391 | ❌ #391 | ❌ #391 |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
 
 ### J1 — Accessor and descriptor agreement
 
