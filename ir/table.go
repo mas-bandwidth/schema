@@ -174,6 +174,15 @@ func VariableTables(u *Unit) map[string]bool {
 					variable[name] = true
 					break
 				}
+				if f.IsMap() {
+					// a MAP is a variable edge whatever its key and value are
+					// (docs/SPEC-TABLES.md §2.8): its entries live in the
+					// arena on the authoring side and in the node's own extent
+					// in a region, so the table that declares one rides with
+					// the pointers and has no block form
+					variable[name] = true
+					break
+				}
 				if f.Type.Kind != TNamed {
 					continue
 				}
@@ -243,6 +252,13 @@ func TableClosure(u *Unit) map[string]bool {
 		}
 		closure[name] = true
 		for _, f := range st.Fields {
+			if f.IsMap() {
+				// the GENERATED ENTRY is a real table of the closure
+				// (docs/SPEC-TABLES.md §2.8), and the value it carries is
+				// reached through it like any nested table's fields
+				walk(f.MapEntry.Name)
+				continue
+			}
 			if f.Type.Kind != TNamed {
 				continue
 			}

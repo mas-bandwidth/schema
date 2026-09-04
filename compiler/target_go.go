@@ -22,6 +22,9 @@ func (goTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseOptionalArrays(u, "go"); err != nil {
 		return nil, err
 	}
+	if err := refuseMaps(u, "go"); err != nil {
+		return nil, err
+	}
 	files, err := golang.Generate(u)
 	if err != nil {
 		return nil, err

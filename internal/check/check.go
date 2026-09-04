@@ -44,6 +44,14 @@ type checker struct {
 	unions   map[string]*ir.Union
 	tables   map[string]*ir.Struct // `table` declarations (docs/SPEC-TABLES.md)
 
+	// the GENERATED entry tables of the `map` fields resolved so far, in
+	// synthesis order — innermost first, so a header emitting them in list
+	// order declares an inner entry before the outer one that holds it
+	// (docs/SPEC-TABLES.md §2.8). mapEntries collects one table declaration's
+	// entries; mapEntriesFor banks them under that table's name for assemble.
+	mapEntries    []*ir.Struct
+	mapEntriesFor map[string][]*ir.Struct
+
 	// the UPPERCASE macros the generated C defines for this unit, computed
 	// once by cReservedMacros (SPEC §6.1's C column)
 	cReserved map[string]bool
@@ -81,15 +89,16 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 
 	c := &checker{
-		files:    files,
-		astDecls: map[string]ast.Decl{},
-		declFile: map[string]string{},
-		constant: map[string]*constEntry{},
-		enums:    map[string]*ir.Enum{},
-		flagsD:   map[string]*ir.Flags{},
-		structs:  map[string]*ir.Struct{},
-		unions:   map[string]*ir.Union{},
-		tables:   map[string]*ir.Struct{},
+		files:         files,
+		astDecls:      map[string]ast.Decl{},
+		declFile:      map[string]string{},
+		constant:      map[string]*constEntry{},
+		enums:         map[string]*ir.Enum{},
+		flagsD:        map[string]*ir.Flags{},
+		structs:       map[string]*ir.Struct{},
+		unions:        map[string]*ir.Union{},
+		tables:        map[string]*ir.Struct{},
+		mapEntriesFor: map[string][]*ir.Struct{},
 		unit: &ir.Unit{
 			DeclFile: map[string]string{},
 			Consts:   map[string]*ir.Const{},
@@ -806,7 +815,12 @@ func (c *checker) resolveBodies() {
 			case *ast.TypeDecl:
 				c.structs[d.Name].Fields, c.structs[d.Name].Items = c.resolveBody(d.Name, d.Body, false)
 			case *ast.TableDecl:
+				c.mapEntries = nil
 				c.tables[d.Name].Fields, c.tables[d.Name].Items = c.resolveBody(d.Name, d.Body, true)
+				if len(c.mapEntries) > 0 {
+					c.mapEntriesFor[d.Name] = c.mapEntries
+					c.mapEntries = nil
+				}
 			case *ast.UnionDecl:
 				c.resolveUnion(d)
 			}
@@ -988,6 +1002,12 @@ func (c *checker) evalWidth(e ast.Expr, what string) (int64, bool) {
 }
 
 func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Field {
+	if f.Map != nil {
+		// `ships map[string(32)]ShipConfig` — a MAP (docs/SPEC-TABLES.md
+		// §2.8). The construct hangs off the generated entry, so it resolves
+		// on its own path and comes back as an ir.TMap field.
+		return c.resolveMapField(owner, f, inTable)
+	}
 	out := &ir.Field{Name: f.Name}
 
 	// scalar type
@@ -1704,6 +1724,17 @@ func (c *checker) checkCycles() {
 			// point of the freedom tables were given.
 			for _, f := range st.Fields {
 				if f.Type.Pointer {
+					continue
+				}
+				if f.IsMap() {
+					// a MAP's value is held BY VALUE (docs/SPEC-TABLES.md
+					// §2.8), so a table holding a map of ITSELF closes a
+					// by-value cycle and is refused naming it; a map of *Self
+					// is the ordinary legal recursion through a pointer, and
+					// the pointer exemption above reaches it inside the entry
+					if !visit(f.MapEntry.Name) {
+						break
+					}
 					continue
 				}
 				if f.Type.Kind == ir.TNamed {
@@ -3115,6 +3146,14 @@ func (c *checker) assemble() {
 				// (docs/SPEC-TABLES.md): File.Decls and Unit.Structs feed the
 				// packet backends and the wire projection, and a table must
 				// move neither a generated packet byte nor the protocol id
+				// a map's GENERATED ENTRY assembles as a table of the closure
+				// (docs/SPEC-TABLES.md §2.8), BEFORE the table that declares
+				// the map: a header emits in this order, and an entry's record
+				// must be declared before the record that holds its array
+				for _, entry := range c.mapEntriesFor[d.Name] {
+					irf.Tables = append(irf.Tables, entry)
+					u.Tables[entry.Name] = entry
+				}
 				tbl := c.tables[d.Name]
 				irf.Tables = append(irf.Tables, tbl)
 				u.Tables[d.Name] = tbl

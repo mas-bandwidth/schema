@@ -22,6 +22,9 @@ func (elixirTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseOptionalArrays(u, "elixir"); err != nil {
 		return nil, err
 	}
+	if err := refuseMaps(u, "elixir"); err != nil {
+		return nil, err
+	}
 	files, err := elixir.Generate(u)
 	if err != nil {
 		return nil, err

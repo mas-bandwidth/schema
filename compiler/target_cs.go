@@ -22,6 +22,9 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseOptionalArrays(u, "cs"); err != nil {
 		return nil, err
 	}
+	if err := refuseMaps(u, "cs"); err != nil {
+		return nil, err
+	}
 	files, err := csharp.Generate(u)
 	if err != nil {
 		return nil, err

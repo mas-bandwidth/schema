@@ -464,8 +464,18 @@ func (p *parser) parseItem() ast.Item {
 		if p.kind() == scanner.LBrack {
 			f.Array = p.parseArrayBound()
 		}
-		f.Type = p.parseScalar()
-		f.Type.Optional = optional
+		if p.kind() == scanner.KwMap {
+			// `ships map[string(32)]ShipConfig` — a MAP (docs/SPEC-TABLES.md
+			// §2.8). What may carry one is the CHECKER's business (a table
+			// body, a bounded-string or integer key, no bound and no
+			// attribute), so the grammar takes the spelling wherever a field
+			// type stands and the diagnostic names the real problem.
+			f.Map = p.parseMapType()
+			f.Type.Optional = optional
+		} else {
+			f.Type = p.parseScalar()
+			f.Type.Optional = optional
+		}
 		if p.kind() == scanner.Assign {
 			// optional specified default: `invulnerable bool = true | local`
 			// — the default DEFINES the fresh value, so it precedes the
@@ -495,6 +505,37 @@ func (p *parser) parseItem() ast.Item {
 		p.skipToTerminator()
 		return nil
 	}
+}
+
+// parseMapType reads `map[K]V` from the `map` keyword (docs/SPEC-TABLES.md
+// §2.8). The VALUE is a whole field spelling — an array bound, an optional
+// prefix, or another map — so `map[string(16)]map[uint8]Item` and
+// `map[uint32]?[..4]Slot` are one production.
+func (p *parser) parseMapType() *ast.MapType {
+	kw := p.expect(scanner.KwMap, "map")
+	m := &ast.MapType{Pos: kw.Pos}
+	p.expect(scanner.LBrack, "[ after map")
+	m.Key = p.parseScalar()
+	p.expect(scanner.RBrack, "] after a map key")
+	value := &ast.Field{Name: "value", Pos: p.tok().Pos}
+	if p.kind() == scanner.Question {
+		p.advance()
+		value.Type.Optional = true
+	}
+	if p.kind() == scanner.LBrack {
+		value.Array = p.parseArrayBound()
+	}
+	if p.kind() == scanner.KwMap {
+		optional := value.Type.Optional
+		value.Map = p.parseMapType()
+		value.Type.Optional = optional
+	} else {
+		optional := value.Type.Optional
+		value.Type = p.parseScalar()
+		value.Type.Optional = optional
+	}
+	m.Value = value
+	return m
 }
 
 func (p *parser) parseArrayBound() *ast.ArrayBound {
