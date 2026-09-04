@@ -79,7 +79,7 @@ func trailer(data []byte) (body []byte, ids []uint64, ok bool) {
 		return nil, nil, false
 	}
 	count := binary.LittleEndian.Uint64(data[len(data)-8:])
-	if count > uint64(len(data)) / 8 {
+	if count > uint64(len(data))/8 {
 		return nil, nil, false
 	}
 	span := int(count)*8 + 8
