@@ -4363,8 +4363,8 @@ int main( void )
         return 0;
     }
 
-    RenderShip * ships = RenderFrameships_span( &block );
-    TableBlockRows rows = RenderFrameShips( &block );
+    RenderShip * ships = render_frame_ships_span( &block );
+    TableBlockRows rows = render_frame_ships_rows( &block );
     printf( "c read: frame=%llu ships=%d ships[2999]=(%g, %g)\n",
         (unsigned long long) block.projection->frame, rows.count,
         ships[2999].x, ships[2999].y );

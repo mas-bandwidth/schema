@@ -280,10 +280,20 @@ func (p *parser) constType() (string, bool) {
 	return "", false
 }
 
+// parseVariantList parses an `enum` or `flags` body: COMMA-SEPARATED variant
+// names (SPEC §4.2), where a `type` or `table` body is LINE-separated fields.
+//
+// The two body grammars in one language are the most likely early mistake, so
+// the missing comma is a diagnostic of its own and the list RECOVERS across
+// it. Before, the newline ended the list, `expect(})` failed on it, and the
+// declaration closed there — which sent the next variant to the top-level loop
+// and drew a second error placing it at FILE SCOPE, two lines below the actual
+// mistake and listing the declaration keywords (#447 F-02, #521 G-03).
 func (p *parser) parseVariantList(what string) []ast.Name {
 	var names []ast.Name
 	p.skipNewlineBeforeBrace()
 	p.expect(scanner.LBrace, "{")
+	saidComma := false
 	for p.kind() != scanner.RBrace && p.kind() != scanner.EOF {
 		t := p.expect(scanner.Ident, what+" variant name")
 		if t.Kind != scanner.Ident {
@@ -292,6 +302,18 @@ func (p *parser) parseVariantList(what string) []ast.Name {
 		names = append(names, ast.Name{Text: t.Text, Pos: t.Pos})
 		if p.kind() == scanner.Comma {
 			p.advance() // trailing comma allowed; newlines around commas are whitespace
+			continue
+		}
+		// a newline with another name after it is a body written one variant
+		// per line. Say the rule ONCE — a five-variant enum written that way
+		// is one mistake, not five — and read the rest of the body.
+		if p.kind() == scanner.Newline && p.peek().Kind == scanner.Ident {
+			if !saidComma {
+				p.errf(p.tok().Pos, "%s variants are COMMA-separated, so %s needs a comma after it — a `type` or `table` body separates its FIELDS by newline, and the two body grammars differ (SPEC §4.2)",
+					what, t.Text)
+				saidComma = true
+			}
+			p.advance() // the newline, read as the separator it was meant to be
 			continue
 		}
 		break

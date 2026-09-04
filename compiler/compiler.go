@@ -186,6 +186,16 @@ func GatherPaths(args []string) ([]string, error) {
 	}
 	var paths []string
 	for _, arg := range args {
+		// A MISPLACED FLAG IS NOT A PATH. Flag parsing stops at the first
+		// positional argument, so everything after it is another input path
+		// and `generate --lang cpp --out gen . --verbose` used to reach os.Stat
+		// with "--verbose" and fail as "stat --verbose: no such file or
+		// directory" — a syscall named where every other refusal in the tool
+		// names the rule. Nothing that begins with a dash is a schema path, and
+		// the tool can see that (#521 G-01).
+		if strings.HasPrefix(arg, "-") {
+			return nil, fmt.Errorf("%s looks like a flag, and flags come BEFORE the first path — everything after the first path is another input path; move it ahead of the paths, or spell a file that really begins with a dash as ./%s (SPEC §7)", arg, arg)
+		}
 		info, err := os.Stat(arg)
 		if err != nil {
 			return nil, err

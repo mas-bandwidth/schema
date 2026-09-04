@@ -76,6 +76,13 @@ type checker struct {
 	// variant count, which is NOT what the author wrote, so .Max references
 	// to them must fail rather than propagate a fabricated bound
 	failedEnum map[string]bool
+
+	// union name -> the declarations whose BODY named it in a field, arms
+	// excluded. Recorded when the field's type resolves, so a field refused
+	// afterwards still counts: checkTableArmsReached asks whether a table
+	// closure reaches the union, and a refused field is still the author
+	// holding it where they held it (docs/SPEC-TABLES.md §2.6).
+	unionNamedBy map[string][]string
 }
 
 type constEntry struct {
@@ -229,6 +236,16 @@ func (c *checker) resolveConst(name string) *ir.Const {
 
 	isFloatType := e.decl.Type == "float32" || e.decl.Type == "float64"
 	kind := c.exprKind(e.decl.Expr)
+	// A DIAGNOSTIC ABOUT THE VALUE POINTS AT THE VALUE. The three below say
+	// something about the expression rather than about the name, and they
+	// carried the declaration's own position, so the caret landed on column 1
+	// while a range refusal on the same line points at the offending value
+	// (#447 F-05). A missing expression keeps the declaration's position:
+	// there is nothing else to point at.
+	valuePos := e.decl.Pos
+	if e.decl.Expr != nil {
+		valuePos = e.decl.Expr.ExprPos()
+	}
 
 	if kind == kindFloat || isFloatType {
 		v, ok := c.evalFloat(e.decl.Expr)
@@ -237,7 +254,7 @@ func (c *checker) resolveConst(name string) *ir.Const {
 			return nil
 		}
 		if math.IsInf(v, 0) || math.IsNaN(v) {
-			c.errf(e.decl.Pos, "constant %s is not a finite float", name)
+			c.errf(valuePos, "constant %s is not a finite float", name)
 			e.state = 3
 			return nil
 		}
@@ -249,13 +266,13 @@ func (c *checker) resolveConst(name string) *ir.Const {
 			out.Storage = "float64"
 		}
 		if e.decl.Type == "float32" && math.Abs(v) > math.MaxFloat32 {
-			c.errf(e.decl.Pos, "constant %s value %g does not fit its declared type float32", name, v)
+			c.errf(valuePos, "constant %s value %g does not fit its declared type float32", name, v)
 			e.state = 3
 			return nil
 		}
 		if e.decl.Type != "" && !isFloatType {
 			// integer-typed constant with a float expression
-			c.errf(e.decl.Pos, "constant %s has integer type %s but a float expression", name, e.decl.Type)
+			c.errf(valuePos, "constant %s has integer type %s but a float expression", name, e.decl.Type)
 			e.state = 3
 			return nil
 		}
@@ -656,6 +673,10 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 	seen := map[string]bool{}
 	var variants []string
 	for _, v := range d.Variants {
+		// the three names below are reservedEnumVariant's set, and
+		// checkClaimedNames reads the same predicate: a variant that IS the
+		// reserved word draws the refusal here and no per-target collision
+		// restatement, so one mistake draws one diagnostic.
 		if v.Text == "None" {
 			c.errf(v.Pos, "variant None is a compile error — every enum has None = 0 implicitly (SPEC §4.2)")
 			continue
@@ -997,7 +1018,7 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 				items = append(items, br)
 			case *ast.ConstField:
 				if inTable {
-					c.errf(item.Pos, "const(value, bits) is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table %s (docs/SPEC-TABLES.md)", owner)
+					c.errf(item.Pos, "const(value, bits) is a packet-wire construct — a table's wire is `id reference, kind, payload` against the id table, with no bit positions; remove it from table %s (docs/SPEC-TABLES.md §3)", owner)
 					continue
 				}
 				bits, ok := c.evalWidth(item.Bits, "const width")
@@ -1015,7 +1036,7 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 				items = append(items, &ir.ConstItem{Value: v, Bits: bits}) // wire-only: no storage
 			case *ast.ReservedItem:
 				if inTable {
-					c.errf(item.Pos, "reserved(bits) is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table %s (docs/SPEC-TABLES.md)", owner)
+					c.errf(item.Pos, "reserved(bits) is a packet-wire construct — a table's wire is `id reference, kind, payload` against the id table, with no bit positions; remove it from table %s (docs/SPEC-TABLES.md §3)", owner)
 					continue
 				}
 				if bits, ok := c.evalWidth(item.Bits, "reserved width"); ok {
@@ -1023,7 +1044,7 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 				}
 			case *ast.AlignItem:
 				if inTable {
-					c.errf(item.Pos, "align is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table %s (docs/SPEC-TABLES.md)", owner)
+					c.errf(item.Pos, "align is a packet-wire construct — a table's wire is `id reference, kind, payload` against the id table, with no bit positions; remove it from table %s (docs/SPEC-TABLES.md §3)", owner)
 					continue
 				}
 				items = append(items, &ir.AlignItem{})
@@ -1182,6 +1203,20 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 				c.errf(f.Type.Pos, "%s has the arm %s, and a union in a `type` body takes `type` payloads only — types are value semantics, and an arm that is not a declared type has no packet wire yet; hold the union in a table body, or make the arm a type (docs/SPEC-TABLES.md §2.6, §11, §15)",
 					f.Type.Name, un.GeneralArm())
 				return nil
+			}
+			// THE FIELD NAMED THE UNION, whatever becomes of the field.
+			// checkTableArmsReached reads this rather than the surviving IR:
+			// a field refused for any other reason — `?U` is the one a reader
+			// meets — used to vanish from the reachability walk, so one
+			// refusable mistake drew a SECOND error saying no table reaches
+			// the union and telling the author to hold it in a table body,
+			// which is what the line under the first error already did
+			// (#521 G-09).
+			if c.arm == "" {
+				if c.unionNamedBy == nil {
+					c.unionNamedBy = map[string][]string{}
+				}
+				c.unionNamedBy[f.Type.Name] = append(c.unionNamedBy[f.Type.Name], owner)
 			}
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: un}
 		default:
@@ -3077,6 +3112,20 @@ func (c *checker) checkClaimedNames() {
 				"COUNT": "the generated Count constant",
 			}
 			for _, v := range d.Variants {
+				if reservedEnumVariant(v.Text) {
+					// THE RESERVED WORD IS ITS OWN DIAGNOSTIC, and the only
+					// one worth reading: resolveEnum has already said "variant
+					// None is a compile error — every enum has None = 0
+					// implicitly". Registering it here would restate that in
+					// three per-target spellings (the Go symbol, the Rust
+					// associated const, the C #define), so one mistake would
+					// greet a beginner with four errors of which one is
+					// actionable. The collision checks stay live for every
+					// name that merely COLLIDES — `none`, `NONE`, `max` — and
+					// those are the names for which the per-target wording is
+					// the whole explanation.
+					continue
+				}
 				add(name+v.Text, fmt.Sprintf("enum %s's generated variant constant", name), v.Pos)
 				rv := ir.RustConstName(v.Text)
 				if prev, dup := assoc[rv]; dup {
@@ -3092,13 +3141,22 @@ func (c *checker) checkClaimedNames() {
 			// emitted and never registered, so a const like DriveModeLudicrous
 			// beside enum DriveMode { Ludicrous } produced a silent duplicate
 			// #define in C while every other target compiled)
-			whyC := fmt.Sprintf("enum %s's generated variant constants (C form)", name)
-			addRust(ir.RustConstName(name)+"_NONE", whyC, d.Pos, name+"None")
-			addRust(ir.RustConstName(name)+"_MAX", whyC, d.Pos)
-			addRust(ir.RustConstName(name)+"_COUNT", whyC, d.Pos, name+"Count")
+			//
+			// EACH SIDE NAMES ITSELF. One `whyC` for the three sentinels and
+			// every variant made both halves of a collision read the same —
+			// "enum E's generated variant constants (C form) collides with
+			// enum E's generated variant constants (C form)" — so the C line
+			// alone could not tell you which two declarations collided.
+			addRust(ir.RustConstName(name)+"_NONE", fmt.Sprintf("enum %s's generated None constant (C form)", name), d.Pos, name+"None")
+			addRust(ir.RustConstName(name)+"_MAX", fmt.Sprintf("enum %s's generated Max extent (C form)", name), d.Pos)
+			addRust(ir.RustConstName(name)+"_COUNT", fmt.Sprintf("enum %s's generated Count constant (C form)", name), d.Pos, name+"Count")
 			addRust("enum_name_"+ir.RustSnake(name), fmt.Sprintf("enum %s's generated debug-name function (C form)", name), d.Pos)
 			for _, v := range d.Variants {
-				addRust(ir.RustConstName(name)+"_"+ir.RustConstName(v.Text), whyC, v.Pos, name+v.Text)
+				if reservedEnumVariant(v.Text) {
+					continue // the reserved-word diagnostic above is the one to read
+				}
+				addRust(ir.RustConstName(name)+"_"+ir.RustConstName(v.Text),
+					fmt.Sprintf("enum %s's generated variant constant %s (C form)", name, v.Text), v.Pos, name+v.Text)
 			}
 			if len(c.tables) > 0 {
 				// the JavaScript table backend's per-enum identity pair
@@ -3543,6 +3601,17 @@ func (c *checker) checkTableArmsReached(closure map[string]bool) {
 			}
 		}
 	}
+	// and every union a closure member's body NAMED, including in a field
+	// that some other rule then refused: the author held it where the
+	// refusal here would tell them to hold it, so restating that would be a
+	// second error prescribing what the source already does (#521 G-09).
+	for union, owners := range c.unionNamedBy {
+		for _, owner := range owners {
+			if closure[owner] {
+				reached[union] = true
+			}
+		}
+	}
 	names := make([]string, 0, len(c.unions))
 	for name := range c.unions {
 		names = append(names, name)
@@ -3560,4 +3629,22 @@ func (c *checker) checkTableArmsReached(closure map[string]bool) {
 		c.errf(pos, "union %s: the arm %s is not a declared type, and no table reaches %s — such an arm is a table-closure construct, and a union outside one takes `type` payloads only; hold the union in a table body, or make the arm a type (docs/SPEC-TABLES.md §2.6, §11, §15)",
 			name, un.GeneralArm(), name)
 	}
+}
+
+// reservedEnumVariant reports whether a variant name is one of the three every
+// enum generates for itself (SPEC §4.2): the implicit None = 0, the exported
+// Max extent and the exported Count. resolveEnum refuses each by name, with the
+// sentence that says what the enum already carries; checkClaimedNames reads
+// this same predicate and registers no generated symbol for such a variant, so
+// the reserved-word refusal is not restated once per target as a collision.
+//
+// A name that merely COLLIDES with a generated one — `none`, `NONE`, `max` —
+// is not in this set: nothing else explains those, so their per-target
+// collision diagnostics are the whole answer and stay live.
+func reservedEnumVariant(text string) bool {
+	switch text {
+	case "None", "Max", "Count":
+		return true
+	}
+	return false
 }

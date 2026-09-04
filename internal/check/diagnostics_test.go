@@ -430,7 +430,7 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype ABTest { x uint8 }\ntype AbTest { y uint8 }\n"},
 		{name: "two consts whose Rust constant spellings collide", want: "both generate the symbol AB_MAX",
 			src: "package t\nconst ABMax = 1\nconst AbMax = 2\n"},
-		{name: "a const collides with an enum's C variant #define", want: "variant constants (C form)",
+		{name: "a const collides with an enum's C variant #define", want: "variant constant Ludicrous (C form)",
 			src: "package t\nenum DriveMode { Ludicrous }\nconst DriveModeLudicrous = 1\ntype T { m DriveMode }\n"},
 		{name: "two enums whose C debug-name functions collide", want: "both generate the symbol enum_name_ab_mode",
 			src: "package t\nenum ABMode { X }\nenum AbMode { Y }\ntype T { x uint8 }\n"},
@@ -684,6 +684,159 @@ func TestCReservedMacroNeighborsAccepted(t *testing.T) {
 	} {
 		if errs := runUnit(t, map[string]string{"a.schema": src}); len(errs) > 0 {
 			t.Errorf("a declaration that collides with no generated macro must stay legal: %v\n%s", errs, src)
+		}
+	}
+}
+
+// ONE MISTAKE, ONE DIAGNOSTIC (#447 F-01, #521 G-02). A variant that IS one of
+// the three names an enum generates for itself used to draw four errors: the
+// rule, then the same fact restated as a Go-symbol collision, a Rust
+// associated-const collision and a C #define collision. The actionable line
+// was one of four, and it was a beginner's first enum mistake.
+//
+// Reverting reservedEnumVariant's two uses in checkClaimedNames turns this red
+// at four errors for None and Count and four for Max.
+func TestReservedEnumVariantDrawsOneDiagnostic(t *testing.T) {
+	for _, reserved := range []string{"None", "Max", "Count"} {
+		errs := runUnit(t, map[string]string{
+			"Bad.schema": "package t\nenum E { " + reserved + ", Fighter }\n",
+		})
+		if len(errs) != 1 {
+			t.Errorf("variant %s: want 1 diagnostic, got %d:", reserved, len(errs))
+			for _, e := range errs {
+				t.Errorf("  %v", e)
+			}
+			continue
+		}
+		if !strings.Contains(errs[0].Error(), "is a compile error") {
+			t.Errorf("variant %s: the one diagnostic is not the reserved-word rule: %v", reserved, errs[0])
+		}
+	}
+}
+
+// The collision checks stay live for a name that merely COLLIDES with a
+// generated one. Nothing else explains those, so their per-target wording is
+// the whole answer — and each side of the C-form collision now names itself,
+// where one shared label used to print "enum E's generated variant constants
+// (C form) collides with enum E's generated variant constants (C form)".
+func TestCollidingEnumVariantKeepsItsPerTargetDiagnostics(t *testing.T) {
+	errs := runUnit(t, map[string]string{
+		"Bad.schema": "package t\nenum E { none, Fighter }\n",
+	})
+	if len(errs) != 2 {
+		t.Fatalf("want the Rust and C collisions, got %d: %v", len(errs), errs)
+	}
+	var cForm string
+	for _, e := range errs {
+		if strings.Contains(e.Error(), "(C form)") {
+			cForm = e.Error()
+		}
+	}
+	if cForm == "" {
+		t.Fatalf("no C-form collision among %v", errs)
+	}
+	if !strings.Contains(cForm, "generated variant constant none (C form) collides with enum E's generated None constant (C form)") {
+		t.Errorf("the C-form collision does not name both sides: %s", cForm)
+	}
+}
+
+// `?` ON A UNION IS ONE MISTAKE (#521 G-09). Marking a union field optional
+// used to draw a second error saying no table reaches the union and telling
+// the author to "hold the union in a table body" — which is what the very
+// line the first error is about already does. The `?` refusal dropped the
+// field, and the reachability walk read the surviving fields alone.
+//
+// Reverting the unionNamedBy record turns this red at two diagnostics.
+func TestOptionalUnionDrawsOneDiagnostic(t *testing.T) {
+	errs := runUnit(t, map[string]string{
+		"Bad.schema": "package t\ntable A { x int32 }\ntable B { y int32 }\nunion U { a A\n b B }\ntable T { u ?U }\n",
+	})
+	if len(errs) != 1 {
+		t.Errorf("want 1 diagnostic, got %d:", len(errs))
+		for _, e := range errs {
+			t.Errorf("  %v", e)
+		}
+		return
+	}
+	if !strings.Contains(errs[0].Error(), "marks a union optional") {
+		t.Errorf("the one diagnostic is not the `?` refusal: %v", errs[0])
+	}
+}
+
+// The reachability refusal itself stays live where it is TRUE: a union with a
+// table arm that no closure names at all, and one held by a `type` body.
+func TestUnreachedTableArmUnionIsStillRefused(t *testing.T) {
+	for _, tc := range []struct{ name, src string }{
+		{"named by nothing", "package t\ntable A { x int32 }\ntable B { y int32 }\nunion U { a A\n b B }\ntable C { z int32 }\n"},
+		{"held by a type body", "package t\ntable A { x int32 }\ntable B { y int32 }\nunion U { a A\n b B }\ntype T { u U }\n"},
+	} {
+		errs := runUnit(t, map[string]string{"Bad.schema": tc.src})
+		var found bool
+		for _, e := range errs {
+			if strings.Contains(e.Error(), "no table reaches U") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: the reachability refusal went missing: %v", tc.name, errs)
+		}
+	}
+}
+
+// THE FRAMING THE MESSAGES NAME (#521 G-17). The three packet-wire constructs
+// a table body refuses are refused for the right reason — a table's wire has no
+// bit positions — but the messages described the wire as "field-tagged TLV",
+// the framing #507 replaced. A field is now `id reference, kind, payload`
+// against a trailing id table, and the tag is a position into that table.
+//
+// Reverting the wording turns this red on all three.
+func TestTableRefusalsNameTheIdTableWire(t *testing.T) {
+	for _, tc := range []struct{ name, src string }{
+		{"const(value, bits)", "package t\ntable T { const(0xC7, 8)\n x int32 }\n"},
+		{"reserved(bits)", "package t\ntable T { x int32\n reserved(4)\n y int32 }\n"},
+		{"align", "package t\ntable T { x int32\n align\n y int32 }\n"},
+	} {
+		errs := runUnit(t, map[string]string{"Bad.schema": tc.src})
+		if len(errs) == 0 {
+			t.Errorf("%s: the packet-wire construct was accepted in a table body", tc.name)
+			continue
+		}
+		got := errs[0].Error()
+		if strings.Contains(got, "field-tagged TLV") {
+			t.Errorf("%s: the refusal still names the framing #507 replaced: %s", tc.name, got)
+		}
+		for _, want := range []string{"`id reference, kind, payload`", "no bit positions", "docs/SPEC-TABLES.md §3"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("%s: the refusal does not carry %q: %s", tc.name, want, got)
+			}
+		}
+	}
+}
+
+// A DIAGNOSTIC ABOUT THE VALUE POINTS AT THE VALUE (#447 F-05). The
+// float-expression refusals carried the DECLARATION's position, so the caret
+// landed on column 1, while a range refusal on the same kind of line points at
+// the offending value. Reverting valuePos turns this red at column 1.
+func TestConstValueDiagnosticsPointAtTheExpression(t *testing.T) {
+	for _, tc := range []struct {
+		name, src, want string
+		col             int
+	}{
+		{"integer type, float expression", "package t\nconst C int32 = 1.5\n", "but a float expression", 17},
+		{"float32 overflow", "package t\nconst D float32 = 1.0e300\n", "does not fit its declared type float32", 19},
+	} {
+		errs := runUnit(t, map[string]string{"Bad.schema": tc.src})
+		if len(errs) != 1 {
+			t.Errorf("%s: want 1 diagnostic, got %v", tc.name, errs)
+			continue
+		}
+		got := errs[0].Error()
+		if !strings.Contains(got, tc.want) {
+			t.Errorf("%s: unexpected diagnostic %s", tc.name, got)
+			continue
+		}
+		if !strings.HasPrefix(got, fmt.Sprintf("Bad.schema:2:%d:", tc.col)) {
+			t.Errorf("%s: the caret is not on the value (want column %d): %s", tc.name, tc.col, got)
 		}
 	}
 }

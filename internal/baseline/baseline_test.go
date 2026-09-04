@@ -19,6 +19,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -1608,5 +1609,29 @@ table Ship
 	}
 	if warns, errs := baseline.Check(unit(t, rangeSrc), paths); len(warns) != 0 || len(errs) != 0 {
 		t.Errorf("after the repair the check must pass: %v %v", warns, errs)
+	}
+}
+
+// THE HISTORY DATE IS UTC AND SAYS SO (#521 G-18, #447 F-16). The stamp is UTC,
+// which is the right clock for a shared artifact, and an unlabelled date is
+// read in the reader's own — so an author east of Greenwich writes a baseline
+// in the evening and reads yesterday on the file they just wrote.
+//
+// Reverting the stamp in Update turns this red: the entry carries a bare date.
+func TestBaselineHistoryStampsUTCAndLabelsIt(t *testing.T) {
+	dir, paths := writeUnit(t, baseSrc)
+	if _, _, err := baseline.Update(unit(t, baseSrc), paths, "the first baseline"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, baseline.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the SHAPE of the stamp, not today's date: an entry written a moment
+	// before midnight UTC and read a moment after it would otherwise fail on
+	// a clock rather than on the code, and the label is what this pins.
+	stamp := regexp.MustCompile(`(?m)^### \d{4}-\d{2}-\d{2} \(UTC\) — the first baseline$`)
+	if !stamp.MatchString(string(data)) {
+		t.Errorf("the history entry is not a labelled UTC stamp:\n%s", data)
 	}
 }

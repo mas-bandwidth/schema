@@ -1479,15 +1479,25 @@ union Value
   union joins that graph like any other edge. A union with **zero variants
   is legal**, mirroring the empty enum (§4.6): it holds only None, its tag
   range is the degenerate [0, 0], and it costs zero bits.
-- **A union whose arms do not all name declared `type`s is a TABLE-CLOSURE
-  construct** (SPEC-TABLES.md §2.6, §11), a `table` arm and a payload-free
-  arm included: its shape is emitted beside the tables, and a `type` body
-  refuses it by name. **The packet wire's rule is nevertheless fixed, so no
-  port guesses it**: an arm rides after the tag as the field encoding its
-  type already has on this wire, a bounded integer in its minimal bits, a
-  compressed float in its steps, a string in §4.7's form, and nothing new
-  is encoded. What waits is that encoding in nine backends, which is the
-  named follow-on (SPEC-TABLES.md §15).
+- **A union with an arm whose PAYLOAD is not a declared `type` is a
+  TABLE-CLOSURE construct** (SPEC-TABLES.md §2.6, §11) — a `table` arm, a
+  pointer arm, and an arm whose payload is a scalar, an enum, a flags mask,
+  a string, a `bytes` or an array: its shape is emitted beside the tables,
+  and a `type` body refuses it by name, naming the arm. **The packet wire's
+  rule is nevertheless fixed, so no port guesses it**: an arm rides after
+  the tag as the field encoding its type already has on this wire, a bounded
+  integer in its minimal bits, a compressed float in its steps, a string in
+  §4.7's form, and nothing new is encoded. What waits is that encoding in
+  nine backends, which is the named follow-on (SPEC-TABLES.md §15).
+- **A PAYLOAD-FREE arm is not in that class.** It has no payload to place,
+  so there is nothing for a port to guess: it rides the packet wire as its
+  tag alone (the wire bullet below), and a `type` body takes it. `check` is
+  target-neutral and accepts it, as it accepts every construct some target
+  carries. The backends that carry it today are C#, Dart, Elixir, Go, Java,
+  JavaScript and Rust; **C and C++ refuse the unit by name at generate
+  time**, naming the union, the carriers and the follow-on, because their
+  tagged-union storage has no member for an arm that has none. That pair is
+  the named follow-on (SPEC-TABLES.md §11, §15).
 - **The implicit None row.** Entry 0 of every union is **None — no
   payload** — mirroring the enum sentinel-zero convention: optionality
   rides in-band as the natural stream terminator, a zero-initialized

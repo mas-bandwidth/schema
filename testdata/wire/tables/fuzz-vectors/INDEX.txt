@@ -24,3 +24,27 @@
 # it and panicked. Found by the random pass at mutant 99100 of seed
 # 24845619678, on Certify run 33887252419.
 stream_count_past_body streamdemo Feed testdata/wire/tables/fuzz-vectors/stream_count_past_body.bin
+
+# THE FORGED POINTER CYCLE (§3.1, §14 note 9; schema#535, filed on #521 as
+# G-19). One flipped bit in a three-node ListNode chain turns the middle node's
+# `next` index from 3 into 2, which is that node's own index. The wire loads,
+# the report is all zero, and the loaded node points at itself.
+#
+# THAT IS THE CONTRACT, NOT A HOLE, and this vector pins it as one. §3.1: "A
+# pointer field's payload is a NUMBER: it is bounds-checked and stored, never
+# followed... Load itself is safe on any input: it scans, it terminates, it
+# fabricates nothing. What a cyclic structure costs is paid by whatever WALKS
+# it." The index names a node that exists and whose type matches, so no §4
+# event happened and no counter may move. §14 note 9 prices the reader-side
+# acyclicity check this version does not spend.
+#
+# The vector's job here is the REFERENCE AND THE ORACLE AGREEING on that: both
+# must accept it with a silent report, and a port that starts following
+# references — or one that stops bounds-checking the index — parts from the
+# other and this seeks the disagreement rather than searching for it. The
+# walking consumers' half of the contract is held beside it, in Go, by
+# internal/tablewire's TestForgedPointerCycleLoadsSilentlyAndRefusesEveryWalk:
+# the text export and a re-encode each refuse the loaded instance BY NAME, and
+# each refusal returns rather than recursing away. Its three negative controls
+# are the two guards reverted and a counter added on the load path.
+pointer_self_cycle graphdemo Scene    testdata/wire/tables/fuzz-vectors/pointer_self_cycle.bin

@@ -274,9 +274,17 @@ tag beside one pre-allocated arm per variant; Rust gets a real
 
 An arm is a field line: its type is any type a field's is, and an arm may
 name no type at all, which is an arm that selects and carries nothing. A
-union inside a `type` body takes arms that name declared types. A union with
-any other arm belongs to a table closure (SPEC-TABLES.md §2.6). Unions ride
-`type` bodies, arrays included.
+union inside a `type` body takes arms that name declared types, plus arms
+that name nothing. A union with an arm whose payload is anything else — a
+`table`, a pointer, a scalar, a string, an array — belongs to a table
+closure (SPEC-TABLES.md §2.6). Unions ride `type` bodies, arrays included.
+
+The payload-free arm in a `type` body is carried by `--lang cs`, `dart`,
+`elixir`, `go`, `java`, `js` and `rust` today. `--lang c` and `--lang cpp`
+refuse the unit by name at generate time and say so: their tagged-union
+storage has no member for an arm that has none, and the pair is a named
+follow-on. `schema check` is target-neutral, so it accepts the unit and the
+refusal arrives at `schema generate`.
 
 **Building your protocol.** A union of payload types is a message system
 waiting for your framing, and the primitives compose into whichever framing
@@ -2885,10 +2893,10 @@ later when an old save loads wrong:
 
 ```
 ## history
-### 2026-09-02 — first baseline before 1.0 ships
+### 2026-09-02 (UTC) — first baseline before 1.0 ships
 - baseline created over 1 table — data written BEFORE this point is not covered by it
 
-### 2026-11-14 — damage rebalanced in 2.0; saves from 1.x read the new value
+### 2026-11-14 (UTC) — damage rebalanced in 2.0; saves from 1.x read the new value
 - ShipConfig.damage: specified default 21.0 -> 25.0 [refuse]
 ```
 
@@ -3436,6 +3444,38 @@ that first carries it; everything under `internal/` is not
 [serialize](https://github.com/mas-bandwidth/serialize). A type can map to
 your own math type with `| cpp_native = Vector3, cpp_include = "vec.h"`, so
 simulation code does math directly on generated storage.
+
+Two things about that mapping are worth knowing before you try it, both
+stated in SPEC §4.2 and neither visible from the attribute's spelling.
+
+**The mapping is off inside the mapped type's own generated header.** Your
+`vec.h` derives from the generated basis struct, so it includes the header
+the basis is in; a mapped reference in that same header would be circular.
+The generated header a schema file produces covers every declaration in
+THAT FILE, so a sibling declared beside `Vector3` in one `.schema` stores
+the basis type and nothing in the output mentions your header. A unit of one
+file therefore never sees the mapping do anything, which is the first thing
+most people try:
+
+```
+$ cat A.schema
+package nat
+type Vec2 | cpp_native = GameVec2, cpp_include = "vec2.h" { x float32
+                                                            y float32 }
+type Body { p Vec2 }
+$ schema generate --lang cpp --out g . && grep -n 'GameVec2\|vec2.h' g/*.h
+$
+```
+
+Put `Body` in `B.schema` beside it and `g/B.h` gets both the `#include` and
+`::GameVec2 p;`. The attribute is accepted either way: it is a mapping, not
+a request, and there is nothing wrong with a file whose own siblings keep
+the basis type.
+
+**`cpp_native` names a GLOBAL type.** The value is an identifier and the
+emitted spelling is `::GameVec2`, so a namespaced engine type — `math::Vec2`,
+the common case — is named through a global alias you declare in your own
+header.
 
 **C#** — C# 9 / netstandard2.1-clean, so it runs on Unity-class runtimes.
 Reads scalars without boxing.

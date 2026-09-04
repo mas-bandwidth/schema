@@ -139,11 +139,18 @@ func Nudge(u *ir.Unit, paths []string) string {
 //
 // It is idempotent: when the projection has not moved, the file is left
 // exactly as it sits and no history entry is written.
+// THE DATE IS UTC AND SAYS SO. A shared artifact wants one clock, and UTC is
+// it — but an unlabelled date is read in the reader's own, so an author east
+// of Greenwich writes a baseline in the evening and reads YESTERDAY on the
+// file they just wrote (#447 F-16, #521 G-18). The four characters that fix it
+// ride the stamp, so every entry a compiler writes from here on carries them
+// and the entries already committed are left verbatim.
 func Update(u *ir.Unit, paths []string, reason string) (path string, rewrote bool, err error) {
-	return update(u, paths, reason, time.Now().UTC().Format("2006-01-02"))
+	return update(u, paths, reason, time.Now().UTC().Format("2006-01-02")+" (UTC)")
 }
 
-// update is Update with the date supplied, so tests are not dated by the clock.
+// update is Update with the date stamp supplied, so tests are not dated by the
+// clock.
 func update(u *ir.Unit, paths []string, reason, date string) (string, bool, error) {
 	if strings.TrimSpace(reason) == "" {
 		return "", false, fmt.Errorf("--update needs --reason: moving the baseline declares an intentional break with data already written, and the reason is what a person reads years later when an old file refuses (docs/SPEC-TABLES.md §18.4)")

@@ -621,3 +621,26 @@ func TestPortingRegisterGateGoesRed(t *testing.T) {
 		t.Error("a target no leg runs counted as reached")
 	}
 }
+
+// A MISPLACED FLAG IS NOT A PATH (#521 G-01). Flag parsing stops at the first
+// positional argument, so `generate --lang cpp --out gen . --verbose` handed
+// "--verbose" to os.Stat and the failure surfaced as "stat --verbose: no such
+// file or directory" — a syscall named where every other refusal in the tool
+// names the rule. Reverting the GatherPaths guard turns this red on the
+// message, which comes back as the stat error.
+func TestGatherPathsRefusesAMisplacedFlagByName(t *testing.T) {
+	for _, arg := range []string{"--verbose", "-verbose", "--out"} {
+		_, err := GatherPaths([]string{".", arg})
+		if err == nil {
+			t.Fatalf("%s was accepted as an input path", arg)
+		}
+		for _, want := range []string{"looks like a flag", "flags come BEFORE the first path"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: the refusal does not carry %q: %v", arg, want, err)
+			}
+		}
+		if strings.Contains(err.Error(), "no such file or directory") {
+			t.Errorf("%s: the refusal still names the syscall: %v", arg, err)
+		}
+	}
+}
