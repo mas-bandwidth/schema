@@ -1008,7 +1008,7 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 				items = append(items, br)
 			case *ast.ConstField:
 				if inTable {
-					c.errf(item.Pos, "const(value, bits) is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table %s (docs/SPEC-TABLES.md)", owner)
+					c.errf(item.Pos, "const(value, bits) is a packet-wire construct — a table's wire is `id reference, kind, payload` against the id table, with no bit positions; remove it from table %s (docs/SPEC-TABLES.md §3)", owner)
 					continue
 				}
 				bits, ok := c.evalWidth(item.Bits, "const width")
@@ -1026,7 +1026,7 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 				items = append(items, &ir.ConstItem{Value: v, Bits: bits}) // wire-only: no storage
 			case *ast.ReservedItem:
 				if inTable {
-					c.errf(item.Pos, "reserved(bits) is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table %s (docs/SPEC-TABLES.md)", owner)
+					c.errf(item.Pos, "reserved(bits) is a packet-wire construct — a table's wire is `id reference, kind, payload` against the id table, with no bit positions; remove it from table %s (docs/SPEC-TABLES.md §3)", owner)
 					continue
 				}
 				if bits, ok := c.evalWidth(item.Bits, "reserved width"); ok {
@@ -1034,7 +1034,7 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 				}
 			case *ast.AlignItem:
 				if inTable {
-					c.errf(item.Pos, "align is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table %s (docs/SPEC-TABLES.md)", owner)
+					c.errf(item.Pos, "align is a packet-wire construct — a table's wire is `id reference, kind, payload` against the id table, with no bit positions; remove it from table %s (docs/SPEC-TABLES.md §3)", owner)
 					continue
 				}
 				items = append(items, &ir.AlignItem{})

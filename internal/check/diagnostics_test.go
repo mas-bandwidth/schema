@@ -782,3 +782,33 @@ func TestUnreachedTableArmUnionIsStillRefused(t *testing.T) {
 		}
 	}
 }
+
+// THE FRAMING THE MESSAGES NAME (#521 G-17). The three packet-wire constructs
+// a table body refuses are refused for the right reason — a table's wire has no
+// bit positions — but the messages described the wire as "field-tagged TLV",
+// the framing #507 replaced. A field is now `id reference, kind, payload`
+// against a trailing id table, and the tag is a position into that table.
+//
+// Reverting the wording turns this red on all three.
+func TestTableRefusalsNameTheIdTableWire(t *testing.T) {
+	for _, tc := range []struct{ name, src string }{
+		{"const(value, bits)", "package t\ntable T { const(0xC7, 8)\n x int32 }\n"},
+		{"reserved(bits)", "package t\ntable T { x int32\n reserved(4)\n y int32 }\n"},
+		{"align", "package t\ntable T { x int32\n align\n y int32 }\n"},
+	} {
+		errs := runUnit(t, map[string]string{"Bad.schema": tc.src})
+		if len(errs) == 0 {
+			t.Errorf("%s: the packet-wire construct was accepted in a table body", tc.name)
+			continue
+		}
+		got := errs[0].Error()
+		if strings.Contains(got, "field-tagged TLV") {
+			t.Errorf("%s: the refusal still names the framing #507 replaced: %s", tc.name, got)
+		}
+		for _, want := range []string{"`id reference, kind, payload`", "no bit positions", "docs/SPEC-TABLES.md §3"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("%s: the refusal does not carry %q: %s", tc.name, want, got)
+			}
+		}
+	}
+}
