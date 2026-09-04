@@ -7655,10 +7655,6 @@ inspects everything in the schema built:
   same pin (§8.7). Nothing is refused meanwhile, because nothing in a schema
   asks for one (§8.4): a backend without the emitter is a backend whose
   users have no registry, and the status paragraph says so.
-- **DOC STRINGS in the view.** Doc comments are deferred with their design
-  pinned (SPEC §4.1, §9 q5); when they land they become one more descriptor
-  column and one more registry column, and nothing else about §8 moves. No
-  competing `| doc = "..."` attribute is introduced ahead of them.
 - **A view over the PACKET wire's own layout** — bit offsets, field widths
   and the compressed-float parameters a `type` rides under (SPEC §6.1),
   beside the declaration facts §8 carries. It is what a packet inspector
