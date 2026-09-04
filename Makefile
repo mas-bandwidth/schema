@@ -137,18 +137,55 @@ build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POI
 # list." A map makes its holder variable-length, so every unit scanned here is
 # map-free by construction, and the map symbols below say so mechanically
 # rather than by inspection.
+#
+# THE SCAN IS BY SYMBOL, not by line, and `TableNode` is matched with its whole
+# spelling so a node symbol nobody has written yet is still refused. Exactly one
+# of those spellings is ALLOWED in a pointer-free unit and it is named below.
+TABLES_ZERO_COST_SYMBOLS := TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|TablePack|[A-Za-z_]*TableNode[A-Za-z_]*|is_pointer|Builder|PackMeasure|LoadMeasure|TableBlob|TableBytesView|TableStringView|AllocBytes|AllocString|BytesEmplace|StringEmplace|TableMap|TableMapHead|TableMapSegment|TableMapOrder|TableMapCursor|TableEntryKey|TableKeyOrder|TableResetMapValue|TableEntrySetKey|kTableMapSegment
+
+# THE ONE NODE SPELLING A POINTER-FREE UNIT CARRIES, and it is the FORM's and
+# not the pointer machinery's (docs/SPEC-TABLES.md §3, §3.1): the reserved
+# node-table id. Every reader of the id-table form owes §3.1's refusal of that
+# id inside a NESTED body, whether or not its own closure has a pointer,
+# because the body it is handed may have been written by a unit that does have
+# one (§4). What it costs a pointer-free unit is one `static const uint64_t`
+# and one comparison: no arena, no builder, no handle, no lifecycle surface and
+# no extra descriptor column, which is the claim this gate holds. Every other
+# TableNode spelling stays refused, and
+# tables-zero-cost-negative-control shows that it does.
+TABLES_ZERO_COST_ALLOWED := kTableNodeTableFieldId
+
+TABLES_ZERO_COST_HEADERS := build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
+	build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
+	build/tables-generated/p3/*Table.h \
+	build/tables-generated/messages/*Table.h build/tables-generated/m1/*Table.h \
+	build/tables-generated/m2/*Table.h build/tables-generated/scalars/*Table.h
+
 .PHONY: tables-zero-cost
 tables-zero-cost: build/tables-generated/.stamp
-	@for f in build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
-	          build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
-	          build/tables-generated/p3/*Table.h \
-	          build/tables-generated/messages/*Table.h build/tables-generated/m1/*Table.h \
-	          build/tables-generated/m2/*Table.h build/tables-generated/scalars/*Table.h; do \
-		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|TablePack|TableNode|is_pointer|Builder|PackMeasure|LoadMeasure|TableBlob|TableBytesView|TableStringView|AllocBytes|AllocString|BytesEmplace|StringEmplace|TableMap|TableMapHead|TableMapSegment|TableMapOrder|TableMapCursor|TableEntryKey|TableKeyOrder|TableResetMapValue|TableEntrySetKey|kTableMapSegment" $$f; then \
+	@for f in $(TABLES_ZERO_COST_HEADERS); do \
+		if grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u | grep -q .; then \
+			grep -nE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vE "$(TABLES_ZERO_COST_ALLOWED)"; \
 			echo "ZERO-COST GATE FAILED: pointer or map machinery leaked into $$f"; exit 1; \
 		fi; \
 	done
 	@echo "tables zero-cost gate: value-only tables carry no pointer or map machinery"
+
+# THE NEGATIVE CONTROL. The gate above sanctions ONE node spelling, so it owes a
+# demonstration that it still refuses the others: the nearest neighbour of the
+# sanctioned constant is planted in a COPY of a scanned header, and the same
+# scan must refuse it. Nothing tracked is written to.
+.PHONY: tables-zero-cost-negative-control
+tables-zero-cost-negative-control: build/tables-generated/.stamp
+	@rm -rf build/zero-cost-control && mkdir -p build/zero-cost-control
+	@cp build/tables-generated/examples/GuardedTable.h build/zero-cost-control/GuardedTable.h
+	@printf 'static const TableNodeMap * kPlanted = NULL; /* PLANTED */\n' >> build/zero-cost-control/GuardedTable.h
+	@if ! grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" build/zero-cost-control/GuardedTable.h \
+			| grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u | grep -q .; then \
+		echo "NEGATIVE CONTROL FAILED: a planted node symbol left the zero-cost scan green"; exit 1; \
+	fi
+	@grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" build/zero-cost-control/GuardedTable.h | grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u
+	@echo "negative control: a planted node symbol turns the zero-cost scan RED, and the reserved id alone does not"
 
 .PHONY: tables-json-walk
 tables-json-walk: build/tables-generated/.stamp
@@ -2246,6 +2283,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-wire-fuzz N=20000
 	$(MAKE) tables-wire-fuzz-negative-control N=0
 	$(MAKE) tables-zero-cost
+	$(MAKE) tables-zero-cost-negative-control
 	$(MAKE) tables-maps
 	$(MAKE) tables-json-map-walk
 	$(MAKE) tables-maps-negative-controls
