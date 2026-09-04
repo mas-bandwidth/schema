@@ -95,10 +95,16 @@ no verdict at all, because a rate in messages per second is a fact about one mac
 a sitting whose in-run spread is over the cap renders no verdict either, since a gate that
 passes on a noisy box is a gate that passes on noise. What runs anywhere, including on
 certification hardware nobody here owns, is `make perf-gate-control`: it plants one added
-branch per field on the read path in a scratch copy of the generated headers and requires
-the gate to go red on `round_trip` while `write` holds. That control is the answer to the
-obvious question about any band, which is whether it is wide enough to hide the very thing
-it guards against. A gate nobody has watched go red is a gate nobody has tested.
+branch per field on the read path in a scratch copy of the generated headers, measures a
+clean sitting and a planted one back to back, and requires the plant to separate
+`round_trip` from `write` by more than the band on both wires. The separation, rather than
+a bare `round_trip` drop, is the verdict on purpose. It cancels whatever the box did to
+both rows between the two sittings, which is what lets the control run on a shared runner,
+and it is the exact claim the law makes: the cost landed on the read path, and nothing was
+planted on the write path, so `write` is the control's own control. That control is also
+the answer to the obvious question about any band, which is whether it is wide enough to
+hide the very thing it guards against. A gate nobody has watched go red is a gate nobody
+has tested.
 
 ---
 

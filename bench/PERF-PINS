@@ -66,6 +66,14 @@
 # enough to hide the control is a band that has stopped guarding anything, and
 # `make perf-gate-control` fails on exactly that.
 #
+# The control's verdict is the SEPARATION between round_trip and write across
+# its two sittings, not a bare round_trip drop. A bare drop is the obvious test
+# and the fragile one, because a box that ran faster during the planted half
+# can hide a real cost inside its own drift. The difference between the rows
+# cancels whatever the box did to both, and it is the claim the law actually
+# makes: the cost landed on the READ path. Nothing is planted on the write
+# path, so write is the control's own control.
+#
 # spread.max.pct is a separate refusal and not a band: it is the in-sitting
 # spread each runner already reports across its seven measured runs. A sitting
 # noisier than this cap renders NO verdict, red or green. A quiet box is a

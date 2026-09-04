@@ -911,47 +911,57 @@ func cmdControl(args []string) int {
 		return 1
 	}
 
-	// THE CONTROL IS A RATIO INSIDE ONE SITTING, not a comparison against the
-	// pins: the clean half is measured minutes before the planted half on the
-	// same box, so the verdict holds on hardware that has no pins at all.
+	// THE CONTROL COMPARES TWO SITTINGS ON ONE BOX, never the pins: the clean
+	// half is measured minutes before the planted half on the same machine, so
+	// the verdict holds on hardware that has no pins at all.
+	delta := func(s *sitting, k string) float64 { return s.rows[k].rate }
 	fmt.Printf("%-24s %14s %14s %9s  %s\n", "row", "clean M/s", "planted M/s", "delta", "verdict")
-	readRed, writeMoved := false, false
+	pct := map[string]float64{}
 	for _, want := range gateRows {
 		k := want[0] + "/" + want[1]
-		c := clean.rows[k].rate
-		pl := planted.rows[k].rate
-		delta := (pl - c) / c * 100
-		red := delta < -band
+		c, pl := delta(clean, k), delta(planted, k)
+		pct[k] = (pl - c) / c * 100
 		mark := "ok  "
-		if red {
+		if pct[k] < -band {
 			mark = "RED "
 		}
-		fmt.Printf("%-24s %14.3f %14.3f %8.2f%%  %s\n", k, c/1e6, pl/1e6, delta, mark)
-		if want[1] == "round_trip" && red {
-			readRed = true
-		}
-		if want[1] == "write" && red {
-			writeMoved = true
-		}
+		fmt.Printf("%-24s %14.3f %14.3f %8.2f%%  %s\n", k, c/1e6, pl/1e6, pct[k], mark)
 	}
 	fmt.Printf("band: %.2f%%\n\n", band)
 
-	if !readRed {
-		fmt.Printf("CONTROL FAILED. One added branch per field on the read path did not move\n")
-		fmt.Printf("round_trip past the %.2f%% band on both wires. Either the plant did not\n", band)
-		fmt.Printf("reach the compiled code, or the band is wide enough to hide a real cost.\n")
-		fmt.Printf("A gate nobody has seen go red is a gate nobody has tested.\n")
+	// THE VERDICT IS THE SEPARATION, not either row alone, and that is the
+	// deliberate choice here. A raw round_trip drop is the obvious test and it
+	// is the fragile one: if the box happens to run faster during the planted
+	// half, a real cost can hide inside the drift, and this control has to hold
+	// on a shared certification runner nobody here owns. The difference between
+	// the two rows cancels whatever the box did to both, and it is also the
+	// exact claim the law needs: the cost landed on the READ path. Nothing was
+	// planted on the write path, so write is the control's own control.
+	fmt.Printf("%-14s %12s %12s %14s  %s\n", "wire", "write", "round_trip", "separation", "verdict")
+	ok := true
+	for _, b := range []string{"bench_mixed", "bench_table"} {
+		w, rt := pct[b+"/write"], pct[b+"/round_trip"]
+		sep := w - rt
+		mark := "RED  (the plant is visible)"
+		if sep <= band {
+			mark = "GREEN (the plant is invisible)"
+			ok = false
+		}
+		fmt.Printf("%-14s %11.2f%% %11.2f%% %13.2f%%  %s\n", b, w, rt, sep, mark)
+	}
+	fmt.Println()
+
+	if !ok {
+		fmt.Printf("CONTROL FAILED. One added branch per field on the read path did not separate\n")
+		fmt.Printf("round_trip from write by more than the %.2f%% band on both wires. Either the\n", band)
+		fmt.Printf("plant did not reach the compiled code, or the band is wide enough to hide the\n")
+		fmt.Printf("cheapest diagnostic anybody would actually propose, which is the same thing as\n")
+		fmt.Printf("having no gate. A gate nobody has watched go red is a gate nobody has tested.\n")
 		return 1
 	}
-	fmt.Printf("CONTROL PASSED: the planted read cost is RED on round_trip.\n")
-	if writeMoved {
-		fmt.Printf("NOTE: write moved past the band too. Nothing was planted on the write path,\n")
-		fmt.Printf("so this is the box drifting under the two sittings, not the plant. Re-run it\n")
-		fmt.Printf("quiet before reading the read rows as a clean localization.\n")
-	} else {
-		fmt.Printf("write held inside the band on both wires, which is the localization the law\n")
-		fmt.Printf("needs: the gate says WHICH path got slower, not merely that something did.\n")
-	}
+	fmt.Printf("CONTROL PASSED. On both wires the planted read cost separates round_trip from\n")
+	fmt.Printf("write by more than the band, so the gate sees it AND says which path it landed\n")
+	fmt.Printf("on. That separation is what a red perf-gate verdict is reporting.\n")
 	return 0
 }
 
