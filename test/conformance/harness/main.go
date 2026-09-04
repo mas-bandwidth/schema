@@ -76,7 +76,7 @@ flags:
   --only <lang>       run one registered language (run only)
   --driver <cmd>      the leg to fuzz (wire-fuzz only)
   --seed <S> --n <N>  the random pass (wire-fuzz only)
-  --replay <file> --unit <key> --root <table>
+  --replay <file> --unit <key> --root <table> [--message]
                       run one saved mutant alone (wire-fuzz only)
 `)
 	os.Exit(2)
@@ -101,6 +101,7 @@ func main() {
 	replay := fs.String("replay", "", "one mutant file to run alone (wire-fuzz only)")
 	unit := fs.String("unit", "", "the replayed mutant's unit key (wire-fuzz only)")
 	root := fs.String("root", "", "the replayed mutant's root table (wire-fuzz only)")
+	message := fs.Bool("message", false, "replay the mutant as a MESSAGE against the unit's announced table (docs/SPEC-TABLES.md §3.3; wire-fuzz only)")
 	failed := fs.String("failed", "build/wire-fuzz/failed.bin", "where a failing mutant is written (wire-fuzz only)")
 	vectors := fs.String("vectors", defaultVectors, "the pinned-vector index (wire-fuzz only)")
 	if len(os.Args) > 2 {
@@ -131,7 +132,7 @@ func main() {
 			fatalf("%v", err)
 		}
 	case "wire-fuzz":
-		if err := wireFuzz(m, wireFuzzOptions{driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, failed: *failed, vectors: *vectors}); err != nil {
+		if err := wireFuzz(m, wireFuzzOptions{driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors}); err != nil {
 			fatalf("%v", err)
 		}
 	case "run":

@@ -478,6 +478,10 @@ type wireSeed struct {
 	// the fuzzer already found, kept so the next run seeks it rather than
 	// searching for it (testdata/wire/tables/fuzz-vectors/INDEX.txt).
 	vector bool
+	// the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): this seed's mutants are
+	// form-2 wires read against the connection's table, which is what the
+	// replay command has to say to reproduce one.
+	message bool
 }
 
 // wireMutant is one input the leg and the oracle both read.

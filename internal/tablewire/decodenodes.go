@@ -103,11 +103,17 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 		st.good = true
 	}
 
-	// the type ids the unit can name. A table name is scoped to a WHOLE unit
-	// closure, which is why the id is 64 bits and why this map is the only
-	// lookup a scan needs. The two reserved blob ids sit beside them (§2.5).
+	// THE TYPE IDS THIS ROOT CAN PLACE, which is narrower than the unit's
+	// closure and is the set §3.1 means by "a type id this reader cannot
+	// name": a node record is a POINTER's pointee, so a table no pointer
+	// below this root targets is a node nothing here can name — it is skipped
+	// by its length and counted unknown, and it commands no region storage
+	// (§6.5). A file never carries one, because a writer writes only the ids
+	// its own body used; a MESSAGE can, because a connection's table
+	// announces every table's name id whether or not a pointer names it
+	// (§3.3). The two reserved blob ids sit beside them (§2.5).
 	byTypeId := map[uint64]*ir.Struct{}
-	for name := range ir.TableClosure(m.Unit) {
+	for name := range ir.PointerReachable(m.Unit, inst.Def) {
 		if sd := m.Lookup(name); sd != nil {
 			byTypeId[ir.TableWireId(name)] = sd
 		}

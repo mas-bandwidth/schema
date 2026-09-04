@@ -42,12 +42,16 @@ import (
 
 // wireFuzzOptions is what the command line settles.
 type wireFuzzOptions struct {
-	driver  string
-	seed    uint64
-	n       int
-	replay  string
-	unit    string
-	root    string
+	driver string
+	seed   uint64
+	n      int
+	replay string
+	unit   string
+	root   string
+	// message replays the file as a MESSAGE (docs/SPEC-TABLES.md §3.3),
+	// against the unit's own announced table rather than a trailer of its
+	// own. A failure on a message seed prints it.
+	message bool
 	failed  string
 	vectors string
 }
@@ -104,7 +108,11 @@ func newWireRoot(u *units, unitKey, rootName string, message bool) (*wireRoot, e
 		r.entries = r.vocabulary.Entries()
 	}
 	r.rootStorage = alignUp8(ir.RecordLayout(unit, def).Size)
-	for name := range ir.TableClosure(unit) {
+	// THE STORAGE A RECORD COMMANDS is its type's, and only for a type THIS
+	// ROOT can place: a table no pointer below the root targets is a node the
+	// reader cannot name, so it commands none (docs/SPEC-TABLES.md §3.1,
+	// §6.5), exactly as the reference's <Root>NodeStorage answers -1 for one.
+	for name := range ir.PointerReachable(unit, def) {
 		st := m.Lookup(name)
 		if st == nil {
 			continue
@@ -413,7 +421,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		if err != nil {
 			return err
 		}
-		s := &wireSeed{name: name, unit: unit, root: root, wire: wire, frame: frameWireForm(wire, roots[ri].entries)}
+		s := &wireSeed{name: name, unit: unit, root: root, wire: wire, message: message, frame: frameWireForm(wire, roots[ri].entries)}
 		seeds = append(seeds, s)
 		seedRoot[s] = ri
 		return nil
@@ -425,7 +433,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		if opts.unit == "" || opts.root == "" {
 			return fmt.Errorf("--replay needs --unit and --root")
 		}
-		if err := addSeed(filepath.Base(opts.replay), opts.unit, opts.root, opts.replay); err != nil {
+		if err := addFormSeed(filepath.Base(opts.replay), opts.unit, opts.root, opts.replay, opts.message); err != nil {
 			return err
 		}
 	} else {
@@ -463,7 +471,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 			return err
 		}
 		for _, v := range vecs {
-			if err := addSeed(v.name, v.unit, v.root, v.file); err != nil {
+			if err := addFormSeed(v.name, v.unit, v.root, v.file, v.message); err != nil {
 				return err
 			}
 			seeds[len(seeds)-1].vector = true
@@ -601,8 +609,12 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if opts.replay != "" {
 		// replay sends the one mutant the file holds and nothing else, so the
 		// enumerated/random split has nothing to say about it
-		fmt.Printf("wire-fuzz: replay of %s over %s.%s, %d mutant, 0 divergences, %.1f s\n",
-			opts.replay, opts.unit, opts.root, total, elapsed.Seconds())
+		form := "file"
+		if opts.message {
+			form = "message"
+		}
+		fmt.Printf("wire-fuzz: replay of %s over %s.%s as a %s, %d mutant, 0 divergences, %.1f s\n",
+			opts.replay, opts.unit, opts.root, form, total, elapsed.Seconds())
 		return nil
 	}
 	rate := float64(total) / elapsed.Seconds()
@@ -648,18 +660,28 @@ func wireFailure(opts wireFuzzOptions, mut *wireMutant, passed int, verdict, det
 		bytesLine = fmt.Sprintf("\n  mutant sha256 %x, too large to print: reproduce with --seed %d and read %s",
 			sum, opts.seed, opts.failed)
 	}
-	msg := fmt.Sprintf("FAILED after %d mutants: %s\n  corpus seed %s (%s.%s), pass %s #%d, run seed %d, mutant of %d bytes written to %s%s\n%s\n  replay: %s wire-fuzz --driver %q --replay %s --unit %s --root %s",
+	// a MESSAGE seed's mutant is a form-2 wire, and a replay that read it as a
+	// file would read another wire entirely (docs/SPEC-TABLES.md §3.3)
+	form := ""
+	if mut.seed.message {
+		form = " --message"
+	}
+	msg := fmt.Sprintf("FAILED after %d mutants: %s\n  corpus seed %s (%s.%s), pass %s #%d, run seed %d, mutant of %d bytes written to %s%s\n%s\n  replay: %s wire-fuzz --driver %q --replay %s --unit %s --root %s%s",
 		passed, verdict, mut.seed.name, mut.seed.unit, mut.seed.root, mut.pass, mut.index, opts.seed, len(mut.data), opts.failed,
-		bytesLine, strings.TrimRight(detail, "\n"), os.Args[0], opts.driver, opts.failed, mut.seed.unit, mut.seed.root)
+		bytesLine, strings.TrimRight(detail, "\n"), os.Args[0], opts.driver, opts.failed, mut.seed.unit, mut.seed.root, form)
 	return fmt.Errorf("%s", msg)
 }
 
 // wireVector is one pinned red, as the index names it.
 type wireVector struct {
-	name string
-	unit string
-	root string
-	file string
+	// message marks a vector that is a MESSAGE rather than a file
+	// (docs/SPEC-TABLES.md §3.3): its references resolve against the unit's
+	// announced table, so the form is part of what the index has to say.
+	message bool
+	name    string
+	unit    string
+	root    string
+	file    string
 }
 
 // readWireVectors reads the pinned-vector index. An ABSENT index is an empty
@@ -683,10 +705,10 @@ func readWireVectors(path string) ([]wireVector, error) {
 			continue
 		}
 		f := strings.Fields(line)
-		if len(f) != 4 {
-			return nil, fmt.Errorf("%s:%d: a vector is <name> <unit> <root> <file>", path, i+1)
+		if len(f) != 4 && !(len(f) == 5 && f[4] == "message") {
+			return nil, fmt.Errorf("%s:%d: a vector is <name> <unit> <root> <file> [message]", path, i+1)
 		}
-		out = append(out, wireVector{name: f[0], unit: f[1], root: f[2], file: f[3]})
+		out = append(out, wireVector{name: f[0], unit: f[1], root: f[2], file: f[3], message: len(f) == 5})
 	}
 	return out, nil
 }

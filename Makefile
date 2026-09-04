@@ -1914,7 +1914,7 @@ build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp tes
 # so the two see different addresses and alignments — and this suite refuses
 # unaligned bases and misaligned region references by design. Each build
 # reaches states the other does not.
-build/schema_test_tables_asan: build/tables-generated/.stamp test/tables/main.cpp
+build/schema_test_tables_asan: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
 		-fno-omit-frame-pointer -g $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
@@ -1940,7 +1940,7 @@ BE_RUN ?= qemu-s390x
 # for the same reason the sanitized twin shares them (#278): a twin that
 # covers different code is not a twin. -static so the runner needs no sysroot
 # and the emulator invocation is just the binary.
-build/schema_test_tables_be: build/tables-generated/.stamp test/tables/main.cpp
+build/schema_test_tables_be: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h
 	@mkdir -p build
 	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
@@ -2293,6 +2293,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	# THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): its rules are refusals and an
 	# ORDER, and a green run cannot be read for either, so each control removes
 	# one and names the gate that must go red.
+	$(MAKE) tables-vocab-schema
 	$(MAKE) tables-message-form-negative-control
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-zero-cost-negative-control
@@ -2812,8 +2813,8 @@ tables-cpp-release:
 	$(MAKE) tables-wire-fuzz N=500000
 	$(MAKE) tables-wire-fuzz SEED=2 N=500000
 
-.PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control
-tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control
+.PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control
+tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control
 
 # the string read's `room( len )`: a length past the body is then read anyway,
 # so the sabotaged leg takes a string out of a neighbour's bytes and CLAMPS it
@@ -2881,6 +2882,19 @@ tables-wire-fuzz-oracle-negative-control: build/conformance-harness build/wire-f
 		  cat $(ORACLE_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(ORACLE_NC)/log
 	@echo "negative control: removing the oracle's body-span clamp turns the pinned vector RED"
+
+# THE WIDE-VOCABULARY UNIT IS GENERATED AND COMMITTED (docs/SPEC-TABLES.md
+# §3.3): a hundred and thirty distinct field names typed by hand is a file
+# nobody would review, and a golden a generator has to re-derive is not a
+# golden. So both are true at once, and this is what holds them together: the
+# generator runs into build/ and the committed file must be what it wrote.
+.PHONY: tables-vocab-schema
+tables-vocab-schema:
+	@mkdir -p build/vocabgen
+	go run ./test/vocabgen --out build/vocabgen/Vocab.schema
+	@cmp build/vocabgen/Vocab.schema tables/vocab/Vocab.schema || \
+		{ echo "tables/vocab/Vocab.schema is not what test/vocabgen writes — run: go run ./test/vocabgen --out tables/vocab/Vocab.schema"; exit 1; }
+	@echo "vocabdemo: the committed schema is the generator's, byte for byte"
 
 # ---- THE MESSAGE FORM's NEGATIVE CONTROLS (docs/SPEC-TABLES.md §3.3) --------
 #
@@ -2994,6 +3008,36 @@ tables-message-form-emitter-negative-control: bin/schema test/tables/message_neg
 	fi
 	@cat build/message-nc/emitter.log
 	@echo "negative control: moving every emitted slot turns the pinned message RED"
+
+# THE NODE TYPE A ROOT CANNOT PLACE (docs/SPEC-TABLES.md §3.1, §6.5, §3.3), and
+# the vector message_node_type_unpointed is the red it closed. A node record is
+# a pointer's pointee, so a table no pointer below the root targets is a node
+# this reader cannot name: no region storage, body skipped, one unknown. The
+# engine named the whole unit closure instead, which a FILE can never expose
+# because a writer writes only the ids its body used — and which the MESSAGE
+# form exposes at once, because a connection's table announces every table's
+# name id. The sabotage is that revert, and the run must go red ON THE VECTOR.
+NODE_TYPE_NC := build/wire-fuzz-nc-node-type
+.PHONY: tables-wire-fuzz-node-type-negative-control
+tables-wire-fuzz-node-type-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	@rm -rf $(NODE_TYPE_NC) && mkdir -p $(NODE_TYPE_NC)
+	@sed -e 's|ir.PointerReachable(m.Unit, inst.Def) {|ir.TableClosure(m.Unit) { // NEGATIVE CONTROL: every closure table is placeable again|' \
+		internal/tablewire/decodenodes.go > $(NODE_TYPE_NC)/decodenodes.go.txt
+	@cmp -s internal/tablewire/decodenodes.go $(NODE_TYPE_NC)/decodenodes.go.txt && \
+		{ echo "NEGATIVE CONTROL: the node-type sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(NODE_TYPE_NC)/decodenodes.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(NODE_TYPE_NC)/overlay.json
+	go build -overlay $(NODE_TYPE_NC)/overlay.json -o $(NODE_TYPE_NC)/harness ./test/conformance/harness
+	@if $(NODE_TYPE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n 0 \
+			--failed $(NODE_TYPE_NC)/failed.bin > $(NODE_TYPE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: every closure table is placeable again and the wire fuzzer stayed green"; \
+		cat $(NODE_TYPE_NC)/log; exit 1; \
+	fi
+	@grep -q "message_node_type_unpointed" $(NODE_TYPE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the pinned vector"; \
+		  cat $(NODE_TYPE_NC)/log; exit 1; }
+	@grep -m1 "FAILED" $(NODE_TYPE_NC)/log
+	@echo "negative control: placing a node no pointer names turns the pinned vector RED"
 
 # The GENERATED half of the data: the JSON text of every instance and the read
 # report of every evolution case, both from the compiler's own engine.

@@ -611,7 +611,7 @@ static void test_message_form_reserved_id_in_a_body()
         CHECK( report.malformed );
         CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && report.duplicate == 0 );
         CHECK( !report.refused );
-        pin_table_golden( "message_reserved_id_root", message, 12 );
+        pin_table_golden( "message_reserved_id_root", message, sizeof( message ) );
     }
     // and inside a NESTED body: MatchResult's players array holds PlayerRow
     // bodies, and one of them names slot 1
@@ -626,7 +626,7 @@ static void test_message_form_reserved_id_in_a_body()
         CHECK( report.malformed );
         CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && report.duplicate == 0 );
         CHECK( !report.refused );
-        pin_table_golden( "message_reserved_id_nested", message, 20 );
+        pin_table_golden( "message_reserved_id_nested", message, sizeof( message ) );
     }
 }
 
@@ -662,7 +662,7 @@ static void test_message_form_reference_bound()
         CHECK( backenddemo::LoginRequestLoadMessage( out, vocabulary, whole, 8, &report ) );
         CHECK( !report.malformed && !report.refused );
         CHECK( report.unknown == 1 );
-        pin_table_golden( "message_reference_last_slot", whole, 8 );
+        pin_table_golden( "message_reference_last_slot", whole, sizeof( whole ) );
     }
 }
 

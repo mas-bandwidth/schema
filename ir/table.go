@@ -262,6 +262,57 @@ func PointerTargets(u *Unit) map[string]bool {
 	return targets
 }
 
+// PointerReachable is the set of tables A ROOT's numbering can place: the
+// tables some pointer reachable FROM THAT ROOT targets, following by-value
+// edges through nested tables, union arms and map entries exactly as the
+// numbering walk does (docs/SPEC-TABLES.md §3.1, §2.6, §2.8).
+//
+// It is narrower than [PointerTargets], which is the unit's whole set, and the
+// difference is what a READER owes: a node record whose type id no pointer
+// below this root can name is a node this reader cannot place, so it commands
+// no region storage and its body is skipped and counted `unknown` (§3.1,
+// §6.5). A file never carries one, because a writer writes only the ids its
+// own body used; the MESSAGE form can, because a connection's table announces
+// every table's name id whether or not a pointer names it (§3.3).
+func PointerReachable(u *Unit, root *Struct) map[string]bool {
+	named := map[string]bool{}
+	visited := map[string]bool{}
+	var descend func(st *Struct)
+	descend = func(st *Struct) {
+		if st == nil || visited[st.Name] {
+			return
+		}
+		visited[st.Name] = true
+		for _, f := range st.Fields {
+			if f.IsMap() {
+				descend(f.MapEntry)
+				continue
+			}
+			if f.Type.Kind != TNamed {
+				continue
+			}
+			if un, isUnion := f.Type.Ref.(*Union); isUnion {
+				for _, v := range un.Variants {
+					if v.Ref != nil {
+						descend(v.Ref)
+					}
+				}
+				continue
+			}
+			ref, ok := f.Type.Ref.(*Struct)
+			if !ok {
+				continue
+			}
+			if f.Type.Pointer {
+				named[ref.Name] = true
+			}
+			descend(ref)
+		}
+	}
+	descend(root)
+	return named
+}
+
 // unionPointerTargets adds every table a POINTER ARM of un targets, through
 // nested union arms too (docs/SPEC-TABLES.md §2.6).
 func unionPointerTargets(un *Union, targets map[string]bool, seen map[*Union]bool) {
