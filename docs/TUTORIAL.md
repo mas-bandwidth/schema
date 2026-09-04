@@ -855,3 +855,430 @@ $ schema id .
 
 **You now have** a real network message, three bytes on the wire, hostile input
 refused, in any of nine languages.
+
+---
+
+## Part 4: The rest of the field types
+
+The ship state is about to grow. Each addition below is a problem Starlight
+actually has, and each introduces one field kind. At the end of the part
+`Game.schema` is shown entire.
+
+### Ships have names: `string(N)`
+
+```
+const MaxShipName  = 24
+
+    name string(MaxShipName)
+```
+
+```cpp
+    char name[MaxShipName + 1] = {}; // string(MaxShipName): max length, used length beside it (SPEC §4.7)
+    int32_t name_length = 0;
+```
+
+A string field is a fixed buffer at the bound you declare plus a used length.
+No heap, no `std::string`, nothing to allocate. On the wire it is the length in
+`[0, N]`, five bits here, followed by the bytes. The bound's only job on the
+wire is sizing the length prefix.
+
+The writer holds you to a contract, visible in the generated write:
+
+```cpp
+    for ( int32_t i = 0; i < value.name_length; i++ )
+    {
+        serialize_assert( value.name[i] != 0 );
+    }
+    serialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( value.name ), value.name_length ) );
+```
+
+No interior NULs, and well-formed UTF-8. A `string` is text by contract, and C,
+C++ and Rust assert it in a debug build. For raw bytes with no text contract,
+use `bytes(N)`, which has the same shape and no UTF-8 rule. The reader
+validates the length and rejects interior NULs.
+
+### The throttle: compressed floats
+
+A ship's throttle is a float in `[0, 1]`. A raw `float32` field costs 32 bits,
+and you do not care about the 24th decimal place:
+
+```
+    throttle float32 | min = 0, max = 1, resolution = 0.01
+```
+
+Ranged floats take `min`, `max` **and** `resolution`, all three together.
+`bad/Bad.schema` leaving one off:
+
+```
+package bad
+
+type T
+{
+    a float32 | min = 0, max = 1
+}
+```
+
+```
+$ schema check .
+Bad.schema:5:5: field a: a float range is min, max and resolution, all three together (SPEC §4.6)
+schema: 1 error(s)
+```
+
+The wire carries the step index, not the float. There are 101 steps here, so
+**seven bits instead of 32**:
+
+```cpp
+    {
+        float compressed_value = value.throttle;
+        serialize_compressed_float_precomputed( stream, compressed_value, 100u, 7, 1.0f, 0.0f );
+    }
+```
+
+The write rounds to the nearest step, half away from zero, one rounding rule in
+every language. Plain `float32` and `float64` with no attributes ride whole, at
+32 and 64 bits.
+
+### Position: composition
+
+```
+type Vector3
+{
+    x float64
+    y float64
+    z float64
+}
+
+    position Vector3
+```
+
+Types nest freely, and a composed field writes its parts inline with no
+pointers and no indirection:
+
+```cpp
+    if ( !WriteVector3( stream, value.position ) )
+    {
+        return false;
+    }
+```
+
+### Aim: storage that speaks your math
+
+Your engine already has a 2D vector with operators on it. `cpp_native` maps the
+generated storage onto it, so simulation code does vector arithmetic directly
+on packet fields. Put the declaration in its own file, `Vectors.schema`, in the
+same unit:
+
+```
+package starlight
+
+type Vector2 | cpp_native = GameVector2, cpp_include = "game_vector2.h"
+{
+    x float32
+    y float32
+}
+```
+
+and give `ShipState` an `aim Vector2` field. `Game.h` now carries your include
+and your type:
+
+```cpp
+#pragma once
+
+#include <cstdint>
+
+#include "Vectors.h"
+
+// native type mapping (cpp_native, SPEC §4.2): the hand types storage speaks
+#include "game_vector2.h"
+
+namespace starlight {
+```
+
+```cpp
+    ::GameVector2 aim;
+```
+
+`game_vector2.h` is yours to write, and it is short. Your type derives from the
+generated basis struct, so the layout is the schema's and the operators are
+yours:
+
+```cpp
+#pragma once
+
+#include "Vectors.h"
+
+// Your own type. It derives from the generated basis struct, so the layout is
+// the schema's and the operators are yours.
+struct GameVector2 : starlight::Vector2
+{
+    GameVector2 & operator+=( const GameVector2 & o ) { x += o.x; y += o.y; return *this; }
+};
+```
+
+Two rules govern the mapping. It applies where the type is referenced from **a
+different schema file** than the one that declares it, which is why `Vector2`
+lives in `Vectors.schema` and `ShipState` in `Game.schema`. Declare and use it
+in one file and the generated output carries no trace of the mapping. And the
+name is a **global** identifier, spelled `::GameVector2` in the output, so a
+namespaced engine type needs a global alias.
+
+From here on the compile line gains `-I .`, so the compiler finds
+`game_vector2.h` beside your schema files.
+
+### Heading: fixed point
+
+Floats differ by an ulp across compilers and architectures, which is fatal for
+a lockstep simulation. When a value must be **bit-identical everywhere**, use
+fixed point:
+
+```
+    heading fixed(16, 16) | min = -180, max = 180
+```
+
+```cpp
+    int32_t heading = 0; // fixed(16, 16) — Q16.16, raw value scaled by 2^16; bounds in whole units; wire [-180, 180]
+```
+
+`fixed(I, F)` is I integer bits, sign included, and F fractional bits, stored
+as the raw scaled integer. Bounds are required and given in whole units. It is
+an integer, so it adds exactly, everywhere. `ufixed(I, F)` is the unsigned
+sibling for values that cannot go negative.
+
+`I + F` must land on a storage width. `bad/Bad.schema`:
+
+```
+package bad
+
+type T
+{
+    a ufixed(16, 8) | min = 0, max = 100
+}
+```
+
+```
+$ schema check .
+Bad.schema:5:7: ufixed(16, 8): I + F = 24 must equal a storage width — 8, 16, 32, 64 or 128 (SPEC §4.6)
+schema: 1 error(s)
+```
+
+### Cargo: arrays
+
+```
+    cargo [..8]uint32
+```
+
+Three array spellings, all bound first, in Go's order:
+
+| spelling | meaning | wire |
+|---|---|---|
+| `[4]Vector3` | exactly 4 | 4 elements, no count |
+| `[..8]uint32` | up to 8 | count in `[0, 8]`, 4 bits, then that many |
+| `[2..8]uint32` | between 2 and 8 | count encoded relative to 2, 3 bits, then that many |
+
+Storage is always the full-bound C array plus a `_count` companion:
+
+```cpp
+    uint32_t cargo[8] = {}; // used count beside it; wire count in [0, 8]
+    int32_t cargo_count = 0;
+```
+
+An element range that excludes zero is refused for the same reason a scalar's
+is. `bad/Bad.schema`:
+
+```
+package bad
+
+type T
+{
+    a [..8]int32 | min = 1, max = 4
+}
+```
+
+```
+$ schema check .
+Bad.schema:5:5: field a: its range [1, 4] excludes zero, so every element is born outside it — an array takes no specified default, so widen the range to reach zero (SPEC §4.6)
+schema: 1 error(s)
+```
+
+The **count** bound is not held to that rule, and it is worth seeing why that
+matters. `window [2..8]uint32` compiles:
+
+```
+$ schema check .
+$ schema generate --lang cpp --out g .
+```
+
+```cpp
+struct T {
+    uint32_t window[8] = {}; // used count beside it; wire count in [2, 8]
+    int32_t window_count = 0;
+};
+```
+
+```cpp
+SCHEMA_WRITE_INLINE bool WriteT( serialize::WriteStream & stream, const T & value )
+{
+    serialize_assert( int32_t( value.window_count ) >= int32_t( 2 ) && int32_t( value.window_count ) <= int32_t( 8 ) );
+    write_bits( stream, uint32_t( value.window_count ) - uint32_t( 2 ), 3 );
+```
+
+A freshly constructed `T` has `window_count = 0`, outside the count's own wire
+range, and the write subtracts the low bound before it packs. Reach for
+`[A..B]` with A above zero only where your code sets the count before the value
+is ever written.
+
+### The odds and ends
+
+`bits(12)` is an unsigned field of exactly 12 bits, for when the width **is**
+the specification: sequence numbers, opaque tags. Storage is `uint32_t`.
+
+`bytes(1024)` is `string` with no text contract: a length-prefixed run of raw
+bytes in fixed storage.
+
+`int128` and `uint128` are full-width 128-bit integers, `serialize::uint128_t`
+in C++, for keys and hashes that ride through untouched.
+
+### The grown unit
+
+`Game.schema`, entire:
+
+```
+package starlight
+
+const MaxPlayers   = 64
+const MaxHealth    = 1000
+const MaxShipName  = 24
+const TickRate     = 60
+const TickInterval = 1.0 / TickRate
+const Pi float32   = 3.14159265359
+
+enum ShipType { Fighter, Freighter, Corvette }
+
+enum Pending { }
+
+enum Weapon | max = 15
+{ Laser, Missile }
+
+flags SystemFlags { Shields, Cloak, WarpDrive, Autopilot }
+
+type Vector3
+{
+    x float64
+    y float64
+    z float64
+}
+
+type ShipState
+{
+    ship_type ShipType
+    name      string(MaxShipName)
+    health    int32 = MaxHealth   | min = 0, max = MaxHealth
+    throttle  float32             | min = 0, max = 1, resolution = 0.01
+    position  Vector3
+    aim       Vector2
+    heading   fixed(16, 16)       | min = -180, max = 180
+    systems   SystemFlags
+    docked    bool
+    cargo     [..8]uint32
+}
+```
+
+`health` grew a default of `= MaxHealth`. Ships start at full health, so the
+rest state is not zero, and now a fresh `ShipState` starts at 1000 with no
+constructor anywhere:
+
+```cpp
+struct ShipState {
+    ShipType ship_type = ShipType::None;
+    char name[MaxShipName + 1] = {}; // string(MaxShipName): max length, used length beside it (SPEC §4.7)
+    int32_t name_length = 0;
+    int32_t health = MaxHealth; // wire [0, 1000]
+    float throttle = 0.0f; // compressed float [0, 1] @ 0.01
+    Vector3 position;
+    ::GameVector2 aim;
+    int32_t heading = 0; // fixed(16, 16) — Q16.16, raw value scaled by 2^16; bounds in whole units; wire [-180, 180]
+    SystemFlags systems = 0;
+    bool docked = false;
+    uint32_t cargo[8] = {}; // used count beside it; wire count in [0, 8]
+    int32_t cargo_count = 0;
+};
+
+inline constexpr int64_t ShipStateMaxBits = 769; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t ShipStateMaxBytes = 104; // 8-byte write granularity; read slack per the contract above
+```
+
+Everything is inline, fixed size and trivially copyable. You can `memcpy` a
+`ShipState`, hold arrays of them, or share them between processes. That property
+is by construction, and later parts build on it. `ShipStateMaxBytes` is the
+number to size a send buffer with, and it accounts for the read slack the
+contract asks for.
+
+### A program
+
+`main.cpp`, entire:
+
+```cpp
+#include "GameWire.h"
+#include <cstdio>
+#include <cstring>
+
+int main()
+{
+    using namespace starlight;
+
+    ShipState ship;
+    ship.ship_type = ShipType::Freighter;
+    strcpy( ship.name, "Kestrel" );
+    ship.name_length = 7;
+    ship.throttle = 0.63f;
+    ship.position = { 100.0, 25.5, -3.0 };
+    ship.aim.x = 1.0f;
+    ship.aim.y = 0.0f;
+    GameVector2 drift;
+    drift.x = 0.5f;
+    drift.y = 0.25f;
+    ship.aim += drift;                 // your operator, on generated storage
+    ship.heading = (int32_t) ( 42.5 * 65536 );
+    ship.systems = SystemFlags_Shields;
+    ship.cargo_count = 3;
+    ship.cargo[0] = 11;
+    ship.cargo[1] = 22;
+    ship.cargo[2] = 33;
+
+    uint8_t buffer[ShipStateMaxBytes];
+    serialize::WriteStream writer( buffer, sizeof( buffer ) );
+    WriteShipState( writer, ship );
+    writer.Flush();
+
+    ShipState copy;
+    serialize::ReadStream reader( buffer, writer.GetBytesProcessed() );
+    ReadShipState( reader, copy );
+
+    printf( "%s \"%s\" health=%d throttle=%.2f aim=(%g, %g) heading=%.2f cargo=%d\n",
+        EnumName( copy.ship_type ), copy.name, copy.health, copy.throttle,
+        copy.aim.x, copy.aim.y, copy.heading / 65536.0, copy.cargo_count );
+    printf( "%lld bytes of %lld max\n",
+        (long long) writer.GetBytesProcessed(), (long long) ShipStateMaxBytes );
+    return 0;
+}
+```
+
+```
+$ c++ -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -I gen -I . -I ../serialize -o starlight main.cpp
+$ ./starlight
+Freighter "Kestrel" health=1000 throttle=0.63 aim=(1.5, 0.25) heading=42.50 cargo=3
+59 bytes of 104 max
+```
+
+Fifty-nine bytes, most of it the three `float64` of the position, which is what
+a `float64` costs when you ask for a whole one. The `aim` came back through your
+own `operator+=`.
+
+```
+$ schema id .
+0xd795780496e81500
+```
+
+**You now have** the full vocabulary of scalar and buffer fields, a ship state
+that costs a fraction of its struct size on the wire, and one field whose
+storage is your engine's own type.
