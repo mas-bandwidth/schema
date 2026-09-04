@@ -892,6 +892,12 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 	if g.isVar(st.Name) {
 		return // a variable-length table's Save takes a builder or a region root
 	}
+	if st.IsMapEntry() {
+		// a map's ENTRY is not a root (docs/SPEC-TABLES.md §2.8): it is
+		// reached only through the map that generates it, so its walk is all
+		// it carries and there is no buffer-level entry point to it
+		return
+	}
 	g.pf("inline int64_t %sSave( const %s & value, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
 	g.pf("    TableWriter w( buffer, capacity );\n")
 	g.pf("    if ( !%sSaveBody( w, value ) ) { return -1; }\n", st.Name)
@@ -1283,7 +1289,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	// buffer-level convenience entry. A VARIABLE-LENGTH table has none: it is
 	// never held by value, so its Load takes the caller's region and hands back
 	// the root instead (docs/SPEC-TABLES.md §2).
-	if g.isVar(st.Name) {
+	if g.isVar(st.Name) || st.IsMapEntry() {
 		return
 	}
 	g.pf("inline bool %sLoad( %s & value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)

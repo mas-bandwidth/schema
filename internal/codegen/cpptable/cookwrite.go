@@ -221,7 +221,10 @@ func (g *tableGen) emitCookWriteSurface(members []*ir.Struct) {
 		g.emitCookWriteBody(st)
 	}
 	for _, st := range bodies {
-		if !st.IsTable {
+		if !st.IsTable || st.IsMapEntry() {
+			// a `type` is no root, and a map's generated ENTRY is §2.8's one
+			// exception to "a root is any table" — its cook BODY is emitted
+			// above, and that is the whole of what it carries
 			continue
 		}
 		if g.isVar(st.Name) {

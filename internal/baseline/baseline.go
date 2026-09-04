@@ -55,7 +55,7 @@ import (
 // every judged row — so an unbumped rendering greets an untouched schema with
 // a diagnostic per field. Recording a fact nothing judges (an `optional`) does
 // not need a bump; adding a rule does.
-const Version = 4
+const Version = 5
 
 // FileName is the baseline's name in the unit directory. Its presence is what
 // turns the check on: no file, no check.
@@ -165,7 +165,13 @@ func Render(u *ir.Unit) *Unit {
 	for name := range closure {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	// SORTED BY THE NAME ON THE LINE, which for a map's generated entry is
+	// its anonymous key: the generated name is derived from the field's
+	// SOURCE spelling, so ordering by it would let a `was` rename move every
+	// member after it (docs/SPEC-TABLES.md §2.8, §18.1).
+	sort.Slice(names, func(i, j int) bool {
+		return ir.ProjectionMemberName(u, names[i]) < ir.ProjectionMemberName(u, names[j])
+	})
 
 	seenEnum := map[string]bool{}
 	seenFlags := map[string]bool{}
@@ -179,7 +185,12 @@ func Render(u *ir.Unit) *Unit {
 		if st == nil {
 			continue
 		}
-		t := Table{Name: name}
+		// a map's GENERATED ENTRY is ANONYMOUS here (docs/SPEC-TABLES.md
+		// §2.8, §18.1): its name is derived from the map field's SOURCE
+		// spelling, and a `was` rename moves that while moving no byte — so
+		// the entry is keyed by the holder's wire id and the field's, and a
+		// rename moves nothing in this file.
+		t := Table{Name: ir.ProjectionMemberName(u, name)}
 		// DECLARATION ORDER: st.Fields is the flattened body, branch fields
 		// included. A guard removes a field from the bytes exactly as a
 		// default does, and both are absorbed by the reader's default — so
@@ -282,6 +293,27 @@ func renderField(f *ir.Field) Field {
 		add("optional", "true")
 	}
 	switch {
+	case f.IsMap():
+		// A MAP IS AN ARRAY OF ITS ENTRY (docs/SPEC-TABLES.md §2.8), so the
+		// `kind` and `elem` tokens above already say 14 over 13 and the shape
+		// token says WHICH array it is. Its two own facts are the KEY's:
+		//
+		//   - the key KIND, judged like any kind. A key arriving under a kind
+		//     the reader does not declare resets the whole map to empty and
+		//     counts one kind_mismatch (§2.8) — the value is gone and the
+		//     wire says only that it disagreed.
+		//   - the key BOUND, judged like any extent. A tightened `string(N)`
+		//     key does not clamp: an entry whose key does not fit is SKIPPED
+		//     whole and counted, because a clamped key is a merged entry
+		//     (§2.8). Lossy by entries, reported, and so a warning.
+		//
+		// A map carries no `bound`: its count is unbounded by design, and the
+		// only ceiling is the int32 extent cap every array shares (§2.2).
+		add("array", "map")
+		add("keykind", strconv.Itoa(ir.TableFieldKind(ir.MapKeyField(f))))
+		if key := ir.MapKeyField(f); key.Type.Kind == ir.TString {
+			add("keybound", strconv.FormatInt(key.Type.Size, 10))
+		}
 	case f.KeyEnum != "":
 		// an enum-keyed array is its own wire kind (§3.2) and its slots ride
 		// under their variants' NAME ids, so the key enum is a referent like

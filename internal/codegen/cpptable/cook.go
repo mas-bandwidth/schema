@@ -246,8 +246,11 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
 func (g *tableGen) emitCookSurface(members []*ir.Struct) {
 	first := true
 	for _, st := range members {
-		if !st.IsTable {
-			continue // a `type` is not a node and cannot be a cook's root
+		if !st.IsTable || st.IsMapEntry() {
+			// a `type` is not a node and cannot be a cook's root, and a map's
+			// generated ENTRY is §2.8's one exception to "a root is any
+			// table": it is reached only through its map
+			continue
 		}
 		if first {
 			g.pf("// ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----\n\n")

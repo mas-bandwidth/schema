@@ -1302,7 +1302,7 @@ namespace blobdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x73d756fe041d0e93ull;
+static const uint64_t BuildVersion = 0xc20a8501aaedb152ull;
 
 } // namespace blobdemo
 

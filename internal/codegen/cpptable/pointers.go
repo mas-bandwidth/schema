@@ -358,7 +358,13 @@ func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 		g.emitPack(st)
 	}
 	for _, st := range members {
-		if g.isVar(st.Name) {
+		// a map's generated ENTRY takes no builder and no public surface: it
+		// is §2.8's one exception to §7's "a root is any table", reached only
+		// through the map that generates it, so it gets no Open, no Cook, no
+		// Save and no Load of its own. Its walk — Number, PackMeasure, Pack
+		// and the body codecs — is emitted above and is the whole of what it
+		// carries.
+		if g.isVar(st.Name) && !st.IsMapEntry() {
 			g.emitBuilderAndPublicSurface(st)
 		}
 	}
