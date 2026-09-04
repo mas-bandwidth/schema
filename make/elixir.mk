@@ -153,8 +153,6 @@ endef
 # AND on the binary-call column — each named in the audit's own output, so a
 # column that lost its teeth is found on its own. A gate that cannot go red is
 # not a gate.
-CONFORMANCE_NEGATIVE_ELIXIR_ALLOC := build/elixir-alloc-negative
-ELIXIR_ALLOC_SED := -e 's|  fields_%s(data, %s(), report)\\n|  _ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 1024)\\n  fields_%s(data, %s(), report)\\n|'
 
 .PHONY: tables-elixir-alloc-negative-control
 tables-elixir-alloc-negative-control:
@@ -176,8 +174,6 @@ ELIXIR_FUZZ_N ?= 20000
 # RETAINS — every generated load caches a copy of its bytes under a fresh key
 # and never evicts, the shape a leak in generated code takes on the BEAM — so
 # both floors rise, and the soak must name each arm.
-CONFORMANCE_NEGATIVE_ELIXIR_SOAK := build/elixir-soak-negative
-ELIXIR_SOAK_SED := -e 's|  fields_%s(data, %s(), report)\\n|  :erlang.put({:cache, :erlang.unique_integer()}, :binary.copy(data))\\n  fields_%s(data, %s(), report)\\n|'
 
 .PHONY: tables-elixir-soak-negative-control
 tables-elixir-soak-negative-control:

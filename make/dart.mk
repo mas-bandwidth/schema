@@ -82,7 +82,6 @@ CONFORMANCE_NEGATIVE_DART = build/conformance-negative-dart
 conformance-negative-control-dart:
 	@echo "conformance-negative-control-dart: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#514)"
 
-
 # ---- THE DART TABLES GATES beside the conformance matrix ----
 #
 # THE SOAK gates on CORRECTNESS under reuse: every record round-tripped through
@@ -129,16 +128,10 @@ tables-dart-soak-negative-control:
 # is seconds, and the number is a price per record either way.
 DART_ALLOC_ITERATIONS ?= 400000
 DART_ALLOC_TEXT_ITERATIONS ?= 200
-DART_GC_FLAGS = --verbose_gc --new_gen_semi_initial_size=1 --new_gen_semi_max_size=1
-DART_GC_COUNT = awk '/gcgate: steady phase begins/{on=1;next} /gcgate: steady phase ends/{on=0} on && /Scavenge/{n++} END{print n+0}'
 
 .PHONY: tables-dart-alloc
 tables-dart-alloc:
 	@echo "tables-dart-alloc: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#514)"
-
-# The AOT runtime beside the pinned SDK's `dart`; a bare DART=dart is a PATH
-# lookup — CI's setup-dart puts both on the PATH — so DART_AOT is bare too.
-DART_AOT ?= $(if $(findstring /,$(DART)),$(dir $(DART))dartaotruntime,dartaotruntime)
 
 # THE ALLOCATION GATE'S NEGATIVE CONTROL: two plants, one object per record
 # each — a TableReport, the class the code under test could most plausibly

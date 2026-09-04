@@ -559,8 +559,6 @@ func describeBytes(b []byte, refused bool) string {
 	return fmt.Sprintf("%d bytes", len(b))
 }
 
-// wireFailure writes the mutant where a person can pick it up and prints the
-// one command that replays it alone.
 // mutantHexLimit is how much of a mutant rides in the failure message itself.
 // A CI log is the only copy of a red a person outside the run ever sees, so the
 // bytes go in it. A corpus wire reaches 200 KB and a log line is not a file, so
@@ -568,14 +566,17 @@ func describeBytes(b []byte, refused bool) string {
 // The whole mutant is on disk at --failed either way.
 const mutantHexLimit = 4096
 
+// wireFailure writes the mutant where a person can pick it up, prints what
+// reproduces it, and prints the one command that replays it alone.
 func wireFailure(opts wireFuzzOptions, mut *wireMutant, passed int, verdict, detail string) error {
 	if err := os.MkdirAll(filepath.Dir(opts.failed), 0o755); err == nil {
 		_ = os.WriteFile(opts.failed, mut.data, 0o644)
 	}
-	// THE BYTES AND THE RUN SEED RIDE IN THE MESSAGE (issue #368). A red whose
-	// only record is a file under build/ is a red nobody can reproduce from
-	// the log, and a run whose seed is not stated is a search rather than a
-	// seek. Both go here, on every failure.
+	// THE BYTES AND THE RUN SEED RIDE IN THE MESSAGE. Certification runs on
+	// hardware nobody here owns, so a red whose only record is a file under
+	// build/ is a red nobody can reproduce from the log, and a run whose seed
+	// is not stated is a search rather than a seek. Both go here, on every
+	// failure.
 	sum := sha256.Sum256(mut.data)
 	var bytesLine string
 	if len(mut.data) <= mutantHexLimit {
