@@ -812,3 +812,31 @@ func TestTableRefusalsNameTheIdTableWire(t *testing.T) {
 		}
 	}
 }
+
+// A DIAGNOSTIC ABOUT THE VALUE POINTS AT THE VALUE (#447 F-05). The
+// float-expression refusals carried the DECLARATION's position, so the caret
+// landed on column 1, while a range refusal on the same kind of line points at
+// the offending value. Reverting valuePos turns this red at column 1.
+func TestConstValueDiagnosticsPointAtTheExpression(t *testing.T) {
+	for _, tc := range []struct {
+		name, src, want string
+		col             int
+	}{
+		{"integer type, float expression", "package t\nconst C int32 = 1.5\n", "but a float expression", 17},
+		{"float32 overflow", "package t\nconst D float32 = 1.0e300\n", "does not fit its declared type float32", 19},
+	} {
+		errs := runUnit(t, map[string]string{"Bad.schema": tc.src})
+		if len(errs) != 1 {
+			t.Errorf("%s: want 1 diagnostic, got %v", tc.name, errs)
+			continue
+		}
+		got := errs[0].Error()
+		if !strings.Contains(got, tc.want) {
+			t.Errorf("%s: unexpected diagnostic %s", tc.name, got)
+			continue
+		}
+		if !strings.HasPrefix(got, fmt.Sprintf("Bad.schema:2:%d:", tc.col)) {
+			t.Errorf("%s: the caret is not on the value (want column %d): %s", tc.name, tc.col, got)
+		}
+	}
+}

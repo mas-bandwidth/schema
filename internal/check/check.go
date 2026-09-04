@@ -236,6 +236,16 @@ func (c *checker) resolveConst(name string) *ir.Const {
 
 	isFloatType := e.decl.Type == "float32" || e.decl.Type == "float64"
 	kind := c.exprKind(e.decl.Expr)
+	// A DIAGNOSTIC ABOUT THE VALUE POINTS AT THE VALUE. The three below say
+	// something about the expression rather than about the name, and they
+	// carried the declaration's own position, so the caret landed on column 1
+	// while a range refusal on the same line points at the offending value
+	// (#447 F-05). A missing expression keeps the declaration's position:
+	// there is nothing else to point at.
+	valuePos := e.decl.Pos
+	if e.decl.Expr != nil {
+		valuePos = e.decl.Expr.ExprPos()
+	}
 
 	if kind == kindFloat || isFloatType {
 		v, ok := c.evalFloat(e.decl.Expr)
@@ -244,7 +254,7 @@ func (c *checker) resolveConst(name string) *ir.Const {
 			return nil
 		}
 		if math.IsInf(v, 0) || math.IsNaN(v) {
-			c.errf(e.decl.Pos, "constant %s is not a finite float", name)
+			c.errf(valuePos, "constant %s is not a finite float", name)
 			e.state = 3
 			return nil
 		}
@@ -256,13 +266,13 @@ func (c *checker) resolveConst(name string) *ir.Const {
 			out.Storage = "float64"
 		}
 		if e.decl.Type == "float32" && math.Abs(v) > math.MaxFloat32 {
-			c.errf(e.decl.Pos, "constant %s value %g does not fit its declared type float32", name, v)
+			c.errf(valuePos, "constant %s value %g does not fit its declared type float32", name, v)
 			e.state = 3
 			return nil
 		}
 		if e.decl.Type != "" && !isFloatType {
 			// integer-typed constant with a float expression
-			c.errf(e.decl.Pos, "constant %s has integer type %s but a float expression", name, e.decl.Type)
+			c.errf(valuePos, "constant %s has integer type %s but a float expression", name, e.decl.Type)
 			e.state = 3
 			return nil
 		}
