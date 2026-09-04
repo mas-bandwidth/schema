@@ -330,6 +330,48 @@ table Head
 	}
 }
 
+// TestListOfTablesReachesTheirEdges: a list of TABLES is a by-value edge, so
+// each element is descended for the pointer slots inside it before the next
+// element is reached (§2.9, §3.1). It is the `list_nested` shape at one depth.
+func TestListOfTablesReachesTheirEdges(t *testing.T) {
+	const src = `package deep
+
+table Leaf { tick uint32 }
+
+table Row  { leaf *Leaf }
+
+table Sheet { rows []Row }
+`
+	m := listModel(t, src)
+	inst := place(t, m, "Sheet", `{ "rows": [ { "leaf": { "&node": 1, "tick": 7 } }, { "leaf": { "&node": 1 } }, { "leaf": null } ] }`)
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back := m.New(m.Lookup("Sheet"))
+	var r tabletext.Report
+	if ok, err := tablewire.Decode(m, back, wire, &r); !ok || err != nil || !r.Silent() {
+		t.Fatalf("decode: ok=%v err=%v %+v", ok, err, r)
+	}
+	rows := fieldByName(t, back, "rows")
+	if rows.Count != 3 {
+		t.Fatalf("three rows ride: %d", rows.Count)
+	}
+	// ONE NODE reached from inside two elements, and a null in the third
+	a := rows.Elems[0].Tab.Fields[0].Cell.Node
+	b := rows.Elems[1].Tab.Fields[0].Cell.Node
+	if a == nil || a != b {
+		t.Fatal("a node named from two elements is one node (§2.9, §3.1)")
+	}
+	if rows.Elems[2].Tab.Fields[0].Cell.Node != nil {
+		t.Fatal("a null pointer inside an element stays null")
+	}
+	again, err := tablewire.Encode(m, back)
+	if err != nil || !bytes.Equal(again, wire) {
+		t.Fatal("the round trip did not reproduce the wire")
+	}
+}
+
 func fieldByName(t *testing.T, inst *tabletext.Instance, name string) *tabletext.Field {
 	t.Helper()
 	for i := range inst.Fields {
