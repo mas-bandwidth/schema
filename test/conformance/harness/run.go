@@ -476,6 +476,7 @@ func describeDiff(name string, want, got []byte) string {
 // ABSENT one — cannot lose a failure recorded against it and the success footer
 // cannot print beside one.
 func report(w io.Writer, langs []string, results map[string]map[string]*result) bool {
+	var b strings.Builder
 	// wide enough for "pass 111/111 +4a", the widest cell the matrix can print
 	width := 18
 	for _, s := range surfaces {
@@ -483,39 +484,40 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 			width = len(s) + 2
 		}
 	}
-	fmt.Fprintf(w, "\nTABLES CONFORMANCE — surface x language\n\n")
-	fmt.Fprintf(w, "%-14s", "surface")
+	b.WriteString("\nTABLES CONFORMANCE — surface x language\n\n")
+	fmt.Fprintf(&b, "%-14s", "surface")
 	for _, l := range langs {
-		fmt.Fprintf(w, "%-*s", width, l)
+		fmt.Fprintf(&b, "%-*s", width, l)
 	}
-	fmt.Fprintln(w)
-	fmt.Fprintf(w, "%s\n", strings.Repeat("-", 14+width*len(langs)))
+	fmt.Fprintf(&b, "\n%s\n", strings.Repeat("-", 14+width*len(langs)))
 	for _, s := range surfaces {
-		fmt.Fprintf(w, "%-14s", s)
+		fmt.Fprintf(&b, "%-14s", s)
 		for _, l := range langs {
 			r := results[l][s]
+			var cell string
 			switch {
 			case len(r.failures) > 0 && r.absent:
 				// the REFERENCE leg's absence: what it did, and what that is.
 				// "FAIL 0/13" would claim it ran the surface and answered
 				// nothing, and it never ran the surface at all.
-				fmt.Fprintf(w, "%-*s", width, "FAIL absent")
+				cell = "FAIL absent"
 			case len(r.failures) > 0:
-				fmt.Fprintf(w, "%-*s", width, fmt.Sprintf("FAIL %d/%d", r.pass, r.total))
+				cell = fmt.Sprintf("FAIL %d/%d", r.pass, r.total)
 			case r.absent:
-				fmt.Fprintf(w, "%-*s", width, "absent")
+				cell = "absent"
 			case r.missing > 0:
 				// what it answered, and what it said it cannot: the cell is the
 				// completion tracker, so an absence stays visible rather than
 				// being rounded away into a smaller total
-				fmt.Fprintf(w, "%-*s", width, fmt.Sprintf("pass %d/%d +%da", r.pass, r.total-r.missing, r.missing))
+				cell = fmt.Sprintf("pass %d/%d +%da", r.pass, r.total-r.missing, r.missing)
 			default:
-				fmt.Fprintf(w, "%-*s", width, fmt.Sprintf("pass %d/%d", r.pass, r.total))
+				cell = fmt.Sprintf("pass %d/%d", r.pass, r.total)
 			}
+			fmt.Fprintf(&b, "%-*s", width, cell)
 		}
-		fmt.Fprintln(w)
+		b.WriteString("\n")
 	}
-	fmt.Fprintln(w)
+	b.WriteString("\n")
 
 	var lines []string
 	for _, l := range langs {
@@ -527,9 +529,12 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 	}
 	sort.Strings(lines)
 	if len(lines) > 0 {
-		fmt.Fprintf(w, "FAILURES\n%s\n\n", strings.Join(lines, "\n"))
-		return false
+		fmt.Fprintf(&b, "FAILURES\n%s\n\n", strings.Join(lines, "\n"))
+	} else {
+		b.WriteString("tables conformance: every registered surface passes\n")
 	}
-	fmt.Fprintf(w, "tables conformance: every registered surface passes\n")
-	return true
+	// the matrix goes out in one write; a stdout that cannot be written to is
+	// not a verdict this gate can improve on
+	_, _ = io.WriteString(w, b.String())
+	return len(lines) == 0
 }
