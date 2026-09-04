@@ -106,7 +106,7 @@ When #366 closes — full feature parity across all nine languages, each at its
 language's performance floor — the schema column is re-scored from those two,
 not by hand.
 
-Six rows where all five columns agree are listed at the end rather than
+Four rows where all five columns agree are listed at the end rather than
 shown. Editor support and big-endian hosts are not rows, because neither
 could be sourced across five columns.
 
@@ -198,9 +198,8 @@ could be sourced across five columns.
 
 ### Agreed, not shown
 
-All five have enums, a discriminated union, length-prefixed variable-length
-payloads, contiguous scalar arrays, a code generator producing native types,
-and comments invisible to the wire.
+All five have enums, a discriminated union, a code generator producing native
+types, and comments invisible to the wire.
 
 ## Where they are ahead
 
