@@ -575,8 +575,9 @@ That rule has a consequence the rest of this page is held to: **everything
 must recurse perfectly.** Every slot that can hold a value can hold a table,
 at every depth, in every form (wire, text, cook, block): a table by value, a
 pointer to a table, an array of tables, an array of pointers, an array of
-unions, a union whose arms are tables, a keyed array of tables, an optional
-table, an optional array of tables, a map of tables
+unions, a union whose arms are tables — and, seen from the other side, a
+union whose arm is any field type at all (§2.6) — a keyed array of tables,
+an optional table, an optional array of tables, a map of tables
 (§2.8). A slot that
 refuses a table today is a gap, named in §15, not a design.
 
@@ -632,9 +633,10 @@ compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
 - **An array may be ENUM-KEYED** (§2.4). `ships [ShipType]ShipConfig` has
   exactly one slot per NAMED variant, keyed by the variant, and nothing for
   `None`.
-- **A union arm may be a table** (§2.6), which is what makes an evolvable
-  message set expressible, and **an array of unions** is a collection of
-  them — a batch of messages is `[..N]ToolBody`.
+- **A union ARM IS A FIELD LINE** (§2.6): an arm's type is any type a
+  field's is, a `table` included, which is what makes an evolvable message
+  set expressible — and **an array of unions** is a collection of them, so a
+  batch of messages is `[..N]ToolBody`.
 - **A table may hold a MAP** (§2.8). `ships map[string(32)]ShipConfig` is a
   lookup by key over entries the wire carries as a sorted array of one
   generated `{ key, value }` table; it spends no wire kind, and it makes its
@@ -886,6 +888,9 @@ any scalar, and a bounded array of those. It is refused, by name, on:
   as an absent optional does;
 - **a union** — its `None` arm IS the absence, and an empty union already
   elides;
+- **a union ARM** — the same rule one level in (§2.6): selection IS the
+  arm's presence, so `?` on an arm would be a second presence bit under a
+  framing that has nowhere to put it, and `None` says what it would say;
 - **a string or `bytes`** — each already carries a length whose zero is
   emptiness, and the length rides inside a framing that never elides a
   present field, so there is no "present and empty" left to buy. Wrap it
@@ -1189,7 +1194,7 @@ blob beside a caption, a blob past 64 KiB, a shared blob, and a present blob
 and string of length zero beside null slots, each crossing the wire and the
 cook in the harness, and the text where the form can carry it.
 
-### 2.6 Union arms may be tables
+### 2.6 Union arms are field lines
 
 Inside a TABLE closure a union's arm may name a `table`, not only a
 declared `type`:
@@ -1229,6 +1234,90 @@ carry a nested table, a collection, or anything else a table body holds —
 which is what a message set of documents needs and what a `type`-only
 payload could never express.
 
+**AN ARM IS AN ORDINARY FIELD LINE** (SPEC §4.8), so an arm's type is any
+type a FIELD's is — not only a declared `type` or a `table`:
+
+```
+union Value
+{
+    count   int32 | min = 0, max = 100
+    label   string(64)
+    blob    bytes(16)
+    samples [..8]float32
+    mode    Mode
+    caps    Caps
+    offset  Vec3
+    doc     OpenDocument
+    owner   *Player
+    origin  Origin
+}
+```
+
+The admitted set is the field grammar's, with nothing added: a scalar with
+its bounds, a compressed float, a fixed-point or 128-bit kind, an enum, a
+`flags` mask, `string(N)`, `bytes(N)`, a bounded array `[N]T` or `[..N]T`, a
+POINTER `*T` (a `*bytes` or `*string` buffer included, §2.5), another union,
+a declared `type`, and — inside a table closure — a `table`. **What an arm
+may not be, or carry, is refused because the arm position already spends
+what it would buy**, and each is refused by name (§11):
+
+- **a specified default** — an arm ZERO-ESTABLISHES at selection (SPEC §5),
+  which is the one rule; a default at selection would be its first exception
+  and is a named follow-on (§15);
+- **`?`** — selection IS the arm's presence, and the union's `None` is the
+  absence one level up, so a second presence bit would be two spellings of
+  nothing and a framing case the wire does not have (§2.3 refuses `?` on a
+  union field for the same reason). The named follow-on is in §15;
+- **`was` and `json`** — arms already evolve by name (§5), and the arm's
+  name is its key in the text form (§16.2); each is the field feature one
+  level down and waits for a case (§15);
+- **an enum-keyed array `[E]T`** — a keyed body elides slots by name (§3.2)
+  and its `None` slot wants its rule stated before it is wire, exactly as
+  `[E]*T` and `[E]Body` do (§15);
+- **a `map`** — maps land after 3.0.0 (§2.8);
+- **an `if` guard** — a guard is a body construct, and a union body has no
+  fields to guard.
+
+**Selection is presence, so a set arm ALWAYS rides, whatever it holds**
+(§3). A union FIELD holding `None` elides; a union holding a selected arm
+writes the arm id and the arm's payload under its length even when the
+payload is empty or entirely default — a zero `count`, an empty `label`, an
+all-default `offset`. That is the pointer's and the optional's rule
+(§2.3, §3.1) at an arm, and for their reason: otherwise "no arm" and "this
+arm, with nothing to say" would be one value on the wire.
+
+**The storage is the FIELD's storage, overlaid.** A scalar, enum, `flags`,
+pointer, fixed array, nested union, `type` or `table` arm is ONE member and
+sits in the overlay as itself. An arm whose field storage needs a COMPANION
+— a `string(N)` or `bytes(N)` and its length, a counted array and its count
+— rides as one member of an unnamed struct type, `value` beside
+`value_length` or `value_count`, because the pair must occupy ONE slot of
+the overlay and an anonymous struct is an extension the dialect refuses
+(§13.9). In C++ that reads:
+
+```
+union
+{
+    int32_t count;
+    struct { char value[65]; int32_t value_length; } label;
+    struct { float value[8]; int32_t value_count; } samples;
+    Vec3 offset;
+    TableRef owner;
+};
+```
+
+No generated NAME is claimed for the pair — the struct type is unnamed, so
+§11's name claims are untouched — and every arm stays trivially copyable, so
+the union does too.
+
+**Bounds behave as a field's.** An arm's `| min`/`| max`, a compressed
+float's range and resolution, a string's or an array's capacity are the
+field's own facts and act where a field's act: the write refuses a value its
+storage invariant cannot hold, and a load clamps an out-of-range value to
+the READER's bounds and counts it (§4). An arm's declared type and its
+bounds are what the BASELINE judges (§18.1), because the wire cannot report
+every change of them (below, and §4.1).
+
 **An ARRAY OF UNIONS is a union slot per element.** `[..N]ToolBody` and
 `[N]ToolBody` are the two bounded spellings, and each element is what a
 `ToolBody` field is — a tag beside the arms, `None` until an arm is selected —
@@ -1248,36 +1337,72 @@ stated before it is wire, as `[E]*T` does.
 
 **Backend status for this section: the C++ REFERENCE and the TOOL carry it;
 every other backend refuses a unit that declares one, by name** (§11), and
-the ports are a named follow-on (§15). The corpus holds the form at THREE
+the ports are a named follow-on (§15) — the table-arm form and the
+general-arm form each their own row. The corpus holds the form at THREE
 DEPTHS — `tables/messages` nests a union of tables inside a table arm inside a
 union of tables, and an ARRAY of unions at each of those depths (`history` in
 the root, `pending` inside a transaction, `origins` inside an insert) — and a
 union with a VARIABLE arm (`tables/stream`), and every instance crosses the
 wire, the text and the cook in the harness; the message evolution pair
 (`test/tables/M1.schema`, `M2.schema`) inserts an arm first, removes one and
-grows a third, both directions. Every leg that lacks the form answers ABSENT
-for those cases, so its fixed-class pass is untouched.
+grows a third, both directions. **The GENERAL arms ride at those same three
+depths**: a scalar, string, enum, flags, bytes, fixed-array, counted-array
+and nested-union arm across `ToolBody`, `EditBody` and `Origin` — so an
+array-of-unions element carries a scalar arm, and a union arm carries a
+union — and a POINTER arm in `tables/stream`, whose node is shared with the
+arrays of pointers beside it so one node is named from an arm and from a
+slot at once. Every leg that lacks the form answers ABSENT for those cases,
+so its fixed-class pass is untouched.
 
-**A union with a table arm is a TABLE-CLOSURE construct, and it has no packet
-wire.** It is emitted beside the tables — in C++, in the Table header after the
-tables its arms name, never in the packet header — it projects nothing into the
-protocol id (adding a table arm moves no packet byte), and a `type` body that
-holds one is refused by name, as is a union with a table arm that no table
-reaches (§11). A table holding one has no BLOCK form, by §19's standing rule
-for every union in a block closure.
+**A union with a table arm, or with any arm that is not a declared `type`,
+is a TABLE-CLOSURE construct, and it has no packet wire.** It is emitted
+beside the tables — in C++, in the Table header after the tables its arms
+name, never in the packet header — it projects nothing into the protocol id
+(adding such an arm moves no packet byte), and a `type` body that holds one
+is refused by name, as is such a union that no table reaches (§11). A table
+holding one has no BLOCK form, by §19's standing rule for every union in a
+block closure. What the LANGUAGE says about an arm is one rule on both wires
+— an arm is a field line — and the packet wire's encoding of a general arm
+is stated where the packet union is (SPEC §4.8): the arm's payload is the
+field encoding its type already has there, and no byte is added. Carrying
+that form in the nine backends is the named follow-on (§15).
 
 - **A union declared for the TYPE wire keeps refusing table arms.** Types
   are value semantics and their wire is positional; a table arm is a
   table-closure construct and is refused by name outside one.
-- **Mode derivation runs through arms** (§2.2): an arm that is a
-  variable-length table makes the union's holder variable-length. A union
-  of fixed-size table arms leaves its holder fixed-size, and the zero-cost
-  gate holds.
-- **On the wire an arm's body is framed exactly as a nested table's is**
-  (§3, kind `15`): `arm id (u16)`, then `L`, then `L` bytes of table body.
-  A `type` arm and a `table` arm are the same three bytes of framing, so a
-  reader needs no new rule and an arm may change between the two forms
-  without the framing moving.
+- **Mode derivation runs through arms** (§2.2): an arm that is a POINTER,
+  or that is a variable-length table, makes the union's holder
+  variable-length. A union of fixed-size by-value arms leaves its holder
+  fixed-size, and the zero-cost gate holds.
+- **A set arm is an EDGE the authoring walks descend** (§3.1): the
+  numbering, the pack and the cook enter a union's set arm to reach the
+  pointer fields inside it, and a POINTER arm is itself the edge — the arm
+  takes the node's index exactly as a pointer field does, so a node named
+  by an arm and by a field is one node, written once.
+- **On the wire every arm rides under ONE framing** (§3, kind `15`): the
+  arm id, then `L`, then `L` bytes of arm payload — where the payload is
+  exactly the bytes a FIELD of the arm's type puts after its own framing
+  prefix, the arm's `L` standing in for the field's own length where that
+  kind has one and framing the fixed width where it does not. §3's kind-15
+  row states the payload per type. A `type` arm and a `table` arm are
+  byte-identical to each other and to what they always were, so an arm may
+  change between those two forms without the framing moving, and a skipper
+  needs no new rule: the skip is the arm id, then `L`, whatever the arm's
+  type.
+- **An arm carries no kind byte, so an arm's TYPE is judged off the wire.**
+  A reader that meets an arm it names reads the payload as the type IT
+  declares. For a fixed-width arm — every scalar, an enum's `u16`, a
+  `flags` `u64`, a pointer's node index — an `L` that is not that width is
+  a KIND MISMATCH (§4): the arm is skipped by `L`, the union reads `None`,
+  `kind_mismatch` counts, and the parent reads on, exactly as a field whose
+  kind moved does. For a length-shaped arm a damaged payload is that arm's
+  own framing damage, bounded by `L`: the union reads `None`, `malformed`
+  counts, and the parent reads on past `L`. What is left after those two —
+  an arm retyped under the same width, `int32` for `float32` or for
+  `fixed(16, 16)` — is the SILENT class (§4.1), and the baseline is what
+  refuses it (§18.2). That is the one place an arm is poorer than a field,
+  whose own kind byte rides, and it is the price of the framing not moving:
+  a per-arm kind byte would have re-encoded every union already written.
 - **A backend without a native union may allocate for the arm** (the
   ladder, above): the carve-out is the language's, not the table's.
 
@@ -1919,7 +2044,7 @@ schema's codebase:
   | `12` string | `L`, then `L` bytes. No terminator; no encoding imposed |
   | `13` table | `L`, then `L` bytes of table body (fields, then the u16 zero terminator) |
   | `14` array | `L`, then the array body: `element kind (u8)`, `N`, then the elements |
-  | `15` union | `arm id (u16)`, and when it is not 0, `L` then `L` bytes of arm body |
+  | `15` union | `arm id (u16)`, and when it is not 0, `L` then `L` bytes of ARM PAYLOAD (below) |
   | `16` enum-keyed array | `L`, then the body: `element kind (u8)`, `N` = the number of SLOTS PRESENT, then N pairs of `variant id (u16)`, `L (u32)`, `L` bytes of element (§3.2) |
   | `17` pointer index | 4 bytes, the u32 node index (§3.1) |
   | `18` i128, `19` u128 | 16 bytes: the low 64-bit half, then the high half — two's complement for `18`; little-endian throughout, which is the type wire's own order for the family (SPEC.md §4.3) |
@@ -1952,9 +2077,38 @@ schema's codebase:
   **The union carries NO outer length** — its `arm id` sits where the other
   three containers put theirs, and the length that follows frames the arm
   alone. It is the one payload whose framing a skipper has to know (below).
-  An arm's body is a table body whether the arm names a declared `type` or
-  a `table` (§2.6): fields, then the u16 zero terminator, the same bytes a
-  kind `13` payload carries.
+
+  **THE ARM PAYLOAD IS THE ARM'S FIELD TYPE UNDER THE ARM'S `L`** (§2.6):
+  exactly the bytes a FIELD of that type puts after its own framing prefix,
+  the arm's `L` standing in for the field's own length where that kind has
+  one and framing the fixed width where it does not. One rule covers the
+  set, and this is it applied:
+
+  | an arm of | `L` | the `L` bytes |
+  |---|---|---|
+  | a declared `type` or a `table` | the body's length | the table body: fields, then the u16 zero terminator — the same bytes a kind `13` payload carries, and byte-identical to what a table arm always was |
+  | a scalar, a fixed-point or a 128-bit kind | the kind's width | that kind's row above |
+  | an `enum` | `2` | the u16 hash of the variant's name |
+  | a `flags` mask | `8` | the u64 mask |
+  | a `string(N)` | the length | the bytes, no terminator — a kind `12` payload without its own `L` |
+  | a `bytes(N)` | `5 + the length` | the array body: element kind `6`, `N`, then the bytes |
+  | an array `[N]T` / `[..N]T` | the body's length | the array body: element kind, `N`, then the elements — a kind `14` payload without its own `L` |
+  | a pointer `*T` | `4` | the u32 node index, null as `0` (§3.1) |
+  | a union | `2`, or `2 + 4 + the inner arm's L` | the union payload in its place: the inner arm id, then its own `L` and payload when the id is not 0 |
+
+  **An arm's payload never elides**: a union field holding `None` elides
+  whole (below), and a SET arm always rides, whatever it holds (§2.6), so
+  `L = 0` is an empty payload and not an absence — an empty `string` arm, a
+  `bytes` arm of length zero writing its five-byte body, a fixed array of
+  defaults writing all its elements.
+
+  **The arm id is the only discriminator an arm has.** No per-arm kind byte
+  rides, so a reader that names the arm reads the payload as the type IT
+  declares: an `L` that is not a fixed-width arm's declared width is a KIND
+  MISMATCH — the arm skips by `L`, the union reads `None`, `kind_mismatch`
+  counts (§4) — and a damaged length-shaped payload is that arm's own
+  framing damage, bounded by `L`. An arm retyped under the SAME width is
+  the silent class, which is §18's (§2.6, §4.1).
 
   **Spellings that add no row, and the one way they differ.** A `?T`
   optional field is framed exactly as the non-optional `T` (§2.3), so the
@@ -2157,7 +2311,10 @@ it; the pointer fields INSIDE an arm are indices like any other.
   order, array elements in index order, and descending through every
   by-value edge there is — a nested table, an element of a bounded or
   enum-keyed array, a member of a true `if` group, a present optional's
-  value, a union's set arm — to reach the pointer fields inside them. A
+  value, a union's set arm — to reach the pointer fields inside them. **A
+  set arm that IS a pointer is a pointer edge itself** (§2.6), visited where
+  the union field sits in declaration order, so a node reached from an arm
+  and from a field is one node under one index. A
   node takes its index the first time it is reached and never again.
 - **A field the writer does not write is not an edge.** A pointer under a
   false guard, or inside an absent optional, is not visited and its
@@ -2614,7 +2771,12 @@ tolerance is the versioning model:
   mismatch** (`16` against `14`, §3.2), which is exactly why the keyed body
   has a kind of its own — **and so is an array whose ELEMENT kind differs**,
   which is the same event one level in (§3): `[3]int32` read into a
-  `[3]float32` field is skipped and counted, never reinterpreted.
+  `[3]float32` field is skipped and counted, never reinterpreted. **An ARM
+  is the one place this vocabulary is coarser still**: an arm carries no
+  kind byte, only its `L` (§3), so a fixed-width arm whose payload length is
+  not its declared width is a kind mismatch — the arm skips, the union
+  reads `None`, the count fires — while an arm retyped under the SAME width
+  is silent, and §18's baseline is what refuses it (§2.6, §4.1).
 - **A changed array BOUND** (a literal, a constant, or an `E.Max`
   expression that moved): the array still loads, and the bound is not part
   of identity — a field is its name hash and its kind, and neither carries
@@ -2729,7 +2891,7 @@ change data, or add a new field and leave the old one alone.
 
 ### 4.1 The silent class, in full
 
-Almost every edit lands in the read report. **Exactly four do not**, and
+Almost every edit lands in the read report. **Exactly five do not**, and
 naming the whole set is the point of this subsection — a person reading a
 save game that came back wrong needs the whole of it, and the third member is
 the one the committed baseline (§18) exists to refuse:
@@ -2756,6 +2918,17 @@ the one the committed baseline (§18) exists to refuse:
    value reads back at the new scale with no counter to fire. It is the
    first member's shape at a scalar: the same bytes now mean something
    else.
+5. **A union ARM's type changed under the same width.** An arm is a field
+   line (§2.6) and its payload rides under the arm's `L` with NO kind byte
+   (§3), so the length is the whole of what a reader can check: an arm
+   retyped `int32` to `float32`, or to `fixed(16, 16)`, is four bytes
+   either way and reads back as a different number with no counter to fire.
+   It is the third member's shape one level in — the arm still selects, and
+   what rides inside it now means something else — and every arm edit the
+   `L` CAN see (a width that moved, a body where a scalar was) is a kind
+   mismatch instead, counted (§4). A per-arm kind byte would have closed
+   this the way kinds `16` and `17` closed theirs, and it would have
+   re-encoded every union already written, so the baseline holds it.
 
 Everything else is either reported or safe. Fields may be added, removed,
 reordered and renamed under `was`; enum variants and union arms may be
@@ -2791,17 +2964,17 @@ directions — the value comes back, the report is silent, and the silence is
 honest, because nothing was lost on the way in. The loss, if it comes, is
 on the way OUT: a reader whose guard is false elides the field on its next
 save. So it is not a silent decoding edit, and the enumeration above stays
-at four; it is a round-trip hazard, and a tool that loads, edits and stores
+at five; it is a round-trip hazard, and a tool that loads, edits and stores
 a file — the save-game cycle §18 exists for — should be read as carrying
-it. A person whose file came back wrong needs the four above; a person whose
+it. A person whose file came back wrong needs the five above; a person whose
 tool rewrote a file needs this one.
 
-Each of the four has its own answer:
+Each of the five has its own answer:
 
 - **Flags** are answered by DISCIPLINE, stated as law: **append at the end,
   never insert or reorder**, and retire a name in place rather than freeing
   its bit.
-- **All four** are answered by MACHINERY, opt-in: the committed tables
+- **All five** are answered by MACHINERY, opt-in: the committed tables
   baseline (§18) is the history the compiler does not keep, and it
   refuses every one of them until the baseline moves with a recorded reason. It
   refuses the spelling changes above too, at compile time, ahead of the
@@ -2826,6 +2999,8 @@ only.
 | a declared RANGE tightened — a maximum lowered, a minimum raised, or a range declared where the field had none | `clamped` | **warns** — the `min=`/`max=` tokens are extents like a capacity (§18.1) | **moves** |
 | a fixed field's `F` moved under the same storage width | silent — the kind carries the width and the signedness, and `F` is a declaration-side fact like a resolution (§3) | **refuses** — the `frac=` token is a fixed fact (§18.1) | **moves** |
 | an `enum`'s or a `union`'s variant order or names moved | `unknown` for a name this reader lacks; a reorder is silent and safe | warns on a removal or a vanished name | **moves** |
+| a union ARM's declared TYPE changed | `kind_mismatch` where the arm's `L` can see it — a moved width, a body where a scalar was; **silent** under the same width (§2.6, §3) | **refuses** | **moves** |
+| a union arm moved between a BODY and a POINTER — `T` to `*T` | `kind_mismatch` or `malformed` for most lengths, and **silent for a four-byte body**, which a node index is indistinguishable from | **refuses** — no kind byte separates the two one level down, which is why this row differs from the FIELD's above | **moves** |
 | a field added, removed or reordered | `unknown` for an id this reader lacks; an absent field defaults | passes; a removal AND an addition in one table in one edit **warn** as the pair a bare rename leaves (§18.2) | **moves** |
 | a field renamed under `was` | silent, and nothing is lost | passes; the edit that ADDS the `was` hints the `json =` pairing, because the wire id survives the rename and the text key does not (§16.4) | no — `was` holds the wire id fixed |
 | a field renamed a SECOND time, the new `was` naming the INTERMEDIATE spelling instead of the first | `unknown` on every old file; the new id was never written to | **refuses** — `was` names the first wire name, forever (§5) | **moves** |
@@ -4760,6 +4935,13 @@ storage. Without those a walker can name the arm a value holds and can
 neither read the tag nor enter the payload, which stops every generic
 walk — the text form (§16) among them — at the union. Arms are indexed
 `[0, enum_max]`, and index 0 is the EMPTY arm, which carries no payload.
+**An arm that is not a declared `type` or `table` carries a FIELD
+descriptor in the payload's place** — the same `TableFieldInfo` a field of
+that type would carry, its offsets taken within the union's storage — so a
+generic walk meets an arm's kind, width, bounds, capacity and `_length` or
+`_count` companion where it meets a field's, and the arm column needs no
+second vocabulary. Exactly one of the two is non-NULL on a set arm; both
+are NULL at index 0.
 
 **A flags field carries its BIT NAMES**: a bit-index→name function bounded
 by **the highest declared BIT INDEX** — not a count, so a walker loops
@@ -4954,10 +5136,13 @@ struct ViewVariant          // one enum variant, one flags bit, one union arm
     uint16_t id;            // the table-wire id (§5); 0 for a flags bit, and 0
                             // throughout a vocabulary no table closure reaches
                             // (§8.2)
-    const char * payload_name;      // a union arm's payload TYPE name, else NULL
+    const char * payload_name;      // a union arm's TYPE as declared — a record's
+                                    // name, or a general arm's spelling
+                                    // ("int32", "string(64)", "*Chunk"); else NULL
     const TableTypeInfo * payload;  // that payload's descriptor — never NULL for
-                                    // a declared payload (§8.2); NULL on tag 0
-                                    // and on an enum or flags row
+                                    // an arm naming a `type` or a `table` (§8.2);
+                                    // NULL on a general arm, on tag 0, and on an
+                                    // enum or flags row
 };
 
 struct ViewVocabulary       // an enum, a flags or a union declaration
@@ -5016,9 +5201,16 @@ const UnitViewInfo * UnitView();
   the same rule §8.1's columns state, in data rather than in functions.
 - **A UNION lists tag 0, the empty arm, then its arms in declared order**
   (SPEC §4.8), each with its payload type's name and that payload's own
-  descriptor. The descriptor is never NULL for a declared payload: every
-  type in the unit has a view (§8.2), so an arm is walkable to its bottom.
-  Tag 0 carries no payload and says so with both columns NULL.
+  descriptor. The name is the arm's type AS DECLARED, so a general arm
+  (§2.6) reports the spelling it was written with — `int32`, `string(64)`,
+  `*Chunk`, `Mode` — and the descriptor is never NULL for an arm that names
+  a `type` or a `table`: every type in the unit has a view (§8.2), so such
+  an arm is walkable to its bottom. **An arm that names no record carries a
+  NULL descriptor and a FIELD row instead**: the same `TableFieldInfo` a
+  field of that type would have, so a walker reads an arm's kind, width,
+  bounds and companions where it reads a field's, and nothing about an arm
+  is spelled twice (§8.1). Tag 0 carries no payload and says so with every
+  column NULL.
 - **A CONSTANT carries its name, its declared storage and its folded
   value** — the one declaration kind with no runtime surface of its own
   before this section. An implicitly typed constant reports the storage it
@@ -5313,6 +5505,7 @@ in build version (§20.5).
   that serve.
 - **Optional fields** (§2.3): `?T` outside a table body; `?` on a pointer
   (already optional); `?` on a union (its `None` IS the absence); `?` on a
+  union ARM (selection is the arm's presence, §2.6); `?` on a
   string or `bytes` (a named follow-on, §15 — the length already carries
   emptiness); `?` on an enum-keyed array (`?[E]T`, a named follow-on — the
   keyed body elides slots by name, §3.2), and `?[..E]T`/`?[A..E]T` under
@@ -5376,13 +5569,26 @@ in build version (§20.5).
   spelling left to refuse. What the view does add to this section is the two
   name claims below — which are refusals of a NAME, not of a construct — and
   one file-name collision, and nothing else.
-- **A `table` union arm outside a table closure** (§2.6), from both sides: a
-  `type` body holding a union with a table arm, and a union with a table arm
-  that no table reaches — a union declared for the type wire takes `type`
-  payloads only, because types are value semantics. And **a union with a
-  table arm under every backend but C++**, refused naming the union and the
-  target: the ports are a named follow-on (§15), and a port that emitted the
-  union would name a table it never declares.
+- **A TABLE-CLOSURE union outside a table closure** (§2.6), from both sides:
+  a `type` body holding one, and one that no table reaches — a union
+  declared for the type wire takes `type` payloads only, because types are
+  value semantics and the general arms have no packet wire yet (SPEC §4.8,
+  §15). The class is a union with a `table` arm and a union with any arm
+  that is not a declared `type` — a scalar, enum, `flags`, `string`,
+  `bytes`, array, pointer or union arm — each refusal naming the arm that
+  makes it one. And **such a union under every backend but C++**, refused
+  naming the union and the target: the ports are a named follow-on (§15) —
+  the table-arm form and the general-arm form each their own row — and a
+  port that emitted the union would name a table it never declares, or
+  overlay storage its fixed-class codecs never met.
+- **On an ARM, because an arm is a field line with a one-of's refusals**
+  (§2.6, SPEC §4.8), each named at the arm: a specified default (an arm
+  zero-establishes at selection, SPEC §5); `?` (selection IS the arm's
+  presence); `was` and `json` (named follow-ons, §15 — arms already evolve
+  by name, and an arm's name is its text key); an enum-keyed array `[E]T`
+  (§3.2's elision by name, the follow-on `[E]*T` and `[E]Body` wait with);
+  a `map` (§2.8); and an `if` guard, which the grammar has no place for in
+  a union body.
 - **An array of unions** (§2.6): the enum-KEYED spelling `[E]Body`, a named
   follow-on (§15) where the bounded `[..N]Body` and `[N]Body` are not; and
   **an array of unions in a table closure under every backend but C++**,
@@ -5941,6 +6147,15 @@ are these rulings, in the owner's words:
   spelling is a plain array, exactly as it holds in a table body.
 - **Union arms as tables** (§2.6): "if you had a set of messages for
   tooling, you'd want to safely evolve those tables / messages."
+- **An arm is a field line** (§2.6, schema#396, 2026-09-04): "Union arms of
+  any field type — ADOPT NOW. An arm becomes an ordinary field line; §4.8's
+  declared-types-only restriction is lifted… No new encoding on either
+  wire." The last clause is what picks the framing: the arm id and the
+  arm's `L` are what a union already writes, so a general arm rides under
+  them and NO per-arm kind byte is spent — which leaves an arm retyped
+  under one width silent, and puts that edit in §4.1's class with the
+  baseline as its guard. A kind byte would have re-encoded every union
+  already written; the ruling's own sentence forecloses it.
 - **The text form** (§16): "the general idea of reading JSON file into a
   table can move into schema… that's not opinionated. but only one table at
   a time? So we separate packing from table reading JSON, the actual
@@ -6789,12 +7004,40 @@ inspects everything in the schema built:
   and the pointer walks descending a variable arm — held to the same
   instances the harness carries, and §6.5's carve-out for a language with no
   native union.
-- **A POINTER ARM — `*T` inside a union.** An arm names a declared `type` or
-  `table` and is framed as a body; a pointer is framed as a node index (§3.1),
-  so an arm that is a pointer would be the one arm whose framing is not a
-  body, and nothing here decides whether it rides under the arm's length as a
-  kind `17` field would, or as an index in the length's place. A table arm
-  that HOLDS a pointer serves today (`tables/stream`).
+- **AN OPTIONAL ARM — `?T` inside a union.** Refused today (§2.6, §11):
+  selection is the arm's presence, so a second presence bit has nowhere to
+  ride under the arm's `L` — an absent optional arm and a present empty
+  string arm would both be `L = 0`. What it would take is one payload shape
+  the wire does not have, a presence byte under the arm's length ahead of
+  the value, and a case to want it: `None` says "no arm" and a payload-free
+  arm would say "this arm, no value", which is the shape the case would
+  actually be asking for.
+- **`was` AND `json` ON AN ARM** (§2.6): an arm rename that keeps the arm
+  id, and an arm key in the text form that is not the arm's name — each is
+  the field feature one level down, and each waits for a case. `= default`
+  ON AN ARM waits with SPEC §5's untaken-branch question: zero at selection
+  is the pinned rule, and a default at selection would be its first
+  exception.
+- **AN ENUM-KEYED ARRAY AS AN ARM — `[E]T` inside a union** (§2.6): a keyed
+  body elides slots by name (§3.2), so its empty end wants stating in arm
+  position exactly as `[E]*T` and `[E]Body` want it in field position, and
+  the three land together or not at all.
+- **GENERAL ARMS ON THE PACKET WIRE** (SPEC §4.8, §2.6): the encoding is
+  stated — an arm rides after the tag as the field encoding its type
+  already has on that wire, a bounded integer in its minimal bits, a string
+  in §4.7's form, and nothing new is encoded — and what waits is the nine
+  backends' packet codecs and one addition to the wire-shape projection:
+  an arm's own field facts must reach the protocol id, or two schemas
+  differing only in an arm's bounds would share one. Until it lands a union
+  with a general arm is a table-closure construct, refused by name outside
+  one (§11).
+- **A UNION WITH GENERAL ARMS IN EVERY OTHER BACKEND** (§2.6): C++ and the
+  tool carry the scalar, enum, `flags`, string, `bytes`, array, pointer and
+  nested-union arms, and every other backend refuses a unit that declares
+  one, by name (§11). What a port needs is the arm payload framing in its
+  union paths — measure, save, load, the descriptors' per-arm field column,
+  the text form's arm-value row, and the walks that descend a pointer arm —
+  held to the corpus instances and hostile rows the harness carries.
 - **THE WIDE KINDS IN EVERY OTHER BACKEND** (§3): the fixed-point family
   and the 128-bit integers ride in the C++ reference and the tool, and each
   port lands them as a row on schema#366 against the same corpus —
@@ -7087,7 +7330,7 @@ Per kind:
 | `[E]T` enum-keyed array | object keyed by VARIANT NAME | `{ "Fighter": {...}, "Bomber": {...} }`; an absent key keeps that slot's defaults; a **repeated variant key is last-wins and counted**, as any duplicate key is; an unknown key is skipped and counted, and **`"None"` is such a key** — it names no slot (§2.4) |
 | nested `type` / `table` | object | the same walk, recursively |
 | `?T` optional | the value, the key absent, or `null` | **presence of the KEY is presence, with `null` the one exception**: a key present sets the field present whatever its value, EXCEPT `null`, which is the absence itself and puts the field back at its declared default (below); an absent key leaves it absent. `ToJson` writes present optionals only. An optional ARRAY (§2.3) is this row over the array's: the key present with `[]` is present-and-empty, and `ToJson` writes a present empty array as `[]` |
-| union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. A `table` arm (§2.6) is the same object form. An ARRAY of unions (§2.6) is an array of this row, a `None` element as `{}` in its place |
+| union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. A `table` arm (§2.6) is the same object form. **The arm's VALUE takes the arm's own row of this table**, because an arm is a field line: a scalar arm is a number (`{ "count": 7 }`), a string arm a string, an enum arm its variant name, a `flags` arm its name array, an array arm an array, a pointer arm the pointee's object or `null` — the value rules one key down. An arm value of the wrong shape is `malformed`, not a tolerated stranger: a one-of NAMES its arm, so the value's shape is not a guess. An ARRAY of unions (§2.6) is an array of this row, a `None` element as `{}` in its place |
 | pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer. A node named MORE THAN ONCE is defined once under `&node`, with its fields, and named by `&node` alone after — §16.7's one construct, and the only thing this form adds for the variable class. An ARRAY of pointers (§2.1) is an array of this row, and a slot may define or name a node any other slot or field does |
 | `*bytes` | string, base64, or `null` | the blob in place, as `bytes(N)` spells its bytes, with NO bound to clamp against; `""` is a present blob of length zero and `null` is a null reference (§2.5). A body that is not base64 is `kind_mismatch`, the reference left null |
 | `*string` | string, or `null` | the blob's bytes as a string, with no bound; the same two values at the empty end |
@@ -7726,12 +7969,13 @@ where implementations drift apart.
 
 **An optional committed projection of a unit's table closure, and the check
 that refuses the edits the wire cannot report.** §4.1 names those edits:
-exactly four — a changed specified default, a moved flags variant, a fixed
-field's F moved under one kind, and a referent that cannot stand in for the
+exactly five — a changed specified default, a moved flags variant, a fixed
+field's F moved under one kind, a union ARM's type changed under one width,
+and a referent that cannot stand in for the
 one it replaces. The compiler retains
 no history and cannot see any of them on its own. The baseline IS that
 history, in a text file a person can read in a diff. It refuses more than
-those four (§18.2), because an edit the wire DOES report is still an edit a
+those five (§18.2), because an edit the wire DOES report is still an edit a
 save game may not survive, and a refusal a person overrides deliberately is
 cheaper than a counter nobody reads. **§4.1's table is where the three frames
 are set beside each other** — what a reader is told, what this file refuses,
@@ -7757,7 +8001,19 @@ RANGE (`min=` and `max=`), presence of an optional, a fixed field's `F`
 default as exact canonical text — a fixed default as the RAW integer its
 storage holds — and the `was` alias; then each enum's variants in order with their ids, each flags'
 variants in positional order, and each union's arms in order with their ids
-and payloads.
+and their own wire facts.
+
+**AN ARM'S LINE IS A FIELD'S LINE** (§2.6), because an arm is a field line:
+an arm that names a declared `type` or `table` carries `payload=<Name>` and
+nothing else, exactly as it always did — so a baseline written before an arm
+could be anything else still reads, and a unit that has not moved
+regenerates byte-identically — and an arm of any other type carries the
+FIELD tokens for what it is: `kind=`, and where the fact exists `elem=`,
+`array=`, `bound=`, `size=`, `frac=`, and the `enum=` / `flags=` / `union=`
+/ `type=` that names its referent. Those two spellings are what makes an arm
+moved between a body and anything else a REFUSAL rather than a silence
+(§18.2): the token SET moves, and an added or removed judged token refuses
+on the same rule a changed one does.
 
 **Its ABSENCE is said out loud, once.** `schema check` prints one line to
 stderr for a unit that declares a table and holds no baseline: that its
@@ -7809,6 +8065,11 @@ table ShipConfig
     field name id=0x30df kind=12 size=32
     field armour id=0xf2f0 kind=4 min=0 max=1000 default=100
 
+union Effect
+    arm buff id=0xeae6 payload=Buff
+    arm count id=0xe445 kind=4
+    arm label id=0xe16a kind=12 size=64
+
 ## history
 ### 2026-09-02 — first baseline before 1.0 ships
 - baseline created over 1 table — data written BEFORE this point is not covered by it
@@ -7829,7 +8090,11 @@ committed file whenever one is there, and:
   or an enum-keyed array's KEY enum swapped for another; a field's REFERENT
   dropped, or replaced by one that cannot STAND IN for it — every identity
   survives AND, for a table or a union arm's payload, the facts under the
-  shared field ids are unchanged (§18.3); a `was` that names a field which
+  shared field ids are unchanged (§18.3); **an ARM's declared type changed**
+  — its kind, its element kind, its referent, or the body-versus-pointer
+  spelling that no kind byte separates one level down — which is §4.1's
+  fifth silent member, and the arm line's tokens are what sees it (§18.1,
+  §2.6); a `was` that names a field which
   ITSELF rode under a `was` — `was` names the FIRST wire name, forever (§5),
   so a second one aimed at the intermediate spelling hashes a name no byte
   was ever written under, and the refusal names both spellings and the one
@@ -7930,6 +8195,15 @@ and each vocabulary's standard is its own (§3):
 respelled as its raw `uint16`, say. §4 states that both ride as kind `7`,
 so that is precisely the edit no reader can report, which is this file's
 whole job.
+
+**AN ARM'S REFERENT IS JUDGED BY THE SAME THREE STANDARDS**, selected by the
+same token, because an arm's line is a field's line (§18.1, §2.6): an arm
+naming a table or a `type` stands in when the ids and the facts under them
+survive, an arm naming an enum or a union when the names do, an arm naming
+a `flags` when the bits do. An arm that names NO declaration — a scalar, a
+string, an array of scalars — has its kind and its shape tokens instead, and
+those are `RuleFixed` facts: there is nothing to stand in for, so a change
+is the silent edit itself.
 
 ### 18.4 Moving it is an explicit act
 
@@ -8906,6 +9180,8 @@ keep, so it belongs in `none` with its reason or the token belongs on the line.
 | a field's kind, storage width, declaration order | layout | `kind=`, `size=`, and the `offset=`s the order produces |
 | the DECLARATION a field or its element names | layout | `type=` / `enum=` / `union=` — the name, not just the kind number |
 | a union arm's payload type | layout + wire | `payload=` on the `arm` line, and the type's own facts through the protocol id |
+| a union arm that is not a declared `type` — its KIND, its referent, its capacity or bound | layout | the FIELD tokens on the `arm` line (§20.2): `kind=`, `elem=`, `array=`, `bound=`, `size=`, `frac=`, `enum=` / `union=` / `type=`. An arm is a field line (§2.6), so its facts are a field's facts, in the union's overlaid storage |
+| a union arm's declared `min`/`max`, or a compressed float arm's range and resolution | **meaning** | `min=` / `max=` / `step=` on the `arm` line — §4 clamps a load to the reader's bounds at an arm exactly as at a field |
 | array class and bound; string/`bytes` capacity | layout | `array=`, `bound=`, and the `size=` they produce |
 | a keyed array's KEY enum | layout | `key=` — its slots ride by that enum's variant-name hashes (§3.2) |
 | an out-of-line array's pitch | layout | `stride=` on the `slot` line |
@@ -9040,6 +9316,10 @@ enum <Name>
     variant <stored value> <name>
 union <Name>
     arm <stored tag> <name> payload=<Name>
+    arm <stored tag> <name> kind=<n> [ frac=<n> ]
+        [ type=<Name> | enum=<Name> | union=<Name> ]
+        [ elem=<n> ] [ array=fixed|bounded ] [ bound=<n> ] [ size=<n> ]
+        [ min=<v> ] [ max=<v> ] [ step=<v> ]
 ```
 
 **The number is the STORED VALUE, not a positional index**, because what group
@@ -9047,6 +9327,17 @@ union <Name>
 §4.2), it is never listed, and declared variants and arms therefore start at
 `1`. An arm carries its `payload=` for the same reason a field carries
 `type=`: two arms of the same shape are not the same arm.
+
+**An arm that is not a declared `type` or `table` carries the FIELD tokens
+instead of `payload=`** — the second `arm` line above — because an arm is a
+field line (§2.6) and its facts are a field's, held in the union's overlaid
+storage: the kind and the shape are layout, the bounds are meaning, and the
+tokens are the field line's own, in the field line's order. The two
+spellings are disjoint, so a unit whose arms all name declared types
+projects exactly as it did before arms could be anything else, and its build
+version does not move. A `flags` ARM carries no referent token for the
+reason a flags FIELD carries none (§20.1) — a mask rides raw and a load
+copies it verbatim — and its width rides in `size=` like any other.
 
 **There is no `flags` line and no `flags=` token** (§20.1): a flags field has
 a `field` line like any other, and neither its declaration's identity nor its
@@ -9178,6 +9469,12 @@ wrong fails to build instead of degrading.
   integer it rides as, a union arm's payload swapped. Each keeps the kind, the
   size, the offset and the wire id and changes what the bytes MEAN, and each
   moves a `type=`, `enum=`, `union=`, `key=` or `payload=` token;
+- **an ARM retyped**, which is the same sentence one level in (§2.6): an
+  arm's kind, referent, capacity or bound moves the `arm` line's own tokens,
+  and an arm moved between a declared `type` and any other type moves the
+  line from `payload=` to the field tokens. A union's storage is the arms
+  overlaid, so an arm retyped under one width moves no `sizeof` at all and
+  the `kind=` on its line is what carries it;
 - **a declared MAXIMUM raised or lowered.** It is a `bound=` on the field
   line, and the inline storage it sizes moves with it: the array field's
   `size` grows, every later field's `offset` moves and the record's `sizeof`
@@ -9322,8 +9619,10 @@ a second digest.
   `key=`/`payload=` passes in silence: a field retyped between two records of
   identical `sizeof` and `alignof`; a keyed array's KEY enum swapped for
   another of the same variant count; an enum field retyped to the raw integer
-  it rides as; a union arm's payload swapped for a same-shaped record. Each
-  must move the build version with kind, size, offset and wire id all
+  it rides as; a union arm's payload swapped for a same-shaped record; **an
+  ARM retyped under one width** — `int32` to `float32` — which moves no
+  `sizeof`, no offset and no wire id, and is §4.1's fifth silent member.
+  Each must move the build version with kind, size, offset and wire id all
   unchanged.
 
 - **The exclusions, each with the edit that proves it**: a `was` rename moves

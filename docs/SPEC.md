@@ -137,7 +137,10 @@ value a constructor materializes — untaken branches read as ZEROS, never
 defaults, per §5);
 branch structure; `const`/`reserved`/`align` items; enum max and storage
 bits; flags wire bits; union variant order, count and payload type
-references (the tag is positional and the payload is the wire — §4.8). The
+references (the tag is positional and the payload is the wire — §4.8; an
+arm's OWN field facts join this list when the general arms of §4.8 reach
+this wire, which is a named follow-on and moves no id today, because such a
+union has no packet wire at all). The
 projection also carries FROZEN tokens — `table=false message=false` on
 every type line and `round=nearest` on every compressed-float field line —
 kept so the refusals of §4.11 moved no id; dropping one is a
@@ -287,11 +290,18 @@ Flags       = "flags" ident ( VariantList
                                                                    // body opens on the NEXT line
 Union       = "union" ident UnionBlock NL .                        // "union" contextual, §4.8
 UnionBlock  = "{" { UnionVariant } "}" .
-UnionVariant = ident ident NL .                                    // variant name, then its payload type.
-                                                                   // A payload naming a TABLE is legal
-                                                                   // inside a table closure only
-                                                                   // (SPEC-TABLES.md §2.6); on the type
-                                                                   // wire a payload is a declared `type`
+UnionVariant = ident ArmType [ AttrSection ] NL .                  // AN ARM IS A FIELD LINE (§4.8):
+                                                                   // the arm's name, any field type,
+                                                                   // and the value-shaping attributes
+                                                                   // that type takes. No "= Default",
+                                                                   // no "?", no was/json — each refused
+                                                                   // at the arm (SPEC-TABLES.md §2.6)
+ArmType     = [ "[" Bound "]" ] Scalar .                           // the field Type without its "?".
+                                                                   // An arm that is not a declared
+                                                                   // `type` — a TABLE, a scalar, a
+                                                                   // string, an array, a pointer, a
+                                                                   // union — is legal inside a table
+                                                                   // closure only (SPEC-TABLES.md §2.6)
 Package     = "package" ident NL .
 Const       = "const" ident [ ConstType ] "=" ConstExpr NL .
 ConstType   = IntType | "float32" | "float64" .
@@ -741,7 +751,7 @@ classic twin, which is the wire oracle for the stated model.
 | `f Weapon` (an enum) | minimal bits for [0, max]; read rejects above max | `serialize_int` over [0, max] |
 | `f Damage` (a `flags` declaration, §4.2) | W raw bits, W = variant count (or the widened max); every pattern legal; storage `uint64` in every target | `serialize_bits` |
 | `f Inner` (a type) | Inner's fields, in place | `serialize_object` |
-| `f Shape` (a `union`, §4.8) | tag in minimal bits for [0, variant count] (0 = None, no payload), then the selected variant's payload only; read rejects a tag above the count | `serialize_int` over [0, count] + `serialize_object` on the selected arm |
+| `f Shape` (a `union`, §4.8) | tag in minimal bits for [0, variant count] (0 = None, no payload), then the selected variant's payload only; read rejects a tag above the count | `serialize_int` over [0, count] + the selected arm's own call — `serialize_object` for a declared `type`, and this table's row for that arm's type otherwise |
 | `const(Value, Bits)` | the constant; read **rejects** any other value | `serialize_bits` + compare |
 | `reserved(Bits)` | zeros; read rejects nonzero | `serialize_bits` + compare |
 | `align` | zero-pad to the next byte boundary; read rejects nonzero padding | `serialize_align` |
@@ -986,23 +996,57 @@ union ColliderShape
 }
 ```
 
+An arm is a FIELD LINE, so an arm's type is any type a field's is — and a
+union whose arms are not all declared types lives inside a table closure
+today (SPEC-TABLES.md §2.6):
+
+```
+union Value
+{
+    count  int32 | min = 0, max = 100
+    label  string(64)
+    offset Vec3
+}
+```
+
 - **Grammar.** `union` is contextual like `flags`: `union ident { ... }`
   declares a union; `union` remains usable as an ordinary name everywhere
-  else. Each body row is `ident ident NL` — a variant name (field-style
-  lower_snake, unique within the union), then its payload type. A variant
-  row takes no attributes, no default, no bound — a row names a thing, it
-  does not describe a wire refinement. A union field likewise takes no
-  attributes and no `= default` (it zero-initializes to None, joining
-  arrays, strings, bytes and composites in §4.2's no-override list).
-- **Payloads are declared types.** A variant's payload must name a declared
-  `type`. An enum, flags or union name is not a payload in
-  v1 — wrap it in a type; scalar and array payloads likewise (the parser
-  names this rule when a scalar keyword or `[` appears in payload
-  position). Follow-ons if a real case wants them. Composition cycles
+  else. **Each body row is a FIELD LINE**: a variant name (field-style
+  lower_snake, unique within the union), then any field type, then the
+  value-shaping attributes that type takes — `| min`, `| max`, a
+  compressed float's range and resolution — one production for a field and
+  an arm. A variant row takes **no `= default`** (an arm zero-establishes
+  at selection, §5 — the one rule, and a default at selection would be its
+  first exception), **no `?`** (selection IS the arm's presence), and **no
+  identity attribute**: `was` and `json` on an arm are named follow-ons
+  (SPEC-TABLES.md §15), because arms already evolve by name. A union field
+  likewise takes no attributes and no `= default` (it zero-initializes to
+  None, joining arrays, strings, bytes and composites in §4.2's
+  no-override list).
+- **An arm is any field type.** A variant's payload is what a field's type
+  can be: a scalar with its bounds, a `bits(N)`, a compressed float, a
+  `fixed(I, F)`, a 128-bit integer, an `enum`, a `flags` mask,
+  `string(N)`, `bytes(N)`, a bounded array `[N]T` or `[..N]T`, a declared
+  `type`, another union — and, inside a table closure, a `table` and a
+  pointer `*T` (SPEC-TABLES.md §2.6). Refused on an arm, each by name: an
+  `?` optional, an enum-keyed array `[E]T`, and a `map`. Composition cycles
   through unions are compile errors exactly like type cycles (a payload
-  that contains its own union has infinite size). A union with **zero
+  that contains its own union has infinite size), and an arm whose type is
+  a union joins that graph like any other edge. A union with **zero
   variants is legal**, mirroring the empty enum (§4.6): it holds only None,
   its tag range is the degenerate [0, 0], and it costs zero bits.
+- **A union whose arm is not a declared `type` is a TABLE-CLOSURE
+  construct today** (SPEC-TABLES.md §2.6, §11), exactly as a union with a
+  `table` arm is: its shape is emitted beside the tables, a `type` body
+  refuses it by name, and it projects nothing into the protocol id. **The
+  packet wire's rule is nevertheless fixed here, so no port guesses it**:
+  an arm rides after the tag as the field encoding its type already has on
+  this wire — a bounded integer in its minimal bits, a compressed float in
+  its steps, a string in §4.7's form — and nothing new is encoded. What
+  waits with the ports is that encoding in nine backends, plus one addition
+  to the wire-shape projection: an arm's own field facts must reach the
+  protocol id (§3.1), or two schemas differing only in an arm's bounds
+  would share one. Both are the named follow-on (SPEC-TABLES.md §15).
 - **The implicit None row.** Entry 0 of every union is **None — no
   payload** — mirroring the enum sentinel-zero convention: optionality
   rides in-band as the natural stream terminator, a zero-initialized
@@ -1030,9 +1074,12 @@ union ColliderShape
   names (§4.6): a variant named a target's reserved word is refused, and
   two variants whose exported spellings collide (`box_a`/`boxA`) are
   refused.
-- **The wire.** The tag encodes in **minimal bits for `[0, variant
+- **The wire.** This bullet is the TYPE wire's, which a union of declared
+  `type` arms rides today and a table-closure union does not ride at all
+  (above). The tag encodes in **minimal bits for `[0, variant
   count]`** (the enum wire rule), then **the selected variant's payload
-  only**. Tag 0 = None costs the tag bits and nothing else. The read path
+  only** — the payload being that arm type's own encoding, whatever the
+  type. Tag 0 = None costs the tag bits and nothing else. The read path
   **rejects a tag above the count** — refusal, never clamping, the ranged-
   integer rule. MaxBits = tag bits + the largest payload's MaxBits.
   `Write<Union>` validates the tag BEFORE it rides — an out-of-set tag
@@ -1055,7 +1102,10 @@ union ColliderShape
   variants, or changing a payload type moves the unit's id. Renaming a
   VARIANT does **not** move it: the ordinal is the wire, the enum-variant
   rule exactly (§3.1) — renaming `box` to `crate` leaves every byte
-  identical.
+  identical. A TABLE-CLOSURE union projects nothing at all, as a table
+  does: it has no packet wire, so no arm of it can move a packet byte
+  (SPEC-TABLES.md §2.6). What it moves instead is the unit's BUILD VERSION
+  (SPEC-TABLES.md §20).
 - **Generated code, per target**: representation is per-language and
   explicitly NOT part of the contract; what binds every target is
   behavioral only — identical bytes, None is a valid empty read, an
@@ -1063,7 +1113,12 @@ union ColliderShape
   the `<Union>Type type;` tag over an anonymous union of the arms (member
   names = variant names), constructed as None, trivially copyable
   (asserted); a variant named `type` is refused at check time — the tag
-  field's own name. C mirrors it with its named `as` union. Go, C#, JS, Dart,
+  field's own name. **An arm whose storage needs a companion** — a
+  `string(N)` or `bytes(N)` length, a counted array's count — rides as one
+  member of an unnamed struct type, `value` beside `value_length` or
+  `value_count`, because a union member is one member and an ANONYMOUS
+  struct is an extension (SPEC-TABLES.md §2.6, §13.9).
+  C mirrors it with its named `as` union. Go, C#, JS, Dart,
   Java and Elixir lay the tag beside one pre-allocated arm per variant —
   nothing heap-allocates per value. Rust holds the value as a real
   `enum <Union> { None, Box(BoxCollider), ... }`, `None` the default — and
