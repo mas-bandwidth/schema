@@ -52,10 +52,44 @@ nine targets, one conformance corpus every target is held to case by case,
 with what a target cannot yet answer named instead of passed over. What the
 two wires are and how they are scored is the next section.
 
-When to use theirs, in one line each: a service that versions independently of
-its callers is Protocol Buffers' case; in-place access to a large buffer you
-will not deserialize is FlatBuffers' or Cap'n Proto's; a data pipeline where
-the writer's schema must travel with the record is Avro's.
+When to use theirs, in one line each: in-place access to a large buffer you
+will not deserialize is FlatBuffers' or Cap'n Proto's; an RPC system with
+promise pipelining is Cap'n Proto's; a data pipeline where the writer's schema
+must travel with the record is Avro's; and a service whose callers you cannot
+rebuild, where the ECOSYSTEM around the format — gRPC, `buf`, a schema
+registry, forty-plus third-party language implementations — is most of what you
+are buying, is Protocol Buffers'.
+
+**A service versioned independently of its callers is no longer on that list**,
+and this page says so where it used to decline the case. That is what a
+`table` is for and what the table wire guarantees: a field, an enum variant, a
+union arm and a table are identified by the hash of their name, so fields are
+added anywhere, removed and reordered, variants are inserted in the middle, a
+reader counts what it cannot name and never fails on another build's data, and
+`was` carries a rename. The MESSAGE FORM is the shape that makes it competitive
+by the byte rather than only by the feature: a peer announces its unit's whole
+vocabulary once a connection and every message after it carries references
+instead of ids, which turns a 106-byte login into 58 against proto3's 49
+(SPEC-TABLES §3.3). What schema still declines beside Protocol Buffers is RPC:
+no service definition, no stub generation, no request-response machinery.
+
+**The gaps in that claim are named rather than argued away**, and each is an
+issue this page's rows already carry: the message form is specified and nothing
+writes it yet, as are the `widened` promotion rule and the `TableRefuseReason`
+enum ([#523](https://github.com/mas-bandwidth/schema/issues/523)); unknown
+fields are dropped on rewrite unless a caller opts into retention, which is
+specified and unbuilt
+([#525](https://github.com/mas-bandwidth/schema/issues/525)); a retired name can
+be re-added and decode old bytes under a new meaning
+([#441](https://github.com/mas-bandwidth/schema/issues/441)); `was` covers a
+table's own fields alone, so a renamed variant, arm or table orphans its data
+([#442](https://github.com/mas-bandwidth/schema/issues/442),
+[#396](https://github.com/mas-bandwidth/schema/issues/396)); and the id-table
+wire is the C++ reference's and the tool's, with the eight ports still writing
+the previous form
+([#511](https://github.com/mas-bandwidth/schema/issues/511) to
+[#518](https://github.com/mas-bandwidth/schema/issues/518)). Every one of them
+is before 3.0.0 ([VERSIONING.md](VERSIONING.md)).
 
 ## How to read the matrix
 
@@ -169,7 +203,13 @@ being carried, and whether source order is free.
   all nine on the wire, text, cook-open, block-read and descriptor surfaces.
   The variable class, the message, wide and blob classes and the runtime
   cook's write side are the reference's alone today, and the block's builder
-  is emitted by the C++ and C backends. So a table-wire row is ✅ only where
+  is emitted by the C++ and C backends. **And the WIRE FORM itself now
+  divides them**: the id-table wire (SPEC-TABLES §3) is written by the C++
+  reference and the tool, the eight ports still write its previous form, and
+  their conformance legs are dormant until they carry it
+  ([#511](https://github.com/mas-bandwidth/schema/issues/511) to
+  [#518](https://github.com/mas-bandwidth/schema/issues/518), PORTING M20). So
+  a table-wire row is ✅ only where
   the register shows all nine, and 🔶 otherwise with the scope named: which
   class, which languages, which issue.
 - **The eight ports answer ABSENT on twenty-eight wire cases and twenty-six
@@ -197,9 +237,9 @@ sourced across five columns.
 | Bit-flag sets as a declaration | ✅ [s4] | ❌ [13] | ✅ [14] | ❌ [15] | ❌ [8] |
 | Bounded arrays, strings and bytes: a declared capacity in the type | ✅ [s5] | ❌ [16] | 🔶 [17] | ❌ [18] | 🔶 [19] |
 | Enum-keyed arrays (`[E]T`, one slot per variant, by name) | ✅ [s6] | ❌ [20] | ❌ [21] | ❌ [15] | ❌ [8] |
-| Maps | ❌ [s7] | ✅ [23] | 🔶 [24] | ❌ [25] | 🔶 [26] |
+| Maps | 🔶 [s7] | ✅ [23] | 🔶 [24] | ❌ [25] | 🔶 [26] |
 | Shared subtrees: one node referenced by many parents, written once | 🔶 [s8] | ❌ [27] | 🔶 [28] | ❌ [29] | ❌ [30] |
-| Union arms may be any field type, not only a named record | ❌ [s9] | 🔶 [32] | 🔶 [33] | ✅ [34] | ✅ [35] |
+| Union arms may be any field type, not only a named record | 🔶 [s9b] | 🔶 [32] | 🔶 [33] | ✅ [34] | ✅ [35] |
 | Defaults for strings, bytes and composites | ❌ [s9] | 🔶 [36] | ❌ [37] | ✅ [38] | ✅ [39] |
 | Explicit presence on a scalar (set vs unset, distinct from the default) | ✅ [s10] | ✅ [40] | 🔶 [41] | ❌ [42] | 🔶 [43] |
 | Required fields: a read fails if the field is absent | ❌ [s11] | 🔶 [45] | 🔶 [46] | ❌ [47] | ✅ [48] |
@@ -284,15 +324,23 @@ sourced across five columns.
   changed default cannot reinterpret stored bytes, where schema elides a field
   equal to its default and answers the hazard with a guard instead of a
   guarantee [s22].
-- **Unknown fields through a rewrite.** Protocol Buffers keeps them; schema
-  drops them by decision and counts what it dropped [s23]. The reason is
-  [COMPARISON-TABLES.md](COMPARISON-TABLES.md), "Unknown fields preserved on
-  write".
-- **Promotion.** Avro promotes `int` to `long` on read; schema reads a changed
-  kind as the default and counts a kind mismatch [s42].
+- **Unknown fields through a rewrite.** Protocol Buffers keeps them without
+  being asked; schema drops them BY DEFAULT and counts what it dropped, under
+  the never-clobber rule [s23]. The opt-in that answers the case is specified
+  and unbuilt: a caller hands `LoadRetain` a bounded side buffer it declares
+  and owns, and `SaveRetain` writes the unknown FIELDS back into the body they
+  came from — the `unknown` class alone, never a variant, an arm, a keyed slot
+  or a node record, each gap counted `retain_lost` (SPEC-TABLES §6.6,
+  [#525](https://github.com/mas-bandwidth/schema/issues/525)).
+- **Promotion.** Avro promotes `int` to `long` on read, in every direction its
+  resolution rules allow. Schema's own widening rule is specified — an integer
+  kind into a wider one of the same signedness, and `f32` into `f64`, decoding
+  exactly and counting `widened` — and nothing counts it yet, so a changed kind
+  still reads as the default and counts a mismatch [s42].
 - **Doc comments.** FlatBuffers and Avro both carry documentation in the
   schema, Protocol Buffers carries it in the descriptor, and Cap'n Proto's own
-  pages settle it neither way; schema's are deferred [s38].
+  pages settle it neither way; schema's `///` block is specified down to its
+  refusals and its descriptor column, and no backend emits it [s38].
 - **Ecosystems.** Protocol Buffers has ten first-party languages and
   forty-plus third-party ones, FlatBuffers thirteen of uneven coverage, and
   Avro six published SDKs; schema has nine [s39].
@@ -354,28 +402,29 @@ list at the end, with the section that establishes the claim.
 
 - s1. `| min, max` is part of the type: the packet wire sizes the field's bits from the bound and refuses a value outside it, and the table wire clamps and counts `clamped` on load (SPEC §4.3, SPEC-TABLES §4). `fixed(I,F)`, `ufixed(I,F)`, `int128` and `uint128` are declared in all nine targets and ride the packet wire in all nine, on the cross-language wire gate like any other unit (`examples128/Ludicrous.schema`, SPEC §4.3). ✅ is the declaration and the packet wire, the two the row asks about. The same scalars have table-wire kinds 18 to 29 (SPEC-TABLES §3), where the three wide-class cases are answered by the reference and the eight ports answer ABSENT (SPEC-TABLES §15).
 - s2. `const`, folded at compile time and usable in bounds, defaults and capacities (SPEC §4.2, the `Const` production and "Constants and enums are exported").
-- s3. **The packet wire answers this row.** A `type` nested inside a `type` is inline storage with no framing at all (SPEC §4.3), carried by all nine. On the table wire a nested table is kind `13`, a `u32` length then the body, which is the framing Protocol Buffers is marked ❌ [9] for.
+- s3. **The packet wire answers this row.** A `type` nested inside a `type` is inline storage with no framing at all (SPEC §4.3), carried by all nine. On the table wire a nested table is kind `13`, a canonical LEB128 length then the body, which is the framing Protocol Buffers is marked ❌ [9] for.
 - s4. `flags` declarations, one bit per variant (SPEC §4.2).
 - s5. `[N]T`, `[..N]T`, `string(N)`, `bytes(N)`: the capacity is in the type, and the packet wire sizes the count from it (SPEC §4.3).
 - s6. `[E]T`, a slot per variant addressed by name, under its own wire kind `16` (SPEC-TABLES §2.4, §3.2). The declaration and the keyed kind are fixed class and carried by all nine: the corpus's keyed instances are answered by every registered leg. The accessor's both-ends refusal is untested in Java, Dart and Elixir and unchecked past `Max` in C (PORTING M5, [#407](https://github.com/mas-bandwidth/schema/issues/407), [#377](https://github.com/mas-bandwidth/schema/issues/377)).
-- s7. Decided and not built. A map makes the table variable and lands after 3.0.0 (SPEC-TABLES §2.8, [#380](https://github.com/mas-bandwidth/schema/issues/380)).
+- s7. `map[K]V` in a table body: a lookup the runtime provides over entries the wire carries as a sorted array of one generated `{ key, value }` table, spending no wire kind, with `Find` a binary search in place over a locked region, a loaded one or an opened cook (SPEC-TABLES §2.8). Keys are bounded strings and the integer kinds; every other key is refused by name, an enum key naming `[E]T`. 🔶 because a map makes its holder VARIABLE, so it is the reference's and the tool's alone: the eight ports refuse a variable unit's wire by name ([#380](https://github.com/mas-bandwidth/schema/issues/380), [#349](https://github.com/mas-bandwidth/schema/issues/349), SPEC-TABLES §11).
 - s8. A pointer field `*T` names a node once in a flat node table and every reference is an index (SPEC-TABLES §3.1). The variable class has one wire implementation: PORTING M6 is ✅ for cpp, ❌ [#408](https://github.com/mas-bandwidth/schema/issues/408) for C, whose earlier nested form has a depth cap and no identity map, and ❌ [#349](https://github.com/mas-bandwidth/schema/issues/349) in the other seven columns; the eight ports answer ABSENT on the corpus's four pointered instances. The amplification bound on an untrusted read is [#466](https://github.com/mas-bandwidth/schema/issues/466).
-- s9. Decided and not built. Union arms of any field type, and defaults for `string`, `bytes` and `flags`, are [#396](https://github.com/mas-bandwidth/schema/issues/396); SPEC §4.2's `Default` production admits a constant expression or an identifier and nothing else.
+- s9. Decided and not built. Defaults for `string`, `bytes` and `flags` are [#396](https://github.com/mas-bandwidth/schema/issues/396); SPEC §4.2's `Default` production admits a constant expression or an identifier and nothing else.
+- s9b. An arm IS a field line, so an arm's type is any type a field's is — a scalar with its bounds, a compressed float, a string, a bounded array, an enum, a `flags` mask, a declared `type`, a `table` inside a table closure, a pointer, another union — and an arm may carry no payload at all, which rides under kind `32` (SPEC §4.8, SPEC-TABLES §2.6, §3). What an arm may not take is a default, a `?`, a `was`, a `json`, an `[E]T`, an `if` guard, a `map` or an unbounded `[]T`, each refused by name. 🔶 because it is the reference's and the tool's: the eight ports answer ABSENT on the message-class cases ([#392](https://github.com/mas-bandwidth/schema/issues/392), SPEC-TABLES §15).
 - s10. **The table wire answers this row**, because the packet wire has no presence at all. `?T` is the value plus a generated presence bool, so the holder stays fixed size (SPEC-TABLES §2.3). SPEC §4.2's grammar admits `?` in table bodies only, and a `type` body refuses one by name. On the table backends `?T` is fixed class and all nine carry it (`chain_optional` and `chain_optional_empty` in the conformance corpus); `?[N]T` is one of the message-class cases the reference answers alone (PORTING M16, [#392](https://github.com/mas-bandwidth/schema/issues/392)).
 - s11. Declined: every field optional with a declared default (SPEC-TABLES §4).
 - s12. Declined. SPEC §4.2 declares no generic parameter and no type-erased value, and the adoption question is closed on [#396](https://github.com/mas-bandwidth/schema/issues/396); the typed bag is a union whose arms are tables (SPEC-TABLES §2.6).
 - s13. The FIELD-attribute vocabulary is closed and an unknown attribute is a compile error (SPEC §4.2). The TYPE TAG is the open namespace beside it: "one user-chosen identifier, in its own namespace", any identifier legal there, parsed, carried through the IR and emitted as an annotation on the generated type, with the unit registry's `ViewType` listing a declaration's tags (SPEC §4.2, SPEC-TABLES §8.3). 🔶 because a tag is inert in v1 and changes zero generated code beyond the annotation, where the three ✅ columns let an annotation reach a runtime API. It is more than Avro's 🔶 [58], which requires only that an implementation tolerate the attribute.
-- s14. The packet wire is not self-describing, by decision, a stated non-goal with all knowledge in the generated code on both ends (SPEC §1). On the table wire kinds and lengths ride, so any reader skips anything it does not know (SPEC-TABLES §3); a name rides as a 16-bit hash and not as text (§5), so the bytes cannot be rendered with names without the schema.
+- s14. The packet wire is not self-describing, by decision, a stated non-goal with all knowledge in the generated code on both ends (SPEC §1). On the table wire kinds and lengths ride, so any reader skips anything it does not know (SPEC-TABLES §3); a name rides as a 64-bit hash in a trailing id table and a field header carries a REFERENCE to it rather than text (§3, §5), so the bytes cannot be rendered with names without the schema.
 - s15. **The packet wire answers this row.** It sizes each field from its bounds (SPEC §4.3) in all nine targets. The table wire deliberately does not compact: a scalar rides at its storage width and nothing is aligned or padded (SPEC-TABLES §3), the property FlatBuffers is marked ❌ [65] for.
 - s16. **The cook and the block answer this row**, and they are the aligned forms (SPEC-TABLES §7.2, §19.3). The tolerant wire has no alignment and no padding (§3). All nine open both: the harness's `cook` and `block` surfaces are answered by every registered leg, and the cook's `Open` is PORTING M8, ✅ in every column. The block's row reach is M7, where Elixir allocates per row ([#409](https://github.com/mas-bandwidth/schema/issues/409)).
-- s17. Table wire. Eight-byte region references and 64-bit cook part lengths, with no aggregate ceiling in the format (SPEC-TABLES §6.3, §7.1). 🔶 for two reasons, one in the format and one in the implementations. The tolerant wire's own lengths and counts are `u32` today, so a node body is capped at 4 GiB and refused at save (§2.1, §3), and they go uniformly 64-bit under [#435](https://github.com/mas-bandwidth/schema/issues/435). And the two accelerators are read out of a `byte[]` in the managed ports, which stops at 2 GiB: SPEC-TABLES' ladder states it as the one Java divergence that costs a stated requirement, C# meets the same `int` ceiling on its span overload and answers it with the pointer form beside it, and the foreign-memory overload is a named follow-on (§15).
+- s17. Table wire. Eight-byte region references and 64-bit cook part lengths, with no aggregate ceiling in the format (SPEC-TABLES §6.3, §7.1). 🔶 for two reasons, one in the format and one in the implementations. The tolerant wire's own lengths, counts, indices and references are canonical LEB128 with 64 bits of capability, so no body, count or index has a ceiling below `2^64 − 1` (§3) — but that wire is the reference's and the tool's, and the eight ports still write the previous form ([#511](https://github.com/mas-bandwidth/schema/issues/511) to [#518](https://github.com/mas-bandwidth/schema/issues/518)). And the two accelerators are read out of a `byte[]` in the managed ports, which stops at 2 GiB: SPEC-TABLES' ladder states it as the one Java divergence that costs a stated requirement, C# meets the same `int` ceiling on its span overload and answers it with the pointer form beside it, and the foreign-memory overload is a named follow-on (§15).
 - s18. One standard, one corpus, and byte identity is proven where nine backends produce bytes. The packet wire is bit-for-bit compatible across all nine runtimes, pinned in CI with shared golden bytes, and a compiler change that breaks a wire golden is stop-the-line (SPEC §1, §3.2, §7.2). On the table wire the `wire` surface byte-compares every registered leg's `Save` against one golden over the FIXED class, and `measure == save at exact capacity` is a hard invariant held by a mandatory battery (SPEC-TABLES §9). 🔶 because the variable, message, wide and blob classes have one writer: the eight ports produce no bytes for those cases and answer ABSENT per case, so no cell claims agreement it did not test.
 - s19. Table wire. Name identity: add anywhere, remove, reorder, each reported by the read instead of refused (SPEC-TABLES §4, §5). Carried by all nine, on the `wire` and `report` surfaces over the fixed class. Whether a retired name can be silently reused is [s41], not this row.
 - s20. `| was = "old"` keeps the wire id, and a bare rename is a removal and an addition the compiler cannot see. The committed baseline warns on that pair: `internal/baseline/diff.go`'s `renamePair` reports a wire id removed and a wire id added in one edit and names the `was` and `json =` spellings that keep the data ([#444](https://github.com/mas-bandwidth/schema/issues/444), SPEC-TABLES §5, §18.2). It warns and never refuses, because two independent edits in one commit are legitimate. 🔶 because `was` covers a table's own fields today: every other vocabulary is [#396](https://github.com/mas-bandwidth/schema/issues/396), [#442](https://github.com/mas-bandwidth/schema/issues/442) and [#478](https://github.com/mas-bandwidth/schema/issues/478), which is why the versioning group's first row is ❌ and this one is not.
-- s21. A changed kind reads as the default and is counted `kind_mismatch` (SPEC-TABLES §4), in all nine over the fixed class. It is not the whole story, and SPEC-TABLES §4.1 item 3 says so: an enum-typed field respelled as its raw `uint16` rides under kind `7` either way, so the stored value is read as a variant hash and lands on `None`, or on a real variant, with no counter to fire. That respelling is guarded only by the committed baseline (§18) until [#435](https://github.com/mas-bandwidth/schema/issues/435) settles the enum's own framing.
+- s21. A changed kind reads as the default and is counted `kind_mismatch` (SPEC-TABLES §4), in all nine over the fixed class. The respellings a shared kind once left open are closed: an enum has kind `30` and a pointer index kind `17`, so an enum-typed field respelled as its raw `uint16`, and a `*T` respelled as a `uint32`, are ordinary counted mismatches in both directions (§3, §3.1, §4.1). It is still not the whole story, and SPEC-TABLES §4.1 says so: a field's REFERENT dropped or swapped for a twin that cannot stand in for it, and a `fixed` field's `F` moved under the same storage width, each keep the kind and change what the bytes mean with no counter to fire. Both are guarded only by the committed baseline (§18).
 - s22. Silent on the wire, refused at compile time by the committed baseline (SPEC-TABLES §4.1, §18.2). 🔶 because the baseline is opt-in by design, "no file, no check" (§18.1). A unit that declares a table and holds no baseline draws a one-line stderr notice from `schema check` naming what is unguarded and the command that commits one ([#445](https://github.com/mas-bandwidth/schema/issues/445), §18.1). The notice never touches the exit code, so the limitation stands.
-- s23. Declined by decision; the read report counts what a rewrite would drop, under the never-clobber rule ([VERSIONING.md](VERSIONING.md)).
-- s24. Five counters and a `malformed` flag on every load (SPEC-TABLES §4) — `unknown`, `kind_mismatch`, `widened`, `clamped` and `duplicate`. Carried by all nine: the `report` surface is answered by every registered leg. The harness's per-leg negative control sabotages the emitter's walk and requires the matrix to localize it, and it is carried by seven of the nine, with cpp and rust at ❌ [#417](https://github.com/mas-bandwidth/schema/issues/417) (PORTING I11).
+- s23. Decided and not built. The DEFAULT is a drop, by decision, with the read report counting what a rewrite would lose under the never-clobber rule ([VERSIONING.md](VERSIONING.md)). Retain-unknown is the opt-in beside it, a REGION round trip whose buffer the caller sizes and owns, covering unknown FIELDS and no other class and no other counter, with `retained` and `retain_lost` on the same report struct (SPEC-TABLES §6.6). No port carries it ([#525](https://github.com/mas-bandwidth/schema/issues/525)).
+- s24. Six counters on every load (SPEC-TABLES §4) — `unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` and the `malformed` flag — plus `retained` and `retain_lost`, which ride the same struct and stay zero until a caller opts into retention (§6.6). Five of the six are carried by all nine: the `report` surface is answered by every registered leg. `widened` is specified and counted nowhere yet ([#523](https://github.com/mas-bandwidth/schema/issues/523)), and retention is unbuilt in every language ([#525](https://github.com/mas-bandwidth/schema/issues/525)). The harness's per-leg negative control sabotages the emitter's walk and requires the matrix to localize it, and it is carried by seven of the nine, with cpp and rust at ❌ [#417](https://github.com/mas-bandwidth/schema/issues/417) (PORTING I11).
 - s25. An unknown variant reads `None` and is counted `unknown` (SPEC-TABLES §4, §5), in all nine on the `report` surface. The witness in the corpus is the evolution seam `v2_cfg_as_v1`: V2 adds `Silver` to `Grade` and `Omega` and `Sigma` to `Slot`, and V1 reading V2's `Cfg` counts 5 unknown, the number every registered leg must produce (`testdata/conformance/tables/MANIFEST.txt`, `reports.txt`).
 - s26. The cook: `Open` is a header match and a pointer, with nothing per node (SPEC-TABLES §7). Carried by all nine, PORTING M8 being ✅ in every column, and a gigabyte cook opens in the same time as a small one. The cook's write side is the reference's and the tool's; every other language's writer is a named follow-on (§7.6, §15).
 - s27. The read path fills caller-owned storage and the reader is a cursor over the caller's buffer, never a sub-view (SPEC-TABLES §6.5, PORTING M1). 🔶 for two reasons. Elixir cannot make the claim at all, because a decoded BEAM term is an allocation and no buffer is caller-owned, so that leg pins the per-case count instead (M1's Elixir cell). And a union inside a table allocates per arm in a backend whose language has no native union, the one carve-out §6.5 states.
@@ -390,13 +439,13 @@ list at the end, with the section that establishes the claim.
 - s35. One corpus, every registered leg, hostile rows included: two forgery batteries, the cook battery's 111 rows and the `json-hostile` trees, with seven negative controls behind the harness (`test/conformance`). A leg that lacks a construct answers ABSENT per case instead of passing by omission.
 - s36. Static descriptors in every table's generated header, name, kind, id, offset, bounds, guards and nesting, with no schema file present and no RTTI (SPEC-TABLES §8.1), carried by all nine (PORTING M13; C# holds them in a cache and not as constants, [#411](https://github.com/mas-bandwidth/schema/issues/411)). The type view and the unit registry (§8.2, §8.3) are C++ and C# only, and every other backend emits no view file (§15).
 - s37. JSON in and out by one generic walk over the descriptors, `| json = "key"`, the read report on the way in, `&node` for a shared node (SPEC-TABLES §16). The walk itself is carried by all nine (PORTING M9), and each backend's is compared unit by unit. 🔶 because the text surfaces are where the eight ports answer ABSENT, on `json-read` and `json-write` alike: the message, wide, blob and variable classes have no port text form ([the conformance contract](../test/conformance/README.md), SPEC-TABLES §15).
-- s38. Deferred with the design pinned (SPEC §4.1); doc strings in the view are a named follow-on (SPEC-TABLES §15).
+- s38. Decided and not built. The design is the OPT-IN `///` block: a contiguous run of `///` lines binding to the declaration, field, variant or arm below it, carried verbatim into the `doc` descriptor column beside a `tags` column and into ordinary line comments in the generated code, with `| doc = "..."` refused by name so one text has one spelling (SPEC §4.1, §4.11, SPEC-TABLES §8.1). A plain `//` above the same item stays a comment and reaches nothing, which is what keeps a tree of working notes out of every game's binary. No backend emits either column ([#523](https://github.com/mas-bandwidth/schema/issues/523)).
 - s39. Nine languages byte-identical on the packet wire in CI (SPEC §1). Tables are carried under [#366](https://github.com/mas-bandwidth/schema/issues/366).
 - s40. Decided and not built. Table `was` is [#396](https://github.com/mas-bandwidth/schema/issues/396) and variant and arm `was` is [#442](https://github.com/mas-bandwidth/schema/issues/442), both before 3.0.0; `was` is a field attribute today (SPEC-TABLES §5).
 - s41. Decided and not built. The retired-names ledger in the baseline is [#441](https://github.com/mas-bandwidth/schema/issues/441), before 3.0.0; nothing today marks a removed name retired, so it can be re-added and decode old bytes under a new meaning.
-- s42. Declined, with the reason in the table above.
+- s42. Decided and not built. An integer kind read into a WIDER integer kind of the same signedness, and `f32` read into `f64`, decode EXACTLY and count `widened`; the signed ladder is kinds `2`, `3`, `4`, `5`, `18` and the unsigned one `6`, `7`, `8`, `9`, `19`, and every other pair stays `kind_mismatch` because each is a value the wider kind would accept and the schema does not mean (SPEC-TABLES §4). The path runs FORWARD only — an old build meeting the wider kind narrows and reads its default — so the baseline refuses the edit like any kind change. Nothing counts `widened` in any language yet ([#523](https://github.com/mas-bandwidth/schema/issues/523)).
 - s43. Declined, with the reason in the table above.
-- s44. The cook's and the block's prologues carry the build version and refuse a file another build wrote (SPEC-TABLES §7.1, §19.1, §20), and all nine read them (PORTING M8; the harness's `block` surface). The tolerant wire carries no marker of its own: the form byte is [#435](https://github.com/mas-bandwidth/schema/issues/435), before 3.0.0. It is also the answer to FlatBuffers' `file_identifier` [179]: the schema's own revision is the `format` field on the root table, the format's own revision is the form byte.
+- s44. The cook's and the block's prologues carry the build version and refuse a file another build wrote (SPEC-TABLES §7.1, §19.1, §20), and all nine read them (PORTING M8; the harness's `block` surface). The tolerant wire's own marker is the FORM BYTE, the first byte of a file, `1` for a file and `2` for a message, read before the trailer and before any body so a form a reader does not know is a REFUSAL by name and never damage (§3, §3.3). 🔶 because it is the reference's and the tool's and the eight ports still write the previous form ([#511](https://github.com/mas-bandwidth/schema/issues/511) to [#518](https://github.com/mas-bandwidth/schema/issues/518)), and because form `2` is specified and unwritten ([#523](https://github.com/mas-bandwidth/schema/issues/523)). It is also the answer to FlatBuffers' `file_identifier` [179]: the schema's own revision is the `format` field on the root table, the format's own revision is the form byte.
 - s45. `tables.baseline` with `--update --reason` and a dated history (SPEC-TABLES §18), first-party where `buf breaking` is not. 🔶 for the same reason as [s22]: the file is opt-in and no file means no check (§18.1). The packet wire has no compile-time gate at all, the protocol id refusing at connect time, which is a runtime refusal (SPEC §3).
 - s46. The promise is on [VERSIONING.md](VERSIONING.md), and SPEC §6.1 states it as a contract: for a given schema and target, equal post-quantization values produce identical bytes, deterministically, across compiler versions, held by the golden-wire gate across a schema's edits. Across compiler RELEASES it needs the codec-law line and an N-1 to N differential gate ([#463](https://github.com/mas-bandwidth/schema/issues/463)).
 
