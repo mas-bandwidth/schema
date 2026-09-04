@@ -340,46 +340,11 @@ tables-elixir-release:
 # The second half is the point, as it is for every control here: json-read must
 # go RED and every other surface must stay GREEN. json-write staying green is
 # what says the break is the READER's.
-CONFORMANCE_NEGATIVE_ELIXIR := build/conformance-negative-elixir
 # (the marker is inside the ATOM: a Makefile variable cannot carry a "#", which
 # starts a comment, so the sabotage names itself in the only place it can)
-CONFORMANCE_NEGATIVE_ELIXIR_SED := s|{Map.put(value, f.key, slot), pos, report}|{Map.put(value, :key_SABOTAGED, slot), pos, report}|
 .PHONY: conformance-negative-control-elixir
-conformance-negative-control-elixir: build/conformance-harness
-	@rm -rf $(CONFORMANCE_NEGATIVE_ELIXIR) && mkdir -p $(CONFORMANCE_NEGATIVE_ELIXIR)
-	@sed '$(CONFORMANCE_NEGATIVE_ELIXIR_SED)' internal/codegen/elixirtable/runtime.go \
-		> $(CONFORMANCE_NEGATIVE_ELIXIR)/elixirtable-runtime.go.txt
-	@cmp -s internal/codegen/elixirtable/runtime.go $(CONFORMANCE_NEGATIVE_ELIXIR)/elixirtable-runtime.go.txt && \
-		{ echo "NEGATIVE CONTROL: the Elixir emitter sabotage did not apply"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/elixirtable/runtime.go":"%s/$(CONFORMANCE_NEGATIVE_ELIXIR)/elixirtable-runtime.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_ELIXIR)/overlay.json
-	go build -overlay $(CONFORMANCE_NEGATIVE_ELIXIR)/overlay.json -o $(CONFORMANCE_NEGATIVE_ELIXIR)/schema ./cmd/schema
-	@for unit in $(ELIXIR_TABLE_UNITS); do \
-		name=$${unit%%:*}; path=$${unit#*:}; \
-		$(CONFORMANCE_NEGATIVE_ELIXIR)/schema generate --lang elixir \
-			--out $(CONFORMANCE_NEGATIVE_ELIXIR)/generated/$$name $$path || exit 1; \
-	done
-	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_ELIXIR)/generated/*/TableRuntime.ex || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged walk"; exit 1; }
-	@mkdir -p $(CONFORMANCE_NEGATIVE_ELIXIR)/ebin
-	$(ELIXIRC) -o $(CONFORMANCE_NEGATIVE_ELIXIR)/ebin \
-		$(CONFORMANCE_NEGATIVE_ELIXIR)/generated/*/*.ex test/conformance/elixir/driver_impl.ex
-	@printf '#!/bin/sh\nELIXIR_TABLES_EBIN=%s/ebin exec test/conformance/elixir/driver "$$@"\n' \
-		"$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR)" > $(CONFORMANCE_NEGATIVE_ELIXIR)/driver
-	@chmod +x $(CONFORMANCE_NEGATIVE_ELIXIR)/driver
-	@printf 'elixir %s/driver\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR)" > $(CONFORMANCE_NEGATIVE_ELIXIR)/drivers.txt
-	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_ELIXIR)/drivers.txt \
-			--work $(CONFORMANCE_NEGATIVE_ELIXIR)/work > $(CONFORMANCE_NEGATIVE_ELIXIR)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: a sabotaged Elixir walker left the harness green"; \
-		cat $(CONFORMANCE_NEGATIVE_ELIXIR)/log; exit 1; \
-	fi
-	@grep -q "elixir / json-read" $(CONFORMANCE_NEGATIVE_ELIXIR)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
-		  cat $(CONFORMANCE_NEGATIVE_ELIXIR)/log; exit 1; }
-	@grep -q "^json-write *pass" $(CONFORMANCE_NEGATIVE_ELIXIR)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: json-write went red too — the control does not localise the READER"; \
-		  cat $(CONFORMANCE_NEGATIVE_ELIXIR)/log; exit 1; }
-	@echo "elixir walk negative control: the sabotaged read reds json-read and leaves json-write green"
+conformance-negative-control-elixir:
+	@echo "conformance-negative-control-elixir: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#515)"
 
 # THE SOAK: the whole corpus read and written in a loop, with the bytes
 # compared every iteration so a run that drifted STOPS rather than merely
