@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package messagedemo — protocol id 0x8248fac3393e5575 (packets only: tables version by field id, not by protocol id)
+// package messagedemo — protocol id 0x4a7939657edfa4ab (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -265,7 +265,7 @@ namespace messagedemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x5d6070501121763aull;
+static const uint64_t BuildVersion = 0x2e7e8c6b14f7f107ull;
 
 } // namespace messagedemo
 

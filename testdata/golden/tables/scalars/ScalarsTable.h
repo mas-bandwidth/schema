@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package scalardemo — protocol id 0x01ba84a4cbd2143a (packets only: tables version by field id, not by protocol id)
+// package scalardemo — protocol id 0xaa2ae3fa9f005efc (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): includable from
 // any TU — the one thing taken from serialize.h is the 128-bit storage type.
 
@@ -388,7 +388,7 @@ namespace scalardemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x60b4cb8aaf8eaec4ull;
+static const uint64_t BuildVersion = 0xa8b581f9ab3e8580ull;
 
 } // namespace scalardemo
 

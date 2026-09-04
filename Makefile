@@ -1720,6 +1720,113 @@ check-zero-range-negative-control: bin/schema test/zero_range_negative_main.cpp
 		test/zero_range_negative_main.cpp -o build/schema_test_zero_range_negative
 	./build/schema_test_zero_range_negative
 
+# THE VARIANT-ORDER NEGATIVE CONTROL (SPEC §3.1, issue #462). An enum value
+# rides as its declaration ordinal and a flags variant as its bit position, so
+# the projection carries both declarations' variant names in declaration order:
+# without them a reorder is invisible and two builds either side of an
+# alphabetized enum hold ONE id while every ordinal means something else.
+#
+# The control takes the variant lists back out of a COPY of the rendering
+# through `go test -overlay` — no tracked file is written — and the reorder
+# gate must go RED, on that surface and NOT on the union's, whose order rides
+# in its payload types and must stay green under the same sabotage.
+.PHONY: projection-variant-order-negative-control
+projection-variant-order-negative-control:
+	@mkdir -p build
+	@sed -e 's|fmt.Fprintf(&b, "  variant %d name=.*, i+1, v)$$|_, _ = i, v // SABOTAGED: the enum variant list removed|' \
+		-e 's|fmt.Fprintf(&b, "  bit %d name=.*|_, _ = i, v // SABOTAGED: the flags variant list removed|' \
+		ir/projection.go > build/projection-no-variants.gotext
+	@[ "$$(grep -c SABOTAGED build/projection-no-variants.gotext)" = "2" ] || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not remove both variant lists"; exit 1; }
+	@printf '{"Replace":{"%s/ir/projection.go":"%s/build/projection-no-variants.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/projection-no-variants-overlay.json
+	@if go test -count=1 -overlay=build/projection-no-variants-overlay.json \
+		./internal/check -run TestIdMovesUnderVariantOrder > build/projection-no-variants.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the reorder gate passed with the variant lists gone"; \
+		cat build/projection-no-variants.log; exit 1; \
+	fi
+	@grep -q "an enum reordered did NOT move the protocol id" build/projection-no-variants.log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the enum reorder"; \
+		  cat build/projection-no-variants.log; exit 1; }
+	@grep -q "a flags declaration reordered did NOT move the protocol id" build/projection-no-variants.log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the flags reorder"; \
+		  cat build/projection-no-variants.log; exit 1; }
+	@go test -count=1 -overlay=build/projection-no-variants-overlay.json \
+		./internal/check -run 'TestUnionId' > build/projection-no-variants-union.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage reddened the union gate too — it is not surgical"; \
+		  cat build/projection-no-variants-union.log; exit 1; }
+	@echo "negative control: without the variant lists the enum and flags reorders go silent, and the union gate stays green"
+
+# THE CODEC LAW NEGATIVE CONTROL (SPEC §3.1, issue #463). The projection's
+# second version line is what a compiler change that moves the BYTES under an
+# unchanged shape rides on — the 2026-08-15 rounding amendment moved bytes with
+# every id unmoved, which is a false match. Take the line out of a COPY of the
+# rendering and both law gates must go red, while the variant-order gate,
+# which the line has nothing to do with, stays green.
+.PHONY: projection-wire-law-negative-control
+projection-wire-law-negative-control:
+	@mkdir -p build
+	@sed -e 's|fmt.Fprintf(&b, "schema-wire-law .*|// SABOTAGED: the codec law line removed|' \
+		ir/projection.go > build/projection-no-wire-law.gotext
+	@grep -q SABOTAGED build/projection-no-wire-law.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not remove the codec law line"; exit 1; }
+	@printf '{"Replace":{"%s/ir/projection.go":"%s/build/projection-no-wire-law.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/projection-no-wire-law-overlay.json
+	@if go test -count=1 -overlay=build/projection-no-wire-law-overlay.json \
+		./internal/check -run TestWireLawLineMovesTheId > build/projection-no-wire-law.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the law gate passed with the line gone"; \
+		cat build/projection-no-wire-law.log; exit 1; \
+	fi
+	@grep -q "the projection must open with its rendering version and then its codec law" build/projection-no-wire-law.log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the missing law line"; \
+		  cat build/projection-no-wire-law.log; exit 1; }
+	@if go test -count=1 -overlay=build/projection-no-wire-law-overlay.json \
+		./internal/goldens -run TestWireLawBumpMovesEveryId > build/projection-no-wire-law-corpus.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: every corpus id survived the line's removal in silence"; \
+		cat build/projection-no-wire-law-corpus.log; exit 1; \
+	fi
+	@grep -q "does not carry the codec law line" build/projection-no-wire-law-corpus.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the corpus gate went red for another reason"; \
+		  cat build/projection-no-wire-law-corpus.log; exit 1; }
+	@go test -count=1 -overlay=build/projection-no-wire-law-overlay.json \
+		./internal/check -run TestIdMovesUnderVariantOrder > build/projection-no-wire-law-variants.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage reddened the variant-order gate too — it is not surgical"; \
+		  cat build/projection-no-wire-law-variants.log; exit 1; }
+	@echo "negative control: without the codec law line both law gates go red, and the variant-order gate stays green"
+
+# THE UNION ARM-ORDER NEGATIVE CONTROL (SPEC §3.1, §4.8, issue #491). A union's
+# arm order rides in its payload types only while the arms DIFFER in type: two
+# arms of one type reorder with every projected type unmoved, so the arm names
+# project beside them. Take the names out of a COPY of the rendering and the
+# same-typed reorder goes silent, while the enum and flags gate — which the arm
+# names have nothing to do with — stays green.
+.PHONY: projection-union-arm-order-negative-control
+projection-union-arm-order-negative-control:
+	@mkdir -p build
+	@sed -E -e 's|"  variant %d name=%s payload=|"  variant %d payload=|' \
+		-e 's|i\+1, v\.Name, v\.Type\)|i+1, v.Type) // SABOTAGED: the arm names removed|' \
+		ir/projection.go > build/projection-no-arm-names.gotext
+	@grep -q SABOTAGED build/projection-no-arm-names.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not remove the arm names"; exit 1; }
+	@printf '{"Replace":{"%s/ir/projection.go":"%s/build/projection-no-arm-names.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/projection-no-arm-names-overlay.json
+	@if go test -count=1 -overlay=build/projection-no-arm-names-overlay.json \
+		./internal/check -run 'TestUnionId' > build/projection-no-arm-names.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the union gates passed with the arm names gone"; \
+		cat build/projection-no-arm-names.log; exit 1; \
+	fi
+	@grep -q "two arms of one payload type reordered and the id did not move" build/projection-no-arm-names.log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the same-typed reorder"; \
+		  cat build/projection-no-arm-names.log; exit 1; }
+	@grep -q "an arm renamed (arm order is spelled in names) did NOT move the protocol id" build/projection-no-arm-names.log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the arm rename"; \
+		  cat build/projection-no-arm-names.log; exit 1; }
+	@go test -count=1 -overlay=build/projection-no-arm-names-overlay.json \
+		./internal/check -run TestIdMovesUnderVariantOrder > build/projection-no-arm-names-variants.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage reddened the variant-order gate too — it is not surgical"; \
+		  cat build/projection-no-arm-names-variants.log; exit 1; }
+	@echo "negative control: without the arm names a same-typed union reorder goes silent, and the variant-order gate stays green"
+
 # Deliberately compiled WITHOUT -I$(SERIALIZE): the generated Table headers
 # carry no serialize dependency, and this build proves it stays that way.
 #
@@ -2106,6 +2213,9 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	./build/schema_test
 	./build/schema_test_guard
 	$(MAKE) check-zero-range-negative-control
+	$(MAKE) projection-variant-order-negative-control
+	$(MAKE) projection-wire-law-negative-control
+	$(MAKE) projection-union-arm-order-negative-control
 	./build/schema_test_tables
 	./build/schema_test_tables_asan
 	# THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2): the tolerant read on hostile

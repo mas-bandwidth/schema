@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0x91a8e85156dfe2b1
+# package example — protocol id 0x682e2a15a56b78bf
 
 # type Vec3 [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 defmodule Example.Vec3 do

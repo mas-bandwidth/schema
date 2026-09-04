@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package streamdemo — protocol id 0xbf90766c51a5100c (packets only: tables version by field id, not by protocol id)
+// package streamdemo — protocol id 0x0da6b010d5e2ade7 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -1302,7 +1302,7 @@ namespace streamdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x093e4bddde5575deull;
+static const uint64_t BuildVersion = 0x4556b3579a442505ull;
 
 } // namespace streamdemo
 

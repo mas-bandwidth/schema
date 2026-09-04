@@ -3108,13 +3108,13 @@ only.
 | the edit | the read report | the baseline | the build version |
 |---|---|---|---|
 | a specified DEFAULT changed, added or removed | silent | **refuses** | **moves** |
-| a FLAGS variant inserted, removed, reordered or renamed in place | silent | **refuses** | no — a mask rides raw and a load copies it verbatim |
+| a FLAGS variant inserted, removed, reordered or renamed in place | silent | **refuses** | **moves**, through the protocol id: the bit positions are the declaration's variant names and they ride in the wire-shape projection (SPEC.md §3.1). The cook projection carries them itself once #435 lands |
 | a field's REFERENT dropped, or swapped for one that cannot stand in | silent | **refuses** | **moves** |
 | a field's wire KIND, or an array's ELEMENT kind, changed | `kind_mismatch` | **refuses** | **moves** |
 | an array changed between keyed and positional, or its KEY enum swapped | `kind_mismatch` | **refuses** | **moves** |
 | a declared RANGE tightened — a maximum lowered, a minimum raised, or a range declared where the field had none | `clamped` | **warns** — the `min=`/`max=` tokens are extents like a capacity (§18.1) | **moves** |
 | a fixed field's `F` moved under the same storage width | silent — the kind carries the width and the signedness, and `F` is a declaration-side fact like a resolution (§3) | **refuses** — the `frac=` token is a fixed fact (§18.1) | **moves** |
-| an `enum`'s or a `union`'s variant order or names moved | `unknown` for a name this reader lacks; a reorder is silent and safe | warns on a removal or a vanished name | **moves** |
+| an `enum`'s or a `union`'s variant order or names moved | `unknown` for a name this reader lacks; a reorder is silent and safe | warns on a removal or a vanished name | **moves**, and so does the protocol id: both vocabularies project their ordered names (SPEC.md §3.1) |
 | a union ARM's declared TYPE changed | `kind_mismatch` or `malformed` wherever the arm's `L` or its framing can see it; **silent** for the four retypes §3 names | **refuses** | **moves** |
 | a union arm moved between a BODY and a POINTER — `T` to `*T` | `kind_mismatch` or `malformed`, in both directions: no conforming writer emits a four-byte body, and a node index read as one is stopped by the terminator rule (§3) | **refuses** — no kind byte separates the two one level down, which is why this row differs from the FIELD's above | **moves** |
 | a field added, removed or reordered | `unknown` for an id this reader lacks; an absent field defaults | passes; a removal AND an addition in one table in one edit **warn** as the pair a bare rename leaves (§18.2) | **moves** |
@@ -4446,7 +4446,7 @@ with `scene.name = "hi"`, `scene.head = A`, `A.next = B`, `A.value = 1`,
   length at 8 — the buffer aligns at one and the length at four — then `head`
   at 16 and `palette` at 24, `sizeof=32 alignof=8`. `schema build-version
   --facts` prints those same numbers, and the id over them is
-  `0x4efe97313c704bb5`.
+  `0x355ef4922f004a7f`.
 - **The numbering** is §3.1's walk: the root is 1; `head` reaches A, so A is
   2; descending A, `next` reaches B, so B is 3; then `palette` reaches P, so
   P is 4.
@@ -4462,7 +4462,7 @@ with `scene.name = "hi"`, `scene.head = A`, `A.next = B`, `A.value = 1`,
 
 ```
 0000  53 43 48 4d 43 4f 4f 4b   magic "SCHMCOOK"
-0008  b5 4b 70 3c 31 97 fe 4e   build_version 0x4efe97313c704bb5
+0008  7f 4a 00 2f 92 f4 5e 35   build_version 0x355ef4922f004a7f
 0010  01 00 00 00 00 00 00 00   byte_order = 1 (little)
 0018  48 00 00 00 00 00 00 00   data_length = 72
 0020  40 00 00 00 00 00 00 00   attribution_length = 64
@@ -9887,10 +9887,14 @@ a second digest.
   line sees: a specified default changed; **a declared range tightened**; **a
   `bits(N)` narrowed within one storage width** — the case where the implied
   range moves and the storage kind, the size and the wire id do not; an `enum`
-  variant renamed; two `enum` variants swapped; **a `union` arm RENAMED** —
-  the rename and not a reorder, because SPEC.md §3.1 already puts union
-  variant ORDER in the protocol id, so a reorder would pass through group 1
-  with group 3's union fact deleted.
+  variant renamed; two `enum` variants swapped; **a `union` arm RENAMED**;
+  **a `flags` variant REORDERED, and one RENAMED**. Those four rows now ride
+  group 1 as well, because SPEC.md §3.1 projects every vocabulary's ordered
+  names and the protocol id rides here in whole (§20.1) — so each proves the
+  build version moves, and none of them isolates group 3's own vocabulary
+  tokens any more. **What isolates them is a TABLE-ARMED union's arm renamed**
+  (§2.6): such a union has no packet wire, so the protocol id cannot cover it
+  and only the cook projection's `union=`/`payload=` tokens can see the edit.
 - **The layout group's own controls**: a field's KIND changed with its width
   unmoved; a field's offset moved with the record's `sizeof` unmoved; **a
   declared maximum raised** — which moves it, and whose §19.4 consequence is
@@ -9907,10 +9911,9 @@ a second digest.
   unchanged.
 
 - **The exclusions, each with the edit that proves it**: a `was` rename moves
-  nothing; **a `flags` variant REORDERED moves nothing** — the row the
-  discipline of §4.1 and the baseline of §18 own instead; a `flags` variant
-  renamed moves nothing; **a flags field's REFERENT swapped for a same-width
-  other moves nothing** — the negative control for the missing `flags=` token;
+  nothing; **a flags field's REFERENT swapped for a same-width
+  other moves nothing** — the negative control for the missing `flags=` token,
+  and a table body's field, so the protocol id does not cover it either;
   a guard added or removed moves nothing; a `json` key changed moves nothing;
   a comment, a file split and a reorder of two records' declarations move
   nothing.

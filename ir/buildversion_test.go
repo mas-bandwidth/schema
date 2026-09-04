@@ -180,6 +180,12 @@ table Row
 		{"an enum variant renamed", "enum Grade { Bronze, Silver, Gold }", "enum Grade { Bronze, Silver, Aurum }"},
 		{"two enum variants swapped", "enum Grade { Bronze, Silver, Gold }", "enum Grade { Silver, Bronze, Gold }"},
 		{"a union arm renamed", "    up   Buff", "    rise Buff"},
+		// a flags DECLARATION is shared by both wires: its variant names are
+		// the bit positions, so they ride in the protocol id (SPEC.md §3.1)
+		// and the id rides here in whole (§20.1 group 1). The cook projection
+		// gains the bit positions of its own under #435.
+		{"a flags variant reordered", "flags Perks { Shielded, Cloaked }", "flags Perks { Cloaked, Shielded }"},
+		{"a flags variant renamed", "flags Perks { Shielded, Cloaked }", "flags Perks { Warded, Cloaked }"},
 		// the LAYOUT group's own controls
 		{"a field's kind changed with its width unmoved", "slot   int32 | min = 0, max = 10", "slot   float32 | min = 0.0, max = 10.0, resolution = 0.5"},
 		{"a field's offset moved with the record's sizeof unmoved", "    grade  Grade = Silver\n    perks  Perks", "    perks  Perks\n    grade  Grade = Silver"},
@@ -205,8 +211,6 @@ table Row
 		to   string
 	}{
 		{"a was rename", "slot   int32 | min = 0, max = 10", "position int32 | was = \"slot\", min = 0, max = 10"},
-		{"a flags variant reordered", "flags Perks { Shielded, Cloaked }", "flags Perks { Cloaked, Shielded }"},
-		{"a flags variant renamed", "flags Perks { Shielded, Cloaked }", "flags Perks { Warded, Cloaked }"},
 		{"a flags field's referent swapped for a same-width other", "perks  Perks", "perks  Boons"},
 		{"a guard removed", "    if guard\n    {\n        extra int32\n    }\n", "    extra int32\n"},
 		{"a json key changed", `json = "name"`, `json = "label"`},
@@ -220,6 +224,49 @@ table Row
 		if got := ir.BuildVersion(unitFrom(t, edited)); got != base {
 			t.Errorf("%s: the build version moved (0x%016x -> 0x%016x), and no cook byte depends on it", s.what, base, got)
 		}
+	}
+}
+
+// §20.8's ISOLATING control for group 3's union vocabulary. Every other union
+// and enum row above now moves the protocol id too (SPEC.md §3.1 projects
+// every vocabulary's ordered names), and the protocol id rides here in whole,
+// so those rows can no longer prove the cook projection carries `union=` and
+// `payload=` of its own. A TABLE-ARMED union can: it has no packet wire
+// (docs/SPEC-TABLES.md §2.6), so the protocol id cannot see it at all, and an
+// arm renamed there moves the build version through group 3 alone.
+func TestBuildVersionSeesATableArmedUnionArmRenamed(t *testing.T) {
+	const src = `package demo
+
+table User
+{
+    name string(16)
+}
+
+table Script
+{
+    path string(16)
+}
+
+union Origin
+{
+    user   User
+    script Script
+}
+
+table Insert
+{
+    origin Origin
+}
+`
+	base := unitFrom(t, src)
+	renamed := unitFrom(t, strings.Replace(src, "    user   User", "    author User", 1))
+
+	if renamed.ProtocolId != base.ProtocolId {
+		t.Errorf("a table-armed union's arm rename moved the PROTOCOL id (0x%016x -> 0x%016x) — such a union has no packet wire (§2.6)",
+			base.ProtocolId, renamed.ProtocolId)
+	}
+	if ir.BuildVersion(renamed) == ir.BuildVersion(base) {
+		t.Error("a table-armed union's arm rename did not move the build version — group 3's union vocabulary is not in the digest, and nothing else covers this edit")
 	}
 }
 

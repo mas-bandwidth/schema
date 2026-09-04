@@ -111,6 +111,18 @@ jobs:
       - name: go test
         run: go test ./...
 
+      # The projection's three controls (SPEC §3.1): a projection that stopped
+      # carrying enum and flags variant names, or a union's arm names, would
+      # let a reorder ship as a false match, and one without the codec law line
+      # would let a rounding change ship as one. Only a control that has gone
+      # red proves a gate is watching. All three are Go-only and take seconds,
+      # so they belong on the diff.
+      - name: the projection's gates go red without what they watch
+        run: |
+          make projection-variant-order-negative-control
+          make projection-wire-law-negative-control
+          make projection-union-arm-order-negative-control
+
   # THE GENERATED TREE IS CURRENT (issue #30). The committed generated/ tree is
   # what this repo treats as ground truth — findings are receipted against its
   # line numbers — so a compiler change that moves the emitted text and leaves
