@@ -307,3 +307,309 @@ constant and an enum cannot both be named `Team`.
 
 **You now have** a schema unit, and one source of truth for Starlight's
 numbers in every language you generate.
+
+---
+
+## Part 2: Naming things: enums and flags
+
+### The problem
+
+Starlight has three kinds of ship: fighters, freighters and corvettes. The
+obvious move, `const ShipFighter = 0` and `const ShipFreighter = 1`, gives you
+integers that any code can mix up with any other integers, no way to iterate
+the set, and no way to print a name in a log line.
+
+### enum
+
+Add to `Game.schema`, so the whole file now reads:
+
+```
+package starlight
+
+const MaxPlayers   = 64
+const TickRate     = 60
+const TickInterval = 1.0 / TickRate
+const Pi float32   = 3.14159265359
+
+enum ShipType { Fighter, Freighter, Corvette }
+
+enum Pending { }
+
+enum Weapon | max = 15
+{ Laser, Missile }
+
+flags SystemFlags { Shields, Cloak, WarpDrive, Autopilot }
+```
+
+Regenerate and look at what came out:
+
+```
+$ schema fmt . && schema generate --lang cpp --out gen .
+```
+
+```cpp
+enum class ShipType : uint8_t {
+    None = 0,
+    Fighter = 1,
+    Freighter = 2,
+    Corvette = 3,
+    Count = 3, // the declared variant count (SPEC §4.2)
+    Max = 3, // the exported extent (SPEC §4.2)
+};
+```
+
+Three members you did not declare.
+
+**Every enum has an implicit `None = 0`.** You never assign values, there is
+no `Fighter = 5` in this language, and variants pack densely from 1. Zero is
+reserved for "no value", so a zero-initialized enum field is the null, in
+band, and you never need a separate has-flag beside an enum field.
+
+**`Count` is the number of variants you declared**, `None` excluded. A loop
+over the real ship types runs `1` to `Count` inclusive.
+
+**`Max` is the enum's extent**, the highest wire-legal value, and the same
+number you can name in a schema expression as `ShipType.Max`. Size storage and
+keyed arrays by `Max`. Here `Count` and `Max` are both 3. They stop being the
+same number the moment you declare headroom, at the end of this part, and that
+difference is what the two words are for.
+
+Try to declare either name yourself and the compiler refuses. `bad/Bad.schema`:
+
+```
+package bad
+
+enum ShipType { None, Fighter }
+```
+
+```
+$ schema check .
+Bad.schema:3:17: variant None is a compile error — every enum has None = 0 implicitly (SPEC §4.2)
+Bad.schema:3:17: enum ShipType's generated variant constant collides with enum ShipType's generated None constant — both generate the symbol ShipTypeNone; rename at the source (SPEC §4.6)
+Bad.schema:3:17: variant None collides with the implicit None variant inside enum ShipType (both become the associated constant NONE in Rust) — rename at the source (SPEC §4.6)
+Bad.schema:3:17: enum ShipType's generated variant constants (C form) collides with enum ShipType's generated variant constants (C form) — both generate the symbol SHIP_TYPE_NONE; rename at the source (SPEC §4.6)
+schema: 4 error(s)
+```
+
+One mistake, four errors. The first line is the rule and the other three are
+the same collision seen through Go's, Rust's and C's generated spellings. Read
+the first one.
+
+You also get a name function for logging, free:
+
+```cpp
+// EnumName: debug/log name for any ShipType value, out-of-set included
+inline const char * EnumName( ShipType value )
+{
+    switch ( value )
+    {
+        case ShipType::None: return "None";
+        case ShipType::Fighter: return "Fighter";
+        case ShipType::Freighter: return "Freighter";
+        case ShipType::Corvette: return "Corvette";
+        default: return "???";
+    }
+}
+```
+
+Any value outside the set names as `"???"`, so a log line can never crash on a
+bad value. Every target gets this in its own spelling: `EnumNameShipType` in
+Go, C#, and JavaScript, `enum_name_ship_type` in C, Rust and Elixir,
+`enumNameShipType` in Dart and Java.
+
+A multi-line variant list is fine, because variants are comma-separated either
+way and a trailing comma is allowed:
+
+```
+enum Big
+{
+    A,
+    B,
+    C,
+}
+```
+
+Write the variants one per line without commas, the way fields are written, and
+the parser stops. `bad/Bad.schema`:
+
+```
+package bad
+
+enum Big
+{
+    A
+    B
+}
+```
+
+```
+$ schema check .
+Bad.schema:5:6: expected }, found "newline"
+Bad.schema:6:5: unexpected "B" at file scope (declarations begin with package, const, enum, flags, type, table or union)
+schema: 2 error(s)
+```
+
+Variants are a comma-separated list. Fields, which arrive in Part 3, are a
+block of lines. That is the one place in the language where two body grammars
+sit side by side, and it is worth meeting it here rather than at your first
+packet.
+
+### flags
+
+Ships have systems that are on or off, several at once: shields, cloak, warp
+drive, autopilot. An enum is one-of and you want any-of. That is
+`flags SystemFlags`, from the file above:
+
+```cpp
+// flags SystemFlags — one bit per variant, consumed as masks; storage uint64 in every
+// target, wire 4 bits (SPEC §4.2)
+using SystemFlags = uint64_t;
+inline constexpr SystemFlags SystemFlags_Shields = 1ull << 0;
+inline constexpr SystemFlags SystemFlags_Cloak = 1ull << 1;
+inline constexpr SystemFlags SystemFlags_WarpDrive = 1ull << 2;
+inline constexpr SystemFlags SystemFlags_Autopilot = 1ull << 3;
+inline constexpr int64_t SystemFlagsCount = 4; // the declared variant count (SPEC §4.2)
+```
+
+One bit per variant, from bit 0. Storage is `uint64` in every language, which
+caps a flags declaration at 64 variants. `bad/Bad.schema` with 65 of them:
+
+```
+$ schema check .
+Bad.schema:3:1: flags F has 65 variants — one bit per variant, up to 64 (SPEC §4.2)
+schema: 1 error(s)
+```
+
+There is no implicit `None`, because the empty mask is `0` and needs no name.
+The declared count is exported as `SystemFlagsCount` and is usable in a schema
+expression as `SystemFlags.Count`, the same word an enum carries meaning the
+same thing.
+
+There is no `SystemFlags.Max`. Ask for it in `bad/Bad.schema`:
+
+```
+package bad
+
+flags F { A, B }
+
+type T
+{
+    x int32 | min = 0, max = F.Max
+}
+```
+
+```
+$ schema check .
+Bad.schema:7:30: flags F has no .Max — a flags declaration is a set of independent bits, not a range with a top; F.Count names the declared variant count (SPEC §4.2)
+schema: 1 error(s)
+```
+
+Flags get a logging surface one level richer than the enum's. There is a
+per-bit name, `FlagNameSystemFlags( 2 )` is `"WarpDrive"`, and a set renderer
+that formats a whole mask the way a log line wants it. In C and C++ the
+renderer writes into your buffer and allocates nothing:
+
+```cpp
+inline constexpr int SystemFlagsNamesMax = 54;
+```
+
+`SystemFlagsNamesMax` bytes always suffice. The empty set renders as `"0"`, and
+any bits past the declared variants render honestly as hex.
+
+Note the `using namespace starlight;` in the program below. A flags type is a
+`uint64_t` alias, so argument-dependent lookup has no namespace to find and the
+flags helpers must be reachable by name. `EnumName` takes a real enum class and
+is found by lookup wherever its argument comes from.
+
+### Headroom: `| max`
+
+The wire cost of an enum is the fewest bits that cover `[0, Max]`, so 2 bits
+for our four `ShipType` values counting `None`. Add a fourth variant later and
+the width grows to 3 bits, which as Part 5 shows changes the protocol. When you
+know a set will grow, reserve headroom at the declaration, the way `Weapon`
+does above:
+
+```cpp
+enum class Weapon : uint8_t {
+    None = 0,
+    Laser = 1,
+    Missile = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
+    Max = 15, // the exported extent (SPEC §4.2)
+};
+```
+
+The wire is now 4 bits, room for 15 variants, and stays 4 bits as you add them.
+This is where `Count` and `Max` part company: 2 variants declared, an extent of
+15. Size a keyed array by `Max` and loop the real variants by `Count`. A read
+accepts any value in `[0, 15]`, values you have not named included, so a
+`switch` over a headroom enum keeps a `default`.
+
+The attribute after `|` is the language's one qualification syntax, and you
+will meet it constantly from Part 3 on. On a declaration line the body brace
+opens on the next line, as `Weapon` shows.
+
+`enum Pending { }` declares no variants, only the implicit `None`:
+
+```cpp
+enum class Pending : uint8_t {
+    None = 0,
+    Count = 0, // the declared variant count (SPEC §4.2)
+    Max = 0, // the exported extent (SPEC §4.2)
+};
+```
+
+Its wire range is the degenerate `[0, 0]`, so it costs **zero bits**. You can
+declare a kind before its variants are known, fields of it round-trip as
+`None`, and nothing is spent on the wire until the first variant arrives.
+
+### A program
+
+`main.cpp`, entire:
+
+```cpp
+#include "Game.h"
+#include <cstdio>
+
+int main()
+{
+    using namespace starlight;
+
+    printf( "%lld players at %lld Hz, %f s per tick\n",
+            (long long) MaxPlayers, (long long) TickRate, TickInterval );
+
+    for ( int i = 1; i <= (int) ShipType::Count; i++ )
+    {
+        printf( "ship type %d is %s\n", i, EnumName( (ShipType) i ) );
+    }
+
+    SystemFlags mask = SystemFlags_Shields | SystemFlags_WarpDrive;
+    char names[SystemFlagsNamesMax];
+    printf( "systems: %s\n", FlagNamesSystemFlags( mask, names, sizeof( names ) ) );
+    printf( "weapon extent %d, declared %d\n", (int) Weapon::Max, (int) Weapon::Count );
+    printf( "pending extent %d, declared %d\n", (int) Pending::Max, (int) Pending::Count );
+    return 0;
+}
+```
+
+```
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -o starlight main.cpp
+$ ./starlight
+64 players at 60 Hz, 0.016667 s per tick
+ship type 1 is Fighter
+ship type 2 is Freighter
+ship type 3 is Corvette
+systems: Shields|WarpDrive
+weapon extent 15, declared 2
+pending extent 0, declared 0
+```
+
+The unit's id moved when you added those declarations, as promised in Part 1:
+
+```
+$ schema id .
+0x4864d311d2321f9f
+```
+
+**You now have** named ship types and system masks, with logging names, in
+every language, and no hand-maintained constants.
