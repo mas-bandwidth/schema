@@ -196,10 +196,37 @@ jobs:
   # target to its make/<lang>.mk and nothing else — no
   # edit to this file, and no chance of a target that exists but runs nowhere,
   # which is what `tables-java-release` was before this job. On a tree that
-  # carries none the job says so and passes.
+  # carries none the matrix is empty and the leg job is skipped.
+  #
+  # ONE LEG PER TARGET. The five targets the tree carries outrun one job's
+  # hour together (run 33831179695 was cancelled at 60 minutes, and a
+  # cancelled gate proves nothing), so each target gets a job of its own with
+  # the hour to itself, and a failing language is named by its job.
+  release-targets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      targets: ${{ steps.list.outputs.targets }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: list
+        name: the tables-<lang>-release targets the Makefile and make/*.mk carry
+        run: |
+          targets=$(grep -hoE '^tables-[a-z0-9]+-release:' Makefile make/*.mk | sed 's/:$//' | sort -u | jq -R . | jq -sc .)
+          echo "$targets"
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+
   release-gates:
+    needs: release-targets
+    if: needs.release-targets.outputs.targets != '[]'
+    name: release-gates (${{ matrix.target }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.release-targets.outputs.targets) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -247,19 +274,8 @@ jobs:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
 
-      - name: every tables-<lang>-release target the Makefile and make/*.mk carry
-        run: |
-          targets=$(grep -hoE '^tables-[a-z0-9]+-release:' Makefile make/*.mk | sed 's/:$//' | sort -u)
-          if [ -z "$targets" ]; then
-            echo "no tables-<lang>-release target in the Makefile or make/*.mk yet — nothing to certify here"
-            exit 0
-          fi
-          echo "$targets"
-          for t in $targets; do
-            echo "::group::$t"
-            make "$t" RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
-            echo "::endgroup::"
-          done
+      - name: ${{ matrix.target }}
+        run: make "${{ matrix.target }}" RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
   # The per-port inline-budget gate (issue #25; BENCH-STANDARD.md §4.3),
   # fanned out one leg per job so the legs run concurrently instead of
