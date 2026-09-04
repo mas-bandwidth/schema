@@ -782,8 +782,21 @@ compile-time fact of the unit's closure so a save still allocates nothing),
 rather than from the reference, and §3.1's worked save is its golden.
 
 **Proven in.** C++ and the tool (#435). All 46 text-carrying conformance
-instances agree byte for byte between the two, and the wire fuzzer runs 93,651
-enumerated mutants over 89 seeds with no divergence, plain and sanitized.
+instances agree byte for byte between the two, and the wire fuzzer runs 103,286
+enumerated mutants over 112 seeds with no divergence, plain and sanitized.
+
+**THE MESSAGE FORM IS THIS MILESTONE's FOLLOW-ON** (docs/SPEC-TABLES.md §3.3).
+Form byte `2` is the same body with its id table moved one level up, to the
+CONNECTION: a peer announces its unit's whole vocabulary once a direction as an
+ordinary form-`1` file, and every message after it is the form byte and the
+root body alone. What a port owes is `LoadMessage`, `MeasureMessage` and
+`SaveMessage` beside the file form's three, `TableVocabulary` and the three
+unit-scope entry points `Announce`, `AnnounceMeasure` and `AnnounceRead`, each
+in that language's own naming convention. C++ and the tool carry it today and
+the harness's `message` surface prints ABSENT for every port, so the cell is
+where the work is counted. The form adds no rule to the body: the references
+resolve against the announced table instead of a trailer, and every framing,
+tolerance and malformed rule above is unchanged.
 
 **Measured effect.** 0.98x the corpus's bytes without its 210 KB blob and 0.99x
 over the whole of it, against 1.80x over the tiny class: an empty table is ten

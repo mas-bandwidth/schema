@@ -36,6 +36,8 @@ the end of the line.
 ```
 unit         <key> <schema path>...
 instance     <name> <unit> <root> <wire file> [no-text]
+connection   <key> <unit> <build version> <announcement wire file>
+message      <name> <connection> <root> <file-form wire> <message-form wire>
 report       <case> <unit> <root> <wire file>
 json-hostile <case> <unit> <root> <tree> <verdict>
 cook         <case> <unit> <root> <dump file>
@@ -58,6 +60,20 @@ forgery      <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <
   refuses. `harness generate` writes none and the harness asks no leg for one.
   The marker is the data saying so on the instance's own line, which is louder
   than a missing file quietly tolerated.
+- **`connection`** is one CONNECTION's announced id table
+  (docs/SPEC-TABLES.md §3.3): the unit whose whole vocabulary it carries, the
+  BUILD VERSION that keys it, and the announcement itself, which is an ordinary
+  form-`1` file whose trailer IS the table. The build version is a column
+  rather than a fact read out of the file, so a build that moves is visible in
+  the review of this file, exactly as a forgery's damaged word is.
+- **`message`** is one value in BOTH forms. The FILE form is an ordinary
+  `instance` and rides every surface an instance rides; the MESSAGE form rides
+  the `wire` and `message` surfaces alone, because its text is the file-form
+  vector's byte for byte and a second `json/` file would be one golden with two
+  homes. What the pair pins is the RESOLVED FORM: the two bodies are equal once
+  every reference is replaced by the id it names and every length recomputed,
+  and their reference bytes are expected to differ, because a file's slots are
+  its own first-use order and a connection's are the unit's projection order.
 - **`report`** is bytes read by a type that did not write them — the evolution
   class. The counters and the verdict live in `reports.txt`, keyed by `<case>`.
 - **`json-hostile`** is one tree per rule the text form states (§16.2, §16.3,

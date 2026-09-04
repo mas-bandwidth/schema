@@ -147,7 +147,17 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	}()
 	inst := r.model.New(r.def)
 	var rep tabletext.Report
-	ok, derr := tablewire.Decode(r.model, inst, data, &rep)
+	// THE MESSAGE FORM's mutants are read against the CONNECTION's table and
+	// written back the same way (docs/SPEC-TABLES.md §3.3). Every other rule
+	// of the read is §3's and §4's, unchanged, so the branch is here and
+	// nowhere else in this file.
+	decode := func() (bool, error) { return tablewire.Decode(r.model, inst, data, &rep) }
+	encode := func() ([]byte, error) { return tablewire.Encode(r.model, inst) }
+	if r.message {
+		decode = func() (bool, error) { return tablewire.DecodeMessage(r.model, inst, data, r.vocabulary, &rep) }
+		encode = func() ([]byte, error) { return tablewire.EncodeMessage(r.model, inst) }
+	}
+	ok, derr := decode()
 	if tablewire.Refused(derr) {
 		// A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL, and the refusal
 		// is the answer: nothing was decoded, no counter moved, and no damage
@@ -157,7 +167,7 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		// value at its declared defaults, which is what the fresh instance
 		// encodes here. Both must answer the same bytes, as they must on
 		// every other mutant (§4.2).
-		if encoded, eerr := tablewire.Encode(r.model, inst); eerr != nil {
+		if encoded, eerr := encode(); eerr != nil {
 			ans.encFail = true
 		} else {
 			ans.encoded = encoded
@@ -168,7 +178,7 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		return ans, fmt.Errorf("the oracle refused the root itself: %w", derr)
 	}
 	ans.report = Counts{Unknown: rep.Unknown, KindMismatch: rep.KindMismatch, Clamped: rep.Clamped, Duplicate: rep.Duplicate, Malformed: rep.Malformed || !ok}
-	encoded, eerr := tablewire.Encode(r.model, inst)
+	encoded, eerr := encode()
 	if eerr != nil {
 		ans.encFail = true
 	} else {
@@ -176,6 +186,9 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	}
 	if r.variable {
 		types, whole := tablewire.NodeRecordTypes(data)
+		if r.message {
+			types, whole = tablewire.NodeRecordTypesMessage(data, r.entries)
+		}
 		if whole {
 			ans.exact = true
 			ans.bytes = r.rootStorage + (int64(len(types))+1)*nodeDirEntryBytes
@@ -222,7 +235,15 @@ func startWireLeg(command string, roots []*wireRoot) (*wireLeg, error) {
 		return nil, fmt.Errorf("starting %q: %w", command, err)
 	}
 
-	// the roster: which roots the stream will name, and which the leg has
+	// the roster: which roots the stream will name, in which FORM, and which
+	// the leg has. The form is the wire's own byte (docs/SPEC-TABLES.md §3,
+	// §3.3) rather than a flag of this protocol's minting, so a leg reads the
+	// value it already knows: `1` is the file form and `2` is the message
+	// form, whose mutants resolve against the connection's announced table.
+	// A leg derives that table from its OWN unit's announcement, because the
+	// vocabulary is a pure function of the build version and both sides
+	// derive the same one, so the roster names the form and never carries an
+	// announcement.
 	var roster bytes.Buffer
 	_ = binary.Write(&roster, binary.LittleEndian, uint32(len(roots)))
 	for _, r := range roots {
@@ -230,6 +251,11 @@ func startWireLeg(command string, roots []*wireRoot) (*wireLeg, error) {
 		roster.WriteString(r.unit)
 		_ = binary.Write(&roster, binary.LittleEndian, uint16(len(r.root)))
 		roster.WriteString(r.root)
+		form := byte(ir.TableWireForm)
+		if r.message {
+			form = ir.TableWireMessageForm
+		}
+		roster.WriteByte(form)
 	}
 	if _, err := stdin.Write(roster.Bytes()); err != nil {
 		return nil, fmt.Errorf("the leg closed its input during the roster: %w", err)
