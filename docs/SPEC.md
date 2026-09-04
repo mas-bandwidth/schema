@@ -129,6 +129,11 @@ the churn and introduce the dangerous direction: any wire-affecting fact the
 walk forgot becomes two incompatible builds shaking hands. The projection is
 TEXT: what the id depends on can be printed, read and diffed, and a fact
 missing from it is a review question rather than an implementation detail.
+**The compiler now reads one comment kind** — §4.1's `///` doc block — and
+the projection is exactly why that is safe: a source-text hash would have
+turned every edit to an author's prose into a coordinated redeploy, while a
+projection carries the facts the bytes depend on and a doc comment is not
+one of them (Excluded, below).
 
 **Included — each fact moves the wire:** the package; every type's field
 order; field NAMES; type kind, width and signedness; declared bounds; array
@@ -249,26 +254,55 @@ from this projection rather than carried in it.
 - **Encoding:** UTF-8 source; a UTF-8 BOM is rejected at parse. `//` line
   comments and `/* */` block comments (non-nesting). Comments are invisible
   to code generation and preserved by `schemafmt` — with the one exception
-  below, the DOC comment, which is the only comment the compiler reads.
-- **Doc comments bind upward, to the item below them.** A `//` comment block
-  whose last line immediately precedes a declaration, a field, an enum or
-  flags variant, or a union arm — no blank line between, and nothing but the
-  comment on each of its lines — is that item's DOC COMMENT. A `/* */` block
-  is never one, and neither is a comment that trails an item on the item's
-  own line (`health int16 // hp`), so the comment that terminates a
-  qualification section (§4.2) can never become one either. Above `package`,
-  above a `const( )`, `reserved( )` or `align` item, or above a closing
-  brace, a comment block stays an ordinary comment: those have no descriptor
-  row to carry one (SPEC-TABLES.md §8).
+  below, the `///` DOC comment, which is the only comment the compiler reads
+  and the only one an author opts into.
+- **Doc comments are OPT-IN, and the marker is `///`.** A DOC COMMENT is a
+  contiguous run of `///` lines, each carrying nothing but the comment, whose
+  last line immediately precedes a declaration, a field, an enum or flags
+  variant, or a union arm. **A `//` block above the same item stays an
+  ordinary comment and never reaches a descriptor**, and that is the whole
+  reason the marker exists: a schema tree is full of working notes written
+  directly above things — 166 such lines, above a declaration, a field, a
+  variant or an arm, in 40 of this repo's 47 corpus files — and under an
+  implicit rule every one of them would become a descriptor string, a comment
+  in nine generated languages, and read-only data in the binary of every game
+  that links the table headers (SPEC-TABLES.md §8.1). What a build carries is
+  what an author asked it to carry. The marker costs the language nothing:
+  `///` is a `//` line by ordinary lexing, so a reader that does not know the
+  rule sees a comment, and `schemafmt` and every editor already treat it as
+  one. A `/* */` block is never a doc comment in any spelling.
+- **Every `///` line is part of a doc comment or is REFUSED BY NAME**, and
+  that one rule closes every trap at once, because silently dropping an
+  author's opt-in is the outcome opt-in exists to prevent. Refused: a `///`
+  block above `package`, above a `const( )`, `reserved( )` or `align` item,
+  or above a closing brace, none of which has a descriptor row to carry one
+  (SPEC-TABLES.md §8) — "nothing here carries a doc comment; write `//`"; a
+  `///` block separated from its item by a blank line or by an ordinary `//`
+  line — "a doc comment touches the item it documents"; and a `///` that
+  TRAILS code on the item's own line, `health int16 /// hp` or one sitting
+  past a qualification section (§4.2) — "a doc comment stands on its own line
+  above the item". Each is a diagnostic naming the spelling that works, and
+  `//` is always that spelling.
 - **The doc TEXT is the block verbatim, with the marker removed.** Each line
-  contributes what follows its `//`, with at most one leading space dropped
+  contributes what follows its `///`, with at most one leading space dropped
   and trailing whitespace dropped; the lines join with a single newline and
   the text ends without one. Nothing else is interpreted — no markup, no
-  keywords, no reflow — so what the author wrote is what a tool prints. The
-  text rides the IR into the `doc` descriptor column (SPEC-TABLES.md §8.1,
-  §8.3) and is emitted in each target's own doc idiom: `//` in C++ and C,
-  `///` in Rust and Dart, `/// <summary>` in C#, a preceding-line `//` in Go,
-  `/** */` in JS and Java, and `@doc` / `@typedoc` in Elixir.
+  keywords, no reflow, no escape sequences — so what the author wrote is what
+  a tool prints, two leading spaces and an empty line in the middle included.
+  The text rides the IR into the `doc` descriptor column (SPEC-TABLES.md
+  §8.1, §8.3).
+- **There is ONE escaping rule, and it is the string literal's.** The text
+  reaches a descriptor column as a string literal, so each target escapes it
+  by its own language's rule and by nothing else — a quote, a backslash, and
+  the newline that joins the lines are what that rule covers. It reaches
+  GENERATED CODE as ordinary LINE comments above the declaration: `//` in
+  C++, C, C#, Go, JS and Java, `///` in Rust and Dart. A line comment ends
+  where the line does, so a `*/` or a `<` in an author's text needs no rule
+  at all — which is why no target emits `/** */` or a `/// <summary>`
+  element, and why a C# reader gets the text as comments rather than as XML
+  documentation. **Elixir carries the descriptor column alone for a field and
+  for a variant** — a struct field and an enum variant have no attribute to
+  hang a doc on — and emits `@moduledoc` / `@typedoc` for a declaration.
 - **A doc comment moves nothing.** It is excluded from the wire shape
   projection (§3.1) and from the cook projection (SPEC-TABLES.md §20.2), so
   it moves neither the protocol id nor the build version; it enters no
@@ -327,12 +361,19 @@ from this projection rather than carried in it.
   below, a trailing `NL` is satisfied by an actual newline or by the
   immediately following `}` — and **end-of-file synthesizes a terminator**,
   so a file without a trailing newline still parses. Within an enum or flags
-  body a variant is separated from the next by a COMMA or by a NEWLINE, and
-  newlines around commas stay ordinary whitespace (suppression after `,`), so
-  every comma list written to date parses exactly as it did. The newline
-  earns its place at one line kind: a variant carrying a qualification
-  section is terminated by the newline like every other pipe, so it is the
-  last variant on its line and no comma can follow it (§4.2).
+  body a variant is separated from the next by a COMMA or by a NEWLINE. The
+  newline earns its place at one line kind: a variant carrying a
+  qualification section is terminated by the newline like every other pipe,
+  so it is the last variant on its line and no comma can follow it (§4.2).
+  **Two lexer rules keep every comma list ever written parsing exactly as it
+  did.** A newline immediately AFTER a `,` is suppressed, as it always was;
+  and inside a variant list a newline immediately BEFORE a `,` is suppressed
+  too, so a list that puts its separators at the head of the line still sees
+  one separator rather than two. **A `}` on the same line as a QUALIFIED
+  variant is refused by name** — `{ Laser | beam }` draws "a qualified
+  variant ends its own line: write the list one variant per line" — because
+  the pipe claims the rest of the line and the brace would be arguing with
+  it. Both rules have a named negative control (§7.2).
 
 ### 4.2 Grammar
 
@@ -649,10 +690,13 @@ sequence    uint16
   spelling named. Scalar
   constraints like `min`/`max` apply per element.
 - **Valueless qualifiers** (a tag, §4.2) and valued keys sit side by
-  side in one flat list — `| vec3, cpp_native = VecMath` — valueless
-  markers first, then valued keys; there is no nested argument syntax. The
-  order is one rule at every line kind, so a field reads
-  `health int16 | ui_tuned, min = 0, max = MaxHealth` with the open
+  side in one flat list — `| vec3, cpp_native = VecMath` — valueless markers
+  first, then valued keys; there is no nested argument syntax. **That order
+  is a FORMATTER NORMALIZATION, not a refusal** (§7.4): the parser takes the
+  entries in any order and `schema fmt` writes them in this one, because a
+  qualification is a set and an ordering rule the compiler enforced would be
+  a diagnostic that teaches nothing. Canonical output reads
+  `health int16 | ui_tuned, min = 0, max = MaxHealth`, with the open
   namespace ahead of the closed one.
 - **The line between positional and attribute:** a *size* that defines the
   type's shape stays positional — `bits(64)`, `string(64)`, `wstring(64)`,
@@ -675,10 +719,18 @@ sequence    uint16
   VALUELESS half is open at every one of them** — that is the tag, below.
 - **A bare identifier that spells a known valued key is refused by name**,
   never taken as a tag: `| min` draws "min takes a value: write min = 0". The
-  open namespace must not be able to swallow a typo in the closed one, and
-  the check is one lookup against the same table the valued vocabulary
-  already is. **A repeated tag on one line is refused by name** too, and so
-  is a tag that repeats a valued key already on the line.
+  open namespace must not be able to swallow a typo in the closed one.
+  **The lookup is against the UNION of every valued key the language has, on
+  every line kind** — `min`, `max`, `resolution`, `was`, `json`,
+  `cpp_native`, `cpp_include` — **plus the keys refused by name**
+  (`doc`, `round`; §4.11). It is deliberately not the line's own vocabulary:
+  `| min` on a `string(N)` field, where `min` was never legal, is the exact
+  case a per-line check would wave through as a tag, and one union table
+  spares a reader the question of which line kind forgives which typo.
+  **Reserved words are not identifiers here** (§4.1) and are refused with the
+  word named, so `| table` draws "table is a reserved word" rather than
+  becoming a tag. **A repeated tag on one line is refused by name** too, and
+  so is a tag that repeats a valued key already on the line.
 - **`was = "old_name"` — the rename attribute, table bodies only**
   (SPEC-TABLES.md §5). A table field's wire id is the hash of its name, so a
   bare rename would orphan every byte ever written under the old one; `was`
@@ -740,7 +792,7 @@ type Quat | quat4
 
   table ShipConfig | designer_facing
   {
-      // The hull's structural health. A hull at zero is destroyed.
+      /// The hull's structural health. A hull at zero is destroyed.
       health   float32 = 100.0 | ui_slider, min = 0.0, max = 1000.0
       texture  uint64          | asset_ref
       nickname string(32)      | localized
@@ -1444,8 +1496,8 @@ NAME rather than falling into a generic parse error:
 - **`round`** (the attribute) — rounding is not an attribute: it is the one
   fixed-point rule, half away from zero, everywhere (§4.3).
 - **`doc`** (the attribute) — documentation is not an attribute: it is the
-  doc comment above the item (§4.1), and one text has one spelling. `| doc =
-  "..."` is refused with the comment form named.
+  `///` doc comment above the item (§4.1), and one text has one spelling.
+  `| doc = "..."` is refused with the comment form named.
 
 The projection (§3.1) keeps FROZEN tokens — `table=false message=false` on
 every type line, `round=nearest` on every compressed-float field line — so
@@ -2186,7 +2238,20 @@ The conformance program is seven gates. `make test` runs all of it;
    every diagnostic in the suite asserted by exact message and position. The
    diagnostics suite covers generated-name collisions: companion length/count
    names, the dispatch surface, and the per-declaration generated symbols are
-   claimed names the checker refuses (§4.6).
+   claimed names the checker refuses (§4.6). **Each refusal the annotation
+   rules add carries its accepting twin**, so no case can go green by the
+   checker forgetting it: a `///` block above `package`, above a `const( )`,
+   `reserved( )` or `align` item, and above a closing brace; a `///` block
+   held off its item by a blank line and by a `//` line; and a `///`
+   trailing code on an item's own line — each beside the same text written
+   `//` and accepted as an ordinary comment (§4.1); a `}`
+   on the same line as a qualified variant, beside the two-line spelling
+   accepted; a bare `min` on a `string(N)` field, beside `min = 0` on a
+   ranged integer accepted (§4.2); a reserved word written as a tag; a
+   repeated tag; and a tag repeating a valued key already on the line. **The
+   two variant-list LEXER rules are held here too**: a list whose commas lead
+   their lines parses as one separator per variant rather than two, and a
+   mixed comma-and-newline list parses and re-emits under §7.4's rule 5.
 7. **Golden wire bytes**: per conformance schema, fixed instances with
    checked-in expected wire bytes, every target. This is the one artifact
    that survives a coordinated emitter-plus-oracle change, and a golden-wire
@@ -2227,15 +2292,16 @@ schema file. Rules:
    lines and by comment lines — pad names to align the type column, and pad
    past the longest DEFINITION (the type plus any `= default`) to align the
    `|` qualification column. The same rule aligns `=` in const runs. Single
-   space minimum between columns. **A DOC comment does not break the group**
-   (§4.1): it belongs to the field under it rather than standing between two
+   space minimum between columns. **A `///` DOC comment does not break the
+   group** (§4.1): it belongs to the field under it rather than standing between two
    fields, and a run whose every field is documented would otherwise become a
    run of one-field groups and lose the column the rule exists to produce.
    Any other comment line breaks the group as before.
 3. **Qualifications**: `| min = 0, max = MaxHealth` — a space each side of
    `|`, spaces around `=`, comma-space between entries. Valueless markers
-   first, then valued keys. A trailing `//` comment survives after the
-   section.
+   first, then valued keys — the PARSER accepts any order and this rule is
+   where the one order comes from (§4.2). A trailing `//` comment survives
+   after the section.
 3b. **Migration is a one-shot mode, not the formatter's default**:
    `schema fmt -migrate` additionally accepts the two RETIRED spellings —
    the trailing `[ ... ]` attribute block (with its default after the
@@ -2256,7 +2322,12 @@ schema file. Rules:
    the newline (§4.1), and the `|` column is aligned across the list by rule
    2. That is the one form in which the comma and the pipe would compete for
    the end of a line, and the formatter answers it the same way at every
-   list rather than mixing the two spellings inside one.
+   list rather than mixing the two spellings inside one. **A MIXED list — a
+   comma after one variant and a newline after the next — is accepted by the
+   parser and normalized here**, to this rule when any variant is qualified
+   or documented and to the comma form otherwise. Two separators is what
+   admitting the newline cost, and the formatter is where that cost is paid
+   rather than in a diagnostic.
 6. **switch/case** (reserved for `switch`'s return): `case` at the same
    indent as its `switch`; a single-item case body inline after the label,
    bodies column-aligned across the cases of one switch; multi-item bodies on
@@ -2329,11 +2400,12 @@ Every row to date is settled, deferred with its design banked, or discarded.
    which is replicant's and serialize.pro's.
 4. ~~`schemafmt` timing~~ — settled: built early, as the parser's first
    consumer; rules in §7.4.
-5. ~~Doc comments~~ — settled: §4.1. A `//` block binds to the declaration,
-   field, variant or arm below it, rides the IR verbatim into the `doc`
-   descriptor column (SPEC-TABLES.md §8) and each target's own doc idiom, and
-   moves no id. `| doc = "..."` is refused by name (§4.11) — one text, one
-   spelling.
+5. ~~Doc comments~~ — settled: §4.1, and OPT-IN. A `///` block binds to the
+   declaration, field, variant or arm below it and rides the IR verbatim into
+   the `doc` descriptor column (SPEC-TABLES.md §8) and into line comments in
+   the generated code; a plain `//` block above the same item stays an
+   ordinary comment and reaches nothing. No id moves either way.
+   `| doc = "..."` is refused by name (§4.11) — one text, one spelling.
 6. ~~A root/packet marker~~ — discarded.
 7. ~~Const expressions over enum counts~~ — settled: `E.Max` (§4.2);
    `const NumTeams = Team.Max`. `len(Team)` was declined: it has three

@@ -5319,14 +5319,17 @@ build never includes it. Nothing here rides a wire either: the view moves no
 protocol id, no generated wire byte and no baseline row (§10, §18).
 
 **This is also where what a PERSON wrote about a declaration comes out.** A
-doc comment (SPEC §4.1) and a tag (SPEC §4.2) are the language's two open
-channels — one prose, one an identifier in a namespace the compiler assigns
-no meaning — and they reach a tool through two descriptor columns, `doc` and
-`tags`, and through nothing else. They are id-neutral and byte-neutral in
-every direction the rest of this page measures, which is what lets the
-namespace stay open: annotating a shipped schema costs no redeploy, no
-re-cook and no baseline row. The columns are specified with the rest of the
-descriptors in §8.1 and appear on the registry's records in §8.3.
+`///` doc comment (SPEC §4.1) and a tag (SPEC §4.2) are the language's two
+open channels — one prose, one an identifier in a namespace the compiler
+assigns no meaning — and they reach a tool through two descriptor columns,
+`doc` and `tags`, and through nothing else. **Both are OPT-IN**: an ordinary
+`//` comment above a declaration reaches no column, so an unannotated unit's
+columns are empty and a build carries what its author asked it to carry.
+They are id-neutral and byte-neutral in every direction the rest of this
+page measures, which is what lets the namespace stay open: annotating a
+shipped schema costs no redeploy, no re-cook and no baseline row. The
+columns are specified with the rest of the descriptors in §8.1 and appear on
+the registry's records in §8.3.
 
 ### 8.1 The descriptors
 
@@ -5360,13 +5363,25 @@ text form spells keys without a second table.
 
 **A field carries its DOC COMMENT and its TAGS.** These are the two columns
 that carry what a PERSON wrote about a declaration rather than what the
-compiler derived from it: `doc` is the comment block above the field,
-verbatim as SPEC §4.1 defines it, and `num_tags` with `tags` are the
-valueless identifiers right of the field's pipe (SPEC §4.2), in declared
-order. The same three members sit on the TYPE descriptor, `TableTypeInfo`,
-beside a table's name and its `reset` hook, so a walker that entered a
-nested table through the `table` column reads that declaration's own doc and
-tags there, with no registry (§8.3) compiled and no second lookup.
+compiler derived from it: `doc` is the `///` block above the field, verbatim
+as SPEC §4.1 defines it, and `num_tags` with `tags` are the valueless
+identifiers right of the field's pipe (SPEC §4.2), in declared order. The
+same three members sit on the TYPE descriptor, `TableTypeInfo`, beside a
+table's name and its `reset` hook, so a walker that entered a nested table
+through the `table` column reads that declaration's own doc and tags there,
+with no registry (§8.3) compiled and no second lookup.
+
+**WHICH ANNOTATIONS A BUILD CAN REACH FOLLOWS THE PLACEMENT RULE, and it is
+worth stating beside the walk it constrains** (§8.4, §8.5). A FIELD's and a
+TYPE's doc and tags ride the table headers, so any build that links a table
+reaches them, view file or no view file — a GENERAL ARM's with them, since
+that arm's annotation is on the `field` descriptor a union field already
+carries (below). An enum VARIANT's, a flags BIT's and a record-naming ARM's
+ride the registry rows, so reaching those means compiling `<Package>View.*`.
+A tool wanting the whole annotation surface compiles the view file; a game
+that wanted an enum variant's doc at runtime and did not would find the
+column it needs is not in its binary, which is the same trade §8.4 makes
+everywhere and is stated here so a walker's author meets it once.
 
 **Absence has a spelling, and it is not NULL.** A declaration with no doc
 comment carries `doc` pointing at one shared static empty string; a
@@ -5384,7 +5399,24 @@ a walk that prints every doc and every tag in a unit allocates what a walk
 that prints none allocates, which is nothing. All nine targets carry the
 three members, each spelling them in its own immutable string and immutable
 ordered sequence; the COLUMNS are one vocabulary doing one job, as
-everywhere else in this section.
+everywhere else in this section. **The text is escaped by exactly one rule,
+the target's own string-literal escape** (SPEC §4.1), because a descriptor
+column is a string literal and nothing else in this page's surface parses
+what an author wrote.
+
+**WHAT A GAME BINARY PAYS, stated as a rule.** A field's and a type's doc
+text is a string literal in the TABLE HEADER's translation unit, so it ships
+in every build that links that unit — a game that loads tables carries its
+own schema's prose whether or not anything reads it, exactly as it already
+carries the field names beside it. §8.4's answer ("what a build pays is what
+it compiles") does not reach this one, because a game compiles the table
+headers by definition. **The opt-in marker is what bounds it, and that is
+why the marker exists** (SPEC §4.1): this repo's own corpus carries 166
+comment lines sitting directly above a declaration, a field, a variant or an
+arm, across 40 of its 47 files, working notes to the last one, and under an
+implicit binding rule every one of them would be in that binary and in nine
+languages' generated comments. Under `///` a build pays for the lines an
+author chose to publish and for no others.
 
 **A descriptor carries its OWN doc and tags and nobody else's.** A field
 descriptor's vocabulary columns name an enum's values or a union's arms
@@ -5689,7 +5721,7 @@ struct ViewConstant
     bool is_float;
     int64_t int_value;       // the folded value; float_value when is_float
     double float_value;
-    const char * doc;        // the doc comment above it, verbatim (SPEC §4.1);
+    const char * doc;        // the `///` block above it, verbatim (SPEC §4.1);
                              // "" when there is none, never NULL (§8.1)
     int32_t num_tags;             // the declaration's tags (SPEC §4.2), in
     const char * const * tags;    // DECLARED order; 0 and NULL when there are none
@@ -5716,7 +5748,7 @@ struct ViewVariant          // one enum variant, one flags bit, one union arm
                                     // storage. NULL on an arm naming a `type` or
                                     // a `table`, on a payload-free arm, on tag 0,
                                     // and on an enum or flags row
-    const char * doc;               // the doc comment above this variant, bit or
+    const char * doc;               // the `///` block above this variant, bit or
                                     // arm, verbatim; "" when there is none (§8.1)
     int32_t num_tags;               // this row's own tags, in DECLARED order;
     const char * const * tags;      // 0 and NULL when there are none. On a general
@@ -5732,7 +5764,7 @@ struct ViewVocabulary       // an enum, a flags or a union declaration
     int32_t storage_bits;
     int32_t num_variants;
     const ViewVariant * variants;
-    const char * doc;             // the declaration's own doc comment; "" when none
+    const char * doc;             // the declaration's own `///` block; "" when none
     int32_t num_tags;             // the declaration's own tags, in DECLARED order;
     const char * const * tags;    // 0 and NULL when there are none
 };
@@ -5744,7 +5776,7 @@ struct ViewType             // one declaration: a type, or a table
     bool table;                     // declared `table`
     const TableTypeInfo * type;     // §8.1's descriptor: the properties, and this
                                     // declaration's own doc and tags beside them
-    const char * doc;               // the doc comment above it; "" when none. The
+    const char * doc;               // the `///` block above it; "" when none. The
                                     // same text `type->doc` carries (§8.1)
     int32_t num_tags;               // the declaration's tags (SPEC §4.2), in
     const char * const * tags;      // DECLARED order; the same list `type` carries
@@ -5919,7 +5951,7 @@ per-schema-file name does not.
   hint, no unit of measure. What a project wants there it writes as a tag and
   reads back out of the `tags` column, which is the same answer one level
   up: the language holds the channel and the project holds the meaning.
-- **No `| doc` attribute.** Documentation has one spelling, the doc comment
+- **No `| doc` attribute.** Documentation has one spelling, the `///` block
   above the item (SPEC §4.1), and the view carries it in the `doc` column
   (§8.1, §8.3). A valued `doc` key is refused by name (SPEC §4.11) so that
   one text can never have two homes and a tool never has to decide which of
@@ -5983,32 +6015,76 @@ pin does not have.
 §8.3). The program prints each declaration's `doc` and its tags in declared
 order, each field's, and each variant's, bit's and arm's, and the compiler's
 listing carries the same text off the IR — so a target that drops a doc
-comment, reorders a tag list, reflows a block or fills `doc` with NULL where
-the pin has `""` prints a line the pin does not have. **The general arm's
-two records are checked against each other in the same pass**: an arm whose
-`field` descriptor and whose `ViewVariant` row disagree about either column
-is a red line, which is what makes "they agree by construction" a tested
-claim rather than a stated one.
+comment, reorders a tag list or reflows a block prints a line the pin does
+not have.
 
-**ONE CORPUS DECLARATION SHOWS BOTH COLUMNS FILLED, and it is the golden
-this section is read against.** The `tabledemo` unit carries a declaration
-documented and tagged at every level the language admits — the declaration
-itself, a field, an enum variant, a union arm and a constant beside it — so
-the C++ reference's generated descriptors and its view listing exhibit `doc`
-and `tags` on a `TableFieldInfo`, a `TableTypeInfo`, a `ViewVariant`, a
-`ViewVocabulary`, a `ViewType` and a `ViewConstant`, with the rest of the
-corpus exhibiting the empty spelling beside it. The pinned source goldens
-carry that declaration's descriptor initializers verbatim, so both halves
-are held: what a filled column looks like, and that an undocumented,
-untagged unit still emits `""` and 0 and NULL rather than omitting the
-columns.
+**A MULTI-LINE doc prints as ONE LINE**, each newline written `\n` and the
+escape's own backslash written `\\`. The listing is a line-oriented byte
+comparison, so a column whose text carries newlines has to be flattened
+before it is compared, and both halves flattening it by the same rule is
+what keeps the comparison a comparison rather than a formatting argument.
 
-**The COST claim is held too, and it is the one a game build cares about.**
-For a unit that documents and tags nothing, every `doc` in every descriptor
-is the SAME pointer — one shared empty string — and every `tags` is NULL, so
-the columns add three members per row to the descriptor tables and no string
-data at all to the binary. A backend that emits a distinct `""` per row, or
-an empty array per row, fails it.
+**THE TWO PLACES ONE DECLARATION'S ANNOTATION IS SPELLED TWICE ARE BOTH
+CHECKED HERE, and they are the only two** (§8.1). The general ARM pair: an
+arm whose `field` descriptor and whose `ViewVariant` row disagree about
+either column is a red line. The TYPE pair: every `ViewType`'s `doc` and
+`tags` must equal the `doc` and `tags` on the `TableTypeInfo` its `type`
+points at, string for string and entry for entry. "They agree by
+construction" is a claim a test makes, not one this page makes.
+
+**ONE CORPUS DECLARATION SHOWS BOTH COLUMNS FILLED, and it is the exhibit
+this section is read against.** The `tabledemo` unit carries an annotation
+at every level the language admits — a declaration, a field, an enum
+variant, a union arm, and a constant beside them — so the C++ reference's
+generated descriptors and its view listing exhibit `doc` and `tags` on a
+`TableFieldInfo`, a `TableTypeInfo`, a `ViewVariant`, a `ViewVocabulary`, a
+`ViewType` and a `ViewConstant`, with the rest of the corpus exhibiting the
+empty spelling beside it — which under opt-in (SPEC §4.1) is what the rest
+of the corpus exhibits without being edited at all.
+
+**The exhibit ANNOTATES EXISTING DECLARATIONS and adds none.** A doc comment
+and a tag move no id (§8.1), and a new declaration in `tabledemo` would move
+that unit's build version and every golden keyed to it — so the exhibit
+would be the one edit on this page that contradicted the page while
+demonstrating it. Annotating declarations already there keeps the protocol
+id, the build version and every wire golden exactly where they are, which is
+also the sharpest form of the independence claim below.
+
+**The exhibit's doc text carries the edge cases the extraction rule needs
+pinned** (SPEC §4.1), because a rule stated in prose and exercised only on
+`/// Hello` is a rule nothing holds: two leading spaces after the marker
+(one is dropped, one survives), a marker line with nothing after it (an
+empty line inside the text), trailing whitespace on a line (dropped), a
+double quote and a backslash (the target's own string-literal escape, and
+the one escaping rule there is). Its tags exercise the list: a declaration
+with one, an item with several in an order the listing must keep.
+
+**Its GOLDEN lands in the same commit as the columns.** `tabledemo` has no
+recorded source golden today — extending the source goldens to the two table
+corpora is the named follow-on §15 carries — so the commit that adds the
+columns records `tabledemo`'s first, and the exhibit is pinned from the
+moment it exists rather than described until the follow-on catches up. Until
+that commit there is no left-hand side for this gate and the section says so
+plainly instead of implying a pin that is not there.
+
+**The COST claims are held by observables, not by inspection.** Two of them,
+and each has a failure a test can see:
+
+- **`doc` IS NEVER NULL.** A printer walks every descriptor and every
+  registry record in the corpus and CONCATENATES every `doc` into one buffer
+  with no null test. A NULL column faults or throws there rather than
+  printing a line that happens to look right, so the rule has a red state;
+  the negative control is an emitter patched to write NULL for one absent
+  doc, and it must take the gate down.
+- **ABSENCE IS ONE SHARED EMPTY STRING.** Where the language has address
+  identity — C, C++, Rust — the gate asserts every absent `doc` in a unit
+  compares equal BY ADDRESS, one static for the whole unit. Where it does
+  not — C#, Go, Java, JS, Dart, Elixir — the observable is the emitted TEXT:
+  the generated file defines the empty doc ONCE and every absent row names
+  that definition, so the source golden shows one definition against many
+  references and an emitter that inlines an empty literal per row goes red.
+  `tags` takes the same shape one column over: absent is NULL, never a
+  per-row empty array.
 
 **A gate that cannot go red proves nothing.** Dropping one declaration, one
 property, one variant or one constant from an emitter's registry turns the
@@ -6022,14 +6098,29 @@ proves reflection costs the type wire's generated code not one byte — §10's
 independence, claimed for a table edit, holding for a view.
 
 **Landing the doc and tags columns is the one edit that moves that gate's
-left-hand side, and it moves it once.** The columns sit on `TableFieldInfo`
-and `TableTypeInfo`, which live in the table headers (§8.5), so every
-descriptor initializer in the corpus gains three members and the source
-goldens are re-pinned in the same commit. What must NOT move with them is
-anything the wire touches — no protocol id, no build version, no wire
-golden, no baseline row — and that half stays red-capable afterwards, which
-is the half worth having: the columns are metadata, and a metadata edit that
-moved a wire byte would be the bug this page exists to make impossible.
+left-hand side, and it moves it once. THREE things move, and naming all
+three is what makes the re-pin reviewable rather than a wave-through:**
+
+1. **Every descriptor initializer gains three members.** The columns sit on
+   `TableFieldInfo` and `TableTypeInfo`, which live in the table headers
+   (§8.5), so every row in every backend's generated text grows by `doc`,
+   `num_tags` and `tags`, filled with the empty spelling everywhere the
+   exhibit does not reach.
+2. **The generated DATA files gain doc idioms**, where the exhibit is
+   annotated: the line comments SPEC §4.1 emits above a declaration, a field
+   and a variant, in each target's own spelling. Nothing else in those files
+   moves, and no unannotated declaration gains a line.
+3. **The FORMATTER's output moves where a doc comment sits in a field run**,
+   because a `///` block no longer breaks an alignment group (SPEC §7.4
+   rule 2) — so a run that gains one keeps its columns instead of splitting
+   into one-field groups. Under opt-in that is the exhibit's file and nothing
+   else in the corpus.
+
+What must NOT move with any of the three is anything the wire touches — no
+protocol id, no build version, no wire golden, no baseline row — and that
+half stays red-capable afterwards, which is the half worth having: the
+columns are metadata, and a metadata edit that moved a wire byte would be
+the bug this page exists to make impossible.
 
 **Its left-hand side is the RECORDED SOURCE GOLDENS**, because with nothing
 selecting the view there is no second generate to compare against: "before
@@ -9943,8 +10034,8 @@ keep, so it belongs in `none` with its reason or the token belongs on the line.
 | an `if` GUARD added or removed | none | a load finds a field by its id whatever branch encloses it, with every counter zero (§4.1). The cost is on the next WRITE, which is §18's case and not a cook's |
 | the `json` key (§16.4) | none | a cook is produced from the WIRE file, whose hash is the tuple's other half (§7) |
 | a `const` declaration | none of its own | its value flows into a bound (layout) or a default or range (meaning) and is EVALUATED into that token |
-| a type tag | none | it claims meaning no generated byte depends on (SPEC.md §3.1) |
-| comments, whitespace, file names, file layout, declaration ORDER ACROSS records | none | none of it reaches the projection |
+| a TAG, on any line that takes one — a declaration, a field, a variant, an arm (SPEC.md §4.2) | none | it claims meaning no generated byte depends on (SPEC.md §3.1) |
+| comments, whitespace, file names, file layout, declaration ORDER ACROSS records | none | none of it reaches the projection, the `///` doc comment (SPEC.md §4.1) included — the compiler reads that one, and it still reaches a descriptor column and never a fact a byte depends on |
 | a `tables.baseline`, its history, a `--reason` | none | a record of what an edit may do, not a fact a byte depends on |
 
 **The closure is TRANSITIVE** — every table, `type`, `enum` and `union` the
