@@ -47,11 +47,12 @@ the buffer. Specifically:
 - An array count, string length or bytes length past its declared bound that is
   not refused before it drives a copy or an allocation.
 - An enum value that is not a declared variant being accepted.
-- A `wstring(N)` payload that is not well-formed UTF-16 being accepted: a code
-  unit group above `0xFFFF`, an unpaired surrogate, or a zero group among the
-  transmitted units. The rules are stated once in SPEC §4.12 and every target
-  owes the same verdict, so a target that skips one is a divergence bug as
-  well as an acceptance bug.
+- A text payload that is not well formed being accepted: malformed UTF-8 in a
+  `string(N)`, or in a `wstring(N)` a code unit group above `0xFFFF`, an
+  unpaired surrogate, or a zero group among the transmitted units. The rules
+  are stated once in SPEC §4.7 and §4.12 and every target owes the same
+  verdict, so a target that skips one is a divergence bug as well as an
+  acceptance bug.
 - Any read that continues past the end of the stream instead of failing.
 - Integer overflow in a bit or byte count computed from wire data.
 - **Any divergence between the nine languages on the above** — if C++ refuses

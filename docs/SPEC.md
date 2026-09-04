@@ -81,8 +81,9 @@ conventions. Delta serialization is out of scope for v1.
   compiled together (§3.2).
 - **No self-describing wire data.** The wire stays an unattributed bit
   stream; all knowledge lives in the generated code on both ends.
-- **Deferred constructs:** relative integers (`serialize_int_relative`) are
-  not in v1 — see §4.10.
+- **Relative integers are out of scope by decision:** `serialize_int_relative`
+  belongs to the delta layer, which is replicant's and serialize.pro's, not
+  schema's (§4.10).
 
 The grammar must not claim syntax reserved for planned language passes:
 `packet`, `delta`, `baseline` and `index` are usable as ordinary names today
@@ -1010,31 +1011,31 @@ the max length; the wire is length in [0, N], align, then the used bytes;
 storage is a pre-allocated fixed buffer plus a used count. The declared bound
 exists for exactly one reason — it sizes the length prefix's bits.
 
-**`string(N)` payloads are well-formed UTF-8 by contract.** The wire shape is
-unchanged and identical to `bytes(N)`; what the `string` spelling adds is a
-CONTRACT: the payload is well-formed UTF-8 — the writer's obligation, never
-the reader's check. Writing malformed UTF-8 is a writer contract violation,
-surfaced by debug-only asserts where the language supports them. The list is
-exhaustive: C, C++ and Rust assert — C and C++ through a generated validator,
-Rust through `debug_assert!` — and the other six (C#, Dart, Elixir, Go, Java,
-JavaScript) assert nothing. There is no mandatory read-path validation and no
-release-path cost anywhere, and the conformance vectors carry only valid
-UTF-8. An application with genuinely arbitrary payloads uses `bytes(N)`,
-which remains exactly that.
+**`string(N)` payloads are well-formed UTF-8, and the reader enforces it.**
+The wire shape is unchanged and identical to `bytes(N)`. What the `string`
+spelling adds is a read-side rule, stated once here and holding in all nine
+targets, in every build mode: **a payload that is not well-formed UTF-8
+fails the read.** Not well formed means not well formed under Unicode Table
+3-7, so overlong forms, surrogates encoded in UTF-8, code points above
+`10FFFF`, truncated sequences and the bytes `0xFE` and `0xFF` all fail. This
+is classic `serialize_string`'s own rule, mirrored exactly. **A refusal is
+terminal** (§5), and refusal is the only conforming answer: no target traps,
+panics or aborts on a malformed payload. An application with genuinely
+arbitrary payloads uses `bytes(N)`, which remains exactly that.
 
-Beneath the contract, `string(N)` carries **bytes excluding 0x00** — all
-generated readers reject interior nulls; writes assert per §5 (NUL is valid
-UTF-8, so the interior-null rule is its own, stricter check). `bytes(N)` is
-the same wire with no interior-null rule and no encoding contract. The
-byte-string tightening is what lets the targets agree:
+Beneath the encoding rule, `string(N)` carries **bytes excluding 0x00** —
+all generated readers reject interior nulls, and writes assert per §5 (NUL
+is valid UTF-8, so the interior-null rule is its own, stricter check).
+`bytes(N)` is the same wire with no interior-null rule and no encoding rule.
+The byte-string tightening is what lets the targets agree:
 
 - Classic C++ `serialize_string` is strlen-based — it cannot represent
   interior nulls; a writer in another language must not be able to produce a
   payload the C++ reader silently truncates.
-- Rust `String` storage would impose UTF-8 validation ON READ that no target
-  performs (the contract is writer-trusted — a reader must accept what a
-  non-conforming writer produced rather than fail on text), so Rust storage
-  stays a fixed byte buffer (§6.1).
+- Rust `String` storage would heap-allocate per value, which §6.1 forbids,
+  so Rust storage stays a fixed byte buffer and the encoding rule is a
+  validation pass over those bytes rather than a conversion into a native
+  string.
 
 For every legal write the wire bits are identical to `serialize_string` over
 a buffer of N + 1.
@@ -1046,12 +1047,37 @@ primitives** — length over [0, N], then align, then raw bytes — and none
 emits a runtime string call. C# and Rust have no alternative: the §6.1
 storage rules make the runtime string method unusable there — C# stores a
 byte buffer but `SerializeString` takes `ref string`; Rust stores a byte
-buffer but `serialize_string` takes `&mut String` and rejects non-UTF-8
-bytes, which are legal here. Dart, Java and Elixir have no runtime to call.
+buffer but `serialize_string` takes `&mut String`, which allocates.
+Dart, Java and Elixir have no runtime to call.
 C++, C, Go and JavaScript may use their runtime string call for the framing
-and do not. **The interior-null check is
+and do not. **The encoding check and the interior-null check are
 generated-code validation in every target** — no runtime primitive performs
-it (classic C++ read appends `'\0'` and would silently truncate).
+the second, and the first has to hold identically in the three targets that
+have no runtime at all (classic C++ read appends `'\0'` and would silently
+truncate).
+
+**Goldens.** The read-side rule is pinned to serialize's shared corpus
+(`conformance/string.txt`), which a `string(15)` field reproduces exactly,
+its 4-bit length field being the corpus's `buffer_size` 16. The thirteen
+refused vectors are `string-refuse-overlong-two-byte-nul`,
+`string-refuse-overlong-two-byte-slash`,
+`string-refuse-overlong-three-byte-slash`,
+`string-refuse-surrogate-encoded-in-utf8`,
+`string-refuse-low-surrogate-encoded-in-utf8`,
+`string-refuse-code-point-above-10FFFF`, `string-refuse-five-byte-sequence`,
+`string-refuse-lone-continuation-byte`,
+`string-refuse-continuation-byte-after-ascii`,
+`string-refuse-truncated-two-byte-sequence`,
+`string-refuse-truncated-three-byte-sequence`, `string-refuse-byte-fe` and
+`string-refuse-byte-ff`. Each is pinned beside the accepted vector the
+corpus pairs it with, so a reader that refuses a byte class wholesale fails
+an accept: `string-accept-shortest-two-byte-sequence`,
+`string-accept-shortest-three-byte-sequence`,
+`string-accept-just-below-the-surrogate-block`,
+`string-accept-just-above-the-surrogate-block`,
+`string-accept-astral-code-point`, `string-accept-the-largest-code-point`,
+`string-accept-the-same-two-byte-sequence-completed` and
+`string-accept-the-same-three-byte-sequence-completed`.
 
 **Wide text is a separate construct**, not a spelling of this one: `wstring(N)`
 carries UTF-16 code units, counts its bound in code units, and performs no
@@ -1271,7 +1297,7 @@ of `Payload`, or a hand-written loop ending on the in-band `None`. (Ping and
 Pong may both name a field `sequence` because they are separate types;
 §4.6's unique-names rule is per type.)
 
-### 4.10 Deferred constructs
+### 4.10 Declined constructs
 
 - **C++-style bitfields (`uint64 blah : 8`) — declined across the targets**,
   for three reasons. (1) The wire half already exists: `bits(N)` is exactly
@@ -1286,14 +1312,15 @@ Pong may both name a field `sequence` because they are separate types;
   is an opt-in `[packed]` attribute on a type generating accessor-based
   storage — a generator-kind decision for a later pass, not a v1 wire
   construct.
-- **Relative integers** (`serialize_int_relative`): deferred. The classic use
-  is a strictly-increasing sequence across *array elements* (the previous
-  element's field feeding the next), which the back-reference rule cannot
-  express; a scalar-to-scalar form inside one type earns too little to carry
-  the construct. It is designed with the delta pass, never standalone. **The
-  semantics are pinned ahead of it:** strictly increasing, positive only —
-  `current > previous`, the reader fails otherwise; no wrap semantics exist,
-  and a caller with a wrapping counter unwraps before serializing.
+- **Relative integers (`serialize_int_relative`) are out of scope for
+  schema.** The construct belongs to the delta layer, and the delta layer is
+  replicant's and serialize.pro's, where it sits beside the entropy coding
+  (rANS) that the same traffic wants. schema declares types and bitpacks
+  them, so the primitive is not a v1 omission waiting to be filled. The
+  classic use is a strictly-increasing sequence across array elements, with
+  the previous element's field feeding the next, which the back-reference
+  rule of §4.5 does not express, and a scalar-to-scalar form inside one type
+  earns too little to carry the construct on its own.
 
 ### 4.11 Reserved and refused by name
 
@@ -1388,12 +1415,16 @@ position, so the read fails in the target's own error idiom (§6.1) and
 leaves the output object unspecified (§5). Refusal is the only conforming
 answer: no target traps, panics or aborts on a malformed payload.
 
+**The two text types are symmetric on read:** `string(N)` refuses malformed
+UTF-8 (§4.7) and `wstring(N)` refuses unpaired surrogates, both on the read
+path, both in all nine targets, and both terminal.
+
 **The write side** follows §5's doctrine and §4.7's precedent exactly. The
 length bound is checked on every write in every target, because it guards
-the copy. UTF-16 well-formedness is a writer OBLIGATION, asserted only where
-§4.7's UTF-8 contract is asserted, which is C, C++ and Rust, and absent from
-the other six. A code unit above `0xFFFF` cannot be written at all, because
-the storage holds 16 bits per unit in every target.
+the copy. UTF-16 well-formedness is a writer obligation whose enforcement is
+the read-side refusal above, so no write-side check is load-bearing anywhere
+and none is required of a target. A code unit above `0xFFFF` cannot be
+written at all, because the storage holds 16 bits per unit in every target.
 
 **Storage, and the conversion rule at the boundary.** Storage is a
 pre-allocated buffer of UTF-16 code units with a used length beside it,
@@ -1449,8 +1480,8 @@ code units, the most the bound carries.
 
 **Reads validate everything** — integer ranges, enum bounds, alignment
 padding, constants, reserved bits, count bounds, string lengths, the
-interior-null rule, the UTF-16 well-formedness rules of §4.12, and buffer
-exhaustion (running out of input mid-read is a
+interior-null rule, the UTF-8 and UTF-16 well-formedness rules of §4.7 and
+§4.12, and buffer exhaustion (running out of input mid-read is a
 read failure like any other) — and fail on any violation, because network
 input is the trust boundary. Generated read code never lets a value that
 controls iteration go unchecked before use.
@@ -1484,10 +1515,11 @@ production one. **No target panics and none throws**: Elixir's raise is the
 only unwinding path in the nine, and it is the BEAM's own. The generated
 write code's job is to
 make misuse impossible by construction — bounds come from the schema. Costlier contracts
-assert in DEBUG ONLY, and only where a target carries one at all (§4.7's
-UTF-8 well-formedness contract is the type case: an O(n) check no release
-path should carry, asserted by C, C++ and Rust and absent from the other
-six). Ranges are trusted
+assert in DEBUG ONLY, and only where a target carries one at all. Text
+well-formedness is not one of them. UTF-8 in `string(N)` and UTF-16 in
+`wstring(N)` are READ-side refusals in every target (§4.7, §4.12), so the
+guarantee rests on the reader rather than on a write-side check some
+targets carry and others do not. Ranges are trusted
 inputs everywhere: generated code never feeds attacker-influenced values as
 min/max.
 
@@ -2124,15 +2156,16 @@ Every row to date is settled, deferred with its design banked, or discarded.
 
 1. ~~Strings as byte strings~~ — settled: §4.7. One shape for
    `string`/`bytes`; every backend composes the wire from primitives; the
-   interior-null check is generated-code validation in every target.
+   UTF-8 encoding check and the interior-null check are generated-code
+   validation in every target.
 2. ~~Storage-type overrides~~ — settled by the integer family: storage is
    declared by the type name (`thrust int8 | min = 0, max = 100`); no
    override mechanism exists.
 3. ~~Wide strings and relative integers~~ — wide strings are settled:
    `wstring(N)` is §4.12, its wire the classic `serialize_wstring` and its
-   reader rules uniform across the nine targets. Relative integers stay
-   deferred at §4.10: every `int_relative` use site lives inside the packet
-   shapes the delta pass owns.
+   reader rules uniform across the nine targets. Relative integers are out
+   of scope by decision (§4.10): the construct belongs to the delta layer,
+   which is replicant's and serialize.pro's.
 4. ~~`schemafmt` timing~~ — settled: built early, as the parser's first
    consumer; rules in §7.4.
 5. ~~Doc comments~~ — deferred; the design is kept at §4.1.
