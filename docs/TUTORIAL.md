@@ -1933,3 +1933,275 @@ GameConfig is 99 bytes
 **You now have** `GameConfig`: one declared root, one binary format, with
 optional blocks, per-ship-type tuning that survives enum surgery, and a message
 channel that tolerates version skew.
+
+---
+
+## Part 8 — pointers and maps: when data is a graph
+
+### The problem
+
+Starlight's patrol routes are linked chains of waypoints, and a waypoint knows
+its next. A save-file scene wants one palette shared by fifty props, not fifty
+copies. Value semantics cannot say either of those things, because types and
+the tables so far nest by value, and a value cannot contain itself or be in two
+places at once.
+
+### `*Table`: pointer fields
+
+```
+table Waypoint
+{
+    name string(24)
+    x    float32
+    y    float32
+    next *Waypoint       // recursion through a pointer is legal
+}
+
+table Route
+{
+    head  *Waypoint
+    stops [..4]*Waypoint
+    loops bool
+}
+```
+
+Pointers are a **table** construct, with rules the compiler walks you through
+if you cross them:
+
+```
+type T { p *V }        (a pointer in a type body)
+    Bad.schema:4:12: field p: *V is a pointer, and pointers are a TABLE construct — types remain value semantics, tables allow pointer semantics; nest the field by value, or move the declaring type to a `table` (docs/SPEC-TABLES.md)
+
+table T { p *V }       (V is a type)
+    Bad.schema:4:13: field p: *V points at a type, and a pointer may only target a `table` — V is value-semantics data with no independent identity to point at; nest it by value, or declare V as a table (docs/SPEC-TABLES.md)
+
+table T { p *V = 0 }
+    Bad.schema:4:11: field p: a pointer field takes no specified default — a fresh pointer is null, and null is the only value a default could name (docs/SPEC-TABLES.md)
+```
+
+One rule you do not declare: **the compiler derives the mode.** A table with no
+pointer anywhere in its by-value closure is fixed size, which is everything
+Parts 6 and 7 did, a plain struct with zero overhead from this part. One
+pointer anywhere in that closure makes the table variable length, and it is
+never held by value again. You build it, lock it, and read it through a root
+pointer.
+
+Resist reaching for `*T` to mean "optional". That is `?T`, with no allocation
+and still fixed size. A pointer is for structure: recursion, sharing, a subtree
+you would rather not carry by value.
+
+### The builder life
+
+```cpp
+    RouteBuilder builder;                        // the MUTABLE life
+    Route * route = builder.GetRoot();
+    route->loops = true;
+
+    auto a = builder.Alloc<Waypoint>();          // TableSlot<Waypoint>: node AND reference
+    auto b = builder.Alloc<Waypoint>();
+    auto c = builder.Alloc<Waypoint>();
+    SetName( a, "Gate" );    a->x = 0;    a->y = 0;
+    SetName( b, "Belt" );    b->x = 120;  b->y = 40;
+    SetName( c, "Station" ); c->x = 300;  c->y = -75;
+
+    route->head = a;                             // assigning a slot links it
+    a->next = b;
+    b->next = c;
+
+    builder.Lock();                              // ONE WAY, and it compacts
+    const Route * locked = builder.AsConst();    // the CONST life: one packed region
+```
+
+`Alloc` hands back a slot usable both as the node pointer, so you write its
+fields through it, and as the reference, so you assign it to a pointer field.
+`Lock` walks the graph from the root, measures exactly, and lays every
+reachable node back to back into one region with the root at its base, with
+references rewritten self-relative so the whole region relocates by plain
+`memcpy`. There is no unlock. To edit again, load the region into a fresh
+builder.
+
+Reading the locked form is one add per hop, and `NULL` for null:
+
+```cpp
+    for ( const Waypoint * w = WaypointAt( locked->head ); w != NULL; w = WaypointAt( w->next ) )
+    {
+        printf( "  %.*s (%g, %g)\n", w->name_length, w->name, w->x, w->y );
+    }
+```
+
+```
+  Gate (0, 0)
+  Belt (120, 40)
+  Station (300, -75)
+```
+
+Before `Lock`, a reference resolves through the arena instead, with the same
+`WaypointAt` taking the builder's arena as its first argument. One slot, two
+encodings, and the overload set keeps you honest.
+
+### On the wire: sharing survives
+
+The variable class saves and loads like any table, with the same wire, the same
+tolerance and the same report, through the root pointer:
+
+```cpp
+    int64_t size = RouteMeasure( locked );
+    std::vector<uint8_t> wire( size );
+    RouteSave( locked, wire.data(), size );
+
+    int64_t need = RouteLoadMeasure( wire.data(), size );  // exact, reads no values
+    std::vector<uint8_t> region( need );                   // YOUR allocation, as always
+    TableReport report;
+    const Route * loaded = RouteLoad( region.data(), need, wire.data(), size, &report );
+```
+
+On the wire a pointer rides as an index into a flat node table, which buys the
+property graphs actually need: identity. Point at one node twice and it is
+still one node after a round trip:
+
+```cpp
+    route->stops_count = 3;
+    route->stops[0] = a;
+    route->stops[1] = a;   // the same node, a second reference
+                           // stops[2] left null, and a null slot rides
+```
+
+```
+$ ./p8
+  Gate (0, 0)
+  Belt (120, 40)
+  Station (300, -75)
+wire bytes: 172, region bytes: 256
+after round trip: shared=YES null=yes, head is Gate
+report: unknown=0 malformed=0
+sizeof(RouteBuilder) = 8264
+```
+
+Nodes the root cannot reach do not ride, and null pointers are null on the far
+side. Nothing you build can express a cycle the loader must detect, because you
+cannot assign a slot you have not allocated, but the **reader** still assumes
+hostile bytes, so a forged wire with a reference loop is refused rather than
+followed.
+
+### Maps
+
+A pointer is one node reached by one edge. A map is many values reached by a
+key, and it is the same machinery: a map makes its holder variable length, so
+it lives in a builder too.
+
+```
+table Fleet
+{
+    ships map[string(32)]ShipConfig
+    tiers map[int16]int32
+}
+```
+
+```cpp
+struct Fleet {
+    TableMap<FleetShipsEntry> ships; // map[string(32)]ShipConfig — the sorted entry array, empty until an insert
+    TableMap<FleetTiersEntry> tiers; // map[int16]int32 — the sorted entry array, empty until an insert
+};
+```
+
+The key is a bounded string or an integer, and the value is anything a field
+can be, including another map. Build through a worker and read through the
+locked map:
+
+```cpp
+    FleetBuilder builder;
+    Fleet * fleet = builder.GetRoot();
+    TableWorker worker = builder.Worker();
+
+    FleetShipsInsert( worker, fleet->ships, "kestrel" )->max_health = 250.0f;
+    FleetShipsInsert( worker, fleet->ships, "dart" )->max_health = 80.0f;
+    FleetShipsInsert( worker, fleet->ships, "anvil" )->max_health = 900.0f;
+    *FleetTiersInsert( worker, fleet->tiers, -3 ) = 7;
+    *FleetTiersInsert( worker, fleet->tiers, 2 ) = 9;
+
+    builder.Lock();
+    const Fleet * locked = builder.AsConst();
+
+    for ( auto [ name, ship ] : locked->ships )
+    {
+        printf( "  %-8s health=%g\n", name, ship->max_health );
+    }
+
+    const ShipConfig * found = locked->ships.Find( "dart" );
+```
+
+```
+$ ./p8map
+  anvil    health=900
+  dart     health=80
+  kestrel  health=250
+  tier -3 -> 7
+  tier 2 -> 9
+Find("dart") health=80, Find("ghost") is null
+3 ships, 2 tiers, 165 bytes on the wire
+```
+
+Iteration is in **ascending key order**, not insertion order, because `Lock`
+sorts the entries once and every later lookup is a binary search over the
+sorted array. That is why `anvil` comes first and why `-3` sorts before `2`.
+`Find` returns the value or `NULL`, in place, with no allocation. Inserting a
+key that already exists replaces the value, and `Erase` marks an entry dead
+without moving anything.
+
+The builder builds no index, deliberately: the sort happens once, at `Lock`,
+`Save` or the cook, so a build that inserts a million keys pays no hashing at
+insert time. For a map large enough that binary search over a cold array hurts,
+each map also generates an optional caller-owned index you build after load and
+never store.
+
+### Building goes wide
+
+Lock-free parallel construction is designed in rather than bolted on. One
+worker per thread, each allocating on its own front, with no lock and no
+per-node atomic:
+
+```cpp
+    RouteBuilder builder;
+    std::thread workers[4];
+    for ( int t = 0; t < 4; t++ )
+    {
+        workers[t] = std::thread( [&builder, &heads, t] {
+            TableWorker worker = builder.Worker();   // one per THREAD
+            TableSlot<Waypoint> head = worker.Alloc<Waypoint>();
+            /* ... build this thread's chain ... */
+            heads[t] = head;
+        } );
+    }
+    for ( auto & w : workers ) { w.join(); }         // join, THEN lock
+    builder.Lock();
+```
+
+```
+$ ./wide
+walked 4000 waypoints; the wire measures 111989 bytes
+```
+
+Allocating on your own worker is safe concurrently. Writing fields of a node
+another worker allocated is your synchronization problem, and `Lock` and `Save`
+are single-threaded. A builder is about 8 KB, because it carries the arena's
+segment table inline: fine on the stack, fine as a member, and not something
+for an array of thousands.
+
+### Who allocates
+
+The builder's arena grows through an allocator. The default is
+`schema_allocate` and `schema_release`, overridable macros that fall back to
+`calloc` and `free`, and a `TableAllocator`, an alloc and free pair plus a
+context, can be handed to any builder to route its memory through your own
+system. Everything outside the builder path stays allocation free, as before:
+the fixed class allocates nothing, `Load` regions are yours, and the generated
+code never allocates behind your back.
+
+The same style of macro governs `schema_assert`, the debug refusal, and
+`schema_fatal`, what stands after it in release. Define any of the four before
+including the header and the generated code uses yours. That is the whole C++
+customization surface.
+
+**You now have** patrol routes as real linked structure and fleets keyed by
+name: built in parallel, locked into one relocatable region, saved on the same
+tolerant wire as everything else, with sharing preserved.
