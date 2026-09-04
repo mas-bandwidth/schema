@@ -98,9 +98,8 @@ func lines(name, data string) []line {
 			continue
 		}
 		text, comment := full, ""
-		if hash := strings.Index(full, "#"); hash >= 0 {
-			comment = strings.TrimSpace(full[hash+1:])
-			text = strings.TrimSpace(full[:hash])
+		if before, after, found := strings.Cut(full, "#"); found {
+			text, comment = strings.TrimSpace(before), strings.TrimSpace(after)
 		}
 		out = append(out, line{
 			where:   fmt.Sprintf("%s:%d", name, i+1),
