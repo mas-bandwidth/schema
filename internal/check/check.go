@@ -656,6 +656,10 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 	seen := map[string]bool{}
 	var variants []string
 	for _, v := range d.Variants {
+		// the three names below are reservedEnumVariant's set, and
+		// checkClaimedNames reads the same predicate: a variant that IS the
+		// reserved word draws the refusal here and no per-target collision
+		// restatement, so one mistake draws one diagnostic.
 		if v.Text == "None" {
 			c.errf(v.Pos, "variant None is a compile error — every enum has None = 0 implicitly (SPEC §4.2)")
 			continue
@@ -3077,6 +3081,20 @@ func (c *checker) checkClaimedNames() {
 				"COUNT": "the generated Count constant",
 			}
 			for _, v := range d.Variants {
+				if reservedEnumVariant(v.Text) {
+					// THE RESERVED WORD IS ITS OWN DIAGNOSTIC, and the only
+					// one worth reading: resolveEnum has already said "variant
+					// None is a compile error — every enum has None = 0
+					// implicitly". Registering it here would restate that in
+					// three per-target spellings (the Go symbol, the Rust
+					// associated const, the C #define), so one mistake would
+					// greet a beginner with four errors of which one is
+					// actionable. The collision checks stay live for every
+					// name that merely COLLIDES — `none`, `NONE`, `max` — and
+					// those are the names for which the per-target wording is
+					// the whole explanation.
+					continue
+				}
 				add(name+v.Text, fmt.Sprintf("enum %s's generated variant constant", name), v.Pos)
 				rv := ir.RustConstName(v.Text)
 				if prev, dup := assoc[rv]; dup {
@@ -3092,13 +3110,22 @@ func (c *checker) checkClaimedNames() {
 			// emitted and never registered, so a const like DriveModeLudicrous
 			// beside enum DriveMode { Ludicrous } produced a silent duplicate
 			// #define in C while every other target compiled)
-			whyC := fmt.Sprintf("enum %s's generated variant constants (C form)", name)
-			addRust(ir.RustConstName(name)+"_NONE", whyC, d.Pos, name+"None")
-			addRust(ir.RustConstName(name)+"_MAX", whyC, d.Pos)
-			addRust(ir.RustConstName(name)+"_COUNT", whyC, d.Pos, name+"Count")
+			//
+			// EACH SIDE NAMES ITSELF. One `whyC` for the three sentinels and
+			// every variant made both halves of a collision read the same —
+			// "enum E's generated variant constants (C form) collides with
+			// enum E's generated variant constants (C form)" — so the C line
+			// alone could not tell you which two declarations collided.
+			addRust(ir.RustConstName(name)+"_NONE", fmt.Sprintf("enum %s's generated None constant (C form)", name), d.Pos, name+"None")
+			addRust(ir.RustConstName(name)+"_MAX", fmt.Sprintf("enum %s's generated Max extent (C form)", name), d.Pos)
+			addRust(ir.RustConstName(name)+"_COUNT", fmt.Sprintf("enum %s's generated Count constant (C form)", name), d.Pos, name+"Count")
 			addRust("enum_name_"+ir.RustSnake(name), fmt.Sprintf("enum %s's generated debug-name function (C form)", name), d.Pos)
 			for _, v := range d.Variants {
-				addRust(ir.RustConstName(name)+"_"+ir.RustConstName(v.Text), whyC, v.Pos, name+v.Text)
+				if reservedEnumVariant(v.Text) {
+					continue // the reserved-word diagnostic above is the one to read
+				}
+				addRust(ir.RustConstName(name)+"_"+ir.RustConstName(v.Text),
+					fmt.Sprintf("enum %s's generated variant constant %s (C form)", name, v.Text), v.Pos, name+v.Text)
 			}
 			if len(c.tables) > 0 {
 				// the JavaScript table backend's per-enum identity pair
@@ -3560,4 +3587,22 @@ func (c *checker) checkTableArmsReached(closure map[string]bool) {
 		c.errf(pos, "union %s: the arm %s is not a declared type, and no table reaches %s — such an arm is a table-closure construct, and a union outside one takes `type` payloads only; hold the union in a table body, or make the arm a type (docs/SPEC-TABLES.md §2.6, §11, §15)",
 			name, un.GeneralArm(), name)
 	}
+}
+
+// reservedEnumVariant reports whether a variant name is one of the three every
+// enum generates for itself (SPEC §4.2): the implicit None = 0, the exported
+// Max extent and the exported Count. resolveEnum refuses each by name, with the
+// sentence that says what the enum already carries; checkClaimedNames reads
+// this same predicate and registers no generated symbol for such a variant, so
+// the reserved-word refusal is not restated once per target as a collision.
+//
+// A name that merely COLLIDES with a generated one — `none`, `NONE`, `max` —
+// is not in this set: nothing else explains those, so their per-target
+// collision diagnostics are the whole answer and stay live.
+func reservedEnumVariant(text string) bool {
+	switch text {
+	case "None", "Max", "Count":
+		return true
+	}
+	return false
 }

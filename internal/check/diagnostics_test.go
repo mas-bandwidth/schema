@@ -430,7 +430,7 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype ABTest { x uint8 }\ntype AbTest { y uint8 }\n"},
 		{name: "two consts whose Rust constant spellings collide", want: "both generate the symbol AB_MAX",
 			src: "package t\nconst ABMax = 1\nconst AbMax = 2\n"},
-		{name: "a const collides with an enum's C variant #define", want: "variant constants (C form)",
+		{name: "a const collides with an enum's C variant #define", want: "variant constant Ludicrous (C form)",
 			src: "package t\nenum DriveMode { Ludicrous }\nconst DriveModeLudicrous = 1\ntype T { m DriveMode }\n"},
 		{name: "two enums whose C debug-name functions collide", want: "both generate the symbol enum_name_ab_mode",
 			src: "package t\nenum ABMode { X }\nenum AbMode { Y }\ntype T { x uint8 }\n"},
@@ -685,5 +685,57 @@ func TestCReservedMacroNeighborsAccepted(t *testing.T) {
 		if errs := runUnit(t, map[string]string{"a.schema": src}); len(errs) > 0 {
 			t.Errorf("a declaration that collides with no generated macro must stay legal: %v\n%s", errs, src)
 		}
+	}
+}
+
+// ONE MISTAKE, ONE DIAGNOSTIC (#447 F-01, #521 G-02). A variant that IS one of
+// the three names an enum generates for itself used to draw four errors: the
+// rule, then the same fact restated as a Go-symbol collision, a Rust
+// associated-const collision and a C #define collision. The actionable line
+// was one of four, and it was a beginner's first enum mistake.
+//
+// Reverting reservedEnumVariant's two uses in checkClaimedNames turns this red
+// at four errors for None and Count and four for Max.
+func TestReservedEnumVariantDrawsOneDiagnostic(t *testing.T) {
+	for _, reserved := range []string{"None", "Max", "Count"} {
+		errs := runUnit(t, map[string]string{
+			"Bad.schema": "package t\nenum E { " + reserved + ", Fighter }\n",
+		})
+		if len(errs) != 1 {
+			t.Errorf("variant %s: want 1 diagnostic, got %d:", reserved, len(errs))
+			for _, e := range errs {
+				t.Errorf("  %v", e)
+			}
+			continue
+		}
+		if !strings.Contains(errs[0].Error(), "is a compile error") {
+			t.Errorf("variant %s: the one diagnostic is not the reserved-word rule: %v", reserved, errs[0])
+		}
+	}
+}
+
+// The collision checks stay live for a name that merely COLLIDES with a
+// generated one. Nothing else explains those, so their per-target wording is
+// the whole answer — and each side of the C-form collision now names itself,
+// where one shared label used to print "enum E's generated variant constants
+// (C form) collides with enum E's generated variant constants (C form)".
+func TestCollidingEnumVariantKeepsItsPerTargetDiagnostics(t *testing.T) {
+	errs := runUnit(t, map[string]string{
+		"Bad.schema": "package t\nenum E { none, Fighter }\n",
+	})
+	if len(errs) != 2 {
+		t.Fatalf("want the Rust and C collisions, got %d: %v", len(errs), errs)
+	}
+	var cForm string
+	for _, e := range errs {
+		if strings.Contains(e.Error(), "(C form)") {
+			cForm = e.Error()
+		}
+	}
+	if cForm == "" {
+		t.Fatalf("no C-form collision among %v", errs)
+	}
+	if !strings.Contains(cForm, "generated variant constant none (C form) collides with enum E's generated None constant (C form)") {
+		t.Errorf("the C-form collision does not name both sides: %s", cForm)
 	}
 }
