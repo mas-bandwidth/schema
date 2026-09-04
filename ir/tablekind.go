@@ -392,6 +392,8 @@ func FieldTypeSpelling(f *Field) string {
 	switch {
 	case f.KeyEnum != "":
 		prefix = "[" + f.KeyEnum + "]"
+	case f.Array == ArrayList:
+		prefix = "[]" // an UNBOUNDED ARRAY (docs/SPEC-TABLES.md §2.9)
 	case f.Array == ArrayFixed:
 		prefix = "[" + itoa64(f.ArrayBound) + "]"
 	case f.Array == ArrayCounted && f.ArrayMin > 0:

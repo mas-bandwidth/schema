@@ -183,6 +183,14 @@ func VariableTables(u *Unit) map[string]bool {
 					variable[name] = true
 					break
 				}
+				if f.IsList() {
+					// an UNBOUNDED ARRAY is a variable edge whatever its
+					// element is (docs/SPEC-TABLES.md §2.9), on the map's own
+					// terms: its elements live in the arena on the authoring
+					// side and in the node's own extent in a region
+					variable[name] = true
+					break
+				}
 				if f.Type.Kind != TNamed {
 					continue
 				}

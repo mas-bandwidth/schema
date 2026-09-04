@@ -1240,6 +1240,17 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 			c.errf(f.Pos, "an array of %s is not supported in v1 — wrap the element in a type", scalarName(out.Type.Kind))
 			return nil
 		}
+		// `placements []Placement` — an UNBOUNDED ARRAY
+		// (docs/SPEC-TABLES.md §2.9). The ELEMENT is an array element like any
+		// other, so it has already resolved through the path above and the
+		// bounded array's own refusals have already fired; what is left is the
+		// construct's own rules, and there is no bound to evaluate.
+		if f.Array.Kind == ast.ArrayList {
+			if !c.checkListSpelling(f, inTable) {
+				return nil
+			}
+			out.Array = ir.ArrayList
+		} else {
 		// an ENUM-KEYED array: the bound NAMES a declared enum rather than
 		// evaluating to a count — `ships [ShipType]ShipConfig`, one slot per
 		// variant, indexed by the variant (docs/SPEC-TABLES.md §2.4)

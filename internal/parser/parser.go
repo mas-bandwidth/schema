@@ -606,15 +606,36 @@ func (p *parser) parseArrayBound() *ast.ArrayBound {
 		p.advance()
 		b.Kind = ast.ArrayUpTo
 		b.Hi = p.parseExpr()
+	case scanner.RBrack:
+		// [] — an UNBOUNDED ARRAY (docs/SPEC-TABLES.md §2.9). The bracket is
+		// the one every extent uses and an EMPTY bracket is the absence of an
+		// extent, which is what the construct is.
+		b.Kind = ast.ArrayList
 	case scanner.DotDot:
-		// [..N] — sugar for [0..N], reads "up to N" (SPEC §4.3)
 		p.advance()
+		if p.kind() == scanner.RBrack {
+			// [..]T — refused by name (docs/SPEC-TABLES.md §2.9): `[..N]` is a
+			// BOUND, so dropping its N reads as a bound someone failed to
+			// finish rather than a bound nobody declared, and the grammar's own
+			// Bound production has no such form
+			p.errf(p.tok().Pos, "[..]T is not the unbounded array — `[..N]` is a BOUND, so dropping its N reads as a bound left unfinished rather than a bound nobody declared, and a count bound is a range LITERAL and never a truncated one; spell an unbounded array [] (docs/SPEC-TABLES.md §2.9, SPEC §4.2)")
+			b.Kind = ast.ArrayList
+			break
+		}
+		// [..N] — sugar for [0..N], reads "up to N" (SPEC §4.3)
 		b.Kind = ast.ArrayUpTo
 		b.Hi = p.parseExpr()
 	default:
 		first := p.parseExpr()
 		if p.kind() == scanner.DotDot {
 			p.advance()
+			if p.kind() == scanner.RBrack {
+				// [0..]T — refused by name (docs/SPEC-TABLES.md §2.9): it
+				// states a minimum and hides the missing maximum behind it
+				p.errf(p.tok().Pos, "[Min..]T is not the unbounded array — it states a minimum and hides the missing maximum behind it, and a count bound is a range LITERAL and never a truncated one; spell an unbounded array [], or complete the bound as [Min..N] (docs/SPEC-TABLES.md §2.9, SPEC §4.2)")
+				b.Kind = ast.ArrayList
+				break
+			}
 			b.Kind = ast.ArrayRange
 			b.Lo = first
 			b.Hi = p.parseExpr()
