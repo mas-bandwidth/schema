@@ -48,9 +48,9 @@ what proves them across releases, #463, named in its section below.
    refuses: `Open` returns null, and the tool's `uncook` names the mismatch.
    They are never read across a version.
 6. **The kind set is closed within a major, and every future kind is
-   skippable.** One kind number is reserved whose payload is a length and
-   that many bytes; a kind added in a later major rides inside it, and a
-   reader of this major skips it, counts it as unknown, and continues (#434).
+   skippable.** Kind `31` is the escape: its payload is a length and that
+   many bytes, a kind added in a later major rides inside it, and a reader of
+   this major skips it, counts it as unknown, and continues (#434).
 7. **Ids are 64 bits, and the wire form is versioned.** Every id on the table
    wire is a 64-bit name hash, carried once per file in an id table; the
    file's first byte is the form version, so a reader that meets a later form
@@ -198,9 +198,8 @@ name. That one decision produces the whole evolution story:
 
 **Every vocabulary, the same rule.** Enum variants and union arms are
 identified by name hash exactly as fields are; a table's name is the node's
-type id. Ids are 64 bits, `fnv1a64(name)`, in every vocabulary, one rule in
-place of the 16-bit fold the repository still carries for fields and variants
-until #435 lands. A 64-bit id gives a million-variant vocabulary an expected
+type id. Ids are 64 bits, `fnv1a64(name)`, in every vocabulary, one rule with
+no fold and no rebound. A 64-bit id gives a million-variant vocabulary an expected
 0.00000003 collisions over its life. The wire does not pay eight bytes per
 field for it; the layout is in the wire form section below.
 
@@ -254,9 +253,11 @@ does today.
 | an enum variant reordered | nothing | passes | moves, and so does the protocol id |
 | an enum variant renamed | the old name reads `None`, counted | warns | moves, and so does the protocol id: order is spelled in names |
 | a `fixed` field's `F` moved | **silent**: the raw integer reads at the new scale | **refuses** | moves |
-| a field's referent replaced by one that cannot stand in (an enum respelled as its raw integer) | **silent** | **refuses** | moves |
+| a field's referent replaced by one that cannot stand in (a nested table swapped for a same-shaped twin) | **silent** | **refuses** | moves |
+| a field or a union arm changed between an enum and its raw integer | `kind_mismatch`: an enum has a kind of its own | **refuses** | moves |
+| a union arm's declared type changed | `kind_mismatch` where the kind moved, `malformed` where the length no longer frames it | **refuses** | moves |
 | a flags variant inserted or removed | silent | refuses | moves, and so does the protocol id |
-| a flags variant reordered or renamed in place | **silent** | **refuses** | moves, and so does the protocol id; the cook projection carries the bit positions itself once #435 lands |
+| a flags variant reordered or renamed in place | **silent** | **refuses** | moves: the cook projection digests each variant's bit position, and the protocol id moves too |
 | a union arm reordered or renamed | `unknown` for an arm this reader lacks; a reorder is silent and safe | warns on a vanished name | moves, and so does the protocol id: the arm names are what a same-typed reorder moves |
 | a keyed array made positional | `kind_mismatch` | refuses | moves |
 | a keyed array's key enum swapped for another | `unknown`, one per slot; the kind stays | refuses | moves |
@@ -349,8 +350,8 @@ The id is the low 64 bits of SHA-256 over the unit's *cook projection*, which
 digests three groups of facts: the protocol id (the type wire's shape), the
 layout of every record in the table closure (sizes, offsets, kinds, wire ids,
 array classes and bounds, strides), and the meaning a wire load puts in those
-slots (defaults, effective ranges, enum and union vocabularies, and, once
-#435 lands, each flags variant's bit position). It is compiler-settled:
+slots (defaults, effective ranges, enum and union vocabularies, and each
+flags variant's bit position). It is compiler-settled:
 tooling cooks before any game binary exists, so the id must be knowable from
 the schema alone. `schema build-version --facts` prints it with the facts it
 was taken over.
@@ -427,38 +428,41 @@ drift is a build error on both generated sides before it is anything else.
 
 Every field on the table wire carries a kind byte from a closed set: bool,
 the integers by width and sign, the floats, string, table, array, union,
-keyed array, pointer index, the 128-bit integers, the fixed-point widths, and
-(with #435) a kind of its own for enums, so that an enum and its raw integer
-can never be confused on the wire. **A kind is spent only to close a silent
+keyed array, pointer index, the 128-bit integers, the fixed-point widths, a
+kind of its own for enums so that an enum and its raw integer can never be
+confused on the wire, the escape kind, and the payload-free kind a union arm
+takes. **A kind is spent only to close a silent
 edit**; blocks spend none.
 
 **A reader that does not know a kind cannot skip it.** That is the nature of
 a closed set, and it is why a new kind is a wire change. Two rules make that
-survivable across a major. First, **one kind number is reserved whose
-payload is `L`, then `L` bytes**, opaque; a kind added in a later major is
-introduced as that framing carrying its own inner encoding, so a reader of
-this major skips it, counts it `unknown`, and continues (#434). Second, **the
-file's first byte is the wire form's version**, so a reader can say "newer
-form" rather than "malformed" when it meets one (#435). Neither is an
+survivable across a major. First, **kind `31` is reserved, its payload `L`
+then `L` bytes**, opaque; a kind added in a later major is introduced as that
+framing carrying its own inner encoding, so a reader of this major skips it,
+counts it `unknown`, and continues (#434). Second, **the file's first byte is
+the wire form's version**, so a reader can say "newer form" rather than
+"malformed" when it meets one (#435). Neither is an
 envelope: no identity, no magic and no content hash ride on the table wire,
 and a file that needs to say what it is puts a field on its root table,
 `format uint32 = 3`, which an older reader still reads, a foreign file
 defaults, and that default is the provenance signal.
 
-**The layout under #435.** After the form byte comes the body, as today, with
-every id replaced by a reference and every width made variable: a field is
-`ref, kind, payload`, and the field list ends with a zero ref. References are
-1-based, unsigned LEB128, canonical (a non-minimal encoding is malformed);
-lengths, counts, node indexes and node counts are the same varint, 64-bit in
-capability and one byte for the small values they nearly always are. An enum
-value, a union's arm id, a keyed array's slot keys and a node's type id are
-all references. The file ends with the id table: the distinct 64-bit ids the
-body used, in first-use order, then the count as a fixed u64, so that a
-one-pass writer never patches and a reader, which holds the whole buffer
-anyway, reads the count from the end, resolves the table once against its
-own descriptors, and dispatches every field through an array index. There is
-no mode: no implicit table, no width byte, no magic, no build version in the
-header. The measurements that chose this layout are on #435.
+**The layout.** After the form byte comes the body, every id a reference and
+every width variable: a field is `ref, kind, payload`, and the field list ends
+with a zero ref. References are 1-based, unsigned LEB128, canonical (a
+non-minimal encoding is malformed); lengths, counts, node indexes and node
+counts are the same varint, 64-bit in capability and one byte for the small
+values they nearly always are. An enum value, a union's arm id, a keyed
+array's slot keys and a node's type id are all references. A union arm's
+header is a field header, so an arm carries its own kind byte and a retyped
+arm is reported like a retyped field. The file ends with the id table: the
+distinct 64-bit ids the body used, in first-use order, then the count as a
+fixed u64, so that a one-pass writer never patches and a reader, which holds
+the whole buffer anyway, reads the count from the end, resolves the table
+once against its own descriptors, and dispatches every field through an array
+index. There is no mode: no implicit table, no width byte, no magic, no build
+version in the header. The measurements that chose this layout are on #435,
+and SPEC-TABLES.md §3 is the encoding.
 
 ## The text form
 
@@ -649,10 +653,10 @@ still open.
   separate presence field.
 - **One `const` edit is as many silent edits as fields use it**, acknowledged
   under one `--reason`. Read the entry.
-- **Flags are guarded by the opt-in frame only, today.** Reorder and rename
-  in place move no counter and, until #435 lands, no id; a cooked mask from
-  before a reorder opens under the new build with the bits meaning different
-  things. Commit a baseline; append at the end.
+- **Flags are guarded by the opt-in frame and by a re-cook.** Reorder and
+  rename in place move no counter, and they move the build version, so a
+  cooked mask from before a reorder does not open under the new build. The
+  wire stays silent. Commit a baseline; append at the end.
 - **The baseline can be regenerated from nothing**: its deletion is a
   reviewable diff, not an invisible act, but a regenerated file starts the
   coverage clock over.
@@ -664,10 +668,9 @@ still open.
   cache on the protocol id. Key it on the build version, in the triple.
 - **`Open` refuses in silence.** A wrong-version, corrupt or truncated cook
   returns null; only the tool's `uncook` names the mismatch. Log the null.
-- **Tiny messages pay for 64-bit identity.** Under #435 a file carries each
-  distinct id once at eight bytes, so a three-field message grows from about
-  20 bytes to about 45; a stream that wants small same-build messages is a
-  `type` stream.
+- **Tiny messages pay for 64-bit identity.** A file carries each distinct id
+  once at eight bytes, so a three-field message is about 45 bytes; a stream
+  that wants small same-build messages is a `type` stream.
 - **Deep pointered saves have no text form** past the text reader's depth
   cap of 128 levels; the "debug an old file" pattern hits that wall on the
   largest saves.
