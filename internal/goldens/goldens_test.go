@@ -8,6 +8,8 @@
 package goldens
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"os"
@@ -204,8 +206,8 @@ func TestExportedSurfaceMovesNeitherWire(t *testing.T) {
 		protocolId   uint64
 		buildVersion uint64
 	}{
-		{"examples", corpusDir, 0x91a8e85156dfe2b1, 0x69d6a810cfa22717},
-		{"examples128", corpus128Dir, 0x42050541a90eea8a, 0xedde8274fbab7f85},
+		{"examples", corpusDir, 0x682e2a15a56b78bf, 0x68ee62213126f184},
+		{"examples128", corpus128Dir, 0x3a9a972a02c9e7ca, 0x44a8123c94d09353},
 	} {
 		t.Run(unit.name, func(t *testing.T) {
 			u := loadCorpusDir(t, unit.dir)
@@ -287,6 +289,58 @@ func pinDir(t *testing.T, dir string, files map[string][]byte) {
 	}
 }
 
+// pinnedUnits is every compilation unit this package pins, by the name its
+// golden files are stored under.
+var pinnedUnits = []struct {
+	name string
+	dir  string
+}{
+	{"examples", corpusDir},
+	{"examples128", corpus128Dir},
+	{"tables-examples", "../../tables/examples"},
+	{"tables-pointers", "../../tables/pointers"},
+	{"tables-block", "../../tables/block"},
+	{"tables-blockhome", "../../tables/blockhome"},
+	{"tables-messages", "../../tables/messages"},
+	{"tables-stream", "../../tables/stream"},
+	{"tables-blobs", "../../tables/blobs"},
+	{"tables-scalars", "../../tables/scalars"},
+}
+
+// TestWireLawBumpMovesEveryId holds the promise the codec law line is for
+// (SPEC §3.1): a compiler change that moves the BYTES under an unchanged
+// rendering bumps ir.WireLaw, and EVERY id in existence moves with it. The
+// constant cannot be changed from a test, so the equivalent is proven over the
+// artifact the id is taken from: for every unit here the id is exactly the
+// digest over its projection text, and the same text under the next law
+// number digests differently. No unit can sit out a bump.
+func TestWireLawBumpMovesEveryId(t *testing.T) {
+	law := fmt.Sprintf("schema-wire-law %d\n", ir.WireLaw)
+	next := fmt.Sprintf("schema-wire-law %d\n", ir.WireLaw+1)
+	for _, unit := range pinnedUnits {
+		t.Run(unit.name, func(t *testing.T) {
+			u := loadCorpusDir(t, unit.dir)
+			text := ir.WireProjection(u)
+			if !strings.Contains(text, law) {
+				t.Fatalf("%s does not carry the codec law line — a rounding-rule change could not reach its id", unit.name)
+			}
+			if got := digest(text); got != u.ProtocolId {
+				t.Fatalf("%s: the id is not the digest over its projection (0x%016x vs 0x%016x) — §3.1's procedure has moved", unit.name, u.ProtocolId, got)
+			}
+			if digest(strings.Replace(text, law, next, 1)) == u.ProtocolId {
+				t.Errorf("%s kept its id across a codec law bump", unit.name)
+			}
+		})
+	}
+}
+
+// digest is §3.1's procedure: the low 64 bits of SHA-256 over the projection,
+// the final eight bytes big-endian.
+func digest(projection string) uint64 {
+	sum := sha256.Sum256([]byte(projection))
+	return binary.BigEndian.Uint64(sum[24:])
+}
+
 // TestGoldenBuildVersion pins the BUILD VERSION and the COOK PROJECTION it
 // hashes, per unit (docs/SPEC-TABLES.md §20.8). The number is what a distributed
 // store's tuple is keyed by and what a block's prologue carries, so a change
@@ -298,22 +352,7 @@ func pinDir(t *testing.T, dir string, files map[string][]byte) {
 // header lines alone, which is the case a reader has to be able to check by
 // eye.
 func TestGoldenBuildVersion(t *testing.T) {
-	units := []struct {
-		name string
-		dir  string
-	}{
-		{"examples", corpusDir},
-		{"examples128", corpus128Dir},
-		{"tables-examples", "../../tables/examples"},
-		{"tables-pointers", "../../tables/pointers"},
-		{"tables-block", "../../tables/block"},
-		{"tables-blockhome", "../../tables/blockhome"},
-		{"tables-messages", "../../tables/messages"},
-		{"tables-stream", "../../tables/stream"},
-		{"tables-blobs", "../../tables/blobs"},
-		{"tables-scalars", "../../tables/scalars"},
-	}
-	for _, unit := range units {
+	for _, unit := range pinnedUnits {
 		t.Run(unit.name, func(t *testing.T) {
 			u := loadCorpusDir(t, unit.dir)
 			got := fmt.Sprintf("0x%016x\n%s", ir.BuildVersion(u), ir.CookProjection(u))

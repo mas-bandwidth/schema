@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — the TABLE wire (docs/SPEC-TABLES.md); protocol id 0x1a38ac487752b0ae names packets only, and a table versions by field id
+// package benchtable — the TABLE wire (docs/SPEC-TABLES.md); protocol id 0xd093e62e6f907c36 names packets only, and a table versions by field id
 //
 // Measure/Save/Load are name-first free functions: <name>_measure gives the
 // exact wire size, <name>_save writes exactly that many bytes into the

@@ -185,9 +185,14 @@ serve, and Protobuf does.
 
 The id hashes a **wire shape projection**, not the source text, so an edit
 that moves no bytes does not move the id: a comment, a blank line, a renamed
-file, a renamed enum variant. Run `schema projection` to see exactly what it
-depends on — it is deliberately printable, because a wire-affecting fact
-missing from that text would be a fact the id ignores.
+file, a renamed `const`. Renaming an enum variant, a flags variant
+or a union arm is not in that list: the ordinal is the wire and the ordered
+names are the only record of which ordinal means what, so a reorder — and
+therefore a rename — moves the id.
+
+Run `schema projection` to see exactly what it depends on — it is
+deliberately printable, because a wire-affecting fact missing from that text
+would be a fact the id ignores.
 
 ## Why AGPL? My lawyer will hate this.
 

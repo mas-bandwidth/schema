@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package realworld — protocol id 0x8f7228a19854fbb2
+// package realworld — protocol id 0x0eefe6bcd2596139
 
 #pragma once
 

@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package ludicrous — protocol id 0x42050541a90eea8a */
+   package ludicrous — protocol id 0x3a9a972a02c9e7ca */
 
 #ifndef SCHEMA_LUDICROUS_LUDICROUSWIRE_H
 #define SCHEMA_LUDICROUS_LUDICROUSWIRE_H

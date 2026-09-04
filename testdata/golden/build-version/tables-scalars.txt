@@ -1,6 +1,6 @@
-0x60b4cb8aaf8eaec4
+0xa8b581f9ab3e8580
 schema-build-version 2
-protocol 01ba84a4cbd2143a
+protocol aa2ae3fa9f005efc
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record Pose sizeof=24 alignof=8

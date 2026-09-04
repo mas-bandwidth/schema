@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package benchtable — protocol id 0x1a38ac487752b0ae
+# package benchtable — protocol id 0xd093e62e6f907c36
 #
 # The shipped Elixir wire path (issue #167): the serialize.elixir port's
 # measured shapes — byte-granular 32-bit-group packing and 40-bit read
@@ -107,7 +107,7 @@ defmodule Benchtable.BenchTable do
 
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
-  def protocol_id, do: 0x1A38AC487752B0AE
+  def protocol_id, do: 0xD093E62E6F907C36
 
   # enum_name_table_weapon: debug/log/tooling name for any TableWeapon wire value —
   # out-of-set values (wire-legal up to the declared max) name as "???"

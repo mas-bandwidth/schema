@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package realworld — protocol id 0x8f7228a19854fbb2
+// package realworld — protocol id 0x0eefe6bcd2596139
 
 #pragma once
 
@@ -12,7 +12,7 @@ namespace realworld {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0x8f7228a19854fbb2ull;
+inline constexpr uint64_t ProtocolId = 0x0eefe6bcd2596139ull;
 
 // enum PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2)
 enum class PacketMode : uint8_t {

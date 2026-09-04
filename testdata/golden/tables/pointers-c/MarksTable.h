@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package graphdemo — protocol id 0x79242c6a555d3a60 (packets only: tables version by field id, not by protocol id)
+   package graphdemo — protocol id 0x2ce00b66ca6ca57c (packets only: tables version by field id, not by protocol id)
    The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
    dependency — includable from any TU. Compile the .c beside this header
    to use the reflection descriptors or the text form. */
@@ -722,7 +722,7 @@ typedef struct TableSink
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0x8b3fa61285c77990ull
+#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0x94b679c0a547181bull
 
 #endif /* SCHEMA_GRAPHDEMO_BUILD_VERSION */
 
