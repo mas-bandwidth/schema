@@ -1,0 +1,26 @@
+# THE PINNED FUZZ VECTORS (docs/SPEC-TABLES.md §4.2). A mutant the wire fuzzer
+# found once is a mutant it must never have to find again. The random pass is a
+# search, and a search that has to rediscover a known red is a search that can
+# miss it. Every vector here is seeded into every wire-fuzz run by its own name
+# and fed to the leg and the oracle EXACTLY as it is, before the random pass
+# starts, so the red it pins is a SEEK.
+#
+# A vector earns its place by having been a red. It stays as the regression
+# gate for the fix that closed it, and its negative control is that fix
+# reverted: the run must go red on this vector's name.
+#
+#   <name> <unit> <root> <file>
+#
+# The file is a path from the repository root, so a vector may live beside the
+# corpus it was mutated from.
+
+# THE COUNT WHOSE OWN SPELLING RUNS PAST THE BODY IT IS FRAMED BY (§3, §4). An
+# array body's `L` of 2 is the shortest that carries a header at all, being the
+# element kind byte and one count byte, but a canonical LEB128 count is up to
+# ten bytes and the header is read against the PARENT buffer rather than
+# against the body's own L. A count spelled wide therefore leaves the cursor
+# past the end it was framed by, and the span from the cursor to that end is
+# NEGATIVE. The reference reads no elements out of it. The oracle sliced with
+# it and panicked. Found by the random pass at mutant 99100 of seed
+# 24845619678, on Certify run 33887252419.
+stream_count_past_body streamdemo Feed testdata/wire/tables/fuzz-vectors/stream_count_past_body.bin

@@ -2761,8 +2761,8 @@ tables-cpp-release:
 	$(MAKE) tables-wire-fuzz N=500000
 	$(MAKE) tables-wire-fuzz SEED=2 N=500000
 
-.PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control
-tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control
+.PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control
+tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control
 
 # the string read's `room( len )`: a length past the body is then read anyway,
 # so the sabotaged leg takes a string out of a neighbour's bytes and CLAMPS it
@@ -2792,6 +2792,44 @@ tables-wire-fuzz-arm-width-negative-control: build/conformance-harness
 # `L` and the bytes after it are claimed by no field.
 tables-wire-fuzz-arm-terminator-negative-control: build/conformance-harness
 	$(call wire_fuzz_control,arm-terminator,internal/codegen/cpptable/arms.go,s|if ( %s.offset != %s.size ) { %s = %s; r.report->malformed = true|if ( false \&\& %s.offset != %s.size ) { %s = %s; r.report->malformed = true|,the decoded value differs)
+
+# THE ORACLE NEVER PANICS, which is what makes it an oracle. The four controls
+# above sabotage the C++ EMITTER and ask whether the fuzzer notices a leg that
+# lost a check. This one sabotages the ORACLE and asks whether the fuzzer
+# notices the engine itself dying on hostile bytes. It is the standing control
+# for the pinned vector stream_count_past_body: a body header is read against
+# the parent buffer, so a wide count leaves the cursor past the end its own `L`
+# set, and the span from cursor to end goes negative. Without the clamp the
+# oracle slices with it and panics. The run must go red, on the VECTOR and on
+# the panic, and not merely somewhere.
+#
+# Nothing tracked is written to: the clamp is removed from a COPY and reached
+# through a Go build overlay, so an interrupt cannot leave a sabotaged tree.
+# The leg is the ordinary one, so this control costs no second C++ build.
+ORACLE_NC := build/wire-fuzz-nc-oracle
+.PHONY: tables-wire-fuzz-oracle-negative-control
+tables-wire-fuzz-oracle-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	@rm -rf $(ORACLE_NC) && mkdir -p $(ORACLE_NC)
+	@sed -e 's|if end < r.off {|if false { // NEGATIVE CONTROL: the clamp is gone|' \
+		internal/tablewire/decode.go > $(ORACLE_NC)/decode.go.txt
+	@cmp -s internal/tablewire/decode.go $(ORACLE_NC)/decode.go.txt && \
+		{ echo "NEGATIVE CONTROL: the oracle sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/$(ORACLE_NC)/decode.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(ORACLE_NC)/overlay.json
+	go build -overlay $(ORACLE_NC)/overlay.json -o $(ORACLE_NC)/harness ./test/conformance/harness
+	@if $(ORACLE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n 0 \
+			--failed $(ORACLE_NC)/failed.bin > $(ORACLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the oracle's clamp is gone and the wire fuzzer stayed green"; \
+		cat $(ORACLE_NC)/log; exit 1; \
+	fi
+	@grep -q "the oracle PANICKED" $(ORACLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on an oracle panic"; \
+		  cat $(ORACLE_NC)/log; exit 1; }
+	@grep -q "stream_count_past_body" $(ORACLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the panic was not on the pinned vector"; \
+		  cat $(ORACLE_NC)/log; exit 1; }
+	@grep -m1 "FAILED" $(ORACLE_NC)/log
+	@echo "negative control: removing the oracle's body-span clamp turns the pinned vector RED"
 
 # The GENERATED half of the data: the JSON text of every instance and the read
 # report of every evolution case, both from the compiler's own engine.

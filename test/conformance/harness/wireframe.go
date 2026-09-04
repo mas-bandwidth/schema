@@ -452,6 +452,10 @@ type wireSeed struct {
 	root  string
 	wire  []byte
 	frame *wireFrame
+	// a PINNED VECTOR rides exactly as it is and is not mutated. It is a red
+	// the fuzzer already found, kept so the next run seeks it rather than
+	// searching for it (testdata/wire/tables/fuzz-vectors/INDEX.txt).
+	vector bool
 }
 
 // wireMutant is one input the leg and the oracle both read.
