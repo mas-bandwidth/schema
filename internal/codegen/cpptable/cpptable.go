@@ -71,6 +71,10 @@ type tableGen struct {
 	file        *ir.File
 	anyVariable bool // the unit declares at least one variable-length table
 	anyKeyed    bool // the unit declares at least one enum-keyed array
+	// anyMap is the unit declaring at least one `map[K]V` (docs/SPEC-TABLES.md
+	// §2.8). It gates the map runtime and every map-shaped walk, so not one
+	// symbol of the machinery reaches a map-free unit's header (§2.2).
+	anyMap bool
 	// blocks is the unit's BLOCK FORM surface (docs/SPEC-TABLES.md §19), nil when
 	// no table is marked `| block`. Nil is what makes the zero-cost gate
 	// answerable by asking one question (§2.2).
@@ -601,6 +605,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	targets := ir.PointerTargets(u)
 	anyVariable := len(variable) > 0
 	anyKeyed := unitHasKeyedArray(u, closure)
+	anyMap := unitHasMap(u, closure)
 	blocks := ir.Blocks(u)
 
 	// The BLOCK FORM (docs/SPEC-TABLES.md §19) is emitted ON THE SIDE, into
@@ -609,7 +614,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// the form. The Table header below carries not one symbol of it.
 	out := generateBlockFiles(u, blocks, variable, targets)
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, blocks: blocks, variable: variable, targets: targets,
+		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets,
 			includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
@@ -650,6 +655,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.emitTableReset(st)
 			}
 			g.emitCodecDeclarations(members)
+			g.emitMapSurfaces(members)
 			for _, st := range members {
 				g.owner = st
 				g.emitTableMeasure(st)
@@ -760,7 +766,15 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed))
 		if anyVariable {
 			h.WriteString("\n")
-			h.WriteString(tableArenaRuntime(u.Package))
+			h.WriteString(tableArenaRuntime(u.Package, anyMap))
+		}
+		if anyMap {
+			// the MAP runtime (docs/SPEC-TABLES.md §2.8): the storage type, the
+			// order, the builder's head and segments, and the optional index.
+			// A map makes its holder variable-length, so it always follows the
+			// arena runtime it is spelled in terms of.
+			h.WriteString("\n")
+			h.WriteString(tableMapRuntime(u.Package))
 		}
 		// the COOKED FORM's read side (docs/SPEC-TABLES.md §7) and the BUILD VERSION
 		// it matches against, in EVERY unit that declares a table: every table
@@ -802,7 +816,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			c.WriteString("#include <locale.h> // the text form: the runtime's decimal point\n\n")
 			c.WriteString(tableJsonWalk(u.Package, anyVariable))
 			fmt.Fprintf(&c, "\nnamespace %s {\n\n", u.Package)
-			cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, blocks: blocks, variable: variable, targets: targets,
+			cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets,
 				includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
 			for _, st := range members {
 				cg.emitJsonDefinitions(st)

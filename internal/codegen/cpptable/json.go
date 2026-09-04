@@ -121,6 +121,13 @@ inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t d
 // region, which is what Lock and Load both produce — with the allocator its
 // identity map uses, defaulted to the program's pair as Measure and Save are.
 func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
+	if st.IsMapEntry() {
+		// a map's ENTRY is not a ROOT (docs/SPEC-TABLES.md §2.8): it is reached
+		// only through the map that generates it, so it has no text of its own.
+		// Its two fields ride inside the map's JSON object, which is the
+		// holder's walk (§16).
+		return
+	}
 	if g.isVar(st.Name) {
 		g.pf("// %s in and out of a JSON text (docs/SPEC-TABLES.md §16.7): read into a\n", st.Name)
 		g.pf("// builder, written from a region's const root. A node named more than once\n")
@@ -141,6 +148,13 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 // emitJsonDefinitions puts the same member's three definitions in the .cpp,
 // each a thin wrapper naming a descriptor and nothing else.
 func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
+	if st.IsMapEntry() {
+		// a map's ENTRY is not a ROOT (docs/SPEC-TABLES.md §2.8): it is reached
+		// only through the map that generates it, so it has no text of its own.
+		// Its two fields ride inside the map's JSON object, which is the
+		// holder's walk (§16).
+		return
+	}
 	if g.isVar(st.Name) {
 		g.pf("bool %sFromJson( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
 		g.pf("    %s * root = builder.GetRoot();\n", st.Name)

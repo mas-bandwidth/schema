@@ -209,6 +209,16 @@ func (g *tableGen) emitTableStruct(st *ir.Struct) {
 }
 
 func (g *tableGen) emitTableStorageField(f *ir.Field) {
+	if f.IsMap() {
+		// A MAP FIELD IS SIXTEEN BYTES (docs/SPEC-TABLES.md §2.8, §7.2): a
+		// self-relative reference to the entry array and the live count, then
+		// padding to eight — one member of a TableMap, so a port that walked
+		// two pieces would account for twelve bytes where sixteen are written.
+		// The ENTRIES are not here: they are by-value records inside the
+		// holder's node extent, laid after the record's own storage.
+		g.pf("    TableMap<%s> %s; // %s — the sorted entry array, empty until an insert\n", f.MapEntry.Name, f.Name, ir.TableTypeSpelling(f))
+		return
+	}
 	if f.Type.Pointer {
 		// a pointer is EIGHT BYTES and no address: an arena offset while the
 		// builder is mutable, a self-relative delta once packed. That is what
@@ -331,6 +341,16 @@ func (g *tableGen) emitTableReset(st *ir.Struct) {
 }
 
 func (g *tableGen) emitTableResetField(f *ir.Field) {
+	if f.IsMap() {
+		// a fresh map is EMPTY (docs/SPEC-TABLES.md §2.8): the reference is
+		// null in both encodings and the live count is zero. The builder's
+		// head and its segments are the arena's, and Reset does not free them
+		// — the arena's own reset is what reclaims a dead entry's storage.
+		g.pf("    value.%s.entries.value = 0; // %s — empty\n", f.Name, ir.TableTypeSpelling(f))
+		g.pf("    value.%s.count = 0;\n", f.Name)
+		g.pf("    value.%s.padding = 0;\n", f.Name)
+		return
+	}
 	if f.Type.Pointer {
 		switch f.Array {
 		case ir.ArrayNone:
@@ -611,6 +631,10 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 }
 
 func (g *tableGen) emitTableMeasureField(f *ir.Field) {
+	if f.IsMap() {
+		g.emitMapMeasureField(f)
+		return
+	}
 	kind := tableScalarKind(f)
 	width := tableKindWidth(kind)
 	switch {
@@ -945,6 +969,10 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 }
 
 func (g *tableGen) emitTableWriteField(f *ir.Field) {
+	if f.IsMap() {
+		g.emitMapWriteField(f)
+		return
+	}
 	id := ir.TableFieldId(f)
 	kind := tableScalarKind(f)
 	if f.Type.Kind == ir.TNamed {
@@ -1282,6 +1310,13 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			if f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) {
 				wireKind = tkArray
 			}
+			if f.IsMap() {
+				// A MAP RIDES AS AN ARRAY OF TABLES (docs/SPEC-TABLES.md §2.8):
+				// kind 14 over element kind 13, so a reader that declares the
+				// same name as a bounded array of a two-field table decodes it
+				// as that array and neither spends a kind on the other.
+				kind, wireKind = tkTable, tkArray
+			}
 			if f.KeyEnum != "" {
 				// a KEYED body is its own kind, so the positional-to-keyed edit
 				// (and its reverse) reads as a kind mismatch and is counted,
@@ -1341,6 +1376,10 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 
 func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 	ind := "                "
+	if f.IsMap() {
+		g.emitMapReadField(f)
+		return
+	}
 	switch {
 	case f.KeyEnum != "":
 		// each pair is placed by its VARIANT id, so a slot lands by name

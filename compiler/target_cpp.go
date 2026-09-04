@@ -16,9 +16,6 @@ type cppTarget struct{}
 func (cppTarget) Names() []string { return []string{"cpp"} }
 
 func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := refuseMaps(u, "cpp"); err != nil {
-		return nil, err
-	}
 	// the TABLE side of a payload-free arm is this target's (§2.6); the PACKET
 	// side is a named follow-on, so a union with one outside a table closure
 	// is refused here
@@ -48,4 +45,5 @@ func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 func init() {
 	registerBuiltin(cppTarget{}, true, true, true, true)
 	registerOptionalArrayCarrier("cpp")
+	registerMapCarrier("cpp") // the C++ reference carries the map codecs (docs/SPEC-TABLES.md §2.8)
 }
