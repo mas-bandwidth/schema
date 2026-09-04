@@ -70,12 +70,12 @@ concurrency:
 # changes. Find the newest tag with:
 #   gh release list --repo mas-bandwidth/<repo> --limit 1
 env:
-  SERIALIZE_TAG: v1.12.0
-  SERIALIZE_C_TAG: v1.5.0
-  SERIALIZE_GO_TAG: v1.14.0
-  SERIALIZE_RS_TAG: v2.2.2
-  SERIALIZE_CS_TAG: v1.5.0
-  SERIALIZE_JS_TAG: v1.3.0
+  SERIALIZE_TAG: v1.16.0
+  SERIALIZE_C_TAG: v1.9.0
+  SERIALIZE_GO_TAG: v1.15.0
+  SERIALIZE_RS_TAG: v2.3.0
+  SERIALIZE_CS_TAG: v1.9.0
+  SERIALIZE_JS_TAG: v1.4.0
 
 jobs:
   # The compiler's own test suite, and the only job in this file that reads a
