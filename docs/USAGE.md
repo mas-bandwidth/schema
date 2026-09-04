@@ -404,8 +404,11 @@ char name[MaxName + 1] = {};
 int32_t name_length = 0;
 ```
 
-The write refuses embedded NULs and any length past the maximum; the read
-validates both.
+The write refuses embedded NULs and any length past the maximum, and the
+read validates both. In C and C++ a successful read also writes the zero
+byte at `name[name_length]`, so `name` is a valid C string every time the
+read succeeds, which is what the `+ 1` in the array is for. The other seven
+targets carry the buffer and the used length with nothing written past it.
 
 **`string(N)` also carries a UTF-8 rule, and the READER enforces it.** The
 wire is byte-identical to `bytes(N)`. What the `string` spelling adds is

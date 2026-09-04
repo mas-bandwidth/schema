@@ -1037,6 +1037,13 @@ The byte-string tightening is what lets the targets agree:
   validation pass over those bytes rather than a conversion into a native
   string.
 
+**A successful read terminates the C string.** In C and C++, a successful
+read writes the **zero byte at index `length`**, always, so the buffer is a
+valid C string after every accepted read. That is what the `+ 1` in those
+two storage rows is for (§6.1). In the other seven targets the used length
+is the truth, and a successful read writes nothing past it, under §5's tail
+rule.
+
 For every legal write the wire bits are identical to `serialize_string` over
 a buffer of N + 1.
 
@@ -1450,6 +1457,13 @@ native text is UTF-8, the transcode is real and is paid in application code
 in both directions. No target transcodes inside the generated read or write
 path, and no target allocates per value.
 
+**A successful read terminates the C string.** In C and C++, a successful
+read writes the **zero unit at index `length`**, always, so the buffer is a
+valid `char16_t` or `uint16_t` string after every accepted read. That is
+what the `+ 1` in those two storage rows is for. In the other seven targets
+the used length is the truth, and a successful read writes nothing past it,
+under §5's tail rule.
+
 **Goldens.** The wire is pinned to serialize's shared corpus
 (`conformance/wstring.txt`), which a `wstring(7)` field reproduces exactly,
 its 3-bit length field being the corpus's `buffer_size` 8. **The row's own
@@ -1534,7 +1548,13 @@ construction; the wire contract stays a pure function of the encodings.
 elements past a used count and bytes past a used length are not rewritten by
 a successful read, and a union's UNSELECTED arms are not rewritten either
 (the selected arm is zero-established, §4.8), so a REUSED output object
-keeps stale tail data there (the classic runtime's own prefix convention). Whole-object comparison in the conformance matrix is
+keeps stale tail data there (the classic runtime's own prefix convention).
+**The tail rule has exactly one stated exception**, and it is the C string
+terminator: in C and C++, a successful read of a `string(N)` writes the zero
+byte at index `length` and a successful read of a `wstring(N)` writes the
+zero unit at index `length`, so those buffers are valid C strings after
+every accepted read (§4.7, §4.12). Nothing else past a used length or a used
+count is written, in any target. Whole-object comparison in the conformance matrix is
 defined over a fresh output or the used prefix. Write reads only taken
 fields.
 
@@ -1560,8 +1580,8 @@ Per `type`, per target:
    | `float32` / `float64` (attributed or bare) | `float` / `double` | `float` / `double` | `float32` / `float64` | `f32` / `f64` |
    | enum `E` | `enum class E : uintN_t` (N = smallest fitting max) | `enum E : uintN` | `type E uintN` + consts | `#[repr(transparent)] struct E(pub uN)` + consts |
    | `flags E` | `uint64_t` + one mask const per variant | `ulong` + consts | `uint64` + consts | `u64` + consts |
-   | `string(N)` | `char[N + 1]` + `int32_t` length | `byte[]` (capacity N, pre-allocated) + `int` length | `[N]byte` + `int32` length | `[u8; N]` + length |
-   | `wstring(N)` | `char16_t[N + 1]` + `int32_t` length | `char[]` (capacity N, pre-allocated) + `int` length | `[N]uint16` + `int32` length | `[u16; N]` + length |
+   | `string(N)` | `char[N + 1]` + `int32_t` length (the `+ 1` holds the zero byte a successful read writes at index `length`, §4.7) | `byte[]` (capacity N, pre-allocated) + `int` length | `[N]byte` + `int32` length | `[u8; N]` + length |
+   | `wstring(N)` | `char16_t[N + 1]` + `int32_t` length (the `+ 1` holds the zero unit a successful read writes at index `length`, §4.12) | `char[]` (capacity N, pre-allocated) + `int` length | `[N]uint16` + `int32` length | `[u16; N]` + length |
    | `bytes(N)` | `uint8_t[N]` + `int32_t` length | `byte[]` (capacity N, pre-allocated) + `int` length | `[N]byte` + `int32` length | `[u8; N]` + length |
    | `[N]T` | `T[N]` | `T[N]` (pre-allocated) | `[N]T` | `[T; N]` |
    | `[..N]T` | `T[N]` + `int32_t` count | `T[N]` (pre-allocated) + `int` count | `[N]T` + `int32` count | `[T; N]` + count |
