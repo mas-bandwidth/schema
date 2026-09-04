@@ -2963,3 +2963,180 @@ has.
 
 **You now have** the simulation to renderer handoff: filled in parallel at
 frame rate, read in place from another language, guarded by one comparison.
+
+---
+
+## Part 13 — one schema, every language, and tools that walk it
+
+### The problem
+
+Starlight is not one program. The server is C++, the tools are C, and maybe the
+launcher is C#. Every one of them needs the same constants, the same packets
+and the same save format, and the tools team wants a generic config editor
+without hand-writing a UI per table.
+
+### The same bits, from any generator
+
+Everything this tutorial has built holds across all nine targets, because one
+compiler wrote all nine backends and CI compares them bit for bit. Two verified
+handoffs, using the artifacts from earlier parts.
+
+**The packet wire.** Part 4's C++ writes a `ShipState`, and C reads it with its
+generated code:
+
+```
+$ schema generate --lang c --out genc .
+```
+
+```c
+    serialize_read_stream_t stream;
+    serialize_read_stream_init( &stream, buffer, (int) bytes );
+
+    ShipState ship;
+    ship = new_ship_state();
+    if ( !read_ship_state( &stream, &ship ) )
+    {
+        printf( "c refused the packet\n" );
+        return 1;
+    }
+    char names[SYSTEM_FLAGS_NAMES_MAX];
+    printf( "c read the C++ packet: %s \"%s\" health=%d throttle=%.2f systems=%s\n",
+        enum_name_ship_type( ship.ship_type ), ship.name, ship.health,
+        ship.throttle, flag_names_system_flags( ship.systems, names, sizeof( names ) ) );
+```
+
+```
+$ ./writepacket
+c++ wrote 39 bytes
+$ cc -std=c99 -Wall -Wextra -Werror -ffp-contract=off -I ../serialize.c -o readpacket readpacket.c ../serialize.c/serialize.c -lm
+$ ./readpacket
+c read the C++ packet: Corvette "Kestrel" health=750 throttle=0.63 systems=Shields|WarpDrive
+```
+
+Same Corvette, same 750, same mask. The same bits.
+
+Note the shape of the C names. Constants become macros, `SHIP_STATE_MAX_BYTES`
+and `SYSTEM_FLAGS_NAMES_MAX`, functions are `snake_case`, and a type's defaults
+arrive through `new_ship_state()`, because C structs have no member
+initializers. Each target gets its own idiom. Note the read slack too: the C
+buffer is `SHIP_STATE_MAX_BYTES + 8`, since C and C++ read 64-bit windows.
+
+**The table wire.** Part 6's C++ saved `ship.bin`, and C loads it:
+
+```c
+    TableReport report = { 0, 0, 0, 0, 0 };
+    ShipConfig ship;
+    ship_config_reset( &ship );
+    int ok = ship_config_load( &ship, buffer, (int64_t) bytes, &report );
+```
+
+```
+$ ./ctable
+c load: ok=1 name=Kestrel health=250 armor=8 type=Corvette unknown=0
+```
+
+Same surface, C spelling, same report counters. A table's defaults arrive
+through `ship_config_reset( &value )` in place rather than through a
+`new_<table>()` returning a value, so the two declaration kinds have two
+spellings for the same idea in this target.
+
+Part 12 already showed the third wire, the block, crossing C++ to C by pointer.
+Cook, block, JSON and reflection all ride the same goldens, which keep every
+port byte identical to the C++ reference.
+
+### Reflection: tools without hand-written mirrors
+
+Every type in a table closure carries a static descriptor with names, wire ids
+and kinds, storage offsets, ranges, enum vocabularies, optionals and branch
+guards. That is enough to write a generic editor, printer or differ with no
+RTTI and no schema files shipped at runtime:
+
+```cpp
+    const TableTypeInfo * type = ShipConfigTableType();
+    printf( "table %s (%u bytes, %d fields)\n", type->name, type->size, type->num_fields );
+    for ( int32_t i = 0; i < type->num_fields; i++ )
+    {
+        const TableFieldInfo & field = type->fields[i];
+        printf( "  %-14s %-10s id=0x%04x kind=%-2d @%u", field.name, field.type_name,
+            field.id, field.kind, field.offset );
+        if ( field.has_range ) { printf( "  [%g, %g]", field.range_min, field.range_max ); }
+        for ( int64_t v = 1; field.enum_name && v <= field.enum_max; v++ )
+        {
+            printf( " %s", field.enum_name( (uint64_t) v ) );
+        }
+        printf( "\n" );
+    }
+```
+
+```
+$ ./reflect
+table ShipConfig (56 bytes, 5 fields)
+  display_name   string     id=0xcb8b kind=12 @0
+  max_health     float32    id=0x7770 kind=10 @40
+  max_speed      float32    id=0xae53 kind=10 @44
+  armor          int32      id=0x7c9d kind=4  @48  [0, 10]
+  ship_type      ShipType   id=0x38e9 kind=7  @52 Fighter Freighter Corvette
+```
+
+The descriptor carries more than the walk above prints: the JSON key beside the
+name, the offsets of `_count` and `_present` companions, a union's tag and arm
+table, an enum-keyed array's key vocabulary, the exact 128-bit range of a wide
+field, and a `reset` that puts an instance back at its declared defaults in
+place. Decoded tables are relocatable, trivially copyable, standard layout and
+pointer free, with generated static assertions enforcing it, so a walker can
+read any instance through those offsets wherever it sits, mapped files
+included.
+
+This is the machinery the JSON codec and `schema pack` ride, and it is yours
+too.
+
+### Embedding the compiler
+
+The `schema` binary is a thin client of a Go library, so anything the CLI does
+your build tools can do in process, and you can register your own generator
+beside the nine:
+
+```go
+type docs struct{}
+
+func (docs) Names() []string { return []string{"docs"} }
+
+func (docs) Generate(u *ir.Unit, opts compiler.Options) (map[string][]byte, error) {
+	out := []byte{}
+	for _, s := range u.Structs {
+		out = append(out, fmt.Sprintf("## %s — %d bits max\n", s.Name, ir.MaxBitsStruct(s))...)
+	}
+	return map[string][]byte{"TYPES.md": out}, nil
+}
+
+func main() {
+	c := compiler.New()
+	c.Register(docs{})                      // your own target: --lang docs
+	fmt.Println(c.Targets())
+
+	paths, _ := compiler.GatherPaths([]string{"../starlight"})
+	unit, _ := c.Load(paths)                // format free: writes nothing
+	fmt.Printf("package %s, protocol id 0x%016x\n", unit.Package, unit.ProtocolId)
+
+	files, _ := c.Generate(unit, "docs", nil)   // returns bytes, writes nothing
+	fmt.Print(string(files["TYPES.md"]))
+}
+```
+
+```
+$ go build -o docsgen . && ./docsgen
+[c cpp cs dart docs elixir go java js rust]
+package starlight, protocol id 0xc353869c04a1ae19
+## Vector3 — 192 bits max
+## ShipState — 705 bits max
+```
+
+Your generator receives the same resolved IR the built-in backends read, with
+types resolved, constants folded and widths derived. `ir.MaxBitsStruct` says
+705 bits for `ShipState`, which is the same number Part 4's header carried. The
+exported `compiler` and `ir` surfaces are under semantic versioning, and
+`internal/` is not.
+
+**You now have** Starlight's whole estate on one schema: a C++ simulation, C
+tools, generic editors, plus a compiler you can embed when the build gets
+opinionated.
