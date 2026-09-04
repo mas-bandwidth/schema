@@ -3559,3 +3559,287 @@ $ echo $?
 
 **You now have** the designer loop: binary for the game, text for people, one
 schema driving both, and drift counted at every crossing.
+
+---
+
+## Part 10: Evolution you can trust: `was` and the baseline
+
+### The problem
+
+Part 6 ended with two hazards the wire cannot see. A changed default rewires
+the meaning of every stored file, and a reordered flags declaration remaps every
+stored mask, both silently, with clean reports. There is a third: renaming a
+field. Identity is the name hash, so a rename orphans every byte ever stored
+under the old name. Starlight has two years of player saves, and "be careful"
+is not a plan.
+
+One field joins `ShipConfig` first, so the unit has a flags field on a table
+and the hazards below are its own:
+
+```
+table ShipConfig
+{
+    display_name string(32)
+    max_health   float32 = 100.0
+    max_speed    float32 = 500.0
+    armor        int32 = 1       | min = 0, max = 10
+    ship_type    ShipType
+    systems      SystemFlags
+    settings     ?GunnerSettings
+    tier         ?int32
+}
+```
+
+### The baseline: the compiler remembers what shipped
+
+This is the record Part 6's notice has been asking for since you declared your
+first table:
+
+```
+$ schema tables-baseline --update --reason "first baseline before 1.0 ships" .
+$ schema check .
+$ echo $?
+0
+```
+
+The notice is gone and `check` is silent again, because the unit now has a
+record of what shipped.
+
+`tables.baseline` is a text projection of the unit's whole table closure, one
+fact per line, made to be read in a diff. Here is the part of it that covers
+`ShipConfig` and the flags it now carries:
+
+```
+schema-tables-baseline 7
+package starlight
+
+table ShipConfig
+    field display_name id=0x2d21d7cd66bd5a5d kind=12 size=32
+    field max_health id=0xbe5aae184d021138 kind=10 default=100.0
+    field max_speed id=0x65052cb2d1409505 kind=10 default=500.0
+    field armor id=0xd19988b67e699194 kind=4 min=0 max=10 default=1
+    field ship_type id=0x1f7d2e86a2e77268 kind=7 enum=ShipType
+    field systems id=0x17dc1c552754cefd kind=9 flags=SystemFlags
+    field settings id=0xee5f6d7b48b44de8 kind=13 type=GunnerSettings optional=true
+    field tier id=0x1e6f84ef2eb65989 kind=4 optional=true
+
+flags SystemFlags
+    variant Shields bit=0
+    variant Cloak bit=1
+    variant WarpDrive bit=2
+    variant Autopilot bit=3
+
+## history
+### 2026-09-04 — first baseline before 1.0 ships
+- baseline created over 6 tables — data written BEFORE this point is not covered by it
+```
+
+Commit it. From now on every `schema check`, and so every `generate`, diffs the
+closure against it.
+
+### Three verdicts
+
+**Refused**, because the meaning changes silently. Change `max_health` from
+`100.0` to `120.0`:
+
+```
+$ schema check .
+tables.baseline: ShipConfig.max_health: specified default 100.0 -> 120.0 — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason "..." (docs/SPEC-TABLES.md §18)
+schema: 1 error(s)
+```
+
+Insert a flags variant in the middle, `{ Shields, Stealth, Cloak, WarpDrive,
+Autopilot }`, and the refusal names every moved bit:
+
+```
+$ schema check .
+tables.baseline: flags SystemFlags: variant Cloak moved from bit 1 to bit 2 — every stored file's bits are remapped, and nothing on the wire says so — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason "..." (docs/SPEC-TABLES.md §18)
+tables.baseline: flags SystemFlags: variant WarpDrive moved from bit 2 to bit 3 — every stored file's bits are remapped, and nothing on the wire says so — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason "..." (docs/SPEC-TABLES.md §18)
+tables.baseline: flags SystemFlags: variant Autopilot moved from bit 3 to bit 4 — every stored file's bits are remapped, and nothing on the wire says so — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason "..." (docs/SPEC-TABLES.md §18)
+schema: 3 error(s)
+```
+
+Append it at the end instead, `{ Shields, Cloak, WarpDrive, Autopilot, Stealth }`:
+
+```
+$ schema check .
+$ echo $?
+0
+```
+
+Silence. Part 6's law, now enforced.
+
+The rest of the refused list: a field's wire kind or an array's element kind
+changed, keyed and positional array spellings swapped, and a referent swapped
+for one that cannot stand in.
+
+**Warned**, because the runtime report already counts the loss but you should
+know at edit time. Warnings print and exit 0. Rename `max_speed` to
+`top_speed`:
+
+```
+$ schema check .
+warning: tables.baseline: table ShipConfig: max_speed removed and top_speed added in one edit — if that is a rename the wire id moved with the name and every stored value orphans: declare it `top_speed ... | was = "max_speed"`, and pair `json = "max_speed"` if the text key must survive (docs/SPEC-TABLES.md §5, §16.4)
+```
+
+Shrink a capacity:
+
+```
+$ schema check .
+warning: tables.baseline: ShipConfig.display_name: capacity 32 -> 16 (a stored value longer than the new capacity is truncated and counts clamped)
+```
+
+**Passed in silence**, because the wire absorbs it: fields added, removed or
+reordered, enum variants added anywhere, flags appended, and bounds grown.
+
+### Renames: `was`
+
+The rename hazard has an in-language fix, and the warning above named it. Take
+the fix:
+
+```
+table ShipConfig
+{
+    display_name string(32)
+    max_health   float32 = 100.0
+    top_speed    float32 = 500.0 | was = "max_speed"
+    armor        int32 = 1       | min = 0, max = 10
+    ship_type    ShipType
+    systems      SystemFlags
+    settings     ?GunnerSettings
+    tier         ?int32
+}
+```
+
+One warning remains, about the half `was` does not carry:
+
+```
+$ schema check .
+warning: tables.baseline: ShipConfig.top_speed: renamed under was = "max_speed", which keeps the wire id and NOT the text key — the JSON key is now "top_speed"; pair json = "max_speed" if an existing text must still read (docs/SPEC-TABLES.md §16.4)
+```
+
+`was` carries the old identity through the rename. On the wire the field keeps
+riding under `max_speed`'s hash, so `ship.bin`, written back in Part 6 when the
+field was still called `max_speed`, loads into `top_speed`. `was.cpp`, entire:
+
+```cpp
+#include "ConfigTable.h"
+#include <cstdio>
+#include <vector>
+
+static std::vector<uint8_t> Slurp( const char * path )
+{
+    FILE * f = fopen( path, "rb" );
+    std::vector<uint8_t> bytes;
+    uint8_t chunk[256];
+    size_t n;
+    while ( ( n = fread( chunk, 1, sizeof( chunk ), f ) ) > 0 )
+    {
+        bytes.insert( bytes.end(), chunk, chunk + n );
+    }
+    fclose( f );
+    return bytes;
+}
+
+int main( int, char ** argv )
+{
+    using namespace starlight;
+    std::vector<uint8_t> buffer = Slurp( argv[1] );
+    TableReport report;
+    ShipConfig config;
+    ShipConfigLoad( config, buffer.data(), (int64_t) buffer.size(), &report );
+    printf( "top_speed=%g unknown=%d\n", config.top_speed, report.unknown );
+    return 0;
+}
+```
+
+```
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o was was.cpp gen/ConfigTable.cpp
+$ ./was ship.bin
+top_speed=900 unknown=0
+```
+
+The 900 that Part 6 saved under `max_speed` arrives in `top_speed`. No unknown,
+no loss, and the rename is invisible on the wire.
+
+The guard rails. `bad/Bad.schema`:
+
+```
+package bad
+
+table T
+{
+    damage float32 = 21.0 | was = "damage"
+}
+```
+
+```
+$ schema check .
+Bad.schema:5:29: field damage: was = "damage" names the field's own current name — was records the OLD name after a rename; drop the attribute until one happens (docs/SPEC-TABLES.md)
+schema: 1 error(s)
+```
+
+```
+package bad
+
+type T
+{
+    a int32 | was = "b"
+}
+```
+
+```
+$ schema check .
+Bad.schema:5:5: field a: was is a table-wire concept — it aliases a renamed field's wire id, and only table fields have wire ids; a `type`'s wire is positional, so a rename there moves no bit (docs/SPEC-TABLES.md)
+schema: 1 error(s)
+```
+
+Any two fields of one table whose effective ids collide are refused too.
+
+There is no `was` for enum variants or union arms. Renaming a variant makes a
+new variant, and old data reads as `unknown`. Rename fields freely, and treat
+variant names as permanent.
+
+Put `max_speed` back before you go on, because the rest of the tutorial uses
+that name.
+
+### When you mean the break
+
+The override is one command and it is never silent:
+
+```
+$ schema tables-baseline --update .
+schema: --update needs --reason: moving the baseline declares an intentional break with data already written, and the reason is what a person reads years later when an old file refuses (docs/SPEC-TABLES.md §18.4)
+$ echo $?
+1
+
+$ schema tables-baseline --update --reason "health rebalanced for 2.0; saves from 1.x read the new value" .
+```
+
+That appends to the baseline's own history, which is the changelog someone
+reads in three years when a 1.x save loads oddly:
+
+```
+## history
+### 2026-09-04 — first baseline before 1.0 ships
+- baseline created over 6 tables — data written BEFORE this point is not covered by it
+
+### 2026-09-04 — health rebalanced for 2.0; saves from 1.x read the new value
+- ShipConfig.max_health: specified default 100.0 -> 120.0 [refuse]
+```
+
+and `check` is silent again:
+
+```
+$ schema check .
+$ echo $?
+0
+```
+
+No `tables.baseline` means no check, so the whole mechanism is opt in, and the
+first baseline covers only what comes after it. Write it the day your format
+first ships to anyone, which is what the notice has been saying.
+
+**You now have** the full evolution discipline: rename with `was`, append
+flags, and a committed baseline that turns the silent hazards into compile
+errors with recorded reasons.
