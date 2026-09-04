@@ -1907,6 +1907,12 @@ inline TableMapEach<Entry> TableMapEachOf( const TableArena & arena, const Table
     return each;
 }
 
+// AN UNREACHED SLOT MUST HOLD NO MAP WITH ENTRIES IN IT (§2.8, §7.6). An empty
+// map takes no bytes, so a record whose extent measures ZERO is a record whose
+// every by-value map is empty; a measure that REFUSED answers non-zero here
+// too, and refusing on it is the same answer one level up.
+inline bool TableMapUnreachedEmpty( int64_t extent ) { return extent == 0; }
+
 // ---- the LOAD side: where a decoded entry lands (§2.8) ----
 //
 // THE READER TRUSTS NOTHING and spends one compare per entry. Every load path

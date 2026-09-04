@@ -1908,6 +1908,12 @@ inline TableMapEach<Entry> TableMapEachOf( const TableArena & arena, const Table
     return each;
 }
 
+// AN UNREACHED SLOT MUST HOLD NO MAP WITH ENTRIES IN IT (§2.8, §7.6). An empty
+// map takes no bytes, so a record whose extent measures ZERO is a record whose
+// every by-value map is empty; a measure that REFUSED answers non-zero here
+// too, and refusing on it is the same answer one level up.
+inline bool TableMapUnreachedEmpty( int64_t extent ) { return extent == 0; }
+
 // ---- the LOAD side: where a decoded entry lands (§2.8) ----
 //
 // THE READER TRUSTS NOTHING and spends one compare per entry. Every load path
@@ -3487,6 +3493,10 @@ inline bool DepthMapExtentAt( const Ctx & ctx, const Depth & value, int64_t & at
     {
         if ( !SquadMapExtentAt( ctx, value.many[i], at ) ) { return false; }
     }
+    for ( int32_t i = value.many_count; i < 3; i++ ) // many: the slots the walk does not reach (§7.6)
+    {
+        if ( !TableMapUnreachedEmpty( SquadMapExtent( ctx, value.many[i] ) ) ) { return false; }
+    }
     for ( int32_t i = 0; i < 2; i++ ) // keyed
     {
         if ( !SquadMapExtentAt( ctx, value.keyed.slots[i], at ) ) { return false; }
@@ -3525,6 +3535,10 @@ inline bool DepthMapPack( const Ctx & ctx, const Depth & src, Depth & dst, uint8
     for ( int32_t i = 0; i < src.many_count && i < 3; i++ ) // many
     {
         if ( !SquadMapPack( ctx, src.many[i], dst.many[i], extent, at, capacity ) ) { return false; }
+    }
+    for ( int32_t i = src.many_count; i < 3; i++ ) // many: the slots the walk does not reach (§7.6)
+    {
+        if ( !TableMapUnreachedEmpty( SquadMapExtent( ctx, src.many[i] ) ) ) { return false; }
     }
     for ( int32_t i = 0; i < 2; i++ ) // keyed
     {
@@ -4958,7 +4972,7 @@ template <typename Ctx> inline bool DepthCookMaps( const Ctx & ctx, const TableC
 {
     (void) region; // a map's entries carry their own references through their own bodies
     if ( !SquadCookMaps( ctx, region, extent, at, record + 0, value.one, order ) ) { return false; } // one
-    for ( int32_t i = 0; i < 3; i++ ) // many
+    for ( int32_t i = 0; i < ( value.many_count < 3 ? value.many_count : 3 ); i++ ) // many
     {
         if ( !SquadCookMaps( ctx, region, extent, at, record + 16 + i * 16, value.many[i], order ) ) { return false; }
     }

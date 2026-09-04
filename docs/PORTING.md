@@ -699,7 +699,9 @@ EXTENT, laid after the record's own storage, PRE-ORDER: a map's whole entry
 array first, then, entry by entry in key order, the arrays of any map an
 entry's value holds by value. `LoadMeasure`'s term is `N x sizeof( Entry )` at
 `alignof( Entry )` AT EVERY DEPTH, summed from the FRAMING alone, because `N`
-is framing and not a value. The WRITER holds the sort — `Measure`, `Save`,
+is framing and not a value. An UNREACHED non-empty map slot — a counted
+array's slot past its live count — is refused by `Cook` and by `Lock`, the same
+refusal §7.6 gives a pointer there. The WRITER holds the sort — `Measure`, `Save`,
 `Lock` and `Cook` each derive the ascending order from the builder's entries
 and nothing passes between them, so `measure == save` over a map is a real
 check on two sorts agreeing. The READER trusts nothing and spends one compare
@@ -728,15 +730,16 @@ with no allocation and no pointer chase, and a byte-stable image because a
 sorted array of records has exactly one. The wire pays twelve bytes an entry
 for the unspent kind, which is what keeps the `[..N]Pair` migration.
 
-**Negative control.** Nine, through I2's overlay sabotage, each one §2.8 names
-and each turning `test/tables/maps_main.cpp` red on a CHECK: the writer
-emitting insertion order, `Save` emitting a dead entry, the ascending check
-dropped, the duplicate rule dropped, the key-kind rule decoding anyway, the
-reader clamping a key instead of dropping its entry, the `N`-against-`L` fit
-check dropped, `LoadMeasure` summing the extent at one depth only, and `ToJson`
-writing the entries in any order but ascending.
+**Negative control.** Ten, through I2's overlay sabotage, each turning
+`test/tables/maps_main.cpp` red on a CHECK: the writer emitting insertion
+order, `Save` emitting a dead entry, the ascending check dropped, the duplicate
+rule dropped, the key-kind rule decoding anyway, the reader clamping a key
+instead of dropping its entry, the `N`-against-`L` fit check dropped,
+`LoadMeasure` summing the extent at one depth only, `ToJson` writing the
+entries in any order but ascending, and `Lock` writing an UNREACHED non-empty
+map slot instead of refusing it.
 
-**Targets:** maps, json-map-walk, maps-sort-negative-control, maps-dead-entry-negative-control, maps-ascending-negative-control, maps-duplicate-negative-control, maps-key-kind-negative-control, maps-clamp-negative-control, maps-fit-negative-control, maps-depth-negative-control, maps-text-order-negative-control
+**Targets:** maps, json-map-walk, maps-sort-negative-control, maps-dead-entry-negative-control, maps-ascending-negative-control, maps-duplicate-negative-control, maps-key-kind-negative-control, maps-clamp-negative-control, maps-fit-negative-control, maps-depth-negative-control, maps-text-order-negative-control, maps-unreached-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|

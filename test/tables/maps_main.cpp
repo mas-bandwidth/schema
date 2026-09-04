@@ -851,6 +851,25 @@ static void test_depth()
     }
     free( region );
 
+    // AN UNREACHED NON-EMPTY MAP SLOT IS REFUSED by Cook and by Lock, the same
+    // refusal §7.6 gives a pointer in that position: a counted array's slots
+    // past its live count are storage the walk does not reach, so a non-empty
+    // map in one names entries the region will not hold and the write answers
+    // false with nothing partial written. The WIRE is not refused — a counted
+    // array rides its live slots and the unreached one simply does not ride.
+    {
+        DepthBuilder past;
+        Depth * p = past.GetRoot();
+        p->many_count = 1;
+        SquadRosterInsert( past.main, p->many[0].roster, (uint8_t) 1 )->count = 11;
+        SquadRosterInsert( past.main, p->many[2].roster, (uint8_t) 9 )->count = 99; // past the count
+        static uint8_t rides[1u << 16];
+        const int64_t measured_past = DepthMeasure( past );
+        CHECK_EQ( DepthSave( past, rides, sizeof( rides ) ), measured_past );
+        CHECK( !past.Lock() );
+        CHECK( past.AsConst() == NULL ); // nothing partial
+    }
+
     // and the TOOL's path reads the same four reaches into a builder
     DepthBuilder into;
     TableReport tool;

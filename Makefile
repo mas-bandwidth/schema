@@ -2466,6 +2466,15 @@ tables-maps-depth-negative-control: bin/schema build/tables-generated/.stamp
 tables-maps-text-order-negative-control: bin/schema build/tables-generated/.stamp
 	$(call map_negative_control,textorder,'s@const void \* entry = f->map_at( slot, i );@const void * entry = f->map_at( slot, count - 1 - i );@',internal/codegen/cpptable/json.go,writing a map text out of key order left the map gate GREEN)
 
+# AN UNREACHED NON-EMPTY MAP SLOT IS REFUSED by Cook and by Lock, the same
+# refusal §7.6 gives a pointer in that position. The `Depth` instance whose
+# counted array holds a map PAST ITS LIVE COUNT meets it, and dropping the
+# refusal lets Lock write that map's entries into an extent nothing reserved
+# for them.
+.PHONY: tables-maps-unreached-negative-control
+tables-maps-unreached-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,unreached,'s@inline bool TableMapUnreachedEmpty( int64_t extent ) { return extent == 0; }@inline bool TableMapUnreachedEmpty( int64_t ) { return true; }@',internal/codegen/cpptable/maps.go,writing an unreached non-empty map left the map gate GREEN)
+
 .PHONY: tables-maps-negative-controls
 tables-maps-negative-controls: tables-maps-sort-negative-control \
 	tables-maps-dead-entry-negative-control \
@@ -2475,7 +2484,8 @@ tables-maps-negative-controls: tables-maps-sort-negative-control \
 	tables-maps-clamp-negative-control \
 	tables-maps-fit-negative-control \
 	tables-maps-depth-negative-control \
-	tables-maps-text-order-negative-control
+	tables-maps-text-order-negative-control \
+	tables-maps-unreached-negative-control
 
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin

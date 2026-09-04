@@ -525,6 +525,12 @@ inline TableMapEach<Entry> TableMapEachOf( const TableArena & arena, const Table
     return each;
 }
 
+// AN UNREACHED SLOT MUST HOLD NO MAP WITH ENTRIES IN IT (§2.8, §7.6). An empty
+// map takes no bytes, so a record whose extent measures ZERO is a record whose
+// every by-value map is empty; a measure that REFUSED answers non-zero here
+// too, and refusing on it is the same answer one level up.
+inline bool TableMapUnreachedEmpty( int64_t extent ) { return extent == 0; }
+
 // ---- the LOAD side: where a decoded entry lands (§2.8) ----
 //
 // THE READER TRUSTS NOTHING and spends one compare per entry. Every load path
@@ -1284,6 +1290,7 @@ func (g *tableGen) emitMapExtentWalk(st *ir.Struct, subject string, mapField fun
 				continue
 			}
 			g.emitVariableByValueWalk(f, v, func(expr edgeExpr) { descend(f.Type.Name, expr.Src, "        ") })
+			g.emitUnreachedMapRefusal(f, ref, subject)
 		case edgeArm:
 			un := f.Type.Ref.(*ir.Union)
 			any := false
@@ -1760,10 +1767,17 @@ func (g *tableGen) emitCookMaps(st *ir.Struct) {
 		}
 		stride := cookElementBytes(g.unit, f)
 		base := "value." + f.Name
+		bound := fmt.Sprintf("%d", f.ArrayBound)
 		if f.KeyEnum != "" && st.IsTable {
 			base += ".slots"
 		}
-		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s\n    {\n", f.ArrayBound, f.Name)
+		if f.Array == ir.ArrayCounted {
+			// THE LIVE COUNT, as the extent walk counts it: a slot past the
+			// count is storage the walk does not reach, and a non-empty map in
+			// one was already refused there (§7.6)
+			bound = fmt.Sprintf("( value.%s_count < %d ? value.%s_count : %d )", f.Name, f.ArrayBound, f.Name, f.ArrayBound)
+		}
+		g.pf("    for ( int32_t i = 0; i < %s; i++ ) // %s\n    {\n", bound, f.Name)
 		g.pf("        if ( !%sCookMaps( ctx, region, extent, at, record + %d + i * %d, %s[i], order ) ) { return false; }\n", ref.Name, nested, stride, base)
 		g.pf("    }\n")
 	}
@@ -1903,4 +1917,24 @@ func (g *tableGen) rootHasExtent(root *ir.Struct) bool {
 		return false
 	}
 	return slices.ContainsFunc(g.pointerReachable(root), g.hasMapExtent)
+}
+
+// emitUnreachedMapRefusal refuses an UNREACHED NON-EMPTY MAP SLOT, the same
+// refusal §7.6 gives a pointer in that position (docs/SPEC-TABLES.md §2.8): a
+// COUNTED array's slots past its live count are storage the walk does not
+// reach, so a non-empty map in one names entries the region will not hold, and
+// the write answers false with nothing partial written.
+//
+// The test is the extent itself: an empty map takes no bytes and advances the
+// running offset by none, so a record whose extent measures ZERO is a record
+// whose every by-value map is empty. A measure that refuses answers non-zero
+// here too, and refusing on it is the same answer one level up.
+func (g *tableGen) emitUnreachedMapRefusal(f *ir.Field, ref *ir.Struct, subject string) {
+	if f.Array != ir.ArrayCounted {
+		return // every other array shape is reached whole
+	}
+	g.pf("    for ( int32_t i = %s.%s_count; i < %d; i++ ) // %s: the slots the walk does not reach (§7.6)\n    {\n",
+		subject, f.Name, f.ArrayBound, f.Name)
+	g.pf("        if ( !TableMapUnreachedEmpty( %sMapExtent( ctx, %s.%s[i] ) ) ) { return false; }\n", ref.Name, subject, f.Name)
+	g.pf("    }\n")
 }
