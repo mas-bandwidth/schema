@@ -439,16 +439,12 @@ func UnionLayout(u *Unit, un *Union) (size, align, tag, armOffset int64) {
 	align = tag
 	var armAlign, armSize int64 = 1, 0
 	for _, v := range un.Variants {
-		arm := memberStruct(u, v.Type)
-		if arm == nil {
-			continue
+		s, a := ArmLayout(u, v)
+		if a > armAlign {
+			armAlign = a
 		}
-		ml := layoutRecord(u, arm)
-		if ml.Align > armAlign {
-			armAlign = ml.Align
-		}
-		if ml.Size > armSize {
-			armSize = ml.Size
+		if s > armSize {
+			armSize = s
 		}
 	}
 	if armAlign > align {
@@ -457,6 +453,25 @@ func UnionLayout(u *Unit, un *Union) (size, align, tag, armOffset int64) {
 	armOffset = alignUp(tag, armAlign)
 	size = alignUp(addSize(armOffset, armSize), align)
 	return size, align, tag, armOffset
+}
+
+// ArmLayout is ONE ARM's storage inside the union's overlay: the pieces its
+// field line spells, laid out as C lays a struct out (docs/SPEC-TABLES.md
+// §2.6). An arm of one piece IS that member; an arm whose storage needs a
+// companion — a string's length, a counted array's count — is an unnamed
+// struct of those pieces, which is what the emitter writes.
+func ArmLayout(u *Unit, v UnionVariant) (size, align int64) {
+	if v.F == nil {
+		return 0, 1
+	}
+	offset, maxAlign := int64(0), int64(1)
+	for _, p := range fieldPieces(u, v.F, false) {
+		if p.align > maxAlign {
+			maxAlign = p.align
+		}
+		offset = addSize(alignUp(offset, p.align), p.size)
+	}
+	return alignUp(offset, maxAlign), maxAlign
 }
 
 func memberStruct(u *Unit, name string) *Struct {
@@ -683,27 +698,8 @@ func elementPiece(u *Unit, f *Field) storagePiece {
 			// A union has no blittable C# spelling under §19.3's Sequential
 			// rule, so it keeps a table out of the BLOCK form — but its
 			// layout is still a fact the build version folds in.
-			tag := int64(StorageBitsFor(ref.Max)) / 8
-			size, align := tag, tag
-			var armAlign, armSize int64 = 1, 0
-			for _, v := range ref.Variants {
-				arm := memberStruct(u, v.Type)
-				if arm == nil {
-					continue
-				}
-				ml := layoutRecord(u, arm)
-				if ml.Align > armAlign {
-					armAlign = ml.Align
-				}
-				if ml.Size > armSize {
-					armSize = ml.Size
-				}
-			}
-			if armAlign > align {
-				align = armAlign
-			}
-			size = addSize(alignUp(size, armAlign), armSize)
-			return storagePiece{size: alignUp(size, align), align: align}
+			size, align, _, _ := UnionLayout(u, ref)
+			return storagePiece{size: size, align: align}
 		}
 	}
 	// TString/TBytes are handled by the caller

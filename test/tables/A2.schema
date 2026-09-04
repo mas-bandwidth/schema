@@ -1,0 +1,32 @@
+// A2.schema — the READER of the ARM-RETYPE pair (docs/SPEC-TABLES.md §2.6,
+// §3, §4.1). Every arm keeps A1's name and moves its type:
+//
+//   a: int32 -> int64    the arm's L is not the declared width — KIND MISMATCH
+//   b: int32 -> float32  one width, one length — SILENT, §4.1's fifth member
+//   c: int32 -> string   any length reads as bytes — SILENT (a string clamps
+//                        only past its own N)
+//   d: float32 -> Body   four bytes read as a body: the terminator is not the
+//                        last two bytes of L — MALFORMED, the union None
+//   e: Body -> Body      the sane arm beside them, which must still round-trip
+package tbla2
+
+type Body
+{
+    n uint32
+}
+
+union Value
+{
+    a int64
+    b float32
+    c string(8)
+    d Body
+    e Body
+}
+
+table Root
+{
+    id    uint32
+    value Value
+    tail  uint32
+}

@@ -636,6 +636,57 @@ reads it back after the nodes allocated behind it and the bytes are gone.
 |---|---|---|---|---|---|---|---|---|
 | ✅ `tables-blob-span-negative-control` | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 |
 
+
+### M18 — A union arm is a field line
+
+**Method.** An arm of any field type is emitted by the SAME code that emits
+a field of that type, one level down (docs/SPEC-TABLES.md §2.6): the arm's
+payload is exactly the bytes a field puts after its own framing prefix, with
+the arm's `L` standing in for the field's own length where that kind has one
+and framing the fixed width where it does not. The arm id is the only
+discriminator — no per-arm kind byte rides — so the length is the whole of
+what a reader can check: a fixed-width arm whose `L` is not its declared
+width is a KIND MISMATCH, counted, the union left `None` and the parent
+reading on past `L`; a length-shaped arm whose payload is damaged inside its
+own `L` is `malformed` with the same outcome; an arm whose payload is a body
+ends at its terminator or it is damage. An arm with NO PAYLOAD takes no
+storage: the tag alone is the value, `L = 0` on the wire, `null` in the
+text. Arm storage sits at offsets from the union's own storage base with the
+tag at 0, and the descriptors carry the arm's `field` row and its `size`, so
+one generic walker reaches an arm exactly as it reaches a field. The shape to
+refuse is a second emitter for arms: an arm codec written beside the field
+codec drifts from it the first time a kind changes, and the drift is silent
+on both wires.
+
+**Reference.** `internal/codegen/cpptable/arms.go` (`emitArmStorage`,
+`emitArmMeasure`, `emitArmSave`, `emitArmLoad` — each one dispatching into
+the field emitters), the descriptor columns at
+`internal/codegen/cpptable/codecs.go` (`unionArmsLambda`); the tool's are
+`internal/tablewire/decode.go` (`arm`) and `internal/tablewire/encode.go`
+(`encodeArm`).
+
+**Proven in.** C++ and the tool (#396 item 1, #392).
+
+**Measured effect.** Structural: a union of table arms leaves its holder
+FIXED, and so does a union of general arms — every arm's storage is the
+field's storage, so `tables/messages` stays in the zero-cost class with a
+flags arm, a fixed-array arm, a nested-union arm and a payload-free arm in
+its root union. The corpus carries an arm of every shape at three depths and
+the wire, the text and the cook agree with the tool byte for byte.
+
+**Negative control.** `tables-wire-fuzz-arm-width-negative-control` — the
+arm's length check is removed from the emitter, and the fuzzer's arm-length
+pass (every fixed width the closed set has, and zero) turns the leg's report
+red against the engine's. `tables-wire-fuzz-arm-terminator-negative-control`
+— the arm body's consumed-equals-`L` check is removed, and the fuzzer's
+terminator pass, which writes the u16 zero ahead of a payload's last two
+bytes, decodes a body that ends inside its own length.
+
+**Targets:** wire-fuzz-arm-width-negative-control wire-fuzz-arm-terminator-negative-control
+
+| cpp | c | rust | go | cs | java | js | dart | elixir |
+|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/arms.go` `tables-wire-fuzz-arm-width-negative-control` `tables-wire-fuzz-arm-terminator-negative-control` | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
 ### I1 — The independent allocation gate
 
 **Method.** The read path's "allocates nothing" is MEASURED, with an

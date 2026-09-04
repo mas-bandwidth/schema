@@ -56,6 +56,8 @@
 #include "StreamTable.h"
 #include "M1Table.h"
 #include "M2Table.h"
+#include "A1Table.h"
+#include "A2Table.h"
 // the BYTE BUFFER unit (docs/SPEC-TABLES.md §2.5): a blob at its used size,
 // pointed at — a variable root like any pointered one
 #include "AssetsTable.h"
@@ -246,6 +248,8 @@ static const Codec codecs[] = {
     CODEC( "messagedemo", messagedemo, Edit ),
     CODEC( "tblm1", tblm1, Msg ),
     CODEC( "tblm2", tblm2, Msg ),
+    CODEC( "tbla1", tbla1, Root ),
+    CODEC( "tbla2", tbla2, Root ),
     CODEC( "scalars", scalardemo, SimState ),
     CODEC( "tblscalars2", scalardemo2, SimState ),
 };

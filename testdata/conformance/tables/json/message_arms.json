@@ -1,0 +1,22 @@
+{
+  "sequence": 12,
+  "body": {
+    "spans": [
+      -3,
+      9
+    ]
+  },
+  "history": [
+    {
+      "caps": [
+        "Trace",
+        "Verbose"
+      ]
+    },
+    {
+      "origin": {
+        "pid": 41
+      }
+    }
+  ]
+}

@@ -238,6 +238,18 @@ func (r *regionReader) element(at int64, f *ir.Field, cell *tabletext.Cell) erro
 				return fmt.Errorf("union %s: the stored tag %d names no arm", ref.Name, cell.U)
 			}
 			arm := ref.Variants[cell.U-1]
+			if arm.Void() {
+				cell.Tab, cell.Arm = nil, nil
+				return nil // a payload-free arm: the tag is the whole of it (§2.6)
+			}
+			if !arm.Body() {
+				// AN ARM IS A FIELD LINE (§2.6): its pieces sit at the arms'
+				// shared offset and read back exactly as a field's do
+				cell.Tab = nil
+				cell.Arm = r.m.NewArm(arm)
+				return r.field(at+armOffset, arm.F, cell.Arm)
+			}
+			cell.Arm = nil
 			cell.Tab = r.m.New(arm.Ref)
 			return r.record(at+armOffset, arm.Ref, cell.Tab)
 		}

@@ -45,4 +45,7 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(csTarget{}, true, false, false, false) }
+func init() {
+	registerBuiltin(csTarget{}, true, false, false, false)
+	registerPacketVoidArmCarrier("cs")
+}

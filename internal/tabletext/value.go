@@ -61,7 +61,14 @@ type Cell struct {
 	// big.Int per slot.
 	Wide *big.Int
 	Str  []byte    // string / bytes payload, at its used extent
-	Tab  *Instance // a nested table or type, or a union arm's payload
+	Tab  *Instance // a nested table or type, or a union arm's declared-type payload
+
+	// Arm is a UNION ARM that names no declaration (docs/SPEC-TABLES.md
+	// §2.6): an arm is a field line, so its storage is a field's storage —
+	// the value, its used count, its elements — held here beside the tag in
+	// U. A body arm keeps Tab instead, and exactly one of the two is set on a
+	// selected arm.
+	Arm *Field
 
 	// Node is a `*T` POINTER field's referent (docs/SPEC-TABLES.md §2.1, §3.1), and
 	// nil is NULL — a pointer takes no specified default, so null is the only
@@ -370,6 +377,20 @@ func FlagsOf(f *ir.Field) *ir.Flags {
 	}
 	fl, _ := f.Type.Ref.(*ir.Flags)
 	return fl
+}
+
+// NewArm builds ONE ARM's storage, zero-established (SPEC §5): an arm is a
+// field line (docs/SPEC-TABLES.md §2.6), so its storage is a field's, and an
+// arm takes no specified default — the reset a fresh field takes IS the
+// establish. A body arm holds an Instance in its cell instead, exactly as a
+// nested field does.
+func (m *Model) NewArm(v ir.UnionVariant) *Field {
+	if v.Void() {
+		return nil // a payload-free arm has no storage (§2.6)
+	}
+	fv := &Field{Def: v.F}
+	m.reset(fv)
+	return fv
 }
 
 // UnionOf returns the union a field holds, or nil.

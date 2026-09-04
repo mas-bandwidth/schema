@@ -36,6 +36,8 @@
 #include "AssetsTable.h"
 #include "M1Table.h"
 #include "M2Table.h"
+#include "A1Table.h"
+#include "A2Table.h"
 #include "ScalarsTable.h"
 
 static int failures = 0;
@@ -5741,6 +5743,57 @@ static void test_json_keyed_duplicate_keys()
     }
 }
 
+// ---- THE GENERAL ARMS, AT THE THREE DEPTHS (docs/SPEC-TABLES.md §2.6) ----
+//
+// One instance carrying an arm of every general kind the closure admits, at
+// the depths the message corpus already holds: a fixed-array arm in the root's
+// body, a flags arm and a NESTED-UNION arm in the root's batch, and the scalar,
+// counted-array, bytes and enum arms inside a transaction's edits. Every one
+// crosses the wire, the text and the cook in this harness, and the tool's
+// engine is held to these same bytes by the conformance manifest.
+static void build_message_arms( messagedemo::ToolMessage & m )
+{
+    m.sequence = 12;
+    m.body.type = messagedemo::ToolBodyType::Spans;   // a fixed-array arm
+    m.body.spans[0] = -3;
+    m.body.spans[1] = 9;
+
+    m.history_count = 2;
+    m.history[0].type = messagedemo::ToolBodyType::Caps;       // a flags arm
+    m.history[0].caps = messagedemo::Capabilities_Trace | messagedemo::Capabilities_Verbose;
+    m.history[1].type = messagedemo::ToolBodyType::Origin;     // a NESTED-UNION arm
+    m.history[1].origin.type = messagedemo::OriginType::Pid;   // holding a scalar arm
+    m.history[1].origin.pid = 41;
+}
+
+static void build_message_arm_edits( messagedemo::ToolMessage & m )
+{
+    m.sequence = 13;
+    m.body.type = messagedemo::ToolBodyType::Transact;
+    m.body.transact = messagedemo::Transaction{};
+    set_string( m.body.transact.reason, m.body.transact.reason_length, "arms" );
+    m.body.transact.edits_count = 3;
+    messagedemo::Edit & a = m.body.transact.edits[0];
+    a.revision = 1;
+    a.body.type = messagedemo::EditBodyType::Count;            // a bounded scalar arm
+    a.body.count = 100;
+    messagedemo::Edit & b = m.body.transact.edits[1];
+    b.revision = 2;
+    b.body.type = messagedemo::EditBodyType::Marks;            // a counted-array arm
+    b.body.marks.value_count = 2;
+    b.body.marks.value[0] = 7;
+    b.body.marks.value[1] = 65535;
+    messagedemo::Edit & c = m.body.transact.edits[2];
+    c.revision = 3;
+    c.body.type = messagedemo::EditBodyType::Blob;             // a bytes arm
+    c.body.blob.value_length = 3;
+    c.body.blob.value[0] = 0xDE;
+    c.body.blob.value[1] = 0xAD;
+    c.body.blob.value[2] = 0x00;
+    m.body.transact.pending[0].type = messagedemo::EditBodyType::Mode;  // an enum arm
+    m.body.transact.pending[0].mode = messagedemo::Mode::Write;
+}
+
 // ---- MESSAGES: a union whose arms are tables (docs/SPEC-TABLES.md §2.6) ----
 //
 // tables/messages holds the form at three depths (ToolBody in the root,
@@ -5824,6 +5877,10 @@ static void pin_fixed_golden( const char * name, const T & value,
     pin_table_golden( name, buffer, wrote );
 }
 
+// the ARM-RETYPE writer, defined with its controls below: the golden block
+// pins one wire per arm and the manifest reads them under A2
+static int64_t save_a1_arm( uint8_t * buffer, int64_t capacity, tbla1::ValueType arm );
+
 static void test_message_golden_wire()
 {
     {
@@ -5850,6 +5907,12 @@ static void test_message_golden_wire()
         save.body.type = messagedemo::ToolBodyType::Save;
         save.body.save = messagedemo::SaveDocument{};
         pin_fixed_golden( "message_save", save, messagedemo::ToolMessageMeasure, messagedemo::ToolMessageSave );
+        messagedemo::ToolMessage arms;
+        build_message_arms( arms );
+        pin_fixed_golden( "message_arms", arms, messagedemo::ToolMessageMeasure, messagedemo::ToolMessageSave );
+        messagedemo::ToolMessage armEdits;
+        build_message_arm_edits( armEdits );
+        pin_fixed_golden( "message_arm_edits", armEdits, messagedemo::ToolMessageMeasure, messagedemo::ToolMessageSave );
     }
     {
         messagedemo::ToolMessage empty; // None elides: the whole message is the terminator
@@ -5884,6 +5947,21 @@ static void test_message_golden_wire()
         set_string( grown.body.open.path, grown.body.open.path_length, "d.md" );
         grown.body.open.line = 9;
         pin_fixed_golden( "m2_open", grown, tblm2::MsgMeasure, tblm2::MsgSave );
+    }
+    {
+        // THE ARM EVOLUTION WIRES (docs/SPEC-TABLES.md §4): one wire per arm,
+        // written under A1 and read under A2 by the conformance manifest's
+        // `report` rows, so each of the reader's answers to a retyped arm is
+        // pinned across every leg and not in this file alone.
+        static uint8_t buffer[256];
+        const char * names[] = { "a1_arm_moved_width", "a1_arm_one_width", "a1_arm_as_string", "a1_arm_as_body", "a1_arm_body", "a1_arm_unknown" };
+        const tbla1::ValueType arms[] = { tbla1::ValueType::A, tbla1::ValueType::B, tbla1::ValueType::C, tbla1::ValueType::D, tbla1::ValueType::E, tbla1::ValueType::F };
+        for ( int i = 0; i < 6; i++ )
+        {
+            const int64_t wrote = save_a1_arm( buffer, sizeof( buffer ), arms[i] );
+            CHECK( wrote > 0 );
+            pin_table_golden( names[i], buffer, wrote );
+        }
     }
     {
         static uint8_t buffer[4096];
@@ -5935,6 +6013,9 @@ static void test_message_golden_reload()
     reload_table_golden( "message_transaction", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
     reload_table_golden( "message_ping", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
     reload_table_golden( "message_save", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
+    reload_table_golden( "message_arms", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
+    reload_table_golden( "message_arm_edits", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
+    reload_table_golden( "message_ack", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
     reload_table_golden( "message_empty", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
     reload_table_golden( "m1_open", tblm1::MsgLoad, tblm1::MsgSave );
     reload_table_golden( "m1_save", tblm1::MsgLoad, tblm1::MsgSave );
@@ -5944,6 +6025,157 @@ static void test_message_golden_reload()
     reload_stream_golden( "stream_header" );
     reload_stream_golden( "stream_parts" );
     reload_stream_golden( "stream_arm_first" );
+}
+
+// ---- THE ARM CONTROLS (docs/SPEC-TABLES.md §2.6, §3, §4.1) ----
+//
+// One writer (A1) and one reader (A2) declare the same five arms under the
+// same names at different types, so each of the reader's answers is named
+// once, by one edit, with the siblings beside it intact:
+//
+//   a  int32 -> int64    a moved width: the arm's L is not the declared one
+//   b  int32 -> float32  one width, one length: SILENT, and the value differs
+//   c  int32 -> string   any length is bytes: SILENT
+//   d  float32 -> Body   four bytes read as a body: framing damage
+//   e  Body -> Body      the arm beside them, which still round-trips
+static int64_t save_a1_arm( uint8_t * buffer, int64_t capacity, tbla1::ValueType arm )
+{
+    tbla1::Root value;
+    value.id = 11;
+    value.tail = 22;
+    value.value.type = arm;
+    switch ( arm )
+    {
+        case tbla1::ValueType::A: value.value.a = 7; break;
+        case tbla1::ValueType::B: value.value.b = 1065353216; break; // the bits of 1.0f
+        case tbla1::ValueType::C: value.value.c = 0x41424344; break;
+        case tbla1::ValueType::D: value.value.d = 1.0f; break;
+        case tbla1::ValueType::E: value.value.e = tbla1::Body{}; value.value.e.n = 5; break;
+        default: break;
+    }
+    return tbla1::RootSave( value, buffer, capacity );
+}
+
+static void test_arm_retype_controls()
+{
+    uint8_t buffer[256];
+
+    // (1) a MOVED WIDTH is a kind mismatch: the arm skips by its L, the union
+    // reads None, the count fires once, and every sibling lands
+    {
+        const int64_t wrote = save_a1_arm( buffer, sizeof( buffer ), tbla1::ValueType::A );
+        CHECK( wrote > 0 );
+        tbla2::Root got;
+        tbla2::TableReport report;
+        CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
+        CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
+        CHECK( got.value.type == tbla2::ValueType::None );
+        CHECK( got.id == 11 && got.tail == 22 );
+    }
+
+    // (2) ONE WIDTH, ONE LENGTH is SILENT — §4.1's fifth member: every counter
+    // is zero and the value is a different number. This is the control that
+    // makes the silent column true, and the baseline (§18) is what refuses it
+    {
+        const int64_t wrote = save_a1_arm( buffer, sizeof( buffer ), tbla1::ValueType::B );
+        CHECK( wrote > 0 );
+        tbla2::Root got;
+        tbla2::TableReport report;
+        CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
+        CHECK( report.kind_mismatch == 0 && report.unknown == 0 && report.clamped == 0 && !report.malformed );
+        CHECK( got.value.type == tbla2::ValueType::B && got.value.b == 1.0f );
+    }
+
+    // (3) A SCALAR READ AS A STRING is silent too: a string arm takes its L
+    // bytes and clamps only past its own N
+    {
+        const int64_t wrote = save_a1_arm( buffer, sizeof( buffer ), tbla1::ValueType::C );
+        CHECK( wrote > 0 );
+        tbla2::Root got;
+        tbla2::TableReport report;
+        CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
+        CHECK( report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
+        CHECK( got.value.type == tbla2::ValueType::C && got.value.c.value_length == 4 );
+    }
+
+    // (4) FOUR BYTES READ AS A BODY: the terminator is not the last two bytes
+    // of the arm's L, so the payload stops, the union reads None, and the
+    // enclosing body continues past it by L — the siblings still land
+    {
+        const int64_t wrote = save_a1_arm( buffer, sizeof( buffer ), tbla1::ValueType::D );
+        CHECK( wrote > 0 );
+        tbla2::Root got;
+        tbla2::TableReport report;
+        CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
+        CHECK( report.malformed );
+        CHECK( got.value.type == tbla2::ValueType::None );
+        CHECK( got.id == 11 && got.tail == 22 );
+    }
+
+    // (5) the arm beside them still round-trips, byte for byte
+    {
+        const int64_t wrote = save_a1_arm( buffer, sizeof( buffer ), tbla1::ValueType::E );
+        CHECK( wrote > 0 );
+        tbla2::Root got;
+        tbla2::TableReport report;
+        CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
+        CHECK( report.kind_mismatch == 0 && report.unknown == 0 && !report.malformed );
+        CHECK( got.value.type == tbla2::ValueType::E && got.value.e.n == 5 );
+        uint8_t again[256];
+        const int64_t back = tbla2::RootSave( got, again, sizeof( again ) );
+        CHECK( back == wrote && memcmp( again, buffer, (size_t) wrote ) == 0 );
+    }
+}
+
+// A SET ARM ALWAYS RIDES, whatever it holds (docs/SPEC-TABLES.md §2.6): a zero
+// scalar arm rides as its four zero bytes and an empty string arm as L = 0,
+// because selection is presence and only the None tag elides.
+static void test_arm_empty_payloads()
+{
+    uint8_t buffer[256];
+    tbla1::Root zero;
+    zero.value.type = tbla1::ValueType::A;
+    zero.value.a = 0;
+    const int64_t wrote = tbla1::RootSave( zero, buffer, sizeof( buffer ) );
+    CHECK( wrote == tbla1::RootMeasure( zero ) );
+    tbla1::Root got;
+    tbla1::TableReport report;
+    CHECK( tbla1::RootLoad( got, buffer, wrote, &report ) );
+    CHECK( report.kind_mismatch == 0 && !report.malformed );
+    CHECK( got.value.type == tbla1::ValueType::A && got.value.a == 0 );
+
+    // the empty end of a string arm, in the messages corpus where a string arm
+    // rides: note is `string(24)`, and an empty one is L = 0 with the arm set
+    messagedemo::ToolMessage note;
+    note.body.type = messagedemo::ToolBodyType::Origin;
+    note.body.origin.type = messagedemo::OriginType::Note;
+    note.body.origin.note.value_length = 0;
+    const int64_t noted = messagedemo::ToolMessageSave( note, buffer, sizeof( buffer ) );
+    CHECK( noted == messagedemo::ToolMessageMeasure( note ) );
+    messagedemo::ToolMessage back;
+    messagedemo::TableReport noteReport;
+    CHECK( messagedemo::ToolMessageLoad( back, buffer, noted, &noteReport ) );
+    CHECK( back.body.type == messagedemo::ToolBodyType::Origin );
+    CHECK( back.body.origin.type == messagedemo::OriginType::Note );
+    CHECK( back.body.origin.note.value_length == 0 );
+
+    // a NESTED-UNION arm holding None is the inner arm id 0 under L = 2
+    messagedemo::ToolMessage none;
+    none.body.type = messagedemo::ToolBodyType::Origin;
+    none.body.origin.type = messagedemo::OriginType::None;
+    const int64_t wroteNone = messagedemo::ToolMessageSave( none, buffer, sizeof( buffer ) );
+    CHECK( wroteNone == messagedemo::ToolMessageMeasure( none ) );
+    messagedemo::ToolMessage backNone;
+    messagedemo::TableReport noneReport;
+    CHECK( messagedemo::ToolMessageLoad( backNone, buffer, wroteNone, &noneReport ) );
+    CHECK( noneReport.kind_mismatch == 0 && !noneReport.malformed );
+    CHECK( backNone.body.type == messagedemo::ToolBodyType::Origin );
+    CHECK( backNone.body.origin.type == messagedemo::OriginType::None );
+    // and it round-trips to the SAME WIRE: the outer arm rides with L = 2 over
+    // the inner arm id 0, which is the None a union payload spells (§3)
+    uint8_t again[256];
+    const int64_t backAgain = messagedemo::ToolMessageSave( backNone, again, sizeof( again ) );
+    CHECK( backAgain == wroteNone && memcmp( again, buffer, (size_t) wroteNone ) == 0 );
 }
 
 // a cook is written for the build that opens it (§7): the host's own order,
@@ -6083,7 +6315,7 @@ static void test_message_reflection()
     }
     CHECK( body != NULL );
     if ( body == NULL ) return;
-    CHECK( body->kind == 15 && body->enum_max == 4 );
+    CHECK( body->kind == 15 && body->enum_max == 8 );
     CHECK( body->variant_id != NULL && body->variant_id( 1 ) == field_id( "open" ) );
     CHECK( body->variant_id( 3 ) == field_id( "transact" ) );
     CHECK( body->enum_name != NULL && strcmp( body->enum_name( 2 ), "save" ) == 0 );
@@ -6113,12 +6345,14 @@ static void test_message_json_hostile()
     CHECK( !messagedemo::ToolMessageFromJson( value, both, (int64_t) strlen( both ), &two ) );
     CHECK( two.malformed );
 
-    // a table arm given a scalar is REFUSED, exactly as a nested table is: an
-    // arm's body is an object, and the walk will not guess at anything else
+    // AN ARM VALUE OF THE WRONG SHAPE IS A KIND MISMATCH (docs/SPEC-TABLES.md
+    // §16.2): the union reads None, the event is counted, and the enclosing
+    // object continues — the rule a FIELD value lives under, one key down
     messagedemo::TableReport shape;
-    const char * wrong = "{ \"body\": { \"open\": 5 } }";
-    CHECK( !messagedemo::ToolMessageFromJson( value, wrong, (int64_t) strlen( wrong ), &shape ) );
-    CHECK( shape.malformed );
+    const char * wrong = "{ \"sequence\": 3, \"body\": { \"open\": 5 } }";
+    CHECK( messagedemo::ToolMessageFromJson( value, wrong, (int64_t) strlen( wrong ), &shape ) );
+    CHECK( shape.kind_mismatch == 1 && !shape.malformed );
+    CHECK( value.body.type == messagedemo::ToolBodyType::None && value.sequence == 3 );
 
     // an unknown arm at DEPTH THREE counts once and the rest lands
     messagedemo::TableReport deep;
@@ -6337,6 +6571,94 @@ static void test_pointer_arrays()
     }
 }
 
+// ---- THE PAYLOAD-FREE ARM (SPEC §4.8, docs/SPEC-TABLES.md §2.6) ----
+//
+// `ack` is a bare name inside ToolBody: no storage, the arm id with L = 0 on
+// the wire, `{ "ack": null }` in the text, and the tag value with no accessor
+// in C++. It rides like any other selected arm — selection is presence — and
+// the eight bytes it costs are the field header, the arm id and the length.
+static void test_payload_free_arm()
+{
+    uint8_t buffer[256];
+    messagedemo::ToolMessage value;
+    value.sequence = 4;
+    value.body.type = messagedemo::ToolBodyType::Ack;
+    const int64_t wrote = messagedemo::ToolMessageSave( value, buffer, sizeof( buffer ) );
+    CHECK( wrote > 0 && wrote == messagedemo::ToolMessageMeasure( value ) );
+    pin_table_golden( "message_ack", buffer, wrote );
+
+    messagedemo::ToolMessage back;
+    messagedemo::TableReport report;
+    CHECK( messagedemo::ToolMessageLoad( back, buffer, wrote, &report ) );
+    CHECK( report.kind_mismatch == 0 && report.unknown == 0 && !report.malformed );
+    CHECK( back.body.type == messagedemo::ToolBodyType::Ack && back.sequence == 4 );
+
+    // the text form: the arm's value is null, and it reads back
+    char text[512];
+    const int64_t textBytes = messagedemo::ToolMessageToJson( back, text, sizeof( text ) );
+    CHECK( textBytes > 0 );
+    CHECK( strstr( text, "\"ack\": null" ) != NULL );
+    messagedemo::ToolMessage fromText;
+    messagedemo::TableReport textReport;
+    CHECK( messagedemo::ToolMessageFromJson( fromText, text, textBytes, &textReport ) );
+    CHECK( textReport.kind_mismatch == 0 && !textReport.malformed );
+    CHECK( fromText.body.type == messagedemo::ToolBodyType::Ack );
+
+    // an arm value of the wrong shape for a payload-free arm is a kind
+    // mismatch like any other: the union reads None and the object continues
+    messagedemo::ToolMessage shaped;
+    messagedemo::TableReport shapeReport;
+    const char * wrong = "{ \"sequence\": 9, \"body\": { \"ack\": 5 } }";
+    CHECK( messagedemo::ToolMessageFromJson( shaped, wrong, (int64_t) strlen( wrong ), &shapeReport ) );
+    CHECK( shapeReport.kind_mismatch == 1 && !shapeReport.malformed );
+    CHECK( shaped.body.type == messagedemo::ToolBodyType::None && shaped.sequence == 9 );
+}
+
+// ---- THE GENERAL ARM'S REFLECTION ROW (docs/SPEC-TABLES.md §8.1) ----
+//
+// An arm that names no `type` or `table` carries the FIELD descriptor a field
+// of its type would carry, its offsets taken inside the union's storage, and
+// its payload descriptor is NULL. Exactly one of the two is set on a set arm;
+// a payload-free arm has neither.
+static void test_general_arm_reflection()
+{
+    const messagedemo::TableTypeInfo * info = messagedemo::ToolMessageTableType();
+    CHECK( info != NULL );
+    if ( info == NULL ) return;
+    const messagedemo::TableFieldInfo * body = NULL;
+    for ( int32_t i = 0; i < info->num_fields; i++ )
+    {
+        if ( strcmp( info->fields[i].name, "body" ) == 0 ) { body = &info->fields[i]; }
+    }
+    CHECK( body != NULL && body->arms != NULL );
+    if ( body == NULL || body->arms == NULL ) return;
+    const messagedemo::TableUnionInfo * arms = body->arms();
+    CHECK( arms->tag_offset == 0 ); // the tag sits at the union's own base
+    // tag 5 is `caps`, a flags arm: a FIELD row, no payload descriptor
+    const messagedemo::TableUnionArmInfo & caps = arms->arms[5];
+    CHECK( caps.table == NULL && caps.field != NULL );
+    if ( caps.field != NULL )
+    {
+        CHECK( strcmp( caps.field->name, "caps" ) == 0 );
+        CHECK( caps.field->offset == (uint32_t) offsetof( messagedemo::ToolBody, caps ) );
+        CHECK( caps.size == (uint32_t) sizeof( messagedemo::ToolBody::caps ) );
+    }
+    // tag 6 is `spans`, a fixed array arm: the row carries the array's own facts
+    const messagedemo::TableUnionArmInfo & spans = arms->arms[6];
+    CHECK( spans.table == NULL && spans.field != NULL );
+    if ( spans.field != NULL )
+    {
+        CHECK( spans.field->is_array && spans.field->array_bound == 2 );
+        CHECK( spans.field->offset == (uint32_t) offsetof( messagedemo::ToolBody, spans ) );
+    }
+    // tag 1 is `open`, a TABLE arm: the payload descriptor, and no field row
+    const messagedemo::TableUnionArmInfo & open = arms->arms[1];
+    CHECK( open.table == messagedemo::OpenDocumentTableType() && open.field == NULL );
+    // tag 8 is `ack`, payload-free: neither, and no storage
+    const messagedemo::TableUnionArmInfo & ack = arms->arms[8];
+    CHECK( ack.table == NULL && ack.field == NULL && ack.size == 0 );
+}
+
 // ---- THE WALK ORDER (docs/SPEC-TABLES.md §3.1, §6.3): one declaration-order walk ----
 //
 // The numbering is ONE depth-first walk over the fields in declaration order
@@ -6458,6 +6780,87 @@ static void test_pointer_walk_order()
     {
         check_stream_arm_first( opened );
         check_stream_arm_first_layout( opened );
+        CHECK( streamdemo::FeedSave( opened, again, sizeof( again ) ) == wrote );
+        CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+    }
+    free( cook );
+}
+
+// ---- A POINTER ARM IS THE EDGE ITSELF (docs/SPEC-TABLES.md §2.6, §3.1) ----
+//
+// `link *Chunk` is an arm whose payload is a node index, so the arm is a
+// pointer edge in the union field's own declaration-order position — before
+// `parts`, which Feed declares after `frame`. This value tells the two walks
+// apart the way stream_arm_first does: the ARM names x, and parts names y then
+// x again, so the page's walk numbers x, y as 2, 3 while a walk that took the
+// pointer fields first numbers y, x as 2, 3 and writes different bytes from
+// the same value. The node x is named from an arm and from a slot: one node,
+// one index, one body.
+static void build_stream_arm_pointer( streamdemo::FeedBuilder & builder )
+{
+    streamdemo::Feed * root = builder.GetRoot();
+    root->id = 6;
+    streamdemo::TableSlot<streamdemo::Chunk> x = builder.Alloc<streamdemo::Chunk>();
+    streamdemo::TableSlot<streamdemo::Chunk> y = builder.Alloc<streamdemo::Chunk>();
+    x->data[0] = 7;
+    x->data_length = 1;
+    y->data[0] = 8;
+    y->data_length = 1;
+    root->frame.type = streamdemo::FrameType::Link;
+    root->frame.link = x;              // the ARM is the pointer edge, and it is first
+    root->parts_count = 2;
+    root->parts[0] = y;
+    root->parts[1] = x;                // the same node again: one index, one body
+}
+
+static void check_stream_arm_pointer( const streamdemo::Feed * feed )
+{
+    const streamdemo::TableRegionCtx ctx{};
+    CHECK( feed->frame.type == streamdemo::FrameType::Link );
+    const streamdemo::Chunk * x = streamdemo::ChunkAt( ctx, feed->frame.link );
+    const streamdemo::Chunk * y = streamdemo::ChunkAt( ctx, feed->parts[0] );
+    const streamdemo::Chunk * again = streamdemo::ChunkAt( ctx, feed->parts[1] );
+    CHECK( x != NULL && y != NULL );
+    CHECK( x == again ); // a node named from an arm and from a slot is ONE node
+    if ( x == NULL || y == NULL ) return;
+    CHECK( x->data[0] == 7 && y->data[0] == 8 );
+    CHECK( feed->parts_count == 2 );
+}
+
+static void test_pointer_arm_shares_a_node()
+{
+    static uint8_t wire[4096];
+    static uint8_t again[4096];
+    streamdemo::FeedBuilder builder;
+    build_stream_arm_pointer( builder );
+    const int64_t wrote = streamdemo::FeedSave( builder, wire, sizeof( wire ) );
+    CHECK( wrote > 0 && wrote == streamdemo::FeedMeasure( builder ) );
+    pin_table_golden( "stream_arm_pointer", wire, wrote );
+
+    CHECK( builder.Lock() );
+    check_stream_arm_pointer( builder.AsConst() );
+    CHECK( streamdemo::FeedSave( builder.AsConst(), again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    const int64_t region_need = streamdemo::FeedLoadMeasure( wire, wrote );
+    std::vector<uint8_t> region( (size_t) region_need );
+    streamdemo::TableReport report;
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+    if ( loaded == NULL ) return;
+    check_stream_arm_pointer( loaded );
+    CHECK( streamdemo::FeedSave( loaded, again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    const int64_t cook_bytes = streamdemo::FeedCookMeasure( loaded );
+    CHECK( cook_bytes > 0 );
+    void * cook = malloc( (size_t) cook_bytes );
+    CHECK( streamdemo::FeedCook( loaded, cook, (uint64_t) cook_bytes, host_byte_order( streamdemo::TableByteOrder::Little, streamdemo::TableByteOrder::Big ) ) );
+    const streamdemo::Feed * opened = streamdemo::FeedOpen( cook, (uint64_t) cook_bytes );
+    CHECK( opened != NULL );
+    if ( opened != NULL )
+    {
+        check_stream_arm_pointer( opened );
         CHECK( streamdemo::FeedSave( opened, again, sizeof( again ) ) == wrote );
         CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
     }
@@ -6637,7 +7040,7 @@ static void test_union_arrays()
         if ( strcmp( f->name, "history" ) != 0 ) continue;
         CHECK( f->kind == 15 && f->is_array && f->counted && f->array_bound == 2 );
         CHECK( f->elem_size == sizeof( messagedemo::ToolBody ) );
-        CHECK( f->enum_max == 4 && f->arms != NULL );
+        CHECK( f->enum_max == 8 && f->arms != NULL );
         CHECK( f->variant_id != NULL && f->variant_id( 1 ) == field_id( "open" ) );
         const messagedemo::TableUnionInfo * arms = f->arms();
         CHECK( arms->arms[4].table == messagedemo::PingTableType() );
@@ -7791,6 +8194,10 @@ int main()
     test_message_golden_wire();
     test_message_golden_reload();
     test_message_three_depths();
+    test_arm_retype_controls();
+    test_arm_empty_payloads();
+    test_payload_free_arm();
+    test_general_arm_reflection();
     test_message_evolution();
     test_message_reflection();
     test_message_json_hostile();
@@ -7799,6 +8206,7 @@ int main()
     test_pointer_arrays_elision();
     test_pointer_arrays_element_kind_mismatch();
     test_pointer_walk_order();
+    test_pointer_arm_shares_a_node();
     test_union_arrays();
     test_union_arrays_elision();
     test_union_arrays_element_kind_mismatch();

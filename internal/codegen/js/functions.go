@@ -57,6 +57,11 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 		g.call("  ", fmt.Sprintf("stream.serializeBits(%s, %d)", scratch, bits), "")
 		g.pf("  switch (value.Type) {\n")
 		for _, v := range d.Variants {
+			if v.Void() {
+				g.pf("    case %sType.%s:\n      return true; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n",
+					d.Name, ir.GoExportName(v.Name))
+				continue
+			}
 			g.addRef(v.Type, "Write"+v.Type)
 			g.pf("    case %sType.%s:\n      return Write%s(stream, value.%s);\n",
 				d.Name, ir.GoExportName(v.Name), v.Type, ir.GoExportName(v.Name))
@@ -75,8 +80,12 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.pf("  value.Type = %s.value;\n", scratch)
 	g.pf("  switch (value.Type) {\n")
 	for _, v := range d.Variants {
-		g.addRef(v.Type, "Zero"+v.Type, "Read"+v.Type)
 		g.pf("    case %sType.%s:\n", d.Name, ir.GoExportName(v.Name))
+		if v.Void() {
+			g.pf("      return true; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n")
+			continue
+		}
+		g.addRef(v.Type, "Zero"+v.Type, "Read"+v.Type)
 		g.pf("      Zero%s(value.%s); // the selected arm starts from the zero form (SPEC §5)\n", v.Type, ir.GoExportName(v.Name))
 		g.pf("      return Read%s(stream, value.%s);\n", v.Type, ir.GoExportName(v.Name))
 	}

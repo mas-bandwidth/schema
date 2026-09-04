@@ -55,7 +55,7 @@ import (
 // every judged row — so an unbumped rendering greets an untouched schema with
 // a diagnostic per field. Recording a fact nothing judges (an `optional`) does
 // not need a bump; adding a rule does.
-const Version = 5
+const Version = 6
 
 // FileName is the baseline's name in the unit directory. Its presence is what
 // turns the check on: no file, no check.
@@ -148,10 +148,15 @@ type Flags struct {
 }
 
 // A Union is one union in the closure: arms in declaration order, each with
-// its name-hash id and its payload type.
+// its name-hash id and its own wire facts. AN ARM IS A FIELD LINE
+// (docs/SPEC-TABLES.md §2.6), so an arm carries a FIELD's tokens: an arm that
+// names a declared `type` or `table` by value carries `payload=<Name>` and
+// nothing else — the spelling every arm had before an arm could be anything
+// else, so a committed baseline still reads and an unchanged unit regenerates
+// byte-identically — and any other arm carries the field tokens for what it is.
 type Union struct {
 	Name string
-	Arms []Variant
+	Arms []Field
 }
 
 // Render projects a checked unit's table closure. The result is exactly what
@@ -218,10 +223,7 @@ func Render(u *ir.Unit) *Unit {
 					out.Flags = append(out.Flags, Flags{Name: ref.Name, Variants: append([]string(nil), ref.Variants...)})
 				}
 			case *ir.Union:
-				if !seenUnion[ref.Name] {
-					seenUnion[ref.Name] = true
-					out.Unions = append(out.Unions, renderUnion(ref))
-				}
+				collectUnion(out, ref, seenEnum, seenFlags, seenUnion)
 			}
 		}
 		out.Tables = append(out.Tables, t)
@@ -244,7 +246,27 @@ func renderEnum(e *ir.Enum) Enum {
 func renderUnion(un *ir.Union) Union {
 	out := Union{Name: un.Name}
 	for _, v := range un.Variants {
-		out.Arms = append(out.Arms, Variant{Name: v.Name, Id: ir.VariantId(v.Name), Payload: v.Type})
+		// AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6, §18.1): its line
+		// carries the FIELD tokens for what it is, judged by the one policy
+		// table a field is judged by. A PAYLOAD-FREE arm has no storage, and
+		// `kind=0` is the reserved nothing this format spells 0 everywhere
+		// else (SPEC §4.8).
+		// THREE SPELLINGS, DISJOINT (docs/SPEC-TABLES.md §18.1): an arm that
+		// names a declared `type` or `table` carries `payload=<Name>` and
+		// nothing else, so a baseline written before an arm could be anything
+		// else still reads; an arm with NO PAYLOAD carries `kind=none`; every
+		// other arm carries the FIELD tokens for what it is, judged by the one
+		// policy table a field is judged by.
+		arm := Field{Name: v.Name, Id: ir.VariantId(v.Name)}
+		switch {
+		case v.Body():
+			arm.Tokens = []Token{{Key: "payload", Value: v.Type}}
+		case v.Void():
+			arm.Tokens = []Token{{Key: "kind", Value: "none"}}
+		default:
+			arm.Tokens = renderField(v.F).Tokens
+		}
+		out.Arms = append(out.Arms, arm)
 	}
 	return out
 }
@@ -424,7 +446,11 @@ func (u *Unit) Text() string {
 	for _, un := range u.Unions {
 		fmt.Fprintf(&b, "\nunion %s\n", un.Name)
 		for _, a := range un.Arms {
-			fmt.Fprintf(&b, "    arm %s id=0x%04x payload=%s\n", a.Name, a.Id, a.Payload)
+			fmt.Fprintf(&b, "    arm %s id=0x%04x", a.Name, a.Id)
+			for _, tok := range a.Tokens {
+				fmt.Fprintf(&b, " %s=%s", tok.Key, tok.Value)
+			}
+			b.WriteString("\n")
 		}
 	}
 	if len(u.History) > 0 {
@@ -558,13 +584,22 @@ func (u *Unit) parseMemberLine(path string, lineno int, section string, fields [
 		if fields[0] != "arm" || len(u.Unions) == 0 {
 			return bad()
 		}
+		// AN ARM'S LINE IS A FIELD'S LINE (docs/SPEC-TABLES.md §18.1): every
+		// token but the id is a wire fact the policy judges, `payload=`
+		// included
+		arm := Field{Name: v.Name, Id: v.Id}
 		for _, tok := range fields[2:] {
-			if k, val, ok := strings.Cut(tok, "="); ok && k == "payload" {
-				v.Payload = val
+			k, val, ok := strings.Cut(tok, "=")
+			if !ok {
+				return bad()
 			}
+			if k == "id" {
+				continue
+			}
+			arm.Tokens = append(arm.Tokens, Token{Key: k, Value: val})
 		}
 		un := &u.Unions[len(u.Unions)-1]
-		un.Arms = append(un.Arms, v)
+		un.Arms = append(un.Arms, arm)
 	case "flags":
 		if fields[0] != "variant" || len(u.Flags) == 0 || len(fields) != 3 {
 			return bad()
@@ -599,4 +634,35 @@ func parseIdToken(fields []string) (uint16, error) {
 		}
 	}
 	return 0, fmt.Errorf("no id")
+}
+
+// collectUnion adds one union and every vocabulary its ARMS reach
+// (docs/SPEC-TABLES.md §2.6): an enum arm's enum and a flags arm's flags ride
+// under the same rules a field's do, and an arm that is another union brings
+// its own arms with it.
+func collectUnion(out *Unit, un *ir.Union, seenEnum, seenFlags, seenUnion map[string]bool) {
+	if seenUnion[un.Name] {
+		return
+	}
+	seenUnion[un.Name] = true
+	out.Unions = append(out.Unions, renderUnion(un))
+	for _, v := range un.Variants {
+		if v.F == nil || v.F.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch ref := v.F.Type.Ref.(type) {
+		case *ir.Enum:
+			if !seenEnum[ref.Name] {
+				seenEnum[ref.Name] = true
+				out.Enums = append(out.Enums, renderEnum(ref))
+			}
+		case *ir.Flags:
+			if !seenFlags[ref.Name] {
+				seenFlags[ref.Name] = true
+				out.Flags = append(out.Flags, Flags{Name: ref.Name, Variants: append([]string(nil), ref.Variants...)})
+			}
+		case *ir.Union:
+			collectUnion(out, ref, seenEnum, seenFlags, seenUnion)
+		}
+	}
 }

@@ -51,21 +51,28 @@ func (g *tableGen) emitTableUnion(un *ir.Union) {
 
 	arm, typ := "arm", "Arm"
 	if len(un.Variants) > 0 {
-		arm, typ = un.Variants[0].Name, un.Variants[0].Type
+		arm, typ = un.Variants[0].Name, ir.FieldTypeSpelling(un.Variants[0].F)
+		if un.Variants[0].Body() {
+			typ = un.Variants[0].Type + "{}"
+		} else {
+			typ = "a " + typ
+		}
 	}
-	g.pf("// union %s — at most one of the arms; the tag says which. An arm is a TABLE\n", un.Name)
-	g.pf("// where it names one (docs/SPEC-TABLES.md §2.6), so the union has no packet wire and\n")
-	g.pf("// lives here, after its arms. Construction is None: the tag alone is\n")
-	g.pf("// initialized; an arm's storage is established when the arm is selected — by\n")
-	g.pf("// %sLoadBody before it decodes, or by assigning it: value.%s = %s{}.\n", un.Name, arm, typ)
+	g.pf("// union %s — at most one of the arms; the tag says which. AN ARM IS A FIELD\n", un.Name)
+	g.pf("// LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage\n")
+	g.pf("// overlaid — and an arm whose storage needs a companion, a string's length or\n")
+	g.pf("// a counted array's count, is one member of an unnamed struct, `value` beside\n")
+	g.pf("// `value_length` or `value_count`. Such a union has no packet wire and lives\n")
+	g.pf("// here, after its arms. Construction is None: the tag alone is initialized; an\n")
+	g.pf("// arm's storage is established when the arm is selected — by %sLoadBody\n", un.Name)
+	g.pf("// before it decodes, or by assigning it: value.%s = %s.\n", arm, typ)
 	g.pf("// Bytes of unselected arms are indeterminate.\n")
 	g.pf("struct %s\n{\n", un.Name)
 	g.pf("    %sType type;\n", un.Name)
 	if len(un.Variants) > 0 {
 		g.pf("\n    union\n    {\n")
 		for _, v := range un.Variants {
-			g.noteRef(v.Type)
-			g.pf("        %s %s;\n", v.Type, v.Name)
+			g.emitArmStorage(v)
 		}
 		g.pf("    };\n")
 	}

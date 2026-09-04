@@ -61,19 +61,26 @@ type TableDecl struct {
 }
 
 // UnionDecl is a first-class one-of type (SPEC §4.8): an implicit None row,
-// then each variant naming its payload type. The tag enum <Name>Type is
-// generated, never declared.
+// then each arm as a FIELD LINE. The tag enum <Name>Type is generated, never
+// declared.
 type UnionDecl struct {
 	Name     string
 	Pos      Pos
 	Variants []UnionVariant
 }
 
+// UnionVariant is one arm. An arm IS a field line (SPEC §4.8,
+// docs/SPEC-TABLES.md §2.6), so Arm carries the whole of it — the type, the
+// array bound, the attributes — parsed by the field production. Type is the
+// arm's payload type NAME when the arm names a declaration by itself (no
+// pointer, no array), "" otherwise: the spellings that predate general arms
+// read it, and the checker resolves every arm through Arm.
 type UnionVariant struct {
 	Name    string // field-style lower_snake, unique within the union
 	Pos     Pos
-	Type    string // the payload type name (a declared type)
+	Type    string // the payload type name, when the arm names a bare declaration
 	TypePos Pos
+	Arm     *Field
 }
 
 func (d *ConstDecl) DeclName() string { return d.Name }

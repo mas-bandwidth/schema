@@ -46,4 +46,7 @@ func (goTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(goTarget{}, true, false, false, false) }
+func init() {
+	registerBuiltin(goTarget{}, true, false, false, false)
+	registerPacketVoidArmCarrier("go")
+}

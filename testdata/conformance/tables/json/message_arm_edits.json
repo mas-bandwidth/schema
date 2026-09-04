@@ -1,0 +1,38 @@
+{
+  "sequence": 13,
+  "body": {
+    "transact": {
+      "reason": "arms",
+      "edits": [
+        {
+          "revision": 1,
+          "body": {
+            "count": 100
+          }
+        },
+        {
+          "revision": 2,
+          "body": {
+            "marks": [
+              7,
+              65535
+            ]
+          }
+        },
+        {
+          "revision": 3,
+          "body": {
+            "blob": "3q0A"
+          }
+        }
+      ],
+      "pending": [
+        {
+          "mode": "Write"
+        },
+        {}
+      ]
+    }
+  },
+  "history": []
+}

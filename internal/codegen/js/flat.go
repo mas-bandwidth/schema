@@ -1752,6 +1752,10 @@ func (g *fgen) emitWriteUnionFlat(u *ir.Union, expr, ind string) {
 	g.pf("%sswitch (%s.Type) {\n", ind, expr)
 	for i, vr := range u.Variants {
 		g.pf("%s  case %d: {\n", ind, i+1)
+		if vr.Void() {
+			g.pf("%s    break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n%s  }\n", ind, ind)
+			continue
+		}
 		g.emitWriteItems(vr.Ref.Items, expr+"."+ir.GoExportName(vr.Name), ind+"    ")
 		g.chunkFlush(ind + "    ")
 		g.pf("%s    break;\n%s  }\n", ind, ind)
@@ -1781,6 +1785,10 @@ func (g *fgen) emitReadUnionFlat(u *ir.Union, expr, ind string, bounded bool) {
 	for i, vr := range u.Variants {
 		arm := expr + "." + ir.GoExportName(vr.Name)
 		g.pf("%s  case %d: {\n", ind, i+1)
+		if vr.Void() {
+			g.pf("%s    break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n%s  }\n", ind, ind)
+			continue
+		}
 		// the selected arm starts from the zero form (SPEC §5); the arm's
 		// own runs re-check bounds — the tag's proof does not extend to it
 		for _, nf := range vr.Ref.Fields {

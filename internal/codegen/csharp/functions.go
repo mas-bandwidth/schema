@@ -378,6 +378,11 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 			g.call("    ", fmt.Sprintf("%s.SerializeBits(ref tagValue, %d)", g.rv(), bits), "")
 			g.sf("    switch (value.Type)\n    {\n")
 			for _, v := range d.Variants {
+				if v.Void() {
+					g.sf("        case %sType.%s:\n            return true; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n",
+						d.Name, ir.GoExportName(v.Name))
+					continue
+				}
 				g.sf("        case %sType.%s:\n            return %s;\n",
 					d.Name, ir.GoExportName(v.Name), g.armCall("Write", v))
 			}
@@ -395,6 +400,10 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 			g.sf("    switch (value.Type)\n    {\n")
 			for _, v := range d.Variants {
 				g.sf("        case %sType.%s:\n", d.Name, ir.GoExportName(v.Name))
+				if v.Void() {
+					g.sf("            return true; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n")
+					continue
+				}
 				g.sf("            Zero%s(value.%s); // the selected arm starts from the zero form (SPEC §5)\n", v.Type, ir.GoExportName(v.Name))
 				g.sf("            return %s;\n", g.armCall("Read", v))
 			}

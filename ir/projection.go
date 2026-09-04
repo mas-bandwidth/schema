@@ -160,23 +160,39 @@ func WireProjection(u *Unit) string {
 	// ONE payload type reorder invisibly without them, which is the enum
 	// case exactly (#491). A rename therefore moves the id, as it does for an
 	// enum or flags variant.
+	//
+	// EVERY union projects, the TABLE-CLOSURE ones included: a union is a
+	// declaration like any other, and an arm is a FIELD LINE whose facts are
+	// wire facts (docs/SPEC-TABLES.md §2.6, §20.8). An arm that names a
+	// declared type by value keeps the `payload=` spelling it always had, so
+	// every existing id stands; any other arm renders the field projection, so
+	// adding a scalar arm moves the id exactly as adding a field does; and a
+	// PAYLOAD-FREE arm carries `kind=none`. The tables an arm may name project
+	// nothing themselves, so no table edit reaches this id.
 	names = names[:0]
 	for n := range u.Unions {
+		names = append(names, n)
+	}
+	for n := range u.TableUnions {
 		names = append(names, n)
 	}
 	sort.Strings(names)
 	for _, n := range names {
 		un := u.Unions[n]
-		if un.HasTableArm() {
-			// a union with a TABLE arm has no packet wire — a `type` body
-			// refuses it (docs/SPEC-TABLES.md §2.6) — so it is a table-closure
-			// fact and projects nothing, exactly as a table does: adding a
-			// table arm moves no protocol id
-			continue
+		if un == nil {
+			un = u.TableUnions[n]
 		}
 		fmt.Fprintf(&b, "union %s max=%d\n", un.Name, un.Max)
 		for i, v := range un.Variants {
-			fmt.Fprintf(&b, "  variant %d name=%s payload=%s\n", i+1, v.Name, v.Type)
+			switch {
+			case v.Void():
+				fmt.Fprintf(&b, "  variant %d name=%s kind=none\n", i+1, v.Name)
+			case v.Body():
+				fmt.Fprintf(&b, "  variant %d name=%s payload=%s\n", i+1, v.Name, v.Type)
+			default:
+				fmt.Fprintf(&b, "  variant %d name=%s ", i+1, v.Name)
+				projectField(&b, v.F, "")
+			}
 		}
 	}
 

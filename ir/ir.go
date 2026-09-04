@@ -111,17 +111,49 @@ type Union struct {
 	StorageBits int            // 8 / 16 / 32 / 64 — smallest unsigned fitting Max
 }
 
-// UnionVariant is one arm of a [Union].
+// UnionVariant is one arm of a [Union]. AN ARM IS A FIELD LINE (SPEC §4.8,
+// docs/SPEC-TABLES.md §2.6): F carries the whole of it — the resolved type,
+// the array shape, the bounds — and is never nil on a checked union.
 type UnionVariant struct {
 	Name string  // declared, field-style lower_snake
-	Type string  // the payload type's name
-	Ref  *Struct // the payload: a `type`, or inside a table closure a `table`
+	Type string  // the payload type's name; "" when the arm names no declaration
+	Ref  *Struct // the payload: a `type`, or inside a table closure a `table`; nil otherwise
+	F    *Field  // the arm as a field line
+}
+
+// Body reports whether the arm's payload is a TABLE BODY on the wire — a
+// by-value declared `type` or `table` (docs/SPEC-TABLES.md §3's kind-15 row).
+// Every other arm carries its own field type's payload under the arm's length.
+func (v UnionVariant) Body() bool {
+	return v.Ref != nil && v.F != nil && v.F.Array == ArrayNone && !v.F.Type.Pointer
+}
+
+// Void reports a PAYLOAD-FREE ARM (SPEC §4.8): a bare name inside a union. It
+// has no storage, the packet wire carries the tag alone, and the table wire
+// carries the arm id with L = 0 (docs/SPEC-TABLES.md §2.6).
+func (v UnionVariant) Void() bool { return v.F == nil }
+
+// General reports whether the arm is anything but a by-value declared `type`
+// — a `table`, a scalar, a string, an array, a pointer, an enum, a flags mask
+// or another union. A union with one is a TABLE-CLOSURE construct
+// (docs/SPEC-TABLES.md §2.6).
+func (v UnionVariant) General() bool {
+	if v.F == nil {
+		return false
+	}
+	if v.F.Array != ArrayNone || v.F.Type.Pointer || v.F.Type.Kind != TNamed {
+		return true
+	}
+	switch v.F.Type.Ref.(type) {
+	case *Struct:
+		return v.Ref != nil && v.Ref.IsTable
+	default:
+		return true // an enum, a flags mask, another union
+	}
 }
 
 // HasTableArm reports whether any arm names a `table` (docs/SPEC-TABLES.md
-// §2.6). Such a union is a table-closure construct: it has no packet wire, it
-// is refused in a `type` body, and its shape is emitted beside the tables
-// rather than among the packet declarations.
+// §2.6) — by value or through a pointer.
 func (u *Union) HasTableArm() bool {
 	for _, v := range u.Variants {
 		if v.Ref != nil && v.Ref.IsTable {
@@ -129,6 +161,31 @@ func (u *Union) HasTableArm() bool {
 		}
 	}
 	return false
+}
+
+// TableClosureOnly reports whether the union is a TABLE-CLOSURE construct
+// (docs/SPEC-TABLES.md §2.6): any arm that is not a by-value declared `type`
+// makes it one. Such a union has no packet wire, it is refused in a `type`
+// body and where no table reaches it, and its shape is emitted beside the
+// tables rather than among the packet declarations.
+func (u *Union) TableClosureOnly() bool {
+	for _, v := range u.Variants {
+		if v.General() {
+			return true
+		}
+	}
+	return false
+}
+
+// GeneralArm names the first arm that makes the union a table-closure
+// construct, as `name Type`, for a diagnostic. "" when none does.
+func (u *Union) GeneralArm() string {
+	for _, v := range u.Variants {
+		if v.General() {
+			return v.Name + " " + FieldTypeSpelling(v.F)
+		}
+	}
+	return ""
 }
 
 // Struct is a `type` declaration — or, when IsTable is set, a `table`

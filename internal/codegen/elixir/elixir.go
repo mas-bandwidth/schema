@@ -419,6 +419,9 @@ func (g *gen) emitUnionModules(d *ir.Union) {
 	g.bpf("# Consumers read the selected arm only.\n")
 	fields := []string{"type: 0"}
 	for _, v := range d.Variants {
+		if v.Void() {
+			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
+		}
 		fields = append(fields, fmt.Sprintf("%s: %%%s{}", elixirName(v.Name), g.mod(v.Type)))
 	}
 	g.bpf("defmodule %s do\n", g.mod(d.Name))

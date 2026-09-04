@@ -201,6 +201,9 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.pf("type %s struct {\n", d.Name)
 	g.pf("\tType %sType\n", d.Name)
 	for _, v := range d.Variants {
+		if v.Void() {
+			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
+		}
 		g.pf("\t%s %s\n", ir.GoExportName(v.Name), v.Type)
 	}
 	g.pf("}\n\n")

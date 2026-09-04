@@ -251,7 +251,17 @@ func (s *scan) element(at int64, f *ir.Field) error {
 		if int(cell.U) > len(ref.Variants) {
 			return fmt.Errorf("union %s: the stored tag %d names no arm", ref.Name, cell.U)
 		}
-		return s.record(at+armOffset, ref.Variants[cell.U-1].Ref)
+		arm := ref.Variants[cell.U-1]
+		if arm.Void() {
+			return nil // a payload-free arm steers nothing: it has no storage (§2.6)
+		}
+		if !arm.Body() {
+			// AN ARM IS A FIELD LINE (§2.6), so what a set arm's storage
+			// steers a walker through is that field's: a POINTER arm's slot
+			// above all, checked where a field's is
+			return s.field(at+armOffset, arm.F)
+		}
+		return s.record(at+armOffset, arm.Ref)
 	}
 	return nil
 }

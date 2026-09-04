@@ -123,20 +123,40 @@ func pointeeName(f *ir.Field) string {
 // (internal/tablewire) numbers by the page; the corpus's stream_arm_first is
 // the value that tells the two apart.
 
-// edgeVisitor is what one emitter does at the three kinds of edge the walk
-// reaches. subject is the expression the fields hang off — `value`, or `src`
-// for the pack, which derives its `dst` from it.
+// edgeExpr is ONE STORAGE PATH, spelled under each subject the walk runs over:
+// `value` for the numbering and the pack measure, and the `src` / `dst` PAIR
+// the pack copies between. The walk builds both by construction from one path,
+// so no emitter derives a twin expression from the other's TEXT.
+type edgeExpr struct {
+	Src string // the path under the read subject
+	Dst string // the same path under the write subject; "" when there is none
+}
+
+// edgeVisitor is what one emitter does at the kinds of edge the walk reaches.
+// read is the expression the fields hang off; write is its twin where the
+// emitter copies (the pack), "" where it does not.
 type edgeVisitor struct {
-	subject string
-	// pointer is one live pointer slot: the field itself, or one element of an
-	// array of pointers, in index order (§2.1)
-	pointer func(f *ir.Field, slot string)
+	read  string
+	write string
+	// pointer is one live pointer slot: the field itself, one element of an
+	// array of pointers (§2.1), or a POINTER ARM (§2.6)
+	pointer func(f *ir.Field, slot edgeExpr)
 	// blob is one byte buffer slot, `*bytes` or `*string` (§2.5)
-	blob func(f *ir.Field)
+	blob func(f *ir.Field, slot edgeExpr)
 	// descend is one by-value edge into a VARIABLE table — a nested field, an
 	// array element, a keyed slot, or a union's set arm — given the table's
 	// name, the element expression and the indent the call sits at
-	descend func(table, expr, indent string)
+	descend func(table string, expr edgeExpr, indent string)
+}
+
+// at spells one storage PATH — ".field", ".field[i]", ".body.chunk" — under
+// both subjects.
+func (v edgeVisitor) at(path string) edgeExpr {
+	out := edgeExpr{Src: v.read + path}
+	if v.write != "" {
+		out.Dst = v.write + path
+	}
+	return out
 }
 
 // edgeKind is what one field is to the walk.
@@ -166,13 +186,37 @@ func (g *tableGen) edgeOf(f *ir.Field) edgeKind {
 			return edgeNested
 		}
 	case *ir.Union:
-		for _, v := range ref.Variants {
-			if g.isVar(v.Type) {
-				return edgeArm
-			}
+		if g.unionHasEdge(ref, map[*ir.Union]bool{}) {
+			return edgeArm
 		}
 	}
 	return edgeNone
+}
+
+// unionHasEdge reports whether a union's arms reach a node (§2.6): an arm that
+// is a POINTER or a byte buffer is itself the edge, an arm that is a
+// variable-length table by value carries edges inside it, and an arm that is
+// another union asks the same question one level in.
+func (g *tableGen) unionHasEdge(un *ir.Union, seen map[*ir.Union]bool) bool {
+	if seen[un] {
+		return false
+	}
+	seen[un] = true
+	for _, v := range un.Variants {
+		if v.F == nil {
+			continue
+		}
+		if v.F.Type.Pointer {
+			return true
+		}
+		if v.Type != "" && g.isVar(v.Type) {
+			return true
+		}
+		if inner, ok := v.F.Type.Ref.(*ir.Union); ok && g.unionHasEdge(inner, seen) {
+			return true
+		}
+	}
+	return false
 }
 
 // noVariableEdges reports a member with no node below it: no pointer field, no
@@ -191,33 +235,33 @@ func (g *tableGen) emitEdgeWalk(st *ir.Struct, v edgeVisitor) {
 	for _, f := range st.Fields {
 		switch g.edgeOf(f) {
 		case edgePointer:
-			g.emitPointerSlots(f, v.subject, func(slot string) { v.pointer(f, slot) })
+			g.emitPointerSlots(f, v, func(slot edgeExpr) { v.pointer(f, slot) })
 		case edgeBlob:
-			v.blob(f)
+			v.blob(f, v.at("."+f.Name))
 		case edgeNested:
-			g.emitVariableByValueWalk(f, v.subject, func(expr string) { v.descend(f.Type.Name, expr, "        ") })
+			g.emitVariableByValueWalk(f, v, func(expr edgeExpr) { v.descend(f.Type.Name, expr, "        ") })
 		case edgeArm:
-			g.emitVariableUnionWalk(f, v.subject, func(armType, arm string) { v.descend(armType, arm, "            ") })
+			g.emitVariableUnionWalk(f, v)
 		}
 	}
 }
 
 // emitVariableByValueWalk emits the loop shape for descending into a by-value
 // nested variable table — a field, a bounded array or a keyed one — under the
-// given subject, and calls body with the element expression.
-func (g *tableGen) emitVariableByValueWalk(f *ir.Field, subject string, body func(expr string)) {
+// walk's subjects, and calls body with the element path.
+func (g *tableGen) emitVariableByValueWalk(f *ir.Field, v edgeVisitor, body func(expr edgeExpr)) {
 	switch f.Array {
 	case ir.ArrayNone:
 		g.pf("    { // %s (nested by value)\n", f.Name)
-		body(subject + "." + f.Name)
+		body(v.at("." + f.Name))
 		g.pf("    }\n")
 	case ir.ArrayCounted:
-		g.pf("    for ( int32_t i = 0; i < %s.%s_count && i < %d; i++ ) // %s\n    {\n", subject, f.Name, f.ArrayBound, f.Name)
-		body(fmt.Sprintf("%s.%s[i]", subject, f.Name))
+		g.pf("    for ( int32_t i = 0; i < %s.%s_count && i < %d; i++ ) // %s\n    {\n", v.read, f.Name, f.ArrayBound, f.Name)
+		body(v.at(fmt.Sprintf(".%s[i]", f.Name)))
 		g.pf("    }\n")
 	default:
 		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s\n    {\n", f.ArrayBound, f.Name)
-		body(g.arrayBase(subject+".", f) + "[i]")
+		body(v.at(g.arrayBase(".", f) + "[i]"))
 		g.pf("    }\n")
 	}
 }
@@ -391,11 +435,11 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 		g.pf("    (void) ctx; (void) numbering; (void) value; // no pointers below this node\n")
 	}
 	g.emitEdgeWalk(st, edgeVisitor{
-		subject: "value",
-		pointer: func(f *ir.Field, slot string) {
+		read: "value",
+		pointer: func(f *ir.Field, slot edgeExpr) {
 			t := f.Type.Name
 			g.pf("    {\n")
-			g.pf("        const %s * pointee = %sAt( ctx, %s ); // %s\n", t, t, slot, f.Name)
+			g.pf("        const %s * pointee = %sAt( ctx, %s ); // %s\n", t, t, slot.Src, f.Name)
 			g.pf("        if ( pointee != NULL )\n        {\n")
 			g.pf("            bool taken = false;\n")
 			g.pf("            int64_t slot = 0;\n")
@@ -416,12 +460,12 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 			g.pf("            }\n")
 			g.pf("        }\n    }\n")
 		},
-		blob: func(f *ir.Field) {
+		blob: func(f *ir.Field, slot edgeExpr) {
 			// a BYTE BUFFER is numbered as every node is, where its slot is
 			// declared, and it reaches nothing, so its descent closes at once
 			// (docs/SPEC-TABLES.md §2.5, §3.1)
 			g.pf("    {\n")
-			g.pf("        const TableBlob * blob = TableBlobAt( ctx, value.%s ); // %s: a byte buffer\n", f.Name, f.Name)
+			g.pf("        const TableBlob * blob = TableBlobAt( ctx, %s ); // %s: a byte buffer\n", slot.Src, f.Name)
 			g.pf("        if ( blob != NULL )\n        {\n")
 			g.pf("            bool taken = false;\n")
 			g.pf("            int64_t slot = 0;\n")
@@ -439,8 +483,8 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 			g.pf("            }\n")
 			g.pf("        }\n    }\n")
 		},
-		descend: func(table, expr, indent string) {
-			g.pf("%sif ( !%sNumber( ctx, numbering, %s ) ) { return false; }\n", indent, table, expr)
+		descend: func(table string, expr edgeExpr, indent string) {
+			g.pf("%sif ( !%sNumber( ctx, numbering, %s ) ) { return false; }\n", indent, table, expr.Src)
 		},
 	})
 	g.pf("    return true;\n}\n\n")
@@ -459,11 +503,11 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 		g.pf("    (void) ctx; (void) seen; (void) value; // no pointers below this node\n")
 	}
 	g.emitEdgeWalk(st, edgeVisitor{
-		subject: "value",
-		pointer: func(f *ir.Field, slot string) {
+		read: "value",
+		pointer: func(f *ir.Field, slot edgeExpr) {
 			t := f.Type.Name
 			g.pf("    {\n")
-			g.pf("        const %s * pointee = %sAt( ctx, %s ); // %s\n", t, t, slot, f.Name)
+			g.pf("        const %s * pointee = %sAt( ctx, %s ); // %s\n", t, t, slot.Src, f.Name)
 			g.pf("        if ( pointee != NULL )\n        {\n")
 			// a pointer TARGET always has walkers (ir.PointerTargets feeds them), so
 			// there is no walker-less arm to write here
@@ -481,11 +525,11 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 			g.pf("            }\n")
 			g.pf("        }\n    }\n")
 		},
-		blob: func(f *ir.Field) {
+		blob: func(f *ir.Field, slot edgeExpr) {
 			// a byte buffer's node beside the table pointees, where its slot is
 			// declared — the pack lays nodes out in first-visit order (§6.2)
 			g.pf("    {\n")
-			g.pf("        const TableBlob * blob = TableBlobAt( ctx, value.%s ); // %s: a byte buffer, packed at its used size\n", f.Name, f.Name)
+			g.pf("        const TableBlob * blob = TableBlobAt( ctx, %s ); // %s: a byte buffer, packed at its used size\n", slot.Src, f.Name)
 			g.pf("        if ( blob != NULL )\n        {\n")
 			g.pf("            bool taken = false;\n")
 			g.pf("            int64_t slot = 0;\n")
@@ -497,8 +541,8 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 			g.pf("            }\n")
 			g.pf("        }\n    }\n")
 		},
-		descend: func(table, expr, indent string) {
-			g.pf("%sint64_t inner = %sPackMeasure( ctx, seen, %s );\n", indent, table, expr)
+		descend: func(table string, expr edgeExpr, indent string) {
+			g.pf("%sint64_t inner = %sPackMeasure( ctx, seen, %s );\n", indent, table, expr.Src)
 			g.pf("%sif ( inner < 0 ) { return -1; }\n", indent)
 			g.pf("%sbytes += inner;\n", indent)
 		},
@@ -524,17 +568,15 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 	if g.noVariableEdges(st) {
 		g.pf("    (void) ctx; (void) seen; (void) base; (void) capacity; (void) used;\n")
 	}
-	// every expression the walk hands over hangs off `src`; the slot or element
-	// it is copied to is the same expression under `dst`
-	dstOf := func(src string) string { return "dst" + src[len("src"):] }
 	g.emitEdgeWalk(st, edgeVisitor{
-		subject: "src",
-		pointer: func(f *ir.Field, srcSlot string) {
+		read:  "src",
+		write: "dst",
+		pointer: func(f *ir.Field, slot edgeExpr) {
 			t := f.Type.Name
-			dstSlot := dstOf(srcSlot)
+			dstSlot := slot.Dst
 			g.pf("    {\n")
 			g.pf("        %s.value = 0; // %s\n", dstSlot, f.Name)
-			g.pf("        const %s * pointee = %sAt( ctx, %s );\n", t, t, srcSlot)
+			g.pf("        const %s * pointee = %sAt( ctx, %s );\n", t, t, slot.Src)
 			g.pf("        if ( pointee != NULL )\n        {\n")
 			g.pf("            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit\n")
 			g.pf("            bool taken = false;\n")
@@ -555,8 +597,8 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 			g.pf("        }\n    }\n")
 		},
 		blob: g.emitPackBlobField,
-		descend: func(table, expr, indent string) {
-			g.pf("%sif ( !%sPack( ctx, seen, %s, %s, base, capacity, used ) ) { return false; }\n", indent, table, expr, dstOf(expr))
+		descend: func(table string, expr edgeExpr, indent string) {
+			g.pf("%sif ( !%sPack( ctx, seen, %s, %s, base, capacity, used ) ) { return false; }\n", indent, table, expr.Src, expr.Dst)
 		},
 	})
 	g.pf("    return true;\n}\n\n")
@@ -566,10 +608,10 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 // where its slot is declared: the node is copied at its used size — the header
 // and the bytes; the region's zeros are its tail and a string's terminator —
 // and a blob two slots name is laid out once (docs/SPEC-TABLES.md §2.5).
-func (g *tableGen) emitPackBlobField(f *ir.Field) {
+func (g *tableGen) emitPackBlobField(f *ir.Field, slot edgeExpr) {
 	g.pf("    {\n")
-	g.pf("        dst.%s.value = 0; // %s: a byte buffer\n", f.Name, f.Name)
-	g.pf("        const TableBlob * blob = TableBlobAt( ctx, src.%s );\n", f.Name)
+	g.pf("        %s.value = 0; // %s: a byte buffer\n", slot.Dst, f.Name)
+	g.pf("        const TableBlob * blob = TableBlobAt( ctx, %s );\n", slot.Src)
 	g.pf("        if ( blob != NULL )\n        {\n")
 	g.pf("            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit\n")
 	g.pf("            bool taken = false;\n")
@@ -577,13 +619,13 @@ func (g *tableGen) emitPackBlobField(f *ir.Field) {
 	g.pf("            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) blob, at, taken, slot );\n")
 	g.pf("            if ( entry == NULL ) { return false; } // the map could not grow\n")
 	g.pf("            if ( !taken )\n            {\n")
-	g.pf("                dst.%s.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.%s ); // the one body it already has\n", f.Name, f.Name)
+	g.pf("                %s.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &%s ); // the one body it already has\n", slot.Dst, slot.Dst)
 	g.pf("            }\n            else\n            {\n")
 	g.pf("                int64_t storage = TableBlobStorage( (int64_t) blob->length, %v );\n", blobTerminated(f))
 	g.pf("                if ( at + storage > capacity ) { return false; }\n")
 	g.pf("                memcpy( base + at, (const void *) blob, (size_t) ( kTableBlobHeader + (int64_t) blob->length ) );\n")
 	g.pf("                used = at + storage;\n")
-	g.pf("                dst.%s.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.%s );\n", f.Name, f.Name)
+	g.pf("                %s.value = (int64_t) ( ( base + at ) - (const uint8_t *) &%s );\n", slot.Dst, slot.Dst)
 	g.pf("                TablePackMapClose( seen, (const void *) blob, slot );\n")
 	g.pf("            }\n")
 	g.pf("        }\n    }\n")
@@ -1165,33 +1207,63 @@ func (g *tableGen) modeColumn(st *ir.Struct) string {
 // emitVariableUnionWalk emits the switch over a union field's SET arm and calls
 // body once per variable arm with the arm's table name and member name; an arm
 // that is fixed, or a type, holds no pointer and takes no case.
-func (g *tableGen) emitVariableUnionWalk(f *ir.Field, subject string, body func(armType, armExpr string)) {
+func (g *tableGen) emitVariableUnionWalk(f *ir.Field, v edgeVisitor) {
 	un := f.Type.Ref.(*ir.Union)
-	each := func(elem string) {
-		g.pf("    switch ( %s.type ) // %s: the set arm is the by-value edge\n    {\n", elem, f.Name)
-		for _, v := range un.Variants {
-			if !g.isVar(v.Type) {
+	// AN ARM IS AN EDGE OF ITS OWN KIND (§2.6): a variable table arm is
+	// descended by value, a POINTER arm is the pointer edge itself, a byte
+	// buffer arm is that node, and an arm that is another union asks the same
+	// switch one level in — all in the union field's own declaration-order
+	// position, so a node an arm reaches is numbered where the field sits.
+	var each func(un *ir.Union, path, indent string)
+	each = func(un *ir.Union, path, indent string) {
+		g.pf("%sswitch ( %s.type ) // %s: the set arm is the edge\n%s{\n", indent, v.read+path, f.Name, indent)
+		for _, arm := range un.Variants {
+			if arm.F == nil {
 				continue
 			}
-			g.pf("        case %sType::%s:\n        {\n", un.Name, ir.GoExportName(v.Name))
-			body(v.Type, elem+"."+v.Name)
-			g.pf("            break;\n        }\n")
+			armPath := path + "." + arm.Name
+			switch {
+			case arm.F.Type.Blob():
+				g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
+				v.blob(arm.F, v.at(armPath))
+				g.pf("%s        break;\n%s    }\n", indent, indent)
+			case arm.F.Type.Pointer:
+				g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
+				slots, count := armPath, ""
+				if armCompanioned(arm) {
+					slots, count = armPath+".value", v.read+armPath+".value_count"
+				}
+				g.emitPointerSlotsAt(arm.F, v, slots, count, func(slot edgeExpr) { v.pointer(arm.F, slot) })
+				g.pf("%s        break;\n%s    }\n", indent, indent)
+			case arm.Type != "" && g.isVar(arm.Type):
+				g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
+				v.descend(arm.Type, v.at(armPath), indent+"        ")
+				g.pf("%s        break;\n%s    }\n", indent, indent)
+			default:
+				inner, isUnion := arm.F.Type.Ref.(*ir.Union)
+				if !isUnion || !g.unionHasEdge(inner, map[*ir.Union]bool{}) {
+					continue
+				}
+				g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
+				each(inner, armPath, indent+"        ")
+				g.pf("%s        break;\n%s    }\n", indent, indent)
+			}
 		}
-		g.pf("        default: break;\n    }\n")
+		g.pf("%s    default: break;\n%s}\n", indent, indent)
 	}
 	// an ARRAY of unions (§2.6) is that switch per element, the live elements
 	// of a counted array only — a slot past the count is not written (§3.1)
 	switch f.Array {
 	case ir.ArrayCounted:
-		g.pf("    for ( int32_t i = 0; i < %s.%s_count && i < %d; i++ ) // %s: [..%d]%s\n    {\n", subject, f.Name, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
-		each(fmt.Sprintf("%s.%s[i]", subject, f.Name))
+		g.pf("    for ( int32_t i = 0; i < %s.%s_count && i < %d; i++ ) // %s: [..%d]%s\n    {\n", v.read, f.Name, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		each(un, fmt.Sprintf(".%s[i]", f.Name), "    ")
 		g.pf("    }\n")
 	case ir.ArrayFixed:
 		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s: [%d]%s\n    {\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
-		each(fmt.Sprintf("%s.%s[i]", subject, f.Name))
+		each(un, fmt.Sprintf(".%s[i]", f.Name), "    ")
 		g.pf("    }\n")
 	default:
-		each(subject + "." + f.Name)
+		each(un, "."+f.Name, "    ")
 	}
 }
 
@@ -1199,17 +1271,24 @@ func (g *tableGen) emitVariableUnionWalk(f *ir.Field, subject string, body func(
 // itself, or each element of an array of pointers (docs/SPEC-TABLES.md §2.1),
 // in index order, the live slots of a counted array only — and calls body with
 // the slot's expression under the given subject (`value`, `src`).
-func (g *tableGen) emitPointerSlots(f *ir.Field, subject string, body func(slot string)) {
+func (g *tableGen) emitPointerSlots(f *ir.Field, v edgeVisitor, body func(slot edgeExpr)) {
+	g.emitPointerSlotsAt(f, v, "."+f.Name, fmt.Sprintf("%s.%s_count", v.read, f.Name), body)
+}
+
+// emitPointerSlotsAt is that walk over an explicit storage PATH, which a
+// pointer ARM needs: an arm's slots live in the overlay, and a counted array
+// arm's count is the companion beside them (docs/SPEC-TABLES.md §2.6).
+func (g *tableGen) emitPointerSlotsAt(f *ir.Field, v edgeVisitor, path, count string, body func(slot edgeExpr)) {
 	switch f.Array {
 	case ir.ArrayCounted:
-		g.pf("    for ( int32_t i = 0; i < %s.%s_count && i < %d; i++ ) // %s: [..%d]*%s\n    {\n", subject, f.Name, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
-		body(fmt.Sprintf("%s.%s[i]", subject, f.Name))
+		g.pf("    for ( int32_t i = 0; i < %s && i < %d; i++ ) // %s: [..%d]*%s\n    {\n", count, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		body(v.at(path + "[i]"))
 		g.pf("    }\n")
 	case ir.ArrayFixed:
 		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s: [%d]*%s\n    {\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
-		body(fmt.Sprintf("%s.%s[i]", subject, f.Name))
+		body(v.at(path + "[i]"))
 		g.pf("    }\n")
 	default:
-		body(fmt.Sprintf("%s.%s", subject, f.Name))
+		body(v.at(path))
 	}
 }

@@ -1279,6 +1279,7 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 	in.pos++
 	cell.U = 0
 	cell.Tab = nil
+	cell.Arm = nil
 	if in.peek() == '}' {
 		in.pos++
 		return true
@@ -1304,13 +1305,61 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 		if !in.skipValue(depth + 1) {
 			return false
 		}
-	} else {
-		payload := in.m.New(un.Variants[tag-1].Ref)
-		if !in.readTable(payload, depth+1) {
-			return false
+	} else if arm := un.Variants[tag-1]; arm.Void() {
+		// A PAYLOAD-FREE ARM'S VALUE IS null (§2.6): the arm name selects it
+		if in.valueShape() != 'z' {
+			in.report.KindMismatch++
+			if !in.skipValue(depth + 1) {
+				return false
+			}
+		} else {
+			if !in.literal("null") {
+				return false
+			}
+			cell.U = uint64(tag)
 		}
-		cell.U = uint64(tag)
-		cell.Tab = payload
+	} else if arm.Body() {
+		if in.valueShape() != 'o' {
+			// the wrong JSON type for the arm's row: the union reads None,
+			// the event is counted, and the enclosing object continues (§16.2)
+			in.report.KindMismatch++
+			if !in.skipValue(depth + 1) {
+				return false
+			}
+		} else {
+			payload := in.m.New(arm.Ref)
+			if !in.readTable(payload, depth+1) {
+				return false
+			}
+			cell.U = uint64(tag)
+			cell.Tab = payload
+		}
+	} else {
+		// THE ARM'S VALUE TAKES THE ARM'S OWN ROW (§16.2): an arm is a field
+		// line, so its value reads through the field walk one key down, and a
+		// value of the wrong shape for that row is a KIND MISMATCH — the
+		// union reads None and the enclosing object continues
+		fv := in.m.NewArm(arm)
+		shape := in.valueShape()
+		switch {
+		case shape == 'z' && TakesNull(arm.F):
+			if !in.literal("null") {
+				return false
+			}
+			cell.U = uint64(tag)
+			cell.Arm = fv
+		case shape != Shape(arm.F):
+			in.report.KindMismatch++
+			if !in.skipValue(depth + 1) {
+				return false
+			}
+		default:
+			if !in.readField(fv, depth+1) {
+				return false
+			}
+			cell.U = uint64(tag)
+			cell.Arm = fv
+		}
 	}
 	c := in.peek()
 	if c == ',' {

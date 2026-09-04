@@ -782,6 +782,9 @@ inline bool TableJsonWriteFloat( TableJsonOut & out, double value, bool single )
 }
 
 inline bool TableJsonWriteValue( TableJsonOut & out, const void * base, const TableTypeInfo * info, int32_t depth );
+// a UNION ARM that names no declaration writes through the field walk one key
+// down (docs/SPEC-TABLES.md §2.6, §16.2), which is defined below
+inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const TableFieldInfo * f, int32_t depth );
 
 // one scalar, at one storage address: a nested object, a union, a
 // vocabulary, or a number
@@ -811,7 +814,22 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         out.line( depth + 1 );
         TableJsonWriteString( out, arm, (int32_t) strlen( arm ) );
         out.raw( ": ", 2 );
-        if ( !TableJsonWriteValue( out, (const uint8_t *) storage + arms->arms[tag].offset, arms->arms[tag].table, depth + 1 ) )
+        // THE ARM'S VALUE TAKES THE ARM'S OWN ROW (§16.2): an arm that names
+        // no declaration carries the FIELD descriptor a field of its type
+        // would carry, offsets taken inside the union storage (§2.6), so the
+        // value walks through the field writer one key down.
+        if ( arms->arms[tag].field != NULL )
+        {
+            if ( !TableJsonWriteField( out, storage, arms->arms[tag].field, depth + 1 ) )
+            {
+                return false;
+            }
+        }
+        else if ( arms->arms[tag].table == NULL )
+        {
+            out.raw( "null", 4 ); // a payload-free arm: the name selects it (§2.6)
+        }
+        else if ( !TableJsonWriteValue( out, (const uint8_t *) storage + arms->arms[tag].offset, arms->arms[tag].table, depth + 1 ) )
         {
             return false;
         }
@@ -1587,6 +1605,9 @@ inline bool TableJsonSkipValue( TableJsonIn & in, int32_t depth )
 }
 
 inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth );
+// a UNION ARM that names no declaration reads through the field walk one key
+// down (docs/SPEC-TABLES.md §2.6, §16.2), which is defined below
+inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldInfo * f, int32_t depth );
 
 // place one scalar at one storage address
 inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFieldInfo * f, int32_t depth )
@@ -1619,9 +1640,77 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         else
         {
             void * payload = (uint8_t *) storage + arms->arms[tag].offset;
-            arms->arms[tag].table->reset( payload );
-            if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 1 ) ) { return false; }
-            TableJsonSetRaw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, (uint64_t) tag );
+            const TableFieldInfo * arm = arms->arms[tag].field;
+            bool placed = true;
+            if ( arm != NULL )
+            {
+                // THE ARM'S VALUE TAKES THE ARM'S OWN ROW (§16.2). A value of
+                // the wrong shape for that row is a KIND MISMATCH: the union
+                // reads None, the event is counted, and the enclosing object
+                // continues — the rule a FIELD's value lives under, one key
+                // down. A pointer arm's null is a null pointer, not a shape
+                // error, exactly as a pointer field's is (§16.7).
+                char got = TableJsonValueShape( in );
+                if ( arm->kind == 17 && !arm->is_array && got == 'z' )
+                {
+                    if ( !TableJsonLiteral( in, "null" ) ) { return false; }
+                    memset( payload, 0, (size_t) arms->arms[tag].size );
+                }
+                else if ( got != TableJsonShape( arm ) )
+                {
+                    in.report->kind_mismatch++;
+                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    placed = false;
+                }
+                else if ( arm->kind == 17 && !arm->is_array )
+                {
+                    // A POINTER ARM'S VALUE IS THE POINTEE IN PLACE, or a
+                    // node reference to one (§16.7) — the read a pointer
+                    // FIELD takes, which is not the scalar walk
+                    memset( payload, 0, (size_t) arms->arms[tag].size );
+                    if ( !TableJsonReadPointer( in, payload, arm, depth + 1 ) ) { return false; }
+                }
+                else
+                {
+                    // SELECTION ZERO-ESTABLISHES THE ARM (SPEC §5): an arm
+                    // takes no specified default, so zero is the establish
+                    memset( payload, 0, (size_t) arms->arms[tag].size );
+                    if ( !TableJsonReadField( in, storage, arm, depth + 1 ) ) { return false; }
+                }
+            }
+            else if ( arms->arms[tag].table != NULL )
+            {
+                if ( TableJsonValueShape( in ) != 'o' )
+                {
+                    in.report->kind_mismatch++;
+                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    placed = false;
+                }
+                else
+                {
+                    arms->arms[tag].table->reset( payload );
+                    if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 1 ) ) { return false; }
+                }
+            }
+            else
+            {
+                // A PAYLOAD-FREE ARM'S VALUE IS null (§2.6): the arm name
+                // selects it and there is nothing to place
+                if ( TableJsonValueShape( in ) != 'z' )
+                {
+                    in.report->kind_mismatch++;
+                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    placed = false;
+                }
+                else if ( !TableJsonLiteral( in, "null" ) )
+                {
+                    return false;
+                }
+            }
+            if ( placed )
+            {
+                TableJsonSetRaw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, (uint64_t) tag );
+            }
         }
         char c = TableJsonPeek( in );
         if ( c == ',' ) { in.pos++; c = TableJsonPeek( in ); }

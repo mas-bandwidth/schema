@@ -62,10 +62,19 @@ struct TableTypeInfo;
 // and what its payload looks like. The arm's NAME and its table-wire id come
 // from the field's enum_name/variant_id functions at the same tag, so nothing
 // is spelled twice (docs/SPEC-TABLES.md §8).
+struct TableFieldInfo;
+
 struct TableUnionArmInfo
 {
     uint32_t offset;             // offsetof the arm's payload within the union storage
-    const TableTypeInfo * table; // the arm payload's descriptor
+    const TableTypeInfo * table; // the arm payload's descriptor, or NULL
+    // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an arm that names no
+    // declared type or table carries the FIELD descriptor a field of that
+    // type would carry instead — offsets taken within the union storage — so
+    // a generic walk meets an arm's kind, width, bounds and companions where
+    // it meets a field's. Exactly one of the two is non-NULL on a set arm.
+    const TableFieldInfo * field;
+    uint32_t size;               // the arm's whole storage, which selection zero-establishes
 };
 
 // A union field's shape: the tag, and the arms indexed by it. Arms run
@@ -1171,23 +1180,32 @@ inline int64_t TableMixedMeasure( const TableMixed & value )
         case TableEventType::None: break; // None elides — TLV absence is the None
         case TableEventType::Hit:
         {
-            int64_t arm_game_event = TableHitEventMeasure( value.game_event.hit );
-            if ( arm_game_event < 0 ) { return -1; }
-            bytes += 3 + 2 + 4 + arm_game_event; // the u16 ARM ID, then the arm length-prefixed
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            {
+                int64_t arm_body = TableHitEventMeasure( value.game_event.hit );
+                if ( arm_body < 0 ) { return -1; }
+                bytes += arm_body; // the arm's own table body (§3)
+            }
             break;
         }
         case TableEventType::Chat:
         {
-            int64_t arm_game_event = TableChatEventMeasure( value.game_event.chat );
-            if ( arm_game_event < 0 ) { return -1; }
-            bytes += 3 + 2 + 4 + arm_game_event; // the u16 ARM ID, then the arm length-prefixed
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            {
+                int64_t arm_body = TableChatEventMeasure( value.game_event.chat );
+                if ( arm_body < 0 ) { return -1; }
+                bytes += arm_body; // the arm's own table body (§3)
+            }
             break;
         }
         case TableEventType::Pickup:
         {
-            int64_t arm_game_event = TablePickupEventMeasure( value.game_event.pickup );
-            if ( arm_game_event < 0 ) { return -1; }
-            bytes += 3 + 2 + 4 + arm_game_event; // the u16 ARM ID, then the arm length-prefixed
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            {
+                int64_t arm_body = TablePickupEventMeasure( value.game_event.pickup );
+                if ( arm_body < 0 ) { return -1; }
+                bytes += arm_body; // the arm's own table body (§3)
+            }
             break;
         }
         default: return -1; // invalid tag — the write side refuses it too
@@ -1324,9 +1342,21 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, const TableMix
         int64_t len_at_game_event = w.offset; w.put32( 0 );
         switch ( value.game_event.type )
         {
-            case TableEventType::Hit: if ( !TableHitEventSaveBody( w, value.game_event.hit ) ) return false; break;
-            case TableEventType::Chat: if ( !TableChatEventSaveBody( w, value.game_event.chat ) ) return false; break;
-            case TableEventType::Pickup: if ( !TablePickupEventSaveBody( w, value.game_event.pickup ) ) return false; break;
+            case TableEventType::Hit:
+            {
+                if ( !TableHitEventSaveBody( w, value.game_event.hit ) ) { return false; }
+                break;
+            }
+            case TableEventType::Chat:
+            {
+                if ( !TableChatEventSaveBody( w, value.game_event.chat ) ) { return false; }
+                break;
+            }
+            case TableEventType::Pickup:
+            {
+                if ( !TablePickupEventSaveBody( w, value.game_event.pickup ) ) { return false; }
+                break;
+            }
             default: return false; // write validates the tag before it rides
         }
         w.patch32( len_at_game_event, uint32_t( w.offset - len_at_game_event - 4 ) );
@@ -1692,17 +1722,26 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                     switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                     {
                         case 0xba78: // hit
+                        {
                             value.game_event.type = TableEventType::Hit;
                             TableHitEventLoadBody( sub, value.game_event.hit );
+                            if ( sub.offset != sub.size ) { value.game_event.type = TableEventType::None; r.report->malformed = true; break; }
                             break;
+                        }
                         case 0x5be0: // chat
+                        {
                             value.game_event.type = TableEventType::Chat;
                             TableChatEventLoadBody( sub, value.game_event.chat );
+                            if ( sub.offset != sub.size ) { value.game_event.type = TableEventType::None; r.report->malformed = true; break; }
                             break;
+                        }
                         case 0x99dd: // pickup
+                        {
                             value.game_event.type = TableEventType::Pickup;
                             TablePickupEventLoadBody( sub, value.game_event.pickup );
+                            if ( sub.offset != sub.size ) { value.game_event.type = TableEventType::None; r.report->malformed = true; break; }
                             break;
+                        }
                         default:
                             // an arm this reader cannot name: the value reads EMPTY and
                             // the body is skipped by its length, never misdecoded. The
@@ -2796,7 +2835,7 @@ inline const TableTypeInfo * TableMixedTableType()
         { "server_time", "server_time", "float32", 0x27f9, 10, false, false, false, 0, (uint32_t) offsetof( TableMixed, server_time ), (uint32_t) sizeof( TableMixed::server_time ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "entities", "entities", "TableEntity", 0x25e3, 13, true, true, false, 8, (uint32_t) offsetof( TableMixed, entities ), (uint32_t) sizeof( TableMixed::entities[0] ), (uint32_t) offsetof( TableMixed, entities_count ), 0xffffffffu, TableEntityTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "stats", "stats", "TableStat", 0x76dd, 13, true, true, false, 80, (uint32_t) offsetof( TableMixed, stats ), (uint32_t) sizeof( TableMixed::stats[0] ), (uint32_t) offsetof( TableMixed, stats_count ), 0xffffffffu, TableStatTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "game_event", "game_event", "TableEvent", 0xa17e, 15, false, false, false, 0, (uint32_t) offsetof( TableMixed, game_event ), (uint32_t) sizeof( TableMixed::game_event ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "hit"; case 2: return "chat"; case 3: return "pickup"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0xba78; case 2: return 0x5be0; case 3: return 0x99dd; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL }, { (uint32_t) offsetof( TableEvent, hit ), TableHitEventTableType() }, { (uint32_t) offsetof( TableEvent, chat ), TableChatEventTableType() }, { (uint32_t) offsetof( TableEvent, pickup ), TablePickupEventTableType() }, }; static const TableUnionInfo info = { (uint32_t) offsetof( TableEvent, type ), (uint32_t) sizeof( TableEvent::type ), arms }; return &info; }, "" },
+        { "game_event", "game_event", "TableEvent", 0xa17e, 15, false, false, false, 0, (uint32_t) offsetof( TableMixed, game_event ), (uint32_t) sizeof( TableMixed::game_event ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "hit"; case 2: return "chat"; case 3: return "pickup"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0xba78; case 2: return 0x5be0; case 3: return 0x99dd; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( TableEvent, hit ), TableHitEventTableType(), NULL, 16 }, { (uint32_t) offsetof( TableEvent, chat ), TableChatEventTableType(), NULL, 8 }, { (uint32_t) offsetof( TableEvent, pickup ), TablePickupEventTableType(), NULL, 8 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( TableEvent, type ), (uint32_t) sizeof( TableEvent::type ), arms }; return &info; }, "" },
         { "loadout", "loadout", "uint8", 0x9f78, 6, true, false, false, 4, (uint32_t) offsetof( TableMixed, loadout ), (uint32_t) sizeof( TableMixed::loadout[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "player_name", "player_name", "string", 0x2d3e, 12, false, true, false, 15, (uint32_t) offsetof( TableMixed, player_name ), (uint32_t) sizeof( TableMixed::player_name ), (uint32_t) offsetof( TableMixed, player_name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "payload", "payload", "bytes", 0x44aa, 6, true, true, false, 16, (uint32_t) offsetof( TableMixed, payload ), (uint32_t) sizeof( TableMixed::payload[0] ), (uint32_t) offsetof( TableMixed, payload_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },

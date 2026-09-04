@@ -135,11 +135,14 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// — is always a refusal: docs/SPEC-TABLES.md §4 states outright that both ride
 	// as kind 7, so the runtime cannot report the edit, which is the
 	// definition of this file's job.
-	"enum":    RuleRefs,
-	"flags":   RuleRefs,
-	"union":   RuleRefs,
-	"type":    RuleRefs,
-	"payload": RuleRefs, // a union arm's payload is a nested table, one level in
+	"enum":  RuleRefs,
+	"flags": RuleRefs,
+	"union": RuleRefs,
+	"type":  RuleRefs,
+	// a union ARM that names a declared `type` or `table` carries `payload=`
+	// and nothing else (§18.1), so the arm's referent is judged where a
+	// field's is: the declaration has to stand in for the one before it
+	"payload": RuleRefs,
 	// an ENUM-KEYED array's KEY enum is a referent too, and an enum's one: its
 	// slots ride under their variants' name ids (§3.2), so it stands in
 	// exactly when those names survive. The keyed and positional spellings
@@ -1035,7 +1038,7 @@ func (d *differ) diffUnions() []Finding {
 		if !ok {
 			continue
 		}
-		arms := map[string]Variant{}
+		arms := map[string]Field{}
 		for _, a := range lu.Arms {
 			arms[a.Name] = a
 		}
@@ -1048,12 +1051,16 @@ func (d *differ) diffUnions() []Finding {
 				}
 				continue
 			}
-			// an arm's PAYLOAD is a reference like a nested table's, judged
-			// the same way: the arm id still selects the arm, and what rides
-			// inside it is a table body read by field id
-			if d.policy["payload"] == RuleRefs {
-				out = append(out, d.refsFindings("union "+lu.Name+"."+a.Name, "payload", a.Payload, la.Payload, la.Payload != "")...)
-			}
+			// AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6, §18.1), so an
+			// arm's facts are judged by the ONE policy table a field's are:
+			// its `payload=` is a referent like a nested table's — the arm id
+			// still selects the arm, and what rides inside it is a table body
+			// read by field id — and every other token is the arm's own wire
+			// fact. An arm moved BETWEEN the two spellings moves the token
+			// set, and an added or removed judged token refuses on the same
+			// rule a changed one does: no kind byte separates an arm's type
+			// on the wire (§4.1's fifth silent member).
+			out = append(out, d.diffTokens("union "+lu.Name+"."+a.Name, a, la)...)
 		}
 	}
 	return out

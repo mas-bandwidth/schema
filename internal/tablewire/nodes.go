@@ -210,20 +210,14 @@ func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target 
 			// array of unions — the live elements of a counted one only (§3.1)
 			switch f.Array {
 			case ir.ArrayNone:
-				if fv.Cell.U != 0 && fv.Cell.Tab != nil {
-					visitEdges(m, fv.Cell.Tab, visit)
-				}
+				visitArmEdges(m, &fv.Cell, un, f.Name, visit)
 			case ir.ArrayFixed:
 				for k := range fv.Elems {
-					if fv.Elems[k].U != 0 && fv.Elems[k].Tab != nil {
-						visitEdges(m, fv.Elems[k].Tab, visit)
-					}
+					visitArmEdges(m, &fv.Elems[k], un, f.Name, visit)
 				}
 			case ir.ArrayCounted:
 				for k := 0; k < fv.Count && k < len(fv.Elems); k++ {
-					if fv.Elems[k].U != 0 && fv.Elems[k].Tab != nil {
-						visitEdges(m, fv.Elems[k].Tab, visit)
-					}
+					visitArmEdges(m, &fv.Elems[k], un, f.Name, visit)
 				}
 			}
 			continue
@@ -259,5 +253,51 @@ func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target 
 				visitEdges(m, fv.Cell.Tab, visit)
 			}
 		}
+	}
+}
+
+// visitArmEdges walks ONE union cell's set arm (docs/SPEC-TABLES.md §2.6,
+// §3.1). AN ARM IS AN EDGE OF ITS OWN KIND: a declared type or table arm is
+// descended by value, a POINTER arm is itself a pointer edge — so a node named
+// from an arm and from a field beside it is one node under one index — a byte
+// buffer arm is that node, and an arm that is another union asks the same
+// question one level in.
+func visitArmEdges(m *tabletext.Model, cell *tabletext.Cell, un *ir.Union, field string, visit func(target Node, field string) bool) {
+	if cell.U == 0 || int(cell.U) > len(un.Variants) {
+		return
+	}
+	arm := un.Variants[cell.U-1]
+	if arm.Body() {
+		if cell.Tab != nil {
+			visitEdges(m, cell.Tab, visit)
+		}
+		return
+	}
+	fv := cell.Arm
+	if fv == nil {
+		return
+	}
+	f := fv.Def
+	switch {
+	case f.Type.Blob():
+		if fv.Cell.Blob != nil {
+			visit(Node{Blob: fv.Cell.Blob, Kind: f.Type.Kind}, field)
+		}
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		if fv.Cell.Node != nil {
+			visit(Node{Inst: fv.Cell.Node}, field)
+		}
+	case f.Type.Pointer:
+		live := len(fv.Elems)
+		if f.Array == ir.ArrayCounted && fv.Count < live {
+			live = fv.Count
+		}
+		for k := 0; k < live; k++ {
+			if fv.Elems[k].Node != nil {
+				visit(Node{Inst: fv.Elems[k].Node}, field)
+			}
+		}
+	case tabletext.UnionOf(f) != nil:
+		visitArmEdges(m, &fv.Cell, tabletext.UnionOf(f), field, visit)
 	}
 }

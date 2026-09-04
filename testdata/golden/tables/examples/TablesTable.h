@@ -80,10 +80,19 @@ struct TableTypeInfo;
 // and what its payload looks like. The arm's NAME and its table-wire id come
 // from the field's enum_name/variant_id functions at the same tag, so nothing
 // is spelled twice (docs/SPEC-TABLES.md §8).
+struct TableFieldInfo;
+
 struct TableUnionArmInfo
 {
     uint32_t offset;             // offsetof the arm's payload within the union storage
-    const TableTypeInfo * table; // the arm payload's descriptor
+    const TableTypeInfo * table; // the arm payload's descriptor, or NULL
+    // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an arm that names no
+    // declared type or table carries the FIELD descriptor a field of that
+    // type would carry instead — offsets taken within the union storage — so
+    // a generic walk meets an arm's kind, width, bounds and companions where
+    // it meets a field's. Exactly one of the two is non-NULL on a set arm.
+    const TableFieldInfo * field;
+    uint32_t size;               // the arm's whole storage, which selection zero-establishes
 };
 
 // A union field's shape: the tag, and the arms indexed by it. Arms run
@@ -800,16 +809,22 @@ inline int64_t WeaponConfigMeasure( const WeaponConfig & value )
         case EffectType::None: break; // None elides — TLV absence is the None
         case EffectType::Buff:
         {
-            int64_t arm_effect = BuffMeasure( value.effect.buff );
-            if ( arm_effect < 0 ) { return -1; }
-            bytes += 3 + 2 + 4 + arm_effect; // the u16 ARM ID, then the arm length-prefixed
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            {
+                int64_t arm_body = BuffMeasure( value.effect.buff );
+                if ( arm_body < 0 ) { return -1; }
+                bytes += arm_body; // the arm's own table body (§3)
+            }
             break;
         }
         case EffectType::Debuff:
         {
-            int64_t arm_effect = DebuffMeasure( value.effect.debuff );
-            if ( arm_effect < 0 ) { return -1; }
-            bytes += 3 + 2 + 4 + arm_effect; // the u16 ARM ID, then the arm length-prefixed
+            bytes += 3 + 2 + 4; // the field header, the u16 ARM ID, then the arm length-prefixed
+            {
+                int64_t arm_body = DebuffMeasure( value.effect.debuff );
+                if ( arm_body < 0 ) { return -1; }
+                bytes += arm_body; // the arm's own table body (§3)
+            }
             break;
         }
         default: return -1; // invalid tag — the write side refuses it too
@@ -858,8 +873,16 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBody( TableWriter & w, const WeaponC
         int64_t len_at_effect = w.offset; w.put32( 0 );
         switch ( value.effect.type )
         {
-            case EffectType::Buff: if ( !BuffSaveBody( w, value.effect.buff ) ) return false; break;
-            case EffectType::Debuff: if ( !DebuffSaveBody( w, value.effect.debuff ) ) return false; break;
+            case EffectType::Buff:
+            {
+                if ( !BuffSaveBody( w, value.effect.buff ) ) { return false; }
+                break;
+            }
+            case EffectType::Debuff:
+            {
+                if ( !DebuffSaveBody( w, value.effect.debuff ) ) { return false; }
+                break;
+            }
             default: return false; // write validates the tag before it rides
         }
         w.patch32( len_at_effect, uint32_t( w.offset - len_at_effect - 4 ) );
@@ -971,13 +994,19 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigLoadBody( TableReader & r, WeaponConfig 
                     switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                     {
                         case 0xeae6: // buff
+                        {
                             value.effect.type = EffectType::Buff;
                             BuffLoadBody( sub, value.effect.buff );
+                            if ( sub.offset != sub.size ) { value.effect.type = EffectType::None; r.report->malformed = true; break; }
                             break;
+                        }
                         case 0xb0d3: // debuff
+                        {
                             value.effect.type = EffectType::Debuff;
                             DebuffLoadBody( sub, value.effect.debuff );
+                            if ( sub.offset != sub.size ) { value.effect.type = EffectType::None; r.report->malformed = true; break; }
                             break;
+                        }
                         default:
                             // an arm this reader cannot name: the value reads EMPTY and
                             // the body is skipped by its length, never misdecoded. The
@@ -1311,6 +1340,11 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfi
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     WeaponConfigLoadBody( sub, value.primary );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        WeaponConfigReset( value.primary );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -1779,6 +1813,11 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigLoadBody( TableReader & r, ProfileConfi
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     LoadoutConfigLoadBody( sub, value.loadout );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        LoadoutConfigReset( value.loadout );
+                    }
                 }
                 r.offset += body_len;
                 break;
@@ -2760,7 +2799,7 @@ inline const TableTypeInfo * WeaponConfigTableType()
         { "penetration", "penetration", "int32", 0x6557, 4, false, false, false, 0, (uint32_t) offsetof( WeaponConfig, penetration ), (uint32_t) sizeof( WeaponConfig::penetration ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "channel", "channel", "bits(6)", 0x7366, 6, false, false, false, 0, (uint32_t) offsetof( WeaponConfig, channel ), (uint32_t) sizeof( WeaponConfig::channel ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 63.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "homing", "homing", "bool", 0xab40, 1, false, false, false, 0, (uint32_t) offsetof( WeaponConfig, homing ), (uint32_t) sizeof( WeaponConfig::homing ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "effect", "effect", "Effect", 0xe33a, 15, false, false, false, 0, (uint32_t) offsetof( WeaponConfig, effect ), (uint32_t) sizeof( WeaponConfig::effect ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "buff"; case 2: return "debuff"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0xeae6; case 2: return 0xb0d3; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL }, { (uint32_t) offsetof( Effect, buff ), BuffTableType() }, { (uint32_t) offsetof( Effect, debuff ), DebuffTableType() }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Effect, type ), (uint32_t) sizeof( Effect::type ), arms }; return &info; }, "" },
+        { "effect", "effect", "Effect", 0xe33a, 15, false, false, false, 0, (uint32_t) offsetof( WeaponConfig, effect ), (uint32_t) sizeof( WeaponConfig::effect ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "buff"; case 2: return "debuff"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0xeae6; case 2: return 0xb0d3; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Effect, buff ), BuffTableType(), NULL, 4 }, { (uint32_t) offsetof( Effect, debuff ), DebuffTableType(), NULL, 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Effect, type ), (uint32_t) sizeof( Effect::type ), arms }; return &info; }, "" },
     };
     static const TableTypeInfo info = { "WeaponConfig", (uint32_t) sizeof( WeaponConfig ), 6, fields, +[]( void * p ) { WeaponConfigReset( *(WeaponConfig *) p ); } };
     return &info;

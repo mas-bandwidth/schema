@@ -365,14 +365,29 @@ func (w *regionWriter) element(at int64, f *ir.Field, cell *tabletext.Cell) erro
 func (w *regionWriter) union(at int64, un *ir.Union, cell *tabletext.Cell) error {
 	_, _, tag, armOffset := ir.UnionLayout(w.m.Unit, un)
 	w.putWidth(at, tag, cell.U)
-	if cell.U == 0 || cell.Tab == nil {
+	if cell.U == 0 {
 		return nil // None is the tag alone
 	}
 	if int(cell.U) > len(un.Variants) {
 		return fmt.Errorf("union %s: tag %d names no arm", un.Name, cell.U)
 	}
 	arm := un.Variants[cell.U-1]
-	return w.record(at+armOffset, arm.Ref, cell.Tab)
+	if arm.Void() {
+		return nil // a payload-free arm: the tag is the whole of it (§2.6)
+	}
+	if arm.Body() {
+		if cell.Tab == nil {
+			return nil
+		}
+		return w.record(at+armOffset, arm.Ref, cell.Tab)
+	}
+	// AN ARM IS A FIELD LINE (§2.6): its pieces sit at the arms' shared
+	// offset and ride exactly as a field's do
+	fv := cell.Arm
+	if fv == nil {
+		fv = w.m.NewArm(arm)
+	}
+	return w.field(at+armOffset, arm.F, fv)
 }
 
 // ---- the scalar stores, every one of them through the target's byte order ----

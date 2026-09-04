@@ -36,6 +36,14 @@ type wireSpot struct {
 	width int
 	limit int // the end of the body the number is read inside
 	value uint64
+	// arm marks a length that frames a UNION ARM payload: kind 15 is the one
+	// payload whose framing a skipper has to know, and an arm carries no kind
+	// byte, so its L is the whole of what a reader can check (§3, §2.6)
+	arm bool
+	// body marks a length that frames a TABLE BODY — a kind 13 field, or an
+	// arm whose payload is a body. A body's terminator is the end of its
+	// payload (§3), and the mutator writes one earlier.
+	body bool
 }
 
 // remaining is how many bytes a length spot may claim without leaving its
@@ -89,11 +97,19 @@ func (s *frameScanner) spot(kind wireSpotKind, off, width, limit int) int {
 // onto the enclosing chain, `inner` walks the body, and the chain is popped.
 // It answers the offset after the body, or -1 when the length runs past `end`.
 func (s *frameScanner) framed(off, end int, inner func(start, stop int)) int {
+	return s.framedAs(off, end, false, false, inner)
+}
+
+// framedAs is `framed` with the payload's SHAPE recorded on the length spot:
+// whether it frames a union arm, and whether it frames a table body.
+func (s *frameScanner) framedAs(off, end int, arm, body bool, inner func(start, stop int)) int {
 	if off+4 > end {
 		return -1
 	}
 	n := int(s.read(off, 4))
 	ls := s.spot(spotLength, off, 4, end)
+	s.f.spots[ls].arm = arm
+	s.f.spots[ls].body = body
 	off += 4
 	if n < 0 || off+n > end {
 		return -1
@@ -146,7 +162,7 @@ func (s *frameScanner) body(start, end int, root bool) {
 			}
 			off = s.framed(off, end, inner)
 		case ir.TableKindTable:
-			off = s.framed(off, end, func(a, b int) { s.body(a, b, false) })
+			off = s.framedAs(off, end, false, true, func(a, b int) { s.body(a, b, false) })
 		case ir.TableKindArray:
 			off = s.framed(off, end, s.array)
 		case ir.TableKindKeyed:
@@ -159,7 +175,10 @@ func (s *frameScanner) body(start, end int, root bool) {
 			s.spot(spotArm, off, 2, end)
 			off += 2
 			if arm != 0 {
-				off = s.framed(off, end, func(a, b int) { s.body(a, b, false) })
+				// the payload is walked as a body: a general arm's is not one,
+				// and the scanner is a LOCATOR — a spot it cannot frame is a
+				// spot it does not record (§2.6)
+				off = s.framedAs(off, end, true, true, func(a, b int) { s.body(a, b, false) })
 			}
 		default:
 			return
@@ -213,7 +232,7 @@ func (s *frameScanner) array(off, end int) {
 			s.spot(spotIndex, off, 4, end)
 			off += 4
 		case ir.TableKindTable:
-			off = s.framed(off, end, func(a, b int) { s.body(a, b, false) })
+			off = s.framedAs(off, end, false, true, func(a, b int) { s.body(a, b, false) })
 		case ir.TableKindUnion:
 			// an ARRAY OF UNIONS (§2.6): the element is the union payload in
 			// its place, framed exactly as a union field's is
@@ -224,7 +243,10 @@ func (s *frameScanner) array(off, end int) {
 			s.spot(spotArm, off, 2, end)
 			off += 2
 			if arm != 0 {
-				off = s.framed(off, end, func(a, b int) { s.body(a, b, false) })
+				// the payload is walked as a body: a general arm's is not one,
+				// and the scanner is a LOCATOR — a spot it cannot frame is a
+				// spot it does not record (§2.6)
+				off = s.framedAs(off, end, true, true, func(a, b int) { s.body(a, b, false) })
 			}
 		case ir.TableKindString:
 			off = s.framed(off, end, nil)
@@ -410,6 +432,25 @@ func enumerated(seed *wireSeed, emit func(pass string, data []byte)) {
 			for _, v := range []uint64{0, 1, sp.value - 1, sp.value + 1, rem, rem + 1, rem + 2, 0x7FFFFFFF, 0xFFFFFFFF} {
 				if v != sp.value && v <= 0xFFFFFFFF {
 					emit("length", patched(seed, sp, v))
+				}
+			}
+			if sp.arm {
+				// AN ARM'S L MOVED OFF ITS DECLARED WIDTH (§3, §4.2): kind 15
+				// is the one payload whose framing a skipper has to know, and
+				// an arm carries no kind byte — so every fixed width the closed
+				// set has, and zero, is an attack on the one check a reader has
+				for _, v := range []uint64{0, 1, 2, 4, 8, 16} {
+					if v != sp.value {
+						emit("arm-length", patched(seed, sp, v))
+					}
+				}
+			}
+			if sp.body {
+				// A BODY'S TERMINATOR MOVED INSIDE ITS OWN LENGTH (§3): the u16
+				// zero written ahead of the payload's last two bytes, so the
+				// body ends early and the bytes after it are claimed by no field
+				if data, ok := earlyTerminator(seed, sp); ok {
+					emit("terminator", data)
 				}
 			}
 		case spotCount:
@@ -632,4 +673,23 @@ func randomStep(r *splitmix64, s *wireSeed, seeds []*wireSeed, data []byte) []by
 		data = fixed
 	}
 	return data
+}
+
+// earlyTerminator writes a u16 zero AHEAD of a body payload's last two bytes,
+// so the body ends inside its own `L` and the bytes after it are claimed by no
+// field (docs/SPEC-TABLES.md §3). It answers false where the payload is too
+// short to carry the move, or where the bytes it would write are already zero.
+func earlyTerminator(seed *wireSeed, sp wireSpot) ([]byte, bool) {
+	start := sp.off + sp.width
+	end := start + int(sp.value)
+	if int(sp.value) < 4 || end > len(seed.wire) {
+		return nil, false
+	}
+	at := end - 4 // two bytes ahead of the payload's last two
+	if seed.wire[at] == 0 && seed.wire[at+1] == 0 {
+		return nil, false
+	}
+	out := append([]byte(nil), seed.wire...)
+	out[at], out[at+1] = 0, 0
+	return out, true
 }

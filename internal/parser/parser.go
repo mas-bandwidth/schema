@@ -300,10 +300,12 @@ func (p *parser) parseVariantList(what string) []ast.Name {
 	return names
 }
 
-// parseUnionBody parses a union's { variant Type ... } rows (SPEC §4.8): each
-// row is a variant name then its payload type name, newline-terminated like a
-// field. No attributes, no defaults, no bounds — a variant row names a thing,
-// it does not describe a wire refinement.
+// parseUnionBody parses a union's arm rows (SPEC §4.8): EACH ROW IS A FIELD
+// LINE — an arm name, then any field type with the value-shaping attributes
+// that type takes. What an arm may not carry (a specified default, `?`, `was`,
+// `json`) parses here and is refused by the CHECKER at the arm, the way §2.3's
+// `?` is: the grammar accepts the spelling and the diagnostic names the real
+// problem.
 func (p *parser) parseUnionBody() []ast.UnionVariant {
 	var variants []ast.UnionVariant
 	p.skipNewlineBeforeBrace()
@@ -333,28 +335,27 @@ func (p *parser) parseUnionBody() []ast.UnionVariant {
 				p.skipToTerminator()
 				continue
 			}
-			// the named refusal for non-type payloads the grammar can spot
-			// here: a scalar keyword or an array bound (SPEC §4.8 — a
-			// payload is a declared type; wrap scalars, no arrays)
-			switch t := p.tok(); t.Kind {
-			case scanner.LBrack, scanner.KwBits, scanner.KwBool, scanner.KwFloat32,
-				scanner.KwFloat64, scanner.KwString, scanner.KwBytes, scanner.KwFixed,
-				scanner.KwUfixed, scanner.KwInt8, scanner.KwInt16, scanner.KwInt32,
-				scanner.KwInt64, scanner.KwUint8, scanner.KwUint16, scanner.KwUint32,
-				scanner.KwUint64, scanner.KwInt128, scanner.KwUint128:
-				p.errf(t.Pos, "a union variant's payload is a declared type — wrap a scalar or array in a type (SPEC §4.8)")
-				p.skipToTerminator()
+			typePos := p.tok().Pos
+			if p.kind() == scanner.Newline || p.kind() == scanner.RBrace || p.kind() == scanner.EOF {
+				// A PAYLOAD-FREE ARM is a bare name (SPEC §4.8): the arm has
+				// no storage, the packet wire carries the tag alone and the
+				// table wire the arm id with L = 0 (docs/SPEC-TABLES.md §2.6)
+				variants = append(variants, ast.UnionVariant{Name: name.Text, Pos: name.Pos, TypePos: typePos})
+				p.expectTerminator("union arm")
 				continue
 			}
-			typ := p.expect(scanner.Ident, "union variant payload type")
-			if typ.Kind != scanner.Ident {
-				p.skipToTerminator()
+			item := p.parseFieldLine(name)
+			arm, ok := item.(*ast.Field)
+			if !ok {
 				continue
 			}
-			variants = append(variants, ast.UnionVariant{
-				Name: name.Text, Pos: name.Pos, Type: typ.Text, TypePos: typ.Pos,
-			})
-			p.expectTerminator("union variant")
+			v := ast.UnionVariant{Name: arm.Name, Pos: arm.Pos, TypePos: typePos, Arm: arm}
+			if arm.Array == nil && !arm.Type.Optional && !arm.Type.Pointer && arm.Type.Kind == ast.ScalarNamed {
+				// the arm names a bare declaration: the spelling every arm had
+				// before an arm could be any field type
+				v.Type = arm.Type.Name
+			}
+			variants = append(variants, v)
 		}
 	}
 }
@@ -449,6 +450,22 @@ func (p *parser) parseItem() ast.Item {
 
 	case scanner.Ident:
 		p.advance()
+		return p.parseFieldLine(t)
+
+	default:
+		p.errf(t.Pos, "unexpected %q inside block", describe(t))
+		p.skipToTerminator()
+		return nil
+	}
+}
+
+// parseFieldLine parses a field row whose NAME token is already consumed:
+// `name [?][bound]Type [= default] [| attrs] NL`. A union ARM is the same
+// production (SPEC §4.8, docs/SPEC-TABLES.md §2.6) — an arm is a field line —
+// so the two callers share it and no spelling can be legal in one and unknown
+// in the other.
+func (p *parser) parseFieldLine(t scanner.Token) ast.Item {
+	{
 		f := &ast.Field{Name: t.Text, Pos: t.Pos}
 		// `settings ?GunnerSettings` — the OPTIONAL prefix (docs/SPEC-TABLES.md
 		// §2.3). It binds to the whole field type, so it precedes an array
@@ -499,11 +516,6 @@ func (p *parser) parseItem() ast.Item {
 		}
 		p.expectTerminator("field")
 		return f
-
-	default:
-		p.errf(t.Pos, "unexpected %q inside block", describe(t))
-		p.skipToTerminator()
-		return nil
 	}
 }
 

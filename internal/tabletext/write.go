@@ -132,6 +132,12 @@ func (m *Model) countCell(g *graphOut, cell *Cell, f *ir.Field, open map[*Instan
 		if cell.U != 0 && cell.Tab != nil {
 			return m.countInstance(g, cell.Tab, open)
 		}
+		// an ARM that is not a body carries a field's storage, and the nodes
+		// it reaches are that field's — a POINTER arm's pointee above all
+		// (§2.6, §3.1)
+		if cell.U != 0 && cell.Arm != nil {
+			return m.countField(g, cell.Arm, open)
+		}
 		return nil
 	}
 	if StructOf(f) != nil && cell.Tab != nil {
@@ -368,6 +374,26 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		w.line(depth + 1)
 		writeString(w, []byte(arm.Name))
 		w.raw(": ")
+		if arm.Void() {
+			w.raw("null") // a payload-free arm: the name selects it (§2.6)
+			w.line(depth)
+			w.put('}')
+			return nil
+		}
+		if !arm.Body() {
+			// THE ARM'S VALUE TAKES THE ARM'S OWN ROW (§16.2): an arm is a
+			// field line, so its value writes through the field walk
+			fv := cell.Arm
+			if fv == nil {
+				fv = m.NewArm(arm)
+			}
+			if err := m.writeField(w, fv, depth+1); err != nil {
+				return err
+			}
+			w.line(depth)
+			w.put('}')
+			return nil
+		}
 		payload := cell.Tab
 		if payload == nil {
 			payload = m.New(arm.Ref)

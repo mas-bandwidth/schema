@@ -1393,6 +1393,10 @@ func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 	var arms []joinArm
 	for i, vr := range u.Variants {
 		body, end := g.captureArm(entry, func() {
+			if vr.Void() {
+				g.pf("%s      # a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
+				return
+			}
 			if len(vr.Ref.Items) == 0 {
 				g.pf("%s      # empty arm — presence is the payload (SPEC §4.6)\n", ind)
 				return
@@ -2313,6 +2317,13 @@ func (g *gen) emitReadUnion(u *ir.Union, lv, ind string, bounded bool) {
 	for i, vr := range u.Variants {
 		arm := lv + "_" + elixirName(vr.Name)
 		g.pf("%s    %d ->\n", ind, i+1)
+		if vr.Void() {
+			g.pf("%s      # a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
+			g.rdBreak()
+			g.structLit(&g.fn, ind+"      ", "u = ", u.Name, []string{fmt.Sprintf("type: %d", i+1)})
+			g.pf("%s      {bits_read, u}\n\n", ind)
+			continue
+		}
 		if len(vr.Ref.Items) == 0 {
 			g.pf("%s      # empty arm — presence is the payload (SPEC §4.6)\n", ind)
 		}
@@ -2504,6 +2515,10 @@ func (g *gen) emitMeasureUnion(u *ir.Union, expr, ind string) {
 	for i, vr := range u.Variants {
 		arm := expr + "." + elixirName(vr.Name)
 		g.pf("%s    %d ->\n", ind, i+1)
+		if vr.Void() {
+			g.pf("%s      # a payload-free arm: the tag is the whole wire (SPEC §4.8)\n%s      bits\n\n", ind, ind)
+			continue
+		}
 		inner := int64(0)
 		before := g.fn.Len()
 		g.withOwner(vr.Type, func() { g.emitMeasureItems(vr.Ref.Items, arm, ind+"      ", &inner) })
