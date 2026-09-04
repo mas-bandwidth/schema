@@ -225,7 +225,7 @@ the source list at the end.
 | Reserved names | after 3.0.0, a retired list in the baseline | — ; never remove, deprecate instead (FB-evolution) | `reserved` numbers and names (PB-proto3) |
 | Deprecation | — ; removal is free and counted | `(deprecated)`: accessors dropped, slot kept (FB-schema) | `[deprecated = true]` (PB-proto3) |
 | Required | — ; every field optional with a default (§4) | `(required)`, verifier-checked (FB-schema) | removed; `LEGACY_REQUIRED` only (PB-ed-overview) |
-| Rename | `\| was = "old"` keeps the id; bare rename refused (§5) | free; names not serialized (FB-evolution) | free on binary; reserve the old name for JSON (PB-proto3) |
+| Rename | `\| was = "old"` keeps the id; a bare rename is a removal plus an addition, and a committed baseline warns on the pair (§5, §18.2) | free; names not serialized (FB-evolution) | free on binary; reserve the old name for JSON (PB-proto3) |
 | Field identity | `fold16(fnv1a32(name))`; collisions refused at compile time (§5, §3.1) | vtable position or explicit `id` (FB-evolution) | hand-assigned number 1 to 536,870,911 (PB-proto3) |
 | Root identity | none prescribed; any table is a root (§1, §17.3) | `root_type`, four-char `file_identifier`, size prefix (FB-schema) | none; `Any` carries a type URL (PB-proto3) |
 | RPC | — ; out of scope | `rpc_service`, `flatc --grpc` (FB-flatc) | `service` (PB-3p) |

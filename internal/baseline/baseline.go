@@ -51,11 +51,11 @@ import (
 //
 // THE RULE FOR BUMPING IT: any NEW JUDGED TOKEN bumps the version. A token
 // this rendering emits and an older one did not reads as an ADDITION to every
-// older file, and the added-token branch of the diff refuses an addition on
+// older file, and the added-token branch of the diff judges an addition on
 // every judged row — so an unbumped rendering greets an untouched schema with
-// a refusal per field. Recording a fact nothing judges (an `optional`) does
+// a diagnostic per field. Recording a fact nothing judges (an `optional`) does
 // not need a bump; adding a rule does.
-const Version = 3
+const Version = 4
 
 // FileName is the baseline's name in the unit directory. Its presence is what
 // turns the check on: no file, no check.
@@ -99,6 +99,14 @@ type Field struct {
 	Name   string
 	Id     uint16
 	Tokens []Token
+
+	// JsonKey is the field's `json = "key"` text key, and it is the one fact
+	// here the FILE DOES NOT CARRY: a text key moves no wire byte
+	// (docs/SPEC-TABLES.md §16.4), so it is never rendered and never parsed.
+	// [Render] fills it on the live projection alone, where the rename hint
+	// reads it — adding a `was` keeps the wire id and moves the TEXT key, and
+	// a field with no key of its own is the one that needs telling.
+	JsonKey string
 }
 
 // A Token is one `key=value` wire fact on a field's line. The key is what
@@ -233,7 +241,7 @@ func renderUnion(un *ir.Union) Union {
 // renderField lists a field's wire facts. The token ORDER here is the file's
 // column order; every key it can emit has a row in [DefaultTokenPolicy].
 func renderField(f *ir.Field) Field {
-	out := Field{Name: f.Name, Id: ir.TableFieldId(f)}
+	out := Field{Name: f.Name, Id: ir.TableFieldId(f), JsonKey: f.JsonKey}
 	add := func(k, v string) { out.Tokens = append(out.Tokens, Token{Key: k, Value: v}) }
 
 	add("kind", strconv.Itoa(ir.TableFieldKind(f)))
@@ -299,6 +307,23 @@ func renderField(f *ir.Field) Field {
 	if f.Type.Size != 0 {
 		add("size", strconv.FormatInt(f.Type.Size, 10))
 	}
+	// THE EFFECTIVE RANGE, as DECLARED. A reader clamps a stored value to its
+	// own declared bounds and counts `clamped` (docs/SPEC-TABLES.md §4), so a
+	// tightened range is a data edit the wire reports but the baseline is
+	// where it is seen BEFORE it ships — an extent like a capacity, judged the
+	// same way. Only a declared range is recorded: `bits(N)`'s implied
+	// [0, 2^N - 1] is its WIDTH, and the width is the `kind` token, which is
+	// already a fixed fact.
+	switch {
+	case f.HasIntRange && f.IntMin != nil && f.IntMax != nil:
+		// a fixed field's bounds are its WHOLE-UNIT bounds, as declared; the
+		// raw scale is `frac`, recorded beside them
+		add("min", f.IntMin.String())
+		add("max", f.IntMax.String())
+	case f.HasFloatRange:
+		add("min", floatText(f.FMin))
+		add("max", floatText(f.FMax))
+	}
 	if f.HasDefault {
 		add("default", DefaultText(f))
 	}
@@ -320,15 +345,19 @@ func DefaultText(f *ir.Field) string {
 	case f.Type.Kind == ir.TBool:
 		return strconv.FormatBool(f.DefBool)
 	default:
-		// shortest round-tripping form: exact, and stable across builds. The
-		// trailing ".0" is put back on a whole number so a float default
-		// never reads as an integer one.
-		s := strconv.FormatFloat(f.DefFloat, 'g', -1, 64)
-		if !strings.ContainsAny(s, ".eEnN") {
-			s += ".0"
-		}
-		return s
+		return floatText(f.DefFloat)
 	}
+}
+
+// floatText is the shortest round-tripping form of a float fact: exact, and
+// stable across builds. The trailing ".0" is put back on a whole number so a
+// float never reads as an integer one.
+func floatText(v float64) string {
+	s := strconv.FormatFloat(v, 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eEnN") {
+		s += ".0"
+	}
+	return s
 }
 
 // Text renders the baseline as the committed file: the projection, then the

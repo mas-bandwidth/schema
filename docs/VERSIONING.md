@@ -164,14 +164,20 @@ name. That one decision produces the whole evolution story:
 - **Rename with `was`.** `speed float32 | was = "velocity"` keeps the wire id
   `hash("velocity")` forever; the source name is for people. **`was` names the
   field's first wire name, forever.** A second rename keeps the same `was`; it
-  is never re-pointed at an intermediate name.
+  is never re-pointed at an intermediate name, and a committed baseline
+  refuses one that is — the intermediate spelling hashes an id no byte was
+  ever written under. `was` keeps the wire id and not the TEXT key, which is
+  the field's own name, so the edit that adds a `was` also draws a one-line
+  hint to pair `json = "velocity"` when the field has no key of its own.
 - **A rename without `was` is the edit to fear, and the compiler cannot see
   it.** The compiler retains nothing between builds; to it a bare rename is a
   removal and an addition, both of which pass. Every value stored under the
   old name reads as the default from then on, counted `unknown`, and nothing
   reports that the two names were one field. A committed baseline is the one
-  place the shape of a rename is visible, a removal and an addition in one
-  table in one edit, and it will warn on that pair (#444).
+  place the shape of a rename is visible — a removal and an addition in one
+  table in one edit — and it warns on that pair, naming both and the `was`
+  and `json =` that declare it. Two independent edits in one commit are
+  legitimate, so it is a warning and never a refusal.
 - **Collisions are refused at compile time.** Two names in one vocabulary
   whose hashes coincide, or a `was` colliding with a live name, are a compile
   error naming both, and the refusal fires when the *new* name is added,
@@ -221,14 +227,15 @@ does today.
 
 | the edit | the read report | the baseline | the build version |
 |---|---|---|---|
-| a field added, removed or reordered | `unknown` on the side that lacks it | passes | moves (the record's layout moved) |
-| a field renamed under `was` | nothing | passes | **nothing**: keyed by wire id, not source name |
-| a field renamed bare | `unknown` on every old file; the new field reads its default | passes, in silence: a removal and an addition (#444 adds a warning on the pair) | moves |
+| a field added, removed or reordered | `unknown` on the side that lacks it | passes; a removal AND an addition in one table in one edit is the bare-rename row below | moves (the record's layout moved) |
+| a field renamed under `was` | nothing | passes; the edit that adds the `was` hints the `json =` pairing | **nothing**: keyed by wire id, not source name |
+| a field renamed a second time, the new `was` naming the INTERMEDIATE spelling instead of the first | `unknown` on every old file; the new id was never written to | **refuses** | moves |
+| a field renamed bare | `unknown` on every old file; the new field reads its default | warns: a removal and an addition in one table in one edit is the shape of a rename | moves |
 | a field of a `type` that a table reaches, renamed | `unknown` on every old file; `was` is refused there today (#478) | passes, in silence | moves, and so does the protocol id |
 | a scalar's default changed | **silent**: the same bytes mean something else | **refuses** | moves (a meaning fact) |
 | a string, bytes or flags default changed | silent | refuses once #396 lands; not declarable today | moves |
 | a bound raised or lowered, a capacity or array bound grown | `clamped` where a stored value exceeds it | passes; warns on a shrink | moves |
-| a range tightened | `clamped` | passes; a warning is #443 | moves |
+| a range tightened | `clamped` | warns | moves |
 | a field's kind changed (`int32`→`int64`, `T`→`*T`, `string`→`bytes`, `bits(8)`→`bits(9)`) | `kind_mismatch`; the value reads as the default | **refuses** | moves |
 | `T`→`?T`, `?T`→`T` | nothing: one framing. An old file's elided default reads as *absent* under `?T` | passes | moves (the presence flag is storage) |
 | an enum variant added or removed | `unknown` where a stored name is gone | passes; warns on a removal | moves, and so does the protocol id |
@@ -281,16 +288,21 @@ of every field, evaluated, keyed by wire id. `schema check` (and so
 `generate`) diffs the current schema against it and **refuses any edit that
 would make data already written unreadable or quietly change what it means**:
 the silent class above, plus kind changes, keyed-array respellings and
-referent drops. It warns on shrinks, removals and declaration renames, and
-passes in silence on everything the wire reports. `schema tables-baseline`
-prints the projection, and with `--update` rewrites the file.
+referent drops, and a second `was` aimed at a field's intermediate spelling.
+It warns on shrinks, tightened ranges, removals, declaration renames and the
+removal-and-addition pair a bare rename leaves, hints the `json =` pairing at
+the edit that adds a `was`, and passes in silence on everything the wire
+reports. `schema tables-baseline` prints the projection, and with `--update`
+rewrites the file.
 
 **Commit one.** The baseline is opt-in, no file, no check, and every
 "refuses" in the table above holds only for a unit that has one. A unit whose
 data leaves the building commits its baseline the day the first such build
 ships, because **the first baseline covers only what comes after it**: data
-written before that day was written against a shape nobody recorded. A
-warning from `check` for a table-bearing unit with no baseline is #445.
+written before that day was written against a shape nobody recorded. `schema
+check` says so: a unit that declares a table and holds no baseline draws one
+line on stderr naming the command that commits one, with the exit code
+untouched, and committing one silences it.
 
 **Moving it is explicit and reasoned.** A refused edit that is nonetheless
 intended is accepted with `--update --reason "..."`, which rewrites the file
@@ -312,9 +324,7 @@ read, salvaging the history. The window during which that repair runs is the
 one window the check is off, marked in the history as "could not be diffed";
 review the schema diff of that commit by hand.
 
-**Before 3.0.0's evolution claims:** the retired-names ledger (#441), range
-facts (#443), `was` misuse and the rename-pair warning (#444), the nudge
-(#445).
+**Before 3.0.0's evolution claims:** the retired-names ledger (#441).
 
 ## The build version
 
@@ -613,7 +623,9 @@ still open.
   value is the default either way; a game that branches on presence sees
   every existing player as "never set."
 - **A tightened range clamps on load and the next save writes the clamped
-  value.** A narrowing is a data edit; back the files up first.
+  value.** A narrowing is a data edit; back the files up first. A committed
+  baseline warns on it, from either end and on a range declared where the
+  field had none, but the warning is a report and not a rescue.
 - **`None` means both "unknown variant" and "never set."** A retired variant
   and an unset field read the same; a game that must tell them apart keeps a
   separate presence field.
@@ -675,8 +687,6 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #441: the retired-names ledger.
 - #442: `was` for variants and arms; #478: `was` for the fields of a `type`
   that a table reaches.
-- #443, #444, #445: range facts, `was` misuse and the rename-pair warning,
-  the baseline nudge.
 - #446: the evolution table's fixtures.
 - #439 and #460: the standard's own contradictions on `T`→`*T`, the flags
   row, writer misuse, the declaration-rename row, the count of silent edits,

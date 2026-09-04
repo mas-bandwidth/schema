@@ -68,7 +68,23 @@ func main() {
 		fs.BoolVar(&verbose, "verbose", false, "report the package and protocol id on success")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		c.TablesBaseline = true
-		unit := loadUnit(c, fs.Args())
+		paths, err := compiler.GatherPaths(fs.Args())
+		if err != nil {
+			fail(err)
+		}
+		unit, err := c.Load(paths)
+		if err != nil {
+			fail(err)
+		}
+		// THE NO-BASELINE NOTICE (docs/SPEC-TABLES.md §18.1). The baseline is
+		// opt-in, so a unit that declares tables and never committed one is
+		// unguarded against every edit §4.1 marks silent — and nothing else in
+		// the tool would ever mention it. One line, on stderr, and the exit
+		// code is untouched: it is a nudge, not a gate, and committing a
+		// baseline silences it.
+		if notice := compiler.TablesBaselineNudge(unit, paths); notice != "" {
+			fmt.Fprintln(os.Stderr, "notice: "+notice)
+		}
 		if verbose {
 			fmt.Printf("ok: package %s, protocol id 0x%016x\n", unit.Package, unit.ProtocolId)
 		}
