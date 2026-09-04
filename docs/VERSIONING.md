@@ -557,12 +557,16 @@ new binary, a new process and a new connection.
 
 **Three properties follow from announcing the unit rather than the message.**
 The table is a pure function of the build version, so two peers at one build
-derive one table and the key is literally a key. The writer's slot numbers are
+derive one table and the key is literally a key. The whole announcement is
+therefore a compile-time constant of the unit, and the writer's slot numbers are
 compile-time constants baked into the generated field headers, so there is no
 runtime lookup on the send path. And the receiver resolves once, at the
 announcement, and dispatches every message after it through one array index.
 The price is that a unit pays for its whole vocabulary rather than the part a
-connection uses: a unit of 500 ids announces 4 KB once.
+connection uses, and for a tail that carries the node-table id, the blob type
+ids and every table's name id whether the unit has a pointer or not, so that a
+slot number never drifts under an edit that has nothing to do with it: a unit of
+500 ids announces about 4 KB once.
 
 **The build version KEYS the table and does not gate the connection.** Promise
 8 stands exactly as written: peers connect on the protocol id and may differ in

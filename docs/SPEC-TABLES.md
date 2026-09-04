@@ -3199,10 +3199,10 @@ ids one message happens to use:
 - **every field name** of every record in the closure, a generated map entry's
   `key` and `value` included (§2.8).
 - **every enum variant name** and **every union arm name** in the closure.
-- **every table NAME id that can ride as a node record's type id**, and **the
-  reserved node-table id** (§3.1), when the unit has a variable class at all.
-  A unit with no pointer can put neither on the wire, so it announces neither.
-  One rule decides both, and it is the rule above: what the closure CAN write.
+- **the reserved node-table id**, **the three BLOB type ids**
+  `fnv1a64( "bytes" )`, `fnv1a64( "string" )` and `fnv1a64( "wstring" )`
+  (§3.1, and schema#532 for the third), and **the NAME id of EVERY table in the
+  closure**, whether or not a pointer names it today.
 
 **THREE PROPERTIES FOLLOW, and they are why the vocabulary is the unit's rather
 than the message's.**
@@ -3225,15 +3225,33 @@ already compiler-settled, already total over the closure, and already printable
 and diffable by `schema build-version --facts` (§20.2, §20.7): each record in
 the order the projection renders it and each record's fields in the order the
 projection renders them, then each enum's variants and each union's arms in that
-same order, then the node-table id and the type ids where they apply, which the
-projection does not name and which go last in the projection's own record order.
-**An id already placed is never placed twice**, so a field name three records
-share takes the slot its first appearance gave it. Nothing is derived from the
+same order. **Then comes the TAIL, which the projection does not name**, in
+this fixed order: the reserved node-table id, then the three blob type ids as
+`bytes`, `string`, `wstring`, then every table's own name id in the projection's
+sorted record order. **An id already placed is never placed twice**, so a field
+name three records share takes the slot its first appearance gave it.
+
+**THE TAIL IS UNCONDITIONAL, AND THAT IS A CHOICE.** A unit with no pointer can
+put none of those ids on the wire and announces them anyway, at eight bytes
+each, because the alternative reshuffles slots for an ordinary edit: if only
+POINTER TARGETS carried a type id, adding a `*T` to an existing table would
+insert one id into the middle of the sorted run and move every slot after it,
+and if the node-table and blob ids rode only for a unit with a variable class,
+the unit's FIRST pointer would move the whole tail at once. Neither is a wire
+break, since the build version moves with any such edit and the table is keyed
+by it (below), but both make a slot number a thing that drifts under edits that
+have nothing to do with it, and a slot number is a compile-time constant this
+form asks a generated field header to carry. **Four ids and one id a table is
+the price of a tail that only ever grows at its end**, and it is stated rather
+than optimized away. The three blob ids ride in the fixed order above whether or
+not the unit declares a blob, for the same reason.
+
+**Two notes on the order, and neither is a knob.** Nothing is derived from the
 vocabulary and fed back into the projection, so there is no cycle here (§20.7):
-the projection is read for its order and never written to. **A unit past 127 ids
-spends two bytes on the references beyond there** rather than one, and the
-compiler cannot know which ids are hot, so that is a cost of the unit's size and
-not a knob.
+the projection is read for its order and never written to. And **a unit past 127
+ids spends two bytes on the references beyond there** rather than one, which the
+compiler cannot help, because it cannot know which ids are hot. That is a cost
+of the unit's size.
 
 **REFERENCES RESOLVE AGAINST THAT TABLE, and the resolution rule itself is
 unchanged.** Reference `k` is the table's `k`th entry, counted from `1`.
@@ -3385,7 +3403,8 @@ on the refusal verdict**, which the form byte already introduced.
 
 **THE BODIES ARE NOT BYTE-IDENTICAL ACROSS THE TWO FORMS, AND THE RESOLVED FORMS
 ARE.** A file's slots are its own FIRST-USE order and a connection's slots are
-the unit's declaration order, so the same value writes different reference bytes
+the unit's PROJECTION order, which sorts records and vocabularies by name, so
+the same value writes different reference bytes
 under the two forms, and a length framing a body whose references changed width
 changes with them. What is invariant is the RESOLVED FORM, the normal form §6.6
 already uses for a retained record: **every reference replaced by the
@@ -3441,7 +3460,10 @@ may still take until the checker refuses it, so the claim is deliberately not
 made in this page's own change, on §6.6's precedent. What lands with the form is
 **`TableVocabulary`** in the unit-scope registry beside `TableReport` and
 `TableRetain`, the unit-scope entry points **`Announce`, `AnnounceMeasure` and
-`AnnounceRead`** beside `UnitView`, the three suffixes **`LoadMessage`,
+`AnnounceRead`** beside `UnitView`, **whose announcement is a COMPILE-TIME
+CONSTANT of the unit**, every byte of it settled by the compiler, so a backend
+may emit `Announce` and `AnnounceMeasure` as a constant byte array and its
+length rather than as a walk, and the C++ reference states which it does, the three suffixes **`LoadMessage`,
 `MeasureMessage` and `SaveMessage`** in `tableGeneratedVerbs`, and the refusal
 reason values **`no_vocabulary`, `second_announcement`, `vocabulary_too_large`
 and `message_form_as_file`** beside the form byte's own `newer_form`. **Dart's
@@ -3472,15 +3494,16 @@ cannot express "the default is 1", so it pays for every field whose value
 happens to be the sensible one.
 
 **THE ANNOUNCEMENT'S OWN COST, and where it amortizes.** The `backenddemo` unit
-below has twenty ids in its closure, twelve field names and eight enum variant
-names, so with the reserved id its announcement carries twenty-one entries and
-is **188 bytes**: one form byte, an eleven-byte body, and a trailer of
-twenty-one entries and its count. One round of the three messages saves 152
-bytes, so the announcement is paid back partway into the SECOND round and every
-message after that is profit. **The unit's whole vocabulary is what is paid
-for**, not the part a connection uses, which is the cost of ruling out the
-re-announcement state machine and is stated rather than buried: a unit of 500 ids
-announces 4 KB once.
+below names twenty ids in its records, twelve field names and eight enum variant
+names, and its tail is eight more: the reserved node-table id, the three blob
+type ids, and the four tables' own name ids. With the reserved build-version id
+at slot `1` that is **twenty-nine entries and 252 bytes**: one form byte, an
+eleven-byte body, and a trailer of twenty-nine entries and its count. One round
+of the three messages saves 152 bytes, so the announcement is paid back partway
+into the SECOND round and every message after that is profit. **The unit's whole
+vocabulary is what is paid for**, not the part a connection uses, which is the
+cost of ruling out the re-announcement state machine and the drifting slot, and
+is stated rather than buried: a unit of 500 ids announces about 4 KB once.
 
 **WHAT DOES NOT MOVE.** The BUILD VERSION does not (§20.2 digests wire ids and
 kinds, and none move). The PROTOCOL ID does not (no type-wire fact is touched).
@@ -3544,8 +3567,9 @@ the same way and every edit a reader can see, it sees the same way.
   byte of a resolved form differs, which is the negative control on every rule
   here that says the body's content does not move, and the reference bytes
   themselves are expected to differ.
-- **A slot at or past 128.** A unit whose vocabulary passes 127 ids, with a
-  message naming an id in a two-byte slot and an id in a one-byte slot. Red if a
+- **A slot at or past 128.** The `vocabdemo` unit below, whose vocabulary
+  passes 127 ids, with a message naming an id in a two-byte slot and an id in a
+  one-byte slot. Red if a
   leg spells a reference non-minimally, or sizes a message as though every
   reference were one byte.
 - **Per-direction independence.** A vector pair written by two peers whose units
@@ -3631,20 +3655,30 @@ table StorePurchase
 
 - **The unit is `backenddemo`, at `tables/backend`**, and the connection is
   `backend_conn`, whose announcement is `testdata/wire/tables/backend_conn.bin`,
-  twenty-one entries and 188 bytes: the reserved id, then the twelve distinct
-  field names and the eight variant names in the cook projection's order. The
-  unit has no pointer, so it announces no node-table id and no type id, which
-  is the one rule above deciding both.
+  **twenty-nine entries and 252 bytes**: the reserved build-version id, the
+  twelve distinct field names and the eight variant names in the cook
+  projection's order, then the tail, which is the node-table id, the three blob
+  type ids and the four tables' name ids. The unit has no pointer and announces
+  the tail all the same, which is the choice stated above and the row that pins
+  it.
 - **Six FILE-form vectors**, `login_full`, `login_default`, `match_full`,
   `match_default`, `store_full` and `store_default`, are ordinary `instance`
   lines and ride every surface an instance rides, the text form included.
 - **Six MESSAGE-form vectors** under the same six names ride the WIRE surface
   alone. Their text is the file-form vector's, byte for byte, because the value
   is the same, so a second `json/` file would be one golden with two homes.
-- **Four more vectors carry the rules a value alone cannot reach**: a unit whose
-  vocabulary passes 127 ids, a pointered root over the `graphdemo` unit, a
-  two-peer pair for per-direction independence, and a connection carrying a
-  second announcement.
+- **Four more vectors carry the rules a value alone cannot reach**: a wide
+  vocabulary, a pointered root over the `graphdemo` unit, a two-peer pair for
+  per-direction independence, and a connection carrying a second announcement.
+- **The WIDE-VOCABULARY unit is GENERATED and committed.** `test/vocabgen`
+  writes `tables/vocab/Vocab.schema`, the unit key `vocabdemo`, ten tables of
+  thirteen fields each, so its vocabulary passes 127 well before the tail and
+  its announcement carries slots on both sides of the boundary. The generator
+  is what wrote it rather than a hand-typed file, on `test/cookgen`'s
+  precedent, and the schema and every wire it produces are committed like any
+  other corpus data, because a golden a generator has to re-derive is not a
+  golden. Its message vector names one id in a one-byte slot and one in a
+  two-byte slot, which is the row the reference encoding goes red on.
 - **Two manifest line kinds carry them**, and the corpus's own page states their
   columns:
 
