@@ -524,6 +524,89 @@ index. There is no mode: no implicit table, no width byte, no magic, no build
 version in the header. The measurements that chose this layout are on #435,
 and SPEC-TABLES.md §3 is the encoding.
 
+## The message form and the connection's id table
+
+A table file carries its own id table, and that is the right trade for the
+shape the wire was designed against: a config bin or a save naming forty
+distinct ids across ten thousand fields pays eight bytes an id once and spends
+one byte a field header for the rest of the file. A four-field message between
+a game and a backend is the opposite shape, and it pays the trade in full with
+nothing to amortize it against. Measured on #523, three ordinary backend
+messages ran 106, 273 and 104 bytes against proto3's 49, 189 and 40, and the
+id table alone was 48 of the first and 56 of the third.
+
+**The message form is form byte `2`, and it moves the id table to the
+connection.** The body does not change: same fields, same references, same
+kinds, same lengths, same elision, same declared defaults, same terminator,
+byte for byte. What a form-`2` wire drops is the trailer, and what replaces it
+is a table the two peers established once. The three messages become 58, 225
+and 48, which turns a loss of 2.2x, 1.4x and 2.6x against proto3 into one of
+about 1.2x, and a message whose fields sit at their declared defaults goes from
+43 bytes to 27 against proto3's 40, which is an outright win. SPEC-TABLES.md
+§3.3 is the encoding.
+
+**The table is announced, not negotiated.** A peer sends an ID TABLE MESSAGE
+before the first form-`2` message it sends: an ordinary form-`1` file whose one
+field is the build version under a reserved id, and whose trailer is the
+vocabulary that peer's messages will name. The most recent announcement from a
+peer governs every message that peer sends after it, and a peer announces again
+when its build version or its vocabulary moves. Each direction has its own
+table. Nothing is requested, offered or agreed, because schema declines RPC and
+a one-way announcement needs none of it.
+
+**The build version keys the table and does not gate the connection.** Promise
+8 stands exactly as written: peers connect on the protocol id and may differ in
+build version, and a receiver never refuses a message because the announced
+build version is not its own. The key is a label, and it buys three things. A
+refusal can name the build version whose table it lacks. A receiver that meets
+the same build version and the same entries again knows it has already resolved
+them. And an announcement is traceable to one compilation of one unit in a log.
+
+**A peer with no table for the connection refuses the message by name.** It is
+the same refusal the form byte already carries: nothing is decoded, no counter
+moves, and `malformed` does not fire. The recoveries are the sender's, and both
+are already in the design. The sender re-announces, through whatever message
+its own application declares for the purpose. Or the sender writes the file
+form, which carries its own table and needs no connection.
+
+**Nothing else moves.** No kind is spent, no payload changes, no skip rule
+changes. The protocol id does not move, the build version does not move, the
+baseline does not move, the text form does not move, the cook and the block do
+not move, and no row of the evolution table above moves, because a reader sees
+every edit exactly as it saw it before. The read report keeps its counters and
+their meanings. The packet wire is untouched and out of scope, for the reason
+this form exists at all: the packet wire is same-or-refuse on the protocol id,
+so both peers must ship together, and a deployed game client and a backend do
+not.
+
+**Retention crosses the forms in one direction.** A message body loads with
+retention exactly as a file does, since it is the same body under the same skip
+rules. A `SaveRetain` writing form `2` drops every retained record and counts
+`retain_lost` for each, because a form-`2` writer names ids through slots of a
+table it announced and a retained id is by definition one this build cannot
+name. A caller that must carry unknowns across a rewrite writes the file form.
+A relay that must forward them forwards the sending peer's announcement and its
+message bytes verbatim, which loses nothing and costs nothing.
+
+**Promise 7 says an id is carried once per FILE, and under this form it is
+carried once per CONNECTION.** The substance of the promise is unchanged, that
+every id on the table wire is a 64-bit name hash and that the first byte says
+which form it is, and the promise's wording is owed the amendment when the form
+lands.
+
+Two sharp edges come with it, and both are the same fact seen twice.
+
+- **A message is not readable on its own.** A capture without the connection's
+  announcement cannot be decoded, and a form-`2` wire stored as a file is
+  refused by name rather than read. proto3 makes the same trade, since a
+  `.proto` is required out of band, and the build version is what makes this
+  one nameable: a receiver says which build's table it lacks. `schema pack`
+  and `schema unpack` are file-form tools and stay that way.
+- **The form needs an ordered, reliable channel.** The announcement has to
+  arrive, and to arrive first. On an unordered or lossy transport the answer is
+  the file form, which is self-contained, or the packet wire, which is
+  positional and carries no identity at all.
+
 ## The text form
 
 The text form is JSON keyed by *names*. It carries no version, no schema
@@ -792,6 +875,8 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 
 - #435: the uniform 64-bit wire, the form byte, the id table, the enum kind,
   flags bit positions in the build version, the reserved-id refusals.
+- #523: the message form, form byte `2`, the id table message and its reserved
+  build-version id, the connection table's bound, and promise 7's wording.
 - #434: the reserved escape kind.
 - #463: the previous-release differential gate — the corpus generated by the
   previous release and the new one, byte-compared under an equal id.
