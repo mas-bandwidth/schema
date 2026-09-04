@@ -311,7 +311,7 @@ func loadPins(path string) (*pins, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return parsePins(path, f)
 }
 
@@ -446,17 +446,17 @@ func compare(s *sitting, p *pins, band, spreadMax float64) ([]verdict, bool) {
 	return out, red
 }
 
-func printVerdicts(w io.Writer, vs []verdict, band float64) {
-	fmt.Fprintf(w, "%-24s %14s %14s %9s %8s  %s\n", "row", "pinned M/s", "measured M/s", "delta", "spread", "verdict")
+func printVerdicts(vs []verdict, band float64) {
+	fmt.Printf("%-24s %14s %14s %9s %8s  %s\n", "row", "pinned M/s", "measured M/s", "delta", "spread", "verdict")
 	for _, v := range vs {
 		mark := "ok  "
 		if v.red {
 			mark = "RED "
 		}
-		fmt.Fprintf(w, "%-24s %14.3f %14.3f %8.2f%% %7.1f%%  %s%s\n",
+		fmt.Printf("%-24s %14.3f %14.3f %8.2f%% %7.1f%%  %s%s\n",
 			v.key, v.pinned/1e6, v.measured/1e6, v.deltaPct, v.spread, mark, v.note)
 	}
-	fmt.Fprintf(w, "band: %.2f%% (bench/PERF-PINS states how it was derived)\n", band)
+	fmt.Printf("band: %.2f%% (bench/PERF-PINS states how it was derived)\n", band)
 }
 
 // ---------------------------------------------------------------------------
@@ -581,7 +581,7 @@ func cmdCheck(args []string) int {
 	}
 	vs, red := compare(s, p, band, spreadMax)
 	fmt.Printf("perf gate: %s, %s\n%s\n\n", s.host, s.date, s.uptime)
-	printVerdicts(os.Stdout, vs, band)
+	printVerdicts(vs, band)
 	if red {
 		fmt.Printf("\nPERF GATE RED. A read or a write on the reference got slower than the pin by\n")
 		fmt.Printf("more than the band. If the change added a diagnostic, the law (issue #546)\n")
