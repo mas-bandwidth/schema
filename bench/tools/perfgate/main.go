@@ -849,6 +849,25 @@ func writePlanted(srcDir, dstDir, target string, plant func(string) (string, int
 	return planted, nil
 }
 
+// cmdPlant writes the planted scratch copies and stops, so the transform can
+// be read and compiled without spending a quiet window on a timed run.
+func cmdPlant(args []string) int {
+	parseFlags(args, map[string]*string{}, map[string]*int{})
+	pktN, err := writePlanted("generated/bench/cpp", "build/perfgate/planted/cpp", "BenchWire.h", plantPacket)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate plant:", err)
+		return 1
+	}
+	tblN, err := writePlanted("generated/bench/tables/cpp", "build/perfgate/planted/tables-cpp", "BenchTableTable.h", plantTable)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate plant:", err)
+		return 1
+	}
+	fmt.Printf("build/perfgate/planted/cpp/BenchWire.h            %d read sites planted\n", pktN)
+	fmt.Printf("build/perfgate/planted/tables-cpp/BenchTableTable.h %d read sites planted\n", tblN)
+	return 0
+}
+
 func cmdControl(args []string) int {
 	parseFlags(args, map[string]*string{}, map[string]*int{})
 
@@ -1101,6 +1120,7 @@ func usage() {
 
   perfgate check [-advisory]     measure and compare against bench/PERF-PINS
   perfgate control               plant a read cost and require the gate to go red
+  perfgate plant                 write the planted scratch copies and stop
   perfgate measure [-repeats N]  measure only, print the rows
   perfgate band [-repeats N]     derive the noise band from repeated sittings
   perfgate pin [-repeats N]      rewrite the pins and the sitting they came from
@@ -1116,6 +1136,8 @@ func main() {
 	switch os.Args[1] {
 	case "check":
 		os.Exit(cmdCheck(args))
+	case "plant":
+		os.Exit(cmdPlant(args))
 	case "control":
 		os.Exit(cmdControl(args))
 	case "measure":
