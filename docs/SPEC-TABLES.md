@@ -799,9 +799,9 @@ whole-unit bounds clamp on the raw scale (§4), and its text is the value in
 whole units (§16.2). The exclusions, each refused by name: `const`/`reserved`/`align`
 describe bit positions, and the table wire has none. **Extents have no wire
 ceiling**: lengths and counts ride as canonical LEB128 with 64 bits of
-capability (§3), so the only limit is the language's own — a string, bytes or array
-extent lives in int32 storage (SPEC §4.3), and that cap is what a too-large
-extent is refused against.
+capability (§3), so the only limit is the language's own. A string, bytes or
+array extent lives in int32 storage (SPEC §4.3), and that cap is what a
+too-large extent is refused against.
 
 ### 2.3 Optional fields: `settings ?GunnerSettings`
 
@@ -865,7 +865,7 @@ no count alone can spell. The framing is exactly the plain array's — kind
 framing with two spellings: for any array that rides under both (a counted
 array with a live element; a fixed array not at all-default), no byte
 moves in either direction. At the empty end the bytes differ — a present
-empty counted array writes the five-byte array body (`element kind`,
+empty counted array writes the two-byte array body (`element kind`,
 `N = 0`) and a present all-default fixed array writes all its elements —
 and no direction misdecodes, exactly as the scalar paragraph above states.
 
@@ -1368,14 +1368,12 @@ nine backends is the named follow-on (§15).
   pointer fields inside it, and a POINTER arm is itself the edge — the arm
   takes the node's index exactly as a pointer field does, so a node named
   by an arm and by a field is one node, written once.
-- **On the wire every arm rides under ONE framing** (§3, kind `15`), and it
-  is the FIELD HEADER: the arm id reference, the arm's own kind byte, `L`,
-  then `L` bytes of arm payload, which are the bytes a FIELD of the arm's
-  type puts after its own framing prefix. §3 states the payload per type,
-  and what a reader does with an arm whose type moved. A `type` arm and a
-  `table` arm are byte-identical to each other, both under kind `13`, so an
-  arm may change between those two forms without the framing moving. **A
-  PAYLOAD-FREE arm carries kind `32` and `L = 0`** (§3).
+- **On the wire every arm rides under ONE framing** (§3, kind `15`), and §3
+  states it, the payload per type, and what a reader does with an arm whose
+  type moved. Two consequences belong here: a `type` arm and a `table` arm
+  are byte-identical to each other, both under kind `13`, so an arm may
+  change between those two forms without the framing moving; and a
+  PAYLOAD-FREE arm rides under kind `32` with `L = 0`.
 - **A backend without a native union may allocate for the arm** (the
   ladder, above): the carve-out is the language's, not the table's.
 
@@ -2080,15 +2078,21 @@ and the ID TABLE.**
   refuses the wire by name, saying the form is newer than the one it carries,
   and it never reports damage. That refusal is not one of §4's events and
   moves none of the report's five counters, because nothing was decoded and
-  there is nothing to count. The ESCAPE KIND (below) covers a new KIND inside
-  this form, and the form byte covers a new FRAMING. **Nothing else rides in
+  there is nothing to count. **The form byte is read FIRST**, before the
+  trailer and before any body, so a file that is both a newer form and damaged
+  is a refusal and never damage. On a form the reader knows, a trailer it
+  cannot read is `malformed` (below). The ESCAPE KIND (below) covers a new
+  KIND inside this form, and the form byte covers a new FRAMING. **Nothing else rides in
   front**: no magic, no identity, no content hash, no build version. A file
   that must say what it is puts a field on its root table, `format uint32 = 3`,
   which an older reader reads like any other field.
-- **The ROOT BODY follows the form byte** and runs to the first byte of the
-  id table.
-- **The ID TABLE is the trailer.** It holds every id the body used, once
-  each, and the body names them by position.
+- **The ROOT BODY follows the form byte and ENDS AT ITS OWN ZERO
+  REFERENCE**, wherever that falls.
+- **The ID TABLE is the trailer**, and a reader locates it from the END of
+  the wire (below). It holds every id the body used, once each, and the body
+  names them by position. **Any byte between the root's terminator and the
+  table's first entry is `malformed`**, because no field claims it and the
+  two ends of the file have met.
 
 **A body is a sequence of FIELDS, each `id reference, kind (u8), payload`,
 terminated by a ZERO REFERENCE.** The terminator is one byte, the value `0`,
@@ -2102,13 +2106,14 @@ value.
 
 **Every length, count and index is the same unsigned LEB128.** `L` is a byte
 length, `N` an element count, a node index names a record of the numbering
-§3.1 defines, and a node count says how many records there are. **LEB128 is seven value bits a byte, the
-lowest group first, with the high bit set on every byte but the last**, and
-it is 64 bits in capability, so no body, count or index of any kind has a
-ceiling below `2^64 − 1`.
+§3.1 defines, and a node count says how many records there are. **LEB128 is
+seven value bits a byte, the lowest group first, with the high bit set on
+every byte but the last**, and it is 64 bits in capability, so no body, count
+or index of any kind has a ceiling below `2^64 − 1`. **The one FIXED-WIDTH
+number on the wire is the id table's ENTRY COUNT** (below).
 
 **Every one of them is CANONICAL, and a non-minimal encoding is MALFORMED.**
-`0x81 0x00` and `0x00` both spell zero, and only the second is legal input.
+`0x80 0x00` and `0x00` both spell zero, and only the second is legal input.
 One value has one spelling, so two conforming writers agree byte for byte and
 a reader has one thing to check rather than a range of paddings to tolerate.
 An encoding past ten bytes, or a tenth byte with a bit above the 64th value
@@ -2160,32 +2165,40 @@ fixed8/16/32/64/128, `25`–`29` ufixed8/16/32/64/128, `30` enum, `31` escape,
   **AN ENUM VALUE RIDES UNDER ITS OWN KIND `30`, carrying the reference to
   its VARIANT NAME's id**, whatever the declaration-side storage width. Its
   `None` is the zero reference, the one value that names no id, so no
-  declared variant can ever be mistaken for it. The kind closes the edit that
-  a shared integer kind left open: an enum field respelled as its raw
-  `uint16`, or the reverse, moves between kind `30` and kind `7` and is an
-  ordinary kind mismatch in both directions, counted, the field taking its
-  default. That respelling is the shape kind `17` and kind `16` were spent on
-  one more time, and it cost one kind number and no bytes.
+  declared variant can ever be mistaken for it. **A reference this reader's
+  enum cannot name is §4's ordinary `unknown`**: the field reads `None` and
+  one event counts. The kind closes the edit a shared integer kind left open:
+  an enum field respelled as its raw `uint16`, or the reverse, moves between
+  kind `30` and kind `7` and is an ordinary kind mismatch in both directions,
+  counted, the field taking its default. That is what a kind number buys
+  (§4.1), and it cost no bytes.
 
   **KIND `32` IS THE PAYLOAD-FREE KIND**, and the arm position is the only
-  place it rides (§2.6). Its `L` is `0` and it carries nothing. It exists
-  because an arm header is a field header and a field header carries a kind,
-  so an arm that holds nothing needs a kind that says so. It closes the edit
-  a bare `L = 0` would have left open: an arm that gains or loses its payload
-  moves between kind `32` and the payload's own kind, and is an ordinary kind
-  mismatch. A reader that declares an arm payload-free and meets an `L` that
-  is not `0` counts `malformed` and reads `None`, exactly as it does for a
-  fixed-width arm whose `L` is not its width.
+  place a writer puts it (§2.6). Its `L` is `0` and it carries nothing. It
+  exists because an arm header carries a kind (below), so an arm that holds
+  nothing needs a kind that says so. It closes the edit a bare `L = 0` would
+  have left open: an arm that gains or loses its payload moves between kind
+  `32` and the payload's own kind, and is an ordinary kind mismatch. A reader
+  that declares an arm payload-free and meets an `L` that is not `0` counts
+  `malformed` and reads `None`, exactly as it does for a fixed-width arm
+  whose `L` is not its width.
 
   **KIND `31` IS THE ESCAPE, and no declaration maps to it.** Its payload is
-  `L` and `L` bytes, opaque, and this major never writes one. A reader that
-  meets it skips it by its `L` and counts it `unknown`, never `malformed`,
-  exactly as it treats a field whose id it cannot name. It exists so that the
-  closed set can be added to across a major without the addition reading as
-  damage: a kind introduced in a later major rides as this framing carrying
-  its own inner encoding, and a reader of this major steps over it cleanly
-  and says so. It is the only kind whose meaning a reader is licensed not to
-  know.
+  `L` and `L` bytes, opaque, and this major never writes one. It exists so
+  that the closed set can be added to across a major without the addition
+  reading as damage: a kind introduced in a later major rides as this framing
+  carrying its own inner encoding, and a reader of this major steps over it
+  cleanly and says so. It is the only kind whose meaning a reader is licensed
+  not to know.
+
+  **WHERE THE READER MEETS KINDS `31` AND `32` DECIDES WHICH EVENT IT
+  COUNTS.** At a position the reader CANNOT name, kind `31` is skipped by its
+  `L` and counted `unknown`, exactly as a field whose id the reader cannot
+  name is. At a position the reader DOES name, a field or an arm that arrives
+  under kind `31` or kind `32` where the declaration says otherwise is an
+  ordinary kind mismatch: the field reads its declared default, a union reads
+  `None`, and `kind_mismatch` counts (§4). One rule decides it, and it is the
+  rule every other kind already takes.
 
   **An array's ELEMENT KIND is part of its identity, not only its framing.**
   For kinds `14` and `16` a reader compares the element kind it declares
@@ -2193,7 +2206,13 @@ fixed8/16/32/64/128, `25`–`29` ufixed8/16/32/64/128, `30` enum, `31` escape,
   counts a kind mismatch (§4), exactly as it does for the field's own kind.
   Without that rule a `[3]int32` body would decode into a `[3]float32` field
   as three reinterpreted bit patterns, reported by nothing, which is the
-  field-level silent-corruption class one level down.
+  field-level silent-corruption class one level down. **An element kind of
+  `31` or `32` takes that same rule and no other**: no declaration produces
+  one, so it can only disagree with what the reader declares, the array reads
+  empty, one `kind_mismatch` counts, and the field is skipped whole by its
+  `L`. **An element of an array of UNIONS is an arm header** and carries its
+  own kind, so the arm rules below apply once per element rather than once for
+  the array.
 
   **A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD**, and that holds for a
   kind `13` field and for an arm whose payload is a body alike. The zero
@@ -2205,8 +2224,8 @@ fixed8/16/32/64/128, `25`–`29` ufixed8/16/32/64/128, `30` enum, `31` escape,
 
   **AN ARM HEADER IS A FIELD HEADER**: the arm id reference, the arm's KIND
   byte, `L`, then `L` bytes of arm payload. One framing serves a field and an
-  arm, and the kind byte an arm gained is what makes a retyped arm an
-  ordinary kind mismatch instead of a value read under the wrong rule. The
+  arm, and the arm's kind byte is what makes a retyped arm an ordinary kind
+  mismatch instead of a value read under the wrong rule. The
   union is still the one payload whose framing a skipper has to know, because
   the arm id sits where the other three containers put their length.
 
@@ -2304,13 +2323,14 @@ little-endian u64, and the body ends where the first entry begins.
 
 - **An ENTRY is `fnv1a64( name )` and nothing else** (§5). One hash serves
   every vocabulary the wire has: a field's name, an enum variant's, a union
-  arm's and a table's. No fold, no rebound, and no value reserved, because a
-  hash never appears on this wire outside the table. What is reserved is the
-  REFERENCE `0`, which is a position and not a hash.
+  arm's and a table's. No fold and no rebound: a hash of `0` is an ordinary
+  id. What names no id is the REFERENCE `0`, which is a position rather than
+  a hash, and the one id the language holds back is the node table's (§3.1).
 - **The entries are in FIRST-USE ORDER over the whole wire**, root body
   first, then the node table's records in index order (§3.1), each body's
-  fields in the order they were written. **They are distinct**: an id already
-  in the table is referenced again and never appended twice.
+  fields in the order they were written. **They are DISTINCT**: an id already
+  in the table is referenced again and never appended twice, and a table that
+  carries one id twice is malformed (below).
 - **The table is why the wire pays for 64-bit identity once.** A file that
   names forty distinct ids across ten thousand fields carries forty ids, and
   every field header spends one byte on the reference where an inline id
@@ -2328,12 +2348,13 @@ little-endian u64, and the body ends where the first entry begins.
 - **The table is the FILE's, not a body's.** There is one for the whole wire,
   a pointered save's node records included, and no nested body has one.
 
-**Four ways a reference or a table is MALFORMED**, and each lands where §4
+**Five ways a reference or a table is MALFORMED**, and each lands where §4
 puts framing damage:
 
 - **A table that cannot be read whole**: fewer than eight bytes in the file,
   or a count whose `8 × count + 8` runs past the front of the file, or a
-  count that leaves no room for the form byte. The whole wire is malformed,
+  count that leaves no room for the form byte, or bytes left over between the
+  root body's terminator and the first entry. The whole wire is malformed,
   nothing is decoded, and one event is counted. This is the one malformed
   case that stops the file rather than a nesting level, because every id in
   every body resolves through the table and a body read without it would be
@@ -2349,6 +2370,10 @@ puts framing damage:
   carrying one is damaged rather than merely foreign. A field id and an arm
   id are not in this list: `0` there is the terminator and the empty union,
   which are values.
+- **A TABLE THAT CARRIES ONE ID TWICE**: the whole wire is malformed, on the
+  first rule's terms. A reader that resolved both entries would buy nothing,
+  because no wire this schema writes carries a repeat, and it would leave one
+  more shape of table for a hostile writer to aim at.
 
 **THIS FORM IS THE TOLERANT WIRE'S AND NOTHING ELSE'S.** No id, no kind
 byte, no reference and no length of this section appears in the other four
@@ -2454,56 +2479,74 @@ under 128, two under 16,384, and so on.
 | a payload-free arm | the arm reference + one kind byte + one zero byte |
 | the whole file's framing | 1 for the form byte, 8 for the entry count, 8 an entry |
 
-**Measured over the tables conformance corpus**, against the same corpus
-under a form whose ids ride inline at sixteen bits and whose lengths are
-fixed u32: **0.83x the bytes over the corpus without its 210 KB blob, 1.59x
-over the tiny message class, and 0.99x over the whole corpus.** The measured
-framing was two bytes wider than this form's, so each ratio is an upper
-bound. The win grows with the file, and a file with many distinct ids and few
-fields under each pays a little: a pointer-heavy graph of 7,301 bytes becomes
-3,321, and a wide flat config of 1,109 bytes becomes 1,279. **Dispatch measured 2.0 ns a field** through the resolved
-slot array against 2.5 ns through a switch on an inline sixteen-bit id, with
-resolve at 5.8 ns an entry, once per open.
+**MEASURED over the tables conformance corpus, as a ratio to the wire's
+previous form**: **0.83x the bytes over the corpus without its 210 KB blob,
+1.59x over the tiny message class, and 0.99x over the whole corpus.** The win
+grows with the file, and a file with many distinct ids and few fields under
+each pays a little: a pointer-heavy graph of 7,301 bytes becomes 3,321, and a
+wide flat config of 1,109 bytes becomes 1,279. **Dispatch measures 2.0 ns a
+field** through the resolved slot array against 2.5 ns through a switch on an
+inline sixteen-bit id, with resolve at 5.8 ns an entry, once per open. **Every
+figure in this subsection, and the framing figure the ladder states at the
+head of this document, was measured on the previous form and is re-pinned by
+the implementation that lands this one.**
 
 **The cost is on TINY messages, and it is stated rather than hidden.** A
-three-field ping is about 45 bytes where an inline sixteen-bit form spends
-20, because the file carries three eight-byte ids and nine bytes of framing,
-and its open pays about 17 ns of resolution before about 6 ns of dispatch.
-That is the price of 64-bit identity on the wire that trades bytes for
-tolerance. A stream that wants small same-build messages is a `type` stream
-(§1), whose wire is positional and carries no identity at all.
+three-field ping is about 45 bytes, because the file carries three eight-byte
+ids and nine bytes of framing, and its open pays about 17 ns of resolution
+before about 6 ns of dispatch. That is the price of 64-bit identity on the
+wire that trades bytes for tolerance. A stream that wants small same-build
+messages is a `type` stream (§1), whose wire is positional and carries no
+identity at all.
 
 **HELD BY TEST.** Each rule above names what pins it and the one reason
 that instrument goes red.
 
-- **The form byte, and the refusal above it.** A `report` row whose wire
-  carries form `2` reads as a named refusal with the five counters untouched.
-  Red if the row reports `malformed`, or if any counter moves.
+- **The form byte, and the refusal above it.** Three `report` rows, one each
+  for form `0`, form `2` and form `0xFF`. **The report format carries a
+  REFUSAL VERDICT distinct from a clean read**, because five zero counters and
+  a false flag are what a clean read prints too, and the implementation that
+  lands this form adds that verdict to
+  `testdata/conformance/tables/FORMAT.md`. Red if a row prints a clean read,
+  or reports `malformed`, or moves a counter.
 - **The reference encoding.** The wire fuzzer's canonical-LEB pass (§4.2)
   writes every reference, length, count and index in its non-minimal
   spellings. Red if a leg decodes one instead of counting `malformed`.
-- **The reference bound.** The fuzzer's reference pass sets every reference
-  to the entry count plus one, to the count itself where the count is the
-  last legal slot, and to `0` at a keyed slot's key and a node record's type
-  id. Red if a leg resolves past the table, or takes a `0` there for an
-  unknown name.
+- **The reference bound, in both directions.** The fuzzer's reference pass
+  sets every reference to the entry count plus one and to the extremes the
+  encoding can spell, which are malformed, and to the entry count itself,
+  **which is the last legal slot and must RESOLVE**. It also sets a `0` at an
+  enum-keyed array's slot key and at a node record's type id, which are
+  malformed. Red if a leg resolves past the table, refuses the last slot, or
+  takes a `0` at either of those two positions for an unknown name.
 - **The table trailer.** The fuzzer's table pass moves the entry count off by
-  one each way and to the two values the sign bit spells, and truncates the
-  file inside the entries. Red if a leg decodes a body under a table it could
-  not read whole.
+  one each way and to its extremes, truncates the file inside the entries,
+  writes one id into two entries, and leaves a byte between the root's
+  terminator and the first entry. Red if a leg decodes a body under any of
+  them rather than counting `malformed` once for the wire.
 - **The kind set, the enum kind and the escape kind.** The fuzzer's kind-swap
   pass writes every kind byte to every other value, `0` and one past the last
-  kind included. The escape kind is planted in a hostile wire by a `report`
-  row that carries one at each of the three depths `tables/messages` reaches.
-  Red if a leg counts an escape field `malformed` rather than `unknown`, or
-  if it fails to skip it by `L`.
+  kind included, at field positions, at arm positions and in an array header's
+  element-kind byte. A `report` row plants kind `31` at a field the reader
+  cannot name, at a field it CAN name, at an arm, and as an element kind, one
+  at each of the three depths at which `tables/messages` carries a union
+  (§2.6). Red if the unnameable position counts anything but `unknown`, if a
+  named position counts anything but `kind_mismatch`, or if any of them counts
+  `malformed`.
 - **The enum kind against the raw integer.** A `report` row written with an
   enum field and read with the field respelled `uint16`, and the reverse.
   Red if either direction reports anything but one `kind_mismatch` with the
   field at its default.
+- **An enum reference no reader can name.** A `report` row whose enum field
+  carries a variant the reading declaration removed. Red if the field reads
+  anything but `None`, or if `unknown` does not count once.
 - **The arm's kind byte.** The arm evolution rows of §4, each written under
-  one declaration and read under another. Red if a retype that the kind byte
-  separates reports nothing.
+  one declaration and read under another, and these four beside them: an ENUM
+  arm read as an integer arm, a POINTER arm read as an integer arm, a `bytes`
+  arm read as a `string` arm, and a kind `17` or kind `30` arm whose `L`
+  disagrees with the byte count of the reference it frames. The first three
+  are `kind_mismatch` with the union at `None`, and the fourth is `malformed`
+  with the parent reading on past `L`. Red if any of them reports nothing.
 - **The body terminator.** The fuzzer's terminator pass moves the zero
   reference inside its own `L`. Red if a leg reads past it, or if the parent
   does not continue past `L`.
@@ -2511,6 +2554,11 @@ that instrument goes red.
   conformance manifest, whose pinned wire is compared byte for byte after a
   save. Red if a writer emits an id no field references, appends an id twice,
   or writes the table in any order but first use.
+- **The two reserved-id refusals** (§5, §11). No declarable name hashes to the
+  reserved node-table id or to another table's id at sixty-four bits, so each
+  control **plants the collision BELOW the hash**, through a compiler test
+  hook that returns the colliding value for one named spelling. Red if the
+  checker accepts the planted name, or accepts it as a `was`.
 - **The cost rows.** The pinned wires themselves: an instance's byte count is
   the sum of the rows above it, and a row that drifts moves a pinned wire.
 
@@ -2570,7 +2618,7 @@ nested form.
 
 **Kind `17` costs nothing and closes an edit that would otherwise be
 silent.** A node index is a number, so under a shared integer kind an edit
-between the two would report nothing in either direction — a stored index
+between the two would report nothing in either direction: a stored index
 reading back as a plausible number, a number read as an index. The kind byte
 already rides, so the distinct number costs zero bytes and one row in the
 skip rule, and it makes that edit an ordinary kind mismatch (§4). §3's rule that an unknown kind
@@ -2644,17 +2692,14 @@ the payload opens with the count and then carries the records:
         type id reference, length, body
 ```
 
-- **The reserved node-table id is `0xFFFFFFFFFFFFFFFF`**, and it is
-  RESERVED rather than derived: no name produces it, it takes an ordinary
-  entry in the id table like every other id (§3), and a declared name whose
-  `fnv1a64` lands on it is refused naming the field, a `was` included (§5,
-  §11). At sixty-four bits that refusal is a formality rather than a
-  schedule risk, which is what the other closure-wide id already relies on.
+- **The reserved node-table id is `0xFFFFFFFFFFFFFFFF`**, the one id the
+  language holds back (§5). It takes an ordinary entry in the id table like
+  every other id (§3).
 - **Kind `12` is §3's opaque byte payload**, so a reader that cannot name
   the id skips the field by its `L` and counts it **unknown**, once (§4). No
-  new skip rule. **The field rides ONCE**, because a LEB128 length has no
-  ceiling to chunk around: a save's node bodies have no aggregate ceiling
-  and the whole numbering is one contiguous payload.
+  new skip rule. **The field rides ONCE**: a `L` with sixty-four bits of
+  capability frames a numbering of any size, so the whole numbering is one
+  contiguous payload and a save's node bodies have no aggregate ceiling.
 - **The node table is whole or it is nothing.** Numbering is positional, so
   a record that cannot be read cannot be dropped without renumbering every
   record after it. A node-table field arriving under a kind other than `12`,
@@ -2674,7 +2719,10 @@ the payload opens with the count and then carries the records:
   — not a by-value nesting, not an array element, not a union arm, not a
   variable-length table nested by value inside another (§2.2), and not a
   record. A save has one numbering and every index anywhere in it names
-  that one.
+  that one. **The reserved id inside a NESTED body is malformed**, on the
+  numbering's own rule: a second numbering cannot exist, so a body claiming
+  one is damaged, that body stops, `malformed` counts, and the parent reads
+  on past its length (§4).
 - This implementation writes the node-table field LAST in the root body,
   after the root's own declared fields, so that **a reader which gives up
   inside the node table has already decoded the ROOT'S OWN FIELDS** — the
@@ -2716,7 +2764,7 @@ the payload opens with the count and then carries the records:
 - The **length** is canonical LEB128 like every other length on this wire
   (§3), 64 bits in capability, so a node body has no ceiling and no
   save-time refusal stands behind one. A small body spends one byte on it.
-- The **body** is an ordinary table body — fields, then the zero
+- The **body** is an ordinary table body: fields, then the zero
   reference, exactly as §3 describes. Everything inside is ordinary:
   by-value nesting still nests, arrays are arrays, guards still guard, and
   `string(N)` and `bytes(N)` ride inline.
@@ -2731,8 +2779,12 @@ the payload opens with the count and then carries the records:
   every table's and collide with a declared name only by hash accident, which
   is the compile error §11 already names.
 - Its **length** is the blob's length, and its **body** is the blob's bytes
-  verbatim — no fields, no terminator, no framing inside. A blob has no
-  ceiling, for the reason a node body has none.
+  verbatim, with no fields, no terminator and no framing inside. **The WIRE
+  puts no ceiling on it**, for the reason a node body has none, and the STORAGE does:
+  a blob whose length is past §11's derived-size cap is refused at load and
+  counted `malformed`, with every slot naming it reading null, exactly as a
+  record the numbering cannot hold is. A record and a blob are one rule here,
+  and it is the only place a length the framing accepts is still refused.
 - **A blob is numbered as every node is**: first visit, depth-first, in the
   slot's declaration order, and it has no descent — a blob reaches nothing.
   Two slots that name one blob name one index, and the record is written once.
@@ -2793,10 +2845,10 @@ the payload opens with the count and then carries the records:
 
 **Reading: every failure is one of §4's events, and none is new.**
 
-- **An index above `node_count + 1`**, or one whose LEB128 is not canonical
-  — the valid indices are `0` for
-  null, `1` for the root and `2 … node_count + 1` for the records:
-  **malformed**, and the pointer stays null.
+- **An index above `node_count + 1`**, or one whose LEB128 is not canonical.
+  The valid indices are `0` for null, `1` for the root and
+  `2 … node_count + 1` for the records: **malformed**, and the pointer stays
+  null.
 - **An index of `1` where the field's declared target is not the reader's
   own ROOT table**: **kind mismatch**, pointer null. The root carries no
   record and therefore no wire type id, so the reader's own root type is
@@ -2903,28 +2955,60 @@ with `scene.head = A`, `A.next = B`, and `A.palette`, `B.palette` and
 ```
 form 1
 
-root body (Scene)
-  ref 1 (head)     kind 17  2
-  ref 2 (palette)  kind 17  4
-  ref 3 (the reserved node-table id)  kind 12  L
-                    node_count = 3
-                    rec 1  type ref 4 (Node)     len  { value=1, next=3,
-                                                        palette=4 }
-                    rec 2  type ref 4 (Node)     len  { value=2, palette=4 }
-                    rec 3  type ref 7 (Palette)  len  { id=7 }
-  0                      terminator
+root body (Scene)                                        47 bytes
+  ref 1 (head)     kind 17   index 2
+  ref 2 (palette)  kind 17   index 4
+  ref 3 (reserved) kind 12   L = 37
+      node_count = 3
+      type ref 4 (Node)     len 13   ref 5 (value) kind 4  1
+                                     ref 6 (next)  kind 17 3
+                                     ref 2 (palette) kind 17 4
+                                     0
+      type ref 4 (Node)     len 10   ref 5 (value) kind 4  2
+                                     ref 2 (palette) kind 17 4
+                                     0
+      type ref 7 (Palette)  len  7   ref 8 (id)    kind 4  7
+                                     0
+  0                                  terminator
 
-id table
-  1  fnv1a64( "head" )
-  2  fnv1a64( "palette" )
-  3  0xFFFFFFFFFFFFFFFF
-  4  fnv1a64( "Node" )
-  5  fnv1a64( "value" )
-  6  fnv1a64( "next" )
-  7  fnv1a64( "Palette" )
-  8  fnv1a64( "id" )
+id table                                                 72 bytes
+  1  fnv1a64( "head" )     0a8f12cc5f9a0c03
+  2  fnv1a64( "palette" )  9dd691088352b680
+  3  the reserved id       ffffffffffffffff
+  4  fnv1a64( "Node" )     66bd1cc6d2f6b68d
+  5  fnv1a64( "value" )    7ce4fd9430e80cea
+  6  fnv1a64( "next" )     e5316cbaa025f028
+  7  fnv1a64( "Palette" )  c8af536e2084ade0
+  8  fnv1a64( "id" )       08b72e07b55c3ac0
   count = 8
 ```
+
+The whole save is **120 bytes**, and these are all of them:
+
+```
+0000  01 01 11 02 02 11 04 03
+0008  0c 25 03 04 0d 05 04 01
+0010  00 00 00 06 11 03 02 11
+0018  04 00 04 0a 05 04 02 00
+0020  00 00 02 11 04 00 07 07
+0028  08 04 07 00 00 00 00 00
+0030  03 0c 9a 5f cc 12 8f 0a
+0038  80 b6 52 83 08 91 d6 9d
+0040  ff ff ff ff ff ff ff ff
+0048  8d b6 f6 d2 c6 1c bd 66
+0050  ea 0c e8 30 94 fd e4 7c
+0058  28 f0 25 a0 ba 6c 31 e5
+0060  e0 ad 84 20 6e 53 af c8
+0068  c0 3a 5c b5 07 2e b7 08
+0070  08 00 00 00 00 00 00 00
+```
+
+Byte `0x00` is the form. Bytes `0x01` to `0x2f` are the root body, ending at
+the zero at `0x2f`. Bytes `0x30` to `0x6f` are the eight entries, each a
+little-endian u64, and the last eight bytes are the count. An `int32` value is
+four little-endian bytes, so `value = 1` is `01 00 00 00` at `0x0f`. Every
+reference, length and index here fits in one byte, which is the ordinary case
+this form is shaped for (§3).
 
 The id table is in FIRST-USE order over the whole wire (§3): the root's own
 fields first, then the node table's records in index order, and `Node` before
@@ -2944,7 +3028,7 @@ again is reaching an entry still open — the cycle refusal, above.
 ### 3.2 Enum-keyed arrays on the wire: slots by name
 
 An enum-keyed array (§2.4) rides as **kind `16`, its own kind**, and its
-body opens as an array's does — `element kind (u8)`, then the count.
+body opens as an array's does, `element kind (u8)` and then the count.
 Kind `16` exists so that the keyed and the positional spellings cannot be
 mistaken for one another: they are different encodings, a reader meeting
 the wrong one reports a kind mismatch instead of decoding a body under the
@@ -2959,9 +3043,9 @@ element carries:
   storage (§2.4): every stored slot can ride and no stored slot cannot.
 - **A `None` key NEVER RIDES.** `None` is the enum's null and keys no slot
   (§2.4), so there is no `None` slot to write — the storage holds one
-  element per named variant and not one more — and **a stored key reference
-  of `0` is MALFORMED** — not an unknown variant, because `0` names no id at
-  all (§3) and a slot must say which variant it keys, so a body carrying one
+  element per named variant and not one more. **A stored key reference of
+  `0` is MALFORMED** rather than an unknown variant, because `0` names no id
+  at all (§3) and a slot must say which variant it keys, so a body carrying one
   is damaged rather than merely foreign. The reader stops that body, keeps
   what it decoded, and flags malformed (§4).
 - **Slots are written in ascending variant ordinal**, and a reader must
@@ -2974,7 +3058,7 @@ element carries:
   the same `fnv1a64` a field id takes (§5), carried in the file's id table
   like every other id (§3). The length rides for EVERY element kind, scalars
   included, so one rule skips an unknown key whatever the element is.
-- **On load, each pair is placed by its variant id.** A key this reader can
+- **On load, each triple is placed by its key reference.** A key this reader can
   name lands in that variant's slot; a key it cannot name is skipped by its
   length and counted `unknown`; a slot the writer never sent keeps its
   declared default. Insert a variant, remove one, reorder them — every
@@ -3055,10 +3139,9 @@ tolerance is the versioning model:
   has a kind of its own — **and so is an array whose ELEMENT kind differs**,
   which is the same event one level in (§3): `[3]int32` read into a
   `[3]float32` field is skipped and counted, never reinterpreted. **An ARM
-  is judged by these same rules**: an arm header is a field header and
-  carries its own kind byte (§3), so a retyped arm is a kind mismatch where
-  a retyped field is one, the union reading `None` and the parent reading
-  on.
+  is judged by these same rules**, because it carries its own kind byte
+  (§3): a retyped arm is a kind mismatch where a retyped field is one, the
+  union reading `None` and the parent reading on.
 - **A changed array BOUND** (a literal, a constant, or an `E.Max`
   expression that moved): the array still loads, and the bound is not part
   of identity — a field is its name hash and its kind, and neither carries
@@ -3106,9 +3189,9 @@ tolerance is the versioning model:
   checked, so a repeat under the field id leaves no arm an earlier
   occurrence decoded standing: the last occurrence wins whole even when its
   own framing is damaged, and the element reads `None`. An element the body
-  cannot reach at all — no byte left for an arm id — is not touched.
-  An ARRAY body too short to carry its own header — the element kind byte and
-  the count, so fewer than two bytes — is **INERT**: no element is
+  cannot reach at all, with no byte left for an arm id, is not touched.
+  An ARRAY body too short to carry its own header, which is the element kind
+  byte and the count and so fewer than two bytes, is **INERT**: no element is
   decoded, no counter fires, and the field keeps the value it has. On a first
   occurrence that value is the declared default; under a repeat it is whatever
   the earlier occurrence left, so **a repeat that arrives this short replaces
@@ -3253,17 +3336,14 @@ on it.**
   bytes, and under a shared kind an index would read back as a plausible
   count in every case. The pointer index's own kind `17` (§3.1) turns
   that edit into a kind mismatch too.
-- **Changing a table field between an `enum` and its raw integer** was the
-  flagship of the referent class: a stored variant hash read as a plausible
-  number, or a number read as a hash that lands on a real variant. The
-  enum's own kind `30` (§3) turns it into a kind mismatch in both
-  directions.
-- **Changing a union ARM's type** is the same shape one level in, and it is
-  closed by framing rather than by a kind number: an arm header is a field
-  header and carries the arm's own kind byte (§3), so a retyped arm is a
-  kind mismatch exactly as a retyped field is. Each of the five cost a kind
-  number or one byte an arm, and each closed a class that discipline alone
-  cannot.
+- **Changing a table field between an `enum` and its raw integer** is a
+  stored variant hash read as a plausible number, or a number read as a hash
+  that lands on a real variant. The enum's own kind `30` (§3) turns it into a
+  kind mismatch in both directions.
+- **Changing a union ARM's type** is the same shape one level in, closed by
+  framing rather than by a kind number: an arm carries its own kind byte
+  (§3). Each of the five cost a kind number or one byte an arm, and each
+  closed a class that discipline alone cannot.
 
 **One edit is adjacent to this class without belonging to it, and the
 difference is worth stating rather than leaving to the reader.** Adding or
@@ -3347,8 +3427,10 @@ has:
 - **bit flips, byte overwrites, an inserted run, a deleted run**, anywhere;
 - **truncation** at every length, from the whole wire down to nothing;
 - **a length or a count past the body** — `L` set to the bytes remaining plus
-  one, plus two, and to `0x7FFFFFFF` and `0xFFFFFFFF`; `N` set to twice what
-  the body holds, and to the two values the sign bit spells;
+  one, plus two, and to the four values a 64-bit LEB can spell that a length
+  never legally is (`0x7FFFFFFF`, `0x80000000`, `0xFFFFFFFF` and
+  `0xFFFFFFFFFFFFFFFF`); `N` set to twice what the body holds, and to the same
+  four;
 - **a duplicate field**, its enclosing lengths grown to fit so that the repeat
   is the whole event; again with the framing left one field short; and again
   with the framing grown but a length INSIDE the copy made impossible, so the
@@ -3378,12 +3460,13 @@ has:
   so that the entries overrun the front of the file; the file truncated
   inside the entries and inside the count; an entry's own eight bytes
   flipped, which must read as an ordinary `unknown` and never as damage; the
-  same id written into two entries;
+  same id written into two entries, which is malformed for the whole wire
+  (§3);
 - **an id renamed** to a neighbor's entry and to a bit-flipped one;
 - **in the variable class**, every node index to `0` (null), `1` (the root),
   `2` (the first record), to `node_count` and the three indices above it — the
-  LAST record and the two past it — and to the three the width can spell
-  (`0x7FFFFFFF`, `0x80000000`, `0xFFFFFFFFFFFFFFFF`); `node_count` off by one
+  LAST record and the two past it, and to the four extremes a length takes
+  above; `node_count` off by one
   each way and at both extremes; a record's type id reference flipped and
   cleared;
 - **a window spliced in** from another seed of the same unit.
@@ -3486,22 +3569,20 @@ own, because one rule in place of three is worth more than the bytes three
 would have saved, and the bytes it costs are paid ONCE a file: an id rides in
 the id table and a body names it by reference (§3).
 
-**NO HASH VALUE IS RESERVED, because a hash never appears on this wire
-outside the id table.** What is reserved is the REFERENCE `0`, a position and
-not a hash, which is the field terminator, the enum's `None` and the union's
-empty arm (§3). A name whose hash is `0` is an ordinary id like any other.
+**WHAT NAMES NOTHING IS THE REFERENCE `0`, a position rather than a hash**
+(§3): the field terminator, the enum's `None` and the union's empty arm. A
+name whose hash is `0` is an ordinary id like any other, so nothing about a
+declared name is special-cased anywhere.
+
+**ONE ID IS HELD BACK, and it is the node table's `0xFFFFFFFFFFFFFFFF`**
+(§3.1). No name is expected to produce it, and a declared name that does, a
+`was` included, is refused by the checker naming the field (§11).
 
 **At 64 bits the collision refusals are formalities rather than schedule
 risks.** A vocabulary of a million variants expects about `3 × 10⁻⁸`
 collisions over its life, and a closure of a thousand tables about
-`3 × 10⁻¹⁴`. The refusals below still exist, because a formality that is not
+`3 × 10⁻¹⁴`. They are enforced all the same, because a formality that is not
 enforced is a hazard that fires once.
-
-**The node-table field id `0xFFFFFFFFFFFFFFFF` is RESERVED** (§3.1), and it
-is the only reserved id the wire has. It is re-reserved rather than derived
-from a name: no spelling produces it, it takes an ordinary entry in the id
-table, and a field name — or a `was` — whose hash lands on it is refused
-naming the field (§11).
 
 **A MAP's entry carries two ids that are CONSTANTS of this vocabulary** (§2.8):
 `key` is `0x3DC94A19365B10EC` and `value` is `0x7CE4FD9430E80CEA`, the same
@@ -3850,8 +3931,9 @@ are those padded starts, so "is a directory entry" and "is aligned" are
 one check rather than two.
 
 **A BLOB NODE in a region** (§2.5) is an eight-byte header and then the
-bytes: `length (u32)`, four zero bytes, and `length` bytes of data at offset
-eight, so the data itself is eight-aligned; a `*string` blob carries one more
+bytes: `length (u64)`, then `length` bytes of data at offset eight, so the
+data itself is eight-aligned and the header expresses every length the wire
+can carry (§3); a `*string` blob carries one more
 zero byte after its data, which is the terminator `string(N)`'s storage
 carries and the reason a region hands back a C string with no copy. Its
 alignment is eight and its extent runs to the next entry as every node's
@@ -3949,12 +4031,12 @@ The builder is designed to go wide, lock-free by ownership:
   `-1` every measure's refusal answers (§7.6). A fixed unit and a map-free
   pointered unit keep the one scan.
 - **`LoadMeasure`'s answer is also the DEFENCE, and a caller is expected
-  to bound it.** The smallest legal record is THREE wire bytes — a one-byte
+  to bound it.** The smallest legal record is THREE wire bytes, a one-byte
   type id reference, a one-byte length and a body that is its terminator
-  (§3.1) — and it commands `sizeof( T )` region bytes plus its directory
-  entry, so a wire can ask for far more memory than it occupies. Variable
-  lengths made that ratio worse than fixed widths did, which is a reason to
-  bound the answer and not a reason to distrust it. The caller owns the allocation precisely so it
+  (§3.1), and it commands `sizeof( T )` region bytes plus its directory
+  entry, so a wire can ask for far more memory than it occupies. That ratio
+  is why the caller owns the allocation and is expected to refuse a number it
+  did not expect. The caller owns the allocation precisely so it
   can refuse a number it did not expect; nothing in the runtime decides
   that for it.
 - **Into a builder** — the tool's path. The same tolerant decode into a
@@ -4611,7 +4693,7 @@ fields would get wrong:
   delta of §6.3, and **NULL IS ZERO**. It is as wide as the offsets it is the
   difference of, so a region of any size expresses every reference it holds and
   a cook has no reach to refuse.
-- **A BLOB NODE is `length (u32)`, four zero bytes, then `length` bytes**, and
+- **A BLOB NODE is `length (u64)`, then `length` bytes**, and
   a `*string` blob's one more zero byte (§6.3) — a node whose extent is
   `8 + length`, or `9 + length`, at alignment eight, laid out in the numbering
   like every node and named in the directory under its reserved type id
@@ -5328,17 +5410,21 @@ by **the highest declared BIT INDEX** — not a count, so a walker loops
 `[0, enum_max]` inclusive, exactly as it does for an enum's values and a
 union's arms. It carries no per-variant wire id, because a mask's variants
 ride by position and have none (§4); a null id function beside a non-null
-name function is what identifies a flags field.
+name function is what identifies a flags field, and a `ViewVariant` row for a
+bit carries the reserved id of §3.1 in its `id` column (below).
 
-**`key_id( 0 )` is still `0`**, the value that says a key has no id, with
-`key_name( 0 )` reading `"None"` beside it — because the
-columns are functions of the KEY and `None` is a key the enum has. No
-storage index maps to it (§2.4), so nothing a walker enumerates reaches
-it; the row exists so that a tool holding a key from somewhere else — a
-wire body, a text key, a user's input — can ask about `None` and be told
-`0` rather than be left to a rule about slot indices. `None` rides as the
-zero REFERENCE and keys no slot on this wire (§3, §3.2), and that is the one
-test a tool needs.
+**AN ID COLUMN SAYS "NO TABLE-WIRE IDENTITY" WITH THE RESERVED ID OF §3.1**,
+one value everywhere a descriptor has no id to give, because at sixty-four
+bits a hash of `0` is an ordinary id a real name can produce (§5) and a
+descriptor that spelled absence as `0` would collide with it. So
+**`key_id( 0 )` is the reserved id**, with `key_name( 0 )` reading `"None"`
+beside it, because the columns are functions of the KEY and `None` is a key
+the enum has. No storage index maps to it (§2.4), so nothing a walker
+enumerates reaches it; the row exists so that a tool holding a key from
+somewhere else, a wire body, a text key or a user's input, can ask about
+`None` and be answered rather than be left to a rule about slot indices.
+`None` rides as the zero REFERENCE and keys no slot on this wire (§3, §3.2),
+and that is the one test a tool needs.
 
 **A FIXED table carries a second set of positions for the same fields, and
 this is what makes the block form READABLE BY REFLECTION** (§19.2). No flag
@@ -5514,9 +5600,9 @@ struct ViewVariant          // one enum variant, one flags bit, one union arm
 {
     uint64_t value;         // an enum's value, a flags BIT INDEX, a union's tag
     const char * name;
-    uint16_t id;            // the table-wire id (§5); 0 for a flags bit, and 0
-                            // throughout a vocabulary no table closure reaches
-                            // (§8.2)
+    uint64_t id;            // the table-wire id (§5); the RESERVED id of §3.1
+                            // for a flags bit, and throughout a vocabulary no
+                            // table closure reaches (§8.2)
     const char * payload_name;      // a union arm's TYPE as declared — a record's
                                     // name, or a general arm's spelling
                                     // ("int32", "string(64)", "*Chunk"); NULL on
@@ -5788,7 +5874,7 @@ held by construction:
 - **Relocatable, where possible — and it holds in BOTH forms.** Generated
   table structs are trivially copyable and standard-layout, and the
   generated header enforces that with static asserts. A pointer FIELD is
-  a four-byte reference, never a machine address, so the property
+  an eight-byte reference, never a machine address, so the property
   survives pointers: a fixed-size table is one memcpy-able struct, and a
   packed region (§6.3) is one memcpy-able BLOCK whose references are
   self-relative and therefore need no fix-up at a new address. A
@@ -5854,9 +5940,10 @@ in build version (§20.5).
   time, and a record's storage, an array's whole storage, a block form's
   extent (§19.3) and a wire width are each refused past 2^40 bytes, naming
   the field and the product, so a schema of individually legal bounds cannot
-  hand a backend a number the arithmetic no longer represents. The cap is
-  above every node body the wire can frame (a node's length is a `u32`,
-  §3.1) and far below where an int64 size stops being exact.
+  hand a backend a number the arithmetic no longer represents. The wire
+  itself frames a body of any size (§3), so this cap is the STORAGE side's,
+  and a wire body past it is refused at LOAD rather than at compile time
+  (§3.1). It sits far below where an int64 size stops being exact.
 - Recursive nesting (§2 — the cycle is named).
 - A bare rename hazard: `was` naming the field's own name (§5).
 - Id collisions, hash or `was`-induced (§5).
@@ -6022,11 +6109,9 @@ in build version (§20.5).
   recurses away. A region loaded from a wire is not re-proved, and a save
   from it reproduces what it was given.
 - **A field id colliding with the reserved node-table id
-  `0xFFFFFFFFFFFFFFFF`** (§3.1) — by hash accident or through `was` — naming
-  the field. **Two tables in one unit's closure whose NAME ids collide**
-  (§5), naming both: a node's type id is its table's name hash. Each is a
-  formality at 64 bits and each is enforced, with a planted collision as the
-  negative control that turns it red.
+  `0xFFFFFFFFFFFFFFFF`** (§5), by hash accident or through `was`, naming the
+  field. **Two tables in one unit's closure whose NAME ids collide** (§5),
+  naming both: a node's type id is its table's name hash.
 - **A declaration colliding with a generated table spelling.** Tables and
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
@@ -7008,7 +7093,7 @@ possible, and minimize copying (§6.2):
    to ride inside each body as a reserved FIELD, and every node body would
    carry a field no schema declared.
 8. **A SECOND LENGTH ENCODING on the reserved field, so that the node table
-   could outgrow an ordinary field — NOT NEEDED, and refused on that
+   could outgrow an ordinary field: NOT NEEDED, and refused on that
    ground.** Every length on this wire is one canonical LEB128 with 64 bits
    of capability (§3), so the reserved field frames a node table of any size
    under the encoding every other field uses, and a skipper that knows kind
@@ -7134,7 +7219,7 @@ inspects everything in the schema built:
 
 **The union arm's framing** (§2.6, §3):
 
-28. **AN ARM WITHOUT A KIND BYTE — REJECTED, and the byte is what closes
+28. **AN ARM WITHOUT A KIND BYTE: REJECTED, and the byte is what closes
     the class.** An arm that carried only its id and its `L` would leave a
     reader judging the arm's type off the wire, so a retype between two
     fixed-width arms of one width, an arm read as a string arm, a scalar
@@ -8398,7 +8483,7 @@ where implementations drift apart.
 
 **An optional committed projection of a unit's table closure, and the check
 that refuses the edits the wire cannot report.** §4.1 names those edits:
-exactly four — a changed specified default, a moved flags variant, a fixed
+exactly four: a changed specified default, a moved flags variant, a fixed
 field's F moved under one kind, and a referent that cannot stand in for the
 one it replaces. The compiler retains
 no history and cannot see any of them on its own. The baseline IS that
@@ -8436,8 +8521,8 @@ and their own wire facts.
 An arm that names a declared `type` or `table` carries `payload=<Name>` and
 nothing else, exactly as it always did, so a baseline written before an arm
 could be anything else still reads and a unit that has not moved regenerates
-byte-identically. An arm with NO PAYLOAD carries `kind=none`, which is the
-kind token saying there is no kind to carry. Every other arm carries the
+byte-identically. An arm with NO PAYLOAD carries `kind=none`, which is this
+file's spelling of the payload-free kind the arm carries on the wire (§3). Every other arm carries the
 FIELD tokens for what it is, in the field line's own column order and judged
 by the field line's own rules: `kind=`, then where the fact exists `elem=`,
 the `enum=` / `flags=` / `union=` / `type=` that names its referent,
@@ -8649,9 +8734,9 @@ and each vocabulary's standard is its own (§3):
 - A **flags** mask carries no names at all, so it stands in only when the
   old variants sit at the same bits.
 
-**Dropping the referent entirely always refuses** — a nested table
-respelled as a `bytes(N)` of the same length, say, or an enum respelled as
-its raw `uint16`. The wire reports the second of those, because an enum has
+**Dropping the referent entirely always refuses**, a nested table respelled
+as a `bytes(N)` of the same length, say, or an enum respelled as its raw
+`uint16`. The wire reports the second of those, because an enum has
 its own kind (§3), and refuses the pair here anyway: a referent dropped is a
 declaration this file can no longer judge, and an edit the reader reports is
 still an edit a save game may not survive.
@@ -9613,7 +9698,7 @@ the type wire, on what the region looks like, and on what a load puts in it.
      stored variant unknown and a reorder lands it on a different ordinal;
    - every `union`'s **arm order and names** — the same two facts one level
      up: the wire resolves an arm by name hash and the slot stores its tag;
-   - every `flags`' **variant BIT POSITIONS** — a mask rides raw and a load
+   - every `flags`' **variant BIT POSITIONS**. A mask rides raw and a load
      copies it verbatim (§3), so a reorder or an in-place rename changes what
      every stored and every cooked bit MEANS while moving no offset and no
      id. Nothing on the wire can report it (§4.1), and a cooked mask silently
@@ -9669,7 +9754,7 @@ keep, so it belongs in `none` with its reason or the token belongs on the line.
 | a compressed float's RESOLUTION | **meaning** | `step=` |
 | an `enum`'s variant order and names | **meaning** | the `variant` lines — the wire carries a name hash, the slot the stored value (§3) |
 | a `union`'s arm order and names | **meaning** | the `arm` lines, the same one level up |
-| a `flags`' variant order and names | **meaning** | the `flags` lines (§20.2), each variant with its BIT POSITION — a mask rides raw, so the position is what a stored bit means, and a reorder or an in-place rename remaps every cooked mask with nothing on the wire to say so (§4.1) |
+| a `flags`' variant order and names | **meaning** | the `flags` lines (§20.2), each variant with its BIT POSITION. A mask rides raw, so the position is what a stored bit means, and a reorder or an in-place rename remaps every cooked mask with nothing on the wire to say so (§4.1) |
 | WHICH flags declaration a field names | none | a slot is a raw `u64` copied through: SPEC.md §4.2 makes a `flags` field a `uint64` in EVERY target and a flags field carries no specified default, so swapping one flags declaration for a same-width other changes no cook byte. Its WIDTH rides in `size=`. Hence no `flags=` token on a field line |
 | `cpp_native` / `cpp_include` | none | SPEC.md §6.1 guarantees layout identity by DERIVATION — the native type is the one the emitted struct would have had — so there is nothing for a token to distinguish |
 | an `if` GUARD added or removed | none | a load finds a field by its id whatever branch encloses it, with every counter zero (§4.1). The cost is on the next WRITE, which is §18's case and not a cook's |
@@ -9844,21 +9929,22 @@ field's does, and `offset=` is the arm's offset within the union's storage,
 whose tag sits at 0 (§8.1). An arm takes no default and no `?`, so no
 `default=` and no `optional=` reaches an `arm` line, and a keyed array is
 refused at an arm (§2.6), so neither `array=keyed` nor `key=` does. **An arm
-with NO PAYLOAD carries `kind=none`**, the second line, which is §18.1's
-spelling for it. The three spellings are disjoint, so a unit whose arms all
+with NO PAYLOAD carries `kind=none`**, the second line, which is this
+projection's spelling of the payload-free kind the arm carries on the wire
+(§3), and §18.1's too. The three spellings are disjoint, so a unit whose arms all
 name declared types projects exactly as it did before arms could be anything
 else, and its build version does not move. A `flags` ARM carries no referent
 token for the reason a flags FIELD carries none (§20.1), a mask rides raw
 and a load copies it verbatim, and its width rides in `size=` like any
 other.
 
-**A `flags` DECLARATION takes a block of its own, and the number on a
-variant line is its BIT POSITION** (§20.1), counted from `0` and never a
-positional index, because the bit is what a stored mask means. Every flags
-declaration the closure reaches projects, whether or not a field names one,
-for the reason the `block` header line rides unconditionally: what the id has
-to distinguish is the BUILD. A flags FIELD still takes an ordinary `field`
-line with no referent token.
+**A `flags` DECLARATION takes a block of its own, and it is the ENUM BLOCK
+with the keyword swapped**: the same membership, the same shape, the same
+token spelling. Only a `flags` a field or an array key names projects, as
+only such an enum does. The number on a variant line is its BIT POSITION
+(§20.1), counted from `0` and never a positional index, because the bit is
+what a stored mask means. A flags FIELD still takes an ordinary `field` line
+with no referent token.
 
 **The first line is the projection's own FORM VERSION**, and it is the COOK
 FORM's too. Bump `N` when this rendering changes, and bump it when the cook's
@@ -10149,14 +10235,14 @@ a second digest.
   `key=`/`payload=` passes in silence: a field retyped between two records of
   identical `sizeof` and `alignof`; a keyed array's KEY enum swapped for
   another of the same variant count; a union arm's payload swapped for a
-  same-shaped record; **an ARM retyped under one width** — `int32` to
-  `float32` — which moves no `sizeof`, no offset and no wire id.
+  same-shaped record; **an ARM retyped under one width**, `int32` to
+  `float32`, which moves no `sizeof`, no offset and no wire id.
   Each must move the build version with kind, size, offset and wire id all
   unchanged.
 
 - **The exclusions, each with the edit that proves it**: a `was` rename moves
   nothing; **a flags field's REFERENT swapped for a same-width
-  other moves nothing** — the negative control for the missing `flags=` token
+  other moves nothing**: the negative control for the missing `flags=` token
   on a field line, and a table body's field, so the protocol id does not cover
   it either;
   a guard added or removed moves nothing; a `json` key changed moves nothing;

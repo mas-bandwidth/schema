@@ -669,9 +669,8 @@ still open.
 - **`Open` refuses in silence.** A wrong-version, corrupt or truncated cook
   returns null; only the tool's `uncook` names the mismatch. Log the null.
 - **Tiny messages pay for 64-bit identity.** A file carries each distinct id
-  once at eight bytes, so a three-field message is about 45 bytes where a
-  sixteen-bit inline form spent about 20; a stream that wants small same-build messages is a
-  `type` stream.
+  once at eight bytes, so a three-field message is about 45 bytes; a stream
+  that wants small same-build messages is a `type` stream.
 - **Deep pointered saves have no text form** past the text reader's depth
   cap of 128 levels; the "debug an old file" pattern hits that wall on the
   largest saves.
