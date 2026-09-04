@@ -141,10 +141,16 @@ func diff(t *testing.T, edited string, policy map[string]baseline.TokenRule) []b
 // about what it changed.
 func replace(t *testing.T, old, new string) string {
 	t.Helper()
-	if strings.Count(baseSrc, old) != 1 {
-		t.Fatalf("fixture edit %q does not appear exactly once in the base schema", old)
+	return editOf(t, baseSrc, old, new)
+}
+
+// editOf is replace over any fixture unit.
+func editOf(t *testing.T, src, old, new string) string {
+	t.Helper()
+	if strings.Count(src, old) != 1 {
+		t.Fatalf("fixture edit %q does not appear exactly once in the fixture", old)
 	}
-	return strings.Replace(baseSrc, old, new, 1)
+	return strings.Replace(src, old, new, 1)
 }
 
 // find reports whether a finding of this verdict mentions both fragments.
@@ -190,12 +196,16 @@ func TestRefusals(t *testing.T) {
 		control string // an edit of the same shape the wire absorbs
 	}{
 		{
-			name:    "a specified default changed",
-			edited:  replace(t, "damage  float32 = 21.0", "damage  float32 = 25.0"),
-			where:   "Config.damage",
-			what:    "specified default 21.0 -> 25.0",
-			token:   "default",
-			control: replace(t, "damage  float32 = 21.0", "damage  float32 = 21.0 | min = 0.0, max = 100.0, resolution = 0.01"),
+			name:   "a specified default changed",
+			edited: replace(t, "damage  float32 = 21.0", "damage  float32 = 25.0"),
+			where:  "Config.damage",
+			what:   "specified default 21.0 -> 25.0",
+			token:  "default",
+			// the absorbed edit of the same shape: the same default DECLARED,
+			// on a field nothing has ever written. (Adding a range to the
+			// field instead would not do: a declared range is an extent, and
+			// adding one narrows the kind's whole domain — see TestRangeFacts.)
+			control: replace(t, "damage  float32 = 21.0", "damage  float32 = 21.0\n    bonus   float32 = 25.0"),
 		},
 		{
 			name:    "a specified default removed",
@@ -807,7 +817,10 @@ func TestAbsorbedEdits(t *testing.T) {
 		{"a field added", replace(t, "    hits    int32", "    hits    int32\n    added   int32")},
 		{"a field removed", replace(t, "    hits    int32\n", "")},
 		{"fields reordered", replace(t, "    damage  float32 = 21.0\n    heading int16", "    heading int16\n    damage  float32 = 21.0")},
-		{"a field renamed under was", replace(t, "hits    int32", "strikes int32 | was = \"hits\"")},
+		// the wire id survives, and the pairing that keeps the TEXT key is
+		// declared beside it — the hint in TestRenameHintsTheJsonPairing is
+		// exactly what a bare `was` draws instead
+		{"a field renamed under was, with the text key paired", replace(t, "hits    int32", "strikes int32 | was = \"hits\", json = \"hits\"")},
 		{"a flags variant appended", replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Cloaked, Turbo, Hardened }")},
 		{"an enum variant inserted in the middle", replace(t, "enum Grade { Bronze, Silver, Gold }", "enum Grade { Bronze, Argent, Silver, Gold }")},
 		{"an array bound grown", replace(t, "const Slots = 8", "const Slots = 64")},
@@ -1162,5 +1175,384 @@ func TestCheckRefusesAForeignBaseline(t *testing.T) {
 				t.Fatalf("wanted a refusal mentioning %q, got %v", tc.want, errs)
 			}
 		})
+	}
+}
+
+// ---- the range facts (docs/SPEC-TABLES.md §18.1, §18.2) ----
+
+// rangeSrc is the ranged fixture: one field per family the table wire clamps
+// on load — a ranged integer, a fixed-point field whose bounds are its
+// WHOLE-UNIT ones, and a compressed float — with an unranged integer beside
+// them, so a case can move one range and leave the rest still. Every default
+// sits well inside its bounds, so an edit here moves the range and nothing
+// else.
+const rangeSrc = `package ranged
+
+table Ship
+{
+    hull  int32 = 50          | min = 0, max = 1000
+    angle fixed(16, 16) = 0   | min = -180, max = 180
+    speed float32 = 1.0       | min = 0.0, max = 100.0, resolution = 0.01
+    tally int32 = 0
+}
+`
+
+// rangeDiff judges an edit of rangeSrc.
+func rangeDiff(t *testing.T, edited string, policy map[string]baseline.TokenRule) []baseline.Finding {
+	t.Helper()
+	return baseline.Diff(committed(t, rangeSrc), baseline.Render(unit(t, edited)), policy)
+}
+
+// TestRangeFacts is #443 made a gate. A tightened range CLAMPS every stored
+// value past the new bound on load, counted once and permanent on the next
+// save (docs/SPEC-TABLES.md §4) — and until the range was in the file the
+// baseline passed it in silence, because the file carried no range token at
+// all. It warns rather than refuses, for the reason every extent does: the
+// data survives and the read report counts what was lost.
+func TestRangeFacts(t *testing.T) {
+	cases := []struct {
+		name    string
+		edited  string
+		where   string
+		what    string
+		token   string
+		control string // the same extent moved the way the wire absorbs
+	}{
+		{
+			name:    "a maximum lowered",
+			edited:  editOf(t, rangeSrc, "hull  int32 = 50          | min = 0, max = 1000", "hull  int32 = 50          | min = 0, max = 100"),
+			where:   "Ship.hull",
+			what:    "declared maximum 1000 -> 100 (a stored value above the new maximum reads back AS the maximum and counts clamped)",
+			token:   "max",
+			control: editOf(t, rangeSrc, "hull  int32 = 50          | min = 0, max = 1000", "hull  int32 = 50          | min = 0, max = 10000"),
+		},
+		{
+			name:    "a minimum raised",
+			edited:  editOf(t, rangeSrc, "hull  int32 = 50          | min = 0, max = 1000", "hull  int32 = 50          | min = 10, max = 1000"),
+			where:   "Ship.hull",
+			what:    "declared minimum 0 -> 10 (a stored value below the new minimum reads back AS the minimum and counts clamped)",
+			token:   "min",
+			control: editOf(t, rangeSrc, "hull  int32 = 50          | min = 0, max = 1000", "hull  int32 = 50          | min = -10, max = 1000"),
+		},
+		{
+			// a FIXED field's declared bounds are whole units and the raw
+			// scale is `frac`, recorded beside them: narrowing the units
+			// narrows the raw range at the same F, with no kind to report it
+			name:    "a fixed field's whole-unit bounds narrowed",
+			edited:  editOf(t, rangeSrc, "angle fixed(16, 16) = 0   | min = -180, max = 180", "angle fixed(16, 16) = 0   | min = -90, max = 180"),
+			where:   "Ship.angle",
+			what:    "declared minimum -180 -> -90",
+			token:   "min",
+			control: editOf(t, rangeSrc, "angle fixed(16, 16) = 0   | min = -180, max = 180", "angle fixed(16, 16) = 0   | min = -360, max = 180"),
+		},
+		{
+			// the compressed float's bounds are FLOATS, so the comparison is
+			// not an integer one — the fact is exact either way
+			name:    "a compressed float's maximum lowered",
+			edited:  editOf(t, rangeSrc, "speed float32 = 1.0       | min = 0.0, max = 100.0, resolution = 0.01", "speed float32 = 1.0       | min = 0.0, max = 10.5, resolution = 0.01"),
+			where:   "Ship.speed",
+			what:    "declared maximum 100.0 -> 10.5",
+			token:   "max",
+			control: editOf(t, rangeSrc, "speed float32 = 1.0       | min = 0.0, max = 100.0, resolution = 0.01", "speed float32 = 1.0       | min = 0.0, max = 1000.5, resolution = 0.01"),
+		},
+		{
+			// a range where the declaration had none narrows the kind's WHOLE
+			// domain onto a slice of it: the same clamp, from the widest
+			// possible starting point
+			name:    "a range added where the field had none",
+			edited:  editOf(t, rangeSrc, "tally int32 = 0", "tally int32 = 0           | min = 0, max = 10"),
+			where:   "Ship.tally",
+			what:    "declared maximum 10 added (a stored value above the new maximum reads back AS the maximum and counts clamped)",
+			token:   "max",
+			control: editOf(t, rangeSrc, "tally int32 = 0", "tally int32 = 0\n    extra int32 = 0     | min = 0, max = 10"),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := rangeDiff(t, tc.edited, baseline.DefaultTokenPolicy)
+			if !find(got, baseline.Warn, tc.where, tc.what) {
+				t.Fatalf("a tightened range must warn; wanted %s: %s, got:%s", tc.where, tc.what, summary(got))
+			}
+			if refusals, _ := baseline.Split(got); len(refusals) != 0 {
+				t.Errorf("a tightened range warns and does not refuse, got:%s", summary(refusals))
+			}
+			// the DISCRIMINATION control: the same extent LOOSENED, which
+			// nothing already written falls outside of
+			if ctrl := rangeDiff(t, tc.control, baseline.DefaultTokenPolicy); len(ctrl) != 0 {
+				t.Errorf("a loosened range is absorbed; the baseline must be silent, got:%s", summary(ctrl))
+			}
+			// the ATTRIBUTION control
+			if got := rangeDiff(t, tc.edited, without(tc.token)); find(got, baseline.Warn, tc.where, tc.what) {
+				t.Errorf("with the %q rule removed the warning should be gone, got:%s", tc.token, summary(got))
+			}
+		})
+	}
+}
+
+// TestRangeRemovedIsAbsorbed: dropping a declared range widens the field to
+// its kind's whole domain, and nothing already written sits outside that.
+func TestRangeRemovedIsAbsorbed(t *testing.T) {
+	edited := editOf(t, rangeSrc, "hull  int32 = 50          | min = 0, max = 1000", "hull  int32 = 50")
+	if got := rangeDiff(t, edited, baseline.DefaultTokenPolicy); len(got) != 0 {
+		t.Errorf("a dropped range loosens; the baseline must be silent, got:%s", summary(got))
+	}
+}
+
+// TestRangeIsRecorded: the projection carries the EVALUATED bounds, which is
+// what lets the check see a range that moved through a constant.
+func TestRangeIsRecorded(t *testing.T) {
+	text := baseline.Render(unit(t, rangeSrc)).Text()
+	for _, want := range []string{
+		"field hull id=0x1612 kind=4 min=0 max=1000 default=50",
+		"min=-180 max=180",
+		"min=0.0 max=100.0",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the projection must record %q:\n%s", want, text)
+		}
+	}
+
+	// and it is the EVALUATED value: a const that moves moves the fact
+	const constSrc = `package ranged
+
+const MaxHull = 1000
+
+table Ship
+{
+    hull int32 = 50 | min = 0, max = MaxHull
+}
+`
+	edited := editOf(t, constSrc, "const MaxHull = 1000", "const MaxHull = 100")
+	got := baseline.Diff(committed(t, constSrc), baseline.Render(unit(t, edited)), baseline.DefaultTokenPolicy)
+	if !find(got, baseline.Warn, "Ship.hull", "declared maximum 1000 -> 100") {
+		t.Errorf("a range tightened through its constant must warn, got:%s", summary(got))
+	}
+}
+
+// ---- `was` misuse and the rename pair (docs/SPEC-TABLES.md §5, §18.2) ----
+
+// wasSrc is the twice-renamed fixture: a field that has ALREADY been renamed
+// once and rides under the first name's hash.
+const wasSrc = `package renaming
+
+table Ship
+{
+    speed float32 = 500.0 | was = "velocity"
+    hull  int32 = 50      | min = 0, max = 1000
+}
+`
+
+// TestWasChainIsRefused is #444's flagship. `was` names the FIRST wire name,
+// forever: once `velocity` became `speed | was = "velocity"` the field rides
+// under hash("velocity"), so a later `max_speed | was = "speed"` hashes a name
+// no byte was ever written under and every stored value orphans — with nothing
+// on the wire to report it, because the reader simply finds no such id.
+func TestWasChainIsRefused(t *testing.T) {
+	edited := editOf(t, wasSrc, `speed float32 = 500.0 | was = "velocity"`, `max_speed float32 = 500.0 | was = "speed"`)
+	got := baseline.Diff(committed(t, wasSrc), baseline.Render(unit(t, edited)), baseline.DefaultTokenPolicy)
+	if !find(got, baseline.Refuse, "Ship.max_speed",
+		`was = "speed" names speed, which itself rode under was = "velocity" — `+"`was`"+` names the FIRST wire name, forever`) {
+		t.Fatalf("a second `was` naming the field's own current spelling must be refused, got:%s", summary(got))
+	}
+	if !find(got, baseline.Refuse, "Ship.max_speed", `write was = "velocity"`) {
+		t.Errorf("the refusal must name the spelling that is correct, got:%s", summary(got))
+	}
+
+	// the DISCRIMINATION control: the second rename done RIGHT — the first
+	// wire name carried forward — moves no byte and says nothing
+	right := editOf(t, wasSrc, `speed float32 = 500.0 | was = "velocity"`, `max_speed float32 = 500.0 | was = "velocity"`)
+	if ctrl := baseline.Diff(committed(t, wasSrc), baseline.Render(unit(t, right)), baseline.DefaultTokenPolicy); len(ctrl) != 0 {
+		t.Errorf("carrying the first wire name forward is the whole point of `was`; it must be silent, got:%s", summary(ctrl))
+	}
+	// the ATTRIBUTION control
+	if got := baseline.Diff(committed(t, wasSrc), baseline.Render(unit(t, edited)), without("was-chain")); len(got) != 0 {
+		t.Errorf("with the \"was-chain\" rule removed the edit passes as it did before, got:%s", summary(got))
+	}
+}
+
+// TestRenameHintsTheJsonPairing is #444's second half. A `was` keeps the WIRE
+// id through a rename and does not keep the TEXT key, which is the field's name
+// (docs/SPEC-TABLES.md §16.4) — so an existing JSON file keyed on the old name
+// stops matching. The hint is said once, at the edit that adds the `was`, and
+// only to a field with no key of its own.
+func TestRenameHintsTheJsonPairing(t *testing.T) {
+	edited := replace(t, "hits    int32", `strikes int32 | was = "hits"`)
+	got := diff(t, edited, baseline.DefaultTokenPolicy)
+	if !find(got, baseline.Warn, "Config.strikes", `renamed under was = "hits", which keeps the wire id and NOT the text key — the JSON key is now "strikes"; pair json = "hits"`) {
+		t.Fatalf("a bare rename must hint the text-key pairing, got:%s", summary(got))
+	}
+	if refusals, _ := baseline.Split(got); len(refusals) != 0 {
+		t.Errorf("a hint is a hint: it must not refuse, got:%s", summary(refusals))
+	}
+
+	// the DISCRIMINATION control: the pairing DECLARED beside the rename
+	paired := replace(t, "hits    int32", `strikes int32 | was = "hits", json = "hits"`)
+	if ctrl := diff(t, paired, baseline.DefaultTokenPolicy); len(ctrl) != 0 {
+		t.Errorf("a field that already pairs its text key has answered the question, got:%s", summary(ctrl))
+	}
+	// SAID ONCE: with the rename committed, the next check is silent
+	if again := baseline.Diff(committed(t, edited), baseline.Render(unit(t, edited)), baseline.DefaultTokenPolicy); len(again) != 0 {
+		t.Errorf("the hint belongs to the edit that renames, not to every check after it, got:%s", summary(again))
+	}
+	// the ATTRIBUTION control
+	if got := diff(t, edited, without("was-json")); find(got, baseline.Warn, "Config.strikes", "pair json =") {
+		t.Errorf("with the \"was-json\" rule removed the hint should be gone, got:%s", summary(got))
+	}
+}
+
+// TestRemovalAndAdditionWarnAsAPossibleRename is #444's third half, and the one
+// mechanism that can see a BARE rename at all. To the compiler a rename with no
+// `was` is a removal plus an addition, and §18.2 passes both in silence; the
+// baseline is the one place the PAIR is visible. Two independent edits in one
+// commit are legitimate, so it warns and never refuses.
+func TestRemovalAndAdditionWarnAsAPossibleRename(t *testing.T) {
+	renamed := replace(t, "hits    int32", "strikes int32")
+	got := diff(t, renamed, baseline.DefaultTokenPolicy)
+	if !find(got, baseline.Warn, "table Config",
+		"hits removed and strikes added in one edit — if that is a rename the wire id moved with the name and every stored value orphans") {
+		t.Fatalf("a removal and an addition in one table must warn, got:%s", summary(got))
+	}
+	if !find(got, baseline.Warn, "table Config", "declare it `strikes ... | was = \"hits\"`, and pair `json = \"hits\"` if the text key must survive") {
+		t.Errorf("the warning must name both remedies, got:%s", summary(got))
+	}
+	if refusals, _ := baseline.Split(got); len(refusals) != 0 {
+		t.Errorf("two independent edits in one commit are legitimate: this warns, never refuses, got:%s", summary(refusals))
+	}
+
+	// THE NEGATIVE CONTROLS the issue names: each half alone is an ordinary
+	// edit the wire absorbs, and must stay silent
+	for _, tc := range []struct{ name, edited string }{
+		{"a removal alone", replace(t, "    hits    int32\n", "")},
+		{"an addition alone", replace(t, "    hits    int32", "    hits    int32\n    strikes int32")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if ctrl := diff(t, tc.edited, baseline.DefaultTokenPolicy); len(ctrl) != 0 {
+				t.Errorf("half of the pair is not the pair; the baseline must be silent, got:%s", summary(ctrl))
+			}
+		})
+	}
+	// a rename that DECLARES its `was` keeps the id, so there is no pair to see
+	declared := replace(t, "hits    int32", `strikes int32 | was = "hits", json = "hits"`)
+	if ctrl := diff(t, declared, baseline.DefaultTokenPolicy); len(ctrl) != 0 {
+		t.Errorf("a declared rename moves no id and draws no pair warning, got:%s", summary(ctrl))
+	}
+	// the ATTRIBUTION control
+	if got := diff(t, renamed, without("field-pair")); find(got, baseline.Warn, "table Config", "removed and strikes added") {
+		t.Errorf("with the \"field-pair\" rule removed the warning should be gone, got:%s", summary(got))
+	}
+}
+
+// ---- the no-baseline notice (docs/SPEC-TABLES.md §18.1) ----
+
+// TestNudge is #445. The baseline is opt-in — no file, no check — so the
+// DEFAULT posture of a save-game unit is unguarded against every edit §4.1
+// marks silent, and nothing said so. One line says it, and committing a
+// baseline silences it.
+func TestNudge(t *testing.T) {
+	dir, paths := writeUnit(t, baseSrc)
+	msg := baseline.Nudge(unit(t, baseSrc), paths)
+	for _, want := range []string{
+		"fixture declares 1 table and",
+		"holds no tables.baseline",
+		"save-game evolution is unguarded (docs/SPEC-TABLES.md §18)",
+		`commit one with: schema tables-baseline --update --reason "first baseline"`,
+		dir,
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the notice must carry %q, got: %s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "\n") {
+		t.Errorf("the notice is ONE line, got: %q", msg)
+	}
+
+	// COMMITTING A BASELINE SILENCES IT — the whole point of a nudge
+	if _, _, err := baseline.Update(unit(t, baseSrc), paths, "the first baseline"); err != nil {
+		t.Fatal(err)
+	}
+	if msg := baseline.Nudge(unit(t, baseSrc), paths); msg != "" {
+		t.Errorf("a unit with a baseline is guarded and must be told nothing, got: %s", msg)
+	}
+}
+
+// TestNudgeIsAboutTABLES: a unit that declares no table has no table wire to
+// guard, so it is told nothing however long it lives without a baseline.
+func TestNudgeIsAboutTables(t *testing.T) {
+	const noTables = `package plain
+
+type Vec3
+{
+    x float32
+    y float32
+    z float32
+}
+`
+	_, paths := writeUnit(t, noTables)
+	if msg := baseline.Nudge(unit(t, noTables), paths); msg != "" {
+		t.Errorf("a unit with no tables has nothing to guard, got: %s", msg)
+	}
+}
+
+// TestPreBumpBaselineRepairs is the version bump's own path, run on the shape
+// every committed baseline in an estate takes the day a new judged token lands
+// (#443's range facts are that token): the file is a rendering this compiler
+// does not read, the check refuses and names `--update` as the remedy, and the
+// remedy regenerates the projection in the CURRENT rendering while carrying
+// every history line across verbatim.
+func TestPreBumpBaselineRepairs(t *testing.T) {
+	dir, paths := writeUnit(t, rangeSrc)
+	path := filepath.Join(dir, baseline.FileName)
+
+	// a baseline in the rendering BEFORE this one: the projection as it was
+	// written, with no range facts in it
+	stale := fmt.Sprintf(`schema-tables-baseline %d
+package ranged
+
+table Ship
+    field hull id=0x1612 kind=4 default=50
+
+%s
+### 2024-01-01 — the break we are never allowed to forget
+- Ship.hull: specified default 10 -> 50 [refuse]
+`, baseline.Version-1, baseline.HistoryHeading)
+	if err := os.WriteFile(path, []byte(stale), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, errs := baseline.Check(unit(t, rangeSrc), paths)
+	if len(errs) != 1 {
+		t.Fatalf("a baseline in an older rendering must refuse exactly once, got %v", errs)
+	}
+	for _, want := range []string{
+		fmt.Sprintf("baseline version %d, this compiler writes %d", baseline.Version-1, baseline.Version),
+		"--update --reason",
+	} {
+		if !strings.Contains(errs[0].Error(), want) {
+			t.Errorf("the refusal must mention %q, got: %v", want, errs[0])
+		}
+	}
+
+	if _, rewrote, err := baseline.Update(unit(t, rangeSrc), paths, "the range facts landed"); err != nil || !rewrote {
+		t.Fatalf("the advertised remedy must work: %v (rewrote=%v)", err, rewrote)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		fmt.Sprintf("schema-tables-baseline %d", baseline.Version),
+		"field hull id=0x1612 kind=4 min=0 max=1000 default=50", // the new judged token
+		"### 2024-01-01 — the break we are never allowed to forget",
+		"- Ship.hull: specified default 10 -> 50 [refuse]", // salvaged verbatim
+		"the range facts landed",
+		"baseline REGENERATED over an unreadable one",
+	} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("the repaired baseline must carry %q:\n%s", want, data)
+		}
+	}
+	if warns, errs := baseline.Check(unit(t, rangeSrc), paths); len(warns) != 0 || len(errs) != 0 {
+		t.Errorf("after the repair the check must pass: %v %v", warns, errs)
 	}
 }

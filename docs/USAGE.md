@@ -2275,6 +2275,16 @@ Old files that carry `velocity` load into `speed`; new files keep writing the
 old id. The compiler refuses `was` naming the field's own current name, and
 refuses any two fields of one table whose effective ids collide.
 
+**`was` names the FIRST wire name, forever.** Rename `speed` again and the
+attribute does not move with it — it still says `was = "velocity"`, because
+that is the name every stored byte was written under. Aiming the new one at
+the intermediate spelling instead (`max_speed | was = "speed"`) hashes a name
+no file ever carried, and every stored value orphans; a committed baseline
+refuses exactly that and names the spelling that is right. And `was` keeps
+the WIRE id, not the TEXT key — the JSON key is the field's own name (see the
+text form) — so pair `json = "velocity"` when an existing text file has to
+keep reading.
+
 ### The tables baseline: catching the edits the wire cannot report
 
 Think of a save game. A player's file was written two years ago by a build
@@ -2354,11 +2364,20 @@ both ride as kind 7. **"Stand in" means every identity survives AND, for a
 table, the facts under the shared field ids are unchanged**: a twin
 declaration carrying the same id under a different default is refused,
 because every stored body's elided value would quietly change meaning.
+Also refused: a second `was` aimed at the field's intermediate spelling,
+naming both names and the one that is correct.
 Warned, because the read report already counts what is lost: a bound or a
-string capacity shrunk, an enum variant or a union arm removed, a declaration
-renamed or otherwise no longer covered. Passed in silence, because the wire
-absorbs it: fields added, removed, reordered or renamed under `was`; variants
-added anywhere; flags variants APPENDED; bounds grown.
+string capacity shrunk, a declared range tightened from either end (or
+declared where the field had none — every stored value outside it clamps on
+load, and the next save writes the clamped value), an enum variant or a union
+arm removed, a declaration renamed or otherwise no longer covered. Warned
+too, because it is the shape a bare rename leaves: a field removed AND a
+field added in one table in one edit, naming both and suggesting the `was`
+and `json =` that declare it — a warning and not a refusal, because two
+independent edits in one commit are perfectly ordinary. Passed in silence,
+because the wire absorbs it: fields added, removed, reordered or renamed
+under `was`; variants added anywhere; flags variants APPENDED; bounds,
+capacities and ranges grown.
 
 Renaming a declaration never raises a verdict of its own: it warns, saying
 which declaration carries the old one's contents on, and the contents keep
@@ -2367,7 +2386,18 @@ whether or not its enum was renamed in the same edit.
 
 The whole thing is opt-in — no `tables.baseline`, no check — and the first
 one you write covers only what comes after it: data written before it existed
-was written against a shape nobody recorded.
+was written against a shape nobody recorded. So `schema check` says so once
+for a unit that declares a table and has no baseline:
+
+```
+$ schema check configs/
+notice: shipdemo declares 1 table and configs holds no tables.baseline — save-game
+evolution is unguarded (SPEC-TABLES.md §18); commit one with: schema tables-baseline
+--update --reason "first baseline" configs
+```
+
+That is a notice, not a failure: the exit code is untouched, and committing a
+baseline silences it.
 
 ### Going wide
 

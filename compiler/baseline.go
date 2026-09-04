@@ -17,6 +17,20 @@ func TablesBaselineText(u *ir.Unit) string {
 	return baseline.Render(u).Text()
 }
 
+// TablesBaselineNudge is the one line to print for a unit that declares tables
+// and has committed no tables.baseline (docs/SPEC-TABLES.md §18.1): the
+// baseline is opt-in, so such a unit is unguarded against every edit the table
+// wire cannot report, and nothing else would say so. It returns "" when there
+// is nothing to say — a unit with no tables, or one that has a baseline.
+//
+// It is a NOTICE, never a refusal: the CLI's `schema check` writes it to
+// stderr and leaves the exit code alone.
+//
+// paths are the unit's *.schema files, as [GatherPaths] returns them.
+func TablesBaselineNudge(u *ir.Unit, paths []string) string {
+	return baseline.Nudge(u, paths)
+}
+
 // UpdateTablesBaseline rewrites the unit's committed baseline — the
 // tables.baseline beside its schema files — and appends a dated entry to the
 // history section inside it naming every edit that changed what already-written

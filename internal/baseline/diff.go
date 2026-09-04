@@ -40,8 +40,8 @@ package baseline
 
 import (
 	"fmt"
+	"math/big"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -77,8 +77,12 @@ const (
 	RulePass TokenRule = iota
 	// RuleFixed — any change, addition or removal is a refusal.
 	RuleFixed
-	// RuleShrink — a smaller value warns; a larger one passes.
+	// RuleShrink — a smaller value warns; a larger one passes. The extent
+	// the token names got tighter, and a stored value past it clamps.
 	RuleShrink
+	// RuleRaise — a larger value warns; a smaller one passes. RuleShrink's
+	// mirror, for the bottom end of a range: raising a minimum tightens it.
+	RuleRaise
 	// RuleLoss — something present in the baseline is gone; it warns.
 	RuleLoss
 	// RuleRefs — the token names another declaration. Dropping it refuses;
@@ -97,8 +101,15 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	"frac":    RuleFixed,  // a fixed field's raw value under a moved F is a different number, and no counter can fire
 	"bound":   RuleShrink, // a count past the reader's bound keeps the prefix and counts clamped
 	"size":    RuleShrink, // a string/bytes capacity is a bound like any other
-	"array":   RulePass,   // fixed and bounded frame identically on the wire (docs/SPEC-TABLES.md §3)
-	"was":     RulePass,   // `was` is the rename that PRESERVES identity — that is its whole job
+	// THE DECLARED RANGE, judged from both ends: a reader clamps a stored
+	// value to its own bounds and counts `clamped` (docs/SPEC-TABLES.md §4), so
+	// a tightened range is an extent shrinking like any other — a maximum
+	// lowered or a minimum raised. Loosening passes: nothing already written
+	// falls outside a wider range.
+	"max":   RuleShrink,
+	"min":   RuleRaise,
+	"array": RulePass, // fixed and bounded frame identically on the wire (docs/SPEC-TABLES.md §3)
+	"was":   RulePass, // `was` is the rename that PRESERVES identity — that is its whole job
 	// PRESENCE IS RECORDED AND JUDGED ON NOTHING: T, ?T and *T are one
 	// framing, so a field moving between them moves no byte (§3.1, §18.1)
 	"optional": RulePass,
@@ -125,6 +136,19 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	"flags-position": RuleFixed, // bit i is variant i, and the order IS the fact
 	"enum-variant":   RuleLoss,  // stored values naming a dropped variant read as None
 	"union-arm":      RuleLoss,  // stored bodies naming a dropped arm are skipped
+	// `was` NAMES THE FIRST WIRE NAME, FOREVER (docs/SPEC-TABLES.md §5). A
+	// second rename that names the field's own CURRENT spelling hashes a name
+	// no byte was ever written under, and every stored value orphans in
+	// silence. The baseline is what remembers the first name.
+	"was-chain": RuleFixed,
+	// A `was` ADDED keeps the wire id and moves the TEXT key with the field's
+	// name (§16.4), so the rename hint says so once, at the edit that does it.
+	"was-json": RuleLoss,
+	// A REMOVAL AND AN ADDITION in one table in one edit is the shape a bare
+	// rename leaves: the compiler sees two absorbed edits, and the baseline
+	// sees the pair. Two independent edits in one commit are legitimate, so it
+	// warns and never refuses.
+	"field-pair": RuleLoss,
 }
 
 // A Finding is one difference between the committed baseline and the unit as
@@ -461,6 +485,7 @@ func (d *differ) diffTables() []Finding {
 		for _, f := range lt.Fields {
 			liveFields[f.Id] = f
 		}
+		var gone []string
 		for _, bf := range bt.Fields {
 			// FIELDS MATCH BY WIRE ID, not by name: the id is the identity a
 			// reader keys on, and `was` is exactly the tool for keeping it
@@ -468,12 +493,89 @@ func (d *differ) diffTables() []Finding {
 			// removal is absorbed — the reader defaults it.
 			lf, ok := liveFields[bf.Id]
 			if !ok {
+				gone = append(gone, bf.Name)
 				continue
 			}
 			out = append(out, d.diffTokens(lt.Name+"."+lf.Name, bf, lf)...)
 		}
+		out = append(out, d.wasChain(bt, lt)...)
+		out = append(out, d.renamePair(bt, lt, gone)...)
 	}
 	return out
+}
+
+// wasChain refuses a SECOND rename aimed at the INTERMEDIATE spelling
+// (docs/SPEC-TABLES.md §5). `was` names the FIRST wire name, forever: once
+// `velocity` became `speed | was = "velocity"`, the field rides under
+// hash("velocity") and hash("speed") is an id no byte was ever written under.
+// A later `max_speed | was = "speed"` therefore orphans every stored value,
+// and nothing on the wire says so — the reader simply finds no such id and
+// defaults the field. The baseline is the one place that remembers the first
+// name, which is why this refusal lives here rather than in the checker,
+// which refuses only the case it can see on its own: a `was` naming the
+// field's own current name.
+func (d *differ) wasChain(bt, lt Table) []Finding {
+	if d.policy["was-chain"] != RuleFixed {
+		return nil
+	}
+	// the baseline's fields by the name they were DECLARED under, which is
+	// what a second `was` names when the author reaches for the wrong one
+	byName := map[string]Field{}
+	for _, f := range bt.Fields {
+		byName[f.Name] = f
+	}
+	var out []Finding
+	for _, lf := range lt.Fields {
+		now, has := lf.Get("was")
+		if !has {
+			continue
+		}
+		bf, known := byName[now]
+		if !known {
+			continue
+		}
+		first, chained := bf.Get("was")
+		if !chained || first == now {
+			continue
+		}
+		out = append(out, Finding{Refuse, lt.Name + "." + lf.Name, fmt.Sprintf(
+			"was = %q names %s, which itself rode under was = %q — `was` names the FIRST wire name, forever, so this field now rides under id 0x%04x, an id no byte was ever written under; write was = %q",
+			now, now, first, lf.Id, first)})
+	}
+	return out
+}
+
+// renamePair warns on the shape a BARE rename leaves behind: a wire id
+// removed and a wire id added in one table in one edit. The compiler retains
+// nothing and sees two edits it absorbs (docs/SPEC-TABLES.md §5, §18.2); the
+// baseline sees the pair. Two independent edits in one commit are perfectly
+// legitimate, so this warns and never refuses — and a live field that already
+// declares a `was` is not counted as an addition, because its author has
+// answered this question already (rightly, or by the refusal above).
+func (d *differ) renamePair(bt, lt Table, gone []string) []Finding {
+	if d.policy["field-pair"] != RuleLoss || len(gone) == 0 {
+		return nil
+	}
+	baseIds := map[uint16]bool{}
+	for _, f := range bt.Fields {
+		baseIds[f.Id] = true
+	}
+	var added []string
+	for _, lf := range lt.Fields {
+		if baseIds[lf.Id] {
+			continue
+		}
+		if _, declared := lf.Get("was"); declared {
+			continue
+		}
+		added = append(added, lf.Name)
+	}
+	if len(added) == 0 {
+		return nil
+	}
+	return []Finding{{Warn, "table " + lt.Name, fmt.Sprintf(
+		"%s removed and %s added in one edit — if that is a rename the wire id moved with the name and every stored value orphans: declare it `%s ... | was = %q`, and pair `json = %q` if the text key must survive (docs/SPEC-TABLES.md §5, §16.4)",
+		strings.Join(gone, ", "), strings.Join(added, ", "), added[0], gone[0], gone[0])}}
 }
 
 func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
@@ -490,7 +592,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 			case lv != bt.Value:
 				out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s -> %s", tokenNoun(bt.Key), bt.Value, lv)})
 			}
-		case RuleShrink:
+		case RuleShrink, RuleRaise:
 			if !present || lv == bt.Value {
 				continue
 			}
@@ -503,19 +605,18 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 			if shape, _ := bf.Get("array"); shape == "keyed" {
 				continue
 			}
-			was, err1 := strconv.ParseInt(bt.Value, 10, 64)
-			now, err2 := strconv.ParseInt(lv, 10, 64)
-			if err1 != nil || err2 != nil || now >= was {
+			if !tightened(d.policy[bt.Key], bt.Value, lv) {
 				continue
 			}
-			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s -> %s (%s)", tokenNoun(bt.Key), bt.Value, lv, shrinkNote(bt.Key))})
+			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s -> %s (%s)", tokenNoun(bt.Key), bt.Value, lv, tightenNote(bt.Key))})
 		case RuleRefs:
 			out = append(out, d.refsFindings(where, bt.Key, bt.Value, lv, present)...)
 		}
 	}
-	// a fact the live projection carries and the baseline does not: only the
-	// refusing rules care, and only because ADDING a default is as much a
-	// semantic edit as changing one
+	// a fact the live projection carries and the baseline does not: ADDING a
+	// default is as much a semantic edit as changing one, and adding a bound
+	// where the declaration had none is a tightening from the kind's whole
+	// domain onto a narrower one.
 	for _, lt := range lf.Tokens {
 		if seen[lt.Key] {
 			continue
@@ -523,9 +624,40 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 		switch d.policy[lt.Key] {
 		case RuleFixed, RuleRefs:
 			out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s added", tokenNoun(lt.Key), lt.Value)})
+		case RuleShrink, RuleRaise:
+			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s added (%s)", tokenNoun(lt.Key), lt.Value, tightenNote(lt.Key))})
+		}
+	}
+	// THE RENAME HINT (docs/SPEC-TABLES.md §16.4). A `was` added to a field
+	// keeps its wire id and moves its TEXT key, because the key is the field's
+	// NAME and the rename moved that. It is said once, at the edit that does
+	// it, and only to a field with no key of its own — a field that already
+	// carries `json =` has already answered the question.
+	if _, had := bf.Get("was"); !had && d.policy["was-json"] == RuleLoss {
+		if now, has := lf.Get("was"); has && lf.JsonKey == "" {
+			out = append(out, Finding{Warn, where, fmt.Sprintf(
+				"renamed under was = %q, which keeps the wire id and NOT the text key — the JSON key is now %q; pair json = %q if an existing text must still read (docs/SPEC-TABLES.md §16.4)",
+				now, lf.Name, now)})
 		}
 	}
 	return out
+}
+
+// tightened reports whether a numeric extent moved in the direction that
+// costs stored data: smaller under RuleShrink, larger under RuleRaise. The
+// comparison is exact and shape-agnostic — a bound is an integer, a
+// compressed float's range is not — so a value neither side can read as a
+// number is left alone rather than guessed at.
+func tightened(rule TokenRule, was, now string) bool {
+	before, ok1 := new(big.Rat).SetString(was)
+	after, ok2 := new(big.Rat).SetString(now)
+	if !ok1 || !ok2 {
+		return false
+	}
+	if rule == RuleRaise {
+		return after.Cmp(before) > 0
+	}
+	return after.Cmp(before) < 0
 }
 
 // refsFindings judges a token that NAMES another declaration.
@@ -718,14 +850,18 @@ func armNames(u *Unit, name string) map[string]bool {
 	return nil
 }
 
-// shrinkNote says what a reader loses when one of the shrinkable extents
-// shrinks — the runtime event is the same (clamped), the loss is not.
-func shrinkNote(key string) string {
+// tightenNote says what a reader loses when one of the extents tightens — the
+// runtime event is the same (clamped), the loss is not.
+func tightenNote(key string) string {
 	switch key {
 	case "bound":
 		return "a stored count past the new bound keeps the bounded prefix and counts clamped"
 	case "size":
 		return "a stored value longer than the new capacity is truncated and counts clamped"
+	case "min":
+		return "a stored value below the new minimum reads back AS the minimum and counts clamped"
+	case "max":
+		return "a stored value above the new maximum reads back AS the maximum and counts clamped"
 	}
 	return "stored values past the new limit are clamped"
 }
@@ -747,6 +883,10 @@ func tokenNoun(key string) string {
 		return "capacity"
 	case "key":
 		return "array key enum"
+	case "min":
+		return "declared minimum"
+	case "max":
+		return "declared maximum"
 	case "optional":
 		return "presence"
 	case "type":

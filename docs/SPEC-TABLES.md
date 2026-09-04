@@ -2793,11 +2793,12 @@ only.
 | a field's REFERENT dropped, or swapped for one that cannot stand in | silent | **refuses** | **moves** |
 | a field's wire KIND, or an array's ELEMENT kind, changed | `kind_mismatch` | **refuses** | **moves** |
 | an array changed between keyed and positional, or its KEY enum swapped | `kind_mismatch` | **refuses** | **moves** |
-| a declared RANGE tightened | `clamped` | passes | **moves** |
+| a declared RANGE tightened — a maximum lowered, a minimum raised, or a range declared where the field had none | `clamped` | **warns** — the `min=`/`max=` tokens are extents like a capacity (§18.1) | **moves** |
 | a fixed field's `F` moved under the same storage width | silent — the kind carries the width and the signedness, and `F` is a declaration-side fact like a resolution (§3) | **refuses** — the `frac=` token is a fixed fact (§18.1) | **moves** |
 | an `enum`'s or a `union`'s variant order or names moved | `unknown` for a name this reader lacks; a reorder is silent and safe | warns on a removal or a vanished name | **moves** |
-| a field added, removed or reordered | `unknown` for an id this reader lacks; an absent field defaults | passes | **moves** |
-| a field renamed under `was` | silent, and nothing is lost | passes | no — `was` holds the wire id fixed |
+| a field added, removed or reordered | `unknown` for an id this reader lacks; an absent field defaults | passes; a removal AND an addition in one table in one edit **warn** as the pair a bare rename leaves (§18.2) | **moves** |
+| a field renamed under `was` | silent, and nothing is lost | passes; the edit that ADDS the `was` hints the `json =` pairing, because the wire id survives the rename and the text key does not (§16.4) | no — `was` holds the wire id fixed |
+| a field renamed a SECOND time, the new `was` naming the INTERMEDIATE spelling instead of the first | `unknown` on every old file; the new id was never written to | **refuses** — `was` names the first wire name, forever (§5) | **moves** |
 | an array BOUND or a string/`bytes` capacity moved | `clamped` past the reader's bound | warns on a shrink | **moves** |
 | a field moved between `T` and `?T` | silent — no byte moves | passes | **moves** — the presence companion is storage |
 | a field moved to or from `*T` | `kind_mismatch` | passes | **moves** |
@@ -7668,13 +7669,19 @@ file, no check.** It is a canonical text projection of the closure — the
 members sorted, each member's fields in declaration order, one fact per
 line: name, wire id, kind, an array's ELEMENT kind, array shape (fixed,
 bounded or enum-keyed, with the bound's EVALUATED value and, for a keyed
-array, the KEY enum it names), string and bytes capacity, presence of an
-optional, a fixed field's `F` (`frac=`, the one wire-invisible fact a wide
-kind has, §4.1), the specified default as exact canonical text — a fixed
-default as the RAW integer its storage holds — and the `was`
-alias; then each enum's variants in order with their ids, each flags'
+array, the KEY enum it names), string and bytes capacity, the declared
+RANGE (`min=` and `max=`), presence of an optional, a fixed field's `F`
+(`frac=`, the one wire-invisible fact a wide kind has, §4.1), the specified
+default as exact canonical text — a fixed default as the RAW integer its
+storage holds — and the `was` alias; then each enum's variants in order with their ids, each flags'
 variants in positional order, and each union's arms in order with their ids
 and payloads.
+
+**Its ABSENCE is said out loud, once.** `schema check` prints one line to
+stderr for a unit that declares a table and holds no baseline: that its
+save-game evolution is unguarded, and the command that commits one. It is a
+notice, never a block — the exit code is untouched, and committing a
+baseline silences it.
 
 **A field that names a declaration records WHICH KIND of declaration it
 names** — a table, an `enum`, a `flags` or a `union` — because those four
@@ -7692,6 +7699,15 @@ and flows through an expression into a default shows up as the value it now
 produces, which is the whole point — the projection records what data will
 mean, not how it was spelled.
 
+**A RANGE IS AN EXTENT, and it is recorded like a capacity.** A reader
+clamps a stored value to its OWN declared bounds and counts `clamped` (§4),
+so a tightened range is a data edit — every stored value past the new bound
+reads back as the bound, and the next save writes that. Only a DECLARED
+range is recorded: `bits(N)`'s implied `[0, 2^N − 1]` is its WIDTH, and the
+width is the `kind` this file already holds fixed. A fixed field's bounds
+are its WHOLE-UNIT bounds, recorded beside the `frac=` that puts them on the
+raw scale (§4).
+
 **Presence is RECORDED and judged on nothing.** An optional's presence
 companion is a fact in the file so a person reading a diff can see it, but
 a field moving between `T`, `?T` and `*T` moves no byte (§3.1) and passes
@@ -7702,13 +7718,14 @@ It carries no protocol id and no packet fact: the type wire, the wire-shape
 projection and the protocol id are untouched by all of it (§10).
 
 ```
-schema-tables-baseline 2
+schema-tables-baseline 4
 package shipdemo
 
 table ShipConfig
     field damage id=0x15a9 kind=10 default=21.0
     field speed id=0x2e46 kind=10 default=500.0 was=velocity
     field name id=0x30df kind=12 size=32
+    field armour id=0xf2f0 kind=4 min=0 max=1000 default=100
 
 ## history
 ### 2026-09-02 — first baseline before 1.0 ships
@@ -7730,17 +7747,30 @@ committed file whenever one is there, and:
   or an enum-keyed array's KEY enum swapped for another; a field's REFERENT
   dropped, or replaced by one that cannot STAND IN for it — every identity
   survives AND, for a table or a union arm's payload, the facts under the
-  shared field ids are unchanged (§18.3).
-- **WARNS** — an array bound or a string/bytes capacity shrunk; an enum
-  variant or a union arm removed; a DECLARATION renamed, or otherwise no
-  longer in the closure under its baseline name (§18.3). The data survives
-  and the read report already counts what is lost (`clamped`, `unknown`), so
-  this reports rather than stops.
+  shared field ids are unchanged (§18.3); a `was` that names a field which
+  ITSELF rode under a `was` — `was` names the FIRST wire name, forever (§5),
+  so a second one aimed at the intermediate spelling hashes a name no byte
+  was ever written under, and the refusal names both spellings and the one
+  that is correct.
+- **WARNS** — an array bound or a string/bytes capacity shrunk; a declared
+  RANGE tightened, from either end, or declared where the field had none; an
+  enum variant or a union arm removed; a DECLARATION renamed, or otherwise no
+  longer in the closure under its baseline name (§18.3); a field REMOVED and
+  a field ADDED in one table in one edit, which is the shape a bare rename
+  leaves — the warning names both and says how to declare it, and it is a
+  warning rather than a refusal because two independent edits in one commit
+  are legitimate. The data survives and the read report already counts what
+  is lost (`clamped`, `unknown`), so this reports rather than stops.
+- **HINTS, once** — a `was` ADDED to a field that carries no `json =` key.
+  The rename keeps the WIRE id and moves the TEXT key, which is the field's
+  own name (§16.4), so an existing text keyed on the old name stops matching.
+  It is said at the edit that adds the `was` and not on every check after it,
+  and a field that already pairs its key is told nothing.
 - **PASSES, in silence** — everything the wire absorbs: fields added,
   removed, reordered or renamed under `was`; enum variants and union arms
-  added anywhere; flags variants APPENDED at the end; bounds and capacities
-  grown; a bounded array made fixed or the reverse; a field moved between
-  `T`, `?T` and `*T`.
+  added anywhere; flags variants APPENDED at the end; bounds, capacities and
+  ranges grown; a bounded array made fixed or the reverse; a field moved
+  between `T`, `?T` and `*T`.
 
 **The BLOCK FORM takes no row here at all** (§18.1). A table's layout is a
 same-build contract that a compiler holds (§19.3), so an edit that moves an
@@ -7852,9 +7882,18 @@ it. The created file says so in its own first history entry.
 
 Each refusal class has a fixture pair and its negative control — remove the
 check and the edit passes. The projection over the corpus regenerates
-byte-identical. The warn class warns and does not refuse. `--update`
-without `--reason` refuses, and `--update` over an unreadable baseline
-repairs it while keeping every history line.
+byte-identical. The warn class warns and does not refuse. A tightened range
+warns from either end and a loosened one is silent, over a ranged integer, a
+fixed field's whole-unit bounds and a compressed float's. The `was` chain
+refuses and names both spellings, while the same second rename carrying the
+FIRST name forward is silent. A bare rename's removal-and-addition pair
+warns, and each half alone is silent. A `was` added without a `json =` key
+hints the pairing once and says nothing on the check after it. A
+table-bearing unit with no baseline draws the notice and one that has a
+baseline draws nothing. `--update` without `--reason` refuses, and
+`--update` over an unreadable baseline — including one written under the
+rendering version before this one — repairs it while keeping every history
+line.
 
 
 ## 19. The block form

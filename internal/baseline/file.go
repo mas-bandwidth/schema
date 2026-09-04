@@ -95,6 +95,43 @@ func Check(u *ir.Unit, paths []string) (warnings []string, errs []error) {
 	return warnings, errs
 }
 
+// Nudge is the one line `schema check` prints for a unit that declares tables
+// and has committed no baseline (docs/SPEC-TABLES.md §18.1). The baseline is
+// opt-in — no file, no check — so the DEFAULT posture of a save-game unit is
+// unguarded against every edit §4.1 marks silent, and nothing said so. This
+// says it: a notice, never a block, and committing a baseline silences it.
+//
+// It returns "" when there is nothing to say — a unit with no tables has no
+// table wire to guard, and a unit with a baseline is already guarded.
+func Nudge(u *ir.Unit, paths []string) string {
+	if len(u.Tables) == 0 {
+		return ""
+	}
+	path, ok, err := Locate(paths)
+	if err != nil {
+		// the unit's files span directories that hold several baselines;
+		// Check reports that as the error it is, and a nudge on top would
+		// only bury it
+		return ""
+	}
+	// a unit is one directory (SPEC §3.2), so the ordinary answer names it;
+	// the sentence still stands for the unit whose files span several, where
+	// there is no one directory to name
+	where, arg := "this unit's directory", "<unit dir>"
+	if ok {
+		if _, statErr := os.Stat(path); statErr == nil {
+			return ""
+		}
+		where, arg = filepath.Dir(path), filepath.Dir(path)
+	}
+	noun := "tables"
+	if len(u.Tables) == 1 {
+		noun = "table"
+	}
+	return fmt.Sprintf("%s declares %d %s and %s holds no %s — save-game evolution is unguarded (docs/SPEC-TABLES.md §18); commit one with: schema tables-baseline --update --reason \"first baseline\" %s",
+		u.Package, len(u.Tables), noun, where, FileName, arg)
+}
+
 // Update rewrites the unit's baseline and appends a dated entry to its history
 // naming every edit it recorded and the reason for them. The reason is
 // MANDATORY — the owner's ruling: an intentional break is declared, never

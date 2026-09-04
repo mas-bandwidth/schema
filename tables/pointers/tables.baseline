@@ -1,4 +1,4 @@
-schema-tables-baseline 3
+schema-tables-baseline 4
 package graphdemo
 
 table Album
@@ -21,7 +21,7 @@ table Depot
     field head id=0x79aa kind=17 type=ListNode
 
 table Layer
-    field depth id=0x609f kind=4 default=0
+    field depth id=0x609f kind=4 min=0 max=64 default=0
     field head id=0x79aa kind=17 type=ListNode
 
 table ListNode
@@ -34,12 +34,12 @@ table Marker
     field note id=0x9da7 kind=17 type=Tally
 
 table Meta
-    field build id=0x3138 kind=4 default=1
+    field build id=0x3138 kind=4 min=0 max=1000 default=1
     field tag id=0xbc64 kind=12 size=8
 
 table Scene
     field name id=0x30df kind=12 size=24
-    field version id=0xe8e6 kind=4 default=1
+    field version id=0xe8e6 kind=4 min=0 max=99 default=1
     field head id=0x79aa kind=17 type=ListNode
     field tree id=0x595e kind=17 type=TreeNode
     field settings id=0x130e kind=17 type=Settings
@@ -49,15 +49,15 @@ table Scene
     field meta id=0xcea6 kind=13 type=Meta
 
 table Settings
-    field quality id=0xcaf3 kind=4 default=2
+    field quality id=0xcaf3 kind=4 min=0 max=4 default=2
     field label id=0xe16a kind=12 size=16
 
 table Stamp
     field tag id=0xbc64 kind=12 size=8
-    field seq id=0xc29b kind=4 default=0
+    field seq id=0xc29b kind=4 min=0 max=1000 default=0
 
 table Tally
-    field hits id=0xb723 kind=4 default=0
+    field hits id=0xb723 kind=4 min=0 max=10000 default=0
 
 table TreeNode
     field label id=0xe16a kind=12 size=12
@@ -88,3 +88,6 @@ enum Tier
 - Scene.alias: wire kind 13 -> 17 [refuse]
 - TreeNode.left: wire kind 13 -> 17 [refuse]
 - TreeNode.right: wire kind 13 -> 17 [refuse]
+
+### 2026-09-04 — schema#443: the baseline records each ranged field's effective min and max, so a tightened range is seen before it ships; the rendering version moves to 4 and this file is regenerated with its history intact
+- baseline REGENERATED over an unreadable one (baseline version 3, this compiler writes 4); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow

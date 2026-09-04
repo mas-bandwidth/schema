@@ -1,22 +1,22 @@
-schema-tables-baseline 3
+schema-tables-baseline 4
 package tabledemo
 
 table ArchiveConfig
     field root id=0x2eb8 kind=13 type=RootConfig
-    field count id=0xe445 kind=4 default=1
+    field count id=0xe445 kind=4 min=0 max=100 default=1
 
 table Attachment
-    field slot id=0x37e4 kind=4 default=0
+    field slot id=0x37e4 kind=4 min=0 max=7 default=0
     field power id=0xd609 kind=10 default=1.0
 
 table Buff
     field multiplier id=0x32e0 kind=10 default=1.0
 
 table Debuff
-    field amount id=0x39cc kind=4 default=0
+    field amount id=0x39cc kind=4 min=0 max=100 default=0
 
 table GlobalSettings
-    field tick_rate id=0x1953 kind=8 default=60
+    field tick_rate id=0x1953 kind=8 min=1 max=240 default=60
     field difficulty id=0xd53f kind=7 enum=Difficulty default=Normal
     field build_note id=0xb2d4 kind=12 size=48
     field spawn_delays id=0x7c01 kind=14 elem=10 array=fixed bound=3
@@ -53,14 +53,14 @@ table PackConfig
     field version id=0xe8e6 kind=8 default=1
     field global id=0x1b51 kind=13 type=GlobalSettings
     field ships id=0x2d39 kind=16 elem=13 type=ShipEntry array=keyed bound=3 key=ShipType
-    field thresholds id=0xb2eb kind=16 elem=4 array=keyed bound=3 key=Difficulty
+    field thresholds id=0xb2eb kind=16 elem=4 array=keyed bound=3 key=Difficulty min=0 max=1000
     field reserves id=0x049d kind=14 elem=13 type=ShipEntry array=bounded bound=3
 
 table Patrol
     field active id=0x405a kind=1
     field speed id=0xbc00 kind=10 default=1.0
     field has_target id=0xb0a7 kind=1
-    field target_id id=0xdf6a kind=4 default=0
+    field target_id id=0xdf6a kind=4 min=0 max=1000 default=0
     field wander id=0x832f kind=10 default=0.5
     field note id=0x9da7 kind=12 size=8
 
@@ -80,42 +80,42 @@ table ProfileConfig
     field loadout id=0x9f78 kind=13 type=LoadoutConfig
 
 table RangedSigned
-    field i8_span id=0x8d4f kind=2
-    field i8_low id=0xe337 kind=2
-    field i8_high id=0x6a5f kind=2
-    field i8_inside id=0x8eee kind=2
-    field i16_span id=0x0a1e kind=3
-    field i16_low id=0xaaae kind=3
-    field i16_high id=0xe8f2 kind=3
-    field i16_inside id=0x1a0e kind=3
-    field i32_span id=0x6bd1 kind=4
-    field i32_low id=0xb8e0 kind=4
-    field i32_high id=0x3806 kind=4
-    field i32_inside id=0x9a24 kind=4
-    field i64_span id=0xf086 kind=5
-    field i64_low id=0xc705 kind=5
-    field i64_high id=0x328e kind=5
-    field i64_inside id=0x7d51 kind=5
-    field edges id=0xb1cb kind=14 elem=3 array=bounded bound=4
+    field i8_span id=0x8d4f kind=2 min=-128 max=127
+    field i8_low id=0xe337 kind=2 min=-128 max=126
+    field i8_high id=0x6a5f kind=2 min=-127 max=127
+    field i8_inside id=0x8eee kind=2 min=-127 max=126
+    field i16_span id=0x0a1e kind=3 min=-32768 max=32767
+    field i16_low id=0xaaae kind=3 min=-32768 max=32766
+    field i16_high id=0xe8f2 kind=3 min=-32767 max=32767
+    field i16_inside id=0x1a0e kind=3 min=-32767 max=32766
+    field i32_span id=0x6bd1 kind=4 min=-2147483648 max=2147483647
+    field i32_low id=0xb8e0 kind=4 min=-2147483648 max=2147483646
+    field i32_high id=0x3806 kind=4 min=-2147483647 max=2147483647
+    field i32_inside id=0x9a24 kind=4 min=-2147483647 max=2147483646
+    field i64_span id=0xf086 kind=5 min=-9223372036854775808 max=9223372036854775807
+    field i64_low id=0xc705 kind=5 min=-9223372036854775808 max=9223372036854775806
+    field i64_high id=0x328e kind=5 min=-9223372036854775807 max=9223372036854775807
+    field i64_inside id=0x7d51 kind=5 min=-9223372036854775807 max=9223372036854775806
+    field edges id=0xb1cb kind=14 elem=3 array=bounded bound=4 min=-32768 max=32767
 
 table RangedUnsigned
-    field u8_span id=0x6434 kind=6
-    field u8_low id=0xb24e kind=6
-    field u8_high id=0x202a kind=6 default=1
-    field u8_inside id=0x8fbf kind=6 default=1
-    field u16_span id=0xd410 kind=7
-    field u16_low id=0x6f72 kind=7
-    field u16_high id=0x1364 kind=7 default=1
-    field u16_inside id=0xbf32 kind=7 default=1
-    field u32_span id=0x0513 kind=8
-    field u32_low id=0x4cce kind=8
-    field u32_high id=0xa2da kind=8 default=1
-    field u32_inside id=0xf596 kind=8 default=1
-    field u64_span id=0x6e8d kind=9
-    field u64_low id=0x95b5 kind=9
-    field u64_high id=0x15e4 kind=9 default=1
-    field u64_inside id=0x2ce0 kind=9 default=1
-    field counts id=0xe27a kind=14 elem=9 array=bounded bound=4
+    field u8_span id=0x6434 kind=6 min=0 max=255
+    field u8_low id=0xb24e kind=6 min=0 max=254
+    field u8_high id=0x202a kind=6 min=1 max=255 default=1
+    field u8_inside id=0x8fbf kind=6 min=1 max=254 default=1
+    field u16_span id=0xd410 kind=7 min=0 max=65535
+    field u16_low id=0x6f72 kind=7 min=0 max=65534
+    field u16_high id=0x1364 kind=7 min=1 max=65535 default=1
+    field u16_inside id=0xbf32 kind=7 min=1 max=65534 default=1
+    field u32_span id=0x0513 kind=8 min=0 max=4294967295
+    field u32_low id=0x4cce kind=8 min=0 max=4294967294
+    field u32_high id=0xa2da kind=8 min=1 max=4294967295 default=1
+    field u32_inside id=0xf596 kind=8 min=1 max=4294967294 default=1
+    field u64_span id=0x6e8d kind=9 min=0 max=18446744073709551615
+    field u64_low id=0x95b5 kind=9 min=0 max=18446744073709551614
+    field u64_high id=0x15e4 kind=9 min=1 max=18446744073709551615 default=1
+    field u64_inside id=0x2ce0 kind=9 min=1 max=18446744073709551614 default=1
+    field counts id=0xe27a kind=14 elem=9 array=bounded bound=4 min=0 max=18446744073709551615
 
 table RangedWidths
     field b8 id=0xa7cb kind=6
@@ -131,17 +131,17 @@ table RootConfig
     field profiles id=0x73fd kind=14 elem=13 type=ProfileConfig array=bounded bound=4
 
 table ScoreBoard
-    field per_team id=0x443f kind=16 elem=4 array=keyed bound=3 key=Team
+    field per_team id=0x443f kind=16 elem=4 array=keyed bound=3 key=Team min=0 max=100000
 
 table ShipEntry
     field display_name id=0xcb8b kind=12 size=32
     field health id=0x8617 kind=10 default=100.0
     field mass id=0xe7a6 kind=10 default=1.0
-    field hardpoints id=0xc4b2 kind=14 elem=4 array=bounded bound=4
+    field hardpoints id=0xc4b2 kind=14 elem=4 array=bounded bound=4 min=0 max=8
     field gunner id=0x2bc9 kind=13 type=GunnerSettings optional=true
 
 table TeamConfig
-    field spawn_count id=0x3668 kind=4 default=4
+    field spawn_count id=0x3668 kind=4 min=0 max=64 default=4
     field banner id=0x80e4 kind=12 size=16
 
 table TurretConfig
@@ -152,7 +152,7 @@ table TurretConfig
 table WeaponConfig
     field damage id=0x15a9 kind=10 default=21.0
     field speed id=0x2e46 kind=10 default=500.0 was=velocity
-    field penetration id=0x6557 kind=4 default=1
+    field penetration id=0x6557 kind=4 min=0 max=10 default=1
     field channel id=0x7366 kind=6
     field homing id=0xab40 kind=1
     field effect id=0xe33a kind=15 union=Effect
@@ -216,3 +216,6 @@ union Effect
 
 ### 2026-09-03 — the clamp-at-storage-limits corpus (#342): RangedSigned, RangedUnsigned and RangedWidths join the corpus — new declarations only, so nothing already written moves
 - no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-09-04 — schema#443: the baseline records each ranged field's effective min and max, so a tightened range is seen before it ships; the rendering version moves to 4 and this file is regenerated with its history intact
+- baseline REGENERATED over an unreadable one (baseline version 3, this compiler writes 4); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
