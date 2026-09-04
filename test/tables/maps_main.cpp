@@ -43,6 +43,41 @@ static int failures = 0;
         }                                                                     \
     } while ( 0 )
 
+// ---- every allocation sized from a measure goes through here ----
+//
+// A measure is an answer from the code under test, so a region sized from one
+// is the single place a broken measure reaches the allocator. The ceiling is
+// CHECKED first, and a measure past it is a red CHECK on every platform rather
+// than a call to calloc: glibc answers NULL for a request of that size and the
+// caller's own CHECK fires, while macOS accepts it and the kernel kills the
+// process, which loses the buffered CHECK output the negative controls read.
+// That difference is what made the `fit` control pass on Linux and fail on
+// macOS with `Killed: 9`.
+//
+// 256 MiB: every measure this corpus produces is under 64 KiB, the size of the
+// buffers its wire bodies are built in, so the ceiling leaves more than three
+// orders of magnitude of headroom and still sits far below what a sabotaged
+// measure asks for — the `fit` control's answer is 85899345944, about 86 GB.
+
+static const int64_t kMeasureCeiling = 256 * 1024 * 1024;
+
+static void * measured_calloc( int64_t measure, int64_t extra, const char * expr, const char * file, int line )
+{
+    if ( measure < 0 || measure > kMeasureCeiling )
+    {
+        printf( "FAIL %s:%d: %s = %lld, past the %lld byte measure ceiling\n",
+                file, line, expr, (long long) measure, (long long) kMeasureCeiling );
+        failures++;
+        return NULL;
+    }
+    return calloc( 1, (size_t) ( measure + extra ) );
+}
+
+// The caller takes NULL back and stops: the CHECK is already recorded, and
+// nothing past a refused measure is worth reading.
+#define MEASURED_CALLOC( measure, extra )                                     \
+    measured_calloc( ( measure ), ( extra ), #measure, __FILE__, __LINE__ )
+
 // ---- the shared golden wire (docs/SPEC-TABLES.md §3) ----
 //
 // The C++ reference is the writer: these instances' encodings are pinned into
@@ -331,7 +366,8 @@ static void check_const_form( const Fleet * f, const char * where )
     // the storage the caller handed in
     const int64_t bytes = FleetShipsIndexMeasure( f->ships );
     CHECK( bytes > 0 );
-    void * storage = calloc( 1, (size_t) bytes );
+    void * storage = MEASURED_CALLOC( bytes, 0 );
+    if ( storage == NULL ) { return; }
     TableMapIndex index = FleetShipsIndex( f->ships, storage, bytes );
     CHECK( index.good );
     const char * probes[4] = { "bomber", "fighter", "scout", "absent" };
@@ -359,7 +395,8 @@ static void test_const_forms()
     // LOAD into the caller's exact-sized region
     const int64_t need = FleetLoadMeasure( wire_full, bytes_full );
     CHECK( need > 0 );
-    uint8_t * region = (uint8_t *) calloc( 1, (size_t) need );
+    uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+    if ( region == NULL ) { return; }
     TableReport report;
     const Fleet * loaded = FleetLoad( region, need, wire_full, bytes_full, &report );
     check_const_form( loaded, "a loaded region" );
@@ -391,11 +428,13 @@ static void test_const_forms()
     // the COOK: a region written verbatim, opened O(1) and searched in place
     const int64_t cook_bytes = FleetCookMeasure( loaded );
     CHECK( cook_bytes > 0 );
-    void * cooked = calloc( 1, (size_t) cook_bytes );
+    void * cooked = MEASURED_CALLOC( cook_bytes, 0 );
+    if ( cooked == NULL ) { free( region ); return; }
     CHECK( FleetCook( loaded, cooked, (uint64_t) cook_bytes, host_byte_order() ) );
     check_const_form( FleetOpen( cooked, (uint64_t) cook_bytes ), "an opened cook" );
     // and two cooks of one instance are ONE artifact
-    void * twice = calloc( 1, (size_t) cook_bytes );
+    void * twice = MEASURED_CALLOC( cook_bytes, 0 );
+    if ( twice == NULL ) { free( cooked ); free( region ); return; }
     CHECK( FleetCook( loaded, twice, (uint64_t) cook_bytes, host_byte_order() ) );
     CHECK( memcmp( cooked, twice, (size_t) cook_bytes ) == 0 );
     free( twice );
@@ -444,7 +483,8 @@ static Verdict read_row( const RowWire & w )
     Verdict v = { -1, 0, 0, 0, 0, false, 0, { 0, 0, 0 } };
     const int64_t need = RowLoadMeasure( w.bytes, w.size );
     if ( need < 0 ) { v.count = -2; return v; } // the measure REFUSED the framing
-    uint8_t * region = (uint8_t *) calloc( 1, (size_t) need );
+    uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+    if ( region == NULL ) { return v; }
     TableReport r;
     const Row * row = RowLoad( region, need, w.bytes, w.size, &r );
     if ( row != NULL )
@@ -590,7 +630,8 @@ static void test_key_kind()
     RowWire w = good_row();
     const int64_t need = WideRowLoadMeasure( w.bytes, w.size );
     CHECK( need > 0 );
-    uint8_t * region = (uint8_t *) calloc( 1, (size_t) need );
+    uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+    if ( region == NULL ) { return; }
     TableReport r;
     const WideRow * wide = WideRowLoad( region, need, w.bytes, w.size, &r );
     CHECK( wide != NULL );
@@ -619,7 +660,8 @@ static void test_key_kind()
     // the SECOND entry's key rides under the STRING kind instead of the u32 one
     mixed[entry0 + stride + 4 + 2] = 12; // kind 12 is an opaque byte payload (§3)
     const int64_t need2 = WideRowLoadMeasure( mixed, size );
-    uint8_t * region2 = (uint8_t *) calloc( 1, (size_t) need2 );
+    uint8_t * region2 = (uint8_t *) MEASURED_CALLOC( need2, 0 );
+    if ( region2 == NULL ) { return; }
     TableReport r2;
     const WideRow * mixed_row = WideRowLoad( region2, need2, mixed, size, &r2 );
     CHECK( mixed_row != NULL );
@@ -653,7 +695,8 @@ static void test_load_measure_depth()
     const int64_t n = FleetSave( b, wire, sizeof( wire ) );
     const int64_t need = FleetLoadMeasure( wire, n );
     CHECK( need > 0 );
-    uint8_t * region = (uint8_t *) calloc( 1, (size_t) need );
+    uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+    if ( region == NULL ) { return; }
     TableReport r;
     const Fleet * loaded = FleetLoad( region, need, wire, n, &r );
     CHECK( loaded != NULL );
@@ -692,7 +735,8 @@ static void test_text()
 
     const int64_t need = FleetToJsonMeasure( locked );
     CHECK( need > 0 );
-    char * text = (char *) calloc( 1, (size_t) need + 1 );
+    char * text = (char *) MEASURED_CALLOC( need, 1 );
+    if ( text == NULL ) { return; }
     const int64_t written = FleetToJson( locked, text, need );
     CHECK_EQ( written, need );
 
@@ -724,7 +768,8 @@ static void test_text()
     // the ROUND TRIP is byte-stable: the same instance, the same text
     CHECK( into.Lock() );
     const int64_t again_bytes = FleetToJsonMeasure( into.AsConst() );
-    char * again = (char *) calloc( 1, (size_t) again_bytes + 1 );
+    char * again = (char *) MEASURED_CALLOC( again_bytes, 1 );
+    if ( again == NULL ) { free( text ); return; }
     CHECK_EQ( FleetToJson( into.AsConst(), again, again_bytes ), again_bytes );
     CHECK_EQ( again_bytes, written );
     CHECK( memcmp( again, text, (size_t) written ) == 0 );
@@ -820,7 +865,8 @@ static void test_depth()
 
     const int64_t need = DepthLoadMeasure( wire, n );
     CHECK( need > 0 );
-    uint8_t * region = (uint8_t *) calloc( 1, (size_t) need );
+    uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+    if ( region == NULL ) { return; }
     TableReport report;
     const Depth * loaded = DepthLoad( region, need, wire, n, &report );
     CHECK( loaded != NULL );
