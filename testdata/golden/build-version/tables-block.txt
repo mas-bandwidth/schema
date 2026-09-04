@@ -1,4 +1,4 @@
-0x912218b5d362b870
+0x6e4b803407267d82
 schema-build-version 3
 protocol ccb9f0129fbc0ebe
 byteorder little
@@ -152,3 +152,8 @@ enum Team
     variant 2 Blue
     variant 3 Green
     variant 4 Gold
+flags ShipFlags
+    variant 0 FiringLaser
+    variant 1 Boosting
+    variant 2 Braking
+    variant 3 Aiming

@@ -1645,7 +1645,13 @@ any other, and there is no path that forgives one.
   clothes. A VALUE field of the wrong kind is §4's ordinary per-field event
   inside the entry: the value reads its default, the entry stays, and the
   count is the field's. A map header whose ELEMENT kind is not `13` is the
-  ordinary array kind mismatch of §4.
+  ordinary array kind mismatch of §4. **A wrong key kind that also
+  DESYNCHRONIZES the scan — a `string(N)` key read where an integer is
+  declared takes the length bytes for the value's — is that same one
+  `kind_mismatch` and nothing more**: the KIND is the honest answer, and the
+  framing damage that follows from reading a key under the wrong rule is a
+  consequence of it rather than a second event to report. The map reads empty
+  and the parent reads on past the map's `L`.
 
 **How a FIXED-class reader skips a map**: it does not know it is one. A map
 is a kind `14` field, so a reader without the field reads `L` and skips `L`
@@ -1729,7 +1735,12 @@ shape an enum-keyed array already takes:
 (§7), so a cooked map is its sorted entry array where the cook put it, and
 `Find` is a binary search over it: `floor( log2 n ) + 1` key compares, in
 place, no allocation, no parse, the same call in a locked region, a loaded
-one and an opened cook, because they are one encoding (§6.3). `schema
+one and an opened cook, because they are one encoding (§6.3). **`Find` on a
+BUILDER-form map is a program error**, exactly as reading a `TableRef` in the
+wrong form is (§6.3): the two encodings share a slot, the FORM says which is
+in force, and asking the search question of the insertion-ordered one is a
+call the caller had no business making rather than an answer worth
+computing. `schema
 cook-check` bounds a map as it bounds a count companion and checks the ORDER
 entry by entry (§7.4), because an out-of-order cook is one `Find` cannot
 search and a forged one is what the check is for. A cook and a loaded region
@@ -1763,7 +1774,12 @@ places**: the wire's element order, the cook's bytes, and a loaded region.
   the record, which includes a map inside a nested table and a map inside an
   entry, in depth-first field order. The placement is PRE-ORDER: a map's
   whole entry array first, then, entry by entry in key order, the arrays of
-  any map an entry's value holds by value. A node's extent still runs to the
+  any map an entry's value holds by value. **AN ENTRY WHOSE ALIGNMENT EXCEEDS
+  THE ARENA'S IS REFUSED AT COMPILE TIME, naming the map field and the
+  alignment it asks for**: a node's extent begins at the arena's alignment and
+  nothing inside it can ask for more, so an over-aligned entry is a layout the
+  region could not hold and is a build error rather than a runtime surprise
+  (§6.3, §20.3). A node's extent still runs to the
   next directory entry (§6.3), `LoadMeasure` sums it from the framing, since
   `N` is framing and not a value, and the directory gains no position and the
   wire's numbering gains no index. A map is a bounded array whose bound was
@@ -1990,6 +2006,10 @@ schema_release( storage );
 - **On a `map[K]*T` the const `Find` answers what a pointer field's accessor
   answers**: the RESOLVED `const T *`, one add on the self-relative delta, and
   NULL when the reference is null, exactly as `<T>At` answers it (§6.2, §6.3).
+  **ITERATION YIELDS THE SAME RESOLVED POINTER**, for the same reason: a walk
+  over a `map[K]*T` hands out what `Find` hands out, so a call site reads one
+  shape whichever way it reached the entry, and nothing anywhere has to know
+  that a slot holds a delta.
 - **The builder's five are FREE FUNCTIONS taking the worker or the arena**, as
   `Emplace` and the arena `At` overloads are (§6.2), because an arena
   reference resolves through the arena, so the builder's surface says which
@@ -2335,12 +2355,15 @@ little-endian u64, and the body ends where the first entry begins.
   names forty distinct ids across ten thousand fields carries forty ids, and
   every field header spends one byte on the reference where an inline id
   would have spent eight.
-- **A reader RESOLVES THE TABLE ONCE, at open**, against its own
-  descriptors: each entry becomes the slot it names or the mark for "this
-  reader has no such name". Every field then dispatches through an array
-  index rather than through a search over hashes, which is why the table
-  makes the read faster and not slower on any body with more fields than the
-  table has entries.
+- **A reader RESOLVES THE TABLE ONCE, at open**: the entries are read where
+  the file ends, and a body then names an id by POSITION rather than carrying
+  it, which is why the table makes the read faster and not slower on any body
+  with more fields than the table has entries. **HOW a reader turns a
+  reference into a decision is its own choice** — an array of the ids it read,
+  a per-type array of resolved slots, a perfect hash — because nothing on the
+  wire depends on it and no conformance case can see the difference. The
+  reference and the compiler's engine both resolve a reference to its id
+  through one array index and dispatch on the id.
 - **A reader HOLDS THE WHOLE BUFFER**, which skipping by length already
   assumed, so reading the trailer first costs one seek and no pass. A writer
   never patches: first-use order is known only when the walk ends, so the
@@ -2480,24 +2503,25 @@ under 128, two under 16,384, and so on.
 | the whole file's framing | 1 for the form byte, 8 for the entry count, 8 an entry |
 
 **MEASURED over the tables conformance corpus, as a ratio to the wire's
-previous form**: **0.83x the bytes over the corpus without its 210 KB blob,
-1.59x over the tiny message class, and 0.99x over the whole corpus.** The win
-grows with the file, and a file with many distinct ids and few fields under
-each pays a little: a pointer-heavy graph of 7,301 bytes becomes 3,321, and a
-wide flat config of 1,109 bytes becomes 1,279. **Dispatch measures 2.0 ns a
-field** through the resolved slot array against 2.5 ns through a switch on an
-inline sixteen-bit id, with resolve at 5.8 ns an entry, once per open. **Every
-figure in this subsection, and the framing figure the ladder states at the
-head of this document, was measured on the previous form and is re-pinned by
-the implementation that lands this one.**
+previous form**: **0.98x the bytes over the corpus without its 210 KB blob,
+1.80x over the tiny class, and 0.99x over the whole corpus** — 69 pinned wires,
+293,321 bytes before and 291,322 after. The win grows with the file, and a file
+with many distinct ids and few fields under each pays: a pointer-heavy graph of
+7,301 bytes becomes 3,319, a map-bearing fleet of 424 becomes 338, and a wide
+flat config of 398 becomes 571. **Every byte figure here, and the framing
+figure the ladder states at the head of this document, is measured on the
+corpus this implementation pins.** The DISPATCH figures — the cost of a field
+through a resolved table against a switch on an inline id, and of resolve per
+entry — are owed a bench sitting of their own and are not stated until one
+runs (§15).
 
-**The cost is on TINY messages, and it is stated rather than hidden.** A
-three-field ping is about 45 bytes, because the file carries three eight-byte
-ids and nine bytes of framing, and its open pays about 17 ns of resolution
-before about 6 ns of dispatch. That is the price of 64-bit identity on the
-wire that trades bytes for tolerance. A stream that wants small same-build
-messages is a `type` stream (§1), whose wire is positional and carries no
-identity at all.
+**The cost is on TINY messages, and it is stated rather than hidden.** An empty
+table is ten bytes where it was two — a form byte, the body's zero reference,
+and the eight-byte entry count of a table with no entries — and a three-field
+ping is about 45, because the file carries three eight-byte ids and its framing.
+That is the price of 64-bit identity on the wire that trades bytes for
+tolerance. A stream that wants small same-build messages is a `type` stream
+(§1), whose wire is positional and carries no identity at all.
 
 **HELD BY TEST.** Each rule above names what pins it and the one reason
 that instrument goes red.
@@ -9755,7 +9779,7 @@ keep, so it belongs in `none` with its reason or the token belongs on the line.
 | an `enum`'s variant order and names | **meaning** | the `variant` lines — the wire carries a name hash, the slot the stored value (§3) |
 | a `union`'s arm order and names | **meaning** | the `arm` lines, the same one level up |
 | a `flags`' variant order and names | **meaning** | the `flags` lines (§20.2), each variant with its BIT POSITION. A mask rides raw, so the position is what a stored bit means, and a reorder or an in-place rename remaps every cooked mask with nothing on the wire to say so (§4.1) |
-| WHICH flags declaration a field names | none | a slot is a raw `u64` copied through: SPEC.md §4.2 makes a `flags` field a `uint64` in EVERY target and a flags field carries no specified default, so swapping one flags declaration for a same-width other changes no cook byte. Its WIDTH rides in `size=`. Hence no `flags=` token on a field line |
+| WHICH flags declaration a field names | **meaning**, through the block it reaches | no `flags=` token on the field line — a slot is a raw `u64` copied through, so the field's own line has nothing to say — but the DECLARATION it names projects its `flags` block (§20.2), and swapping one for another with different variants changes what every stored bit MEANS while moving no offset and no id. That is the same fact the block exists for, met from the field's side: the width alone rides in `size=` |
 | `cpp_native` / `cpp_include` | none | SPEC.md §6.1 guarantees layout identity by DERIVATION — the native type is the one the emitted struct would have had — so there is nothing for a token to distinguish |
 | an `if` GUARD added or removed | none | a load finds a field by its id whatever branch encloses it, with every counter zero (§4.1). The cost is on the next WRITE, which is §18's case and not a cook's |
 | the `json` key (§16.4) | none | a cook is produced from the WIRE file, whose hash is the tuple's other half (§7) |
@@ -9940,11 +9964,13 @@ other.
 
 **A `flags` DECLARATION takes a block of its own, and it is the ENUM BLOCK
 with the keyword swapped**: the same membership, the same shape, the same
-token spelling. Only a `flags` a field or an array key names projects, as
-only such an enum does. The number on a variant line is its BIT POSITION
-(§20.1), counted from `0` and never a positional index, because the bit is
-what a stored mask means. A flags FIELD still takes an ordinary `field` line
-with no referent token.
+token spelling. **The blocks sit AFTER the enums and BEFORE the unions**, each
+group sorted by name within itself, so the projection reads records, enums,
+flags, unions and a reader knows where to look without counting. Only a
+`flags` a field or an array key names projects, as only such an enum does. The
+number on a variant line is its BIT POSITION (§20.1), counted from `0` and
+never a positional index, because the bit is what a stored mask means. A flags
+FIELD still takes an ordinary `field` line with no referent token.
 
 **The first line is the projection's own FORM VERSION**, and it is the COOK
 FORM's too. Bump `N` when this rendering changes, and bump it when the cook's

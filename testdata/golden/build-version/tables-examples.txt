@@ -1,4 +1,4 @@
-0x5fb3ba31baebb1da
+0x913551e66dc67157
 schema-build-version 3
 protocol 91df5fddd8edc184
 byteorder little
@@ -171,6 +171,10 @@ enum Weapon
     variant 1 Cannon
     variant 2 Missile
     variant 3 Mine
+flags Perks
+    variant 0 Shielded
+    variant 1 Cloaked
+    variant 2 Turbo
 union Effect
     arm 1 buff payload=Buff
     arm 2 debuff payload=Debuff

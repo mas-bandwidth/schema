@@ -182,9 +182,10 @@ table Row
 		{"two enum variants swapped", "enum Grade { Bronze, Silver, Gold }", "enum Grade { Silver, Bronze, Gold }"},
 		{"a union arm renamed", "    up    Buff", "    rise  Buff"},
 		// a flags DECLARATION is shared by both wires: its variant names are
-		// the bit positions, so they ride in the protocol id (SPEC.md §3.1)
-		// and the id rides here in whole (§20.1 group 1). The cook projection
-		// gains the bit positions of its own under #435.
+		// the bit positions, which ride in the protocol id (SPEC.md §3.1) and
+		// in the cook projection's own `flags` block (§20.2): a mask rides raw
+		// and a load copies it verbatim, so a reorder or an in-place rename
+		// remaps every cooked bit with nothing on either wire to say so.
 		{"a flags variant reordered", "flags Perks { Shielded, Cloaked }", "flags Perks { Cloaked, Shielded }"},
 		{"a flags variant renamed", "flags Perks { Shielded, Cloaked }", "flags Perks { Warded, Cloaked }"},
 		// the LAYOUT group's own controls
@@ -199,6 +200,12 @@ table Row
 		// sizeof, no offset and no wire id, and nothing on either wire can see
 		// it — the build version is what does
 		{"an arm retyped under one width", "    count int32", "    count float32"},
+		// A FLAGS FIELD'S REFERENT is a MEANING fact through the block it
+		// reaches (§20.1, §20.2): the field line carries no `flags=` token,
+		// because a slot is a raw u64 copied through — but the declaration it
+		// names projects its bit positions, and swapping one for another with
+		// different variants changes what every stored bit means.
+		{"a flags field's referent swapped for one with other variants", "perks  Perks", "perks  Boons"},
 	}
 	for _, m := range moves {
 		edited := strings.Replace(src, m.from, m.to, 1)
@@ -216,7 +223,6 @@ table Row
 		to   string
 	}{
 		{"a was rename", "slot   int32 | min = 0, max = 10", "position int32 | was = \"slot\", min = 0, max = 10"},
-		{"a flags field's referent swapped for a same-width other", "perks  Perks", "perks  Boons"},
 		{"a guard removed", "    if guard\n    {\n        extra int32\n    }\n", "    extra int32\n"},
 		{"a json key changed", `json = "name"`, `json = "label"`},
 		{"a comment added", "table Row", "// a comment\ntable Row"},

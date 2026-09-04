@@ -112,6 +112,7 @@ func CookProjection(u *Unit) string {
 	})
 
 	enums := map[string]*Enum{}
+	flags := map[string]*Flags{}
 	unions := map[string]*Union{}
 
 	for _, name := range names {
@@ -122,7 +123,7 @@ func CookProjection(u *Unit) string {
 		ml := layoutRecord(u, st)
 		fmt.Fprintf(&b, "record %s sizeof=%d alignof=%d\n", ProjectionMemberName(u, name), ml.Size, ml.Align)
 		for _, fl := range ml.Fields {
-			b.WriteString(cookFieldLine(u, fl, enums, unions))
+			b.WriteString(cookFieldLine(u, fl, enums, flags, unions))
 		}
 		// Every record whose block form MOVES something is followed by its
 		// PROJECTION, whose slots are the other side's contract (§19). A record
@@ -145,7 +146,7 @@ func CookProjection(u *Unit) string {
 	// flags arm, an arm that is another union. Close the two sets over the
 	// arms before either section renders, so a vocabulary reached only
 	// through an arm is projected exactly once and in name order.
-	collectArmRefs(enums, unions)
+	collectArmRefs(enums, flags, unions)
 
 	for _, name := range sortedKeysOf(enums) {
 		fmt.Fprintf(&b, "enum %s\n", name)
@@ -155,10 +156,22 @@ func CookProjection(u *Unit) string {
 			fmt.Fprintf(&b, "    variant %d %s\n", i+1, v)
 		}
 	}
+	// A `flags` DECLARATION TAKES A BLOCK OF ITS OWN, and it is the enum block
+	// with the keyword swapped (§20.2). The blocks sit AFTER the enums and
+	// BEFORE the unions, each group sorted by name within itself. The number on
+	// a variant line is its BIT POSITION, counted from 0, because the bit is
+	// what a stored mask means (§20.1) — a mask rides raw, so a reorder or an
+	// in-place rename remaps every cooked bit with nothing on the wire to say so.
+	for _, name := range sortedKeysOf(flags) {
+		fmt.Fprintf(&b, "flags %s\n", name)
+		for i, v := range flags[name].Variants {
+			fmt.Fprintf(&b, "    variant %d %s\n", i, v)
+		}
+	}
 	for _, name := range sortedKeysOf(unions) {
 		fmt.Fprintf(&b, "union %s\n", name)
 		for i, v := range unions[name].Variants {
-			b.WriteString(cookArmLine(u, unions[name], i+1, v, enums, unions))
+			b.WriteString(cookArmLine(u, unions[name], i+1, v, enums, flags, unions))
 		}
 	}
 	return b.String()
@@ -167,7 +180,7 @@ func CookProjection(u *Unit) string {
 // cookFieldLine renders one field's line, collecting the vocabularies it
 // reaches. The optional tokens appear in §20.2's order and only where the fact
 // exists.
-func cookFieldLine(u *Unit, fl FieldLayout, enums map[string]*Enum, unions map[string]*Union) string {
+func cookFieldLine(u *Unit, fl FieldLayout, enums map[string]*Enum, flags map[string]*Flags, unions map[string]*Union) string {
 	f := fl.Field
 	kind := TableWireScalarKind(f)
 	if f.IsMap() {
@@ -180,7 +193,7 @@ func cookFieldLine(u *Unit, fl FieldLayout, enums map[string]*Enum, unions map[s
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "    field %016x kind=%d offset=%d size=%d", TableFieldWireId(f), kind, fl.Offset, fl.Size)
-	b.WriteString(cookFacts(u, fl, enums, unions))
+	b.WriteString(cookFacts(u, fl, enums, flags, unions))
 	b.WriteString("\n")
 	return b.String()
 }
@@ -189,7 +202,7 @@ func cookFieldLine(u *Unit, fl FieldLayout, enums map[string]*Enum, unions map[s
 // (docs/SPEC-TABLES.md §2.6): an enum arm names an enum, an arm that is
 // another union names a union, and each of those may name more. A `flags` arm
 // names nothing — there is deliberately no `flags=` token (§20.1).
-func collectArmRefs(enums map[string]*Enum, unions map[string]*Union) {
+func collectArmRefs(enums map[string]*Enum, flags map[string]*Flags, unions map[string]*Union) {
 	for grew := true; grew; {
 		grew = false
 		for _, name := range sortedKeysOf(unions) {
@@ -221,7 +234,7 @@ func collectArmRefs(enums map[string]*Enum, unions map[string]*Union) {
 // not moved projecting exactly as it did — and any other arm carries the
 // FIELD tokens for what it is, taken over the arm's own storage in the
 // overlay.
-func cookArmLine(u *Unit, un *Union, tag int, v UnionVariant, enums map[string]*Enum, unions map[string]*Union) string {
+func cookArmLine(u *Unit, un *Union, tag int, v UnionVariant, enums map[string]*Enum, flags map[string]*Flags, unions map[string]*Union) string {
 	_, _, _, armOffset := UnionLayout(u, un)
 	if v.Void() {
 		// AN ARM WITH NO PAYLOAD carries `kind=none` (§20.2, §18.1): the kind
@@ -238,13 +251,13 @@ func cookArmLine(u *Unit, un *Union, tag int, v UnionVariant, enums map[string]*
 	size, align := ArmLayout(u, v)
 	fl := FieldLayout{Field: v.F, Offset: armOffset, Size: size, Align: align}
 	return fmt.Sprintf("    arm %d %s kind=%d offset=%d size=%d%s\n",
-		tag, v.Name, TableWireScalarKind(v.F), armOffset, size, cookFacts(u, fl, enums, unions))
+		tag, v.Name, TableWireScalarKind(v.F), armOffset, size, cookFacts(u, fl, enums, flags, unions))
 }
 
 // cookFacts is the token tail a field line and an ARM line share: the scale,
 // the referent, the array shape and capacity, the presence companion, the
 // specified default and the effective range, in §20.2's order.
-func cookFacts(u *Unit, fl FieldLayout, enums map[string]*Enum, unions map[string]*Union) string {
+func cookFacts(u *Unit, fl FieldLayout, enums map[string]*Enum, flags map[string]*Flags, unions map[string]*Union) string {
 	f := fl.Field
 	var b strings.Builder
 	if f.Type.Kind == TFixed {
@@ -277,10 +290,14 @@ func cookFacts(u *Unit, fl FieldLayout, enums map[string]*Enum, unions map[strin
 		case *Union:
 			fmt.Fprintf(&b, " union=%s", ref.Name)
 			unions[ref.Name] = ref
+		case *Flags:
+			// there is deliberately NO flags= token (§20.1): a mask rides raw
+			// and a load copies it verbatim, so swapping one flags declaration
+			// for a same-width other changes no cook byte. Its WIDTH is in
+			// size=. The DECLARATION still projects, because a variant's BIT
+			// POSITION is what a stored mask means.
+			flags[ref.Name] = ref
 		}
-		// there is deliberately NO flags= token (§20.1): a mask rides raw and
-		// a load copies it verbatim, so swapping one flags declaration for a
-		// same-width other changes no cook byte. Its WIDTH is in size=.
 	}
 
 	switch {
