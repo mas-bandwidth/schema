@@ -2906,7 +2906,7 @@ pitch.
 ```
 $ ./produce
 block: 56064 bytes of 196672 max (frame 1207, 3000 ships)
-build version 0x1cb2e5a6286e7557
+build version 0xecf5e7c9af75374a
 ```
 
 `Begin` lays the block out for **this frame's** counts, so the handoff is 56 KB
@@ -2960,10 +2960,10 @@ pointer handoff is the production path:
 $ cc -std=c99 -Wall -Wextra -Werror -o consume consume.c genc/RenderBlock.c genc/RenderTable.c
 $ ./consume
 c read: frame=1207 ships=3000 ships[2999]=(2999, -2999)
-c build version 0x1cb2e5a6286e7557
+c build version 0xecf5e7c9af75374a
 ```
 
-The two builds carry the same build version, `0x1cb2e5a6286e7557` in the C++
+The two builds carry the same build version, `0xecf5e7c9af75374a` in the C++
 header and the C source alike. `BlockOpen` checks the prologue, which is the
 magic, the byte order, the **build version**, the base's 64-byte alignment,
 every count against its declared maximum, and every extent, and then you index.
