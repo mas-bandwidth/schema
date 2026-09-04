@@ -31,9 +31,51 @@ func tableArenaRuntime(pkg string, anyMap bool) string {
 	// (docs/SPEC-TABLES.md §2.2, §2.8), the node map's extent cursor included:
 	// a pointered unit with no map emits exactly the arena runtime it always
 	// emitted, to the byte.
-	carveDecl, carveMember := "", ""
+	// AllocRaw is a MAP symbol (docs/SPEC-TABLES.md §2.8) and stays out of a
+	// map-free unit's header with the rest of them: nothing else allocates
+	// storage that is not a node.
+	// and the refusal a node's storage answers when the FRAMING ITSELF is bad
+	// rather than merely unnameable — a map whose N its L cannot carry.
+	refusedConstant := ""
 	if anyMap {
-		carveDecl = "\n// a map's extent cursor, defined with the map runtime (docs/SPEC-TABLES.md\n// §2.8); the node map names it only through a pointer.\nstruct TableMapCarve;\n"
+		refusedConstant = "\n\n// What a node's storage answers when the FRAMING ITSELF is refused rather than\n" +
+			"// merely unnameable: a map whose N cannot fit in its L (docs/SPEC-TABLES.md\n" +
+			"// §2.8). An unnameable type id commands no storage and keeps its index; this\n" +
+			"// one makes the whole measure answer -1 (§7.6).\nstatic const int64_t kTableNodeRefused = -2;"
+	}
+	allocRaw := ""
+	carveDecl, carveMember := "\n", ""
+	if anyMap {
+		allocRaw = `    // RAW, ZEROED storage of the bytes asked for, at the alignment asked for — a MAP's builder head and its
+    // entry segments (docs/SPEC-TABLES.md §2.8). It is not a node: it carries
+    // no type id, takes no index and has no Reset, so it goes through the same
+    // slab and span the blob path uses rather than through Alloc.
+    uint8_t * AllocRaw( int64_t bytes, int64_t align, uint32_t & at )
+    {
+        at = 0;
+        if ( arena == NULL || arena->locked ) { return NULL; }
+        if ( bytes <= 0 || align > (int64_t) kTableAlign ) { return NULL; }
+        const int64_t rounded = TableAlignUp64( bytes );
+        if ( rounded > (int64_t) kTableSlabBytes )
+        {
+            at = TableArenaGrabSpan( *arena, rounded );
+            if ( at == kTableAllocFailed ) { at = 0; return NULL; }
+            return TableArenaAt( *arena, at );
+        }
+        if ( end == 0 || next + (uint32_t) rounded > end )
+        {
+            uint32_t offset = TableArenaGrabSlab( *arena );
+            if ( offset == kTableAllocFailed ) { return NULL; }
+            next = offset;
+            end = offset + kTableSlabBytes;
+            if ( next == 0 ) { next = kTableAlign; } // offset 0 is null: the arena's head stays reserved
+        }
+        at = next;
+        next += (uint32_t) rounded;
+        return TableArenaAt( *arena, at ); // the segment came back zeroed
+    }
+`
+		carveDecl = "\n\n// a map's extent cursor, defined with the map runtime (docs/SPEC-TABLES.md\n// §2.8); the node map names it only through a pointer.\nstruct TableMapCarve;\n"
 		carveMember = "\n    // WHERE A MAP'S ENTRIES LAND while this node's body decodes\n" +
 			"    // (docs/SPEC-TABLES.md §2.8): the node's own extent on the region path\n" +
 			"    // and the builder's arena on the tool's. It is MUTABLE because the\n" +
@@ -434,36 +476,7 @@ struct TableWorker
         return blob;
     }
 
-    // RAW, ZEROED storage of the bytes asked for, at the alignment asked for — a MAP's builder head and its
-    // entry segments (docs/SPEC-TABLES.md §2.8). It is not a node: it carries
-    // no type id, takes no index and has no Reset, so it goes through the same
-    // slab and span the blob path uses rather than through Alloc.
-    uint8_t * AllocRaw( int64_t bytes, int64_t align, uint32_t & at )
-    {
-        at = 0;
-        if ( arena == NULL || arena->locked ) { return NULL; }
-        if ( bytes <= 0 || align > (int64_t) kTableAlign ) { return NULL; }
-        const int64_t rounded = TableAlignUp64( bytes );
-        if ( rounded > (int64_t) kTableSlabBytes )
-        {
-            at = TableArenaGrabSpan( *arena, rounded );
-            if ( at == kTableAllocFailed ) { at = 0; return NULL; }
-            return TableArenaAt( *arena, at );
-        }
-        if ( end == 0 || next + (uint32_t) rounded > end )
-        {
-            uint32_t offset = TableArenaGrabSlab( *arena );
-            if ( offset == kTableAllocFailed ) { return NULL; }
-            next = offset;
-            end = offset + kTableSlabBytes;
-            if ( next == 0 ) { next = kTableAlign; } // offset 0 is null: the arena's head stays reserved
-        }
-        at = next;
-        next += (uint32_t) rounded;
-        return TableArenaAt( *arena, at ); // the segment came back zeroed
-    }
-
-    // a *bytes node: the bytes to write through, and the reference to store
+` + allocRaw + `    // a *bytes node: the bytes to write through, and the reference to store
     TableBytesSlot AllocBytes( int64_t length )
     {
         TableBytesSlot slot;
@@ -717,13 +730,7 @@ static const int64_t kTableNodeFieldMax = 0xFFFFFFFF;  // a field's L is a u32, 
 // The not-materialized sentinel (§6.3): a record whose type id this build could
 // not name. Distinct from every real offset including the root's 0, so an index
 // resolving through it yields NULL and can never fabricate the root.
-static const uint64_t kTableNodeAbsent = 0xFFFFFFFFFFFFFFFFull;
-
-// What a node's storage answers when the FRAMING ITSELF is refused rather than
-// merely unnameable: a map whose N cannot fit in its L (docs/SPEC-TABLES.md
-// §2.8). An unnameable type id commands no storage and keeps its index; this
-// one makes the whole measure answer -1 (§7.6).
-static const int64_t kTableNodeRefused = -2;
+static const uint64_t kTableNodeAbsent = 0xFFFFFFFFFFFFFFFFull;` + refusedConstant + `
 
 // ---- the numbering, on the SAVE side ----
 //

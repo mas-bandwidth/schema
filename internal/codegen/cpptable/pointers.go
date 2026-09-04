@@ -544,7 +544,9 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 			g.pf("                int64_t inner = %sPackMeasure( ctx, seen, *pointee );\n", t)
 			g.pf("                if ( inner < 0 ) { return -1; }\n")
 			g.pf("                TablePackMapClose( seen, (const void *) pointee, slot );\n")
-			g.emitNodeBytes(t, "*pointee", "                ", "return -1;", "bytes += %s + inner;")
+			g.emitNodeBytes(t, "*pointee", "                ", "return -1;",
+				func(term string) { g.pf("                bytes += %s + inner;\n", term) },
+				func(term string) { g.pf("                bytes += %s + inner;\n", term) })
 			g.pf("            }\n")
 			g.pf("        }\n    }\n")
 		},
@@ -632,9 +634,16 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 			g.pf("                if ( entry->open != 0 ) { return false; } // a data cycle\n")
 			g.pf("                %s.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &%s ); // the one body it already has\n", dstSlot, dstSlot)
 			g.pf("            }\n            else\n            {\n")
-			g.emitNodeBytes(t, "*pointee", "                ", "return false;", "const int64_t node_bytes = %s;")
-			g.pf("                if ( at + node_bytes > capacity ) { return false; }\n")
-			g.pf("                used = at + node_bytes;\n")
+			g.emitNodeBytes(t, "*pointee", "                ", "return false;",
+				func(term string) {
+					g.pf("                if ( at + (int64_t) sizeof( %s ) > capacity ) { return false; }\n", t)
+					g.pf("                used = at + %s;\n", term)
+				},
+				func(term string) {
+					g.pf("                const int64_t node_bytes = %s;\n", term)
+					g.pf("                if ( at + node_bytes > capacity ) { return false; }\n")
+					g.pf("                used = at + node_bytes;\n")
+				})
 			g.pf("                %s * child = new ( base + at ) %s; // lifetime only: the Pack below memcpy's the whole node over it\n", t, t)
 			g.pf("                %s.value = (int64_t) ( ( base + at ) - (const uint8_t *) &%s );\n", dstSlot, dstSlot)
 			g.pf("                if ( !%sPack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }\n", t)
@@ -884,7 +893,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    int64_t length = 0;\n")
 	g.pf("    while ( TableNodeScanNext( scan, type_id, body, length ) )\n    {\n")
 	g.pf("        records++;\n")
-	g.pf("        int64_t storage = %sNodeStorage( type_id, body, length );\n", n)
+	g.pf("        int64_t storage = %sNodeStorage( type_id, %slength );\n", n, g.nodeStorageArg(st))
 	if g.anyMap {
 		g.pf("        if ( storage == kTableNodeRefused ) { return -1; } // an N the record's framing cannot carry (§2.8)\n")
 	}
@@ -917,7 +926,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting );\n")
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
 	g.pf("            records++;\n")
-	g.pf("            int64_t storage = %sNodeStorage( type_id, body, length );\n", n)
+	g.pf("            int64_t storage = %sNodeStorage( type_id, %slength );\n", n, g.nodeStorageArg(st))
 	if g.anyMap {
 		g.pf("            if ( storage == kTableNodeRefused ) { out->malformed = true; return NULL; }\n")
 	}
@@ -946,7 +955,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("        int64_t k = 0;\n")
 	g.pf("        int32_t unknown_records = 0; // counted once the scan is known whole\n")
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
-	g.pf("            int64_t storage = %sNodeStorage( type_id, body, length );\n", n)
+	g.pf("            int64_t storage = %sNodeStorage( type_id, %slength );\n", n, g.nodeStorageArg(st))
 	g.pf("            if ( storage <= 0 )\n            {\n")
 	g.pf("                // a record whose type id this build cannot name KEEPS ITS\n")
 	g.pf("                // INDEX, is counted once here and not once per pointer, and\n")
@@ -1087,18 +1096,18 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 		g.pf("// depth, summed from the FRAMING: N is framing and not a value, and this\n")
 		g.pf("// reads no field. kTableNodeRefused is a wire whose N its L cannot carry.\n")
 	}
-	g.pf("inline int64_t %sNodeStorage( uint64_t type_id, const uint8_t * body, int64_t length )\n{\n", n)
-	if len(blobs) == 0 {
-		g.pf("    (void) length; // no byte buffer below this root: every node's storage is its type's\n")
-	}
 	anyExtent := false
 	for _, t := range reachable {
 		if g.anyMap && g.hasMapExtent(t) {
 			anyExtent = true
 		}
 	}
-	if !anyExtent {
-		g.pf("    (void) body; // no map below this root: a record's storage is its type's\n")
+	// THE BODY IS ONLY A PARAMETER WHERE A MAP RIDES IN AN EXTENT: a root that
+	// can name no such record answers from the type id and the length, exactly
+	// as it did before the construct existed.
+	g.pf("inline int64_t %sNodeStorage( uint64_t type_id, %sint64_t length )\n{\n", n, g.nodeStorageBody(anyExtent))
+	if len(blobs) == 0 {
+		g.pf("    (void) length; // no byte buffer below this root: every node's storage is its type's\n")
 	}
 	g.pf("    switch ( type_id )\n    {\n")
 	for _, t := range reachable {
@@ -1185,7 +1194,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 		g.pf("    TableMapCarve carve;\n")
 		g.pf("    carve.worker = nodes.worker;\n")
 		g.pf("    if ( carve.worker == NULL )\n    {\n")
-		g.pf("        const int64_t storage = %sNodeStorage( type_id, r.buffer, r.size );\n", n)
+		g.pf("        const int64_t storage = %sNodeStorage( type_id, %sr.size );\n", n, g.nodeStorageReader(st))
 		g.pf("        const int64_t record = storage > 0 ? %sNodeRecordBytes( type_id ) : 0;\n", n)
 		g.pf("        carve.at = at + record;\n")
 		g.pf("        carve.left = storage > record ? storage - record : 0;\n")

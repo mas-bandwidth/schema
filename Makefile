@@ -921,7 +921,8 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 	for f in testdata/golden/tables/examples/*Table.* testdata/golden/tables/pointers/*Table.* \
 	         testdata/golden/tables/block/*Table.* testdata/golden/tables/blockhome/*Table.* \
 	         testdata/golden/tables/messages/*Table.* testdata/golden/tables/stream/*Table.* \
-	         testdata/golden/tables/blobs/*Table.* testdata/golden/tables/scalars/*Table.* ; do \
+	         testdata/golden/tables/blobs/*Table.* testdata/golden/tables/scalars/*Table.* \
+	         testdata/golden/tables/maps/*Table.* ; do \
 		dir=$$(basename $$(dirname $$f)); \
 		n=$$(( n + 1 )); \
 		cmp -s $$f build/tables-generated/$$dir/$$(basename $$f) || \
@@ -2474,7 +2475,7 @@ update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
-	@for d in examples pointers block blockhome messages stream blobs scalars; do \
+	@for d in examples pointers block blockhome messages stream blobs scalars maps; do \
 		mkdir -p testdata/golden/tables/$$d; \
 		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
 	done

@@ -46,6 +46,21 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
 // skips the value whole, as it skips everything else it does not place.
 inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t depth );
 
+// ---- the map adapters (docs/SPEC-TABLES.md §2.8, §16) ----
+//
+// A MAP is the other construct the walk cannot walk alone: its entries live
+// behind a TableMap<Entry> this walk has no name for, reading one needs the
+// builder's arena, and neither exists in a unit that declares no map. Same
+// shape as the pointer's three — declared here, defined after the walk by
+// whichever half the unit carries.
+
+// a map field: its descriptor carries the generated ENTRY's
+inline bool TableJsonIsMap( const TableFieldInfo * f );
+// the map as a plain JSON object keyed by the KEY, in ASCENDING key order
+inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth );
+// that object back into the slot, in whatever order the text gives it
+inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth );
+
 // ---- json walk: begin ----
 //
 // The TEXT form (docs/SPEC-TABLES.md §16): one table, one text, one walk over the
@@ -350,6 +365,7 @@ inline bool TableJsonIsEnum( const TableFieldInfo * f )
 
 inline char TableJsonShape( const TableFieldInfo * f )
 {
+    if ( TableJsonIsMap( f ) ) return 'o';     // a MAP: an object keyed by the KEY (§2.8)
     if ( f->kind == 12 ) return 's';           // string
     if ( TableJsonIsBytes( f ) ) return 's';   // bytes: base64
     if ( TableJsonIsKeyed( f ) ) return 'o';   // an object keyed by variant NAME
@@ -799,6 +815,10 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
 inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const TableFieldInfo * f, int32_t depth )
 {
     const uint8_t * storage = (const uint8_t *) base + f->offset;
+    if ( TableJsonIsMap( f ) )
+    {
+        return TableJsonWriteMap( out, (const void *) storage, f, depth );
+    }
     if ( f->kind == 17 && !f->is_array )
     {
         return TableJsonWritePointer( out, storage, f, depth );
@@ -1802,6 +1822,10 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
 inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldInfo * f, int32_t depth )
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
+    if ( TableJsonIsMap( f ) )
+    {
+        return TableJsonReadMap( in, (void *) storage, f, depth );
+    }
     if ( f->kind == 12 )
     {
         int32_t length = 0;
@@ -2706,6 +2730,25 @@ inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * inf
 }
 
 // ---- json graph walk: end ----
+
+// ---- this unit declares no map ----
+//
+// No field carries a generated entry, so the classifier below is a constant
+// and the two halves are never reached (docs/SPEC-TABLES.md §2.8).
+
+inline bool TableJsonIsMap( const TableFieldInfo * ) { return false; }
+
+inline bool TableJsonWriteMap( TableJsonOut &, const void *, const TableFieldInfo *, int32_t )
+{
+    return false;
+}
+
+inline bool TableJsonReadMap( TableJsonIn & in, void *, const TableFieldInfo *, int32_t )
+{
+    in.report->malformed = true;
+    in.bad = true;
+    return false;
+}
 
 } // namespace graphdemo
 

@@ -1393,15 +1393,17 @@ func (g *tableGen) emitMapWalkSurface(members []*ir.Struct) {
 // maps take (docs/SPEC-TABLES.md §2.8, §6.3), the sum rounded again so the
 // next node starts aligned. A unit with no map emits exactly the term it
 // always emitted.
-func (g *tableGen) emitNodeBytes(table, expr, ind, onBad, format string) {
-	term := fmt.Sprintf("TableAlignUp64( (int64_t) sizeof( %s ) )", table)
+func (g *tableGen) emitNodeBytes(table, expr, ind, onBad string, plain func(term string), extent func(term string)) {
 	target := memberOf(g.unit, table)
-	if g.anyMap && target != nil && g.hasMapExtent(target) {
-		g.pf("%sint64_t extent = %sMapExtent( ctx, %s );\n", ind, table, expr)
-		g.pf("%sif ( extent < 0 ) { %s }\n", ind, onBad)
-		term = fmt.Sprintf("TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + extent )", table)
+	if !g.anyMap || target == nil || !g.hasMapExtent(target) {
+		// a node with no map below it takes exactly the term it always took,
+		// so a map-free unit emits what it emitted before the construct existed
+		plain(fmt.Sprintf("TableAlignUp64( (int64_t) sizeof( %s ) )", table))
+		return
 	}
-	g.pf("%s%s\n", ind, fmt.Sprintf(format, term))
+	g.pf("%sint64_t node_extent = %sMapExtent( ctx, %s );\n", ind, table, expr)
+	g.pf("%sif ( node_extent < 0 ) { %s }\n", ind, onBad)
+	extent(fmt.Sprintf("TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + node_extent )", table))
 }
 
 // emitMapWireExtent emits `<T>WireExtent`: the region bytes one record's maps
@@ -1862,4 +1864,44 @@ func (g *tableGen) mapColumn(f *ir.Field) string {
 			"if ( placed != NULL ) { TableEntrySetKey( *placed, (%s) key_value ); } return (void *) placed; }", n, hold, typ, typ)
 	}
 	return fmt.Sprintf("&%sTableInfo, %s, %s, %s, ", n, count, at, insert)
+}
+
+// nodeStorageBody, nodeStorageArg and nodeStorageReader are the ONE extra
+// parameter a node's storage takes where a map rides in an extent
+// (docs/SPEC-TABLES.md §2.8): the record's body, from which the framing scan
+// sums the entry arrays. A root that can name no such record does not take it,
+// so a map-free unit's dispatch is the one it always emitted.
+func (g *tableGen) nodeStorageBody(anyExtent bool) string {
+	if anyExtent {
+		return "const uint8_t * body, "
+	}
+	return ""
+}
+
+func (g *tableGen) nodeStorageArg(root *ir.Struct) string {
+	if g.rootHasExtent(root) {
+		return "body, "
+	}
+	return ""
+}
+
+func (g *tableGen) nodeStorageReader(root *ir.Struct) string {
+	if g.rootHasExtent(root) {
+		return "r.buffer, "
+	}
+	return ""
+}
+
+// rootHasExtent reports whether any record one root's numbering can name holds
+// a map by value — which is what decides both halves of the signature above.
+func (g *tableGen) rootHasExtent(root *ir.Struct) bool {
+	if !g.anyMap {
+		return false
+	}
+	for _, t := range g.pointerReachable(root) {
+		if g.hasMapExtent(t) {
+			return true
+		}
+	}
+	return false
 }
