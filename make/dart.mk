@@ -379,7 +379,8 @@ CONFORMANCE_LEGS  += build/conformance-dart
 BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
 
 # THE DART NATIVE GATE (issue #547). `dart analyze` and `dart format` are the
-# language's own two instruments, and this holds BOTH corpora to both of them.
+# language's own two instruments, and this holds BOTH corpora to both of them,
+# both halves before the verdict.
 #
 # It extends tables-dart-clean rather than replacing it: that target holds the
 # tables corpus, and its format half covers the <Base>Table/Block/Cook files
@@ -387,8 +388,12 @@ BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
 # every generated Dart file of both.
 .PHONY: native-dart
 native-dart: generated/dart/.stamp generated/dart-ludicrous/.stamp build/tables-generated-dart/.stamp
-	$(DART) analyze generated/dart generated/dart-ludicrous build/tables-generated-dart
-	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous build/tables-generated-dart
-	@echo "native Dart: analyzer clean and format-canonical over the examples and tables corpora"
+	@fail=0; \
+	echo "==== dart analyze"; \
+	$(DART) analyze generated/dart generated/dart-ludicrous build/tables-generated-dart || fail=1; \
+	echo "==== dart format"; \
+	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous build/tables-generated-dart || fail=1; \
+	if [ $$fail -ne 0 ]; then echo "native Dart: the findings above are the emitter's"; exit 1; fi; \
+	echo "native Dart: analyzer clean and format-canonical over the examples and tables corpora"
 
 NATIVE_LEGS       += native-dart

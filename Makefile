@@ -3056,33 +3056,32 @@ CLANG_MAJOR  ?= 18
 CLANG_FORMAT ?= clang-format-$(CLANG_MAJOR)
 CLANG_TIDY   ?= clang-tidy-$(CLANG_MAJOR)
 
-# clang-tidy is one process per translation unit over ~200 units per leg, and
-# every one of them is independent.
+# clang-tidy is one process per translation unit over a couple of hundred units
+# per leg, and every one of them is independent.
 NATIVE_JOBS ?= 4
 
-# $(1) the language flag clang wants, $(2) the include the runtime lives in,
-# $(3) the directories to walk, $(4) the file extensions in them.
-define native_clang_tidy
-	@set -e; fail=0; \
-	for d in $(3); do \
-		files=$$(ls $$(for e in $(4); do echo $$d/*.$$e; done) 2>/dev/null || true); \
-		[ -n "$$files" ] || continue; \
-		printf '%s\n' $$files | xargs -P $(NATIVE_JOBS) -I{} \
-			$(CLANG_TIDY) --quiet --warnings-as-errors='*' {} -- \
-			$(1) -I$$d -I$(2) || fail=1; \
-	done; \
-	if [ $$fail -ne 0 ]; then exit 1; fi
-endef
-
+# BOTH HALVES RUN, ALWAYS, and the verdict comes at the end. A leg that stopped
+# at its formatter would hide its analyzer's findings behind a whitespace diff,
+# and the whole finding list is what the emitter is owed.
 NATIVE_CPP_DIRS = generated/cpp generated/cpp/ludicrous $(wildcard build/tables-generated/*/)
 
 .PHONY: native-cpp
 native-cpp: generated/cpp/.stamp generated/cpp/ludicrous/.stamp build/tables-generated/.stamp
+	@fail=0; \
+	echo "==== clang-format"; \
 	$(CLANG_FORMAT) --dry-run --Werror \
 		generated/cpp/*.h generated/cpp/ludicrous/*.h \
-		build/tables-generated/*/*.h build/tables-generated/*/*.cpp
-	$(call native_clang_tidy,-xc++ -std=c++17,$(SERIALIZE),$(NATIVE_CPP_DIRS),h cpp)
-	@echo "native C++: clang-format canonical and clang-tidy clean over the examples and tables corpora"
+		build/tables-generated/*/*.h build/tables-generated/*/*.cpp || fail=1; \
+	echo "==== clang-tidy"; \
+	for d in $(NATIVE_CPP_DIRS); do \
+		files=$$(ls $$d/*.h $$d/*.cpp 2>/dev/null); \
+		[ -n "$$files" ] || continue; \
+		printf '%s\n' $$files | xargs -P $(NATIVE_JOBS) -I{} \
+			$(CLANG_TIDY) --quiet --warnings-as-errors='*' {} -- \
+			-xc++ -std=c++17 -I$$d -I$(SERIALIZE) || fail=1; \
+	done; \
+	if [ $$fail -ne 0 ]; then echo "native C++: the findings above are the emitter's"; exit 1; fi; \
+	echo "native C++: clang-format canonical and clang-tidy clean over the examples and tables corpora"
 
 NATIVE_LEGS += native-cpp
 

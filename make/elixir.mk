@@ -355,17 +355,22 @@ BENCH_TABLES_LEGS += generated/bench/tables/elixir/.stamp
 
 # THE ELIXIR NATIVE GATE (issue #547). `mix format` is the language's one
 # formatting authority and Credo is the analyzer an Elixir reader runs, and
-# this holds both corpora to both. The format half over the tables corpus is
-# new here: test-elixir above checks the packet emitter's output alone.
+# this holds both corpora to both, both halves before the verdict. The format
+# half over the tables corpus is new here: test-elixir above checks the packet
+# emitter's output alone.
 #
 # CREDO IS PINNED in test/native/elixir/mix.exs, and runs at its DEFAULT
-# strictness — plain `mix credo`, not --strict, which is the reading the law
+# strictness (plain `mix credo`, not --strict), which is the reading the law
 # asks for. Its config there names the two corpora as the files to read; the
 # project holds no source of its own.
 .PHONY: native-elixir
 native-elixir: generated/elixir/.stamp generated/elixir-ludicrous/.stamp build/tables-generated-elixir/.stamp
-	$(MIX) format --check-formatted generated/elixir/*.ex generated/elixir-ludicrous/*.ex build/tables-generated-elixir/*/*.ex
-	cd test/native/elixir && $(MIX) local.hex --force --if-missing && $(MIX) local.rebar --force --if-missing && $(MIX) deps.get && $(MIX) credo
-	@echo "native Elixir: mix format canonical and Credo clean over the examples and tables corpora"
+	@fail=0; \
+	echo "==== mix format"; \
+	$(MIX) format --check-formatted generated/elixir/*.ex generated/elixir-ludicrous/*.ex build/tables-generated-elixir/*/*.ex || fail=1; \
+	echo "==== credo"; \
+	( cd test/native/elixir && $(MIX) local.hex --force --if-missing && $(MIX) local.rebar --force --if-missing && $(MIX) deps.get && $(MIX) credo ) || fail=1; \
+	if [ $$fail -ne 0 ]; then echo "native Elixir: the findings above are the emitter's"; exit 1; fi; \
+	echo "native Elixir: mix format canonical and Credo clean over the examples and tables corpora"
 
 NATIVE_LEGS       += native-elixir

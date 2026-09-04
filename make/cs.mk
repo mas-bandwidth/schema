@@ -315,32 +315,37 @@ BENCH_TABLES_LEGS += generated/bench/tables/cs/.stamp
 GOLDENS_LEGS      += update-goldens-cs
 
 # THE C# NATIVE GATE (issue #547). Two halves, and they cover different sets
-# for a reason that is the emitter's shape rather than a choice here.
+# for a reason that is the emitter's shape rather than a choice here. Both run
+# before the leg reports.
 #
-# THE FORMATTER half is `dotnet format whitespace --folder --verify-no-changes`
-# over the generated trees of both corpora. --folder is what lets the
-# formatter read a DIRECTORY rather than a project, and that is required here:
-# a generated unit's Block and Cook accelerators share one set of blittable
-# records, so no single project compiles a whole unit, let alone the whole
-# corpus (test/conformance/cs/schemaconformance.csproj excludes them by name
-# for exactly this reason). --folder also means whitespace alone; the style
-# and analyzer fixers need a workspace, and what they would see is the second
+# THE FORMATTER half is `dotnet format whitespace --verify-no-changes` over the
+# generated trees of both corpora. --folder is what lets the formatter read a
+# DIRECTORY rather than a project, and that is required here: a generated
+# unit's Block and Cook accelerators share one set of blittable records, so no
+# single project compiles a whole unit, let alone the whole corpus
+# (test/conformance/cs/schemaconformance.csproj excludes them by name for
+# exactly this reason). --folder also means whitespace alone; the style and
+# analyzer fixers need a workspace, and what they would see is the second
 # half's business.
 #
 # THE ANALYZER half is the .NET analyzers at their default mode, warnings as
 # errors, over the two projects that DO compile: the packet corpus through
-# test/cs, and the tables corpus through the conformance project. Analyzers
-# are on by default for this TargetFramework; naming the properties here says
-# what the gate depends on rather than leaving it to an SDK default.
+# test/cs, and the tables corpus through the conformance project. Analyzers are
+# on by default for this TargetFramework; naming the properties here says what
+# the gate depends on rather than leaving it to an SDK default.
 .PHONY: native-cs
 native-cs: generated/cs/.stamp generated/cs-ludicrous/.stamp build/tables-generated-cs/.stamp
-	dotnet format whitespace generated/cs --folder --verify-no-changes
-	dotnet format whitespace generated/cs-ludicrous --folder --verify-no-changes
-	dotnet format whitespace build/tables-generated-cs --folder --verify-no-changes
-	cd test/cs && dotnet build -v q --nologo \
-		-p:EnableNETAnalyzers=true -p:AnalysisMode=Default -p:TreatWarningsAsErrors=true
-	cd test/conformance/cs && dotnet build -v q --nologo \
-		-p:EnableNETAnalyzers=true -p:AnalysisMode=Default -p:TreatWarningsAsErrors=true
-	@echo "native C#: dotnet format canonical and the .NET analyzers clean over the examples and tables corpora"
+	@fail=0; \
+	echo "==== dotnet format"; \
+	dotnet format whitespace generated/cs --folder --verify-no-changes || fail=1; \
+	dotnet format whitespace generated/cs-ludicrous --folder --verify-no-changes || fail=1; \
+	dotnet format whitespace build/tables-generated-cs --folder --verify-no-changes || fail=1; \
+	echo "==== the .NET analyzers"; \
+	( cd test/cs && dotnet build -v q --nologo \
+		-p:EnableNETAnalyzers=true -p:AnalysisMode=Default -p:TreatWarningsAsErrors=true ) || fail=1; \
+	( cd test/conformance/cs && dotnet build -v q --nologo \
+		-p:EnableNETAnalyzers=true -p:AnalysisMode=Default -p:TreatWarningsAsErrors=true ) || fail=1; \
+	if [ $$fail -ne 0 ]; then echo "native C#: the findings above are the emitter's"; exit 1; fi; \
+	echo "native C#: dotnet format canonical and the .NET analyzers clean over the examples and tables corpora"
 
 NATIVE_LEGS       += native-cs

@@ -524,13 +524,13 @@ CONFORMANCE_LEGS  += build-conformance-java
 CONFORMANCE_ENV   += JAVA=$(JAVA)
 BENCH_TABLES_LEGS += generated/bench/tables/java/.stamp
 
-# THE JAVA NATIVE GATE (issue #547). Java's analyzer is the JDK's own lint —
+# THE JAVA NATIVE GATE (issue #547). Java's analyzer is the JDK's own lint,
 # `javac -Xlint:all -Werror`, which the compile gates above already hold both
-# corpora to — and its formatter is google-java-format, in the AOSP profile:
-# four-space indent, which is what this emitter writes and what the rest of
-# the estate's Java uses. The Google profile's two spaces is the only thing
-# that separates them, and choosing between the two profiles is choosing an
-# indent, not a standard.
+# corpora to, and its formatter is google-java-format in the AOSP profile:
+# four-space indent, which is what this emitter writes and what the rest of the
+# estate's Java uses. The Google profile's two spaces is the only thing that
+# separates the two profiles, so choosing between them is choosing an indent,
+# not a standard. Both halves run before the leg reports.
 #
 # THE FORMATTER IS PINNED AND CACHED under dist/ keyed by its version, like
 # every other toolchain in this tree: the jar is fetched once, checked against
@@ -538,8 +538,8 @@ BENCH_TABLES_LEGS += generated/bench/tables/java/.stamp
 # nothing runs a floating version.
 #
 # The --add-exports run is the invocation google-java-format documents for
-# JDK 16 and later: it reads the compiler's own parser, which the module
-# system closes by default.
+# JDK 16 and later: it reads the compiler's own parser, which the module system
+# closes by default.
 GOOGLE_JAVA_FORMAT_VERSION ?= 1.36.1
 GOOGLE_JAVA_FORMAT_SHA256  ?= 25b400f003089d23cc5320cdaf1a16cabee19b8aa3434d0ff021b3d9f42154b4
 GOOGLE_JAVA_FORMAT_JAR     := dist/google-java-format-$(GOOGLE_JAVA_FORMAT_VERSION)-all-deps.jar
@@ -562,13 +562,17 @@ GOOGLE_JAVA_FORMAT = $(JAVA) \
 
 .PHONY: native-java
 native-java: generated/java/.stamp generated/java-ludicrous/.stamp build/tables-generated-java/.stamp $(GOOGLE_JAVA_FORMAT_JAR)
-	$(MAKE) tables-java-compile-all
-	@rm -rf build/java-native-classes && mkdir -p build/java-native-classes
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-native-classes generated/java/*.java
-	@rm -rf build/java-native-classes-ludicrous && mkdir -p build/java-native-classes-ludicrous
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-native-classes-ludicrous generated/java-ludicrous/*.java
+	@fail=0; \
+	echo "==== javac -Xlint:all -Werror"; \
+	$(MAKE) --no-print-directory tables-java-compile-all || fail=1; \
+	rm -rf build/java-native-classes && mkdir -p build/java-native-classes; \
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-native-classes generated/java/*.java || fail=1; \
+	rm -rf build/java-native-classes-ludicrous && mkdir -p build/java-native-classes-ludicrous; \
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-native-classes-ludicrous generated/java-ludicrous/*.java || fail=1; \
+	echo "==== google-java-format --aosp"; \
 	$(GOOGLE_JAVA_FORMAT) --dry-run --set-exit-if-changed \
-		generated/java/*.java generated/java-ludicrous/*.java build/tables-generated-java/*/*.java
-	@echo "native Java: -Xlint:all -Werror clean and google-java-format canonical over the examples and tables corpora"
+		generated/java/*.java generated/java-ludicrous/*.java build/tables-generated-java/*/*.java || fail=1; \
+	if [ $$fail -ne 0 ]; then echo "native Java: the findings above are the emitter's"; exit 1; fi; \
+	echo "native Java: -Xlint:all -Werror clean and google-java-format canonical over the examples and tables corpora"
 
 NATIVE_LEGS       += native-java
