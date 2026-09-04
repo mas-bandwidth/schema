@@ -2431,3 +2431,176 @@ get quietly mangled.
 
 **You now have** the designer loop: binary for the game, text for people, one
 schema driving both, and drift counted at every crossing.
+
+---
+
+## Part 10 — evolution you can trust: `was` and the baseline
+
+### The problem
+
+Part 6 ended with two hazards the wire cannot see. A changed default rewires
+the meaning of every stored file, and a reordered flags declaration remaps every
+stored mask, both silently, with clean reports. There is a third: renaming a
+field. Identity is the name hash, so a rename orphans every byte ever stored
+under the old name. Starlight has two years of player saves, and "be careful"
+is not a plan.
+
+### Renames: `was`
+
+The rename hazard has an in-language fix. Say v1 shipped
+`velocity float32 = 500.0` and you want it called `speed`:
+
+```
+table ShipConfig
+{
+    speed float32 = 500.0 | was = "velocity"
+}
+```
+
+`was` carries the old identity through the rename. On the wire the field keeps
+riding under `velocity`'s hash, so old files load into `speed` and new files
+stay readable by old builds:
+
+```
+$ ./l ../w1/v1.bin
+speed=777 unknown=0
+```
+
+No unknown, no loss, and the rename is invisible on the wire. The guard rails:
+
+```
+speed float32 | was = "speed"
+    Config.schema:8:31: field damage: was = "damage" names the field's own current name — was records the OLD name after a rename; drop the attribute until one happens (docs/SPEC-TABLES.md)
+```
+
+```
+type T { a int32 | was = "b" }
+    T.schema:5:5: field a: was is a table-wire concept — it aliases a renamed field's wire id, and only table fields have wire ids; a `type`'s wire is positional, so a rename there moves no bit (docs/SPEC-TABLES.md)
+```
+
+Any two fields of one table whose effective ids collide are refused too.
+
+There is no `was` for enum variants or union arms. Renaming a variant makes a
+new variant, and old data reads as `unknown`. Rename fields freely, and treat
+variant names as permanent.
+
+### The baseline: the compiler remembers what shipped
+
+`was` solves renames and the wire absorbs almost everything else. A small set
+of edits change what an old file **means** with nothing on the wire able to say
+so: a specified default changed, flags inserted or removed or reordered or
+renamed in place, and a field's referent swapped for one that cannot stand in
+for it. For those, opt into the check:
+
+```
+$ schema tables-baseline --update --reason "first baseline before 1.0 ships" .
+$ ls
+Config.schema	tables.baseline
+```
+
+`tables.baseline` is a text projection of the unit's whole table closure, one
+fact per line, made to be read in a diff:
+
+```
+schema-tables-baseline 6
+package starlight
+
+table ShipConfig
+    field velocity id=0x2e46 kind=10 default=500.0
+    field damage id=0x15a9 kind=10 default=21.0
+    field perks id=0x2fc5 kind=9 flags=Perks
+
+flags Perks
+    variant Shielded bit=0
+    variant Cloaked bit=1
+    variant Turbo bit=2
+
+## history
+### 2026-09-04 — first baseline before 1.0 ships
+- baseline created over 1 table — data written BEFORE this point is not covered by it
+```
+
+Commit it. From now on every `schema check`, and so every `generate`, diffs the
+closure against it. Change `damage` from 21.0 to 25.0:
+
+```
+$ schema check .
+tables.baseline: ShipConfig.damage: specified default 21.0 -> 25.0 — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason "..." (docs/SPEC-TABLES.md §18)
+schema: 1 error(s)
+```
+
+Insert a flags variant in the middle and the refusal names every moved bit:
+
+```
+$ schema check .
+tables.baseline: flags Perks: variant Cloaked moved from bit 1 to bit 2 — every stored file's bits are remapped, and nothing on the wire says so — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason "..." (docs/SPEC-TABLES.md §18)
+tables.baseline: flags Perks: variant Turbo moved from bit 2 to bit 3 — every stored file's bits are remapped, and nothing on the wire says so — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason "..." (docs/SPEC-TABLES.md §18)
+schema: 2 error(s)
+```
+
+Append it at the end instead, as `{ Shielded, Cloaked, Turbo, Hardened }`, and
+check passes in silence. The law from Part 6, now enforced.
+
+Sometimes you **mean** the break. The override is one command and it is never
+silent:
+
+```
+$ schema tables-baseline --update .
+schema: --update needs --reason: moving the baseline declares an intentional break with data already written, and the reason is what a person reads years later when an old file refuses (docs/SPEC-TABLES.md §18.4)
+
+$ schema tables-baseline --update --reason "damage rebalanced for 2.0; saves from 1.x read the new value" .
+```
+
+That appends to the baseline's own history, which is the changelog someone
+reads in three years when a 1.x save loads oddly:
+
+```
+## history
+### 2026-09-04 — first baseline before 1.0 ships
+- baseline created over 1 table — data written BEFORE this point is not covered by it
+
+### 2026-09-04 — damage rebalanced for 2.0; saves from 1.x read the new value
+- ShipConfig.damage: specified default 21.0 -> 25.0 [refuse]
+```
+
+### Three verdicts
+
+The check sorts every edit into refuse, warn or pass.
+
+**Refused**, because the meaning changes silently: defaults changed, added or
+removed, flags moved, a field's wire kind or an array's element kind changed,
+keyed and positional array spellings swapped, and a referent swapped for one
+that cannot stand in.
+
+**Warned**, because the runtime report already counts the loss but you should
+know at edit time. Warnings print and exit 0:
+
+```
+$ schema check .
+warning: tables.baseline: ShipConfig.name: capacity 32 -> 16 (a stored value longer than the new capacity is truncated and counts clamped)
+```
+
+A bare rename is a warning that hands you the fix:
+
+```
+$ schema check .
+warning: tables.baseline: table ShipConfig: velocity removed and speed added in one edit — if that is a rename the wire id moved with the name and every stored value orphans: declare it `speed ... | was = "velocity"`, and pair `json = "velocity"` if the text key must survive (docs/SPEC-TABLES.md §5, §16.4)
+```
+
+Take the fix and one warning remains, about the half `was` does not carry:
+
+```
+$ schema check .
+warning: tables.baseline: ShipConfig.speed: renamed under was = "velocity", which keeps the wire id and NOT the text key — the JSON key is now "speed"; pair json = "velocity" if an existing text must still read (docs/SPEC-TABLES.md §16.4)
+```
+
+**Passed in silence**, because the wire absorbs it: fields added, removed or
+reordered, enum variants added anywhere, flags appended, and bounds grown.
+
+No `tables.baseline` means no check, so the whole mechanism is opt in, and the
+first baseline covers only what comes after it. Write it the day your format
+first ships to anyone.
+
+**You now have** the full evolution discipline: rename with `was`, append
+flags, and a committed baseline that turns the silent hazards into compile
+errors with recorded reasons.
