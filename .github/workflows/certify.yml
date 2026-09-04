@@ -25,12 +25,22 @@ on:
     - cron: '17 9 * * *'
   workflow_dispatch:
 
-# Certification runs are NEVER cancelled — every main commit's full-matrix
-# proof must run to completion. The event name is part of the group so a queued
-# nightly and a queued push run can never displace each other (a group holds
-# only one pending run).
+# EVERY MAIN COMMIT CERTIFIES, AND NO RUN EVER CANCELS ANOTHER (issue #471).
+# A concurrency group holds one running and one PENDING run, so a third entrant
+# evicts the pending one — with `cancel-in-progress: false` that eviction is
+# still a cancellation, and it lands on the middle commit. Keying every push on
+# its own commit puts each in a group of one, so nothing can displace it: three
+# merges inside twenty minutes on 2026-09-04 cancelled all three certification
+# runs (33827063336, 33828317708, 33829466673) while a fourth still held the
+# shared group, and main went a morning with no full chain behind it.
+#
+# The nightly keeps a ref-keyed group of its own — a queued cron run should be
+# ONE run whatever the schedule does — and a dispatch keeps the branch it was
+# asked for. The event name stays in the key so none of the three can ever
+# collide. This repository is public: runner minutes are not the constraint,
+# concurrency is, and a certification that never runs proves nothing.
 concurrency:
-  group: certify-${{ github.event_name }}-${{ github.ref }}
+  group: certify-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: false
 
 # The runtimes the generated code targets, PINNED to each sibling's latest
