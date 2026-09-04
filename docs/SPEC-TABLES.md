@@ -161,9 +161,10 @@ carry both classes; C#, Dart, Go, Rust, Java, JavaScript and Elixir carry the
 fixed class (§6.1) — optionals, enum-keyed arrays, the text form (§16) and all
 — and each refuses a unit whose closure declares a pointer, naming its
 variable class as a
-follow-on. Every other backend refuses a unit that declares tables at all, by
-name, with this document cited. The remaining per-language backends are named
-follow-ons (§15).
+follow-on. **There is no tenth target and no backend left out**: every
+language schema generates for carries the table wire, and what a fixed-class
+port refuses is a pointer in the closure, by name, with this document cited
+(§11) — never the `table` declaration itself.
 
 **ELIXIR IS THE READING TIER, and the tier is a property of the LANGUAGE rather
 than of the port.** A BEAM term has no layout a producer could write, so this
@@ -505,8 +506,10 @@ order-word check (`test/js-tables/main.mjs`): a file whose magic is intact and
 whose order word records the other order, which is exactly the file a reader
 leaning on one check would open.
 
-**The BLOCK FORM (§2.7, §19) is live in C++, C, C#, Go, Rust, Java and Elixir,
-and READ by JavaScript and Dart**, and it took C++ and C# TOGETHER to land, because the
+**The BLOCK FORM (§2.7, §19) is BUILT by C++ and C, and READ by the other
+seven** — C#, Dart, Elixir, Go, Java, JavaScript and Rust each emit the open
+path, the projection and the accessors, and none emits a fill path — and it
+took C++ and C# TOGETHER to land, because the
 form is an ABI between two languages and one
 language alone cannot hold the gate it exists for (§12.1). C++ emits
 `<Base>Block.h` (the projection, the generated layout asserts, the fill path
@@ -543,8 +546,8 @@ closure — and neither does a table whose closure carries a UNION, because
 §19.3 pins the C# side to Sequential with generated padding and Sequential
 cannot overlay arms. Each says so in the Block header rather than going
 missing — and in the JavaScript module, which says the same thing in its own
-file. Every other backend emits no Block file at all, as it emits no Table
-file; those are the same named follow-on (§15).
+file. No backend is without a Block file to say it in: all nine emit one, as
+all nine emit a Table file.
 
 **The VIEW's type half and unit registry (§8.2–§8.7) are specified and
 unimplemented.** What ships today is §8.1: a table's descriptors, built in,
@@ -1052,8 +1055,9 @@ enum is keyed.
   forward pass works, and an STL algorithm does not, because the header
   includes no `<iterator>` (§13.9).
 
-  **Held by test**: every keyed array in the corpus is iterated in both
-  backends and every walk yields `E.Max` entries whose keys run `1 .. E.Max`;
+  **Held by test**: every keyed array in the corpus is iterated in the C++
+  reference and in C#, and every walk yields `E.Max` entries whose keys run
+  `1 .. E.Max`;
   one negative control moves `begin()` off the first stored slot and another
   restores the `None` slot — storage `E.Max + 1` with no shift — and the
   tables suite, the layout gate and the `sizeof` assertion go red. **The
@@ -1191,8 +1195,17 @@ Inside a TABLE closure a union's arm may name a `table`, not only a
 declared `type`:
 
 ```
-table OpenDocument  { path string(256), line uint32 }
-table SaveDocument  { path string(256), force bool   }
+table OpenDocument
+{
+    path string(256)
+    line uint32
+}
+
+table SaveDocument
+{
+    path  string(256)
+    force bool
+}
 
 union ToolBody
 {
@@ -1290,8 +1303,13 @@ the pitch is, what it costs and what it refuses — is §19.
 ### 2.8 Maps: `ships map[string(32)]ShipConfig`
 
 ```
-table ShipConfig { name string(64)  health int32 }
-table Item       { count int32 }
+table ShipConfig
+{
+    name   string(64)
+    health int32
+}
+
+table Item { count int32 }
 
 table Fleet
 {
@@ -1417,7 +1435,8 @@ table FleetShipsEntry      // generated; never spelled in a schema
   touches no byte anyone wrote.
 - **Its field ids are two CONSTANTS**: `key` is `0xA079` and `value` is
   `0x9194`, the fold (§5) of those two names, and they never move. That is what
-  makes a user's own `table Pair { key string(32)  value ShipConfig }` under
+  makes a user's own `table Pair` — a `key string(32)` and a
+  `value ShipConfig` — under
   `[..N]Pair` the SAME BYTES as the map — the migration path from the
   table-of-pairs idiom a schema used before maps existed, and the proof that a
   map is an array of tables rather than a new thing.
@@ -2442,8 +2461,19 @@ does not spend.
 
 ```
 table Palette { id int32 }
-table Node    { value int32  next *Node  palette *Palette }
-table Scene   { head *Node   palette *Palette }
+
+table Node
+{
+    value   int32
+    next    *Node
+    palette *Palette
+}
+
+table Scene
+{
+    head    *Node
+    palette *Palette
+}
 ```
 
 with `scene.head = A`, `A.next = B`, and `A.palette`, `B.palette` and
@@ -2803,7 +2833,8 @@ only.
 | a field moved between `T` and `?T` | silent — no byte moves | passes | **moves** — the presence companion is storage |
 | a field moved to or from `*T` | `kind_mismatch` | passes | **moves** |
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
-| a DECLARATION renamed — a `type` or a table | silent: a declaration name is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
+| a DECLARATION renamed — a `type`, or a table held BY VALUE | silent: a name held by value is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
+| a TABLE renamed where it is a POINTER TARGET | **not silent**: a table's own name is its node's type id on the wire (§5), so every node of the old name is unnameable — skipped by its length and counted `unknown`, with every pointer to it reading null (§3.1) | as the row above | **moves** |
 | a `type`'s FIELD renamed, where `was` is refused (SPEC.md §4.2) | `unknown` on the table wire, whose field id is the name's hash | passes in silence | **moves**, and through the protocol id as well (SPEC.md §3.1) |
 
 ### 4.2 The read is the verifier: the wire fuzzer
@@ -2952,7 +2983,8 @@ whose id does is refused naming the field.
 **A MAP's entry carries two ids that are CONSTANTS of this vocabulary** (§2.8):
 `key` is `0xA079` and `value` is `0x9194`, the same fold over those two names,
 fixed for every map in every unit — which is what lets a user's own
-`table Pair { key K  value V }` under `[..N]Pair` be the map's bytes. The
+`table Pair`, a `key K` beside a `value V`, under `[..N]Pair` be the map's
+bytes. The
 entry's generated NAME, `<Table><Field>Entry`, is a table name in the closure
 and is claimed as `<field>_present` is; it never reaches the wire, because an
 entry is by value inside its holder and takes no type id.
@@ -3433,9 +3465,11 @@ classes are built (schema#251).** `schema cook`, `schema cook-check` and
 orders, over the same IR the emitters consume — and `wire → cook → wire` is
 byte-identical over the corpus, which is what proves the accelerator loses no
 fact. Every port emits the entry point for EVERY TABLE (below) — a root is any
-table — in its own idiom: the C++ backend `<Root>Open`, the C# backend
-`<Root>Cook.Open`, the Go backend `<Root>Open`, the Java backend
-`<Root>Cook.open`, the JavaScript backend `<Root>Cook.Open`, and the Elixir
+table — in its own idiom, and the list is all nine: the C++ backend
+`<Root>Open`, the C backend `<root>_open`, the C# backend `<Root>Cook.Open`,
+the Dart backend `<Root>Cook.open`, the Go backend `<Root>Open`, the Java
+backend `<Root>Cook.open`, the JavaScript backend `<Root>Cook.Open`, the Rust
+backend `<Root>Cook::open`, and the Elixir
 backend `cook_open_<root>`, which takes a `lead` beside the bytes for the
 base-alignment check a BEAM binary cannot carry (§7.1's alignment word, and the
 backend status in §2). A game points at a cook the tooling produced, whichever
@@ -3475,20 +3509,31 @@ format.
 the byte order of the build it is cooked for, so the fixing happens where the
 target is known — offline, once, on the writing side — and never on the
 reading side, which is what makes `Open` a match and a point rather than a
-pass over the region (below). The byte order is a fact of the build version
-(§20.1), so a cook for a foreign order is not this build's file and refuses.
+pass over the region (below). **The byte order is a fact of the TARGET, not of
+the build version**: §20.1 digests `byteorder` as a generation input and it is
+`little` for every target schema generates for today, so two builds of one
+schema for two orders emit the same id. What refuses a cook for a foreign
+order is the header — the magic read bytewise, and the `byte_order` word
+beside it (§7.1) — and `Open` does that in O(1) like every other check it
+makes.
 
-**A cooked artifact is CONTENT-ADDRESSED by a pair — the hash of its source
-asset, and the unit's BUILD VERSION (§20)** — and that pair is the tuple the
+**A cooked artifact is CONTENT-ADDRESSED by a TRIPLE — the hash of its source
+asset, the unit's BUILD VERSION (§20), and the target's BYTE ORDER** — and
+that triple is the tuple the
 runtime searches for, the tuple a distributed build cache produces under and
-serves from. It is why the cooking side is a build cost rather than a runtime
-one: the work happens offline, once per (asset, build version), and the game
-does a lookup. That is the fact the performance ladder cites when it calls the
-wire and the cook read-hot and write-cold.
+serves from. The byte order is a coordinate rather than a digest input
+because the build version is target-neutral by design: one id shared by every
+target of one game, and one axis beside it for the fact that differs. A cache
+keyed by the pair on a big-endian target would never serve wrong bytes to a
+reader — the header still refuses — but it would collide across orders and
+miss forever. It is why the cooking side is a build cost rather than a runtime
+one: the work happens offline, once per (asset hash, build version, byte
+order), and the game does a lookup. That is the fact the performance ladder
+cites when it calls the wire and the cook read-hot and write-cold.
 
 **The ASSET HASH is the hash of the WIRE FILE the cook was produced from.**
 The wire is the format of record and a cook is produced beside one (below,
-§17), so naming the wire file is what makes the pair well defined: a
+§17), so naming the wire file is what makes the triple well defined: a
 pipeline that ran a text tree through `schema pack` and then cooked in one
 step still keys on the bytes the cook actually read, and an edit upstream of
 those bytes reaches the key through them.
@@ -3863,10 +3908,10 @@ the wire, and keeps the flexibility that comes with it.
 - **Alignment.** The header pads the data part to the region's alignment,
   so a base the allocator or `mmap` gave you is already aligned; `mmap`
   gives page alignment for free.
-- **Endianness is part of the COOK, not of `Open`** (above): a matching
-  build version already means a matching byte order, so `Open` never fixes
-  anything up. Cooking for a foreign target is where a byte swap would live
-  if one is ever wanted (§15).
+- **Endianness is part of the COOK, not of `Open`** (above): the header's
+  magic and `byte_order` word refuse a foreign order outright, so `Open`
+  never fixes anything up. Cooking for a foreign target is where a byte swap
+  would live if one is ever wanted (§15).
 
 Prior art gets one sentence, and it is the contrast: systems that made
 pointed-at access their ONLY wire coupled access to evolution and paid
@@ -4042,8 +4087,8 @@ fields would get wrong:
 padding, a string's or `bytes`' unused tail, the bytes of a union outside its
 set arm, and the slack between the last node and the rounded `data_length`.
 It is not tidiness: a cooked artifact is CONTENT-ADDRESSED by (asset hash,
-build version) (§7), so two cooks of one wire have to be one artifact, and one
-uninitialized pad byte would make them two.
+build version, byte order) (§7), so two cooks of one wire for one target have
+to be one artifact, and one uninitialized pad byte would make them two.
 
 ### 7.3 A cook, worked to the byte
 
@@ -4053,8 +4098,19 @@ Every number below derives from a rule on this page; none of it is declared.
 package demo
 
 table Palette { id int32 }
-table Node    { value int32  next *Node }
-table Scene   { name string(4)  head *Node  palette *Palette }
+
+table Node
+{
+    value int32
+    next  *Node
+}
+
+table Scene
+{
+    name    string(4)
+    head    *Node
+    palette *Palette
+}
 ```
 
 with `scene.name = "hi"`, `scene.head = A`, `A.next = B`, `A.value = 1`,
@@ -4227,15 +4283,17 @@ every clause above by construction.
   what has to be O(1), and a tool that walks a directory is measuring its own
   scan. It is held over the C++ `Open`, below.
 
-- **THE CROSS-IMPLEMENTATION LOCK, and it is what makes THREE implementations
-  of one page worth having.** The tool writes a cook in Go, the C++ `Open`
+- **THE CROSS-IMPLEMENTATION LOCK, and it is what makes independent
+  implementations of one page worth having.** The tool writes a cook in Go,
+  the C++ `Open`
   points at it and the C# `Open` points at the very same bytes, and none of the
-  three was written from either of the others. (A FOURTH reader now points at
-  the same bytes: the JavaScript one, whose canonical node dump the conformance
-  harness byte-compares against the pinned C++ walk over all six of its
-  fixtures. It carries the DUMP half of this lock and not the directory half —
-  a reading-tier backend gets its fixtures from the harness, which holds the
-  dump and not the attribution part.) The lock is the ATTRIBUTION part:
+  three was written from either of the others. (Every other port's `Open`
+  now points at the same bytes too — the entry point is emitted by all nine
+  (§7) — and a reading-tier backend such as the JavaScript one carries the
+  DUMP half of this lock and not the directory half: its canonical node dump
+  is byte-compared against the pinned C++ walk over each of its fixtures, and
+  it gets those fixtures from the harness, which holds the dump and not the
+  attribution part.) The lock is the ATTRIBUTION part:
   every node a reader reaches by following its OWN derefs, through its own
   record layouts, must be a node the directory names, at that offset, with that
   type id — and the two SETS must be equal, so an edge the reader stops
@@ -4420,9 +4478,9 @@ every clause above by construction.
 the reference and stays it: a generated writer is held to the tool's output
 BYTE FOR BYTE, in both byte orders, over every instance the conformance harness
 carries. That is the whole contract, and it is not a courtesy — a cooked
-artifact is CONTENT-ADDRESSED by (asset hash, build version) (§7), so two
-writers of one instance must produce ONE artifact or the pair addresses
-nothing.
+artifact is CONTENT-ADDRESSED by (asset hash, build version, byte order)
+(§7), so two writers of one instance must produce ONE artifact or the triple
+addresses nothing.
 
 **Why a runtime writes one at all**: tooling is written in whatever language
 the tool is written in, and a game's runtime in another. An editor, an importer
@@ -4474,7 +4532,8 @@ bool    SettingsCook( const Settings & value, void * out, uint64_t capacity, Tab
   follow-on here (§15), not a parameter on this call.
 - **IT IS WRITE-COLD, AND THE GENERATED CODE SAYS SO**: the writer is ordinary
   `inline` rather than the force-inlined shape the wire codecs take (§9),
-  because a cook is produced offline once per (asset, build version) and read
+  because a cook is produced offline once per (asset hash, build version,
+  byte order) and read
   every time a build starts. The performance ladder puts the two halves in
   different places and the emitter follows it.
 
@@ -5213,14 +5272,18 @@ in build version (§20.5).
 - **`| max = K` headroom on an enum in a table closure** — a headroom value
   has no name, and the table wire identifies a variant by name (§5). Key
   enums are in scope on the same terms.
-- Tables under a backend that carries none (status, above) — refused with the
-  follow-on named, never silently ignored.
-- **A VARIABLE-LENGTH table's WIRE SURFACE under the C#, Go, Rust, Java,
-  JavaScript and Elixir backends** — every port carries the fixed class on the
+- Tables under a backend that carries none — **no target is in that state**
+  (status, above): all nine carry the table wire, so a `table` declaration
+  alone is refused by nobody. What a port refuses is a CONSTRUCT it lacks,
+  each named below and each naming its follow-on, never silently ignored.
+- **A VARIABLE-LENGTH table's WIRE SURFACE under the C#, Dart, Elixir, Go,
+  Java, JavaScript and Rust backends** — every port carries the fixed class on
+  the
   wire; their variable class there (the arena, the builder, the region, the
   node-table codec) is a named follow-on, and a pointered unit gets no
-  `<Base>Table.cs`, no `<Base>Table.go`, no `<base>_table.rs`, no
-  `<Base>Table.java`, no `<Base>Table.js` and no `<Base>Table.ex` at all, with
+  `<Base>Table.cs`, no `<Base>Table.dart`, no `<Base>Table.ex`, no
+  `<Base>Table.go`, no `<Base>Table.java`, no `<Base>Table.js` and no
+  `<base>_table.rs` at all, with
   the refusal NAMED in every source the unit does emit rather than left as a
   missing symbol — in JavaScript, a banner at the head of every
   `<Base>Block.js` and `<Base>Cook.js` the unit gets.
@@ -5230,11 +5293,13 @@ in build version (§20.5).
   not parsed: a block (§19) and a cook (§7) are blittable records plus a header
   match, and neither needs one line of the codec the variable class is missing.
   So a pointered unit's block and cook sources ARE emitted in every port —
-  `<Base>Block.cs` and `<Base>Cook.cs`, `<Base>Block.go` and `<Base>Cook.go`,
-  `<base>_block.rs` and `<base>_cook.rs`, Java's `<Table>Block.java`,
+  `<Base>Block.cs` and `<Base>Cook.cs`, `<Base>Block.dart` and
+  `<Base>Cook.dart`, `<Base>Block.ex` and `<Base>Cook.ex`, `<Base>Block.go`
+  and `<Base>Cook.go`, Java's `<Table>Block.java`,
   `<Table>Cook.java` and `<Name>Row.java`, `<Base>Block.js` and
-  `<Base>Cook.js`, and Elixir's `<Base>Block.ex` and `<Base>Cook.ex`; its
-  `<Root>Cook.Open`, its `<Root>Open`, its `<Root>Cook.open` and its
+  `<Base>Cook.js`, and `<base>_block.rs` and `<base>_cook.rs`; its
+  `<Root>Cook.Open`, its `<Root>Cook.open`, its `<Root>Open`, its
+  `<Root>Cook::open` and its
   `cook_open_<root>` open its cooked assets in full, and what a consumer cannot
   do in any of those languages is `Measure`, `Save` and `Load` over the
   tolerant wire.
@@ -6488,13 +6553,16 @@ inspects everything in the schema built:
   does, and it is not stable before JDK 22 where this backend compiles at
   `--release 17`; both `open`s already take a `long` length, which is the seat
   that overload takes when the floor moves.
-- **Per-language backends beyond C, C++, C#, Go, Java, JavaScript and Rust**
-  (the refusal in §11 names this).
+- **The VARIABLE class on the WIRE in every port but C++ and C** (the refusal
+  in §11 names this). All nine targets — C, C++, C#, Dart, Elixir, Go, Java,
+  JavaScript and Rust — carry a table backend, so no language is waiting for
+  one at all; what the other seven are waiting for is the variable class, and
+  each is listed below on its own terms.
   C# came first, because the dogfood's game engine reads the same config and
   asset bytes the C++ tools write (§12); Rust, Go, C and Java followed; and
   JavaScript is the first of the READING TIER — a backend with no struct
   layout at all, which is what proves the two accelerators can be READ by a
-  language that could never produce one. The FIXED class is what those need:
+  language that could never produce one. The FIXED class is what a port needs:
   storage structs, measure/save/load over caller-owned buffers, the report,
   the reflection descriptors, `?T`, `[E]T`, name-hashed vocabularies and the
   text form (§16) — the variable class is still ahead of it. A port mirrors
@@ -6864,11 +6932,13 @@ its storage comes from (§6.5):
 SceneFromJson( builder, text, text_bytes, &report );
 ```
 
-**Backend status for this section: the FIXED class in C++, C, C#, Go, Rust,
-Java, JavaScript and Elixir; the VARIABLE class in C++ (§16.7).** A pointered
+**Backend status for this section: the FIXED class in all nine — C++, C, C#,
+Dart, Elixir, Go, Java, JavaScript and Rust — and the VARIABLE class in C++
+(§16.7).** A pointered
 unit's text form is the C++ reference's, through the builder, and carrying it
-to the other backends is schema#349's row beside the wire. In C#, Go, Rust,
-Java, JavaScript and Elixir the absence is already made one level up: a
+to the other backends is schema#349's row beside the wire. In C#, Dart,
+Elixir, Go, Java, JavaScript and Rust the absence is already made one level
+up: a
 pointered unit gets no table source at all (§11), so it has no text form for
 the same reason it has no wire codec; the C port has the wire's earlier form
 (§3.1) and its text form follows it.
@@ -7016,7 +7086,7 @@ Per kind:
 | `[..N]T` bounded array | array | count = length; more than N are dropped, counted |
 | `[E]T` enum-keyed array | object keyed by VARIANT NAME | `{ "Fighter": {...}, "Bomber": {...} }`; an absent key keeps that slot's defaults; a **repeated variant key is last-wins and counted**, as any duplicate key is; an unknown key is skipped and counted, and **`"None"` is such a key** — it names no slot (§2.4) |
 | nested `type` / `table` | object | the same walk, recursively |
-| `?T` optional | the value, or the key absent | **presence of the KEY is presence**: a key present sets the field present, whatever its value; an absent key leaves it absent. `ToJson` writes present optionals only. An optional ARRAY (§2.3) is this row over the array's: the key present with `[]` is present-and-empty, and `ToJson` writes a present empty array as `[]` |
+| `?T` optional | the value, the key absent, or `null` | **presence of the KEY is presence, with `null` the one exception**: a key present sets the field present whatever its value, EXCEPT `null`, which is the absence itself and puts the field back at its declared default (below); an absent key leaves it absent. `ToJson` writes present optionals only. An optional ARRAY (§2.3) is this row over the array's: the key present with `[]` is present-and-empty, and `ToJson` writes a present empty array as `[]` |
 | union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. A `table` arm (§2.6) is the same object form. An ARRAY of unions (§2.6) is an array of this row, a `None` element as `{}` in its place |
 | pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer. A node named MORE THAN ONCE is defined once under `&node`, with its fields, and named by `&node` alone after — §16.7's one construct, and the only thing this form adds for the variable class. An ARRAY of pointers (§2.1) is an array of this row, and a slot may define or name a node any other slot or field does |
 | `*bytes` | string, base64, or `null` | the blob in place, as `bytes(N)` spells its bytes, with NO bound to clamp against; `""` is a present blob of length zero and `null` is a null reference (§2.5). A body that is not base64 is `kind_mismatch`, the reference left null |
@@ -7214,8 +7284,20 @@ added.
 
 ```
 table Palette { id int32 }
-table Node    { value int32  next *Node  palette *Palette }
-table Scene   { name string(16)  head *Node  palette *Palette }
+
+table Node
+{
+    value   int32
+    next    *Node
+    palette *Palette
+}
+
+table Scene
+{
+    name    string(16)
+    head    *Node
+    palette *Palette
+}
 ```
 
 A TREE — `scene.head = A`, `A.next = B`, and each of the three naming a
@@ -8710,18 +8792,25 @@ loudly, naming the type and the field; §20.3 states the asserts in full.
 the projection of §20.2, both pinned as goldens over the corpus. The BLOCK
 backends emit the constant and stamp it into every block's prologue (§19.1), and
 `BlockOpen` compares it; `schema cook` stamps it into the cooked header, `schema
-cook-check` reads it back, and every port's cook entry point compares it (§7) —
-the C++ `<Root>Open`, the C# `<Root>Cook.Open`, the Go `<Root>Open`, the Java
-`<Root>Cook.open`, the JavaScript `<Root>Cook.Open`. What remains owed, largest first:
+cook-check` reads it back, and every port's cook entry point compares it (§7)
+— the C++ `<Root>Open`, the C `<root>_open`, the C# `<Root>Cook.Open`, the
+Dart `<Root>Cook.open`, the Elixir `cook_open_<root>`, the Go `<Root>Open`,
+the Java `<Root>Cook.open`, the JavaScript `<Root>Cook.Open` and the Rust
+`<Root>Cook::open`, all nine. What remains owed, largest first:
 
 1. **The constant rides in the TABLE-bearing sources only.** §20.7 asks for
    one beside `ProtocolId` in every backend; today the block backends emit
-   it into `<Base>Block.h` / `<Package>Block.cs`, the C++ table backend emits it
-   into every `<Base>Table.h` — where the cook's reader is — the Java backend
-   gives it a package-level file of its own, `BuildVersion.java`, emitted for
-   any unit with a table and for no other, the C# cook emits
-   it into `<Package>Cook.cs` when the unit has no block form to carry it already,
-   and the seven backends that carry no table emit none. The C# Table sources
+   it into `<Base>Block.h` / `<Package>Block.cs`, the C and C++ table backends
+   emit it
+   into every `<Base>Table.h` — where the cook's reader is — the Java and
+   Elixir backends
+   give it a package-level file of its own, `BuildVersion.java` and
+   `BuildVersion.ex`, and Rust a module, `build_version.rs`, each emitted for
+   any unit with a table and for no other; the C# cook emits
+   it into `<Package>Cook.cs` when the unit has no block form to carry it already.
+   **A TABLE-FREE unit gets none in any target** — that, and not a missing
+   port, is the only case where the constant is absent, since all nine
+   backends carry the table wire (status, §2). The C# Table sources
    carry none, which is the zero-cost gate (§2.2) rather than an omission: the
    C# cook reader is in the accelerator's own file. **In C# exactly one
    accelerator defines it** — `Schema` is one partial class across a unit's
@@ -8787,9 +8876,12 @@ the type wire, on what the region looks like, and on what a load puts in it.
 **And the BYTE ORDER**, one line, because a cook is produced in the byte order
 of the build it is cooked for (§7): two builds alike in every other fact
 produce different cook bytes, and a tuple that addresses two different
-artifacts is a defect in the tuple. It is a generation input, `little` for
-every target schema generates for today; a big-endian cook is the cross-endian
-question §15 owns.
+artifacts is a defect in the tuple. It is a GENERATION input and `little` for
+every target schema generates for today, so the token never varies and the id
+this projection digests is target-neutral in effect; what distinguishes two
+orders is the third coordinate of §7's content address — `(asset hash, build
+version, byte order)` — and the cook header's own magic and `byte_order` word.
+A big-endian cook is the cross-endian question §15 owns.
 
 **The set is closed, and the table below is the proof.** Every
 declaration-side fact this language has appears in it exactly once, assigned
@@ -9132,8 +9224,8 @@ wrong fails to build instead of degrading.
   cook's. A reader who has just read §4.1 will look for this row, so it is
   here;
 - **the `json` key** (§16.4) and anything else the TEXT form owns. A cook is
-  produced from the WIRE file, and §7 defines the tuple's other half as that
-  file's hash;
+  produced from the WIRE file, and §7 defines the tuple's asset coordinate as
+  that file's hash;
 - **baseline-only facts** (§18): whether a `tables.baseline` exists at all,
   its recorded history, a `--reason`, its rendering version. §18 is untouched
   by this section and untouched by the build version;
@@ -9161,10 +9253,13 @@ version.
 
 ### 20.6 The tuple
 
-**`(asset hash, build version)` and nothing finer.** Tooling produces a cook
-under it, the store is indexed by it, and the game asks for it. §7 defines the
+**`(asset hash, build version, byte order)` and nothing finer.** Tooling
+produces a cook under it, the store is indexed by it, and the game asks for
+it. §7 defines the
 asset hash as the hash of the WIRE file the cook was produced from, which is
-what makes the pair well defined.
+what makes the triple well defined. The build version is TARGET-NEUTRAL — one
+id shared by every target of one game — so the byte order rides beside it as
+its own coordinate rather than inside it (§7, §20.1).
 
 **A new build version is a new cook, and that is the model rather than a
 cost.** The work is offline and the store absorbs it: a build cache exists to
@@ -9241,7 +9336,10 @@ a second digest.
   nothing.
 
 - **The inclusions the sort order could hide**: a record renamed, added or
-  removed moves it; the target byte order moves it.
+  removed moves it. The `byteorder` token rides the projection beside them
+  (§20.1) and no target varies it, so the id it digests is target-neutral in
+  effect and there is no edit to pin: §7's content address carries the byte
+  order as its own coordinate instead.
 - **The worked example of §20.2 is a golden**, projection text and digest
   both, so a port reproduces the text and not only the number.
 - **Goldens over the corpus** (SPEC.md §7.2 gate 2's sibling): `schema

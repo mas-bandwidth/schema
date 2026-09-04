@@ -332,6 +332,12 @@ Signed fixed point: `I` integer bits (the sign bit counts), `F` fractional
 bits, stored as a raw scaled integer of exactly `I + F` bits. Bounds are in
 **whole units**.
 
+**`I + F` must equal a storage width — 8, 16, 32, 64 or 128.** The raw scaled
+value IS the storage, so a sum that names no integer type is refused at
+compile time (`ufixed(16, 8)`: "I + F = 24 must equal a storage width").
+Split the width you want between the two: `fixed(24, 8)` and `fixed(16, 16)`
+are both 32 bits, and which one you pick is where you want the point.
+
 Fixed point is what you use when a value must be **bit-identical across
 machines**. Floating point is not: the same expression can differ by an ulp
 between compilers and architectures, which is fatal for lockstep simulation
@@ -351,8 +357,9 @@ The unsigned sibling: no sign bit, whole-unit domain `[0, 2^I)`, same `F`
 semantics, stored as an **unsigned** integer of exactly `I + F` bits. Use it
 when the value cannot be negative and you want the storage type to say so —
 unsigned Q8.8 reaches 255 whole units where signed Q8.8 tops out at 127.
-Everything else — required whole-unit bounds, exact round trips, defaults,
-degenerate ranges — works exactly as for `fixed`.
+Everything else — the `I + F` storage-width rule, required whole-unit bounds,
+exact round trips, defaults, degenerate ranges — works exactly as for
+`fixed`.
 
 ### Strings and bytes
 
@@ -371,6 +378,18 @@ int32_t name_length = 0;
 
 The write refuses embedded NULs and any length past the maximum; the read
 validates both.
+
+**`string(N)` also carries a UTF-8 contract, and it is the WRITER's.** The
+wire is byte-identical to `bytes(N)`; what the `string` spelling adds is the
+obligation that the payload is well-formed UTF-8 — never a reader's check,
+so a reader must accept whatever a conforming writer produced. Because the
+check is O(n), it is a DEBUG-only assert and only in the targets that carry
+one: C and C++ assert through a generated validator, Rust through
+`debug_assert!`, and C#, Dart, Elixir, Go, Java and JavaScript assert
+nothing. So Latin-1 bytes in a `string(32)` fire an assert in a C++ debug
+build and pass in a release one — if your payload is genuinely arbitrary
+bytes, declare `bytes(N)`, which is the same wire with no encoding contract
+(SPEC.md §4.7).
 
 ### Arrays
 
@@ -451,13 +470,18 @@ compiler refuses one that would silently round.
 
 ## The wire
 
-**The wire** is bit-packed and decided at compile time. Nothing on it
+**The TYPE wire** is bit-packed and decided at compile time. Nothing on it
 identifies fields — both sides know the layout because they were generated
 from the same schema. That is what makes it small and fast, and why
 versioning is by [protocol id](#the-protocol-id): one id, same-or-refuse,
-with no evolution machinery anywhere. schema is deliberately not an
-evolution system; data that must survive schema drift wants a different
-tool.
+with no evolution machinery anywhere. That is a deliberate choice for data
+whose writer and reader ship together, and it is one of TWO wires this
+language has. Data that has to survive schema drift is the other one's job:
+declare a `table` and it rides the tolerant wire, where fields carry their
+name's hash, any reader reads any data, and every difference is counted in a
+read report rather than being fatal (docs/SPEC-TABLES.md, and
+[Tables](#tables-data-that-outlives-builds) below). Save games, config and
+asset archives belong there; packets belong here.
 
 Generated storage is **relocatable by construction** — trivially copyable,
 standard layout, no pointers — so instances can be memcpy'd, memory-mapped,
@@ -587,10 +611,11 @@ allocates, a fixed table WITH a union may allocate for the arm in a language
 that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
-A table lives on its own wire — evolution-tolerant TLV, carried by C++ and C
-(both classes) and by C#, Go, Rust, Java and Elixir (the fixed class, wire and
-text form both; the pointer surface ON THE WIRE is a follow-on in those five —
-their cook and block accelerators read a pointered unit today). Field
+A table lives on its own wire — evolution-tolerant TLV, carried by **all nine
+targets**: C++ and C take both classes, and C#, Dart, Elixir, Go, Java,
+JavaScript and Rust take the fixed class, wire and
+text form both; the pointer surface ON THE WIRE is a follow-on in those seven,
+whose cook and block accelerators read a pointered unit today. Field
 identity is a hash of the field NAME, so any reader takes any data, both
 directions: unknown fields are skipped, absent fields take their declared
 defaults, a field whose type changed is skipped rather than misdecoded,
@@ -920,6 +945,10 @@ if !ship_config_load(&mut loaded, &buffer, &mut report) {
     // framing damage: report.malformed is set, the good prefix is kept
 }
 if report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 {
+    // the data came from a different schema generation — loaded is still
+    // fully usable; log the counts so drift is visible
+}
+```
 
 **The Go surface is the same three functions again**, name first at package
 scope over a `*T` the caller owns. Storage is a plain struct — the Go packet
@@ -1467,8 +1496,17 @@ Inside a table closure a union's arm may name a `table`, which is what makes
 a tool message set evolve safely:
 
 ```
-table OpenDocument  { path string(256), line uint32 }
-table SaveDocument  { path string(256), force bool   }
+table OpenDocument
+{
+    path string(256)
+    line uint32
+}
+
+table SaveDocument
+{
+    path  string(256)
+    force bool
+}
 
 union ToolBody
 {
@@ -2089,8 +2127,9 @@ unsafe {
 ```
 
 A cooked file is an ACCELERATOR, not an archive: it is build-locked by a
-build version that covers the schema's layout, its meaning facts and your
-target's byte order, so it refuses the moment any of it moves and you
+build version that covers the schema's layout and its meaning facts, and
+target-locked by the byte order its header carries, so it refuses the moment
+any of it moves and you
 regenerate it. The tolerant wire stays the format of record.
 
 `Open` checks the header and points — the magic, the byte order it
@@ -2201,20 +2240,28 @@ puts the two back together when you want to check one.
 ### The build version: what a cooked asset is stored under
 
 *`schema build-version [--facts]` prints the id and the projection it digests,
-both pinned as goldens; the C++, C#, C, Go, Rust and Java block backends emit
-`BuildVersion` and stamp it into every block's prologue, and the JavaScript one
-emits it to compare against; `schema cook` stamps the same id into every cooked
-header, and `cook-check`, the C++ `<Root>Open`, the C# `<Root>Cook.Open`, the
-Go `<Root>Open`, the Java `<Root>Cook.open` and the JavaScript `<Root>Cook.Open`
-each read it back and compare. What is still owed is SPEC-TABLES.md §20's
-status list.*
+both pinned as goldens; every backend emits it — as a constant beside the
+block form, or as a file of its own where the language wants one
+(`BuildVersion.java`, `BuildVersion.ex`, `build_version.rs`) — and the
+producing backends stamp it into every block's prologue while the reading
+ones emit it to compare against. `schema cook` stamps the same id into every
+cooked header, and `cook-check` and each port's cook entry point — the C++
+`<Root>Open`, the C `<root>_open`, the C# `<Root>Cook.Open`, the Dart
+`<Root>Cook.open`, the Elixir `cook_open_<root>`, the Go `<Root>Open`, the
+Java `<Root>Cook.open`, the JavaScript `<Root>Cook.Open` and the Rust
+`<Root>Cook::open` — read it back and compare. What is still owed is
+SPEC-TABLES.md §20's status list.*
 
 A cook is only ever produced for one build, so something has to name which
 build. That is the **build version**: one digest over everything a cook's
 bytes depend on — your protocol id, every record's layout as the compiler
 computes it, and the declaration facts that decide what a load puts in a slot
 (a specified default, a declared range, an enum's variant order, a union's arm
-order) — plus the target's byte order.
+order). **It is TARGET-NEUTRAL**: the byte order rides its projection as a
+generation input and is `little` for every target today, so one id is shared
+by every target of one game and a `--byte-order big` cook of the same tree
+stamps the same number as the little one. What tells two orders apart is the
+cook's own header, and the third coordinate of the key below.
 
 ```
 $ schema build-version tables/block/
@@ -2226,12 +2273,16 @@ $ schema build-version tables/block/
 printf( "%016llx\n", (unsigned long long) blockdemo::BuildVersion );
 ```
 
-Your tools cook asset X to build version Y and write `(X, Y)` into the store;
-your game asks the store for `(X, Y)`. That is the whole protocol. You never
+Your tools cook asset X to build version Y for byte order Z and write
+`(X, Y, Z)` into the store;
+your game asks the store for `(X, Y, Z)`. That is the whole protocol. You never
 have to reason about which edits invalidate what — anything that would change
 a cook's bytes moves Y, so the key moves with it, and a new Y is simply a new
-cook the build cache absorbs. The asset hash is the hash of the WIRE file you
-cooked from.
+cook the build cache absorbs. Z is there because the build version is
+target-neutral: without it a store shared by a little-endian and a big-endian
+target would key two different artifacts the same way, never serving wrong
+bytes — the header still refuses — but missing forever. The asset hash is the
+hash of the WIRE file you cooked from.
 
 It is settled by the **compiler**, not by your C++ compiler, which is what
 lets tooling cook before any game binary exists. The layout half comes from
@@ -2290,12 +2341,17 @@ keep reading.
 Think of a save game. A player's file was written two years ago by a build
 nobody has any more, and today's build has to read it. Almost every schema
 edit since is safe by construction — fields came and went, an enum grew,
-bounds moved — and the wire reports whatever it cannot use. **Exactly three
+bounds moved — and the wire reports whatever it cannot use. **Exactly four
 edits are different**: they change what an OLD file MEANS, and nothing on the
 wire can tell you. Two are below; the third is a field's REFERENT dropped or
 swapped for one that cannot stand in for it — an enum-typed field respelled
 as its raw `uint16`, say, which rides under the same kind either way — and it
-is the one this file's whole job is (SPEC-TABLES.md §4.1).
+is the one this file's whole job is; the fourth is a `fixed` field's `F`
+moved, where `fixed(16, 16)` and `fixed(8, 24)` ride under one kind and a
+stored raw value reads back at the new scale (SPEC-TABLES.md §4.1). A fifth
+edit belongs to the class and the baseline cannot see it yet: REUSING a name
+you retired, where a re-added field takes the wire id of the one it replaced
+— the retired-names ledger is schema#441.
 
 ```
 table ShipConfig
@@ -2458,10 +2514,10 @@ pointer-free, arrays inline with their `_count`/`_length` companions — so a
 value can be memcpy'd, mmap'd or shared across processes and still walked
 through descriptor offsets. Generated `static_assert`s enforce it.
 
-Tables are generated for `--lang cpp` and `--lang cs` today — C++ carries
-both classes, C# the fixed class, and a pointered unit is refused by name
-under C#; every other target refuses a unit that declares tables at all, by
-name. Every scalar the type wire carries rides in a table: `fixed`/`ufixed`
+Tables are generated for every `--lang` today — C++ and C carry both
+classes, the other seven the fixed class, and a pointered unit's WIRE
+surface is refused by name in those seven while their two accelerators read
+one in full. Every scalar the type wire carries rides in a table: `fixed`/`ufixed`
 as their raw scaled integer under a fixed kind of their storage width, with
 the whole-unit bounds clamping on the raw scale and the text in whole units
 (`1.5`), and `int128`/`uint128` under kinds of their own, sixteen bytes low
