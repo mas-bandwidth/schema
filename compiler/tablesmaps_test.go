@@ -132,26 +132,43 @@ func TestMapsAreLegal(t *testing.T) {
 	}
 }
 
-// TestMapsAreRefusedByEveryTarget: no backend carries the codec yet
-// (schema#380), so every registered target refuses the UNIT, naming the fields
-// and saying what is missing. A codec that never met the entry, its sort or its
-// ascending check must not be emitted — including the C++ reference's, whose
-// own half is the next PR.
-func TestMapsAreRefusedByEveryTarget(t *testing.T) {
+// TestMapsAreRefusedByEveryPort: the C++ REFERENCE carries the codec and the
+// eight ports do not (docs/SPEC-TABLES.md §2.8, §15) — a map is a
+// variable-class construct and the variable class is the reference's alone.
+// Every port refuses the UNIT, naming the fields, naming the carrier and
+// naming the flag that generates. A codec that never met the entry, its sort
+// or its ascending check must not be emitted anywhere.
+func TestMapsAreRefusedByEveryPort(t *testing.T) {
 	u := unitFromSource(t, mapSrc)
 	c := New()
 	for _, target := range c.Targets() {
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
+			if target == "cpp" {
+				if err != nil {
+					t.Fatalf("--lang cpp refused a map: the reference carries the codec (schema#380): %v", err)
+				}
+				return
+			}
 			if err == nil {
 				t.Fatalf("--lang %s accepted a unit with a map in a table closure — it must refuse by name", target)
 			}
-			for _, want := range []string{"map", "Fleet.by_id", "Fleet.loadouts", "Fleet.ships", "schema#380"} {
+			for _, want := range []string{"map", "Fleet.by_id", "Fleet.loadouts", "Fleet.ships", "cpp"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("--lang %s: the refusal does not name %q: %v", target, want, err)
 				}
 			}
 		})
+	}
+}
+
+// TestMapCarrierIsTheReferenceAlone: exactly one target carries the construct,
+// and it is the C++ reference (docs/SPEC-TABLES.md §2.8, §15). A port that
+// registers here without its codec would turn every refusal below into a
+// silent acceptance.
+func TestMapCarrierIsTheReferenceAlone(t *testing.T) {
+	if len(mapTargets) != 1 || mapTargets[0] != "cpp" {
+		t.Fatalf("mapTargets = %v, want exactly [cpp] — the variable class is the reference's (docs/SPEC-TABLES.md §2.8, §15)", mapTargets)
 	}
 }
 
@@ -171,17 +188,10 @@ func TestMapFreeUnitIsUntouched(t *testing.T) {
 	}
 }
 
-// TestMapRefusalNamesTheCarrierOnceThereIsOne: the refusal has two shapes, and
-// the second one is what every other construct's says. This exercises the
-// carrier registry directly rather than waiting for the C++ codec to land, so
-// the day target_cpp.go registers, the message it produces is already held.
-func TestMapRefusalNamesTheCarrierOnceThereIsOne(t *testing.T) {
-	if len(mapTargets) != 0 {
-		t.Fatalf("mapTargets = %v, want empty until a backend carries the codec (schema#380)", mapTargets)
-	}
-	defer func() { mapTargets = nil }()
-	registerMapCarrier("cpp")
-
+// TestMapRefusalNamesTheCarrier: what a port's refusal says now that the
+// reference carries the construct — the carrier, the flag that generates, and
+// the fields an author wrote.
+func TestMapRefusalNamesTheCarrier(t *testing.T) {
 	u := unitFromSource(t, mapSrc)
 	err := refuseMaps(u, "go")
 	if err == nil {
