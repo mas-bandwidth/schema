@@ -1342,11 +1342,13 @@ map machinery in a map-free unit's generated headers, held by the zero-cost
 gate's header scan — the build failure §2.2 states, the same scan that holds
 §13.9's hook rule — with the map symbols added to its list.
 
-**Backend status for this section: no backend, and no declaration reaches
-it.** The construct is sequenced AFTER 3.0.0 (schema#380), and the closing
-paragraphs of this section say why nothing in the 3.0.0 wire forecloses it.
-The spelling below does not parse today; a unit declaring it is refused by the
-parser where it stands.
+**Backend status for this section: the C++ REFERENCE and the TOOL carry it;
+every other backend refuses a unit that declares one, by name** (§11), and the
+ports are a named follow-on (§15). The construct lands BEFORE 3.0.0, in the
+same sitting as the rest of the C++ finalization (schema#380, reversing the
+after-3.0.0 sequencing): a construct that touches framing is cheaper in the
+reference now than as nine ports later, and it re-pins with the wire rewrite
+(schema#435) rather than after it. The corpus holds it in `tables/maps`.
 
 **The spelling is `map[K]V`.** It reads as what it is, and the bracket is the
 one the language already uses for every extent. Two alternatives were weighed:
@@ -1399,7 +1401,8 @@ elided (§3), and its count's zero IS its absence, §2.3's rule.
 
 **A VALUE is anything a table field can hold**: a scalar, an enum, a `flags`
 mask, `string(N)`, `bytes(N)`, a declared `type`, a table by value, `*T`,
-`?T`, a union, `[N]T`, `[..N]T`, `[E]T` — and a map, so
+`*bytes`, `*string` (§2.5), `?T`, `?[N]T`, `?[..N]T` (§2.3), a union, `[N]T`,
+`[..N]T`, `[E]T` — and a map, so
 `map[string(16)]map[uint8]Item` is one declaration and a map of maps of maps
 is nothing special. **That recursion is by value**, so the by-value cycle rule reaches it
 (§2): a table that holds a map of ITSELF has infinite size and is refused
@@ -1407,6 +1410,18 @@ naming the cycle, and a table that holds a map of `*Self` is the ordinary
 legal recursion through a pointer. **A `*T` value is SHARED exactly as a
 pointer field is**: two keys naming one node hold one node — one index on the
 wire (§3.1), one body in a region (§6.3), one `&node` in the text (§16.7).
+
+**And a map is a BY-VALUE EDGE of the ONE declaration-order walk** (§3.1,
+schema#438). The numbering, the pack measure and the pack are one walk over
+the fields in declaration order that descends each by-value edge WHERE IT IS
+DECLARED, and a map is such an edge: reached at its field's position, its
+entries visited in ASCENDING KEY ORDER — the order the wire carries and the
+order a region holds, so no walk needs a second one — and each entry's value
+descended for the pointer slots inside it before the next entry is reached.
+A map declared before a pointer field therefore reaches a shared node first
+and numbers it first, exactly as a union arm or a nested table declared there
+does. The rule is the walk's, not the map's: nothing about a map is grouped
+after anything, because nothing in that walk is grouped at all.
 
 **THE ENTRY TYPE.** Every map generates one table, named
 `<Table><Field>Entry` — `FleetShipsEntry` for the example — with two fields:
@@ -1433,9 +1448,16 @@ table FleetShipsEntry      // generated; never spelled in a schema
   type id), so a unit that declared `FleetShipsEntry` before maps existed
   compiles today and would be refused only on its own later edit, which
   touches no byte anyone wrote.
-- **Its field ids are two CONSTANTS**: `key` is `0xA079` and `value` is
-  `0x9194`, the fold (§5) of those two names, and they never move. That is what
-  makes a user's own `table Pair` — a `key string(32)` and a
+- **Its field ids are two CONSTANTS, and they are the ORDINARY hash of two
+  ordinary names**: whatever the wire's id rule is, `key` and `value` ride
+  under it, so nothing about a map's entry is reserved and nothing is
+  special-cased. Today that is the fold (§5) — `key` is `0xA079`, `value` is
+  `0x9194`. Under the uniform 64-bit wire (schema#435) it is `fnv1a64` of the
+  same two names — `key` is `0x3DC94A19365B10EC`, `value` is
+  `0x7CE4FD9430E80CEA` — carried in that wire's id table like every other id,
+  first-use order and all, because an entry's two fields are two fields. The
+  constants move with the rule and never on their own, and that is what makes
+  a user's own `table Pair` — a `key string(32)` and a
   `value ShipConfig` — under
   `[..N]Pair` the SAME BYTES as the map — the migration path from the
   table-of-pairs idiom a schema used before maps existed, and the proof that a
@@ -1827,8 +1849,9 @@ ask it if you SHOULD."* Both answers, separately.
 bodies carry two fields under two constant ids. Every reader that exists
 skips it by `L` or decodes it as the array of tables it is; the sort is a
 writer's obligation a reader verifies with one compare and never depends on
-for framing; the count is the array's `N`; the entry's ids are the fold of
-`key` and `value`. Not one byte of framing is new and not one skip rule.
+for framing; the count is the array's `N`; the entry's ids are the hash of
+`key` and `value` under whatever rule the wire's ids ride by (§5). Not one
+byte of framing is new and not one skip rule.
 
 **SHOULD: yes, and the costs each way are these.** Riding on `14` and `13`
 costs twelve bytes an entry against a dedicated kind — the entry's `L`, both
@@ -1838,15 +1861,20 @@ framing is already 62% of a record (the ladder); the region and the cook, the
 forms a game reads, spend zero. It costs a per-map rule for a key-kind change
 where a dedicated kind would have made it a field-level kind mismatch for
 free; the rule is four lines and it is stated above. What it BUYS is
-decisive: a new kind is not skippable by a reader that does not know it (§3),
-so a dedicated map kind after 3.0.0 would make every 3.0.0 reader meet framing
-damage at the first map — which is a wire change, and the wire is settled at
-3.0.0 — while a map under `14`/`13` is bytes every 3.0.0 reader already
-handles. And it keeps the migration: a schema that spelled a lookup as
-`[..N]Pair` yesterday spells it `map[K]V` today and no stored file moves. A
-kind is spent to close a SILENT edit (§3.1, §3.2), and there is no silent edit
-here: a map and an array of pairs are the same data read correctly either way.
-So the kind stays unspent.
+decisive, and the construct landing BEFORE the freeze rather than after it
+changes which reason carries the weight. The freeze argument no longer does:
+a kind spent now is inside the closed set every reader ships with, so
+"a 3.0.0 reader would meet framing damage at the first map" is not what
+settles this. **What settles it is the rule for spending a kind at all.** A
+kind is spent to close a SILENT edit (§3.1, §3.2) — kind `17` exists because
+a node index and a `uint32` are the same four bytes, and kind `16` because a
+keyed array and an array are — and there is no silent edit here: a map and an
+array of pairs are the same data, read correctly either way, in both
+directions. A kind bought nothing but bytes, and every kind is a row nine
+ports skip forever. And the unspent kind keeps the migration: a schema that
+spelled a lookup as `[..N]Pair` yesterday spells it `map[K]V` today, no
+stored file moves, and the two remain interchangeable — which a dedicated
+kind would end. So the kind stays unspent.
 
 **BEYOND BOTH.** Owner: *"Let's beat them both and do it better."* Protocol
 Buffers has `map<K, V>` — integral or string keys, no enum keys, order
@@ -1874,21 +1902,25 @@ Where a row is not achievable it says so in the row: zero allocation is a
 claim about a language with caller-owned buffers, and the reading tier holds a
 pinned count instead, the same honest number it holds for every other read.
 
-**THE SEQUENCING.** Maps land AFTER 3.0.0, in the C++ reference first — the
-builder surface, the sort in the four walks, the region load's check, `Find`,
-the text form and the cook-check rule — then every port as a row on the
-parity matrix (schema#366), each holding the same goldens and the same
-allocation audit. **Nothing in the 3.0.0 wire forecloses it, and this is the
-explicit confirmation**: the wire's kind set is untouched (a map is `14` over
-`13`); the entry's field ids are folds of two names, computable by any reader
-from §5 alone; the sort is a writer rule a pre-map reader never sees; the
-text form is an object a pre-map fixed reader skips as an unknown key and
-counts; the region's layout puts entries inside a node's extent, so the
-directory and the numbering move nothing; the build version digests the
-entry's record lines when the record exists and not before; and the entry
-type's generated name is claimed with the construct, touching no stored byte.
-What 3.0.0 has to hold for maps to be possible it already holds for arrays of
-tables, and the sections above are the proof by construction.
+**THE SEQUENCING.** Maps land NOW, BEFORE 3.0.0 and before the port sweep, in
+the C++ reference and the tool — the builder surface, the sort in the four
+walks, the region load's check, `Find`, the text form and the cook-check
+rule — then every port as a row on the parity matrix (schema#366), each
+holding the same goldens and the same allocation audit. **The construct
+spends nothing the release freezes, and this is the explicit confirmation**:
+the wire's kind set is untouched (a map is `14` over `13`); the entry's field
+ids are the ordinary hash of two ordinary names, computable by any reader from
+§5 alone at whatever width the wire's id rule has; the sort is a writer rule a
+pre-map reader never sees; the text form is an object a pre-map fixed reader
+skips as an unknown key and counts; the region's layout puts entries inside a
+node's extent, so the directory and the numbering move nothing; the build
+version digests the entry's record lines when the record exists and not
+before; and the entry type's generated name is claimed with the construct,
+touching no stored byte. What the wire has to hold for maps to be possible it
+already holds for arrays of tables, and the sections above are the proof by
+construction — which is why the construct can land inside spec finalization
+rather than after it, as an addition to the reference rather than a change to
+the wire.
 
 ## 3. The wire
 
@@ -2157,7 +2189,8 @@ it; the pointer fields INSIDE an arm are indices like any other.
   order, array elements in index order, and descending through every
   by-value edge there is — a nested table, an element of a bounded or
   enum-keyed array, a member of a true `if` group, a present optional's
-  value, a union's set arm — to reach the pointer fields inside them. A
+  value, a union's set arm, an ENTRY OF A MAP in ascending key order
+  (§2.8) — to reach the pointer fields inside them. A
   node takes its index the first time it is reached and never again.
 - **A field the writer does not write is not an edge.** A pointer under a
   false guard, or inside an absent optional, is not visited and its
@@ -2982,7 +3015,10 @@ whose id does is refused naming the field.
 
 **A MAP's entry carries two ids that are CONSTANTS of this vocabulary** (§2.8):
 `key` is `0xA079` and `value` is `0x9194`, the same fold over those two names,
-fixed for every map in every unit — which is what lets a user's own
+fixed for every map in every unit. They are constants of the RULE, not beside
+it: the two names take the hash every field name takes, at whatever width this
+vocabulary rides at, so the pair moves when the rule moves and never on its own
+(§2.8). That is what lets a user's own
 `table Pair`, a `key K` beside a `value V`, under `[..N]Pair` be the map's
 bytes. The
 entry's generated NAME, `<Table><Field>Entry`, is a table name in the closure
@@ -6758,17 +6794,22 @@ inspects everything in the schema built:
   else identifies a build — a compiler version, a build stamp — is settled
   where build versioning is settled, and the registry gains a column then
   rather than inventing one first.
-- **MAPS** (§2.8), after 3.0.0, tracked as schema#380 — the construct is
-  designed on the page and no backend carries it. It lands in the C++
-  reference first: the parser's `map[K]V`, the checker's refusals, the
-  generated entry table, the builder surface (insert, erase, find, iterate),
-  the sort in the four walks, the region load's ascending check with its
-  `duplicate` and `malformed` events, the const `Find`, the text form's object,
-  `schema cook-check`'s order check, and the negative controls §2.8 lists; then
-  every port as a row on schema#366 against the same goldens. The OPTIONAL
-  RUNTIME INDEX rides after the sorted array has a bench number that says
-  where it wins, and not before (§2.8's memory layout). Nothing in the 3.0.0
-  wire forecloses any of it — §2.8's closing paragraph is the confirmation.
+- **MAPS IN EVERY PORTED BACKEND** (§2.8), tracked as schema#380. The C++
+  reference and the tool carry the construct — the parser's `map[K]V`, the
+  checker's refusals, the generated entry table, the builder surface (insert,
+  erase, find, iterate), the sort in the four walks, the region load's
+  ascending check with its `duplicate` and `malformed` events, the const
+  `Find`, the text form's object and `schema cook-check`'s order check — and
+  every other backend refuses a unit that declares one, by name (§11). What a
+  port needs is the entry as an ordinary array-of-tables element in its
+  measure, save and load, the writer's sort, the reader's one compare with its
+  two events, the const `Find` as a binary search that allocates nothing,
+  ascending iteration, and the text form's keyed object; each holds the same
+  goldens and the same allocation audit as a row on schema#366. The OPTIONAL
+  RUNTIME INDEX ships with the construct in the C++ reference and is a port's
+  own call, because it is never stored and no golden names it (§2.8's memory
+  layout): what is deferred is the BENCH NUMBER that says the size above which
+  a caller should reach for it, not the surface.
 - Keyed lookup conveniences over loaded collections (library-side, never
   stored semantics).
 - **AN ARRAY OF UNIONS in every ported backend** (§2.6): C++ and the tool
