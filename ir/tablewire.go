@@ -20,6 +20,11 @@ package ir
 // is the REFERENCE 0, a position rather than a hash — the field terminator,
 // the enum's None and the union's empty arm.
 func TableWireId(name string) uint64 {
+	if TableWireIdHook != nil {
+		if planted, ok := TableWireIdHook(name); ok {
+			return planted
+		}
+	}
 	h := uint64(0xCBF29CE484222325)
 	for i := 0; i < len(name); i++ {
 		h ^= uint64(name[i])
@@ -27,6 +32,14 @@ func TableWireId(name string) uint64 {
 	}
 	return h
 }
+
+// TableWireIdHook is the COMPILER TEST HOOK the reserved-id and table-id
+// refusals are demonstrated through (docs/SPEC-TABLES.md §3, held by test). No
+// declarable name hashes to the reserved node-table id, or to another table's
+// id at sixty-four bits, so a control that could turn either refusal red has to
+// plant the collision BELOW the hash: it returns the colliding value for one
+// named spelling and nothing for every other. Nil in every build but a test's.
+var TableWireIdHook func(name string) (planted uint64, ok bool)
 
 // TableFieldWireId is a field's EFFECTIVE id on this wire: the hash of its
 // `was = "old_name"` alias when one is declared — so wire identity survives

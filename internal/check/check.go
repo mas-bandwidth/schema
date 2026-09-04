@@ -1881,10 +1881,57 @@ func (c *checker) closureMember(name string) *ir.Struct {
 // table-wire kind and string/bytes/array extents ride in uint16 — each is
 // refused HERE, loudly, instead of surprising a generated reader later.
 //
-// Identity: a field's wire id is fold16(fnv1a32(name)) — of the `was` alias
-// where one is declared — and two fields of one closure member whose
-// effective ids collide would be indistinguishable on the wire, so the
-// collision is a compile error.
+// Identity: a field's wire id is fnv1a64(name) — of the `was` alias where one
+// is declared — and two fields of one closure member whose effective ids
+// collide would be indistinguishable on the wire, so the collision is a
+// compile error. ONE ID IS HELD BACK, the node table's, and a declared name
+// that produces it is refused here naming the field (docs/SPEC-TABLES.md §5,
+// §11).
+// checkReservedWireIds is §5's two refusals over a unit's table closure: ONE ID
+// IS HELD BACK, the node table's, and no declared name may produce it — a
+// `was` alias included, because the alias is what rides; and two TABLES of one
+// closure whose name ids collide are a compile error naming both, because a
+// node record says what it is by that id alone (docs/SPEC-TABLES.md §3.1, §5,
+// §11).
+//
+// At sixty-four bits both are formalities rather than schedule risks — a
+// closure of a thousand tables expects about 3e-14 collisions — and they are
+// enforced all the same, because a formality that is not enforced is a hazard
+// that fires once.
+func (c *checker) checkReservedWireIds(names []string) {
+	byId := map[uint64]string{}
+	for _, name := range names {
+		st := c.closureMember(name)
+		if st == nil {
+			continue
+		}
+		at := ast.Pos{}
+		if d, ok := c.astDecls[name]; ok {
+			at = d.DeclPos()
+		}
+		what := "type"
+		if st.IsTable {
+			what = "table"
+		}
+		if id := ir.TableWireId(name); id == ir.TableNodeWireId {
+			c.errf(at, "%s %s: its name takes the one id the language holds back, the node table's 0x%016x — rename it (docs/SPEC-TABLES.md §3.1, §5)",
+				what, name, ir.TableNodeWireId)
+		} else if prev, dup := byId[id]; dup {
+			c.errf(at, "tables %s and %s collide on table-wire type id 0x%016x — a node record says what it is by that id alone, so the two would be indistinguishable in a save; rename one (docs/SPEC-TABLES.md §3.1, §5)",
+				prev, name, id)
+		} else {
+			byId[id] = name
+		}
+		for _, f := range st.Fields {
+			if ir.TableFieldWireId(f) != ir.TableNodeWireId {
+				continue
+			}
+			c.errf(at, "%s %s: field %s takes the one id the language holds back, the node table's 0x%016x — rename it, or name another `was` (docs/SPEC-TABLES.md §3.1, §5)",
+				what, name, describeTableField(f), ir.TableNodeWireId)
+		}
+	}
+}
+
 // walkArms calls visit on every DECLARATION a union's arms name, descending an
 // arm that is itself a union (docs/SPEC-TABLES.md §2.6). An arm is a field
 // line, so an arm names a declaration by value, through a pointer or as an
@@ -2020,30 +2067,31 @@ func (c *checker) checkTables() {
 			seenKey[key] = f
 		}
 
-		seen := map[uint16]*ir.Field{}
+		seen := map[uint64]*ir.Field{}
 		for _, f := range st.Fields {
 			if f.Type.Pointer {
 				// a pointer carries no extent of its own: the checks below
 				// bound STORAGE, and a pointer's storage is one relocatable
 				// u32 slot. Identity still applies — the id check runs below.
-				id := ir.TableFieldId(f)
+				id := ir.TableFieldWireId(f)
 				if prev, dup := seen[id]; dup {
-					c.errf(pos, "%s %s: fields %s and %s collide on table-wire id 0x%04x — rename one (docs/SPEC-TABLES.md)",
+					c.errf(pos, "%s %s: fields %s and %s collide on table-wire id 0x%016x — rename one (docs/SPEC-TABLES.md)",
 						what, name, describeTableField(prev), describeTableField(f), id)
 					continue
 				}
 				seen[id] = f
 				continue
 			}
-			id := ir.TableFieldId(f)
+			id := ir.TableFieldWireId(f)
 			if prev, dup := seen[id]; dup {
-				c.errf(pos, "%s %s: fields %s and %s collide on table-wire id 0x%04x — rename one (docs/SPEC-TABLES.md)",
+				c.errf(pos, "%s %s: fields %s and %s collide on table-wire id 0x%016x — rename one (docs/SPEC-TABLES.md)",
 					what, name, describeTableField(prev), describeTableField(f), id)
 				continue
 			}
 			seen[id] = f
 		}
 	}
+	c.checkReservedWireIds(names)
 	c.checkTableVariantIdentity(names)
 	c.checkOptionalVariableClosures(names)
 	c.checkJsonKeysInClosure()
@@ -2404,11 +2452,11 @@ func (c *checker) checkTableVariantIdentity(closureNames []string) {
 			c.errf(pos(name), "enum %s: | max = %d reserves values above the declared variants, and %s reaches it, putting %s in a table closure — a headroom value has no NAME, and a table-wire enum value rides as the hash of its variant name; the table wire needs no headroom, because a variant may be added anywhere (docs/SPEC-TABLES.md §5)",
 				name, e.Max, reachedBy[name], name)
 		}
-		seen := map[uint16]string{}
+		seen := map[uint64]string{}
 		for _, v := range e.Variants {
-			id := ir.VariantId(v)
+			id := ir.TableWireId(v)
 			if prev, dup := seen[id]; dup {
-				c.errf(pos(name), "enum %s: variants %s and %s collide on table-wire id 0x%04x, and %s reaches it, putting %s in a table closure — rename one (docs/SPEC-TABLES.md §5)",
+				c.errf(pos(name), "enum %s: variants %s and %s collide on table-wire id 0x%016x, and %s reaches it, putting %s in a table closure — rename one (docs/SPEC-TABLES.md §5)",
 					name, prev, v, id, reachedBy[name], name)
 				continue
 			}
@@ -2417,11 +2465,11 @@ func (c *checker) checkTableVariantIdentity(closureNames []string) {
 	}
 	for _, name := range sortedKeys(unions) {
 		un := unions[name]
-		seen := map[uint16]string{}
+		seen := map[uint64]string{}
 		for _, v := range un.Variants {
-			id := ir.VariantId(v.Name)
+			id := ir.TableWireId(v.Name)
 			if prev, dup := seen[id]; dup {
-				c.errf(pos(name), "union %s: arms %s and %s collide on table-wire id 0x%04x, and %s reaches it, putting %s in a table closure — rename one (docs/SPEC-TABLES.md §5)",
+				c.errf(pos(name), "union %s: arms %s and %s collide on table-wire id 0x%016x, and %s reaches it, putting %s in a table closure — rename one (docs/SPEC-TABLES.md §5)",
 					name, prev, v.Name, id, reachedBy[name], name)
 				continue
 			}

@@ -83,10 +83,6 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { x int32 }\nunion U\n{\n    tab Tab\n}\ntype P { u U }\ntable Holder { p P }\n"},
 		{name: "a table arm holding its own union by value is a cycle", want: "type composition cycle",
 			src: "package t\ntable Tab { u U }\nunion U\n{\n    tab Tab\n}\ntable Holder { u U }\n"},
-		{name: "enum variants colliding on a table-wire id", want: "collide on table-wire id",
-			src: "package t\nenum E { costarring, liquid }\ntable Tab { e E }\n"},
-		{name: "union arms colliding on a table-wire id", want: "collide on table-wire id",
-			src: "package t\ntype A { x int32 }\ntype B { y int32 }\nunion U\n{\n    costarring A\n    liquid B\n}\ntable Tab { u U }\n"},
 		{name: "enum headroom has no name to ride under", want: "headroom value has no NAME",
 			src: "package t\nenum E | max = 8\n{ A, B }\ntable Tab { e E }\n"},
 		{name: "a keyed array of unions stays a named follow-on", want: "an enum-keyed array of unions",
@@ -239,8 +235,6 @@ func TestTableRefusals(t *testing.T) {
 		// enum reaches the closure ONLY as a key
 		{name: "headroom on an enum reaching a closure only as a key", want: "reserves values above the declared variants",
 			src: "package t\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
-		{name: "an id collision on an enum reaching a closure only as a key", want: "collide on table-wire id",
-			src: "package t\nenum E { Agj, Atj }\ntable Tab { s [E]int32 }\n"},
 		{name: "the key refusal names the keying field as the reaching edge", want: "field s, which keys an array by E, reaches it",
 			src: "package t\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
 
@@ -1146,5 +1140,99 @@ table Holder { history [..2]V }
 	}
 	if !v["Holder"] {
 		t.Fatalf("a VARIABLE arm did not make the holder variable through the array: %v", v)
+	}
+}
+
+// THE TWO RESERVED-ID REFUSALS, AND THE COLLISION REFUSALS BESIDE THEM
+// (docs/SPEC-TABLES.md §3, §5, §11). No declarable name hashes to the reserved
+// node-table id, or to another name's id at sixty-four bits, so each control
+// PLANTS THE COLLISION BELOW THE HASH — the compiler's test hook returns the
+// colliding value for one named spelling and nothing for any other. Without the
+// hook there is no input that could turn these refusals red, and a refusal no
+// input can reach is a refusal nothing watches.
+func TestTheIdRefusalsUnderAPlantedCollision(t *testing.T) {
+	const reserved = uint64(0xFFFFFFFFFFFFFFFF)
+	cases := []struct {
+		name  string
+		plant map[string]uint64
+		src   string
+		want  string
+	}{
+		{
+			name:  "a field name that takes the reserved node-table id",
+			plant: map[string]uint64{"head": reserved},
+			src:   "package t\ntable Tab { head int32 }\n",
+			want:  "takes the one id the language holds back",
+		},
+		{
+			name:  "a `was` alias that takes the reserved node-table id",
+			plant: map[string]uint64{"old_head": reserved},
+			src:   "package t\ntable Tab { head int32 | was = \"old_head\" }\n",
+			want:  "takes the one id the language holds back",
+		},
+		{
+			name:  "a table name that takes the reserved node-table id",
+			plant: map[string]uint64{"Tab": reserved},
+			src:   "package t\ntable Tab { x int32 }\n",
+			want:  "takes the one id the language holds back",
+		},
+		{
+			name:  "two tables of one closure colliding on the type id",
+			plant: map[string]uint64{"Tab": 0x0123456789abcdef, "Other": 0x0123456789abcdef},
+			src:   "package t\ntable Tab { x int32 }\ntable Other { y int32 }\n",
+			want:  "collide on table-wire type id",
+		},
+		{
+			name:  "two fields of one table colliding on the wire id",
+			plant: map[string]uint64{"a": 0x0123456789abcdef, "b": 0x0123456789abcdef},
+			src:   "package t\ntable Tab {\n    a int32\n    b int32\n}\n",
+			want:  "collide on table-wire id",
+		},
+		{
+			name:  "two enum variants colliding on the wire id",
+			plant: map[string]uint64{"A": 0x0123456789abcdef, "B": 0x0123456789abcdef},
+			src:   "package t\nenum E { A, B }\ntable Tab { e E }\n",
+			want:  "collide on table-wire id",
+		},
+		{
+			name:  "two union arms colliding on the wire id",
+			plant: map[string]uint64{"one": 0x0123456789abcdef, "two": 0x0123456789abcdef},
+			src:   "package t\nunion U {\n    one int32\n    two float32\n}\ntable Tab { u U }\n",
+			want:  "collide on table-wire id",
+		},
+		{
+			name:  "an enum a closure reaches only as an array KEY",
+			plant: map[string]uint64{"A": 0x0123456789abcdef, "B": 0x0123456789abcdef},
+			src:   "package t\nenum E { A, B }\ntable Tab { s [E]int32 }\n",
+			want:  "collide on table-wire id",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			plant := tc.plant
+			ir.TableWireIdHook = func(name string) (uint64, bool) {
+				v, ok := plant[name]
+				return v, ok
+			}
+			t.Cleanup(func() { ir.TableWireIdHook = nil })
+			errs := runUnit(t, map[string]string{"T.schema": tc.src})
+			for _, e := range errs {
+				if strings.Contains(e.Error(), tc.want) {
+					return
+				}
+			}
+			t.Fatalf("no diagnostic contains %q; got: %v", tc.want, errs)
+		})
+	}
+	// the NEGATIVE CONTROL of the hook itself: with nothing planted, the same
+	// sources compile, so what the rows above show is the refusal and not the
+	// source
+	for _, tc := range cases {
+		errs := runUnit(t, map[string]string{"T.schema": tc.src})
+		for _, e := range errs {
+			if strings.Contains(e.Error(), tc.want) {
+				t.Fatalf("%s: the refusal fired with nothing planted — the row proves the source, not the check", tc.name)
+			}
+		}
 	}
 }
