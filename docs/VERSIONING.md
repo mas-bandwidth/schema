@@ -301,14 +301,14 @@ does today.
 | a flags variant inserted or removed | silent | refuses | moves, and so does the protocol id |
 | a flags variant reordered or renamed in place | **silent** | **refuses** | moves: the cook projection digests each variant's bit position, and the protocol id moves too |
 | a union arm reordered or renamed | `unknown` for an arm this reader lacks; a reorder is silent and safe | warns on a vanished name | moves, and the protocol id with it where a `type` reaches the union: the arm names are what a same-typed reorder moves |
-| a keyed array made positional | `kind_mismatch` | refuses; and in a TABLE body the positional spelling no longer compiles at all (SPEC-TABLES.md §2.4) | moves |
+| a keyed array made positional | `kind_mismatch` | refuses; and in a TABLE body the positional spelling is refused by name (SPEC-TABLES.md §2.4, §11), which the checker does not do yet (#540) | moves |
 | a keyed array's key enum swapped for another | `unknown`, one per slot; the kind stays | refuses | moves |
 | a map's KEY kind changed, or its KEY bound tightened (SPEC-TABLES.md §2.8) | a changed kind is one `kind_mismatch` for the map, which reads empty. A tightened bound drops the entries that no longer fit and counts `clamped`, one per entry | **refuses** a changed kind, warns on a tightened bound | moves |
 | an array changed between `[]T` and `[..N]T` (SPEC-TABLES.md §2.9) | nothing where the count fits the new bound, `clamped` past it: the two are the same bytes | warns on the direction that ADDS a bound, as any capacity shrunk; passes on the one that removes it | moves: the storage is a reference and a count on one side and the maximum inline on the other |
 | an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (SPEC-TABLES.md §2.9) | `kind_mismatch`, the array reading empty | **refuses**, as any element kind changed | moves |
 | a guard added or removed | nothing | passes | nothing |
 | a `json =` key changed | nothing on the wire | passes | nothing |
-| a `///` doc comment or a tag added, changed or removed (SPEC.md §4.1, §4.2) | nothing: neither is a fact a codec reads | passes; neither enters a baseline row | **nothing**, and the protocol id does not move either — annotating a shipped schema is a free edit |
+| a `///` doc comment or a tag added, changed or removed (SPEC.md §4.1, §4.2) | nothing: neither is a fact a codec reads | passes; neither enters a baseline row | **nothing**, and the protocol id does not move either, so annotating a shipped schema is a free edit |
 | a table renamed | nothing when it is held by value (a declaration name is not on the wire); every pointer to it reads null and counts `unknown` when it is a pointer target | warns | moves, until table `was` lands (#396); then a `was` rename moves nothing |
 | a retired name re-added with a new meaning | **silent** | **passes today**; the ledger is #441 | moves |
 | a language added to the build | nothing | nothing | nothing |
@@ -957,6 +957,9 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #442: `was` for variants and arms; #478: `was` for the fields of a `type`
   that a table reaches.
 - #446: the evolution table's fixtures.
+- #540: the `[E.Max]T` refusal in a table body, which SPEC-TABLES.md §2.4 and
+  §11 state and the checker does not make, so the positional spelling still
+  compiles there and reopens the class §4.1 closed.
 - #524: the reachability-scoped wire-shape projection, and the negative
   control on the walk that a missed edge must turn red.
 - #525: retain-unknown, the two report counters, and the conformance rows.

@@ -79,11 +79,15 @@ That narrowness is one of TWO wires, and the other one is the evolution
 answer: declare a `table` and its fields are identified by the hash of their
 NAMES, so a reader takes any data a writer ever wrote — unknown fields skipped
 and counted, absent fields defaulted, changed kinds skipped rather than
-misdecoded, a kind that merely grew decoded exactly and counted `widened`,
+misdecoded, a kind that merely grew decoded exactly and counted `widened`
+(specified, and nothing counts it yet in any language, #523),
 out-of-range values clamped, and every event in a read report. **Nothing is
-fatal**: framing damage stops the damaged nesting level, keeps what it decoded
-there, and the parent reads on past the field's own length (SPEC-TABLES.md
-§4). Save games, config, asset archives, tool output and backend messages
+fatal below the whole wire**: framing damage stops the damaged nesting level,
+keeps what it decoded there, and the parent reads on past the field's own
+length. Two things do stop the file, and both DECODE NOTHING rather than
+mangle anything: a trailer the reader cannot read whole, and a form byte the
+reader does not know, which is a refusal by name and moves no counter at all
+(SPEC-TABLES.md §3, §4). Save games, config, asset archives, tool output and backend messages
 belong there; packets belong on the type wire. What schema does not offer is
 Protobuf's model of ONE wire that does both.
 
@@ -287,9 +291,18 @@ cost with no buyer. See
 
 ## Is everything supported in all nine languages?
 
-**Yes.** The wire is generated for C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust from one IR, and
-checked against each other in CI on every push. Every target's output is held
-to the same pinned goldens.
+**Yes, on the PACKET wire.** It is generated for C, C++, C#, Dart, Elixir,
+Go, Java, JavaScript and Rust from one IR, and checked against each other in
+CI on every push. Every target's output is held to the same pinned goldens.
+
+**The table wire is not there yet, and the state is one sentence.** All nine
+carry the FIXED class on the wire, the text form, the cook's open, the block's
+read and the descriptors; the variable class is the C++ reference's and the
+tool's; and the id-table wire itself is the reference's and the tool's, with
+the eight ports still writing its previous form
+([#511](https://github.com/mas-bandwidth/schema/issues/511) to
+[#518](https://github.com/mas-bandwidth/schema/issues/518)). The parity gate
+is [#366](https://github.com/mas-bandwidth/schema/issues/366).
 
 Parity means everything: fixed point, 128-bit integers, unions and their
 generated tag surface, in every target. Rust's

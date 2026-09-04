@@ -45,7 +45,7 @@ table wire, so the ratio between them is the price of tolerance and nothing
 else.
 
 Pinned wire: **2391 bytes**, against BenchMixed's 438 — the ids, kinds and
-lengths, made visible. **1487 of those 2391 — 62% — are framing**: field id
+lengths, made visible. **1487 of those 2391, or 62%, are framing**: field id
 references, kind bytes, lengths, element counts and body terminators, not
 values. That count is the price of tolerance, stated as a number so the ratio
 is a measurement rather than an impression, and it is the figure

@@ -167,8 +167,9 @@ Tools build the assets. The game should not parse them at load. It should map th
 in that build's byte order. Opening it is a header check and a cast: magic,
 byte order, build version, reserved words, alignment, lengths. Nothing is
 walked, so a gigabyte opens as fast as a kilobyte. A cook only opens in the
-build it was cooked for. Any other build gets NULL beside the reason the check
-refused it, and loads the wire instead, which every build can read.
+build it was cooked for. Any other build gets NULL and loads the wire
+instead, which every build can read. The named reason beside that null,
+`TableRefuseReason`, is specified and no backend writes it yet.
 
 _The cook feature is in preview in this release_.
 
@@ -258,8 +259,9 @@ An editor wants to show any table as a property tree. A debug view wants to
 inspect what the game is holding this frame.
 
 Every table comes with reflection descriptors beside its code: each field's
-name, type, offset, range, its text key, its `///` doc comment and its tags,
-and the names of every enum and union variant. A tool walks a table it has
+name, type, offset, range, its text key, and the names of every enum and union
+variant. Two more columns, a declaration's `///` doc comment and its tags, are
+specified and no backend emits them yet. A tool walks a table it has
 never seen. A debug view walks the live instance in memory. There is no RTTI
 and no schema file at run time.
 

@@ -56,9 +56,9 @@ When to use theirs, in one line each: in-place access to a large buffer you
 will not deserialize is FlatBuffers' or Cap'n Proto's; an RPC system with
 promise pipelining is Cap'n Proto's; a data pipeline where the writer's schema
 must travel with the record is Avro's; and a service whose callers you cannot
-rebuild, where the ECOSYSTEM around the format — gRPC, `buf`, a schema
-registry, forty-plus third-party language implementations — is most of what you
-are buying, is Protocol Buffers'.
+rebuild, where the ECOSYSTEM around the format is most of what you are buying,
+gRPC and `buf` and a schema registry and forty-plus third-party language
+implementations, is Protocol Buffers'.
 
 **A service versioned independently of its callers is no longer on that list**,
 and this page says so where it used to decline the case. That is what a
@@ -70,8 +70,9 @@ reader counts what it cannot name and never fails on another build's data, and
 by the byte rather than only by the feature: a peer announces its unit's whole
 vocabulary once a connection and every message after it carries references
 instead of ids, which turns a 106-byte login into 58 against proto3's 49
-(SPEC-TABLES §3.3). What schema still declines beside Protocol Buffers is RPC:
-no service definition, no stub generation, no request-response machinery.
+(SPEC-TABLES §3.3). What schema still declines beside Protocol Buffers is RPC.
+There is no service definition, no stub generation and no request-response
+machinery.
 
 **The gaps in that claim are named rather than argued away**, and each is an
 issue this page's rows already carry: the message form is specified and nothing
