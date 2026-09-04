@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"testing"
 
@@ -413,10 +414,7 @@ func firstDifference(a, b []byte) int {
 // asRefusal is errors.As for the message path's refusal, spelled here so the
 // test reads as the rule it holds.
 func asRefusal(err error, out **tablewire.MessageRefusal) bool {
-	if err == nil {
-		return false
-	}
-	refused, ok := err.(*tablewire.MessageRefusal)
+	refused, ok := errors.AsType[*tablewire.MessageRefusal](err)
 	if ok {
 		*out = refused
 	}

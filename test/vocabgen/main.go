@@ -49,9 +49,9 @@ func main() {
 package vocabdemo
 
 `)
-	for t := 0; t < tables; t++ {
+	for t := range tables {
 		fmt.Fprintf(&b, "table Wide%02d\n{\n", t)
-		for f := 0; f < fields; f++ {
+		for f := range fields {
 			fmt.Fprintf(&b, "    field_%02d_%02d uint32 = 0\n", t, f)
 		}
 		b.WriteString("}\n")

@@ -705,10 +705,15 @@ func readWireVectors(path string) ([]wireVector, error) {
 			continue
 		}
 		f := strings.Fields(line)
-		if len(f) != 4 && !(len(f) == 5 && f[4] == "message") {
+		message := false
+		switch {
+		case len(f) == 4:
+		case len(f) == 5 && f[4] == "message":
+			message = true
+		default:
 			return nil, fmt.Errorf("%s:%d: a vector is <name> <unit> <root> <file> [message]", path, i+1)
 		}
-		out = append(out, wireVector{name: f[0], unit: f[1], root: f[2], file: f[3], message: len(f) == 5})
+		out = append(out, wireVector{name: f[0], unit: f[1], root: f[2], file: f[3], message: message})
 	}
 	return out, nil
 }

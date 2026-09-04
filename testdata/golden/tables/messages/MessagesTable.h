@@ -35,6 +35,25 @@
 
 namespace messagedemo {
 
+// WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
+// is not one of §4's events: nothing is decoded, no counter moves and no
+// damage is reported, so five zero counters and a false flag are what a clean
+// read prints too and only the verdict tells them apart. The reason says which
+// refusal it was.
+//
+// This is the MESSAGE PATH's vocabulary and not the cooked form's (§7.4): a
+// caller meeting one of these has been refused a MESSAGE on a connection,
+// which is a different recovery with a different owner than a file a header
+// match turned down.
+enum TableMessageReason
+{
+    newer_form,           // a FORM BYTE this reader does not carry (§3)
+    no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
+    second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
+    vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
+    message_form_as_file  // a form 2 wire where a FILE was expected: its table is somewhere else
+};
+
 // The table-wire read report — the permissive contract's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
 struct TableReport
@@ -52,6 +71,10 @@ struct TableReport
     // zero counters and a false flag are what a clean read prints too, so the
     // verdict is what tells the two apart.
     bool refused = false;
+    // WHICH refusal, and it is read only when refused is set: a read that
+    // was not refused has no reason, and this member is the one the caller
+    // must not look at then (docs/SPEC-TABLES.md §3.3).
+    TableMessageReason reason = newer_form;
 };
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
@@ -240,8 +263,16 @@ struct TableIds
     int32_t head[ kBuckets ];
     int32_t count;
     bool overflow;
+    // THE MESSAGE FORM'S SLOTS (docs/SPEC-TABLES.md §3.3). A form 2 wire
+    // names ids through the CONNECTION's table, which is the unit's whole
+    // vocabulary in a compiler-settled order — so every reference is known at
+    // compile time and rides at the header as a literal beside the id. This
+    // flag is what selects it: false interns the id in first-use order and
+    // writes a trailer, true answers the slot and writes none, and the walk
+    // that decides is one walk.
+    bool vocabulary;
 
-    TableIds() : count( 0 ), overflow( false )
+    TableIds() : count( 0 ), overflow( false ), vocabulary( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
     }
@@ -251,8 +282,16 @@ struct TableIds
         return uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> 57 ) & uint32_t( kBuckets - 1 );
     }
 
-    // the reference an id takes, appending it on first use
-    uint64_t ref( uint64_t id )
+    // the reference an id takes: its message-form SLOT under the connection's
+    // table, or the file's own first-use entry
+    MESSAGEDEMO_TABLE_INLINE uint64_t ref( uint64_t id, uint64_t slot )
+    {
+        if ( vocabulary ) { return slot; }
+        return intern( id );
+    }
+
+    // the FILE form's half, appending the id on first use
+    uint64_t intern( uint64_t id )
     {
         const uint32_t b = bucket_of( id );
         for ( int32_t i = head[b]; i >= 0; i = chain[i] )
@@ -268,6 +307,8 @@ struct TableIds
     // recent one in its bucket, so it sits at that bucket's head.
     void truncate( int32_t mark )
     {
+        // a SLOT costs no entry, so an elided field has nothing to undo
+        if ( vocabulary ) { return; }
         while ( count > mark )
         {
             count--;
@@ -501,6 +542,200 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
         if ( !r.has( 1 ) ) { return false; }
         if ( !r.skip( r.get8() ) ) { return false; }
     }
+}
+
+// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): a FILE carries its own id
+// table and a MESSAGE STREAM announces one and then carries none.
+//
+// A form 2 wire is TWO PARTS, the form byte and the root body: the body ends
+// at its own zero reference as it does in a file, there is no trailer, and the
+// message's last byte is the body's terminator. Its references resolve against
+// the CONNECTION's table, which is the unit's whole vocabulary in the order
+// the compiler settled.
+const uint8_t kTableWireMessageForm = 2;
+
+// The RESERVED build-version id, the second id the language holds back (§5,
+// §11), beside the node table's. It is the announcement's one required field,
+// and a reserved id in any body but the one whose transport it is, is
+// malformed (§3.1).
+static const uint64_t kTableBuildVersionFieldId = 0xFFFFFFFFFFFFFFFEull;
+
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 59 entries and 492 bytes. It is an
+// ordinary form 1 FILE — the form byte, a body carrying the BUILD VERSION
+// under the reserved id at kind 9, and the trailer that IS the connection's
+// table, slot 1 the reserved id and slots 2 and up the vocabulary under one
+// numbering.
+//
+// The vocabulary is the unit's whole closure in the COOK PROJECTION's order
+// (§20.2) — each record in the order the projection renders it and each
+// record's fields in the order the projection renders them, then each enum's
+// variants and each union's arms — followed by the tail the projection does
+// not name: the reserved node-table id, the three blob type ids as bytes,
+// string and wstring, and every table's own name id in the projection's sorted
+// record order. The tail is UNCONDITIONAL, so an ordinary edit only ever grows
+// it at its end and never moves a slot a generated field header carries as a
+// literal.
+static const int64_t kTableAnnounceBytes = 492;
+static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
+    0x01, 0x01, 0x09, 0x59, 0x6a, 0xf9, 0xc8, 0xc5, 0x11, 0xf0, 0x8f, 0x00,
+    0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x07, 0x59, 0x4f, 0x69,
+    0xad, 0xa5, 0x4b, 0xbf, 0x87, 0xf2, 0x8b, 0x62, 0x87, 0x12, 0x53, 0x5f,
+    0x58, 0x86, 0x8e, 0x6c, 0xc4, 0xdb, 0xa4, 0xd6, 0x95, 0x32, 0xc9, 0xc6,
+    0x9b, 0xe7, 0x4d, 0xcd, 0x68, 0xa9, 0x45, 0xb5, 0x07, 0x4e, 0x9c, 0x08,
+    0x7e, 0x40, 0x95, 0x19, 0xef, 0xf4, 0x04, 0xfa, 0xcf, 0x14, 0x5a, 0x78,
+    0xfe, 0xe4, 0xea, 0xb9, 0x74, 0x3b, 0x11, 0x81, 0x66, 0xd8, 0x37, 0x44,
+    0xf3, 0x3e, 0x6e, 0x3e, 0x93, 0x26, 0xe5, 0x9d, 0x76, 0x06, 0xd7, 0xeb,
+    0x0d, 0x2d, 0xc5, 0x03, 0xb2, 0xad, 0x1d, 0xc4, 0xa2, 0xeb, 0x3d, 0x0d,
+    0xef, 0x52, 0x62, 0xbe, 0x3f, 0x45, 0x27, 0xf9, 0xd8, 0xc0, 0x0d, 0xd6,
+    0x71, 0x4c, 0xa9, 0x73, 0xe1, 0xd0, 0x3c, 0x09, 0x19, 0xc0, 0x7d, 0x8b,
+    0xe4, 0xeb, 0xee, 0xb3, 0xaf, 0xd8, 0x5a, 0xe7, 0x1f, 0x25, 0xad, 0x45,
+    0xad, 0x97, 0x5d, 0xee, 0x0a, 0x50, 0x53, 0xf0, 0x18, 0x03, 0xf0, 0xc2,
+    0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0xff, 0xf2, 0xd5, 0xbb,
+    0x45, 0x89, 0x42, 0x33, 0xee, 0x9a, 0xeb, 0xc4, 0xa6, 0x9e, 0xc5, 0xde,
+    0x29, 0x6e, 0x72, 0xe1, 0xa4, 0xd4, 0x77, 0x90, 0x39, 0x26, 0x4f, 0x47,
+    0xf3, 0xd7, 0xe8, 0x65, 0xe6, 0x49, 0x75, 0x69, 0x6b, 0xd0, 0x78, 0x94,
+    0x3c, 0x08, 0xb5, 0xee, 0xd6, 0xa0, 0xde, 0x52, 0x04, 0x77, 0x75, 0x4d,
+    0x1c, 0xfa, 0x8a, 0x02, 0x3a, 0x40, 0x81, 0xa6, 0x54, 0x63, 0xdc, 0x99,
+    0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0xe5, 0x6d, 0x69, 0xbe,
+    0x2b, 0x54, 0x0d, 0x74, 0x5c, 0x01, 0x82, 0x42, 0x17, 0xfa, 0xf9, 0x78,
+    0x28, 0x62, 0x91, 0x59, 0x87, 0xc6, 0x71, 0x72, 0x7d, 0x45, 0x1d, 0x6a,
+    0x53, 0x3d, 0xf8, 0xff, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1,
+    0xca, 0x48, 0x91, 0xc2, 0x9b, 0xb3, 0x73, 0xc5, 0xf2, 0x48, 0x2b, 0x03,
+    0xe4, 0x80, 0x67, 0x7d, 0x4a, 0x63, 0x04, 0x3c, 0x29, 0x82, 0xfc, 0xac,
+    0x22, 0x01, 0x60, 0x56, 0x19, 0x70, 0xaf, 0x77, 0xdd, 0x7c, 0x58, 0xd1,
+    0xba, 0xfb, 0xf8, 0x3b, 0xe9, 0x70, 0x36, 0x63, 0xb4, 0x97, 0x4f, 0xf8,
+    0x28, 0x7c, 0x85, 0xbf, 0x18, 0x5e, 0x6a, 0x09, 0x87, 0xf5, 0x6f, 0xdc,
+    0xf4, 0xbb, 0x96, 0xed, 0xa9, 0x07, 0x33, 0xc5, 0x0d, 0xe0, 0x30, 0xbf,
+    0xf8, 0x57, 0x75, 0xe8, 0x90, 0x6b, 0x5a, 0xb5, 0x16, 0x68, 0x56, 0xb2,
+    0x8a, 0xfc, 0x7d, 0x43, 0x82, 0x76, 0x45, 0x05, 0x19, 0xc2, 0x23, 0xe7,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xe4, 0x4f, 0x1c, 0x4f,
+    0x47, 0xc0, 0x2e, 0x2f, 0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70,
+    0xc7, 0xd4, 0x7b, 0x26, 0xb0, 0x9d, 0x29, 0x5f, 0xd1, 0xd3, 0xd1, 0x2d,
+    0x6c, 0x2a, 0xef, 0x64, 0x0f, 0x0d, 0x5e, 0x71, 0x86, 0x85, 0xbc, 0xc2,
+    0x10, 0xbf, 0xc1, 0x1c, 0x53, 0xaa, 0x5e, 0x4f, 0xc6, 0x6e, 0xcb, 0xd3,
+    0xcd, 0x05, 0x00, 0xc5, 0xe1, 0xc1, 0xca, 0xc7, 0x03, 0x3e, 0x5e, 0x29,
+    0x2a, 0xc9, 0x3f, 0x16, 0x3d, 0x55, 0x65, 0x95, 0x15, 0xba, 0xf8, 0x57,
+    0x24, 0x65, 0x80, 0x03, 0x06, 0xa3, 0xa0, 0x78, 0xdb, 0x80, 0x92, 0x0c,
+    0x43, 0xf0, 0xed, 0x04, 0xc5, 0x78, 0x31, 0xad, 0xd2, 0x93, 0xb8, 0x01,
+    0xf0, 0x81, 0x8f, 0xa4, 0x3b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+// AnnounceMeasure is the announcement's byte count, which is a constant of the
+// unit and not a walk.
+inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+
+// Announce writes the announcement into the caller's buffer and answers the
+// bytes written — exactly AnnounceMeasure's answer — or -1 when the buffer is
+// too small. It allocates nothing and walks nothing.
+inline int64_t Announce( uint8_t * buffer, int64_t capacity )
+{
+    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
+    return kTableAnnounceBytes;
+}
+
+// TableVocabulary is ONE DIRECTION of ONE CONNECTION's id table (§3.3): the
+// entries an announcement carried, whole, under one numbering with slot 1 the
+// reserved build-version id.
+//
+// A peer holds TWO of these for a connection, the one it writes with and the
+// one it reads with, and neither is the other's. A restart opens a fresh
+// connection with empty tables and nothing is cached across connections, so
+// its whole life is one connection's. It BORROWS the announcement's bytes rather than
+// copying them, so a receiver holds one table a direction and its memory is
+// the bound below and nothing else.
+struct TableVocabulary
+{
+    // THE CONFORMING DEFAULT BOUND (§3.3): 32 KiB a direction, eight times the
+    // 500-id unit that is already a large one. A connection's table is bounded
+    // by nothing the wire carries, so the receiver declares the maximum and an
+    // announcement above it is refused by name before an entry is touched.
+    static const int64_t kDefaultMaxEntries = 4096;
+
+    TableIdTable table;
+    uint64_t build_version = 0;
+    bool announced = false;
+    int64_t max_entries = kDefaultMaxEntries;
+};
+
+// AnnounceRead reads an announcement into one direction's table (§3.3).
+//
+// THE BOUND IS CHECKED BEFORE ANYTHING IS ALLOCATED: the entry count is a
+// fixed little-endian u64 at the end, so a receiver reads it, compares it and
+// refuses without touching an entry. After that it is §3's ordinary FILE read,
+// because the announcement IS a file, with EXACTLY ONE STRICT CHECK over its
+// body: the reserved build-version field present, exactly once, under kind 9,
+// eight bytes wide. Everything else is an ordinary field under §4's tolerance,
+// so an unknown one is skipped and counted and the announcement can GAIN a
+// field in a later minor without a lockstep redeploy.
+//
+// The FIRST announcement sets the table and it is the only one that can. A
+// SECOND is refused by name: it does not replace the table, it does not amend
+// it and it changes nothing. A refused announcement sets NO TABLE.
+inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    if ( vocabulary.announced )
+    {
+        to->refused = true;
+        to->reason = second_announcement;
+        return false;
+    }
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireForm )
+    {
+        to->refused = true;
+        to->reason = buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        return false;
+    }
+    if ( bytes < 9 ) { to->malformed = true; return false; }
+    const uint8_t * tail = buffer + bytes - 8;
+    uint64_t lo = uint64_t( tail[0] ) | uint64_t( tail[1] ) << 8 | uint64_t( tail[2] ) << 16 | uint64_t( tail[3] ) << 24;
+    uint64_t hi = uint64_t( tail[4] ) | uint64_t( tail[5] ) << 8 | uint64_t( tail[6] ) << 16 | uint64_t( tail[7] ) << 24;
+    if ( ( lo | ( hi << 32 ) ) > (uint64_t) vocabulary.max_entries )
+    {
+        to->refused = true;
+        to->reason = vocabulary_too_large;
+        return false;
+    }
+    TableIdTable table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        else { to->refused = true; to->reason = newer_form; }
+        return false;
+    }
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) ) { to->malformed = true; return false; }
+    // the body, under §4's tolerance and this form's one strict check
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    uint64_t version = 0;
+    int32_t seen = 0;
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.getleb( ref ) ) { to->malformed = true; return false; }
+        if ( ref == 0 ) { break; }
+        if ( ref > (uint64_t) table.count || !r.has( 1 ) ) { to->malformed = true; return false; }
+        const uint64_t id = table.at( ref );
+        const uint8_t kind = r.get8();
+        if ( id != kTableBuildVersionFieldId )
+        {
+            to->unknown++;
+            if ( !r.skip( kind ) ) { to->malformed = true; return false; }
+            continue;
+        }
+        if ( kind != 9 || !r.has( 8 ) ) { to->refused = true; to->reason = no_vocabulary; return false; }
+        version = r.get64();
+        seen++;
+    }
+    if ( seen != 1 ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    vocabulary.table = table;
+    vocabulary.build_version = version;
+    vocabulary.announced = true;
+    return true;
 }
 
 inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -964,8 +1199,8 @@ inline bool TableEnumRef( TableIds & ids, Mode value, uint64_t & ref )
     switch ( value )
     {
         case Mode::None: ref = 0; return true;
-        case Mode::Read: ref = ids.ref( 0x740d542bbe696de5ull ); return true;
-        case Mode::Write: ref = ids.ref( 0x78f9fa174282015cull ); return true;
+        case Mode::Read: ref = ids.ref( 0x740d542bbe696de5ull, 29 ); return true;
+        case Mode::Write: ref = ids.ref( 0x78f9fa174282015cull, 30 ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -1152,7 +1387,7 @@ inline int64_t UserMeasureBody( TableIds & ids, const User & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
-    if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref( 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
+    if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref( 0xc4bcadba8e631b86ull, 28 ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     return bytes;
 }
 
@@ -1169,7 +1404,7 @@ MESSAGEDEMO_TABLE_INLINE bool UserSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref( 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.putleb( ids.ref( 0xc4bcadba8e631b86ull, 28 ) ); w.put8( 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -1200,12 +1435,14 @@ MESSAGEDEMO_TABLE_INLINE bool UserLoadBody( TableReader & r, User & value )
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -1256,7 +1493,15 @@ inline TableOpenVerdict UserLoadVerdict( User & value, const uint8_t * buffer, i
     {
         UserReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -1284,12 +1529,55 @@ inline bool UserLoad( User & value, const uint8_t * buffer, int64_t bytes, Table
     return UserLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t UserMeasureMessage( const User & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = UserMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t UserSaveMessage( const User & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !UserSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == UserMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool UserLoadMessage( User & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    UserReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return UserLoadBody( r, value );
+}
+
 inline int64_t ScriptMeasureBody( TableIds & ids, const Script & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.path_length < 0 || value.path_length > 64 ) { return -1; } // storage invariant
-    if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x03c52d0debd70676ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
-    if ( value.line != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf4ba5ad694f5907ull ) ) + 1 + 4; } // line
+    if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x03c52d0debd70676ull, 11 ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
+    if ( value.line != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf4ba5ad694f5907ull, 2 ) ) + 1 + 4; } // line
     return bytes;
 }
 
@@ -1306,13 +1594,13 @@ MESSAGEDEMO_TABLE_INLINE bool ScriptSaveBody( TableWriter & w, TableIds & ids, c
     if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
     if ( value.path_length > 0 )
     {
-        w.putleb( ids.ref( 0x03c52d0debd70676ull ) ); w.put8( 12 ); // path
+        w.putleb( ids.ref( 0x03c52d0debd70676ull, 11 ) ); w.put8( 12 ); // path
         w.putleb( (uint64_t) value.path_length );
         w.raw( value.path, value.path_length );
     }
     if ( value.line != 0 )
     {
-        w.putleb( ids.ref( 0xbf4ba5ad694f5907ull ) ); w.put8( 8 ); // line
+        w.putleb( ids.ref( 0xbf4ba5ad694f5907ull, 2 ) ); w.put8( 8 ); // line
         w.put32( uint32_t( value.line ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -1342,12 +1630,14 @@ MESSAGEDEMO_TABLE_INLINE bool ScriptLoadBody( TableReader & r, Script & value )
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -1413,7 +1703,15 @@ inline TableOpenVerdict ScriptLoadVerdict( Script & value, const uint8_t * buffe
     {
         ScriptReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -1441,12 +1739,55 @@ inline bool ScriptLoad( Script & value, const uint8_t * buffer, int64_t bytes, T
     return ScriptLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t ScriptMeasureMessage( const Script & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = ScriptMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t ScriptSaveMessage( const Script & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !ScriptSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == ScriptMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool ScriptLoadMessage( Script & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    ScriptReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return ScriptLoadBody( r, value );
+}
+
 inline int64_t SelectionMeasureBody( TableIds & ids, const Selection & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_start = ids.count;
-        const uint64_t ref_start = ids.ref( 0xee5d97ad45ad251full );
+        const uint64_t ref_start = ids.ref( 0xee5d97ad45ad251full, 17 );
         const int64_t body_start = CursorMeasureBody( ids, value.start );
         if ( body_start < 0 ) { return -1; }
         if ( body_start > 1 ) { bytes += TableLebBytes( ref_start ) + 1 + TableLebBytes( (uint64_t) ( body_start ) ) + ( body_start ); } // start
@@ -1454,7 +1795,7 @@ inline int64_t SelectionMeasureBody( TableIds & ids, const Selection & value )
     }
     {
         const int32_t mark_end = ids.count;
-        const uint64_t ref_end = ids.ref( 0xc2f00318f053500aull );
+        const uint64_t ref_end = ids.ref( 0xc2f00318f053500aull, 18 );
         const int64_t body_end = CursorMeasureBody( ids, value.end );
         if ( body_end < 0 ) { return -1; }
         if ( body_end > 1 ) { bytes += TableLebBytes( ref_end ) + 1 + TableLebBytes( (uint64_t) ( body_end ) ) + ( body_end ); } // end
@@ -1475,7 +1816,7 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionSaveBody( TableWriter & w, TableIds & ids
 {
     {
         const int32_t mark_start = ids.count;
-        const uint64_t ref_start = ids.ref( 0xee5d97ad45ad251full );
+        const uint64_t ref_start = ids.ref( 0xee5d97ad45ad251full, 17 );
         const int64_t body_start = CursorMeasureBody( ids, value.start );
         if ( body_start < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_start > 1 ) // all-default nested elides
@@ -1487,7 +1828,7 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionSaveBody( TableWriter & w, TableIds & ids
     }
     {
         const int32_t mark_end = ids.count;
-        const uint64_t ref_end = ids.ref( 0xc2f00318f053500aull );
+        const uint64_t ref_end = ids.ref( 0xc2f00318f053500aull, 18 );
         const int64_t body_end = CursorMeasureBody( ids, value.end );
         if ( body_end < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_end > 1 ) // all-default nested elides
@@ -1524,12 +1865,14 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionLoadBody( TableReader & r, Selection & va
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -1608,7 +1951,15 @@ inline TableOpenVerdict SelectionLoadVerdict( Selection & value, const uint8_t *
     {
         SelectionReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -1636,29 +1987,72 @@ inline bool SelectionLoad( Selection & value, const uint8_t * buffer, int64_t by
     return SelectionLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t SelectionMeasureMessage( const Selection & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = SelectionMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t SelectionSaveMessage( const Selection & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !SelectionSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == SelectionMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool SelectionLoadMessage( Selection & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    SelectionReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return SelectionLoadBody( r, value );
+}
+
 inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_at = ids.count;
-        const uint64_t ref_at = ids.ref( 0x089c4e07b545a968ull );
+        const uint64_t ref_at = ids.ref( 0x089c4e07b545a968ull, 6 );
         const int64_t body_at = CursorMeasureBody( ids, value.at );
         if ( body_at < 0 ) { return -1; }
         if ( body_at > 1 ) { bytes += TableLebBytes( ref_at ) + 1 + TableLebBytes( (uint64_t) ( body_at ) ) + ( body_at ); } // at
         else { ids.truncate( mark_at ); } // an all-default nested table elides, and costs no entry
     }
     if ( value.text_length < 0 || value.text_length > 32 ) { return -1; } // storage invariant
-    if ( value.text_length > 0 ) { bytes += TableLebBytes( ids.ref( 0xfa04f4ef1995407eull ) ) + 1 + TableLebBytes( (uint64_t) ( value.text_length ) ) + ( value.text_length ); } // text
+    if ( value.text_length > 0 ) { bytes += TableLebBytes( ids.ref( 0xfa04f4ef1995407eull, 7 ) ) + 1 + TableLebBytes( (uint64_t) ( value.text_length ) ) + ( value.text_length ); } // text
     if ( value.origin.type != OriginType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref( 0xb9eae4fe785a14cfull ) ) + 1;
+        bytes += TableLebBytes( ids.ref( 0xb9eae4fe785a14cfull, 8 ) ) + 1;
         switch ( value.origin.type )
         {
             case OriginType::None: break;
             case OriginType::User:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x7d6780e4032b48f2ull );
+                const uint64_t arm_ref = ids.ref( 0x7d6780e4032b48f2ull, 35 );
                 {
                     const int64_t arm_body = UserMeasureBody( ids, value.origin.user );
                     if ( arm_body < 0 ) { return -1; }
@@ -1670,7 +2064,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
             case OriginType::Script:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xacfc82293c04634aull );
+                const uint64_t arm_ref = ids.ref( 0xacfc82293c04634aull, 36 );
                 {
                     const int64_t arm_body = ScriptMeasureBody( ids, value.origin.script );
                     if ( arm_body < 0 ) { return -1; }
@@ -1682,7 +2076,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
             case OriginType::Pid:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x77af701956600122ull );
+                const uint64_t arm_ref = ids.ref( 0x77af701956600122ull, 37 );
                 arm_payload += 4; // uint32
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -1690,7 +2084,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
             case OriginType::Note:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x3bf8fbbad1587cddull );
+                const uint64_t arm_ref = ids.ref( 0x3bf8fbbad1587cddull, 38 );
                 if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return -1; } // storage invariant
                 arm_payload += value.origin.note.value_length; // the string's bytes under the arm's L
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
@@ -1702,7 +2096,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
     if ( value.origins_count < 0 || value.origins_count > 2 ) { return -1; } // storage invariant
     if ( value.origins_count > 0 )
     {
-        const uint64_t ref_origins = ids.ref( 0x4437d86681113b74ull );
+        const uint64_t ref_origins = ids.ref( 0x4437d86681113b74ull, 9 );
         int64_t body_origins = 0;
         body_origins += 1 + TableLebBytes( (uint64_t) ( value.origins_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.origins_count; elem_i++ )
@@ -1716,7 +2110,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
                     case OriginType::User:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0x7d6780e4032b48f2ull );
+                        const uint64_t arm_refu = ids.ref( 0x7d6780e4032b48f2ull, 35 );
                         {
                             const int64_t arm_bodyu = UserMeasureBody( ids, value.origins[elem_i].user );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -1728,7 +2122,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
                     case OriginType::Script:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xacfc82293c04634aull );
+                        const uint64_t arm_refu = ids.ref( 0xacfc82293c04634aull, 36 );
                         {
                             const int64_t arm_bodyu = ScriptMeasureBody( ids, value.origins[elem_i].script );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -1740,7 +2134,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
                     case OriginType::Pid:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0x77af701956600122ull );
+                        const uint64_t arm_refu = ids.ref( 0x77af701956600122ull, 37 );
                         arm_payloadu += 4; // uint32
                         body_origins += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -1748,7 +2142,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
                     case OriginType::Note:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0x3bf8fbbad1587cddull );
+                        const uint64_t arm_refu = ids.ref( 0x3bf8fbbad1587cddull, 38 );
                         if ( value.origins[elem_i].note.value_length < 0 || value.origins[elem_i].note.value_length > 24 ) { return -1; } // storage invariant
                         arm_payloadu += value.origins[elem_i].note.value_length; // the string's bytes under the arm's L
                         body_origins += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -1763,7 +2157,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
     if ( value.modes_present ) // ?Mode: presence decides, not content
     {
         if ( value.modes_count < 0 || value.modes_count > 2 ) { return -1; } // storage invariant
-        const uint64_t ref_modes = ids.ref( 0x9de526933e6e3ef3ull );
+        const uint64_t ref_modes = ids.ref( 0x9de526933e6e3ef3ull, 10 );
         int64_t body_modes = 0;
         body_modes += 1 + TableLebBytes( (uint64_t) ( value.modes_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.modes_count; elem_i++ )
@@ -1789,7 +2183,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
 {
     {
         const int32_t mark_at = ids.count;
-        const uint64_t ref_at = ids.ref( 0x089c4e07b545a968ull );
+        const uint64_t ref_at = ids.ref( 0x089c4e07b545a968ull, 6 );
         const int64_t body_at = CursorMeasureBody( ids, value.at );
         if ( body_at < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_at > 1 ) // all-default nested elides
@@ -1802,18 +2196,18 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
     if ( value.text_length < 0 || value.text_length > 32 ) { return false; } // storage invariant
     if ( value.text_length > 0 )
     {
-        w.putleb( ids.ref( 0xfa04f4ef1995407eull ) ); w.put8( 12 ); // text
+        w.putleb( ids.ref( 0xfa04f4ef1995407eull, 7 ) ); w.put8( 12 ); // text
         w.putleb( (uint64_t) value.text_length );
         w.raw( value.text, value.text_length );
     }
     if ( value.origin.type != OriginType::None )
     {
-        w.putleb( ids.ref( 0xb9eae4fe785a14cfull ) ); w.put8( 15 ); // origin
+        w.putleb( ids.ref( 0xb9eae4fe785a14cfull, 8 ) ); w.put8( 15 ); // origin
         switch ( value.origin.type )
         {
             case OriginType::User:
             {
-                const uint64_t arm_ref = ids.ref( 0x7d6780e4032b48f2ull );
+                const uint64_t arm_ref = ids.ref( 0x7d6780e4032b48f2ull, 35 );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = UserMeasureBody( ids, value.origin.user );
@@ -1826,7 +2220,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
             }
             case OriginType::Script:
             {
-                const uint64_t arm_ref = ids.ref( 0xacfc82293c04634aull );
+                const uint64_t arm_ref = ids.ref( 0xacfc82293c04634aull, 36 );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = ScriptMeasureBody( ids, value.origin.script );
@@ -1839,7 +2233,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
             }
             case OriginType::Pid:
             {
-                const uint64_t arm_ref = ids.ref( 0x77af701956600122ull );
+                const uint64_t arm_ref = ids.ref( 0x77af701956600122ull, 37 );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // uint32
                 w.putleb( arm_ref ); w.put8( 8 ); w.putleb( (uint64_t) arm_payload ); // pid
@@ -1848,7 +2242,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
             }
             case OriginType::Note:
             {
-                const uint64_t arm_ref = ids.ref( 0x3bf8fbbad1587cddull );
+                const uint64_t arm_ref = ids.ref( 0x3bf8fbbad1587cddull, 38 );
                 int64_t arm_payload = 0;
                 if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return false; } // storage invariant
                 arm_payload += value.origin.note.value_length; // the string's bytes under the arm's L
@@ -1863,7 +2257,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
     if ( value.origins_count < 0 || value.origins_count > 2 ) { return false; } // storage invariant
     if ( value.origins_count > 0 )
     {
-        const uint64_t ref_origins = ids.ref( 0x4437d86681113b74ull );
+        const uint64_t ref_origins = ids.ref( 0x4437d86681113b74ull, 9 );
         int64_t body_origins = 0;
         body_origins += 1 + TableLebBytes( (uint64_t) ( value.origins_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.origins_count; elem_i++ )
@@ -1877,7 +2271,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                     case OriginType::User:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0x7d6780e4032b48f2ull );
+                        const uint64_t arm_refu = ids.ref( 0x7d6780e4032b48f2ull, 35 );
                         {
                             const int64_t arm_bodyu = UserMeasureBody( ids, value.origins[elem_i].user );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -1889,7 +2283,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                     case OriginType::Script:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xacfc82293c04634aull );
+                        const uint64_t arm_refu = ids.ref( 0xacfc82293c04634aull, 36 );
                         {
                             const int64_t arm_bodyu = ScriptMeasureBody( ids, value.origins[elem_i].script );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -1901,7 +2295,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                     case OriginType::Pid:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0x77af701956600122ull );
+                        const uint64_t arm_refu = ids.ref( 0x77af701956600122ull, 37 );
                         arm_payloadu += 4; // uint32
                         body_origins += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -1909,7 +2303,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                     case OriginType::Note:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0x3bf8fbbad1587cddull );
+                        const uint64_t arm_refu = ids.ref( 0x3bf8fbbad1587cddull, 38 );
                         if ( value.origins[elem_i].note.value_length < 0 || value.origins[elem_i].note.value_length > 24 ) { return -1; } // storage invariant
                         arm_payloadu += value.origins[elem_i].note.value_length; // the string's bytes under the arm's L
                         body_origins += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -1930,7 +2324,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                 {
                     case OriginType::User:
                     {
-                        const uint64_t arm_refu = ids.ref( 0x7d6780e4032b48f2ull );
+                        const uint64_t arm_refu = ids.ref( 0x7d6780e4032b48f2ull, 35 );
                         int64_t arm_payloadu = 0;
                         {
                             const int64_t arm_bodyu = UserMeasureBody( ids, value.origins[elem_i].user );
@@ -1943,7 +2337,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                     }
                     case OriginType::Script:
                     {
-                        const uint64_t arm_refu = ids.ref( 0xacfc82293c04634aull );
+                        const uint64_t arm_refu = ids.ref( 0xacfc82293c04634aull, 36 );
                         int64_t arm_payloadu = 0;
                         {
                             const int64_t arm_bodyu = ScriptMeasureBody( ids, value.origins[elem_i].script );
@@ -1956,7 +2350,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                     }
                     case OriginType::Pid:
                     {
-                        const uint64_t arm_refu = ids.ref( 0x77af701956600122ull );
+                        const uint64_t arm_refu = ids.ref( 0x77af701956600122ull, 37 );
                         int64_t arm_payloadu = 0;
                         arm_payloadu += 4; // uint32
                         w.putleb( arm_refu ); w.put8( 8 ); w.putleb( (uint64_t) arm_payloadu ); // pid
@@ -1965,7 +2359,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                     }
                     case OriginType::Note:
                     {
-                        const uint64_t arm_refu = ids.ref( 0x3bf8fbbad1587cddull );
+                        const uint64_t arm_refu = ids.ref( 0x3bf8fbbad1587cddull, 38 );
                         int64_t arm_payloadu = 0;
                         if ( value.origins[elem_i].note.value_length < 0 || value.origins[elem_i].note.value_length > 24 ) { return false; } // storage invariant
                         arm_payloadu += value.origins[elem_i].note.value_length; // the string's bytes under the arm's L
@@ -1982,7 +2376,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
     if ( value.modes_present ) // ?Mode
     {
         if ( value.modes_count < 0 || value.modes_count > 2 ) { return false; } // storage invariant
-        const uint64_t ref_modes = ids.ref( 0x9de526933e6e3ef3ull );
+        const uint64_t ref_modes = ids.ref( 0x9de526933e6e3ef3ull, 10 );
         int64_t body_modes = 0;
         body_modes += 1 + TableLebBytes( (uint64_t) ( value.modes_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.modes_count; elem_i++ )
@@ -2029,12 +2423,14 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -2384,7 +2780,15 @@ inline TableOpenVerdict InsertTextLoadVerdict( InsertText & value, const uint8_t
     {
         InsertTextReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -2412,12 +2816,55 @@ inline bool InsertTextLoad( InsertText & value, const uint8_t * buffer, int64_t 
     return InsertTextLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t InsertTextMeasureMessage( const InsertText & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = InsertTextMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t InsertTextSaveMessage( const InsertText & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !InsertTextSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == InsertTextMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool InsertTextLoadMessage( InsertText & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    InsertTextReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return InsertTextLoadBody( r, value );
+}
+
 inline int64_t RemoveTextMeasureBody( TableIds & ids, const RemoveText & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_span = ids.count;
-        const uint64_t ref_span = ids.ref( 0x8b7dc019093cd0e1ull );
+        const uint64_t ref_span = ids.ref( 0x8b7dc019093cd0e1ull, 15 );
         const int64_t body_span = SelectionMeasureBody( ids, value.span );
         if ( body_span < 0 ) { return -1; }
         if ( body_span > 1 ) { bytes += TableLebBytes( ref_span ) + 1 + TableLebBytes( (uint64_t) ( body_span ) ) + ( body_span ); } // span
@@ -2438,7 +2885,7 @@ MESSAGEDEMO_TABLE_INLINE bool RemoveTextSaveBody( TableWriter & w, TableIds & id
 {
     {
         const int32_t mark_span = ids.count;
-        const uint64_t ref_span = ids.ref( 0x8b7dc019093cd0e1ull );
+        const uint64_t ref_span = ids.ref( 0x8b7dc019093cd0e1ull, 15 );
         const int64_t body_span = SelectionMeasureBody( ids, value.span );
         if ( body_span < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_span > 1 ) // all-default nested elides
@@ -2475,12 +2922,14 @@ MESSAGEDEMO_TABLE_INLINE bool RemoveTextLoadBody( TableReader & r, RemoveText & 
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -2535,7 +2984,15 @@ inline TableOpenVerdict RemoveTextLoadVerdict( RemoveText & value, const uint8_t
     {
         RemoveTextReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -2563,20 +3020,63 @@ inline bool RemoveTextLoad( RemoveText & value, const uint8_t * buffer, int64_t 
     return RemoveTextLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t RemoveTextMeasureMessage( const RemoveText & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = RemoveTextMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t RemoveTextSaveMessage( const RemoveText & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !RemoveTextSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == RemoveTextMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool RemoveTextLoadMessage( RemoveText & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    RemoveTextReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return RemoveTextLoadBody( r, value );
+}
+
 inline int64_t EditMeasureBody( TableIds & ids, const Edit & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.revision != 0 ) { bytes += TableLebBytes( ids.ref( 0xd6a4dbc46c8e8658ull ) ) + 1 + 4; } // revision
+    if ( value.revision != 0 ) { bytes += TableLebBytes( ids.ref( 0xd6a4dbc46c8e8658ull, 4 ) ) + 1 + 4; } // revision
     if ( value.body.type != EditBodyType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref( 0xcd4de79bc6c93295ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref( 0xcd4de79bc6c93295ull, 5 ) ) + 1;
         switch ( value.body.type )
         {
             case EditBodyType::None: break;
             case EditBodyType::Insert:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x7271c68759916228ull );
+                const uint64_t arm_ref = ids.ref( 0x7271c68759916228ull, 31 );
                 {
                     const int64_t arm_body = InsertTextMeasureBody( ids, value.body.insert );
                     if ( arm_body < 0 ) { return -1; }
@@ -2588,7 +3088,7 @@ inline int64_t EditMeasureBody( TableIds & ids, const Edit & value )
             case EditBodyType::Remove:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xfff83d536a1d457dull );
+                const uint64_t arm_ref = ids.ref( 0xfff83d536a1d457dull, 32 );
                 {
                     const int64_t arm_body = RemoveTextMeasureBody( ids, value.body.remove );
                     if ( arm_body < 0 ) { return -1; }
@@ -2600,7 +3100,7 @@ inline int64_t EditMeasureBody( TableIds & ids, const Edit & value )
             case EditBodyType::Count:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xb1e5e28e4479a274ull );
+                const uint64_t arm_ref = ids.ref( 0xb1e5e28e4479a274ull, 33 );
                 arm_payload += 4; // int32
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -2608,7 +3108,7 @@ inline int64_t EditMeasureBody( TableIds & ids, const Edit & value )
             case EditBodyType::Marks:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x9077d4a4e1726e29ull );
+                const uint64_t arm_ref = ids.ref( 0x9077d4a4e1726e29ull, 22 );
                 if ( value.body.marks.value_count < 0 || value.body.marks.value_count > 3 ) { return -1; } // storage invariant
                 arm_payload += 1 + TableLebBytes( (uint64_t) ( value.body.marks.value_count ) ); // the element kind byte and the count
                 arm_payload += (int64_t) ( value.body.marks.value_count ) * 2;
@@ -2618,7 +3118,7 @@ inline int64_t EditMeasureBody( TableIds & ids, const Edit & value )
             case EditBodyType::Blob:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xc573b39bc29148caull );
+                const uint64_t arm_ref = ids.ref( 0xc573b39bc29148caull, 34 );
                 if ( value.body.blob.value_length < 0 || value.body.blob.value_length > 4 ) { return -1; } // storage invariant
                 arm_payload += 1 + TableLebBytes( (uint64_t) value.body.blob.value_length ) + value.body.blob.value_length; // element kind 6, N, then the bytes
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
@@ -2627,7 +3127,7 @@ inline int64_t EditMeasureBody( TableIds & ids, const Edit & value )
             case EditBodyType::Mode:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x0d3deba2c41dadb2ull );
+                const uint64_t arm_ref = ids.ref( 0x0d3deba2c41dadb2ull, 12 );
                 {
                     uint64_t arm_variant = 0;
                     if ( !TableEnumRef( ids, value.body.mode, arm_variant ) ) { return -1; } // no variant names this value
@@ -2654,17 +3154,17 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
 {
     if ( value.revision != 0 )
     {
-        w.putleb( ids.ref( 0xd6a4dbc46c8e8658ull ) ); w.put8( 8 ); // revision
+        w.putleb( ids.ref( 0xd6a4dbc46c8e8658ull, 4 ) ); w.put8( 8 ); // revision
         w.put32( uint32_t( value.revision ) );
     }
     if ( value.body.type != EditBodyType::None )
     {
-        w.putleb( ids.ref( 0xcd4de79bc6c93295ull ) ); w.put8( 15 ); // body
+        w.putleb( ids.ref( 0xcd4de79bc6c93295ull, 5 ) ); w.put8( 15 ); // body
         switch ( value.body.type )
         {
             case EditBodyType::Insert:
             {
-                const uint64_t arm_ref = ids.ref( 0x7271c68759916228ull );
+                const uint64_t arm_ref = ids.ref( 0x7271c68759916228ull, 31 );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = InsertTextMeasureBody( ids, value.body.insert );
@@ -2677,7 +3177,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
             }
             case EditBodyType::Remove:
             {
-                const uint64_t arm_ref = ids.ref( 0xfff83d536a1d457dull );
+                const uint64_t arm_ref = ids.ref( 0xfff83d536a1d457dull, 32 );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = RemoveTextMeasureBody( ids, value.body.remove );
@@ -2690,7 +3190,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
             }
             case EditBodyType::Count:
             {
-                const uint64_t arm_ref = ids.ref( 0xb1e5e28e4479a274ull );
+                const uint64_t arm_ref = ids.ref( 0xb1e5e28e4479a274ull, 33 );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
                 w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // count
@@ -2699,7 +3199,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
             }
             case EditBodyType::Marks:
             {
-                const uint64_t arm_ref = ids.ref( 0x9077d4a4e1726e29ull );
+                const uint64_t arm_ref = ids.ref( 0x9077d4a4e1726e29ull, 22 );
                 int64_t arm_payload = 0;
                 if ( value.body.marks.value_count < 0 || value.body.marks.value_count > 3 ) { return false; } // storage invariant
                 arm_payload += 1 + TableLebBytes( (uint64_t) ( value.body.marks.value_count ) ); // the element kind byte and the count
@@ -2715,7 +3215,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
             }
             case EditBodyType::Blob:
             {
-                const uint64_t arm_ref = ids.ref( 0xc573b39bc29148caull );
+                const uint64_t arm_ref = ids.ref( 0xc573b39bc29148caull, 34 );
                 int64_t arm_payload = 0;
                 if ( value.body.blob.value_length < 0 || value.body.blob.value_length > 4 ) { return false; } // storage invariant
                 arm_payload += 1 + TableLebBytes( (uint64_t) value.body.blob.value_length ) + value.body.blob.value_length; // element kind 6, N, then the bytes
@@ -2727,7 +3227,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
             }
             case EditBodyType::Mode:
             {
-                const uint64_t arm_ref = ids.ref( 0x0d3deba2c41dadb2ull );
+                const uint64_t arm_ref = ids.ref( 0x0d3deba2c41dadb2ull, 12 );
                 int64_t arm_payload = 0;
                 {
                     uint64_t arm_variant = 0;
@@ -2772,12 +3272,14 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -2995,7 +3497,15 @@ inline TableOpenVerdict EditLoadVerdict( Edit & value, const uint8_t * buffer, i
     {
         EditReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -3023,22 +3533,65 @@ inline bool EditLoad( Edit & value, const uint8_t * buffer, int64_t bytes, Table
     return EditLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t EditMeasureMessage( const Edit & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = EditMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t EditSaveMessage( const Edit & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !EditSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == EditMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool EditLoadMessage( Edit & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    EditReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return EditLoadBody( r, value );
+}
+
 inline int64_t OpenDocumentMeasureBody( TableIds & ids, const OpenDocument & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.path_length < 0 || value.path_length > 64 ) { return -1; } // storage invariant
-    if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x03c52d0debd70676ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
+    if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x03c52d0debd70676ull, 11 ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
     if ( value.mode != Mode::Read )
     {
         if ( !TableEnumNamed( value.mode ) ) { return -1; } // no variant names this value
-        const uint64_t ref_mode = ids.ref( 0x0d3deba2c41dadb2ull );
+        const uint64_t ref_mode = ids.ref( 0x0d3deba2c41dadb2ull, 12 );
         uint64_t variant_mode = 0;
         if ( !TableEnumRef( ids, value.mode, variant_mode ) ) { return -1; }
         bytes += TableLebBytes( ref_mode ) + 1 + TableLebBytes( variant_mode ); // mode: the variant's reference
     }
     {
         const int32_t mark_cursor = ids.count;
-        const uint64_t ref_cursor = ids.ref( 0xf927453fbe6252efull );
+        const uint64_t ref_cursor = ids.ref( 0xf927453fbe6252efull, 13 );
         const int64_t body_cursor = CursorMeasureBody( ids, value.cursor );
         if ( body_cursor < 0 ) { return -1; }
         if ( body_cursor > 1 ) { bytes += TableLebBytes( ref_cursor ) + 1 + TableLebBytes( (uint64_t) ( body_cursor ) ) + ( body_cursor ); } // cursor
@@ -3060,21 +3613,21 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentSaveBody( TableWriter & w, TableIds & 
     if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
     if ( value.path_length > 0 )
     {
-        w.putleb( ids.ref( 0x03c52d0debd70676ull ) ); w.put8( 12 ); // path
+        w.putleb( ids.ref( 0x03c52d0debd70676ull, 11 ) ); w.put8( 12 ); // path
         w.putleb( (uint64_t) value.path_length );
         w.raw( value.path, value.path_length );
     }
     if ( value.mode != Mode::Read )
     {
         if ( !TableEnumNamed( value.mode ) ) { return false; }
-        const uint64_t ref_mode = ids.ref( 0x0d3deba2c41dadb2ull );
+        const uint64_t ref_mode = ids.ref( 0x0d3deba2c41dadb2ull, 12 );
         uint64_t variant_mode = 0;
         if ( !TableEnumRef( ids, value.mode, variant_mode ) ) { return false; }
         w.putleb( ref_mode ); w.put8( 30 ); w.putleb( variant_mode ); // mode
     }
     {
         const int32_t mark_cursor = ids.count;
-        const uint64_t ref_cursor = ids.ref( 0xf927453fbe6252efull );
+        const uint64_t ref_cursor = ids.ref( 0xf927453fbe6252efull, 13 );
         const int64_t body_cursor = CursorMeasureBody( ids, value.cursor );
         if ( body_cursor < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_cursor > 1 ) // all-default nested elides
@@ -3111,12 +3664,14 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBody( TableReader & r, OpenDocumen
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -3212,7 +3767,15 @@ inline TableOpenVerdict OpenDocumentLoadVerdict( OpenDocument & value, const uin
     {
         OpenDocumentReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -3240,12 +3803,55 @@ inline bool OpenDocumentLoad( OpenDocument & value, const uint8_t * buffer, int6
     return OpenDocumentLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t OpenDocumentMeasureMessage( const OpenDocument & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = OpenDocumentMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t OpenDocumentSaveMessage( const OpenDocument & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !OpenDocumentSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == OpenDocumentMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool OpenDocumentLoadMessage( OpenDocument & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    OpenDocumentReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return OpenDocumentLoadBody( r, value );
+}
+
 inline int64_t SaveDocumentMeasureBody( TableIds & ids, const SaveDocument & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.path_length < 0 || value.path_length > 64 ) { return -1; } // storage invariant
-    if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x03c52d0debd70676ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
-    if ( value.force != false ) { bytes += TableLebBytes( ids.ref( 0xe75ad8afb3eeebe4ull ) ) + 1 + 1; } // force
+    if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x03c52d0debd70676ull, 11 ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
+    if ( value.force != false ) { bytes += TableLebBytes( ids.ref( 0xe75ad8afb3eeebe4ull, 16 ) ) + 1 + 1; } // force
     return bytes;
 }
 
@@ -3262,13 +3868,13 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentSaveBody( TableWriter & w, TableIds & 
     if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
     if ( value.path_length > 0 )
     {
-        w.putleb( ids.ref( 0x03c52d0debd70676ull ) ); w.put8( 12 ); // path
+        w.putleb( ids.ref( 0x03c52d0debd70676ull, 11 ) ); w.put8( 12 ); // path
         w.putleb( (uint64_t) value.path_length );
         w.raw( value.path, value.path_length );
     }
     if ( value.force != false )
     {
-        w.putleb( ids.ref( 0xe75ad8afb3eeebe4ull ) ); w.put8( 1 ); // force
+        w.putleb( ids.ref( 0xe75ad8afb3eeebe4ull, 16 ) ); w.put8( 1 ); // force
         w.put8( value.force ? 1 : 0 );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -3298,12 +3904,14 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentLoadBody( TableReader & r, SaveDocumen
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -3368,7 +3976,15 @@ inline TableOpenVerdict SaveDocumentLoadVerdict( SaveDocument & value, const uin
     {
         SaveDocumentReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -3396,15 +4012,58 @@ inline bool SaveDocumentLoad( SaveDocument & value, const uint8_t * buffer, int6
     return SaveDocumentLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t SaveDocumentMeasureMessage( const SaveDocument & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = SaveDocumentMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t SaveDocumentSaveMessage( const SaveDocument & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !SaveDocumentSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == SaveDocumentMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool SaveDocumentLoadMessage( SaveDocument & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    SaveDocumentReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return SaveDocumentLoadBody( r, value );
+}
+
 inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.reason_length < 0 || value.reason_length > 16 ) { return -1; } // storage invariant
-    if ( value.reason_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x65e8d7f3474f2639ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.reason_length ) ) + ( value.reason_length ); } // reason
+    if ( value.reason_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x65e8d7f3474f2639ull, 23 ) ) + 1 + TableLebBytes( (uint64_t) ( value.reason_length ) ) + ( value.reason_length ); } // reason
     if ( value.edits_count < 0 || value.edits_count > 3 ) { return -1; } // storage invariant
     if ( value.edits_count > 0 )
     {
-        const uint64_t ref_edits = ids.ref( 0x9478d06b697549e6ull );
+        const uint64_t ref_edits = ids.ref( 0x9478d06b697549e6ull, 24 );
         int64_t body_edits = 0;
         body_edits += 1 + TableLebBytes( (uint64_t) ( value.edits_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.edits_count; elem_i++ )
@@ -3420,7 +4079,7 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
         for ( int32_t i = 0; i < 2; i++ ) { if ( value.pending[i].type != EditBodyType::None ) { any_pending = true; break; } }
         if ( any_pending )
         {
-            const uint64_t ref_pending = ids.ref( 0x52dea0d6eeb5083cull );
+            const uint64_t ref_pending = ids.ref( 0x52dea0d6eeb5083cull, 25 );
             int64_t body_pending = 0;
             body_pending += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
             for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
@@ -3434,7 +4093,7 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
                         case EditBodyType::Insert:
                         {
                             int64_t arm_payloadu = 0;
-                            const uint64_t arm_refu = ids.ref( 0x7271c68759916228ull );
+                            const uint64_t arm_refu = ids.ref( 0x7271c68759916228ull, 31 );
                             {
                                 const int64_t arm_bodyu = InsertTextMeasureBody( ids, value.pending[elem_i].insert );
                                 if ( arm_bodyu < 0 ) { return -1; }
@@ -3446,7 +4105,7 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
                         case EditBodyType::Remove:
                         {
                             int64_t arm_payloadu = 0;
-                            const uint64_t arm_refu = ids.ref( 0xfff83d536a1d457dull );
+                            const uint64_t arm_refu = ids.ref( 0xfff83d536a1d457dull, 32 );
                             {
                                 const int64_t arm_bodyu = RemoveTextMeasureBody( ids, value.pending[elem_i].remove );
                                 if ( arm_bodyu < 0 ) { return -1; }
@@ -3458,7 +4117,7 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
                         case EditBodyType::Count:
                         {
                             int64_t arm_payloadu = 0;
-                            const uint64_t arm_refu = ids.ref( 0xb1e5e28e4479a274ull );
+                            const uint64_t arm_refu = ids.ref( 0xb1e5e28e4479a274ull, 33 );
                             arm_payloadu += 4; // int32
                             body_pending += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                             break;
@@ -3466,7 +4125,7 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
                         case EditBodyType::Marks:
                         {
                             int64_t arm_payloadu = 0;
-                            const uint64_t arm_refu = ids.ref( 0x9077d4a4e1726e29ull );
+                            const uint64_t arm_refu = ids.ref( 0x9077d4a4e1726e29ull, 22 );
                             if ( value.pending[elem_i].marks.value_count < 0 || value.pending[elem_i].marks.value_count > 3 ) { return -1; } // storage invariant
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.pending[elem_i].marks.value_count ) ); // the element kind byte and the count
                             arm_payloadu += (int64_t) ( value.pending[elem_i].marks.value_count ) * 2;
@@ -3476,7 +4135,7 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
                         case EditBodyType::Blob:
                         {
                             int64_t arm_payloadu = 0;
-                            const uint64_t arm_refu = ids.ref( 0xc573b39bc29148caull );
+                            const uint64_t arm_refu = ids.ref( 0xc573b39bc29148caull, 34 );
                             if ( value.pending[elem_i].blob.value_length < 0 || value.pending[elem_i].blob.value_length > 4 ) { return -1; } // storage invariant
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) value.pending[elem_i].blob.value_length ) + value.pending[elem_i].blob.value_length; // element kind 6, N, then the bytes
                             body_pending += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -3485,7 +4144,7 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
                         case EditBodyType::Mode:
                         {
                             int64_t arm_payloadu = 0;
-                            const uint64_t arm_refu = ids.ref( 0x0d3deba2c41dadb2ull );
+                            const uint64_t arm_refu = ids.ref( 0x0d3deba2c41dadb2ull, 12 );
                             {
                                 uint64_t arm_variantu = 0;
                                 if ( !TableEnumRef( ids, value.pending[elem_i].mode, arm_variantu ) ) { return -1; } // no variant names this value
@@ -3503,7 +4162,7 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
     }
     if ( value.checkpoints_present ) // ?uint32: presence decides, not content
     {
-        const uint64_t ref_checkpoints = ids.ref( 0x028afa1c4d757704ull );
+        const uint64_t ref_checkpoints = ids.ref( 0x028afa1c4d757704ull, 26 );
         int64_t body_checkpoints = 0;
         body_checkpoints += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
         body_checkpoints += (int64_t) ( 2 ) * 4;
@@ -3511,7 +4170,7 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
     }
     if ( value.snapshots_present ) // ?Selection: presence decides, not content
     {
-        const uint64_t ref_snapshots = ids.ref( 0x99dc6354a681403aull );
+        const uint64_t ref_snapshots = ids.ref( 0x99dc6354a681403aull, 27 );
         int64_t body_snapshots = 0;
         body_snapshots += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
@@ -3538,14 +4197,14 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
     if ( value.reason_length < 0 || value.reason_length > 16 ) { return false; } // storage invariant
     if ( value.reason_length > 0 )
     {
-        w.putleb( ids.ref( 0x65e8d7f3474f2639ull ) ); w.put8( 12 ); // reason
+        w.putleb( ids.ref( 0x65e8d7f3474f2639ull, 23 ) ); w.put8( 12 ); // reason
         w.putleb( (uint64_t) value.reason_length );
         w.raw( value.reason, value.reason_length );
     }
     if ( value.edits_count < 0 || value.edits_count > 3 ) { return false; } // storage invariant
     if ( value.edits_count > 0 )
     {
-        const uint64_t ref_edits = ids.ref( 0x9478d06b697549e6ull );
+        const uint64_t ref_edits = ids.ref( 0x9478d06b697549e6ull, 24 );
         int64_t body_edits = 0;
         body_edits += 1 + TableLebBytes( (uint64_t) ( value.edits_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.edits_count; elem_i++ )
@@ -3571,7 +4230,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
         for ( int32_t i = 0; i < 2; i++ ) { if ( value.pending[i].type != EditBodyType::None ) { any_pending = true; break; } }
         if ( any_pending )
         {
-            const uint64_t ref_pending = ids.ref( 0x52dea0d6eeb5083cull );
+            const uint64_t ref_pending = ids.ref( 0x52dea0d6eeb5083cull, 25 );
             int64_t body_pending = 0;
             body_pending += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
             for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
@@ -3585,7 +4244,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         case EditBodyType::Insert:
                         {
                             int64_t arm_payloadu = 0;
-                            const uint64_t arm_refu = ids.ref( 0x7271c68759916228ull );
+                            const uint64_t arm_refu = ids.ref( 0x7271c68759916228ull, 31 );
                             {
                                 const int64_t arm_bodyu = InsertTextMeasureBody( ids, value.pending[elem_i].insert );
                                 if ( arm_bodyu < 0 ) { return -1; }
@@ -3597,7 +4256,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         case EditBodyType::Remove:
                         {
                             int64_t arm_payloadu = 0;
-                            const uint64_t arm_refu = ids.ref( 0xfff83d536a1d457dull );
+                            const uint64_t arm_refu = ids.ref( 0xfff83d536a1d457dull, 32 );
                             {
                                 const int64_t arm_bodyu = RemoveTextMeasureBody( ids, value.pending[elem_i].remove );
                                 if ( arm_bodyu < 0 ) { return -1; }
@@ -3609,7 +4268,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         case EditBodyType::Count:
                         {
                             int64_t arm_payloadu = 0;
-                            const uint64_t arm_refu = ids.ref( 0xb1e5e28e4479a274ull );
+                            const uint64_t arm_refu = ids.ref( 0xb1e5e28e4479a274ull, 33 );
                             arm_payloadu += 4; // int32
                             body_pending += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                             break;
@@ -3617,7 +4276,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         case EditBodyType::Marks:
                         {
                             int64_t arm_payloadu = 0;
-                            const uint64_t arm_refu = ids.ref( 0x9077d4a4e1726e29ull );
+                            const uint64_t arm_refu = ids.ref( 0x9077d4a4e1726e29ull, 22 );
                             if ( value.pending[elem_i].marks.value_count < 0 || value.pending[elem_i].marks.value_count > 3 ) { return -1; } // storage invariant
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.pending[elem_i].marks.value_count ) ); // the element kind byte and the count
                             arm_payloadu += (int64_t) ( value.pending[elem_i].marks.value_count ) * 2;
@@ -3627,7 +4286,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         case EditBodyType::Blob:
                         {
                             int64_t arm_payloadu = 0;
-                            const uint64_t arm_refu = ids.ref( 0xc573b39bc29148caull );
+                            const uint64_t arm_refu = ids.ref( 0xc573b39bc29148caull, 34 );
                             if ( value.pending[elem_i].blob.value_length < 0 || value.pending[elem_i].blob.value_length > 4 ) { return -1; } // storage invariant
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) value.pending[elem_i].blob.value_length ) + value.pending[elem_i].blob.value_length; // element kind 6, N, then the bytes
                             body_pending += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -3636,7 +4295,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         case EditBodyType::Mode:
                         {
                             int64_t arm_payloadu = 0;
-                            const uint64_t arm_refu = ids.ref( 0x0d3deba2c41dadb2ull );
+                            const uint64_t arm_refu = ids.ref( 0x0d3deba2c41dadb2ull, 12 );
                             {
                                 uint64_t arm_variantu = 0;
                                 if ( !TableEnumRef( ids, value.pending[elem_i].mode, arm_variantu ) ) { return -1; } // no variant names this value
@@ -3660,7 +4319,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                     {
                         case EditBodyType::Insert:
                         {
-                            const uint64_t arm_refu = ids.ref( 0x7271c68759916228ull );
+                            const uint64_t arm_refu = ids.ref( 0x7271c68759916228ull, 31 );
                             int64_t arm_payloadu = 0;
                             {
                                 const int64_t arm_bodyu = InsertTextMeasureBody( ids, value.pending[elem_i].insert );
@@ -3673,7 +4332,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         }
                         case EditBodyType::Remove:
                         {
-                            const uint64_t arm_refu = ids.ref( 0xfff83d536a1d457dull );
+                            const uint64_t arm_refu = ids.ref( 0xfff83d536a1d457dull, 32 );
                             int64_t arm_payloadu = 0;
                             {
                                 const int64_t arm_bodyu = RemoveTextMeasureBody( ids, value.pending[elem_i].remove );
@@ -3686,7 +4345,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         }
                         case EditBodyType::Count:
                         {
-                            const uint64_t arm_refu = ids.ref( 0xb1e5e28e4479a274ull );
+                            const uint64_t arm_refu = ids.ref( 0xb1e5e28e4479a274ull, 33 );
                             int64_t arm_payloadu = 0;
                             arm_payloadu += 4; // int32
                             w.putleb( arm_refu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payloadu ); // count
@@ -3695,7 +4354,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         }
                         case EditBodyType::Marks:
                         {
-                            const uint64_t arm_refu = ids.ref( 0x9077d4a4e1726e29ull );
+                            const uint64_t arm_refu = ids.ref( 0x9077d4a4e1726e29ull, 22 );
                             int64_t arm_payloadu = 0;
                             if ( value.pending[elem_i].marks.value_count < 0 || value.pending[elem_i].marks.value_count > 3 ) { return false; } // storage invariant
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.pending[elem_i].marks.value_count ) ); // the element kind byte and the count
@@ -3711,7 +4370,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         }
                         case EditBodyType::Blob:
                         {
-                            const uint64_t arm_refu = ids.ref( 0xc573b39bc29148caull );
+                            const uint64_t arm_refu = ids.ref( 0xc573b39bc29148caull, 34 );
                             int64_t arm_payloadu = 0;
                             if ( value.pending[elem_i].blob.value_length < 0 || value.pending[elem_i].blob.value_length > 4 ) { return false; } // storage invariant
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) value.pending[elem_i].blob.value_length ) + value.pending[elem_i].blob.value_length; // element kind 6, N, then the bytes
@@ -3723,7 +4382,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         }
                         case EditBodyType::Mode:
                         {
-                            const uint64_t arm_refu = ids.ref( 0x0d3deba2c41dadb2ull );
+                            const uint64_t arm_refu = ids.ref( 0x0d3deba2c41dadb2ull, 12 );
                             int64_t arm_payloadu = 0;
                             {
                                 uint64_t arm_variantu = 0;
@@ -3746,7 +4405,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
     }
     if ( value.checkpoints_present ) // ?uint32
     {
-        const uint64_t ref_checkpoints = ids.ref( 0x028afa1c4d757704ull );
+        const uint64_t ref_checkpoints = ids.ref( 0x028afa1c4d757704ull, 26 );
         int64_t body_checkpoints = 0;
         body_checkpoints += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
         body_checkpoints += (int64_t) ( 2 ) * 4;
@@ -3759,7 +4418,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
     }
     if ( value.snapshots_present ) // ?Selection
     {
-        const uint64_t ref_snapshots = ids.ref( 0x99dc6354a681403aull );
+        const uint64_t ref_snapshots = ids.ref( 0x99dc6354a681403aull, 27 );
         int64_t body_snapshots = 0;
         body_snapshots += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
@@ -3807,12 +4466,14 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -4170,7 +4831,15 @@ inline TableOpenVerdict TransactionLoadVerdict( Transaction & value, const uint8
     {
         TransactionReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -4198,20 +4867,63 @@ inline bool TransactionLoad( Transaction & value, const uint8_t * buffer, int64_
     return TransactionLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t TransactionMeasureMessage( const Transaction & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = TransactionMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t TransactionSaveMessage( const Transaction & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !TransactionSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == TransactionMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool TransactionLoadMessage( Transaction & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    TransactionReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return TransactionLoadBody( r, value );
+}
+
 inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0xaa38aca481f528a8ull ) ) + 1 + 4; } // sequence
+    if ( value.sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0xaa38aca481f528a8ull, 19 ) ) + 1 + 4; } // sequence
     if ( value.body.type != ToolBodyType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref( 0xcd4de79bc6c93295ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref( 0xcd4de79bc6c93295ull, 5 ) ) + 1;
         switch ( value.body.type )
         {
             case ToolBodyType::None: break;
             case ToolBodyType::Open:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xf84f97b4633670e9ull );
+                const uint64_t arm_ref = ids.ref( 0xf84f97b4633670e9ull, 39 );
                 {
                     const int64_t arm_body = OpenDocumentMeasureBody( ids, value.body.open );
                     if ( arm_body < 0 ) { return -1; }
@@ -4223,7 +4935,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
             case ToolBodyType::Save:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x096a5e18bf857c28ull );
+                const uint64_t arm_ref = ids.ref( 0x096a5e18bf857c28ull, 40 );
                 {
                     const int64_t arm_body = SaveDocumentMeasureBody( ids, value.body.save );
                     if ( arm_body < 0 ) { return -1; }
@@ -4235,7 +4947,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
             case ToolBodyType::Transact:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xed96bbf4dc6ff587ull );
+                const uint64_t arm_ref = ids.ref( 0xed96bbf4dc6ff587ull, 41 );
                 {
                     const int64_t arm_body = TransactionMeasureBody( ids, value.body.transact );
                     if ( arm_body < 0 ) { return -1; }
@@ -4247,7 +4959,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
             case ToolBodyType::Ping:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xbf30e00dc53307a9ull );
+                const uint64_t arm_ref = ids.ref( 0xbf30e00dc53307a9ull, 42 );
                 {
                     const int64_t arm_body = PingMeasureBody( ids, value.body.ping );
                     if ( arm_body < 0 ) { return -1; }
@@ -4259,7 +4971,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
             case ToolBodyType::Caps:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xb55a6b90e87557f8ull );
+                const uint64_t arm_ref = ids.ref( 0xb55a6b90e87557f8ull, 43 );
                 arm_payload += 8; // Capabilities
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -4267,7 +4979,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
             case ToolBodyType::Spans:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x437dfc8ab2566816ull );
+                const uint64_t arm_ref = ids.ref( 0x437dfc8ab2566816ull, 44 );
                 arm_payload += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
                 arm_payload += (int64_t) ( 2 ) * 4;
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
@@ -4276,7 +4988,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
             case ToolBodyType::Origin:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xb9eae4fe785a14cfull );
+                const uint64_t arm_ref = ids.ref( 0xb9eae4fe785a14cfull, 8 );
                 if ( value.body.origin.type == OriginType::None ) { arm_payload += 1; } // the inner union's None: L = 1 and that one zero byte (§3)
                 else
                 {
@@ -4286,7 +4998,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                         case OriginType::User:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0x7d6780e4032b48f2ull );
+                            const uint64_t arm_refa = ids.ref( 0x7d6780e4032b48f2ull, 35 );
                             {
                                 const int64_t arm_bodya = UserMeasureBody( ids, value.body.origin.user );
                                 if ( arm_bodya < 0 ) { return -1; }
@@ -4298,7 +5010,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                         case OriginType::Script:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0xacfc82293c04634aull );
+                            const uint64_t arm_refa = ids.ref( 0xacfc82293c04634aull, 36 );
                             {
                                 const int64_t arm_bodya = ScriptMeasureBody( ids, value.body.origin.script );
                                 if ( arm_bodya < 0 ) { return -1; }
@@ -4310,7 +5022,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                         case OriginType::Pid:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0x77af701956600122ull );
+                            const uint64_t arm_refa = ids.ref( 0x77af701956600122ull, 37 );
                             arm_payloada += 4; // uint32
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -4318,7 +5030,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                         case OriginType::Note:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0x3bf8fbbad1587cddull );
+                            const uint64_t arm_refa = ids.ref( 0x3bf8fbbad1587cddull, 38 );
                             if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return -1; } // storage invariant
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
@@ -4333,7 +5045,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
             case ToolBodyType::Ack:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xe723c21905457682ull );
+                const uint64_t arm_ref = ids.ref( 0xe723c21905457682ull, 45 );
                 // a payload-free arm: the arm reference, kind 32 and a zero L are the whole of it (§2.6, §3)
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -4344,7 +5056,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
     if ( value.history_count < 0 || value.history_count > 2 ) { return -1; } // storage invariant
     if ( value.history_count > 0 )
     {
-        const uint64_t ref_history = ids.ref( 0x33428945bbd5f2ffull );
+        const uint64_t ref_history = ids.ref( 0x33428945bbd5f2ffull, 20 );
         int64_t body_history = 0;
         body_history += 1 + TableLebBytes( (uint64_t) ( value.history_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.history_count; elem_i++ )
@@ -4358,7 +5070,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                     case ToolBodyType::Open:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xf84f97b4633670e9ull );
+                        const uint64_t arm_refu = ids.ref( 0xf84f97b4633670e9ull, 39 );
                         {
                             const int64_t arm_bodyu = OpenDocumentMeasureBody( ids, value.history[elem_i].open );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -4370,7 +5082,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                     case ToolBodyType::Save:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0x096a5e18bf857c28ull );
+                        const uint64_t arm_refu = ids.ref( 0x096a5e18bf857c28ull, 40 );
                         {
                             const int64_t arm_bodyu = SaveDocumentMeasureBody( ids, value.history[elem_i].save );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -4382,7 +5094,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                     case ToolBodyType::Transact:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xed96bbf4dc6ff587ull );
+                        const uint64_t arm_refu = ids.ref( 0xed96bbf4dc6ff587ull, 41 );
                         {
                             const int64_t arm_bodyu = TransactionMeasureBody( ids, value.history[elem_i].transact );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -4394,7 +5106,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                     case ToolBodyType::Ping:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xbf30e00dc53307a9ull );
+                        const uint64_t arm_refu = ids.ref( 0xbf30e00dc53307a9ull, 42 );
                         {
                             const int64_t arm_bodyu = PingMeasureBody( ids, value.history[elem_i].ping );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -4406,7 +5118,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                     case ToolBodyType::Caps:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xb55a6b90e87557f8ull );
+                        const uint64_t arm_refu = ids.ref( 0xb55a6b90e87557f8ull, 43 );
                         arm_payloadu += 8; // Capabilities
                         body_history += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -4414,7 +5126,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                     case ToolBodyType::Spans:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0x437dfc8ab2566816ull );
+                        const uint64_t arm_refu = ids.ref( 0x437dfc8ab2566816ull, 44 );
                         arm_payloadu += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
                         arm_payloadu += (int64_t) ( 2 ) * 4;
                         body_history += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -4423,7 +5135,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                     case ToolBodyType::Origin:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xb9eae4fe785a14cfull );
+                        const uint64_t arm_refu = ids.ref( 0xb9eae4fe785a14cfull, 8 );
                         if ( value.history[elem_i].origin.type == OriginType::None ) { arm_payloadu += 1; } // the inner union's None: L = 1 and that one zero byte (§3)
                         else
                         {
@@ -4433,7 +5145,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                                 case OriginType::User:
                                 {
                                     int64_t arm_payloadua = 0;
-                                    const uint64_t arm_refua = ids.ref( 0x7d6780e4032b48f2ull );
+                                    const uint64_t arm_refua = ids.ref( 0x7d6780e4032b48f2ull, 35 );
                                     {
                                         const int64_t arm_bodyua = UserMeasureBody( ids, value.history[elem_i].origin.user );
                                         if ( arm_bodyua < 0 ) { return -1; }
@@ -4445,7 +5157,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                                 case OriginType::Script:
                                 {
                                     int64_t arm_payloadua = 0;
-                                    const uint64_t arm_refua = ids.ref( 0xacfc82293c04634aull );
+                                    const uint64_t arm_refua = ids.ref( 0xacfc82293c04634aull, 36 );
                                     {
                                         const int64_t arm_bodyua = ScriptMeasureBody( ids, value.history[elem_i].origin.script );
                                         if ( arm_bodyua < 0 ) { return -1; }
@@ -4457,7 +5169,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                                 case OriginType::Pid:
                                 {
                                     int64_t arm_payloadua = 0;
-                                    const uint64_t arm_refua = ids.ref( 0x77af701956600122ull );
+                                    const uint64_t arm_refua = ids.ref( 0x77af701956600122ull, 37 );
                                     arm_payloadua += 4; // uint32
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
                                     break;
@@ -4465,7 +5177,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                                 case OriginType::Note:
                                 {
                                     int64_t arm_payloadua = 0;
-                                    const uint64_t arm_refua = ids.ref( 0x3bf8fbbad1587cddull );
+                                    const uint64_t arm_refua = ids.ref( 0x3bf8fbbad1587cddull, 38 );
                                     if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return -1; } // storage invariant
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
@@ -4480,7 +5192,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                     case ToolBodyType::Ack:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xe723c21905457682ull );
+                        const uint64_t arm_refu = ids.ref( 0xe723c21905457682ull, 45 );
                         // a payload-free arm: the arm reference, kind 32 and a zero L are the whole of it (§2.6, §3)
                         body_history += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -4494,7 +5206,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
     if ( value.trace_present ) // ?Script: presence decides, not content
     {
         if ( value.trace_count < 0 || value.trace_count > 3 ) { return -1; } // storage invariant
-        const uint64_t ref_trace = ids.ref( 0xdec59ea6c4eb9aeeull );
+        const uint64_t ref_trace = ids.ref( 0xdec59ea6c4eb9aeeull, 21 );
         int64_t body_trace = 0;
         body_trace += 1 + TableLebBytes( (uint64_t) ( value.trace_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.trace_count; elem_i++ )
@@ -4507,7 +5219,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
     }
     if ( value.marks_present ) // ?Mode: presence decides, not content
     {
-        const uint64_t ref_marks = ids.ref( 0x9077d4a4e1726e29ull );
+        const uint64_t ref_marks = ids.ref( 0x9077d4a4e1726e29ull, 22 );
         int64_t body_marks = 0;
         body_marks += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
@@ -4533,17 +5245,17 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
 {
     if ( value.sequence != 0 )
     {
-        w.putleb( ids.ref( 0xaa38aca481f528a8ull ) ); w.put8( 8 ); // sequence
+        w.putleb( ids.ref( 0xaa38aca481f528a8ull, 19 ) ); w.put8( 8 ); // sequence
         w.put32( uint32_t( value.sequence ) );
     }
     if ( value.body.type != ToolBodyType::None )
     {
-        w.putleb( ids.ref( 0xcd4de79bc6c93295ull ) ); w.put8( 15 ); // body
+        w.putleb( ids.ref( 0xcd4de79bc6c93295ull, 5 ) ); w.put8( 15 ); // body
         switch ( value.body.type )
         {
             case ToolBodyType::Open:
             {
-                const uint64_t arm_ref = ids.ref( 0xf84f97b4633670e9ull );
+                const uint64_t arm_ref = ids.ref( 0xf84f97b4633670e9ull, 39 );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = OpenDocumentMeasureBody( ids, value.body.open );
@@ -4556,7 +5268,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
             }
             case ToolBodyType::Save:
             {
-                const uint64_t arm_ref = ids.ref( 0x096a5e18bf857c28ull );
+                const uint64_t arm_ref = ids.ref( 0x096a5e18bf857c28ull, 40 );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = SaveDocumentMeasureBody( ids, value.body.save );
@@ -4569,7 +5281,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
             }
             case ToolBodyType::Transact:
             {
-                const uint64_t arm_ref = ids.ref( 0xed96bbf4dc6ff587ull );
+                const uint64_t arm_ref = ids.ref( 0xed96bbf4dc6ff587ull, 41 );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = TransactionMeasureBody( ids, value.body.transact );
@@ -4582,7 +5294,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
             }
             case ToolBodyType::Ping:
             {
-                const uint64_t arm_ref = ids.ref( 0xbf30e00dc53307a9ull );
+                const uint64_t arm_ref = ids.ref( 0xbf30e00dc53307a9ull, 42 );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = PingMeasureBody( ids, value.body.ping );
@@ -4595,7 +5307,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
             }
             case ToolBodyType::Caps:
             {
-                const uint64_t arm_ref = ids.ref( 0xb55a6b90e87557f8ull );
+                const uint64_t arm_ref = ids.ref( 0xb55a6b90e87557f8ull, 43 );
                 int64_t arm_payload = 0;
                 arm_payload += 8; // Capabilities
                 w.putleb( arm_ref ); w.put8( 9 ); w.putleb( (uint64_t) arm_payload ); // caps
@@ -4604,7 +5316,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
             }
             case ToolBodyType::Spans:
             {
-                const uint64_t arm_ref = ids.ref( 0x437dfc8ab2566816ull );
+                const uint64_t arm_ref = ids.ref( 0x437dfc8ab2566816ull, 44 );
                 int64_t arm_payload = 0;
                 arm_payload += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
                 arm_payload += (int64_t) ( 2 ) * 4;
@@ -4618,7 +5330,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
             }
             case ToolBodyType::Origin:
             {
-                const uint64_t arm_ref = ids.ref( 0xb9eae4fe785a14cfull );
+                const uint64_t arm_ref = ids.ref( 0xb9eae4fe785a14cfull, 8 );
                 int64_t arm_payload = 0;
                 if ( value.body.origin.type == OriginType::None ) { arm_payload += 1; } // the inner union's None: L = 1 and that one zero byte (§3)
                 else
@@ -4629,7 +5341,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         case OriginType::User:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0x7d6780e4032b48f2ull );
+                            const uint64_t arm_refa = ids.ref( 0x7d6780e4032b48f2ull, 35 );
                             {
                                 const int64_t arm_bodya = UserMeasureBody( ids, value.body.origin.user );
                                 if ( arm_bodya < 0 ) { return -1; }
@@ -4641,7 +5353,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         case OriginType::Script:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0xacfc82293c04634aull );
+                            const uint64_t arm_refa = ids.ref( 0xacfc82293c04634aull, 36 );
                             {
                                 const int64_t arm_bodya = ScriptMeasureBody( ids, value.body.origin.script );
                                 if ( arm_bodya < 0 ) { return -1; }
@@ -4653,7 +5365,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         case OriginType::Pid:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0x77af701956600122ull );
+                            const uint64_t arm_refa = ids.ref( 0x77af701956600122ull, 37 );
                             arm_payloada += 4; // uint32
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -4661,7 +5373,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         case OriginType::Note:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0x3bf8fbbad1587cddull );
+                            const uint64_t arm_refa = ids.ref( 0x3bf8fbbad1587cddull, 38 );
                             if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return -1; } // storage invariant
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
@@ -4678,7 +5390,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     {
                         case OriginType::User:
                         {
-                            const uint64_t arm_refa = ids.ref( 0x7d6780e4032b48f2ull );
+                            const uint64_t arm_refa = ids.ref( 0x7d6780e4032b48f2ull, 35 );
                             int64_t arm_payloada = 0;
                             {
                                 const int64_t arm_bodya = UserMeasureBody( ids, value.body.origin.user );
@@ -4691,7 +5403,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         }
                         case OriginType::Script:
                         {
-                            const uint64_t arm_refa = ids.ref( 0xacfc82293c04634aull );
+                            const uint64_t arm_refa = ids.ref( 0xacfc82293c04634aull, 36 );
                             int64_t arm_payloada = 0;
                             {
                                 const int64_t arm_bodya = ScriptMeasureBody( ids, value.body.origin.script );
@@ -4704,7 +5416,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         }
                         case OriginType::Pid:
                         {
-                            const uint64_t arm_refa = ids.ref( 0x77af701956600122ull );
+                            const uint64_t arm_refa = ids.ref( 0x77af701956600122ull, 37 );
                             int64_t arm_payloada = 0;
                             arm_payloada += 4; // uint32
                             w.putleb( arm_refa ); w.put8( 8 ); w.putleb( (uint64_t) arm_payloada ); // pid
@@ -4713,7 +5425,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         }
                         case OriginType::Note:
                         {
-                            const uint64_t arm_refa = ids.ref( 0x3bf8fbbad1587cddull );
+                            const uint64_t arm_refa = ids.ref( 0x3bf8fbbad1587cddull, 38 );
                             int64_t arm_payloada = 0;
                             if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return false; } // storage invariant
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
@@ -4729,7 +5441,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
             }
             case ToolBodyType::Ack:
             {
-                const uint64_t arm_ref = ids.ref( 0xe723c21905457682ull );
+                const uint64_t arm_ref = ids.ref( 0xe723c21905457682ull, 45 );
                 int64_t arm_payload = 0;
                 // a payload-free arm: the arm reference, kind 32 and a zero L are the whole of it (§2.6, §3)
                 w.putleb( arm_ref ); w.put8( 32 ); w.putleb( (uint64_t) arm_payload ); // ack
@@ -4742,7 +5454,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
     if ( value.history_count < 0 || value.history_count > 2 ) { return false; } // storage invariant
     if ( value.history_count > 0 )
     {
-        const uint64_t ref_history = ids.ref( 0x33428945bbd5f2ffull );
+        const uint64_t ref_history = ids.ref( 0x33428945bbd5f2ffull, 20 );
         int64_t body_history = 0;
         body_history += 1 + TableLebBytes( (uint64_t) ( value.history_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.history_count; elem_i++ )
@@ -4756,7 +5468,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     case ToolBodyType::Open:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xf84f97b4633670e9ull );
+                        const uint64_t arm_refu = ids.ref( 0xf84f97b4633670e9ull, 39 );
                         {
                             const int64_t arm_bodyu = OpenDocumentMeasureBody( ids, value.history[elem_i].open );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -4768,7 +5480,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     case ToolBodyType::Save:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0x096a5e18bf857c28ull );
+                        const uint64_t arm_refu = ids.ref( 0x096a5e18bf857c28ull, 40 );
                         {
                             const int64_t arm_bodyu = SaveDocumentMeasureBody( ids, value.history[elem_i].save );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -4780,7 +5492,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     case ToolBodyType::Transact:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xed96bbf4dc6ff587ull );
+                        const uint64_t arm_refu = ids.ref( 0xed96bbf4dc6ff587ull, 41 );
                         {
                             const int64_t arm_bodyu = TransactionMeasureBody( ids, value.history[elem_i].transact );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -4792,7 +5504,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     case ToolBodyType::Ping:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xbf30e00dc53307a9ull );
+                        const uint64_t arm_refu = ids.ref( 0xbf30e00dc53307a9ull, 42 );
                         {
                             const int64_t arm_bodyu = PingMeasureBody( ids, value.history[elem_i].ping );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -4804,7 +5516,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     case ToolBodyType::Caps:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xb55a6b90e87557f8ull );
+                        const uint64_t arm_refu = ids.ref( 0xb55a6b90e87557f8ull, 43 );
                         arm_payloadu += 8; // Capabilities
                         body_history += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -4812,7 +5524,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     case ToolBodyType::Spans:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0x437dfc8ab2566816ull );
+                        const uint64_t arm_refu = ids.ref( 0x437dfc8ab2566816ull, 44 );
                         arm_payloadu += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
                         arm_payloadu += (int64_t) ( 2 ) * 4;
                         body_history += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -4821,7 +5533,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     case ToolBodyType::Origin:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xb9eae4fe785a14cfull );
+                        const uint64_t arm_refu = ids.ref( 0xb9eae4fe785a14cfull, 8 );
                         if ( value.history[elem_i].origin.type == OriginType::None ) { arm_payloadu += 1; } // the inner union's None: L = 1 and that one zero byte (§3)
                         else
                         {
@@ -4831,7 +5543,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 case OriginType::User:
                                 {
                                     int64_t arm_payloadua = 0;
-                                    const uint64_t arm_refua = ids.ref( 0x7d6780e4032b48f2ull );
+                                    const uint64_t arm_refua = ids.ref( 0x7d6780e4032b48f2ull, 35 );
                                     {
                                         const int64_t arm_bodyua = UserMeasureBody( ids, value.history[elem_i].origin.user );
                                         if ( arm_bodyua < 0 ) { return -1; }
@@ -4843,7 +5555,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 case OriginType::Script:
                                 {
                                     int64_t arm_payloadua = 0;
-                                    const uint64_t arm_refua = ids.ref( 0xacfc82293c04634aull );
+                                    const uint64_t arm_refua = ids.ref( 0xacfc82293c04634aull, 36 );
                                     {
                                         const int64_t arm_bodyua = ScriptMeasureBody( ids, value.history[elem_i].origin.script );
                                         if ( arm_bodyua < 0 ) { return -1; }
@@ -4855,7 +5567,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 case OriginType::Pid:
                                 {
                                     int64_t arm_payloadua = 0;
-                                    const uint64_t arm_refua = ids.ref( 0x77af701956600122ull );
+                                    const uint64_t arm_refua = ids.ref( 0x77af701956600122ull, 37 );
                                     arm_payloadua += 4; // uint32
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
                                     break;
@@ -4863,7 +5575,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 case OriginType::Note:
                                 {
                                     int64_t arm_payloadua = 0;
-                                    const uint64_t arm_refua = ids.ref( 0x3bf8fbbad1587cddull );
+                                    const uint64_t arm_refua = ids.ref( 0x3bf8fbbad1587cddull, 38 );
                                     if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return -1; } // storage invariant
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
@@ -4878,7 +5590,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     case ToolBodyType::Ack:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xe723c21905457682ull );
+                        const uint64_t arm_refu = ids.ref( 0xe723c21905457682ull, 45 );
                         // a payload-free arm: the arm reference, kind 32 and a zero L are the whole of it (§2.6, §3)
                         body_history += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -4898,7 +5610,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                 {
                     case ToolBodyType::Open:
                     {
-                        const uint64_t arm_refu = ids.ref( 0xf84f97b4633670e9ull );
+                        const uint64_t arm_refu = ids.ref( 0xf84f97b4633670e9ull, 39 );
                         int64_t arm_payloadu = 0;
                         {
                             const int64_t arm_bodyu = OpenDocumentMeasureBody( ids, value.history[elem_i].open );
@@ -4911,7 +5623,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     }
                     case ToolBodyType::Save:
                     {
-                        const uint64_t arm_refu = ids.ref( 0x096a5e18bf857c28ull );
+                        const uint64_t arm_refu = ids.ref( 0x096a5e18bf857c28ull, 40 );
                         int64_t arm_payloadu = 0;
                         {
                             const int64_t arm_bodyu = SaveDocumentMeasureBody( ids, value.history[elem_i].save );
@@ -4924,7 +5636,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     }
                     case ToolBodyType::Transact:
                     {
-                        const uint64_t arm_refu = ids.ref( 0xed96bbf4dc6ff587ull );
+                        const uint64_t arm_refu = ids.ref( 0xed96bbf4dc6ff587ull, 41 );
                         int64_t arm_payloadu = 0;
                         {
                             const int64_t arm_bodyu = TransactionMeasureBody( ids, value.history[elem_i].transact );
@@ -4937,7 +5649,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     }
                     case ToolBodyType::Ping:
                     {
-                        const uint64_t arm_refu = ids.ref( 0xbf30e00dc53307a9ull );
+                        const uint64_t arm_refu = ids.ref( 0xbf30e00dc53307a9ull, 42 );
                         int64_t arm_payloadu = 0;
                         {
                             const int64_t arm_bodyu = PingMeasureBody( ids, value.history[elem_i].ping );
@@ -4950,7 +5662,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     }
                     case ToolBodyType::Caps:
                     {
-                        const uint64_t arm_refu = ids.ref( 0xb55a6b90e87557f8ull );
+                        const uint64_t arm_refu = ids.ref( 0xb55a6b90e87557f8ull, 43 );
                         int64_t arm_payloadu = 0;
                         arm_payloadu += 8; // Capabilities
                         w.putleb( arm_refu ); w.put8( 9 ); w.putleb( (uint64_t) arm_payloadu ); // caps
@@ -4959,7 +5671,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     }
                     case ToolBodyType::Spans:
                     {
-                        const uint64_t arm_refu = ids.ref( 0x437dfc8ab2566816ull );
+                        const uint64_t arm_refu = ids.ref( 0x437dfc8ab2566816ull, 44 );
                         int64_t arm_payloadu = 0;
                         arm_payloadu += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
                         arm_payloadu += (int64_t) ( 2 ) * 4;
@@ -4973,7 +5685,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     }
                     case ToolBodyType::Origin:
                     {
-                        const uint64_t arm_refu = ids.ref( 0xb9eae4fe785a14cfull );
+                        const uint64_t arm_refu = ids.ref( 0xb9eae4fe785a14cfull, 8 );
                         int64_t arm_payloadu = 0;
                         if ( value.history[elem_i].origin.type == OriginType::None ) { arm_payloadu += 1; } // the inner union's None: L = 1 and that one zero byte (§3)
                         else
@@ -4984,7 +5696,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 case OriginType::User:
                                 {
                                     int64_t arm_payloadua = 0;
-                                    const uint64_t arm_refua = ids.ref( 0x7d6780e4032b48f2ull );
+                                    const uint64_t arm_refua = ids.ref( 0x7d6780e4032b48f2ull, 35 );
                                     {
                                         const int64_t arm_bodyua = UserMeasureBody( ids, value.history[elem_i].origin.user );
                                         if ( arm_bodyua < 0 ) { return -1; }
@@ -4996,7 +5708,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 case OriginType::Script:
                                 {
                                     int64_t arm_payloadua = 0;
-                                    const uint64_t arm_refua = ids.ref( 0xacfc82293c04634aull );
+                                    const uint64_t arm_refua = ids.ref( 0xacfc82293c04634aull, 36 );
                                     {
                                         const int64_t arm_bodyua = ScriptMeasureBody( ids, value.history[elem_i].origin.script );
                                         if ( arm_bodyua < 0 ) { return -1; }
@@ -5008,7 +5720,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 case OriginType::Pid:
                                 {
                                     int64_t arm_payloadua = 0;
-                                    const uint64_t arm_refua = ids.ref( 0x77af701956600122ull );
+                                    const uint64_t arm_refua = ids.ref( 0x77af701956600122ull, 37 );
                                     arm_payloadua += 4; // uint32
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
                                     break;
@@ -5016,7 +5728,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 case OriginType::Note:
                                 {
                                     int64_t arm_payloadua = 0;
-                                    const uint64_t arm_refua = ids.ref( 0x3bf8fbbad1587cddull );
+                                    const uint64_t arm_refua = ids.ref( 0x3bf8fbbad1587cddull, 38 );
                                     if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return -1; } // storage invariant
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
@@ -5033,7 +5745,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             {
                                 case OriginType::User:
                                 {
-                                    const uint64_t arm_refua = ids.ref( 0x7d6780e4032b48f2ull );
+                                    const uint64_t arm_refua = ids.ref( 0x7d6780e4032b48f2ull, 35 );
                                     int64_t arm_payloadua = 0;
                                     {
                                         const int64_t arm_bodyua = UserMeasureBody( ids, value.history[elem_i].origin.user );
@@ -5046,7 +5758,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 }
                                 case OriginType::Script:
                                 {
-                                    const uint64_t arm_refua = ids.ref( 0xacfc82293c04634aull );
+                                    const uint64_t arm_refua = ids.ref( 0xacfc82293c04634aull, 36 );
                                     int64_t arm_payloadua = 0;
                                     {
                                         const int64_t arm_bodyua = ScriptMeasureBody( ids, value.history[elem_i].origin.script );
@@ -5059,7 +5771,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 }
                                 case OriginType::Pid:
                                 {
-                                    const uint64_t arm_refua = ids.ref( 0x77af701956600122ull );
+                                    const uint64_t arm_refua = ids.ref( 0x77af701956600122ull, 37 );
                                     int64_t arm_payloadua = 0;
                                     arm_payloadua += 4; // uint32
                                     w.putleb( arm_refua ); w.put8( 8 ); w.putleb( (uint64_t) arm_payloadua ); // pid
@@ -5068,7 +5780,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 }
                                 case OriginType::Note:
                                 {
-                                    const uint64_t arm_refua = ids.ref( 0x3bf8fbbad1587cddull );
+                                    const uint64_t arm_refua = ids.ref( 0x3bf8fbbad1587cddull, 38 );
                                     int64_t arm_payloadua = 0;
                                     if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return false; } // storage invariant
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
@@ -5084,7 +5796,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     }
                     case ToolBodyType::Ack:
                     {
-                        const uint64_t arm_refu = ids.ref( 0xe723c21905457682ull );
+                        const uint64_t arm_refu = ids.ref( 0xe723c21905457682ull, 45 );
                         int64_t arm_payloadu = 0;
                         // a payload-free arm: the arm reference, kind 32 and a zero L are the whole of it (§2.6, §3)
                         w.putleb( arm_refu ); w.put8( 32 ); w.putleb( (uint64_t) arm_payloadu ); // ack
@@ -5099,7 +5811,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
     if ( value.trace_present ) // ?Script
     {
         if ( value.trace_count < 0 || value.trace_count > 3 ) { return false; } // storage invariant
-        const uint64_t ref_trace = ids.ref( 0xdec59ea6c4eb9aeeull );
+        const uint64_t ref_trace = ids.ref( 0xdec59ea6c4eb9aeeull, 21 );
         int64_t body_trace = 0;
         body_trace += 1 + TableLebBytes( (uint64_t) ( value.trace_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.trace_count; elem_i++ )
@@ -5122,7 +5834,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
     }
     if ( value.marks_present ) // ?Mode
     {
-        const uint64_t ref_marks = ids.ref( 0x9077d4a4e1726e29ull );
+        const uint64_t ref_marks = ids.ref( 0x9077d4a4e1726e29ull, 22 );
         int64_t body_marks = 0;
         body_marks += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
@@ -5169,12 +5881,14 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -5774,7 +6488,15 @@ inline TableOpenVerdict ToolMessageLoadVerdict( ToolMessage & value, const uint8
     {
         ToolMessageReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -5802,11 +6524,54 @@ inline bool ToolMessageLoad( ToolMessage & value, const uint8_t * buffer, int64_
     return ToolMessageLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t ToolMessageMeasureMessage( const ToolMessage & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = ToolMessageMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t ToolMessageSaveMessage( const ToolMessage & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !ToolMessageSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == ToolMessageMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool ToolMessageLoadMessage( ToolMessage & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    ToolMessageReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return ToolMessageLoadBody( r, value );
+}
+
 inline int64_t CursorMeasureBody( TableIds & ids, const Cursor & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.line != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf4ba5ad694f5907ull ) ) + 1 + 4; } // line
-    if ( value.column != 0 ) { bytes += TableLebBytes( ids.ref( 0x5f531287628bf287ull ) ) + 1 + 4; } // column
+    if ( value.line != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf4ba5ad694f5907ull, 2 ) ) + 1 + 4; } // line
+    if ( value.column != 0 ) { bytes += TableLebBytes( ids.ref( 0x5f531287628bf287ull, 3 ) ) + 1 + 4; } // column
     return bytes;
 }
 
@@ -5822,12 +6587,12 @@ MESSAGEDEMO_TABLE_INLINE bool CursorSaveBody( TableWriter & w, TableIds & ids, c
 {
     if ( value.line != 0 )
     {
-        w.putleb( ids.ref( 0xbf4ba5ad694f5907ull ) ); w.put8( 8 ); // line
+        w.putleb( ids.ref( 0xbf4ba5ad694f5907ull, 2 ) ); w.put8( 8 ); // line
         w.put32( uint32_t( value.line ) );
     }
     if ( value.column != 0 )
     {
-        w.putleb( ids.ref( 0x5f531287628bf287ull ) ); w.put8( 8 ); // column
+        w.putleb( ids.ref( 0x5f531287628bf287ull, 3 ) ); w.put8( 8 ); // column
         w.put32( uint32_t( value.column ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -5857,12 +6622,14 @@ MESSAGEDEMO_TABLE_INLINE bool CursorLoadBody( TableReader & r, Cursor & value )
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -5923,7 +6690,15 @@ inline TableOpenVerdict CursorLoadVerdict( Cursor & value, const uint8_t * buffe
     {
         CursorReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -5951,10 +6726,53 @@ inline bool CursorLoad( Cursor & value, const uint8_t * buffer, int64_t bytes, T
     return CursorLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t CursorMeasureMessage( const Cursor & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = CursorMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t CursorSaveMessage( const Cursor & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !CursorSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == CursorMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool CursorLoadMessage( Cursor & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    CursorReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return CursorLoadBody( r, value );
+}
+
 inline int64_t PingMeasureBody( TableIds & ids, const Ping & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.nonce != 0 ) { bytes += TableLebBytes( ids.ref( 0x73a94c71d60dc0d8ull ) ) + 1 + 4; } // nonce
+    if ( value.nonce != 0 ) { bytes += TableLebBytes( ids.ref( 0x73a94c71d60dc0d8ull, 14 ) ) + 1 + 4; } // nonce
     return bytes;
 }
 
@@ -5970,7 +6788,7 @@ MESSAGEDEMO_TABLE_INLINE bool PingSaveBody( TableWriter & w, TableIds & ids, con
 {
     if ( value.nonce != 0 )
     {
-        w.putleb( ids.ref( 0x73a94c71d60dc0d8ull ) ); w.put8( 8 ); // nonce
+        w.putleb( ids.ref( 0x73a94c71d60dc0d8ull, 14 ) ); w.put8( 8 ); // nonce
         w.put32( uint32_t( value.nonce ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -6000,12 +6818,14 @@ MESSAGEDEMO_TABLE_INLINE bool PingLoadBody( TableReader & r, Ping & value )
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -6051,7 +6871,15 @@ inline TableOpenVerdict PingLoadVerdict( Ping & value, const uint8_t * buffer, i
     {
         PingReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -6077,6 +6905,49 @@ inline TableOpenVerdict PingLoadVerdict( Ping & value, const uint8_t * buffer, i
 inline bool PingLoad( Ping & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return PingLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
+}
+
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t PingMeasureMessage( const Ping & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = PingMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t PingSaveMessage( const Ping & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !PingSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == PingMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool PingLoadMessage( Ping & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    PingReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return PingLoadBody( r, value );
 }
 
 // ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----

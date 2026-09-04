@@ -24,7 +24,7 @@ import (
 // of it is settled by the compiler, so a walk would compute at run time what
 // the emitter already knows. Announce is a copy and AnnounceMeasure is a
 // constant.
-func tableMessageForm(u *ir.Unit, forceInline string) string {
+func tableMessageForm(u *ir.Unit, forceInline string, anyVariable bool) string {
 	announcement := ir.TableAnnouncement(u)
 	vocabulary := ir.TableVocabulary(u)
 
@@ -46,12 +46,20 @@ const uint8_t kTableWireMessageForm = 2;
 static const uint64_t kTableBuildVersionFieldId = 0xFFFFFFFFFFFFFFFEull;
 
 `)
-	fmt.Fprintf(&b, `// The reserved NODE-TABLE id's own slot in this unit's vocabulary (§3.3). A
+	if anyVariable {
+		// THE NODE TABLE's OWN SLOT, in a unit that HAS a node table and in no
+		// other. The reserved node-table ID rides in every unit, because every
+		// reader owes §3.1's refusal of it inside a nested body; the SLOT is
+		// the writer's half and only a pointered message ever names it, so a
+		// value-only unit carries none of it and the zero-cost gate holds
+		// (docs/SPEC-TABLES.md §2, §3.1, §3.3).
+		fmt.Fprintf(&b, `// The reserved NODE-TABLE id's own slot in this unit's vocabulary (§3.3). A
 // pointered message names the node table through it, exactly as every other
 // field header names its id through a slot.
 static const uint64_t kTableNodeTableFieldSlot = %d;
 
 `, slotOfIn(vocabulary, ir.TableNodeWireId))
+	}
 
 	fmt.Fprintf(&b, `// THE UNIT'S ANNOUNCEMENT, byte for byte: %d entries and %d bytes. It is an
 // ordinary form 1 FILE — the form byte, a body carrying the BUILD VERSION

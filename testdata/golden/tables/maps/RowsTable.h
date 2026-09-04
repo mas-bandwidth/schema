@@ -68,6 +68,25 @@
 
 namespace mapdemo {
 
+// WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
+// is not one of §4's events: nothing is decoded, no counter moves and no
+// damage is reported, so five zero counters and a false flag are what a clean
+// read prints too and only the verdict tells them apart. The reason says which
+// refusal it was.
+//
+// This is the MESSAGE PATH's vocabulary and not the cooked form's (§7.4): a
+// caller meeting one of these has been refused a MESSAGE on a connection,
+// which is a different recovery with a different owner than a file a header
+// match turned down.
+enum TableMessageReason
+{
+    newer_form,           // a FORM BYTE this reader does not carry (§3)
+    no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
+    second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
+    vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
+    message_form_as_file  // a form 2 wire where a FILE was expected: its table is somewhere else
+};
+
 // The table-wire read report — the permissive contract's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
 struct TableReport
@@ -85,6 +104,10 @@ struct TableReport
     // zero counters and a false flag are what a clean read prints too, so the
     // verdict is what tells the two apart.
     bool refused = false;
+    // WHICH refusal, and it is read only when refused is set: a read that
+    // was not refused has no reason, and this member is the one the caller
+    // must not look at then (docs/SPEC-TABLES.md §3.3).
+    TableMessageReason reason = newer_form;
 };
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
@@ -304,8 +327,16 @@ struct TableIds
     int32_t head[ kBuckets ];
     int32_t count;
     bool overflow;
+    // THE MESSAGE FORM'S SLOTS (docs/SPEC-TABLES.md §3.3). A form 2 wire
+    // names ids through the CONNECTION's table, which is the unit's whole
+    // vocabulary in a compiler-settled order — so every reference is known at
+    // compile time and rides at the header as a literal beside the id. This
+    // flag is what selects it: false interns the id in first-use order and
+    // writes a trailer, true answers the slot and writes none, and the walk
+    // that decides is one walk.
+    bool vocabulary;
 
-    TableIds() : count( 0 ), overflow( false )
+    TableIds() : count( 0 ), overflow( false ), vocabulary( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
     }
@@ -315,8 +346,16 @@ struct TableIds
         return uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> 57 ) & uint32_t( kBuckets - 1 );
     }
 
-    // the reference an id takes, appending it on first use
-    uint64_t ref( uint64_t id )
+    // the reference an id takes: its message-form SLOT under the connection's
+    // table, or the file's own first-use entry
+    MAPDEMO_TABLE_INLINE uint64_t ref( uint64_t id, uint64_t slot )
+    {
+        if ( vocabulary ) { return slot; }
+        return intern( id );
+    }
+
+    // the FILE form's half, appending the id on first use
+    uint64_t intern( uint64_t id )
     {
         const uint32_t b = bucket_of( id );
         for ( int32_t i = head[b]; i >= 0; i = chain[i] )
@@ -332,6 +371,8 @@ struct TableIds
     // recent one in its bucket, so it sits at that bucket's head.
     void truncate( int32_t mark )
     {
+        // a SLOT costs no entry, so an elided field has nothing to undo
+        if ( vocabulary ) { return; }
         while ( count > mark )
         {
             count--;
@@ -565,6 +606,188 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
         if ( !r.has( 1 ) ) { return false; }
         if ( !r.skip( r.get8() ) ) { return false; }
     }
+}
+
+// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): a FILE carries its own id
+// table and a MESSAGE STREAM announces one and then carries none.
+//
+// A form 2 wire is TWO PARTS, the form byte and the root body: the body ends
+// at its own zero reference as it does in a file, there is no trailer, and the
+// message's last byte is the body's terminator. Its references resolve against
+// the CONNECTION's table, which is the unit's whole vocabulary in the order
+// the compiler settled.
+const uint8_t kTableWireMessageForm = 2;
+
+// The RESERVED build-version id, the second id the language holds back (§5,
+// §11), beside the node table's. It is the announcement's one required field,
+// and a reserved id in any body but the one whose transport it is, is
+// malformed (§3.1).
+static const uint64_t kTableBuildVersionFieldId = 0xFFFFFFFFFFFFFFFEull;
+
+// The reserved NODE-TABLE id's own slot in this unit's vocabulary (§3.3). A
+// pointered message names the node table through it, exactly as every other
+// field header names its id through a slot.
+static const uint64_t kTableNodeTableFieldSlot = 23;
+
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 33 entries and 284 bytes. It is an
+// ordinary form 1 FILE — the form byte, a body carrying the BUILD VERSION
+// under the reserved id at kind 9, and the trailer that IS the connection's
+// table, slot 1 the reserved id and slots 2 and up the vocabulary under one
+// numbering.
+//
+// The vocabulary is the unit's whole closure in the COOK PROJECTION's order
+// (§20.2) — each record in the order the projection renders it and each
+// record's fields in the order the projection renders them, then each enum's
+// variants and each union's arms — followed by the tail the projection does
+// not name: the reserved node-table id, the three blob type ids as bytes,
+// string and wstring, and every table's own name id in the projection's sorted
+// record order. The tail is UNCONDITIONAL, so an ordinary edit only ever grows
+// it at its end and never moves a slot a generated field header carries as a
+// literal.
+static const int64_t kTableAnnounceBytes = 284;
+static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
+    0x01, 0x01, 0x09, 0x74, 0xd0, 0x21, 0x84, 0x99, 0xb2, 0x30, 0x8d, 0x00,
+    0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xec, 0x10, 0x5b, 0x36,
+    0x19, 0x4a, 0xc9, 0x3d, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
+    0xaf, 0x5c, 0xca, 0x21, 0x19, 0xaa, 0x08, 0x1a, 0x02, 0xfc, 0xa1, 0xce,
+    0xa2, 0x59, 0x64, 0x1f, 0x5d, 0xf1, 0x50, 0x95, 0xf2, 0x1f, 0x55, 0x70,
+    0xb5, 0xcc, 0x70, 0x05, 0x19, 0xc0, 0x56, 0xe7, 0xe9, 0xea, 0x71, 0x6f,
+    0x0f, 0x01, 0x82, 0xbf, 0x44, 0xad, 0xe1, 0x13, 0x49, 0x5c, 0x4a, 0x29,
+    0x04, 0x34, 0x8d, 0xe9, 0x46, 0x4c, 0x02, 0x7b, 0x5d, 0x81, 0xb3, 0xa4,
+    0xc4, 0xa0, 0xdf, 0x63, 0x70, 0xf0, 0xf5, 0xf0, 0xb3, 0xa1, 0x4f, 0x29,
+    0xce, 0xe3, 0xda, 0x5f, 0x6c, 0xdc, 0xd8, 0x6d, 0x74, 0xa2, 0x79, 0x44,
+    0x8e, 0xe2, 0xe5, 0xb1, 0x53, 0xa2, 0x45, 0x08, 0x2c, 0xa7, 0xb2, 0xc5,
+    0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0xcf, 0xa9, 0x8b, 0x28,
+    0xb5, 0xd4, 0x69, 0x7f, 0x42, 0x4f, 0x4f, 0x30, 0x0d, 0x39, 0x84, 0x1c,
+    0x8b, 0xe1, 0x45, 0xc2, 0xcb, 0x04, 0xda, 0x4f, 0x87, 0x94, 0xb6, 0x96,
+    0xa7, 0x62, 0xb5, 0xa0, 0x31, 0x63, 0x3e, 0xd6, 0x95, 0xbb, 0xc2, 0xd5,
+    0x07, 0xb2, 0x52, 0x16, 0x4e, 0x19, 0x4d, 0xfd, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f,
+    0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0xc7, 0xd4, 0x7b, 0x26,
+    0xb0, 0x9d, 0x29, 0x5f, 0x4a, 0x0d, 0xe3, 0x6f, 0xdc, 0xd0, 0x31, 0x32,
+    0xaf, 0x79, 0xa2, 0xfb, 0x0a, 0xe0, 0x53, 0x0a, 0x06, 0x68, 0x47, 0x98,
+    0xd1, 0xa1, 0xcf, 0x52, 0xfb, 0x06, 0xc9, 0xfe, 0x19, 0xe1, 0x13, 0xa0,
+    0x0d, 0x4f, 0xb1, 0xd1, 0xd2, 0x52, 0x82, 0x75, 0x91, 0x0a, 0x55, 0x60,
+    0xf7, 0xa2, 0x07, 0xec, 0x16, 0xa3, 0x71, 0x35, 0x4e, 0x96, 0x13, 0xb4,
+    0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+// AnnounceMeasure is the announcement's byte count, which is a constant of the
+// unit and not a walk.
+inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+
+// Announce writes the announcement into the caller's buffer and answers the
+// bytes written — exactly AnnounceMeasure's answer — or -1 when the buffer is
+// too small. It allocates nothing and walks nothing.
+inline int64_t Announce( uint8_t * buffer, int64_t capacity )
+{
+    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
+    return kTableAnnounceBytes;
+}
+
+// TableVocabulary is ONE DIRECTION of ONE CONNECTION's id table (§3.3): the
+// entries an announcement carried, whole, under one numbering with slot 1 the
+// reserved build-version id.
+//
+// A peer holds TWO of these for a connection, the one it writes with and the
+// one it reads with, and neither is the other's. A restart opens a fresh
+// connection with empty tables and nothing is cached across connections, so
+// its whole life is one connection's. It BORROWS the announcement's bytes rather than
+// copying them, so a receiver holds one table a direction and its memory is
+// the bound below and nothing else.
+struct TableVocabulary
+{
+    // THE CONFORMING DEFAULT BOUND (§3.3): 32 KiB a direction, eight times the
+    // 500-id unit that is already a large one. A connection's table is bounded
+    // by nothing the wire carries, so the receiver declares the maximum and an
+    // announcement above it is refused by name before an entry is touched.
+    static const int64_t kDefaultMaxEntries = 4096;
+
+    TableIdTable table;
+    uint64_t build_version = 0;
+    bool announced = false;
+    int64_t max_entries = kDefaultMaxEntries;
+};
+
+// AnnounceRead reads an announcement into one direction's table (§3.3).
+//
+// THE BOUND IS CHECKED BEFORE ANYTHING IS ALLOCATED: the entry count is a
+// fixed little-endian u64 at the end, so a receiver reads it, compares it and
+// refuses without touching an entry. After that it is §3's ordinary FILE read,
+// because the announcement IS a file, with EXACTLY ONE STRICT CHECK over its
+// body: the reserved build-version field present, exactly once, under kind 9,
+// eight bytes wide. Everything else is an ordinary field under §4's tolerance,
+// so an unknown one is skipped and counted and the announcement can GAIN a
+// field in a later minor without a lockstep redeploy.
+//
+// The FIRST announcement sets the table and it is the only one that can. A
+// SECOND is refused by name: it does not replace the table, it does not amend
+// it and it changes nothing. A refused announcement sets NO TABLE.
+inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    if ( vocabulary.announced )
+    {
+        to->refused = true;
+        to->reason = second_announcement;
+        return false;
+    }
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireForm )
+    {
+        to->refused = true;
+        to->reason = buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        return false;
+    }
+    if ( bytes < 9 ) { to->malformed = true; return false; }
+    const uint8_t * tail = buffer + bytes - 8;
+    uint64_t lo = uint64_t( tail[0] ) | uint64_t( tail[1] ) << 8 | uint64_t( tail[2] ) << 16 | uint64_t( tail[3] ) << 24;
+    uint64_t hi = uint64_t( tail[4] ) | uint64_t( tail[5] ) << 8 | uint64_t( tail[6] ) << 16 | uint64_t( tail[7] ) << 24;
+    if ( ( lo | ( hi << 32 ) ) > (uint64_t) vocabulary.max_entries )
+    {
+        to->refused = true;
+        to->reason = vocabulary_too_large;
+        return false;
+    }
+    TableIdTable table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        else { to->refused = true; to->reason = newer_form; }
+        return false;
+    }
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) ) { to->malformed = true; return false; }
+    // the body, under §4's tolerance and this form's one strict check
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    uint64_t version = 0;
+    int32_t seen = 0;
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.getleb( ref ) ) { to->malformed = true; return false; }
+        if ( ref == 0 ) { break; }
+        if ( ref > (uint64_t) table.count || !r.has( 1 ) ) { to->malformed = true; return false; }
+        const uint64_t id = table.at( ref );
+        const uint8_t kind = r.get8();
+        if ( id != kTableBuildVersionFieldId )
+        {
+            to->unknown++;
+            if ( !r.skip( kind ) ) { to->malformed = true; return false; }
+            continue;
+        }
+        if ( kind != 9 || !r.has( 8 ) ) { to->refused = true; to->reason = no_vocabulary; return false; }
+        version = r.get64();
+        seen++;
+    }
+    if ( seen != 1 ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    vocabulary.table = table;
+    vocabulary.build_version = version;
+    vocabulary.announced = true;
+    return true;
 }
 
 
@@ -1372,6 +1595,13 @@ struct TableNodeEntry
 {
     const void * node;
     uint64_t type_id;
+    // the type id's MESSAGE-FORM SLOT (docs/SPEC-TABLES.md §3.3), stored where
+    // the numbering walk stores the id itself and for the same reason: the
+    // target's type is known STATICALLY at the site that numbers it, so a
+    // form 2 save reads the slot out of the entry instead of looking an id up.
+    // Every pointer target's type id is an entry of the announcement, which is
+    // what makes the slot a compile-time fact of a POINTERED message too.
+    uint64_t type_slot;
     int64_t ( * measure )( const void * ctx, const TableNumbering & numbering, TableIds & ids, const void * node );
     bool ( * save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node );
 };
@@ -1497,7 +1727,7 @@ inline int64_t TableNodeTablePayload( const Ctx & ctx, TableIds & ids, const Tab
     int64_t payload = TableLebBytes( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
     {
-        payload += TableLebBytes( ids.ref( n.entries[k].type_id ) );
+        payload += TableLebBytes( ids.ref( n.entries[k].type_id, n.entries[k].type_slot ) );
         const int64_t body = n.entries[k].measure( (const void *) &ctx, n, ids, n.entries[k].node );
         if ( body < 0 ) { return -1; }
         payload += TableLebBytes( (uint64_t) body ) + body;
@@ -1509,7 +1739,7 @@ template <typename Ctx>
 inline int64_t TableNodeTableMeasure( const Ctx & ctx, TableIds & ids, const TableNumbering & n )
 {
     if ( n.count == 0 ) { return 0; } // a root that reaches no nodes writes none of them
-    const uint64_t ref = ids.ref( kTableNodeTableFieldId );
+    const uint64_t ref = ids.ref( kTableNodeTableFieldId, kTableNodeTableFieldSlot );
     const int64_t payload = TableNodeTablePayload( ctx, ids, n );
     if ( payload < 0 ) { return -1; }
     return TableLebBytes( ref ) + 1 + TableLebBytes( (uint64_t) payload ) + payload;
@@ -1519,7 +1749,7 @@ template <typename Ctx>
 inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, TableIds & ids, const TableNumbering & n )
 {
     if ( n.count == 0 ) { return true; }
-    const uint64_t ref = ids.ref( kTableNodeTableFieldId );
+    const uint64_t ref = ids.ref( kTableNodeTableFieldId, kTableNodeTableFieldSlot );
     const int64_t payload = TableNodeTablePayload( ctx, ids, n );
     if ( payload < 0 ) { return false; }
     w.putleb( ref );
@@ -1528,7 +1758,7 @@ inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, TableIds & ids
     w.putleb( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
     {
-        w.putleb( ids.ref( n.entries[k].type_id ) );
+        w.putleb( ids.ref( n.entries[k].type_id, n.entries[k].type_slot ) );
         const int64_t body = n.entries[k].measure( (const void *) &ctx, n, ids, n.entries[k].node );
         if ( body < 0 ) { return false; }
         w.putleb( (uint64_t) body );
@@ -2986,10 +3216,10 @@ inline int64_t RowEntriesEntryMeasureBody( TableIds & ids, const RowEntriesEntry
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key_length < 0 || value.key_length > 8 ) { return -1; } // storage invariant
-    if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
+    if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull, 2 ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull, 3 );
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
@@ -3003,13 +3233,13 @@ MAPDEMO_TABLE_INLINE bool RowEntriesEntrySaveBody( TableWriter & w, TableIds & i
     if ( value.key_length < 0 || value.key_length > 8 ) { return false; } // storage invariant
     if ( value.key_length > 0 )
     {
-        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 12 ); // key
+        w.putleb( ids.ref( 0x3dc94a19365b10ecull, 2 ) ); w.put8( 12 ); // key
         w.putleb( (uint64_t) value.key_length );
         w.raw( value.key, value.key_length );
     }
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull, 3 );
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
@@ -3035,12 +3265,14 @@ MAPDEMO_TABLE_INLINE bool RowEntriesEntryLoadBody( TableReader & r, RowEntriesEn
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -3111,7 +3343,7 @@ inline int64_t RowMeasureBody( const Ctx & ctx, const TableNumbering & numbering
         if ( !order_entries.ok ) { return -1; } // the sort could not run
         if ( order_entries.count > 0 )
         {
-            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull, 15 );
             int64_t body_entries = 1 + TableLebBytes( (uint64_t) order_entries.count ); // the element kind byte and the count
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -3123,7 +3355,7 @@ inline int64_t RowMeasureBody( const Ctx & ctx, const TableNumbering & numbering
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull, 8 ) ) + 1 + 4; } // after
     return bytes;
 }
 
@@ -3136,7 +3368,7 @@ inline bool RowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering
         if ( !order_entries.ok ) { return false; }
         if ( order_entries.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
         {
-            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull, 15 );
             int64_t body_entries = 1 + TableLebBytes( (uint64_t) order_entries.count );
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -3158,7 +3390,7 @@ inline bool RowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering
     }
     if ( value.after != 0 )
     {
-        w.putleb( ids.ref( 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
+        w.putleb( ids.ref( 0xbf82010f6f71eae9ull, 8 ) ); w.put8( 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     return !w.overflow;
@@ -3185,12 +3417,14 @@ inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & valu
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -3313,10 +3547,10 @@ inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & valu
 inline int64_t WideRowEntriesEntryMeasureBody( TableIds & ids, const WideRowEntriesEntry & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull ) ) + 1 + 4; } // key
+    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull, 2 ) ) + 1 + 4; } // key
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull, 3 );
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
@@ -3329,12 +3563,12 @@ MAPDEMO_TABLE_INLINE bool WideRowEntriesEntrySaveBody( TableWriter & w, TableIds
 {
     if ( value.key != 0 )
     {
-        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 8 ); // key
+        w.putleb( ids.ref( 0x3dc94a19365b10ecull, 2 ) ); w.put8( 8 ); // key
         w.put32( uint32_t( value.key ) );
     }
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull, 3 );
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
@@ -3360,12 +3594,14 @@ MAPDEMO_TABLE_INLINE bool WideRowEntriesEntryLoadBody( TableReader & r, WideRowE
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -3431,7 +3667,7 @@ inline int64_t WideRowMeasureBody( const Ctx & ctx, const TableNumbering & numbe
         if ( !order_entries.ok ) { return -1; } // the sort could not run
         if ( order_entries.count > 0 )
         {
-            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull, 15 );
             int64_t body_entries = 1 + TableLebBytes( (uint64_t) order_entries.count ); // the element kind byte and the count
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -3443,7 +3679,7 @@ inline int64_t WideRowMeasureBody( const Ctx & ctx, const TableNumbering & numbe
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull, 8 ) ) + 1 + 4; } // after
     return bytes;
 }
 
@@ -3456,7 +3692,7 @@ inline bool WideRowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbe
         if ( !order_entries.ok ) { return false; }
         if ( order_entries.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
         {
-            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull, 15 );
             int64_t body_entries = 1 + TableLebBytes( (uint64_t) order_entries.count );
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -3478,7 +3714,7 @@ inline bool WideRowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbe
     }
     if ( value.after != 0 )
     {
-        w.putleb( ids.ref( 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
+        w.putleb( ids.ref( 0xbf82010f6f71eae9ull, 8 ) ); w.put8( 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     return !w.overflow;
@@ -3505,12 +3741,14 @@ inline bool WideRowLoadBody( TableReader & r, const TableNodeMap & nodes, WideRo
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -4308,8 +4546,11 @@ inline bool RowNumberFrom( const Ctx & ctx, TableNumbering & numbering, const Ro
     return RowNumber( ctx, numbering, root );
 }
 
+// `message` selects the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the same
+// walk over the same graph, with every reference a compile-time SLOT of
+// the connection's announced table and no trailer to write.
 template <typename Ctx>
-inline int64_t RowMeasureWire( const Ctx & ctx, const Row & root, TableAllocator allocator )
+inline int64_t RowMeasureWire( const Ctx & ctx, const Row & root, TableAllocator allocator, bool message = false )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
@@ -4317,13 +4558,15 @@ inline int64_t RowMeasureWire( const Ctx & ctx, const Row & root, TableAllocator
     if ( RowNumberFrom( ctx, numbering, root ) )
     {
         TableIds ids;
+        ids.vocabulary = message;
         bytes = RowMeasureBody( ctx, numbering, ids, root );
         if ( bytes >= 0 )
         {
             const int64_t table = TableNodeTableMeasure( ctx, ids, numbering );
             // the FORM BYTE, the ROOT BODY — its own fields, the node table
             // and the terminator — and the ID TABLE (docs/SPEC-TABLES.md §3)
-            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + TableIdsBytes( ids );
+            const int64_t trailer = message ? 0 : TableIdsBytes( ids );
+            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + trailer;
         }
     }
     TableNumberingShutdown( numbering );
@@ -4331,14 +4574,15 @@ inline int64_t RowMeasureWire( const Ctx & ctx, const Row & root, TableAllocator
 }
 
 template <typename Ctx>
-inline int64_t RowSaveWire( const Ctx & ctx, const Row & root, uint8_t * buffer, int64_t capacity, TableAllocator allocator )
+inline int64_t RowSaveWire( const Ctx & ctx, const Row & root, uint8_t * buffer, int64_t capacity, TableAllocator allocator, bool message = false )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     if ( !RowNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
-    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
+    ids.vocabulary = message;
+    w.put8( message ? kTableWireMessageForm : kTableWireForm ); // the FORM BYTE is the whole header (§3)
     // the root's own fields, then the node table's field, then the
     // terminator: a reader that gives up inside the table has already
     // decoded the ROOT'S OWN FIELDS (§3.1)
@@ -4346,7 +4590,9 @@ inline int64_t RowSaveWire( const Ctx & ctx, const Row & root, uint8_t * buffer,
     TableNumberingShutdown( numbering );
     if ( !ok || ids.overflow ) { return -1; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the root body
-    TableIdsWrite( w, ids ); // the ID TABLE is the last thing in the file
+    // A MESSAGE HAS NO TRAILER: its last byte is the body's terminator,
+    // because the ids live in the connection's table (§3.3).
+    if ( !message ) { TableIdsWrite( w, ids ); }
     if ( w.overflow ) { return -1; } // the caller's buffer was too small
     return w.offset; // == RowMeasure( root )
 }
@@ -4379,6 +4625,36 @@ inline int64_t RowSave( const RowBuilder & builder, uint8_t * buffer, int64_t ca
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
     return RowSaveWire( ctx, *(const Row *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity, builder.arena.allocator );
+}
+
+inline int64_t RowMeasureMessage( const Row * root, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( root == NULL ) { return -1; }
+    TableRegionCtx ctx;
+    return RowMeasureWire( ctx, *root, allocator, true );
+}
+
+inline int64_t RowSaveMessage( const Row * root, uint8_t * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( root == NULL ) { return -1; }
+    TableRegionCtx ctx;
+    return RowSaveWire( ctx, *root, buffer, capacity, allocator, true );
+}
+
+inline int64_t RowMeasureMessage( const RowBuilder & builder )
+{
+    if ( builder.region != NULL ) { return RowMeasureMessage( builder.AsConst(), builder.arena.allocator ); }
+    if ( builder.root_ref.null() ) { return -1; }
+    TableArenaCtx ctx = { &builder.arena };
+    return RowMeasureWire( ctx, *(const Row *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), builder.arena.allocator, true );
+}
+
+inline int64_t RowSaveMessage( const RowBuilder & builder, uint8_t * buffer, int64_t capacity )
+{
+    if ( builder.region != NULL ) { return RowSaveMessage( builder.AsConst(), buffer, capacity, builder.arena.allocator ); }
+    if ( builder.root_ref.null() ) { return -1; }
+    TableArenaCtx ctx = { &builder.arena };
+    return RowSaveWire( ctx, *(const Row *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity, builder.arena.allocator, true );
 }
 
 // RowLoadMeasure: the exact region bytes a wire buffer will need, and it is
@@ -4439,7 +4715,7 @@ inline const Row * RowLoad( uint8_t * region, int64_t region_bytes, const uint8_
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
@@ -4449,6 +4725,160 @@ inline const Row * RowLoad( uint8_t * region, int64_t region_bytes, const uint8_
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region == NULL || region_bytes < (int64_t) sizeof( Row ) ) { out->malformed = true; return NULL; }
+    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return NULL; }
+    memset( region, 0, (size_t) region_bytes );
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    int64_t root_extent = 0;
+    if ( !RowWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { out->malformed = true; return NULL; }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Row ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            int64_t storage = RowNodeStorage( type_id, length );
+            if ( storage == kTableNodeRefused ) { out->malformed = true; return NULL; }
+            if ( storage > 0 ) { data += storage; }
+        }
+    }
+    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
+    if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
+
+    TableNodeMap nodes;
+    nodes.base = region;
+    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.count = records + 1;
+    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
+    directory[0].type_id = 0xa013e119fec906fbull;
+    Row * root = new ( region ) Row; // lifetime only: LoadBody's first act is RowReset
+    RowReset( *root );
+
+    // PASS ONE: fill the numbering from the framing, so that an index
+    // resolves whichever way it points. It reads no body.
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+        int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Row ) ) + root_extent );
+        int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            int64_t storage = RowNodeStorage( type_id, length );
+            if ( storage <= 0 )
+            {
+                // a record whose type id this build cannot name KEEPS ITS
+                // INDEX, is counted once here and not once per pointer, and
+                // every reference to it reads null (§3.1)
+                unknown_records++;
+                directory[k + 1].offset = kTableNodeAbsent;
+                directory[k + 1].type_id = type_id;
+            }
+            else
+            {
+                directory[k + 1].offset = (uint64_t) used;
+                directory[k + 1].type_id = type_id;
+                RowNodePlace( type_id, region + used, length );
+                used += storage;
+            }
+            k++;
+        }
+        nodes.good = TableNodeScanWhole( scan );
+        // the table is whole or it is nothing: a scan that failed counts
+        // malformed and NOT the unknowns it met on the way, because the
+        // numbering they belonged to does not exist (§3.1)
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
+    }
+
+    // PASS TWO: decode each body into its own storage. A forward index
+    // resolves without scratch, because pass one already placed every node.
+    if ( nodes.good )
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+        int64_t k = 0;
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            if ( directory[k + 1].offset != kTableNodeAbsent )
+            {
+                TableReader sub( body, length, out, &ids_table );
+                RowNodeBody( type_id, sub, nodes, region + directory[k + 1].offset );
+            }
+            k++;
+        }
+    }
+
+    // and the ROOT's own body last, so every index it carries resolves
+    // against a numbering already known good or already known bad
+    TableReader r( wire, wire_bytes, out, &ids_table );
+    r.nested = false; // the ROOT body, the one that carries the node table
+    TableMapCarve root_carve;
+    root_carve.at = region + TableAlignUp64( (int64_t) sizeof( Row ) );
+    root_carve.left = root_extent;
+    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
+    RowLoadBody( r, nodes, *root );
+    return root;
+}
+
+// RowLoadMeasure: the exact region bytes a wire buffer will need, and it is
+// ONE SCAN — a record's type id gives its storage size, its length gives the
+// next record — reading no field value at all, so the caller owns the
+// allocation and can refuse a number it did not expect (§6.5).
+//
+// It reports the DATA bytes and the ATTRIBUTION bytes separately, because the
+// attribution is the wire's numbering made resident (§6.3) and a caller may
+// release it once Load returns. The answer is their sum.
+inline int64_t RowLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * message, int64_t message_bytes, int64_t * attribution_bytes = NULL )
+{
+    TableReport ignored;
+    if ( message_bytes < 1 || message[0] != kTableWireMessageForm || !vocabulary.announced ) { return -1; }
+    const TableIdTable & ids_table = vocabulary.table;
+    const uint8_t * const wire = message + 1;
+    const int64_t wire_bytes = message_bytes - 1;
+    TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );
+    int64_t root_extent = 0;
+    if ( !RowWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { return -1; }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Row ) ) + root_extent );
+    int64_t records = 0;
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+    while ( TableNodeScanNext( scan, type_id, body, length ) )
+    {
+        records++;
+        int64_t storage = RowNodeStorage( type_id, length );
+        if ( storage == kTableNodeRefused ) { return -1; } // an N the record's framing cannot carry (§2.8)
+        if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
+    }
+    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
+    if ( attribution_bytes != NULL ) { *attribution_bytes = attribution; }
+    return data + attribution;
+}
+
+// RowLoadMessage: decode the tolerant wire into the caller's exact-sized region and
+// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
+// follows no reference, so there is no depth cap, no visited set and no
+// ordering rule on the indices. Partial results are kept, as everywhere on
+// this wire — the report says what happened. NULL means the CALLER's buffer
+// was wrong.
+inline const Row * RowLoadMessage( uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * message, int64_t message_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    // THE FORM BYTE IS READ FIRST, and then the connection's own table:
+    // a message with no table is REFUSED BY NAME, nothing is decoded, no
+    // counter moves and malformed does not fire (docs/SPEC-TABLES.md §3.3).
+    if ( message_bytes < 1 ) { out->malformed = true; return NULL; }
+    if ( message[0] != kTableWireMessageForm ) { out->refused = true; out->reason = newer_form; return NULL; }
+    if ( !vocabulary.announced ) { out->refused = true; out->reason = no_vocabulary; return NULL; }
+    const TableIdTable & ids_table = vocabulary.table;
+    const uint8_t * const wire = message + 1;
+    const int64_t wire_bytes = message_bytes - 1;
     if ( region == NULL || region_bytes < (int64_t) sizeof( Row ) ) { out->malformed = true; return NULL; }
     if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return NULL; }
     memset( region, 0, (size_t) region_bytes );
@@ -4855,8 +5285,11 @@ inline bool WideRowNumberFrom( const Ctx & ctx, TableNumbering & numbering, cons
     return WideRowNumber( ctx, numbering, root );
 }
 
+// `message` selects the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the same
+// walk over the same graph, with every reference a compile-time SLOT of
+// the connection's announced table and no trailer to write.
 template <typename Ctx>
-inline int64_t WideRowMeasureWire( const Ctx & ctx, const WideRow & root, TableAllocator allocator )
+inline int64_t WideRowMeasureWire( const Ctx & ctx, const WideRow & root, TableAllocator allocator, bool message = false )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
@@ -4864,13 +5297,15 @@ inline int64_t WideRowMeasureWire( const Ctx & ctx, const WideRow & root, TableA
     if ( WideRowNumberFrom( ctx, numbering, root ) )
     {
         TableIds ids;
+        ids.vocabulary = message;
         bytes = WideRowMeasureBody( ctx, numbering, ids, root );
         if ( bytes >= 0 )
         {
             const int64_t table = TableNodeTableMeasure( ctx, ids, numbering );
             // the FORM BYTE, the ROOT BODY — its own fields, the node table
             // and the terminator — and the ID TABLE (docs/SPEC-TABLES.md §3)
-            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + TableIdsBytes( ids );
+            const int64_t trailer = message ? 0 : TableIdsBytes( ids );
+            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + trailer;
         }
     }
     TableNumberingShutdown( numbering );
@@ -4878,14 +5313,15 @@ inline int64_t WideRowMeasureWire( const Ctx & ctx, const WideRow & root, TableA
 }
 
 template <typename Ctx>
-inline int64_t WideRowSaveWire( const Ctx & ctx, const WideRow & root, uint8_t * buffer, int64_t capacity, TableAllocator allocator )
+inline int64_t WideRowSaveWire( const Ctx & ctx, const WideRow & root, uint8_t * buffer, int64_t capacity, TableAllocator allocator, bool message = false )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     if ( !WideRowNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
-    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
+    ids.vocabulary = message;
+    w.put8( message ? kTableWireMessageForm : kTableWireForm ); // the FORM BYTE is the whole header (§3)
     // the root's own fields, then the node table's field, then the
     // terminator: a reader that gives up inside the table has already
     // decoded the ROOT'S OWN FIELDS (§3.1)
@@ -4893,7 +5329,9 @@ inline int64_t WideRowSaveWire( const Ctx & ctx, const WideRow & root, uint8_t *
     TableNumberingShutdown( numbering );
     if ( !ok || ids.overflow ) { return -1; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the root body
-    TableIdsWrite( w, ids ); // the ID TABLE is the last thing in the file
+    // A MESSAGE HAS NO TRAILER: its last byte is the body's terminator,
+    // because the ids live in the connection's table (§3.3).
+    if ( !message ) { TableIdsWrite( w, ids ); }
     if ( w.overflow ) { return -1; } // the caller's buffer was too small
     return w.offset; // == WideRowMeasure( root )
 }
@@ -4926,6 +5364,36 @@ inline int64_t WideRowSave( const WideRowBuilder & builder, uint8_t * buffer, in
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
     return WideRowSaveWire( ctx, *(const WideRow *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity, builder.arena.allocator );
+}
+
+inline int64_t WideRowMeasureMessage( const WideRow * root, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( root == NULL ) { return -1; }
+    TableRegionCtx ctx;
+    return WideRowMeasureWire( ctx, *root, allocator, true );
+}
+
+inline int64_t WideRowSaveMessage( const WideRow * root, uint8_t * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( root == NULL ) { return -1; }
+    TableRegionCtx ctx;
+    return WideRowSaveWire( ctx, *root, buffer, capacity, allocator, true );
+}
+
+inline int64_t WideRowMeasureMessage( const WideRowBuilder & builder )
+{
+    if ( builder.region != NULL ) { return WideRowMeasureMessage( builder.AsConst(), builder.arena.allocator ); }
+    if ( builder.root_ref.null() ) { return -1; }
+    TableArenaCtx ctx = { &builder.arena };
+    return WideRowMeasureWire( ctx, *(const WideRow *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), builder.arena.allocator, true );
+}
+
+inline int64_t WideRowSaveMessage( const WideRowBuilder & builder, uint8_t * buffer, int64_t capacity )
+{
+    if ( builder.region != NULL ) { return WideRowSaveMessage( builder.AsConst(), buffer, capacity, builder.arena.allocator ); }
+    if ( builder.root_ref.null() ) { return -1; }
+    TableArenaCtx ctx = { &builder.arena };
+    return WideRowSaveWire( ctx, *(const WideRow *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity, builder.arena.allocator, true );
 }
 
 // WideRowLoadMeasure: the exact region bytes a wire buffer will need, and it is
@@ -4986,7 +5454,7 @@ inline const WideRow * WideRowLoad( uint8_t * region, int64_t region_bytes, cons
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
@@ -4996,6 +5464,160 @@ inline const WideRow * WideRowLoad( uint8_t * region, int64_t region_bytes, cons
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region == NULL || region_bytes < (int64_t) sizeof( WideRow ) ) { out->malformed = true; return NULL; }
+    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return NULL; }
+    memset( region, 0, (size_t) region_bytes );
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    int64_t root_extent = 0;
+    if ( !WideRowWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { out->malformed = true; return NULL; }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( WideRow ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            int64_t storage = WideRowNodeStorage( type_id, length );
+            if ( storage == kTableNodeRefused ) { out->malformed = true; return NULL; }
+            if ( storage > 0 ) { data += storage; }
+        }
+    }
+    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
+    if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
+
+    TableNodeMap nodes;
+    nodes.base = region;
+    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.count = records + 1;
+    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
+    directory[0].type_id = 0xb413964e3571a316ull;
+    WideRow * root = new ( region ) WideRow; // lifetime only: LoadBody's first act is WideRowReset
+    WideRowReset( *root );
+
+    // PASS ONE: fill the numbering from the framing, so that an index
+    // resolves whichever way it points. It reads no body.
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+        int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( WideRow ) ) + root_extent );
+        int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            int64_t storage = WideRowNodeStorage( type_id, length );
+            if ( storage <= 0 )
+            {
+                // a record whose type id this build cannot name KEEPS ITS
+                // INDEX, is counted once here and not once per pointer, and
+                // every reference to it reads null (§3.1)
+                unknown_records++;
+                directory[k + 1].offset = kTableNodeAbsent;
+                directory[k + 1].type_id = type_id;
+            }
+            else
+            {
+                directory[k + 1].offset = (uint64_t) used;
+                directory[k + 1].type_id = type_id;
+                WideRowNodePlace( type_id, region + used, length );
+                used += storage;
+            }
+            k++;
+        }
+        nodes.good = TableNodeScanWhole( scan );
+        // the table is whole or it is nothing: a scan that failed counts
+        // malformed and NOT the unknowns it met on the way, because the
+        // numbering they belonged to does not exist (§3.1)
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
+    }
+
+    // PASS TWO: decode each body into its own storage. A forward index
+    // resolves without scratch, because pass one already placed every node.
+    if ( nodes.good )
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+        int64_t k = 0;
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            if ( directory[k + 1].offset != kTableNodeAbsent )
+            {
+                TableReader sub( body, length, out, &ids_table );
+                WideRowNodeBody( type_id, sub, nodes, region + directory[k + 1].offset );
+            }
+            k++;
+        }
+    }
+
+    // and the ROOT's own body last, so every index it carries resolves
+    // against a numbering already known good or already known bad
+    TableReader r( wire, wire_bytes, out, &ids_table );
+    r.nested = false; // the ROOT body, the one that carries the node table
+    TableMapCarve root_carve;
+    root_carve.at = region + TableAlignUp64( (int64_t) sizeof( WideRow ) );
+    root_carve.left = root_extent;
+    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
+    WideRowLoadBody( r, nodes, *root );
+    return root;
+}
+
+// WideRowLoadMeasure: the exact region bytes a wire buffer will need, and it is
+// ONE SCAN — a record's type id gives its storage size, its length gives the
+// next record — reading no field value at all, so the caller owns the
+// allocation and can refuse a number it did not expect (§6.5).
+//
+// It reports the DATA bytes and the ATTRIBUTION bytes separately, because the
+// attribution is the wire's numbering made resident (§6.3) and a caller may
+// release it once Load returns. The answer is their sum.
+inline int64_t WideRowLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * message, int64_t message_bytes, int64_t * attribution_bytes = NULL )
+{
+    TableReport ignored;
+    if ( message_bytes < 1 || message[0] != kTableWireMessageForm || !vocabulary.announced ) { return -1; }
+    const TableIdTable & ids_table = vocabulary.table;
+    const uint8_t * const wire = message + 1;
+    const int64_t wire_bytes = message_bytes - 1;
+    TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );
+    int64_t root_extent = 0;
+    if ( !WideRowWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { return -1; }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( WideRow ) ) + root_extent );
+    int64_t records = 0;
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+    while ( TableNodeScanNext( scan, type_id, body, length ) )
+    {
+        records++;
+        int64_t storage = WideRowNodeStorage( type_id, length );
+        if ( storage == kTableNodeRefused ) { return -1; } // an N the record's framing cannot carry (§2.8)
+        if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
+    }
+    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
+    if ( attribution_bytes != NULL ) { *attribution_bytes = attribution; }
+    return data + attribution;
+}
+
+// WideRowLoadMessage: decode the tolerant wire into the caller's exact-sized region and
+// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
+// follows no reference, so there is no depth cap, no visited set and no
+// ordering rule on the indices. Partial results are kept, as everywhere on
+// this wire — the report says what happened. NULL means the CALLER's buffer
+// was wrong.
+inline const WideRow * WideRowLoadMessage( uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * message, int64_t message_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    // THE FORM BYTE IS READ FIRST, and then the connection's own table:
+    // a message with no table is REFUSED BY NAME, nothing is decoded, no
+    // counter moves and malformed does not fire (docs/SPEC-TABLES.md §3.3).
+    if ( message_bytes < 1 ) { out->malformed = true; return NULL; }
+    if ( message[0] != kTableWireMessageForm ) { out->refused = true; out->reason = newer_form; return NULL; }
+    if ( !vocabulary.announced ) { out->refused = true; out->reason = no_vocabulary; return NULL; }
+    const TableIdTable & ids_table = vocabulary.table;
+    const uint8_t * const wire = message + 1;
+    const int64_t wire_bytes = message_bytes - 1;
     if ( region == NULL || region_bytes < (int64_t) sizeof( WideRow ) ) { out->malformed = true; return NULL; }
     if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return NULL; }
     memset( region, 0, (size_t) region_bytes );

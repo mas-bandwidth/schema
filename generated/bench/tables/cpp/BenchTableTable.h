@@ -560,11 +560,6 @@ const uint8_t kTableWireMessageForm = 2;
 // malformed (§3.1).
 static const uint64_t kTableBuildVersionFieldId = 0xFFFFFFFFFFFFFFFEull;
 
-// The reserved NODE-TABLE id's own slot in this unit's vocabulary (§3.3). A
-// pointered message names the node table through it, exactly as every other
-// field header names its id through a slot.
-static const uint64_t kTableNodeTableFieldSlot = 71;
-
 // THE UNIT'S ANNOUNCEMENT, byte for byte: 77 entries and 636 bytes. It is an
 // ordinary form 1 FILE — the form byte, a body carrying the BUILD VERSION
 // under the reserved id at kind 9, and the trailer that IS the connection's
