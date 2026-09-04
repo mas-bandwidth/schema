@@ -805,7 +805,10 @@ const uint8_t kTableWireForm = 1;
 //                     file, a count that leaves no room for the form byte, or
 //                     ONE ID IN TWO ENTRIES. The whole wire is malformed,
 //                     nothing is decoded, and one event is counted.
-enum TableOpenVerdict { TableOpenOk, TableOpenRefused, TableOpenDamaged };
+//   TableOpenBodyStopped  the form and the table were good and the ROOT BODY
+//                     could not be walked to its own terminator. What it
+//                     decoded before that is kept, as everywhere on this wire.
+enum TableOpenVerdict { TableOpenOk, TableOpenRefused, TableOpenDamaged, TableOpenBodyStopped };
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {

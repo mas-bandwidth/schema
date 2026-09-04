@@ -52,20 +52,25 @@ static int failures = 0;
         }                                                                     \
     } while ( 0 )
 
-// an independent implementation of the table-wire field id —
-// fold16(fnv1a32(name)), 0 rebounds to 1 — pinning the compiler's hash
-// against a second implementation written from the spec alone
-static uint16_t field_id( const char * name )
+// an independent implementation of the table-wire id — fnv1a64 over the name,
+// no fold and no rebound (docs/SPEC-TABLES.md §5) — pinning the compiler's hash
+// against a second implementation written from the spec alone. ONE HASH SERVES
+// EVERY VOCABULARY: a field's id, an enum variant's, a union arm's and a
+// table's own name id are all this.
+static uint64_t field_id( const char * name )
 {
-    uint32_t h = 0x811C9DC5u;
+    uint64_t h = 0xCBF29CE484222325ull;
     for ( const char * p = name; *p; ++p )
     {
-        h ^= (uint32_t) (uint8_t) *p;
-        h *= 0x01000193u;
+        h ^= (uint64_t) (uint8_t) *p;
+        h *= 0x00000100000001B3ull;
     }
-    uint16_t id = (uint16_t) ( ( h ^ ( h >> 16 ) ) & 0xFFFF );
-    return id == 0 ? 1 : id;
+    return h;
 }
+
+// THE EMPTY WIRE is ten bytes: the form byte, the root body's zero reference,
+// and the eight-byte entry count of an id table with no entries (§3).
+static const int64_t empty_wire_bytes = 10;
 
 static const tabledemo::TableFieldInfo * demo_field( const tabledemo::TableTypeInfo * type, const char * name )
 {
@@ -105,6 +110,109 @@ static void set_string( char * dest, int32_t & length, const char * s )
 
 static void le16( uint8_t * p, uint16_t v ) { p[0] = (uint8_t) v; p[1] = (uint8_t) ( v >> 8 ); }
 static void le32( uint8_t * p, uint32_t v ) { p[0] = (uint8_t) v; p[1] = (uint8_t) ( v >> 8 ); p[2] = (uint8_t) ( v >> 16 ); p[3] = (uint8_t) ( v >> 24 ); }
+static void le64( uint8_t * p, uint64_t v ) { le32( p, (uint32_t) v ); le32( p + 4, (uint32_t) ( v >> 32 ) ); }
+
+// ---- A HAND-BUILT WIRE, WRITTEN FROM THE GRAMMAR (docs/SPEC-TABLES.md §3) --
+//
+// A forgery in this file is a body a conforming WRITER could not have produced,
+// and the point of every one of them is the one thing that is wrong. So the
+// framing around it is built the way §3 states it rather than spelled in magic
+// bytes: the body names ids by REFERENCE, the builder interns them in
+// first-use order, and `finish` lays out the form byte, the body and the id
+// table the body actually named.
+struct WireBuilder
+{
+    uint8_t body[1 << 16];
+    int64_t n;
+    uint64_t ids[128];
+    int32_t count;
+
+    WireBuilder() : n( 0 ), count( 0 ) {}
+
+    // the reference an id takes, appended on first use — reference k is the
+    // table's kth entry, counted from 1
+    uint64_t ref( uint64_t id )
+    {
+        for ( int32_t i = 0; i < count; i++ ) { if ( ids[i] == id ) { return (uint64_t) i + 1; } }
+        ids[count++] = id;
+        return (uint64_t) count;
+    }
+    uint64_t ref( const char * name ) { return ref( field_id( name ) ); }
+
+    void u8( uint8_t v ) { body[n++] = v; }
+    void raw( const void * data, int64_t bytes ) { memcpy( body + n, data, (size_t) bytes ); n += bytes; }
+    void u16( uint16_t v ) { le16( body + n, v ); n += 2; }
+    void u32( uint32_t v ) { le32( body + n, v ); n += 4; }
+    void u64( uint64_t v ) { le64( body + n, v ); n += 8; }
+
+    // one canonical unsigned LEB128: every length, count, index and reference
+    void leb( uint64_t v )
+    {
+        while ( v >= 0x80 ) { u8( (uint8_t) v | 0x80 ); v >>= 7; }
+        u8( (uint8_t) v );
+    }
+    // and its NON-MINIMAL spelling, which is what a control writes
+    void leb_padded( uint64_t v, int32_t extra )
+    {
+        while ( v >= 0x80 ) { u8( (uint8_t) v | 0x80 ); v >>= 7; }
+        u8( (uint8_t) v | 0x80 );
+        for ( int32_t i = 1; i < extra; i++ ) { u8( 0x80 ); }
+        u8( 0 );
+    }
+
+    // A LENGTH-SHAPED PAYLOAD: a canonical LEB128 length cannot be patched in
+    // place, so one placeholder byte rides, the payload fills, and the payload
+    // moves up when the length needs more room. What comes out is the one legal
+    // spelling.
+    int64_t open_len() { const int64_t at = n; u8( 0 ); return at; }
+    void close_len( int64_t at )
+    {
+        const int64_t payload = n - at - 1;
+        int64_t width = 1;
+        for ( uint64_t v = (uint64_t) payload; v >= 0x80; v >>= 7 ) { width++; }
+        if ( width > 1 ) { memmove( body + at + width, body + at + 1, (size_t) payload ); n += width - 1; }
+        int64_t w = at;
+        uint64_t v = (uint64_t) payload;
+        while ( v >= 0x80 ) { body[w++] = (uint8_t) v | 0x80; v >>= 7; }
+        body[w] = (uint8_t) v;
+    }
+
+    // SEED FROM A SAVED WIRE: the writer's own body minus its terminator, and
+    // the id table it named — so a second occurrence splices in under the same
+    // references the writer used, which is what a repeat is (§3).
+    void seed( const uint8_t * wire, int64_t bytes )
+    {
+        uint64_t entries = 0;
+        for ( int i = 7; i >= 0; i-- ) { entries = ( entries << 8 ) | wire[bytes - 8 + i]; }
+        const int64_t first = bytes - (int64_t) entries * 8 - 8;
+        count = (int32_t) entries;
+        for ( int32_t i = 0; i < count; i++ )
+        {
+            uint64_t id = 0;
+            for ( int k = 7; k >= 0; k-- ) { id = ( id << 8 ) | wire[first + i * 8 + k]; }
+            ids[i] = id;
+        }
+        n = first - 1 - 1; // the body, minus its own zero reference
+        memcpy( body, wire + 1, (size_t) n );
+    }
+
+    // a field header: the id reference and the kind byte, which is the whole of it
+    void field( const char * name, uint8_t kind ) { leb( ref( name ) ); u8( kind ); }
+    void field( uint64_t id, uint8_t kind ) { leb( ref( id ) ); u8( kind ); }
+    void end() { u8( 0 ); } // the body ENDS AT ITS OWN ZERO REFERENCE
+
+    // the whole file: the form byte, the body, then the entries and the fixed
+    // u64 count the reader finds it from
+    int64_t finish( uint8_t * out ) const
+    {
+        int64_t at = 0;
+        out[at++] = 1; // the FORM BYTE is the whole header
+        memcpy( out + at, body, (size_t) n ); at += n;
+        for ( int32_t i = 0; i < count; i++ ) { le64( out + at, ids[i] ); at += 8; }
+        le64( out + at, (uint64_t) count ); at += 8;
+        return at;
+    }
+};
 
 // check_exact_capacity is the go-wide guarantee: <X>Save into a buffer of
 // EXACTLY <X>Measure's size succeeds and byte-matches a roomy save — a
@@ -117,11 +225,11 @@ static void check_exact_capacity( const T & value,
     static uint8_t roomy[65536];
     static uint8_t exact[65536];
     int64_t need = measure( value );
-    CHECK( need >= 2 && need <= (int64_t) sizeof( roomy ) );
+    CHECK( need >= empty_wire_bytes && need <= (int64_t) sizeof( roomy ) );
     CHECK( save( value, roomy, sizeof( roomy ) ) == need );
     CHECK( save( value, exact, need ) == need ); // exactly measure's answer
     CHECK( memcmp( roomy, exact, (size_t) need ) == 0 );
-    if ( need > 2 )
+    if ( need > empty_wire_bytes )
     {
         CHECK( save( value, exact, need - 1 ) == -1 ); // one byte short refuses
     }
@@ -327,17 +435,19 @@ static void test_bounded_elements()
     // body_len = 5 covers only elem_kind + count; count claims 2 elements —
     // the elements would have to come from the NEXT field's bytes. They must
     // not: prefix kept (empty), malformed flagged, and a = 42 still decodes.
-    uint8_t wire[32];
-    int n = 0;
-    le16( wire + n, items->id ); n += 2;
-    wire[n++] = 14;              // kArray
-    le32( wire + n, 5 ); n += 4; // body_len: header only, no element bytes
-    wire[n++] = 4;               // elem_kind kI32
-    le32( wire + n, 2 ); n += 4; // count 2 — a lie
-    le16( wire + n, a->id ); n += 2;
-    wire[n++] = 4;               // kI32
-    le32( wire + n, 42 ); n += 4;
-    le16( wire + n, 0 ); n += 2; // terminator
+    uint8_t wire[64];
+    int64_t n = 0;
+    {
+        WireBuilder b;
+        b.field( items->id, 14 );  // kArray
+        b.leb( 2 );                // L: the element kind byte and the count, no element bytes
+        b.u8( 4 );                 // elem_kind kI32
+        b.leb( 2 );                // count 2 — a lie
+        b.field( a->id, 4 );       // kI32
+        b.u32( 42 );
+        b.end();
+        n = b.finish( wire );
+    }
 
     tblv1::TableReport report;
     tblv1::Cfg out;
@@ -347,18 +457,19 @@ static void test_bounded_elements()
     CHECK( out.a == 42 );             // the parent continued at the next field
 
     // a body covering one full element plus slack: the decoded PREFIX is kept
-    n = 0;
-    le16( wire + n, items->id ); n += 2;
-    wire[n++] = 14;
-    le32( wire + n, 5 + 4 + 2 ); n += 4; // one i32 element + 2 slack bytes
-    wire[n++] = 4;
-    le32( wire + n, 2 ); n += 4;         // count 2, body holds 1.5
-    le32( wire + n, 10 ); n += 4;        // element 0
-    wire[n++] = 0; wire[n++] = 0;        // the half element
-    le16( wire + n, a->id ); n += 2;
-    wire[n++] = 4;
-    le32( wire + n, 42 ); n += 4;
-    le16( wire + n, 0 ); n += 2;
+    {
+        WireBuilder b;
+        b.field( items->id, 14 );
+        b.leb( 2 + 4 + 2 );        // one i32 element + 2 slack bytes
+        b.u8( 4 );
+        b.leb( 2 );                // count 2, body holds 1.5
+        b.u32( 10 );               // element 0
+        b.u8( 0 ); b.u8( 0 );      // the half element
+        b.field( a->id, 4 );
+        b.u32( 42 );
+        b.end();
+        n = b.finish( wire );
+    }
 
     tblv1::TableReport report2;
     tblv1::Cfg out2;
@@ -375,8 +486,8 @@ static void test_all_default()
     tabledemo::WeaponConfig weapon;
     uint8_t buffer[64];
     int64_t wrote = tabledemo::WeaponConfigSave( weapon, buffer, sizeof( buffer ) );
-    CHECK( wrote == 2 ); // bare terminator
-    CHECK( tabledemo::WeaponConfigMeasure( weapon ) == 2 );
+    CHECK( wrote == empty_wire_bytes ); // the form byte, the zero reference, an empty id table
+    CHECK( tabledemo::WeaponConfigMeasure( weapon ) == empty_wire_bytes );
 
     tabledemo::TableReport report;
     tabledemo::WeaponConfig out;
@@ -396,7 +507,7 @@ static void test_guard()
 
     uint8_t buffer[512];
     int64_t wrote = tabledemo::ProfileConfigSave( p, buffer, sizeof( buffer ) );
-    CHECK( wrote == 2 ); // guard false + everything else default: all elides
+    CHECK( wrote == empty_wire_bytes ); // guard false + everything else default: all elides
     CHECK( tabledemo::ProfileConfigMeasure( p ) == wrote );
 
     tabledemo::TableReport report;
@@ -479,7 +590,7 @@ static void test_evolution_enum_insert_old_data()
     // the value on the wire is the NAME hash, not an ordinal — pinned against
     // the independent id implementation above
     const tblv1::TableFieldInfo * grade = v1_field( tblv1::CfgTableType(), "grade" );
-    CHECK( grade != NULL && grade->kind == 7 ); // kU16: every enum, every width
+    CHECK( grade != NULL && grade->kind == 30 ); // kEnum: every enum, every declaration-side width
     CHECK( grade->variant_id != NULL && grade->variant_id( 2 ) == field_id( "Gold" ) );
 
     tblv2::TableReport report;
@@ -627,20 +738,20 @@ static void test_repeated_id_unnameable_variant()
 
     uint8_t wire[512];
     int64_t saved = tblv1::CfgSave( src, wire, sizeof( wire ) );
-    CHECK( saved > 2 );
+    CHECK( saved > empty_wire_bytes );
 
     // occurrence two, spliced over the terminator: the same ids, an arm id and
     // a variant id no build names
-    int n = (int) ( saved - 2 );
-    le16( wire + n, effect->id ); n += 2;
-    wire[n++] = 15;                  // kUnion
-    le16( wire + n, 0xBEEF ); n += 2; // an arm id this reader cannot name
-    le32( wire + n, 2 ); n += 4;
-    le16( wire + n, 0 ); n += 2;     // the arm body: a bare terminator
-    le16( wire + n, grade->id ); n += 2;
-    wire[n++] = 7;                   // kU16
-    le16( wire + n, 0xBEEF ); n += 2; // a variant id this reader cannot name
-    le16( wire + n, 0 ); n += 2;     // the table terminator
+    WireBuilder b;
+    b.seed( wire, saved );
+    b.field( effect->id, 15 );                 // kUnion
+    b.leb( b.ref( 0xBEEFBEEFBEEFBEEFull ) );   // an arm id this reader cannot name
+    b.u8( 13 );                                // the arm's kind: a table body
+    { const int64_t at = b.open_len(); b.end(); b.close_len( at ); } // a bare terminator
+    b.field( grade->id, 30 );                  // kEnum
+    b.leb( b.ref( 0xBEEFBEEFBEEFBEEFull ) );   // a variant id this reader cannot name
+    b.end();
+    const int64_t n = b.finish( wire );
 
     tblv1::TableReport report;
     tblv1::Cfg out;
@@ -739,19 +850,23 @@ static void test_unnameable_enum_refused()
 static void test_unnameable_enum_element_read()
 {
     const tblv1::TableFieldInfo * grades = v1_field( tblv1::CfgTableType(), "grades" );
-    CHECK( grades != NULL && grades->kind == 7 && grades->is_array );
+    CHECK( grades != NULL && grades->kind == 30 && grades->is_array );
 
-    uint8_t wire[32];
-    int n = 0;
-    le16( wire + n, grades->id ); n += 2;
-    wire[n++] = 14;                    // kArray
-    le32( wire + n, 5 + 6 ); n += 4;   // header + three u16 elements
-    wire[n++] = 7;                     // elem_kind kU16
-    le32( wire + n, 3 ); n += 4;
-    le16( wire + n, field_id( "Gold" ) ); n += 2;
-    le16( wire + n, 0xBEEF ); n += 2;  // an element id no build names
-    le16( wire + n, field_id( "Bronze" ) ); n += 2;
-    le16( wire + n, 0 ); n += 2;       // terminator
+    uint8_t wire[64];
+    int64_t n = 0;
+    {
+        WireBuilder b;
+        b.field( grades->id, 14 );        // kArray
+        const int64_t body = b.open_len();
+        b.u8( 30 );                       // elem_kind kEnum
+        b.leb( 3 );
+        b.leb( b.ref( "Gold" ) );
+        b.leb( b.ref( 0xBEEFBEEFBEEFBEEFull ) ); // an element id no build names
+        b.leb( b.ref( "Bronze" ) );
+        b.close_len( body );
+        b.end();
+        n = b.finish( wire );
+    }
 
     tblv1::TableReport report;
     tblv1::Cfg out;
@@ -789,15 +904,29 @@ static void test_flags_are_positional()
     int64_t wrote = tabledemo::LoadoutConfigSave( loadout, buffer, sizeof( buffer ) );
     CHECK( wrote > 0 );
 
-    // the payload is the mask itself: bit position IS the identity
-    bool found = false;
-    for ( int64_t i = 0; i + 11 <= wrote; i++ )
+    // the payload is the mask itself: bit position IS the identity. The header
+    // is the id's REFERENCE and the kind byte (§3), so the scan looks for the
+    // reference the writer's own id table gave `perks`.
+    WireBuilder seen;
+    seen.seed( buffer, wrote );
+    uint8_t reference[10];
+    int64_t reference_bytes = 0;
     {
-        if ( buffer[i] == (uint8_t) ( perks->id & 0xff ) && buffer[i+1] == (uint8_t) ( perks->id >> 8 ) && buffer[i+2] == 9 )
-        {
-            CHECK( buffer[i+3] == 2 ); // 1 << 1, little-endian, low byte
-            found = true;
-        }
+        WireBuilder spell;
+        spell.count = seen.count;
+        memcpy( spell.ids, seen.ids, sizeof( spell.ids ) );
+        spell.leb( spell.ref( perks->id ) );
+        CHECK( spell.count == seen.count ); // the writer named it: no entry is added here
+        reference_bytes = spell.n;
+        memcpy( reference, spell.body, (size_t) reference_bytes );
+    }
+    bool found = false;
+    for ( int64_t i = 0; i + reference_bytes + 9 <= wrote; i++ )
+    {
+        if ( memcmp( buffer + i, reference, (size_t) reference_bytes ) != 0 ) { continue; }
+        if ( buffer[i + reference_bytes] != 9 ) { continue; } // kU64: the mask's raw storage
+        CHECK( buffer[i + reference_bytes + 1] == 2 ); // 1 << 1, little-endian, low byte
+        found = true;
     }
     CHECK( found );
 }
@@ -836,19 +965,22 @@ static void test_wide_extents()
     const tabledemo::TableFieldInfo * label = demo_field( tabledemo::WideBlobTableType(), "label" );
     CHECK( samples != NULL && label != NULL );
     uint8_t wire[64];
-    int n = 0;
-    le16( wire + n, samples->id ); n += 2;
-    wire[n++] = 14;                    // kArray
-    le32( wire + n, 5 + 4 ); n += 4;   // body: header + two u16 elements
-    wire[n++] = 7;                     // elem_kind kU16
-    le32( wire + n, 70000 ); n += 4;   // a count no uint16 could even hold — a lie
-    le16( wire + n, 11 ); n += 2;      // element 0
-    le16( wire + n, 22 ); n += 2;      // element 1
-    le16( wire + n, label->id ); n += 2;
-    wire[n++] = 12;                    // kString
-    le32( wire + n, 2 ); n += 4;
-    wire[n++] = 'o'; wire[n++] = 'k';
-    le16( wire + n, 0 ); n += 2;       // terminator
+    int64_t n = 0;
+    {
+        WireBuilder b;
+        b.field( samples->id, 14 );        // kArray
+        const int64_t body = b.open_len();
+        b.u8( 7 );                         // elem_kind kU16
+        b.leb( 70000 );                    // a count no uint16 could even hold — a lie
+        b.u16( 11 );                       // element 0
+        b.u16( 22 );                       // element 1
+        b.close_len( body );
+        b.field( label->id, 12 );          // kString
+        b.leb( 2 );
+        b.u8( 'o' ); b.u8( 'k' );
+        b.end();
+        n = b.finish( wire );
+    }
 
     tabledemo::TableReport report2;
     static tabledemo::WideBlob out2;
@@ -870,12 +1002,15 @@ static void test_clamping()
     const tblv1::TableFieldInfo * a = v1_field( tblv1::CfgTableType(), "a" );
     CHECK( a != NULL && a->kind == 4 && a->has_range && a->range_max == 1000.0 );
 
-    uint8_t wire[16];
-    int n = 0;
-    le16( wire + n, a->id ); n += 2;
-    wire[n++] = 4; // kI32
-    le32( wire + n, (uint32_t) 2000 ); n += 4;
-    le16( wire + n, 0 ); n += 2; // terminator
+    uint8_t wire[32];
+    int64_t n = 0;
+    {
+        WireBuilder b;
+        b.field( a->id, 4 ); // kI32
+        b.u32( (uint32_t) 2000 );
+        b.end();
+        n = b.finish( wire );
+    }
 
     tblv1::TableReport report;
     tblv1::Cfg out;
@@ -885,12 +1020,14 @@ static void test_clamping()
     // bits(6) width clamp: a u8 payload of 200 clamps to 63
     const tabledemo::TableFieldInfo * ch = demo_field( tabledemo::WeaponConfigTableType(), "channel" );
     CHECK( ch != NULL && ch->kind == 6 );
-    uint8_t wire2[8];
-    n = 0;
-    le16( wire2 + n, ch->id ); n += 2;
-    wire2[n++] = 6; // kU8
-    wire2[n++] = 200;
-    le16( wire2 + n, 0 ); n += 2;
+    uint8_t wire2[32];
+    {
+        WireBuilder b;
+        b.field( ch->id, 6 ); // kU8
+        b.u8( 200 );
+        b.end();
+        n = b.finish( wire2 );
+    }
 
     tabledemo::TableReport report2;
     tabledemo::WeaponConfig weapon;
@@ -900,13 +1037,15 @@ static void test_clamping()
     // an over-long string — a future schema widened string(32) — clamps to
     // capacity, stays NUL-terminated, and counts
     const tblv1::TableFieldInfo * nameInfo = v1_field( tblv1::CfgTableType(), "name" );
-    uint8_t wire4[64];
-    n = 0;
-    le16( wire4 + n, nameInfo->id ); n += 2;
-    wire4[n++] = 12; // kString
-    le32( wire4 + n, 40 ); n += 4; // longer than string(32)
-    for ( int i = 0; i < 40; i++ ) wire4[n++] = 'y';
-    le16( wire4 + n, 0 ); n += 2;
+    uint8_t wire4[96];
+    {
+        WireBuilder b;
+        b.field( nameInfo->id, 12 ); // kString
+        b.leb( 40 );                 // longer than string(32)
+        for ( int i = 0; i < 40; i++ ) { b.u8( 'y' ); }
+        b.end();
+        n = b.finish( wire4 );
+    }
 
     tblv1::TableReport report4;
     tblv1::Cfg out4;
@@ -921,30 +1060,63 @@ static void test_malformed()
     tblv1::TableReport report;
     tblv1::Cfg out;
 
-    uint8_t one_byte[1] = { 0x34 };
+    // a file of the form this reader carries, with no room for a trailer: the
+    // table cannot be read whole, so the whole wire is malformed (§3)
+    uint8_t one_byte[1] = { 1 };
     CHECK( !tblv1::CfgLoad( out, one_byte, 1, &report ) );
     CHECK( report.malformed );
 
-    // a valid field id whose payload is truncated mid-scalar
+    // and a FORM BYTE this reader does not carry is a REFUSAL and never
+    // damage, whatever else is wrong with the file: the form is read FIRST
+    for ( uint8_t form = 0; form <= 2; form++ )
+    {
+        if ( form == 1 ) { continue; }
+        uint8_t foreign[1] = { form };
+        tblv1::TableReport refused;
+        CHECK( tblv1::CfgLoadVerdict( out, foreign, 1, &refused ) == tblv1::TableOpenRefused );
+        CHECK( refused.refused && !refused.malformed );
+        CHECK( refused.unknown == 0 && refused.kind_mismatch == 0 && refused.clamped == 0 && refused.duplicate == 0 );
+    }
+    {
+        uint8_t foreign[1] = { 0xFF };
+        tblv1::TableReport refused;
+        CHECK( tblv1::CfgLoadVerdict( out, foreign, 1, &refused ) == tblv1::TableOpenRefused );
+        CHECK( refused.refused && !refused.malformed );
+    }
+
+    // a valid field reference whose payload is truncated mid-scalar
     const tblv1::TableFieldInfo * a = v1_field( tblv1::CfgTableType(), "a" );
-    uint8_t truncated[5];
-    le16( truncated, a->id );
-    truncated[2] = 4;  // kI32 wants 4 payload bytes; only 2 follow
-    truncated[3] = 0;
-    truncated[4] = 0;
+    uint8_t truncated[64];
+    int64_t truncated_bytes = 0;
+    {
+        WireBuilder b;
+        b.field( a->id, 4 ); // kI32 wants four payload bytes; only two follow
+        b.u8( 0 ); b.u8( 0 );
+        b.end();
+        truncated_bytes = b.finish( truncated );
+    }
     tblv1::TableReport report2;
-    CHECK( !tblv1::CfgLoad( out, truncated, 5, &report2 ) );
+    CHECK( !tblv1::CfgLoad( out, truncated, truncated_bytes, &report2 ) );
     CHECK( report2.malformed );
 
-    // damage after good fields: the good prefix survives (partial result)
+    // damage after good fields: the good prefix survives (partial result). The
+    // id table is the last thing in the file and a reader finds it from the
+    // END, so the cut is made in the BODY and the trailer written after it.
     tblv1::Cfg src;
     src.a = 42;
     uint8_t wire[256];
     int64_t bytes = tblv1::CfgSave( src, wire, sizeof( wire ) );
     CHECK( bytes > 0 );
+    uint8_t cut[256];
+    int64_t cut_bytes = 0;
+    {
+        WireBuilder b;
+        b.seed( wire, bytes ); // the body WITHOUT its terminator: the walk runs out
+        cut_bytes = b.finish( cut );
+    }
     tblv1::TableReport report3;
     tblv1::Cfg out3;
-    CHECK( !tblv1::CfgLoad( out3, wire, bytes - 2, &report3 ) ); // terminator cut off
+    CHECK( !tblv1::CfgLoad( out3, cut, cut_bytes, &report3 ) );
     CHECK( report3.malformed && out3.a == 42 );
 }
 
@@ -1773,16 +1945,18 @@ static void test_pointer_null_and_empty()
 {
     graphdemo::SceneBuilder empty;
     int64_t bare = graphdemo::SceneMeasure( empty );
-    CHECK( bare == 2 ); // every pointer null, everything else default: nothing rides
+    CHECK( bare == empty_wire_bytes ); // every pointer null, everything else default: nothing rides
 
     graphdemo::SceneBuilder one;
     graphdemo::TableSlot<graphdemo::ListNode> node = one.Alloc<graphdemo::ListNode>();
     one.GetRoot()->head = node; // an ALL-DEFAULT pointee behind a non-null pointer
     int64_t with_empty = graphdemo::SceneMeasure( one );
-    // the root: an index field (id, kind, u32) and the terminator; the node
-    // table: one field (id, kind, L) with the count and one record of an empty
-    // body (§3.1)
-    CHECK( with_empty == ( 3 + 4 + 2 ) + ( 3 + 4 + 8 + 12 + 2 ) );
+    // the FORM BYTE; the root body: the index field (a reference, a kind byte
+    // and the index) and the node-table field (a reference, kind 12 and its L)
+    // whose payload is the count and one record — a type id reference, a length
+    // and an empty body — then the zero reference; and the id table: `head`,
+    // the reserved id and `ListNode` (§3, §3.1)
+    CHECK( with_empty == 1 + ( 1 + 1 + 1 ) + ( 1 + 1 + 1 + ( 1 + ( 1 + 1 + 1 ) ) ) + 1 + 3 * 8 + 8 );
 
     uint8_t wire[64];
     int64_t wrote = graphdemo::SceneSave( one, wire, sizeof( wire ) );
@@ -2067,7 +2241,7 @@ static void test_optional_round_trip()
     // value at its declared defaults
     tblv1::Cfg none;
     int64_t bytes = tblv1::CfgSave( none, wire, sizeof( wire ) );
-    CHECK( bytes == 2 ); // the terminator alone: every field is default or absent
+    CHECK( bytes == empty_wire_bytes ); // the framing alone: every field is default or absent
 
     tblv1::Cfg out;
     out.tier_present = true;              // junk the prefill must erase
@@ -2107,7 +2281,7 @@ static void test_optional_round_trip()
     empty_present.tier_present = true;    // value stays 0
     empty_present.mark_present = true;    // value stays None
     int64_t need = tblv1::CfgMeasure( empty_present );
-    CHECK( need > 2 );
+    CHECK( need > empty_wire_bytes );
     bytes = tblv1::CfgSave( empty_present, wire, sizeof( wire ) );
     CHECK( bytes == need );
 
@@ -2317,7 +2491,7 @@ static void test_keyed_round_trip()
 
     // an all-default keyed array elides whole
     tabledemo::KeyedConfig empty;
-    CHECK( tabledemo::KeyedConfigMeasure( empty ) == 2 );
+    CHECK( tabledemo::KeyedConfigMeasure( empty ) == empty_wire_bytes );
 }
 
 // ---- iteration over the VALID slots (docs/SPEC-TABLES.md §2.4) ----
@@ -2653,25 +2827,25 @@ static void test_keyed_none_key_is_malformed()
     src.tokens[tblv1::Slot::Beta] = 7;
     uint8_t wire[512];
     int64_t saved = tblv1::CfgSave( src, wire, sizeof( wire ) );
-    CHECK( saved > 2 );
+    CHECK( saved > empty_wire_bytes );
 
     // a second occurrence carrying TWO pairs: the null key, then a perfectly
     // good one behind it. Damage STOPS the body (§3.2, §4), so the good pair
     // behind the damage must NOT land — the reader keeps what it decoded and
     // reads on past the field's length, it does not step over the bad pair.
-    int n = (int) ( saved - 2 );
-    le16( wire + n, tokens->id ); n += 2;
-    wire[n++] = 16;                              // the keyed kind
-    le32( wire + n, 5 + 2 * ( 2 + 4 + 4 ) ); n += 4; // element kind, count, two pairs
-    wire[n++] = 4;                               // element kind kI32
-    le32( wire + n, 2 ); n += 4;
-    le16( wire + n, 0 ); n += 2;                 // THE NULL KEY
-    le32( wire + n, 4 ); n += 4;
-    le32( wire + n, 99 ); n += 4;
-    le16( wire + n, field_id( "Delta" ) ); n += 2; // a good key, behind the damage
-    le32( wire + n, 4 ); n += 4;
-    le32( wire + n, 42 ); n += 4;
-    le16( wire + n, 0 ); n += 2;                 // the table terminator
+    WireBuilder b;
+    b.seed( wire, saved );
+    b.field( tokens->id, 16 );                   // the keyed kind
+    const int64_t body = b.open_len();
+    b.u8( 4 );                                   // element kind kI32
+    b.leb( 2 );
+    b.leb( 0 );                                  // THE ZERO REFERENCE, which names no id
+    b.leb( 4 ); b.u32( 99 );
+    b.leb( b.ref( "Delta" ) );                   // a good key, behind the damage
+    b.leb( 4 ); b.u32( 42 );
+    b.close_len( body );
+    b.end();
+    const int64_t n = b.finish( wire );
 
     tblv1::TableReport report;
     tblv1::Cfg out;
@@ -2698,19 +2872,21 @@ static void test_repeated_id_unnameable_enum_element()
 
     uint8_t wire[512];
     int64_t saved = tblv1::CfgSave( src, wire, sizeof( wire ) );
-    CHECK( saved > 2 );
+    CHECK( saved > empty_wire_bytes );
 
     // occurrence two, spliced over the terminator: the same id, two element
     // ids no build names
-    int n = (int) ( saved - 2 );
-    le16( wire + n, grades->id ); n += 2;
-    wire[n++] = 14;                        // kArray
-    le32( wire + n, 5 + 2 + 2 ); n += 4;   // body: element kind, count, two u16s
-    wire[n++] = 7;                         // element kind kU16
-    le32( wire + n, 2 ); n += 4;
-    le16( wire + n, 0xBEEF ); n += 2;
-    le16( wire + n, 0xBEEF ); n += 2;
-    le16( wire + n, 0 ); n += 2;           // the table terminator
+    WireBuilder b;
+    b.seed( wire, saved );
+    b.field( grades->id, 14 );             // kArray
+    const int64_t body = b.open_len();
+    b.u8( 30 );                            // element kind kEnum
+    b.leb( 2 );
+    b.leb( b.ref( 0xBEEFBEEFBEEFBEEFull ) );
+    b.leb( b.ref( 0xBEEFBEEFBEEFBEEEull ) );
+    b.close_len( body );
+    b.end();
+    const int64_t n = b.finish( wire );
 
     tblv1::TableReport report;
     tblv1::Cfg out;
@@ -3297,7 +3473,7 @@ static void test_golden_wire()
     {
         static tabledemo::RootConfig root; // untouched: everything elides
         int64_t wrote = tabledemo::RootConfigSave( root, buffer, sizeof( buffer ) );
-        CHECK( wrote == 2 );
+        CHECK( wrote == empty_wire_bytes );
         pin_table_golden( "root_default", buffer, wrote );
     }
     {
@@ -3358,7 +3534,7 @@ static void test_golden_wire()
     {
         static scalardemo::SimState s; // every default: the two specified ones elide with the rest
         int64_t wrote = scalardemo::SimStateSave( s, buffer, sizeof( buffer ) );
-        CHECK( wrote == 2 );
+        CHECK( wrote == empty_wire_bytes );
         pin_table_golden( "scalars_default", buffer, wrote );
     }
     {
@@ -5115,7 +5291,7 @@ static void test_golden_seams()
     {
         static tabledemo::KeyedConfig cfg; // every slot default: every keyed array elides
         int64_t wrote = tabledemo::KeyedConfigSave( cfg, buffer, sizeof( buffer ) );
-        CHECK( wrote == 2 );
+        CHECK( wrote == empty_wire_bytes );
         pin_table_golden( "keyed_default", buffer, wrote );
     }
     {
@@ -5199,7 +5375,7 @@ static void test_golden_seams()
     {
         tblp1::Chain value; // link entirely default: elides
         int64_t w_value = tblp1::ChainSave( value, buffer, sizeof( buffer ) );
-        CHECK( w_value == 2 );
+        CHECK( w_value == empty_wire_bytes );
         pin_table_golden( "chain_value_empty", buffer, w_value );
 
         tblp3::Chain optional;
@@ -5917,8 +6093,8 @@ static void test_message_golden_wire()
     {
         messagedemo::ToolMessage empty; // None elides: the whole message is the terminator
         static uint8_t buffer[16];
-        CHECK( messagedemo::ToolMessageSave( empty, buffer, sizeof( buffer ) ) == 2 );
-        pin_table_golden( "message_empty", buffer, 2 );
+        CHECK( messagedemo::ToolMessageSave( empty, buffer, sizeof( buffer ) ) == empty_wire_bytes );
+        pin_table_golden( "message_empty", buffer, empty_wire_bytes );
     }
     {
         tblm1::Msg open;
@@ -6073,41 +6249,44 @@ static void test_arm_retype_controls()
         CHECK( got.id == 11 && got.tail == 22 );
     }
 
-    // (2) ONE WIDTH, ONE LENGTH is SILENT — §4.1's fifth member: every counter
-    // is zero and the value is a different number. This is the control that
-    // makes the silent column true, and the baseline (§18) is what refuses it
+    // (2) ONE WIDTH, ONE LENGTH is a KIND MISMATCH here, because an ARM
+    // HEADER CARRIES THE ARM'S KIND (§3): kind 4 against kind 10. A form
+    // without that byte read the one width as the other and reported nothing,
+    // which is what the kind buys.
     {
         const int64_t wrote = save_a1_arm( buffer, sizeof( buffer ), tbla1::ValueType::B );
         CHECK( wrote > 0 );
         tbla2::Root got;
         tbla2::TableReport report;
         CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
-        CHECK( report.kind_mismatch == 0 && report.unknown == 0 && report.clamped == 0 && !report.malformed );
-        CHECK( got.value.type == tbla2::ValueType::B && got.value.b == 1.0f );
+        CHECK( report.kind_mismatch == 1 && report.unknown == 0 && report.clamped == 0 && !report.malformed );
+        CHECK( got.value.type == tbla2::ValueType::None );
+        CHECK( got.id == 11 && got.tail == 22 );
     }
 
-    // (3) A SCALAR READ AS A STRING is silent too: a string arm takes its L
-    // bytes and clamps only past its own N
+    // (3) A SCALAR READ AS A STRING is a kind mismatch on the same rule:
+    // kind 4 against kind 12
     {
         const int64_t wrote = save_a1_arm( buffer, sizeof( buffer ), tbla1::ValueType::C );
         CHECK( wrote > 0 );
         tbla2::Root got;
         tbla2::TableReport report;
         CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
-        CHECK( report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
-        CHECK( got.value.type == tbla2::ValueType::C && got.value.c.value_length == 4 );
+        CHECK( report.kind_mismatch == 1 && report.clamped == 0 && !report.malformed );
+        CHECK( got.value.type == tbla2::ValueType::None );
+        CHECK( got.id == 11 && got.tail == 22 );
     }
 
-    // (4) FOUR BYTES READ AS A BODY: the terminator is not the last two bytes
-    // of the arm's L, so the payload stops, the union reads None, and the
-    // enclosing body continues past it by L — the siblings still land
+    // (4) FOUR BYTES READ AS A BODY: kind 10 against kind 13, a kind mismatch,
+    // the union None and the enclosing body continuing past it by L — the
+    // siblings still land
     {
         const int64_t wrote = save_a1_arm( buffer, sizeof( buffer ), tbla1::ValueType::D );
         CHECK( wrote > 0 );
         tbla2::Root got;
         tbla2::TableReport report;
         CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
-        CHECK( report.malformed );
+        CHECK( report.kind_mismatch == 1 && !report.malformed );
         CHECK( got.value.type == tbla2::ValueType::None );
         CHECK( got.id == 11 && got.tail == 22 );
     }
@@ -6884,7 +7063,10 @@ static void test_pointer_arrays_elision()
     build_stream_chain( nulls );
     nulls.GetRoot()->parts_count = 2; // two live slots, both null: the count is content
     int64_t with_nulls = streamdemo::FeedSave( nulls, wire, sizeof( wire ) );
-    CHECK( with_nulls == wrote + 3 + 4 + 5 + 4 * 2 );
+    // the header is `parts`'s reference and the kind byte, the body's own
+    // length, then the element kind byte, the count and two null indices — and
+    // `parts` costs one entry in the id table, once (§3)
+    CHECK( with_nulls == wrote + ( 1 + 1 ) + 1 + ( 1 + 1 + 1 + 1 ) + 8 );
     int64_t region_need = streamdemo::FeedLoadMeasure( wire, with_nulls );
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
@@ -6903,14 +7085,18 @@ static void test_pointer_arrays_elision()
 static void test_pointer_arrays_element_kind_mismatch()
 {
     uint8_t wire[64];
-    size_t n = 0;
-    le16( wire + n, field_id( "parts" ) ); n += 2;
-    wire[n++] = 14;                       // kind: array
-    le32( wire + n, 5 + 4 ); n += 4;      // L: element kind, N, one element
-    wire[n++] = 8;                        // element kind: u32, not a node index
-    le32( wire + n, 1 ); n += 4;
-    le32( wire + n, 5 ); n += 4;
-    le16( wire + n, 0 ); n += 2;          // terminator
+    int64_t n = 0;
+    {
+        WireBuilder b;
+        b.field( "parts", 14 );           // kind: array
+        const int64_t body = b.open_len();
+        b.u8( 8 );                        // element kind: u32, not a node index
+        b.leb( 1 );
+        b.u32( 5 );
+        b.close_len( body );
+        b.end();
+        n = b.finish( wire );
+    }
     int64_t region_need = streamdemo::FeedLoadMeasure( wire, (int64_t) n );
     CHECK( region_need > 0 );
     std::vector<uint8_t> region( (size_t) region_need );
@@ -7062,11 +7248,12 @@ static void test_union_arrays_elision()
     const int64_t pinned = read_table_golden( "message_transaction" );
     CHECK( pinned == wrote && memcmp( golden_pinned, wire, (size_t) wrote ) == 0 );
 
-    // two live None slots: id + kind + L, the element header, one arm id 0
-    // per element
+    // two live None slots: the header, the body's own length, the element
+    // kind byte and the count, then ONE ZERO REFERENCE per element — and
+    // `history` costs one id-table entry, once
     m.history_count = 2;
     int64_t with_nones = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
-    CHECK( with_nones == wrote + 3 + 4 + 5 + 2 * 2 );
+    CHECK( with_nones == wrote + ( 1 + 1 ) + 1 + ( 1 + 1 ) + 2 * 1 + 8 );
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_nones );
     messagedemo::ToolMessage back;
     messagedemo::TableReport report;
@@ -7083,15 +7270,19 @@ static void test_union_arrays_elision()
 static void test_union_arrays_element_kind_mismatch()
 {
     uint8_t wire[64];
-    size_t n = 0;
-    le16( wire + n, field_id( "history" ) ); n += 2;
-    wire[n++] = 14;                       // kind: array
-    le32( wire + n, 5 + 4 + 2 ); n += 4;  // L: element kind, N, one table element
-    wire[n++] = 13;                       // element kind: table, not union
-    le32( wire + n, 1 ); n += 4;
-    le32( wire + n, 2 ); n += 4;          // the element's own L
-    le16( wire + n, 0 ); n += 2;          // the element: an empty body
-    le16( wire + n, 0 ); n += 2;          // terminator
+    int64_t n = 0;
+    {
+        WireBuilder b;
+        b.field( "history", 14 );         // kind: array
+        const int64_t body = b.open_len();
+        b.u8( 13 );                       // element kind: table, not union
+        b.leb( 1 );
+        b.leb( 1 );                       // the element's own L
+        b.end();                          // the element: an empty body
+        b.close_len( body );
+        b.end();
+        n = b.finish( wire );
+    }
     pin_table_golden( "batch_elem_kind", wire, (int64_t) n );
     messagedemo::ToolMessage out;
     messagedemo::TableReport report;
@@ -7106,16 +7297,21 @@ static void test_union_arrays_element_kind_mismatch()
 static void test_union_arrays_unknown_arm()
 {
     uint8_t wire[64];
-    size_t n = 0;
-    le16( wire + n, field_id( "history" ) ); n += 2;
-    wire[n++] = 14;                        // kind: array
-    le32( wire + n, 5 + 2 + 4 + 2 ); n += 4;
-    wire[n++] = 15;                        // element kind: union
-    le32( wire + n, 1 ); n += 4;
-    le16( wire + n, field_id( "rename" ) ); n += 2; // an arm no build declares
-    le32( wire + n, 2 ); n += 4;           // the arm's L
-    le16( wire + n, 0 ); n += 2;           // the arm: an empty body
-    le16( wire + n, 0 ); n += 2;           // terminator
+    int64_t n = 0;
+    {
+        WireBuilder b;
+        b.field( "history", 14 );          // kind: array
+        const int64_t body = b.open_len();
+        b.u8( 15 );                        // element kind: union
+        b.leb( 1 );
+        b.leb( b.ref( "rename" ) );        // an arm no build declares
+        b.u8( 13 );                        // its kind: a table body
+        b.leb( 1 );                        // the arm's L
+        b.end();                           // the arm: an empty body
+        b.close_len( body );
+        b.end();
+        n = b.finish( wire );
+    }
     pin_table_golden( "batch_unknown_arm", wire, (int64_t) n );
     messagedemo::ToolMessage out;
     messagedemo::TableReport report;
@@ -7283,7 +7479,7 @@ static void test_optional_arrays()
         // no used-count companion to point at
         if ( strcmp( f->name, "marks" ) == 0 )
         {
-            CHECK( f->kind == 7 && f->is_array && !f->counted && f->array_bound == 2 );
+            CHECK( f->kind == 30 && f->is_array && !f->counted && f->array_bound == 2 );
             CHECK( f->optional && f->count_offset == 0xffffffffu );
             CHECK( f->present_offset == (uint32_t) offsetof( messagedemo::ToolMessage, marks_present ) );
             CHECK( f->elem_size == sizeof( messagedemo::ToolMessage::marks[0] ) );
@@ -7305,11 +7501,12 @@ static void test_optional_arrays_elision()
     const int64_t pinned = read_table_golden( "message_transaction" );
     CHECK( pinned == wrote && memcmp( golden_pinned, wire, (size_t) wrote ) == 0 );
 
-    // the fixed spelling, present at all defaults: id + kind + L, the element
-    // header, two u32 zeros
+    // the fixed spelling, present at all defaults: the header, the body's own
+    // length, the element kind byte and the count, then two u32 zeros — and
+    // one id-table entry
     m.body.transact.checkpoints_present = true;
     int64_t with_fixed = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
-    CHECK( with_fixed == wrote + 3 + 4 + 5 + 2 * 4 );
+    CHECK( with_fixed == wrote + ( 1 + 1 ) + 1 + ( 1 + 1 ) + 2 * 4 + 8 );
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_fixed );
     messagedemo::ToolMessage back;
     messagedemo::TableReport report;
@@ -7317,11 +7514,12 @@ static void test_optional_arrays_elision()
     CHECK( !report.malformed && back.body.transact.checkpoints_present );
     CHECK( !back.trace_present ); // the others stayed absent
 
-    // the counted spelling, present and EMPTY: the five-byte body
+    // the counted spelling, present and EMPTY: the TWO-byte body — the element
+    // kind and a zero count — under its header and its length, and one entry
     m.body.transact.checkpoints_present = false;
     m.trace_present = true;
     int64_t with_empty = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
-    CHECK( with_empty == wrote + 3 + 4 + 5 );
+    CHECK( with_empty == wrote + ( 1 + 1 ) + 1 + ( 1 + 1 ) + 8 );
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_empty );
     CHECK( messagedemo::ToolMessageLoad( back, wire, with_empty, &report ) );
     CHECK( !report.malformed && back.trace_present && back.trace_count == 0 );
@@ -7333,7 +7531,7 @@ static void test_optional_arrays_elision()
     m.trace_present = false;
     m.body.transact.snapshots_present = true;
     int64_t with_tables = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
-    CHECK( with_tables == wrote + 3 + 4 + 5 + 2 * ( 4 + 2 ) );
+    CHECK( with_tables == wrote + ( 1 + 1 ) + 1 + ( 1 + 1 ) + 2 * ( 1 + 1 ) + 8 );
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_tables );
     CHECK( messagedemo::ToolMessageLoad( back, wire, with_tables, &report ) );
     CHECK( !report.malformed && back.body.transact.snapshots_present );
@@ -7341,11 +7539,11 @@ static void test_optional_arrays_elision()
     CHECK( !back.trace_present && !back.marks_present );
 
     // the fixed spelling over ENUM elements: every declared slot rides as a
-    // u16 variant hash, the reserved None included
+    // variant REFERENCE, and None is the zero reference — one byte a slot
     m.body.transact.snapshots_present = false;
     m.marks_present = true;
     int64_t with_enums = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
-    CHECK( with_enums == wrote + 3 + 4 + 5 + 2 * 2 );
+    CHECK( with_enums == wrote + ( 1 + 1 ) + 1 + ( 1 + 1 ) + 2 * 1 + 8 );
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_enums );
     CHECK( messagedemo::ToolMessageLoad( back, wire, with_enums, &report ) );
     CHECK( !report.malformed && report.unknown == 0 && back.marks_present );
@@ -7360,14 +7558,18 @@ static void test_optional_arrays_elision()
 static void test_optional_arrays_element_kind_mismatch()
 {
     uint8_t wire[64];
-    size_t n = 0;
-    le16( wire + n, field_id( "trace" ) ); n += 2;
-    wire[n++] = 14;                       // kind: array
-    le32( wire + n, 5 + 4 ); n += 4;      // L: element kind, N, one u32 element
-    wire[n++] = 8;                        // element kind: u32, not table
-    le32( wire + n, 1 ); n += 4;
-    le32( wire + n, 7 ); n += 4;          // the foreign element
-    le16( wire + n, 0 ); n += 2;          // terminator
+    int64_t n = 0;
+    {
+        WireBuilder b;
+        b.field( "trace", 14 );           // kind: array
+        const int64_t body = b.open_len();
+        b.u8( 8 );                        // element kind: u32, not table
+        b.leb( 1 );
+        b.u32( 7 );                       // the foreign element
+        b.close_len( body );
+        b.end();
+        n = b.finish( wire );
+    }
     pin_table_golden( "trace_elem_kind", wire, (int64_t) n );
     messagedemo::ToolMessage out;
     messagedemo::TableReport report;
@@ -7382,18 +7584,22 @@ static void test_optional_arrays_element_kind_mismatch()
 static void test_optional_arrays_count_past_bound()
 {
     uint8_t wire[96];
-    size_t n = 0;
-    le16( wire + n, field_id( "trace" ) ); n += 2;
-    wire[n++] = 14;                       // kind: array
-    le32( wire + n, 5 + 4 * ( 4 + 2 ) ); n += 4; // L: header + four empty table elements
-    wire[n++] = 13;                       // element kind: table
-    le32( wire + n, 4 ); n += 4;          // four elements against a bound of three
-    for ( int i = 0; i < 4; i++ )
+    int64_t n = 0;
     {
-        le32( wire + n, 2 ); n += 4;      // the element's own L
-        le16( wire + n, 0 ); n += 2;      // an empty body: the terminator
+        WireBuilder b;
+        b.field( "trace", 14 );           // kind: array
+        const int64_t body = b.open_len();
+        b.u8( 13 );                       // element kind: table
+        b.leb( 4 );                       // four elements against a bound of three
+        for ( int i = 0; i < 4; i++ )
+        {
+            b.leb( 1 );                   // the element's own L
+            b.end();                      // an empty body: the zero reference
+        }
+        b.close_len( body );
+        b.end();
+        n = b.finish( wire );
     }
-    le16( wire + n, 0 ); n += 2;          // terminator
     pin_table_golden( "trace_count_past_bound", wire, (int64_t) n );
     messagedemo::ToolMessage out;
     messagedemo::TableReport report;
@@ -7409,15 +7615,19 @@ static void test_optional_arrays_count_past_bound()
 static void test_optional_arrays_enum_unknown_variant()
 {
     uint8_t wire[64];
-    size_t n = 0;
-    le16( wire + n, field_id( "marks" ) ); n += 2;
-    wire[n++] = 14;                        // kind: array
-    le32( wire + n, 5 + 2 * 2 ); n += 4;   // L: element kind, N, two u16 elements
-    wire[n++] = 7;                         // element kind: u16, an enum's variant hash
-    le32( wire + n, 2 ); n += 4;
-    le16( wire + n, field_id( "Write" ) ); n += 2; // a variant this build names
-    le16( wire + n, 0x4242 ); n += 2;      // an id no variant names
-    le16( wire + n, 0 ); n += 2;           // terminator
+    int64_t n = 0;
+    {
+        WireBuilder b;
+        b.field( "marks", 14 );            // kind: array
+        const int64_t body = b.open_len();
+        b.u8( 30 );                        // element kind: an enum's variant reference
+        b.leb( 2 );
+        b.leb( b.ref( "Write" ) );         // a variant this build names
+        b.leb( b.ref( 0x4242424242424242ull ) ); // an id no variant names
+        b.close_len( body );
+        b.end();
+        n = b.finish( wire );
+    }
     pin_table_golden( "marks_unknown_variant", wire, (int64_t) n );
     messagedemo::ToolMessage out;
     messagedemo::TableReport report;
@@ -7759,17 +7969,34 @@ static void test_blob_record_length_off_by_one()
     int64_t wrote = blobdemo::CatalogSave( builder, wire, sizeof( wire ) );
     CHECK( wrote > 0 );
 
-    // find the one blob record: its u64 type id, little-endian, then its length
-    uint8_t id_bytes[8];
-    for ( int i = 0; i < 8; i++ ) { id_bytes[i] = (uint8_t) ( blobdemo::kTableBytesTypeId >> ( 8 * i ) ); }
-    int64_t at = -1;
-    for ( int64_t i = 0; i + 12 <= wrote; i++ )
+    // A RECORD'S LENGTH RUNS PAST ITS FIELD: the record names its type by a
+    // REFERENCE (§3.1), so the forgery finds that reference in the node table's
+    // payload and grows the length beside it. Every value here is one byte
+    // wide, so growing the length moves nothing else.
+    uint8_t reference[10];
+    int64_t reference_bytes = 0;
     {
-        if ( memcmp( wire + i, id_bytes, 8 ) == 0 ) { CHECK( at == -1 ); at = i; }
+        WireBuilder seen;
+        seen.seed( wire, wrote );
+        WireBuilder spell;
+        spell.count = seen.count;
+        memcpy( spell.ids, seen.ids, sizeof( spell.ids ) );
+        spell.leb( spell.ref( blobdemo::kTableBytesTypeId ) );
+        CHECK( spell.count == seen.count ); // the writer named it
+        reference_bytes = spell.n;
+        memcpy( reference, spell.body, (size_t) reference_bytes );
+    }
+    int64_t at = -1;
+    for ( int64_t i = 0; i + reference_bytes + 1 <= wrote; i++ )
+    {
+        if ( memcmp( wire + i, reference, (size_t) reference_bytes ) != 0 ) { continue; }
+        if ( wire[i + reference_bytes] != 5 ) { continue; } // the length beside it: five bytes
+        CHECK( at == -1 );
+        at = i;
     }
     CHECK( at >= 0 );
     if ( at < 0 ) return;
-    le32( wire + at + 8, 6 ); // the record claims six bytes; five follow
+    wire[at + reference_bytes] = 6; // the record claims six bytes; five follow
 
     int64_t region_need = blobdemo::CatalogLoadMeasure( wire, wrote );
     blobdemo::TableReport report;
@@ -7796,19 +8023,21 @@ static void test_blob_kind_mismatch()
     // hand-built wire — thumb rides index 2, the node table holds ONE record
     // under the STRING id
     uint8_t wire[128];
-    size_t n = 0;
-    le16( wire + n, field_id( "thumb" ) ); n += 2;
-    wire[n++] = 17;                        // kind: node index
-    le32( wire + n, 2 ); n += 4;           // index 2: the first record
-    le16( wire + n, 0xFFFF ); n += 2;      // the node table
-    wire[n++] = 12;
-    le32( wire + n, 8 + 8 + 4 + 4 ); n += 4; // L: the count's eight bytes, one record's id+len+body
-    le32( wire + n, 1 ); n += 4;           // node_count = 1
-    le32( wire + n, 0 ); n += 4;           // the count's four reserved zero bytes
-    for ( int i = 0; i < 8; i++ ) { wire[n++] = (uint8_t) ( blobdemo::kTableStringTypeId >> ( 8 * i ) ); }
-    le32( wire + n, 4 ); n += 4;           // a four-byte string blob
-    memcpy( wire + n, "oops", 4 ); n += 4;
-    le16( wire + n, 0 ); n += 2;           // terminator
+    int64_t n = 0;
+    {
+        WireBuilder b;
+        b.field( "thumb", 17 );            // kind: node index
+        b.leb( 2 );                        // index 2: the first record
+        b.field( blobdemo::kTableNodeTableFieldId, 12 ); // the node table, kind 12
+        const int64_t table = b.open_len();
+        b.leb( 1 );                        // node_count = 1
+        b.leb( b.ref( blobdemo::kTableStringTypeId ) );
+        b.leb( 4 );                        // a four-byte string blob
+        b.raw( "oops", 4 );
+        b.close_len( table );
+        b.end();
+        n = b.finish( wire );
+    }
 
     int64_t region_need = blobdemo::CatalogLoadMeasure( wire, (int64_t) n );
     CHECK( region_need > 0 );
@@ -7820,14 +8049,18 @@ static void test_blob_kind_mismatch()
     if ( loaded != NULL ) { CHECK( blobdemo::TableBytesAt( loaded->thumb ).data == NULL ); }
 
     // `bytes(N)` bytes arriving under the *bytes field id: kind 14 against 17
-    size_t m = 0;
-    le16( wire + m, field_id( "thumb" ) ); m += 2;
-    wire[m++] = 14;                        // kind: array, as bytes(N) rides
-    le32( wire + m, 5 + 3 ); m += 4;       // element kind, N, three bytes
-    wire[m++] = 6;                         // element kind: u8
-    le32( wire + m, 3 ); m += 4;
-    wire[m++] = 9; wire[m++] = 9; wire[m++] = 9;
-    le16( wire + m, 0 ); m += 2;
+    int64_t m = 0;
+    {
+        WireBuilder b;
+        b.field( "thumb", 14 );            // kind: array, as bytes(N) rides
+        const int64_t body = b.open_len();
+        b.u8( 6 );                         // element kind: u8
+        b.leb( 3 );
+        b.u8( 9 ); b.u8( 9 ); b.u8( 9 );
+        b.close_len( body );
+        b.end();
+        m = b.finish( wire );
+    }
     int64_t need2 = blobdemo::CatalogLoadMeasure( wire, (int64_t) m );
     CHECK( need2 > 0 );
     std::vector<uint8_t> region2( (size_t) need2 );

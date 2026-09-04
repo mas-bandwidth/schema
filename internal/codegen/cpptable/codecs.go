@@ -1525,12 +1525,15 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("        to->malformed = true;\n")
 	g.pf("        return TableOpenDamaged;\n    }\n")
 	g.pf("    TableReader r( buffer + 1, body_bytes, to, &table );\n")
-	g.pf("    %sLoadBody( r, value );\n", st.Name)
+	g.pf("    if ( !%sLoadBody( r, value ) ) { return TableOpenBodyStopped; }\n", st.Name)
 	g.pf("    return TableOpenOk;\n}\n\n")
+	g.pf("// The bool is the BODY reaching its own terminator, and it is what it has\n")
+	g.pf("// always been: framing damage inside a field keeps what it decoded, flags\n")
+	g.pf("// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).\n")
+	g.pf("// False is a wire nothing could be decoded from: a refusal, a table that\n")
+	g.pf("// cannot be read whole, or a root body the walk could not finish.\n")
 	g.pf("inline bool %sLoad( %s & value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
-	g.pf("    TableReport ignored;\n")
-	g.pf("    TableReport * to = report != NULL ? report : &ignored;\n")
-	g.pf("    return %sLoadVerdict( value, buffer, bytes, to ) == TableOpenOk && !to->malformed;\n}\n\n", st.Name)
+	g.pf("    return %sLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;\n}\n\n", st.Name)
 }
 
 // emitNodeIndexLoad reads one NODE INDEX and resolves it through the
