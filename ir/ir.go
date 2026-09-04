@@ -268,6 +268,14 @@ const (
 	ArrayNone ArrayKind = iota
 	ArrayFixed
 	ArrayCounted // [..N]T and [Min..N]T
+	// ArrayList is `[]T` — an UNBOUNDED ARRAY (docs/SPEC-TABLES.md §2.9): a
+	// counted array whose count the DATA decides. On the wire it is a kind-14
+	// body exactly as ArrayCounted is; what it drops is the declared bound,
+	// and with the bound goes the inline storage, so the slot holds a
+	// reference and a count and the elements live in the holder's node
+	// extent. ArrayBound stays 0, which is what the descriptors publish as
+	// "no declared bound" (§8.1).
+	ArrayList
 )
 
 // Field is one storage-carrying member of a struct, with its resolved wire

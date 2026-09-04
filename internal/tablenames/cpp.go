@@ -36,6 +36,11 @@ func init() {
 		// freed now is a collision the day the codec lands.
 		Name{Name: "TableMap", What: "a map field's sorted entry array and its count"},
 		Name{Name: "TableMapIndex", What: "a map's side index, built once and searched in place"},
+		// the UNBOUNDED ARRAY's storage (docs/SPEC-TABLES.md §2.9), claimed on
+		// TableMap's exact terms and for its reason: the map's slot with the
+		// key taken out, emitted only into a unit that declares a `[]T` and
+		// claimed in every unit that declares a table.
+		Name{Name: "TableList", What: "an unbounded array's element reference and its count"},
 		// C++'s float <-> IEEE-754 bit pattern helpers
 		Name{Name: "table_bits_to_float", What: "u32 bits -> float"},
 		Name{Name: "table_float_to_bits", What: "float -> u32 bits"},

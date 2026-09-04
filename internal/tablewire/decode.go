@@ -631,7 +631,7 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 	if f.Type.Kind == ir.TBytes {
 		bound = int(f.Type.Size)
 	}
-	counted := f.Type.Kind == ir.TBytes || f.Array == ir.ArrayCounted
+	counted := f.Type.Kind == ir.TBytes || f.CountedOnWire()
 	bodyLen := framed
 	if framed < 0 {
 		n, good := r.leb()
@@ -678,7 +678,24 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			return true, false
 		}
 		keep := int(count)
-		if count > uint64(bound) {
+		switch {
+		case f.Array == ir.ArrayList:
+			// AN UNBOUNDED ARRAY HAS NO BOUND TO CLAMP AGAINST, and that is
+			// the one counter this construct removes (§2.9): a count is read,
+			// or refused before the read, or damaged. A count above the int32
+			// STORAGE CAP is the refusal LoadBuilder answers NULL for — the
+			// partial value is discarded and the report holds what it held —
+			// so the walk stops here rather than sizing a slot list from a
+			// number the wire chose.
+			if count > uint64(math.MaxInt32) {
+				r.report.Malformed = true
+				r.off = end
+				return false, false
+			}
+			// the slots are grown ONE AT A TIME below, against the body's own
+			// length, so a count no body can cover allocates nothing
+			fv.Elems = fv.Elems[:0]
+		case count > uint64(bound):
 			keep = bound
 			r.report.Clamped++
 		}
@@ -700,10 +717,16 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			fv.Cell.Str = payload
 		} else {
 			for i := 0; i < keep; i++ {
+				if f.Array == ir.ArrayList {
+					fv.Elems = append(fv.Elems, r.m.ElementZero(f))
+				}
 				if !sub.element(fv, i) {
 					break
 				}
 				decoded = i + 1
+			}
+			if f.Array == ir.ArrayList {
+				fv.Elems = fv.Elems[:decoded] // the prefix the body covered
 			}
 		}
 		if counted {

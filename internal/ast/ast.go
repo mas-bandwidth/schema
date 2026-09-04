@@ -153,6 +153,10 @@ const (
 	ArrayFixed ArrayKind = iota // [N]T
 	ArrayUpTo                   // [..N]T — sugar for [0..N] (SPEC §4.3)
 	ArrayRange                  // [Min..N]T
+	// ArrayList is `[]T` — an UNBOUNDED ARRAY, a counted array whose count
+	// the data decides (docs/SPEC-TABLES.md §2.9). The bracket carries no
+	// expression, so Lo and Hi are both nil.
+	ArrayList
 )
 
 type ArrayBound struct {

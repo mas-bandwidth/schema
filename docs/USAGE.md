@@ -2169,9 +2169,10 @@ its quoted decimal spelling, entries in ascending key order.
 
 ### Unbounded arrays: `placements []Placement`
 
-*Specified, not yet emitted. The front end refuses the `[]T` spelling at
-parse, no backend carries the construct, and the corpus holds no
-`tables/lists` (SPEC-TABLES.md §2.9).*
+*Partly landed. The front end takes the `[]T` spelling and holds every
+refusal below, and `pack` and `unpack` read and write one. No backend carries
+the construct — every one of them refuses a unit that declares one, by name —
+and the corpus holds no `tables/lists` (SPEC-TABLES.md §2.9).*
 
 **An unbounded array is a counted array whose count the DATA decides.** It is
 the map with the key and the sort taken out: the same kind `14` body a

@@ -350,6 +350,15 @@ func renderField(f *ir.Field) Field {
 	case f.Array == ir.ArrayCounted:
 		add("array", "bounded")
 		add("bound", strconv.FormatInt(f.ArrayBound, 10))
+	case f.Array == ir.ArrayList:
+		// AN UNBOUNDED ARRAY RENDERS AS `array=unbounded` WITH NO `bound=`
+		// (docs/SPEC-TABLES.md §2.9): the count is the data's, and the only
+		// ceiling is the int32 extent cap every array shares (§2.2). The
+		// missing token IS the capacity fact — a `bound=` appearing on an
+		// `array=` move is a capacity SHRINK and warns, and one vanishing is
+		// a capacity GROWTH and passes (§18.2) — so the token's absence
+		// carries the verdict the token itself would have carried.
+		add("array", "unbounded")
 	}
 	if f.Type.Kind == ir.TFixed {
 		// a fixed field's SCALE. The kind fixes the width and the signedness;

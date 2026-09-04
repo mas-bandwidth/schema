@@ -924,6 +924,15 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 	placed := 0
 	shape := ElementShape(f)
 	bound := int(f.ArrayBound)
+	if f.Array == ir.ArrayList {
+		// EVERY ELEMENT THE TEXT CARRIES IS READ, because there is no bound to
+		// drop a tail against (docs/SPEC-TABLES.md §2.9, §16.2): the bounded
+		// array's "more than N are dropped, counted" row has no counterpart
+		// here. The int32 storage cap is the only limit, and it is the cap
+		// §2.2 gives every count.
+		bound = math.MaxInt32
+		fv.Elems = fv.Elems[:0]
+	}
 	for {
 		c := in.peek()
 		if c == ']' {
@@ -933,6 +942,9 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 		if c == 0 {
 			in.bad = true
 			return false
+		}
+		if f.Array == ir.ArrayList && placed == len(fv.Elems) {
+			fv.Elems = append(fv.Elems, in.m.elementZero(f))
 		}
 		switch {
 		case placed >= bound:
