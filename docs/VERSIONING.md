@@ -895,8 +895,10 @@ still open.
   cache on the protocol id. Key it on the build version, in the triple.
 - **`Open` NAMES its refusal, and a caller that ignores the name is back
   where it was.** A wrong-version, foreign-order, truncated or corrupt cook
-  returns null and fills a `TableOpenReason` beside it (SPEC-TABLES.md §7),
-  and `BlockOpen` answers the same enum. The parameter is optional in every
+  returns null and fills a `TableRefuseReason` beside it (SPEC-TABLES.md §7),
+  and `BlockOpen` answers the same enum, as does `LoadMeasure`'s `-1`
+  (SPEC-TABLES.md §6.5) — which is why the enum is named for the REFUSAL and
+  not for `Open`. The parameter is optional in every
   target so that no existing call site had to move, which means the silence is
   now the CALLER's choice rather than the design's: a fallback that logs the
   reason tells a build engineer whether to re-cook, to fix a cross-endian
@@ -952,8 +954,8 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #522: the `wstring` kind `33` on the id-table wire, `*wstring`, the cooked
   storage, the text row and the table-form goldens (SPEC.md §4.12).
 - #523: the `widened` counter and its two integer ladders, the
-  `TableOpenReason` enum on `Open` and `BlockOpen`, and `//` and `/* */`
-  comments accepted by the text form's reader.
+  `TableRefuseReason` enum on `Open`, `BlockOpen` and `LoadMeasure`, and `//`
+  and `/* */` comments accepted by the text form's reader.
 - #439 and #460: the standard's own contradictions on `T`→`*T`, the flags
   row, writer misuse, the declaration-rename row, the count of silent edits,
   and the pages that still say schema is not an evolution system.

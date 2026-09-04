@@ -5538,7 +5538,7 @@ The builder is designed to go wide, lock-free by ownership:
   can refuse a number it did not expect; nothing in the runtime decides
   that for it.
 - **A `-1` CARRIES A REASON, and it is the SAME ENUM the accelerators'
-  refusals carry: `TableOpenReason`** (§7, §11). `Open` and `BlockOpen` answer
+  refusals carry: `TableRefuseReason`** (§7, §11). `Open` and `BlockOpen` answer
   a null beside a value of it (§7, §19.2), and a call that answers `-1`
   answers the same way, as an
   enum out-parameter, with the same spellings in every target. One enum covers
@@ -6164,7 +6164,11 @@ the wire, and keeps the flexibility that comes with it.
   foreign order is a cross-endian cook (§15), a truncated file is a bad
   download, and an unaligned base is the CALLER'S OWN defect and the one it can
   fix on the spot. So every `Open` takes one more out-parameter, an enum named
-  `TableOpenReason`, and fills it on every call:
+  `TableRefuseReason`, and fills it on every call. **The name says REFUSE and
+  not OPEN deliberately**: the same enum answers `LoadMeasure`'s `-1` (§6.5),
+  where nothing was opened and nothing could have been, so a name built on
+  `Open` would have been wrong at half its call sites the moment it was
+  written.
 
   | reason | what the check found |
   |---|---|
@@ -6197,27 +6201,32 @@ the wire, and keeps the flexibility that comes with it.
 
   **The names are the same in every target**, each spelled in that
   language's own convention for an enumerator the way §11 leaves every claimed
-  verb its own shape, and `TableOpenReason` joins §11's claimed names.
+  verb its own shape, and `TableRefuseReason` joins §11's claimed names. **In
+  Dart the type keeps its spelling and the values take that backend's own**,
+  `TableRefuseReason.notACook`, `TableRefuseReason.foreignOrder`,
+  `TableRefuseReason.wrongBuildVersion` and the rest, which is the shape
+  `TableCookRef.outside` already takes there (§2's Dart notes).
 
-  **The enum is WIDER than `Open`, and §6.5 is why.** `LoadMeasure`'s `-1`
-  carries a value of this same enum, over five refusal values of its own
+  **The enum is WIDER than the accelerators, and §6.5 is why.** `LoadMeasure`'s
+  `-1` carries a value of this same enum, over five refusal values of its own
   (§6.5), on the ground that a caller asking "why can I not have this file" is
   asking one question whichever call refused it. The eight values above are
   the ACCELERATOR's clauses and those five are the MEASURE's, in one
   vocabulary, and no call returns a value belonging to the other's clauses.
+  That breadth is what the NAME is built for.
 
   **It is not the MESSAGE FORM's vocabulary, though, and the two are worth
   telling apart.** §3.3's `no_vocabulary`, `second_announcement`,
   `vocabulary_too_large` and `message_form_as_file`, and the form byte's own
   `newer_form`, ride on the message path and are stated there. A caller
-  meeting a `TableOpenReason` has been refused a FILE, by a header match or by
+  meeting a `TableRefuseReason` has been refused a FILE, by a header match or by
   a measure, and falls back or gives up; a caller meeting one of the message
   form's has been refused a MESSAGE on a connection, which is a different
   recovery with a different owner (§3.3).
 
   **No existing call site moves.** In C++ the parameter is last and defaults to
   null, `const Scene * SceneOpen( const void * bytes, uint64_t length,
-  TableOpenReason * reason = nullptr )`, and a caller that does not want the
+  TableRefuseReason * reason = nullptr )`, and a caller that does not want the
   answer passes nothing. Every other backend adds the parameter the way its
   language adds one without breaking a signature, an overload or an optional
   argument, and the two backends that answer `null` rather than a bool carry it
@@ -8579,9 +8588,10 @@ in build version (§20.5).
     a `type` body: this document's own `ScoreBoard` declares one),
     `TableList` (an unbounded array's storage, §2.9),
     `TableMap` (a map's storage) and `TableMapIndex` (the optional index's
-    handle, §2.8), `TableRef`, `TableReport`, `TableOpenReason` (the one
+    handle, §2.8), `TableRef`, `TableReport`, `TableRefuseReason` (the one
     refusal vocabulary both accelerators and `LoadMeasure`'s `-1` name, §6.5,
-    §7, §19.2), the BLOB surface — `TableBytesView`,
+    §7, §19.2, spelled `TableRefuseReason` in Dart too with that backend's own
+    lowerCamelCase values), the BLOB surface — `TableBytesView`,
     `TableStringView` and `TableWStringView` with `TableBytesAt`,
     `TableStringAt` and `TableWStringAt` over them (§2.5), and `AllocBytes`,
     `AllocString` and `AllocWString` on the builder (§6.2), the wide member of
@@ -11751,7 +11761,7 @@ schema name, as everywhere else in that backend.
   bytes are what a build with this layout wrote, so there is nothing to
   validate and nothing to fix up. On any failure it returns false and points
   at nothing — §7's shape, for §7's reason. **And it NAMES the failure in the
-  same `TableOpenReason` a cook's `Open` fills** (§7), first failing clause
+  same `TableRefuseReason` a cook's `Open` fills** (§7), first failing clause
   first, in the order above: `not_a_cook` where the magic is neither this
   build's block constant nor its byte reversal, `foreign_order`,
   `wrong_build_version`, `truncated` where the used extent runs past the
