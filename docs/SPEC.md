@@ -1406,8 +1406,9 @@ this order:
   surrogate not immediately preceded by a high surrogate fails, and a high
   surrogate as the final transmitted group fails. Well-formed **pairs** are
   valid, and they are how astral text travels.
-- **Exhaustion.** Running out of input mid-read fails, like any other read
-  (§5).
+- **Exhaustion at any group.** Running out of input mid-read fails, like any
+  other read (§5), whether the length field or any group is the part that
+  runs past the end.
 
 **What no reader enforces**, stated so that no target can be stricter than
 another: nothing else about the text is examined. Noncharacters are
@@ -1426,17 +1427,38 @@ answer: no target traps, panics or aborts on a malformed payload.
 UTF-8 (§4.7) and `wstring(N)` refuses unpaired surrogates, both on the read
 path, both in all nine targets, and both terminal.
 
-**The write side** follows §5's doctrine and §4.7's precedent exactly. The
-length bound is checked on every write in every target, because it guards
-the copy. UTF-16 well-formedness is a writer obligation whose enforcement is
-the read-side refusal above, so no write-side check is load-bearing anywhere
-and none is required of a target. A code unit above `0xFFFF` cannot be
-written at all, because the storage holds 16 bits per unit in every target.
+**The packet wire carries `wstring(N)`, and the TABLE wire is the deferred
+half.** The id-table wire assigns wide text no kind, so a type holding a
+`wstring(N)` field is refused BY NAME inside a table closure until it does,
+and a map key stays `string(N)` or an integer kind
+(SPEC-TABLES.md §11 and §2.8). The protocol id needs no
+`ProjectionVersion` bump for any of this: a wstring field projects its
+capacity beside its kind (§3.1), and no unit could declare the construct
+before.
+
+**The write side** follows §5's doctrine and §4.7's precedent exactly. Two
+things are checked on every write, in every target, in that target's own
+idiom (§5): **the used length is within [0, N]**, because it guards the
+copy, and **a zero code unit among the used units is refused**, exactly as
+§4.7 refuses the interior null and symmetric with the reader's zero-group
+refusal. Surrogate pairing is NOT checked on write. It is a writer
+obligation whose enforcement is the reader on the other end, which refuses
+an unpaired surrogate under the rules above. A code unit above `0xFFFF`
+cannot be written at all, because the storage holds 16 bits per unit in
+every target. In Elixir, where the storage is a binary rather than a counted
+buffer, the write additionally requires an EVEN `byte_size` and raises
+`ArgumentError` otherwise, which is that target's write-refusal idiom under
+§5: an odd binary has no last code unit.
 
 **Storage, and the conversion rule at the boundary.** Storage is a
 pre-allocated buffer of UTF-16 code units with a used length beside it,
 under §6.1's rule that nothing is dynamically sized, and the generated read
-and write paths transcode in no target:
+and write paths transcode in no target. **This is a stated departure from
+the reference's destination rule**, which decodes into the language's own
+string type and recombines surrogate pairs on a runtime whose strings are
+not UTF-16. schema stores code units in every target instead, because that
+destination would allocate per value and §6.1 forbids it, and the wire is
+unchanged either way:
 
 | target | storage | boundary conversion |
 |---|---|---|
@@ -1455,7 +1477,9 @@ on a UTF-16 host, the boundary is a copy of code units with no transcoding
 step, which is the reason the type exists. On Go, Rust and Elixir, whose
 native text is UTF-8, the transcode is real and is paid in application code
 in both directions. No target transcodes inside the generated read or write
-path, and no target allocates per value.
+path, and no target allocates per value, under the estate's standing Elixir
+exception: a decoded BEAM binary IS an allocation, so the Elixir leg pins
+the per-read allocation COUNT rather than claiming zero (PORTING.md M1).
 
 **A successful read terminates the C string.** In C and C++, a successful
 read writes the **zero unit at index `length`**, always, so the buffer is a
@@ -1474,21 +1498,27 @@ bytes. The accepted set at `wstring(7)` adds `wstring-empty`,
 `wstring-accept-just-above-the-surrogate-block`,
 `wstring-accept-surrogate-pair` and
 `wstring-accept-two-basic-plane-groups`, and at `wstring(4)` it adds
-`wstring-accept-length-inside-a-five-character-buffer`. The refused set,
-which gate 5 holds every target to together, is the corpus's seventeen
-refusals: the two group-above-`0xFFFF` vectors, the seven unpaired-surrogate
-vectors, the three interior-null vectors, the two out-of-range length
-vectors, and the three past-end vectors. Two corpus vectors have no schema
+`wstring-accept-length-inside-a-five-character-buffer`. The refused set is
+the corpus's seventeen refusals, hand-authored bytes with a checked-in
+verdict, so they ride **gate 7** (§7.2) in every target rather than gate 5's
+generated sweeps: the two group-above-`0xFFFF` vectors, the seven
+unpaired-surrogate vectors, the three interior-null vectors and the three
+past-end vectors at `wstring(7)`, and the two out-of-range length vectors at
+`wstring(4)`, whose 3-bit length field over [0, 4] is what makes lengths 5,
+6 and 7 expressible and refusable. Two corpus vectors have no schema
 declaration that reproduces them, `wstring-buffer-size-1-zero-bit-length-field`
 and `wstring-no-alignment-before-the-characters`, because their
 `buffer_size` of 1 and 2 sits below the N floor of 2. The no-alignment
 property loses nothing by it: the worked example's first group begins at bit
 3, so an align before the groups moves every byte after it.
 
-Beside the corpus, the cross-language matrix carries a `wstring(7)` field
-holding serialize.js's interop cases: empty, three basic-plane code units,
-`0xE000`, `0xFFFF`, an astral pair between two basic-plane units, and seven
-code units, the most the bound carries.
+Beside the corpus, the cross-language matrix is **owed** a `wstring(7)`
+field holding serialize.js's interop cases: empty, three basic-plane code
+units, `0xE000`, `0xFFFF`, an astral pair between two basic-plane units, and
+seven code units, the most the bound carries. That field, schema's own
+golden source and golden-id pins for a wstring-bearing unit (gates 1, 2 and
+7), and the `examples/` declaration §7.3 requires are owed by the first
+implementation PR, which is the one that teaches a backend to emit the type.
 
 ## 5. Trust model — inherited
 

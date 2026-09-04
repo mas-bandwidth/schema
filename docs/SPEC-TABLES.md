@@ -1459,7 +1459,7 @@ nowhere else in the grammar and buy nothing over the bracket.
 
 **Keys are BOUNDED STRINGS and INTEGERS, and nothing else.** `K` is
 `string(N)` or one of `int8` through `int64`, `uint8` through `uint64`,
-bare. No `| min`, no `| max`, no default, because a key is an identity and
+bare, and `wstring(N)` is not a key. No `| min`, no `| max`, no default, because a key is an identity and
 clamping an identity merges two entries. Every other key is refused by name,
 each with its reason in the diagnostic:
 
@@ -5944,6 +5944,13 @@ in build version (§20.5).
   itself frames a body of any size (§3), so this cap is the STORAGE side's,
   and a wire body past it is refused at LOAD rather than at compile time
   (§3.1). It sits far below where an int64 size stops being exact.
+- **A type holding a `wstring(N)` field, reaching a table closure** — the
+  id-table wire assigns wide text no kind. §2.6's value list, the closed kind
+  set of §3, the arm-kind table, §16.2's text form and §7.2's cooked storage
+  all stop at `string(N)`. The packet wire carries `wstring(N)` in full (SPEC
+  §4.12) and the TABLE wire is the deferred half, so the refusal names the
+  field and its follow-on rather than letting a kind be invented per backend.
+  Map keys stay `string(N)` and the integer kinds on the same grounds (§2.8).
 - Recursive nesting (§2 — the cycle is named).
 - A bare rename hazard: `was` naming the field's own name (§5).
 - Id collisions, hash or `was`-induced (§5).
