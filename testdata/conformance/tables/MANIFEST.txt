@@ -188,7 +188,8 @@ report p1_empty_as_p2 tblp2 Chain testdata/wire/tables/chain_value_empty.bin
 # 8 where the reader declares 17 is a kind mismatch and the field stays empty;
 # five slots against a bound of four keep the prefix and count clamped; a slot
 # naming index 7 where no node exists is malformed and THAT slot reads null,
-# the array kept at its count. The bytes are fixed by this file, not generated.
+# the array kept at its count. The bytes are the reference leg's, built from
+# §3's grammar and pinned by test/tables/main.cpp like every other golden.
 report parts_elem_kind          streamdemo Feed testdata/wire/tables/parts_elem_kind.bin
 report parts_count_past_bound   streamdemo Feed testdata/wire/tables/parts_count_past_bound.bin
 report parts_index_out_of_range streamdemo Feed testdata/wire/tables/parts_index_out_of_range.bin

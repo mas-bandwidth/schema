@@ -16,17 +16,18 @@ import (
 // the engine encodes each instance's TEXT and the bytes must be the
 // reference's, to the byte.
 func TestTheEngineWritesTheReferencesBytes(t *testing.T) {
-	if err := os.Chdir("../../.."); err != nil {
-		t.Fatal(err)
-	}
-	m, err := ReadManifest("testdata/conformance/tables/MANIFEST.txt", "testdata/conformance/tables/json")
+	// the manifest's paths are repository-relative and the test runs in its own
+	// directory, so the root is joined in rather than moved to: a chdir here
+	// would be a chdir for every other test in this package
+	const root = "../../../"
+	m, err := ReadManifest(root+"testdata/conformance/tables/MANIFEST.txt", root+"testdata/conformance/tables/json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	units := map[string]*tabletext.Model{}
 	for _, u := range m.Units {
 		c := compiler.New()
-		paths, err := compiler.GatherPaths(u.Paths)
+		paths, err := compiler.GatherPaths(rooted(root, u.Paths))
 		if err != nil {
 			t.Fatalf("%s: %v", u.Key, err)
 		}
@@ -41,7 +42,7 @@ func TestTheEngineWritesTheReferencesBytes(t *testing.T) {
 		if inst.NoText {
 			continue // the corpus carries it on the wire alone (§16.7)
 		}
-		text, err := os.ReadFile("testdata/conformance/tables/json/" + inst.Name + ".json")
+		text, err := os.ReadFile(root + "testdata/conformance/tables/json/" + inst.Name + ".json")
 		if err != nil {
 			continue // a text the corpus has not generated yet
 		}
@@ -57,7 +58,7 @@ func TestTheEngineWritesTheReferencesBytes(t *testing.T) {
 			t.Errorf("%s: the engine refused the value: %v", inst.Name, err)
 			continue
 		}
-		pinned, err := os.ReadFile(inst.Wire)
+		pinned, err := os.ReadFile(root + inst.Wire)
 		if err != nil {
 			t.Errorf("%s: %v", inst.Name, err)
 			continue
@@ -73,4 +74,13 @@ func TestTheEngineWritesTheReferencesBytes(t *testing.T) {
 		t.Fatal("no instance was compared at all — the lock is watching nothing")
 	}
 	t.Logf("the engine wrote the reference's bytes for %d instances", agreed)
+}
+
+// rooted joins the repository root onto a manifest's unit paths.
+func rooted(root string, paths []string) []string {
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		out[i] = root + p
+	}
+	return out
 }

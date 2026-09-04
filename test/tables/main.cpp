@@ -6972,6 +6972,7 @@ static void test_pointer_arrays_element_kind_mismatch()
         b.end();
         n = b.finish( wire );
     }
+    pin_table_golden( "parts_elem_kind", wire, n );
     int64_t region_need = streamdemo::FeedLoadMeasure( wire, (int64_t) n );
     CHECK( region_need > 0 );
     std::vector<uint8_t> region( (size_t) region_need );
@@ -6980,6 +6981,70 @@ static void test_pointer_arrays_element_kind_mismatch()
     CHECK( loaded != NULL && !report.malformed );
     CHECK( report.kind_mismatch == 1 );
     if ( loaded != NULL ) CHECK( loaded->parts_count == 0 );
+}
+
+// a count past the READER's bound keeps the bounded prefix and counts clamped
+// (§4): five slots against a bound of four. The wire is pinned as a shared
+// report row every leg reads.
+static void test_pointer_arrays_count_past_bound()
+{
+    uint8_t wire[64];
+    int64_t n = 0;
+    {
+        WireBuilder b;
+        b.field( "parts", 14 );           // kind: array
+        const int64_t body = b.open_len();
+        b.u8( 17 );                       // element kind: a node index
+        b.leb( 5 );                       // five slots against a bound of four
+        for ( int i = 0; i < 5; i++ ) { b.leb( 0 ); } // every slot null
+        b.close_len( body );
+        b.end();
+        n = b.finish( wire );
+    }
+    pin_table_golden( "parts_count_past_bound", wire, n );
+    int64_t region_need = streamdemo::FeedLoadMeasure( wire, n );
+    CHECK( region_need > 0 );
+    std::vector<uint8_t> region( (size_t) region_need );
+    streamdemo::TableReport report;
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, n, &report );
+    CHECK( loaded != NULL && !report.malformed );
+    CHECK( report.clamped == 1 );
+    if ( loaded != NULL ) CHECK( loaded->parts_count == 4 );
+}
+
+// AN INDEX OUT OF RANGE is malformed and THAT SLOT reads null, the rest of the
+// array unaffected (§3.1): index 7 where no node exists. The wire is pinned as
+// a shared report row every leg reads.
+static void test_pointer_arrays_index_out_of_range()
+{
+    uint8_t wire[64];
+    int64_t n = 0;
+    {
+        WireBuilder b;
+        b.field( "parts", 14 );           // kind: array
+        const int64_t body = b.open_len();
+        b.u8( 17 );                       // element kind: a node index
+        b.leb( 2 );
+        b.leb( 7 );                       // an index no record answers
+        b.leb( 0 );                       // and a null beside it
+        b.close_len( body );
+        b.end();
+        n = b.finish( wire );
+    }
+    pin_table_golden( "parts_index_out_of_range", wire, n );
+    int64_t region_need = streamdemo::FeedLoadMeasure( wire, n );
+    CHECK( region_need > 0 );
+    std::vector<uint8_t> region( (size_t) region_need );
+    streamdemo::TableReport report;
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, n, &report );
+    CHECK( loaded != NULL );
+    CHECK( report.malformed );        // the index, not the array
+    if ( loaded != NULL )
+    {
+        CHECK( loaded->parts_count == 2 ); // the array keeps its count
+        CHECK( streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, loaded->parts[0] ) == NULL );
+        CHECK( streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, loaded->parts[1] ) == NULL );
+    }
 }
 
 // ---- ARRAYS OF UNIONS (docs/SPEC-TABLES.md §2.6, §3) -----------------------
@@ -8313,6 +8378,8 @@ int main()
     test_pointer_arrays();
     test_pointer_arrays_elision();
     test_pointer_arrays_element_kind_mismatch();
+    test_pointer_arrays_count_past_bound();
+    test_pointer_arrays_index_out_of_range();
     test_pointer_walk_order();
     test_pointer_arm_shares_a_node();
     test_union_arrays();
