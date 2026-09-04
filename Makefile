@@ -137,18 +137,55 @@ build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POI
 # list." A map makes its holder variable-length, so every unit scanned here is
 # map-free by construction, and the map symbols below say so mechanically
 # rather than by inspection.
+#
+# THE SCAN IS BY SYMBOL, not by line, and `TableNode` is matched with its whole
+# spelling so a node symbol nobody has written yet is still refused. Exactly one
+# of those spellings is ALLOWED in a pointer-free unit and it is named below.
+TABLES_ZERO_COST_SYMBOLS := TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|TablePack|[A-Za-z_]*TableNode[A-Za-z_]*|is_pointer|Builder|PackMeasure|LoadMeasure|TableBlob|TableBytesView|TableStringView|AllocBytes|AllocString|BytesEmplace|StringEmplace|TableMap|TableMapHead|TableMapSegment|TableMapOrder|TableMapCursor|TableEntryKey|TableKeyOrder|TableResetMapValue|TableEntrySetKey|kTableMapSegment
+
+# THE ONE NODE SPELLING A POINTER-FREE UNIT CARRIES, and it is the FORM's and
+# not the pointer machinery's (docs/SPEC-TABLES.md §3, §3.1): the reserved
+# node-table id. Every reader of the id-table form owes §3.1's refusal of that
+# id inside a NESTED body, whether or not its own closure has a pointer,
+# because the body it is handed may have been written by a unit that does have
+# one (§4). What it costs a pointer-free unit is one `static const uint64_t`
+# and one comparison: no arena, no builder, no handle, no lifecycle surface and
+# no extra descriptor column, which is the claim this gate holds. Every other
+# TableNode spelling stays refused, and
+# tables-zero-cost-negative-control shows that it does.
+TABLES_ZERO_COST_ALLOWED := kTableNodeTableFieldId
+
+TABLES_ZERO_COST_HEADERS := build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
+	build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
+	build/tables-generated/p3/*Table.h \
+	build/tables-generated/messages/*Table.h build/tables-generated/m1/*Table.h \
+	build/tables-generated/m2/*Table.h build/tables-generated/scalars/*Table.h
+
 .PHONY: tables-zero-cost
 tables-zero-cost: build/tables-generated/.stamp
-	@for f in build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
-	          build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
-	          build/tables-generated/p3/*Table.h \
-	          build/tables-generated/messages/*Table.h build/tables-generated/m1/*Table.h \
-	          build/tables-generated/m2/*Table.h build/tables-generated/scalars/*Table.h; do \
-		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|TablePack|TableNode|is_pointer|Builder|PackMeasure|LoadMeasure|TableBlob|TableBytesView|TableStringView|AllocBytes|AllocString|BytesEmplace|StringEmplace|TableMap|TableMapHead|TableMapSegment|TableMapOrder|TableMapCursor|TableEntryKey|TableKeyOrder|TableResetMapValue|TableEntrySetKey|kTableMapSegment" $$f; then \
+	@for f in $(TABLES_ZERO_COST_HEADERS); do \
+		if grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u | grep -q .; then \
+			grep -nE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vE "$(TABLES_ZERO_COST_ALLOWED)"; \
 			echo "ZERO-COST GATE FAILED: pointer or map machinery leaked into $$f"; exit 1; \
 		fi; \
 	done
 	@echo "tables zero-cost gate: value-only tables carry no pointer or map machinery"
+
+# THE NEGATIVE CONTROL. The gate above sanctions ONE node spelling, so it owes a
+# demonstration that it still refuses the others: the nearest neighbour of the
+# sanctioned constant is planted in a COPY of a scanned header, and the same
+# scan must refuse it. Nothing tracked is written to.
+.PHONY: tables-zero-cost-negative-control
+tables-zero-cost-negative-control: build/tables-generated/.stamp
+	@rm -rf build/zero-cost-control && mkdir -p build/zero-cost-control
+	@cp build/tables-generated/examples/GuardedTable.h build/zero-cost-control/GuardedTable.h
+	@printf 'static const TableNodeMap * kPlanted = NULL; /* PLANTED */\n' >> build/zero-cost-control/GuardedTable.h
+	@if ! grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" build/zero-cost-control/GuardedTable.h \
+			| grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u | grep -q .; then \
+		echo "NEGATIVE CONTROL FAILED: a planted node symbol left the zero-cost scan green"; exit 1; \
+	fi
+	@grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" build/zero-cost-control/GuardedTable.h | grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u
+	@echo "negative control: a planted node symbol turns the zero-cost scan RED, and the reserved id alone does not"
 
 .PHONY: tables-json-walk
 tables-json-walk: build/tables-generated/.stamp
@@ -2246,6 +2283,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-wire-fuzz N=20000
 	$(MAKE) tables-wire-fuzz-negative-control N=0
 	$(MAKE) tables-zero-cost
+	$(MAKE) tables-zero-cost-negative-control
 	$(MAKE) tables-maps
 	$(MAKE) tables-json-map-walk
 	$(MAKE) tables-maps-negative-controls
@@ -2452,7 +2490,7 @@ tables-maps-clamp-negative-control: bin/schema build/tables-generated/.stamp
 # dropped.
 .PHONY: tables-maps-fit-negative-control
 tables-maps-fit-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,fit,'s@if ( n > rest / kTableMapEntryFloor ) { return false; }@if ( n > rest / kTableMapEntryFloor \&\& false ) { return false; }@',internal/codegen/cpptable/maps.go,an N the map L cannot carry left the map gate GREEN)
+	$(call map_negative_control,fit,'s@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { return false; }@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) \&\& false ) { return false; }@',internal/codegen/cpptable/maps.go,an N the map L cannot carry left the map gate GREEN)
 
 # LOADMEASURE OVER A MAP OF MAPS, summed at ONE DEPTH only. The instance whose
 # value is itself a map meets it, and the measure goes red against the region
@@ -2761,8 +2799,8 @@ tables-cpp-release:
 	$(MAKE) tables-wire-fuzz N=500000
 	$(MAKE) tables-wire-fuzz SEED=2 N=500000
 
-.PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control
-tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control
+.PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control
+tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control
 
 # the string read's `room( len )`: a length past the body is then read anyway,
 # so the sabotaged leg takes a string out of a neighbour's bytes and CLAMPS it
@@ -2792,6 +2830,44 @@ tables-wire-fuzz-arm-width-negative-control: build/conformance-harness
 # `L` and the bytes after it are claimed by no field.
 tables-wire-fuzz-arm-terminator-negative-control: build/conformance-harness
 	$(call wire_fuzz_control,arm-terminator,internal/codegen/cpptable/arms.go,s|if ( %s.offset != %s.size ) { %s = %s; r.report->malformed = true|if ( false \&\& %s.offset != %s.size ) { %s = %s; r.report->malformed = true|,the decoded value differs)
+
+# THE ORACLE NEVER PANICS, which is what makes it an oracle. The four controls
+# above sabotage the C++ EMITTER and ask whether the fuzzer notices a leg that
+# lost a check. This one sabotages the ORACLE and asks whether the fuzzer
+# notices the engine itself dying on hostile bytes. It is the standing control
+# for the pinned vector stream_count_past_body: a body header is read against
+# the parent buffer, so a wide count leaves the cursor past the end its own `L`
+# set, and the span from cursor to end goes negative. Without the clamp the
+# oracle slices with it and panics. The run must go red, on the VECTOR and on
+# the panic, and not merely somewhere.
+#
+# Nothing tracked is written to: the clamp is removed from a COPY and reached
+# through a Go build overlay, so an interrupt cannot leave a sabotaged tree.
+# The leg is the ordinary one, so this control costs no second C++ build.
+ORACLE_NC := build/wire-fuzz-nc-oracle
+.PHONY: tables-wire-fuzz-oracle-negative-control
+tables-wire-fuzz-oracle-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	@rm -rf $(ORACLE_NC) && mkdir -p $(ORACLE_NC)
+	@sed -e 's|if end < r.off {|if false { // NEGATIVE CONTROL: the clamp is gone|' \
+		internal/tablewire/decode.go > $(ORACLE_NC)/decode.go.txt
+	@cmp -s internal/tablewire/decode.go $(ORACLE_NC)/decode.go.txt && \
+		{ echo "NEGATIVE CONTROL: the oracle sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/$(ORACLE_NC)/decode.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(ORACLE_NC)/overlay.json
+	go build -overlay $(ORACLE_NC)/overlay.json -o $(ORACLE_NC)/harness ./test/conformance/harness
+	@if $(ORACLE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n 0 \
+			--failed $(ORACLE_NC)/failed.bin > $(ORACLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the oracle's clamp is gone and the wire fuzzer stayed green"; \
+		cat $(ORACLE_NC)/log; exit 1; \
+	fi
+	@grep -q "the oracle PANICKED" $(ORACLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on an oracle panic"; \
+		  cat $(ORACLE_NC)/log; exit 1; }
+	@grep -q "stream_count_past_body" $(ORACLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the panic was not on the pinned vector"; \
+		  cat $(ORACLE_NC)/log; exit 1; }
+	@grep -m1 "FAILED" $(ORACLE_NC)/log
+	@echo "negative control: removing the oracle's body-span clamp turns the pinned vector RED"
 
 # The GENERATED half of the data: the JSON text of every instance and the read
 # report of every evolution case, both from the compiler's own engine.

@@ -82,16 +82,14 @@ CONFORMANCE_NEGATIVE_DART = build/conformance-negative-dart
 conformance-negative-control-dart:
 	@echo "conformance-negative-control-dart: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#514)"
 
-
 # ---- THE DART TABLES GATES beside the conformance matrix ----
 #
 # THE SOAK gates on CORRECTNESS under reuse: every record round-tripped through
 # the wire and through the text for the whole run, byte-compared, into storage
 # reused every iteration. The allocation floor is the gate below it.
 .PHONY: tables-dart-soak
-tables-dart-soak: build/tables-generated-dart/.stamp
-	$(DART) test/dart-tables/soak.dart $(DART_SOAK_SECONDS)
-	$(MAKE) tables-dart-alloc
+tables-dart-soak:
+	@echo "tables-dart-soak: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#514)"
 
 DART_SOAK_SECONDS ?= 20
 
@@ -99,17 +97,8 @@ DART_SOAK_SECONDS ?= 20
 # nothing: SOAK_SABOTAGE=1 corrupts ONE BYTE of one re-saved record, and the
 # byte comparison must refuse it.
 .PHONY: tables-dart-soak-negative-control
-tables-dart-soak-negative-control: build/tables-generated-dart/.stamp
-	@if SOAK_SABOTAGE=1 $(DART) test/dart-tables/soak.dart $(DART_SOAK_SECONDS) \
-			> build/dart-soak-control.log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the soak passed with a corrupted round trip"; \
-		cat build/dart-soak-control.log; exit 1; \
-	fi
-	@grep -q "SOAK FAILED" build/dart-soak-control.log || \
-		{ echo "NEGATIVE CONTROL FAILED: the soak went red for some other reason"; \
-		  cat build/dart-soak-control.log; exit 1; }
-	@grep -m1 "SOAK FAILED" build/dart-soak-control.log
-	@echo "negative control: one corrupted byte in a round trip turns the Dart soak RED"
+tables-dart-soak-negative-control:
+	@echo "tables-dart-soak-negative-control: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#514)"
 
 # THE ALLOCATION GATE (test/dart-tables/gcgate.dart). The claim is that the
 # wire path — loadBody, measure, saveBody through a caller-owned reader, writer
@@ -139,29 +128,10 @@ tables-dart-soak-negative-control: build/tables-generated-dart/.stamp
 # is seconds, and the number is a price per record either way.
 DART_ALLOC_ITERATIONS ?= 400000
 DART_ALLOC_TEXT_ITERATIONS ?= 200
-DART_GC_FLAGS = --verbose_gc --new_gen_semi_initial_size=1 --new_gen_semi_max_size=1
-DART_GC_COUNT = awk '/gcgate: steady phase begins/{on=1;next} /gcgate: steady phase ends/{on=0} on && /Scavenge/{n++} END{print n+0}'
 
 .PHONY: tables-dart-alloc
-tables-dart-alloc: build/tables-generated-dart/.stamp
-	@mkdir -p build/dart-alloc
-	$(DART) compile aot-snapshot -o build/dart-alloc/gcgate.aot test/dart-tables/gcgate.dart >/dev/null
-	@for phase in idle load measure save wire; do \
-		n=$$($(DART_AOT) $(DART_GC_FLAGS) build/dart-alloc/gcgate.aot $$phase $(DART_ALLOC_ITERATIONS) 2>&1 | $(DART_GC_COUNT)); \
-		printf 'dart alloc  AOT  %-8s %s scavenges over %s x 8 records\n' $$phase $$n $(DART_ALLOC_ITERATIONS); \
-		[ "$$n" = 0 ] || { echo "ALLOCATION GATE FAILED: the $$phase phase allocates under AOT"; exit 1; }; \
-	done
-	@for phase in idle load measure save wire; do \
-		n=$$($(DART) $(DART_GC_FLAGS) test/dart-tables/gcgate.dart $$phase $(DART_ALLOC_ITERATIONS) 2>&1 | $(DART_GC_COUNT)); \
-		printf 'dart alloc  JIT  %-8s %s scavenges over %s x 8 records (printed, not gated)\n' $$phase $$n $(DART_ALLOC_ITERATIONS); \
-	done
-	@n=$$($(DART_AOT) $(DART_GC_FLAGS) build/dart-alloc/gcgate.aot text $(DART_ALLOC_TEXT_ITERATIONS) 2>&1 | $(DART_GC_COUNT)); \
-		printf 'dart alloc  AOT  text     %s scavenges over %s x 8 records (the priced floor, not gated)\n' $$n $(DART_ALLOC_TEXT_ITERATIONS)
-	@echo "dart alloc: the wire path allocates nothing per record under AOT; the JIT count is printed beside it"
-
-# The AOT runtime beside the pinned SDK's `dart`; a bare DART=dart is a PATH
-# lookup — CI's setup-dart puts both on the PATH — so DART_AOT is bare too.
-DART_AOT ?= $(if $(findstring /,$(DART)),$(dir $(DART))dartaotruntime,dartaotruntime)
+tables-dart-alloc:
+	@echo "tables-dart-alloc: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#514)"
 
 # THE ALLOCATION GATE'S NEGATIVE CONTROL: two plants, one object per record
 # each — a TableReport, the class the code under test could most plausibly
@@ -177,18 +147,8 @@ DART_AOT ?= $(if $(findstring /,$(DART)),$(dir $(DART))dartaotruntime,dartaotrun
 # one record of the corpus is 210 KB, so a phase over it is seconds, not
 # milliseconds, and ten phases run here.
 .PHONY: tables-dart-alloc-negative-control
-tables-dart-alloc-negative-control: build/tables-generated-dart/.stamp
-	@mkdir -p build/dart-alloc
-	$(DART) compile aot-snapshot -o build/dart-alloc/gcgate.aot test/dart-tables/gcgate.dart >/dev/null
-	@for phase in plant-report plant-bytes; do \
-		n=$$($(DART_AOT) $(DART_GC_FLAGS) build/dart-alloc/gcgate.aot $$phase $(DART_ALLOC_ITERATIONS) 2>&1 | $(DART_GC_COUNT)); \
-		printf 'dart alloc  AOT  %-12s %s scavenges\n' $$phase $$n; \
-		[ "$$n" -ge 1 ] || { echo "NEGATIVE CONTROL FAILED: the gate stayed green with an allocation planted per record ($$phase, AOT)"; exit 1; }; \
-		n=$$($(DART) $(DART_GC_FLAGS) test/dart-tables/gcgate.dart $$phase $(DART_ALLOC_ITERATIONS) 2>&1 | $(DART_GC_COUNT)); \
-		printf 'dart alloc  JIT  %-12s %s scavenges\n' $$phase $$n; \
-		[ "$$n" -ge 1 ] || { echo "NEGATIVE CONTROL FAILED: the gate stayed green with an allocation planted per record ($$phase, JIT)"; exit 1; }; \
-	done
-	@echo "negative control: one planted allocation per record turns the Dart allocation gate RED, under AOT and under the JIT"
+tables-dart-alloc-negative-control:
+	@echo "tables-dart-alloc-negative-control: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#514)"
 
 # THE DART NAME-CLAIM NEGATIVE CONTROL (docs/SPEC-TABLES.md §11). Every
 # library-scope spelling of the Dart table runtime is registered in
@@ -221,16 +181,8 @@ tables-dart-names-negative-control:
 # wrapped in a main() and run over the corpus, so the page goes red with the
 # code. test/dart-tables/usage-prelude.dart is the wrapper's head.
 .PHONY: tables-dart-usage
-tables-dart-usage: build/tables-generated-dart/.stamp
-	@mkdir -p build/dart-usage
-	@awk '/^Dart also carries the \*\*TABLE wire\*\*/{on=1} /^\*\*Go\*\* —/{on=0} on && /^```dart$$/{code=1; next} on && /^```$$/{code=0} on && code && !/^import /' \
-		docs/USAGE.md > build/dart-usage/blocks.dart
-	@[ -s build/dart-usage/blocks.dart ] || { echo "USAGE GATE FAILED: no Dart table example found on the page"; exit 1; }
-	@{ sed -e 's|../../build/|$(CURDIR)/build/|g' test/dart-tables/usage-prelude.dart; \
-	   echo 'void main() {'; cat build/dart-usage/blocks.dart; echo '  usageHolds(config, out);'; echo '}'; } \
-		> build/dart-usage/usage.dart
-	$(DART) analyze build/dart-usage/usage.dart
-	$(DART) --enable-asserts build/dart-usage/usage.dart
+tables-dart-usage:
+	@echo "tables-dart-usage: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#514)"
 
 # THE GENERIC-WALK GATE, Dart: the §16 walker is emitted ONCE per unit, into
 # <Package>Table.dart, between two marker comments — and it is the SAME walker

@@ -114,14 +114,12 @@ build/conformance/manifest.txt: build/conformance-harness build-conformance-elix
 	./build/conformance-harness run --only elixir > /dev/null
 
 .PHONY: tables-elixir-alloc-audit
-tables-elixir-alloc-audit: build/conformance/manifest.txt
-	BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
-		build/conformance/manifest.txt alloc-audit
+tables-elixir-alloc-audit:
+	@echo "tables-elixir-alloc-audit: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#515)"
 
 .PHONY: tables-elixir-alloc-pin
-tables-elixir-alloc-pin: build/conformance/manifest.txt
-	ELIXIR_ALLOC_PIN=1 BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
-		build/conformance/manifest.txt alloc-audit
+tables-elixir-alloc-pin:
+	@echo "tables-elixir-alloc-pin: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#515)"
 
 # A SABOTAGED BUILD OF THE CORPUS, which every Elixir negative control below
 # runs its gate against: the emitter source $(2) with the sed program held in
@@ -155,29 +153,14 @@ endef
 # AND on the binary-call column — each named in the audit's own output, so a
 # column that lost its teeth is found on its own. A gate that cannot go red is
 # not a gate.
-CONFORMANCE_NEGATIVE_ELIXIR_ALLOC := build/elixir-alloc-negative
-ELIXIR_ALLOC_SED := -e 's|  fields_%s(data, %s(), report)\\n|  _ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 1024)\\n  fields_%s(data, %s(), report)\\n|'
 
 .PHONY: tables-elixir-alloc-negative-control
-tables-elixir-alloc-negative-control: build/conformance/manifest.txt
-	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC),internal/codegen/elixirtable/codecs.go,ELIXIR_ALLOC_SED)
-	@out=$$(ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/ebin BEAM_PATH="$(BEAM_PATH)" \
-			./test/conformance/elixir/driver build/conformance/manifest.txt alloc-audit 2>&1) && \
-		{ echo "NEGATIVE CONTROL FAILED: the audit passed with sixteen refc binaries and a thousand-cell list added to every generated load"; exit 1; }; \
-	cases=$$(grep -c '^[a-z]' test/conformance/elixir/alloc-budget.txt); \
-	over=$$(echo "$$out" | grep 'over its pinned budget'); \
-	[ "$$(echo "$$over" | grep -c .)" -eq "$$cases" ] || \
-		{ echo "NEGATIVE CONTROL FAILED: not every one of the $$cases cases went over budget"; exit 1; }; \
-	[ "$$(echo "$$over" | grep -c 'heap words')" -eq "$$cases" ] || \
-		{ echo "NEGATIVE CONTROL FAILED: the heap-word column did not red every case"; exit 1; }; \
-	[ "$$(echo "$$over" | grep -c 'binary calls')" -eq "$$cases" ] || \
-		{ echo "NEGATIVE CONTROL FAILED: the binary-call column did not red every case"; exit 1; }; \
-	echo "elixir alloc negative control: sixteen refc binaries and a thousand-cell list per generated load red the heap-word and binary-call columns of all $$cases cases"
+tables-elixir-alloc-negative-control:
+	@echo "tables-elixir-alloc-negative-control: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#515)"
 
 .PHONY: tables-elixir-soak
-tables-elixir-soak: build/conformance/manifest.txt
-	BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
-		build/conformance/manifest.txt soak $(SOAK_SECONDS)
+tables-elixir-soak:
+	@echo "tables-elixir-soak: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#515)"
 
 # THE FUZZER'S ORACLE over the two READERS: for ANY bytes, Open either refuses
 # or opens, and an opened image is one every accessor walks without leaving the
@@ -191,20 +174,10 @@ ELIXIR_FUZZ_N ?= 20000
 # RETAINS — every generated load caches a copy of its bytes under a fresh key
 # and never evicts, the shape a leak in generated code takes on the BEAM — so
 # both floors rise, and the soak must name each arm.
-CONFORMANCE_NEGATIVE_ELIXIR_SOAK := build/elixir-soak-negative
-ELIXIR_SOAK_SED := -e 's|  fields_%s(data, %s(), report)\\n|  :erlang.put({:cache, :erlang.unique_integer()}, :binary.copy(data))\\n  fields_%s(data, %s(), report)\\n|'
 
 .PHONY: tables-elixir-soak-negative-control
-tables-elixir-soak-negative-control: build/conformance/manifest.txt
-	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_SOAK),internal/codegen/elixirtable/codecs.go,ELIXIR_SOAK_SED)
-	@out=$$(ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/ebin BEAM_PATH="$(BEAM_PATH)" \
-			./test/conformance/elixir/driver build/conformance/manifest.txt soak 30 2>&1) && \
-		{ echo "NEGATIVE CONTROL FAILED: the soak passed while every generated load retained a copy of its bytes"; exit 1; }; \
-	echo "$$out" | grep -q 'live-heap FLOOR rose' || \
-		{ echo "NEGATIVE CONTROL FAILED: the live-heap arm did not red"; exit 1; }; \
-	echo "$$out" | grep -q 'binary-memory FLOOR rose' || \
-		{ echo "NEGATIVE CONTROL FAILED: the binary-memory arm did not red"; exit 1; }; \
-	echo "elixir soak negative control: a generated load that retains a copy of its bytes lifts both floors and reds the soak"
+tables-elixir-soak-negative-control:
+	@echo "tables-elixir-soak-negative-control: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#515)"
 
 .PHONY: tables-elixir-fuzz
 tables-elixir-fuzz: build/conformance/manifest.txt

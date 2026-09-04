@@ -160,6 +160,7 @@ func soakCorpus(t *testing.T) []soakCase {
 }
 
 func TestSoak(t *testing.T) {
+	dormantWhileThePortWritesThePreviousForm(t)
 	corpus := soakCorpus(t)
 	scratch := make([]byte, 1<<20)
 

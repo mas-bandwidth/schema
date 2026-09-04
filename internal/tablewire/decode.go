@@ -189,6 +189,20 @@ func (r *wireReader) sub(n int) *wireReader {
 	return &wireReader{buf: r.buf[r.off : r.off+n], report: r.report, m: r.m, ids: r.ids, st: r.st}
 }
 
+// subTo spans from the cursor to `end`, the last byte of the body the cursor
+// is inside. A BODY'S HEADER IS READ AGAINST THE PARENT BUFFER and not against
+// the body's own L, because a canonical LEB128 is up to ten bytes and an `L` of
+// 2 is the shortest body that carries one at all (§3). A count spelled wide
+// enough therefore leaves the cursor PAST the end it was framed by. That body
+// covers no elements, which is the answer the reference gives it, so the span
+// is empty rather than negative.
+func (r *wireReader) subTo(end int) *wireReader {
+	if end < r.off {
+		end = r.off
+	}
+	return r.sub(end - r.off)
+}
+
 // skip steps past a field whose id this reader cannot name — the kind byte and
 // nothing else is needed, which is what makes an unknown field survivable (§3).
 // Four rules cover the set.
@@ -471,7 +485,7 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 			r.off = end
 			return true
 		}
-		sub := r.sub(end - r.off)
+		sub := r.subTo(end)
 		var last tabletext.MapKey
 		landed := false
 		for range count {
@@ -672,7 +686,7 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 		// cover keeps the decoded prefix, flags malformed, and the parent
 		// continues at the next field — a neighbour's bytes are never
 		// fabricated into elements (§4)
-		sub := r.sub(end - r.off)
+		sub := r.subTo(end)
 		if f.Type.Kind == ir.TBytes {
 			payload := make([]byte, 0, keep)
 			for i := 0; i < keep; i++ {
@@ -788,7 +802,7 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 		r.off = end
 		return true
 	}
-	sub := r.sub(end - r.off)
+	sub := r.subTo(end)
 	for range count {
 		key, good := sub.leb()
 		if !good {

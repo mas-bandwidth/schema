@@ -23,6 +23,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -41,13 +42,14 @@ import (
 
 // wireFuzzOptions is what the command line settles.
 type wireFuzzOptions struct {
-	driver string
-	seed   uint64
-	n      int
-	replay string
-	unit   string
-	root   string
-	failed string
+	driver  string
+	seed    uint64
+	n       int
+	replay  string
+	unit    string
+	root    string
+	failed  string
+	vectors string
 }
 
 // wireRoot is one (unit, root) the seeds name, with what the oracle needs to
@@ -390,6 +392,19 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 				return err
 			}
 		}
+		// THE PINNED VECTORS, each a red this fuzzer already found. They ride
+		// last and unmutated, so a run that goes red on one names the vector
+		// rather than a mutant index.
+		vecs, err := readWireVectors(opts.vectors)
+		if err != nil {
+			return err
+		}
+		for _, v := range vecs {
+			if err := addSeed(v.name, v.unit, v.root, v.file); err != nil {
+				return err
+			}
+			seeds[len(seeds)-1].vector = true
+		}
 	}
 
 	leg, err := startWireLeg(opts.driver, roots)
@@ -409,6 +424,12 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		leg.kill()
 		return fmt.Errorf("the leg has a codec for none of the %d roots the corpus names", len(roots))
 	}
+	var pool []*wireSeed
+	for _, s := range live {
+		if !s.vector {
+			pool = append(pool, s)
+		}
+	}
 
 	// the stream: a producer that both the writer and the comparator follow,
 	// so a mutant is generated once and never held past its comparison
@@ -421,14 +442,26 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 			produced <- item{m: &wireMutant{seed: live[0], pass: "replay", data: live[0].wire}}
 		} else {
 			for _, s := range live {
+				if s.vector {
+					// a pinned vector IS the mutant. Its bytes are hostile
+					// already, and mutating them would lose the exact input
+					// the vector exists to replay
+					produced <- item{m: &wireMutant{seed: s, pass: "vector", data: s.wire}}
+					continue
+				}
 				pass := map[string]int{}
 				enumerated(s, func(name string, data []byte) {
 					produced <- item{m: &wireMutant{seed: s, pass: name, index: pass[name], data: data}}
 					pass[name]++
 				})
 			}
+			// THE RANDOM PASS DRAWS FROM THE MANIFEST SEEDS ALONE. A pinned
+			// vector is damaged bytes by construction, so it is no basis for
+			// a mutation. Keeping it out also keeps the random sequence a
+			// function of the corpus and the seed alone, so pinning a vector
+			// never moves a red that was already there.
 			for i := 0; i < opts.n; i++ {
-				mut := randomMutant(live, opts.seed, i)
+				mut := randomMutant(pool, opts.seed, i)
 				produced <- item{m: mut}
 			}
 		}
@@ -526,14 +559,71 @@ func describeBytes(b []byte, refused bool) string {
 	return fmt.Sprintf("%d bytes", len(b))
 }
 
-// wireFailure writes the mutant where a person can pick it up and prints the
-// one command that replays it alone.
+// mutantHexLimit is how much of a mutant rides in the failure message itself.
+// A CI log is the only copy of a red a person outside the run ever sees, so the
+// bytes go in it. A corpus wire reaches 200 KB and a log line is not a file, so
+// past the limit the digest and the run seed carry the reproduction instead.
+// The whole mutant is on disk at --failed either way.
+const mutantHexLimit = 4096
+
+// wireFailure writes the mutant where a person can pick it up, prints what
+// reproduces it, and prints the one command that replays it alone.
 func wireFailure(opts wireFuzzOptions, mut *wireMutant, passed int, verdict, detail string) error {
 	if err := os.MkdirAll(filepath.Dir(opts.failed), 0o755); err == nil {
 		_ = os.WriteFile(opts.failed, mut.data, 0o644)
 	}
-	msg := fmt.Sprintf("FAILED after %d mutants: %s\n  seed %s (%s.%s), pass %s #%d, mutant of %d bytes written to %s\n%s\n  replay: %s wire-fuzz --driver %q --replay %s --unit %s --root %s",
-		passed, verdict, mut.seed.name, mut.seed.unit, mut.seed.root, mut.pass, mut.index, len(mut.data), opts.failed,
-		strings.TrimRight(detail, "\n"), os.Args[0], opts.driver, opts.failed, mut.seed.unit, mut.seed.root)
+	// THE BYTES AND THE RUN SEED RIDE IN THE MESSAGE. Certification runs on
+	// hardware nobody here owns, so a red whose only record is a file under
+	// build/ is a red nobody can reproduce from the log, and a run whose seed
+	// is not stated is a search rather than a seek. Both go here, on every
+	// failure.
+	sum := sha256.Sum256(mut.data)
+	var bytesLine string
+	if len(mut.data) <= mutantHexLimit {
+		bytesLine = fmt.Sprintf("\n  mutant bytes (sha256 %x), restore with `xxd -r -p`:\n  %x", sum, mut.data)
+	} else {
+		bytesLine = fmt.Sprintf("\n  mutant sha256 %x, too large to print: reproduce with --seed %d and read %s",
+			sum, opts.seed, opts.failed)
+	}
+	msg := fmt.Sprintf("FAILED after %d mutants: %s\n  corpus seed %s (%s.%s), pass %s #%d, run seed %d, mutant of %d bytes written to %s%s\n%s\n  replay: %s wire-fuzz --driver %q --replay %s --unit %s --root %s",
+		passed, verdict, mut.seed.name, mut.seed.unit, mut.seed.root, mut.pass, mut.index, opts.seed, len(mut.data), opts.failed,
+		bytesLine, strings.TrimRight(detail, "\n"), os.Args[0], opts.driver, opts.failed, mut.seed.unit, mut.seed.root)
 	return fmt.Errorf("%s", msg)
+}
+
+// wireVector is one pinned red, as the index names it.
+type wireVector struct {
+	name string
+	unit string
+	root string
+	file string
+}
+
+// readWireVectors reads the pinned-vector index. An ABSENT index is an empty
+// corpus and not an error, because the vectors are a gate that grows and a tree
+// that has not needed one yet still fuzzes.
+func readWireVectors(path string) ([]wireVector, error) {
+	if path == "" {
+		return nil, nil
+	}
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []wireVector
+	for i, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Fields(line)
+		if len(f) != 4 {
+			return nil, fmt.Errorf("%s:%d: a vector is <name> <unit> <root> <file>", path, i+1)
+		}
+		out = append(out, wireVector{name: f[0], unit: f[1], root: f[2], file: f[3]})
+	}
+	return out, nil
 }

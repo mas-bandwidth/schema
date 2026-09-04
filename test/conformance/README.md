@@ -329,6 +329,22 @@ The C++ leg is `test/tables/wire_fuzz_main.cpp`: a codec table of
 A port's leg is that file's shape in its own language and nothing else — the
 mutators, the oracle and the comparison never move.
 
+**The pinned vectors.** `testdata/wire/tables/fuzz-vectors/INDEX.txt` names
+mutants the fuzzer has already gone red on, one per line as `<name> <unit>
+<root> <file>`. Each rides in every run, exactly as it is and before the random
+pass, so a red it pins is a SEEK rather than a search. They are seeds like any
+other but are never mutated and never drawn from by the random pass, which is
+what keeps the mutant sequence a function of the corpus and the seed alone.
+Pinning a vector cannot move a red that was already there. A vector earns its
+place by having been a red, and the fix that closed it owes a negative control
+naming it.
+
+**A failure prints what reproduces it**: the run seed, the corpus seed and pass
+it came from, and the mutant's own bytes as hex, restored with `xxd -r -p`. A
+red in a CI log a person cannot re-run is still a red they can replay. A mutant
+past 4 KB prints its SHA-256 instead and the run seed carries the reproduction.
+The whole mutant is on disk at `--failed` either way.
+
 ## The budget
 
 `make conformance` runs under the two-minute rule (#320). Measured on arm64
