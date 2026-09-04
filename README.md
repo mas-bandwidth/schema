@@ -124,7 +124,9 @@ gate), [PERFORMANCE.md](docs/PERFORMANCE.md),
 [COMPARISON-TABLES.md](docs/COMPARISON-TABLES.md) (tables against FlatBuffers and
 Protobuf, feature by feature, with the verdict on every gap),
 [COMPARISON.md](docs/COMPARISON.md) (the same packet against Cap'n Proto, Protobuf
-and FlatBuffers), [FAQ.md](docs/FAQ.md), [VERSIONING.md](docs/VERSIONING.md),
+and FlatBuffers), [COMPETITION.md](docs/COMPETITION.md) (the standing comparison
+against Protocol Buffers, FlatBuffers, Cap'n Proto and Avro),
+[FAQ.md](docs/FAQ.md), [VERSIONING.md](docs/VERSIONING.md),
 [CONTRIBUTING.md](docs/CONTRIBUTING.md) and [SECURITY.md](docs/SECURITY.md).
 
 ## License
