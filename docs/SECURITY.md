@@ -53,12 +53,15 @@ the buffer. Specifically:
   unpaired surrogate, or a zero group among the transmitted units. The rules
   are stated once in SPEC §4.7 and §4.12 and every target owes the same
   verdict, so a target that skips one is a divergence bug as well as an
-  acceptance bug. **The TABLE wire imposes no encoding on either text kind and
-  that is not a gap** (SPEC-TABLES §3): its read is tolerant rather than
-  terminal, the units land in storage as they arrive, and the text form
-  answers with `U+FFFD` on the way out. What IS in scope there is the framing:
-  a length past a declared bound, and an odd `L` on a kind `33` payload or a
-  `*wstring` blob, each of which must be refused before it drives a copy.
+  acceptance bug. **The TABLE wire enforces the same rules and reports rather
+  than stops** (SPEC-TABLES §3, §4): a kind `12` payload that is not
+  well-formed UTF-8 or that carries a zero byte, and a kind `33` payload with
+  an unpaired surrogate or a zero unit, each leave the field at its declared
+  default, count one `malformed`, and let the parent read on past `L`. **A
+  table reader that STORES any of them is an acceptance bug on this list**,
+  exactly as a packet reader that accepts one is. In scope beside it is the
+  framing: a length past a declared bound, and an odd `L` on a kind `33`
+  payload or a `*wstring` blob, each refused before it drives a copy.
 - Any read that continues past the end of the stream instead of failing.
 - Integer overflow in a bit or byte count computed from wire data.
 - **Any divergence between the nine languages on the above** — if C++ refuses

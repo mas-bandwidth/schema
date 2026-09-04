@@ -1759,14 +1759,19 @@ damage and nothing else refused (SPEC-TABLES.md §3). Its unbounded twin is
 `*wstring`, a blob node under the reserved id `fnv1a64( "wstring" )`
 (SPEC-TABLES.md §2.5, §3.1), its storage is `char16_t[N + 1]` and an `int32`
 used length in code units (SPEC-TABLES.md §7.2), and its text form is a JSON
-string transcoded at the boundary (SPEC-TABLES.md §16.2). **What does NOT
-cross is the validation above.** A packet read is terminal, so it refuses an
-unpaired surrogate, a zero code unit and a group above `0xFFFF` and stops. A
-table read is tolerant, so it accepts every sixteen-bit unit into storage
-exactly as it accepts ill-formed UTF-8 into a `string(N)`, and the text form's
-writer answers with `U+FFFD` on the way out. The difference belongs to the two
-postures, not to the type: a reader that has somewhere to continue from and a
-report to fill does not need to refuse content, and one that has neither does.
+string transcoded at the boundary (SPEC-TABLES.md §16.2). **The validation
+above holds on both, and only the SHAPE of the refusal differs.** A packet
+read is terminal, so an unpaired surrogate, a zero code unit or a group above
+`0xFFFF` fails the read and stops it. A table read is tolerant and
+length-framed, so the same content is FRAMING-CLASS DAMAGE there: the field
+reads its declared default, one `malformed` counts, and the parent reads on
+past `L` (SPEC-TABLES.md §3, §4). **Neither reader accepts it**, which is what
+keeps the paragraph above true as written — every generated reader enforces
+these rules, in all nine targets, in every build mode — and what keeps the
+write side unrescoped, because ill-formed text never reaches storage from
+either wire. A group above `0xFFFF` has no case on the table wire at all, two
+bytes being unable to spell one. `string(N)` is held the same way on both
+wires for the same reason (§4.7).
 A `wstring(N)` MAP KEY is refused by name, the diagnostic naming `string(N)`,
 because `memcmp` over UTF-8 is a portable order and little-endian code units
 have none (SPEC-TABLES.md §2.8, §11). The protocol id needs no
@@ -1860,19 +1865,22 @@ they are the accepted set above and nothing else: `wstring-table-empty`,
 `wstring-table-accept-two-basic-plane-groups` and
 `wstring-table-accept-length-inside-a-five-character-buffer`, each the same
 text as its packet twin, each pinned as bytes under kind `33` and read back
-through the report. **The corpus's seventeen refusals do NOT carry over, and
-that is the point of naming them here.** Nine of them are the seven
-unpaired-surrogate vectors and the two group-above-`0xFFFF` vectors, and the
-table wire has no answer to give: a group above `0xFFFF` cannot be spelled in
-two bytes, and an unpaired surrogate is content this wire accepts. The three
-interior-null vectors are accepted here too. The two out-of-range length
-vectors become a CLAMP, `wstring-table-clamp-past-the-bound` and
+through the report. **The corpus's seventeen refusals carry over as
+COUNTED refusals rather than terminal ones, and the accounting is worth
+stating.** The seven unpaired-surrogate vectors and the three interior-null
+vectors are each one `malformed` on the table wire where they are a failed
+read on the packet wire, and they ride under the same names with `-table` on
+them. The two group-above-`0xFFFF` vectors have no table analogue at all,
+because two bytes cannot spell a group above `0xFFFF`. The two out-of-range
+length vectors become a CLAMP, `wstring-table-clamp-past-the-bound` and
 `wstring-table-clamp-splitting-a-surrogate-pair`, one `clamped` each. The
 three past-end vectors become the table wire's own framing damage, and the
 table form adds the two refusals that are its alone,
 `wstring-table-odd-length` and `wstring-table-length-past-the-body`, each one
 `malformed`. That accounting is the row's real content: **the same text on two
-wires, and a verdict table that differs by design rather than by omission.**
+wires, the same verdict on every vector either wire can express, and a
+difference only in what a refusal COSTS — a stopped read on one, a defaulted
+field and a counter on the other.**
 
 Beside the corpus, the cross-language matrix is **owed** a `wstring(7)`
 field holding serialize.js's interop cases: empty, three basic-plane code

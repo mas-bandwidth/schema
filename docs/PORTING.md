@@ -768,7 +768,7 @@ HEADER and carries the arm's kind. The node table rides in ONE field under the
 reserved id `0xFFFFFFFFFFFFFFFF`, whose 64-bit `L` frames a numbering of any
 size. The form byte is read FIRST, so a byte a reader does not know is a
 REFUSAL by name and never damage, and the read report carries that verdict
-beside its five counters.
+beside its six counters.
 
 **Reference.** `internal/codegen/cpptable/cpptable.go` — `putleb`/`getleb` with
 the canonical check, `TableIds` (the writer's table, its capacity a

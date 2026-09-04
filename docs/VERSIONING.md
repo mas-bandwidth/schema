@@ -255,8 +255,8 @@ pipeline step; player saves hold state, which has no weekly default.
 
 Three mechanisms judge an edit, and each sees what the others cannot:
 
-- **The read report** says what a *reader* can tell happened: five counters,
-  `unknown`, `kind_mismatch`, `widened`, `clamped` and `duplicate`, and a
+- **The read report** says what a *reader* can tell happened: six counters,
+  `unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` and the
   `malformed` flag, filled on every load and never fatal on data from another
   build. A
   caller that opts into retain-unknown reads two more on the same struct
@@ -350,7 +350,8 @@ report was not silent, so the game keeps the report beside the instance and
 checks it before it writes.
 
 **RETAIN-UNKNOWN is the opt-in that answers the case the rule exists for, and
-it strikes out ONE of the four counters** (SPEC-TABLES.md §6.6, owed as #525).
+it strikes ONE counter out of the never-clobber condition** (SPEC-TABLES.md
+§6.6, owed as #525).
 A caller that hands `LoadRetain` a bounded side buffer it declares and owns
 keeps every unknown FIELD's bytes, and `SaveRetain` writes them back into the
 body they came from. Retention covers the `unknown` class and nothing else, so
@@ -361,6 +362,10 @@ is the original condition with `unknown` struck out and nothing else moved,
 and it is precisely what retention buys. The other three still name real loss:
 a `kind_mismatch` field was skipped and read its declared default, a `clamped`
 value was changed on the way in, and a `malformed` load kept a partial decode.
+**`widened` is not in the condition and never was**, on either side of the
+opt-in: a widened field decoded exactly, so a rewrite loses nothing, and the
+counter is there to say the file's bytes will change shape rather than that
+its values did (SPEC-TABLES.md §4).
 The condition is read after the SAVE and not only after the load, because a
 retained record can also fail to be placed. The default is unchanged, every
 existing caller keeps the behavior it has, and a caller that treats

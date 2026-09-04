@@ -1009,7 +1009,7 @@ if report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0 {
 The report is a PARAMETER rather than a member of the reader, which is the one
 place the Rust codecs read differently from the C++ ones: a reader holding
 `&mut TableReport` could not hand a sub-reader out of its own buffer while that
-borrow stood. One report, one caller, the same five counters.
+borrow stood. One report, one caller, the same six counters.
 
 `string(N)` and `bytes(N)` are a `[u8; N]` beside an `i32` used length, arrays
 a `[T; N]` beside an `i32` used count, `?T` a value beside a `<name>_present`
@@ -1278,7 +1278,7 @@ because a key no slot answers is misuse rather than data.
 
 **THE REPORT IS A VALUE THE CALLER OWNS**, threaded rather than pointed at: the
 BEAM has no mutable struct, so `load` hands it back beside the instance. One
-report, one caller, the same five counters as everywhere else.
+report, one caller, the same six counters as everywhere else.
 
 **Storage is SPEC §6.1's Elixir column and nothing new.** A `string(N)` and a
 `bytes(N)` are binaries whose `byte_size` IS the used length; a `[..N]T` is a
