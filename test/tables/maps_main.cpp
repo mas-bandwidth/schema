@@ -1,0 +1,912 @@
+// THE MAP GATE (docs/SPEC-TABLES.md §2.8). One binary over the `tables/maps`
+// unit: the builder's five, the sort the four writing walks hold, the node
+// extent a region and a cook carry, every reader rule, and the negative
+// controls §2.8 names — each row here is one of them, and the comment says
+// which sabotage it turns red.
+//
+// Compiled WITHOUT the serialize include path: the Table headers stand alone.
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+#include <new>
+
+#include "FleetTable.h"
+#include "RowsTable.h"
+#include "DepthTable.h"
+
+using namespace mapdemo;
+
+static int failures = 0;
+
+#define CHECK( condition )                                                    \
+    do                                                                        \
+    {                                                                         \
+        if ( !( condition ) )                                                 \
+        {                                                                     \
+            printf( "FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition );     \
+            failures++;                                                       \
+        }                                                                     \
+    } while ( 0 )
+
+#define CHECK_EQ( actual, expected )                                          \
+    do                                                                        \
+    {                                                                         \
+        const long long a_ = (long long) ( actual );                          \
+        const long long e_ = (long long) ( expected );                        \
+        if ( a_ != e_ )                                                       \
+        {                                                                     \
+            printf( "FAIL %s:%d: %s = %lld, want %lld\n",                     \
+                    __FILE__, __LINE__, #actual, a_, e_ );                    \
+            failures++;                                                       \
+        }                                                                     \
+    } while ( 0 )
+
+// ---- the shared golden wire (docs/SPEC-TABLES.md §3) ----
+//
+// The C++ reference is the writer: these instances' encodings are pinned into
+// testdata/wire/tables/<name>.bin. A break here under an unchanged schema is
+// stop-the-line, never a quiet re-pin — SCHEMA_UPDATE_WIRE_GOLDENS=1 rewrites
+// them deliberately (make update-goldens).
+
+static void pin_golden( const char * name, const uint8_t * data, int64_t bytes )
+{
+    char path[256];
+    snprintf( path, sizeof( path ), "testdata/wire/tables/%s.bin", name );
+    if ( getenv( "SCHEMA_UPDATE_WIRE_GOLDENS" ) )
+    {
+        FILE * f = fopen( path, "wb" );
+        if ( f == NULL ) { printf( "FAIL cannot write %s\n", path ); failures++; return; }
+        fwrite( data, 1, (size_t) bytes, f );
+        fclose( f );
+        return;
+    }
+    FILE * f = fopen( path, "rb" );
+    if ( f == NULL )
+    {
+        printf( "FAIL missing table wire golden %s (run: make update-goldens)\n", path );
+        failures++;
+        return;
+    }
+    static uint8_t expected[1u << 20];
+    const size_t n = fread( expected, 1, sizeof( expected ), f );
+    fclose( f );
+    if ( (int64_t) n != bytes || memcmp( expected, data, n ) != 0 )
+    {
+        printf( "FAIL table wire golden %s: %lld bytes written, %lld pinned\n",
+                name, (long long) bytes, (long long) n );
+        failures++;
+    }
+}
+
+// A COOK IS WRITTEN FOR THE BUILD THAT OPENS IT (docs/SPEC-TABLES.md §7): the
+// host's own order, so the round trip below holds on the big-endian leg too.
+static TableByteOrder host_byte_order()
+{
+    const uint16_t probe = 1;
+    return *(const uint8_t *) &probe == 1 ? TableByteOrder::Little : TableByteOrder::Big;
+}
+
+static uint32_t rd32( const uint8_t * at )
+{
+    return (uint32_t) at[0] | ( (uint32_t) at[1] << 8 ) | ( (uint32_t) at[2] << 16 ) | ( (uint32_t) at[3] << 24 );
+}
+static void wr32( uint8_t * at, uint32_t v )
+{
+    for ( int i = 0; i < 4; i++ ) { at[i] = (uint8_t) ( v >> ( 8 * i ) ); }
+}
+
+// ---- the instances (docs/SPEC-TABLES.md §2.8) ----
+
+// The FLEET instance, built OUT OF KEY ORDER on purpose, with two keys naming
+// one node and a map of maps at three depths. `reversed` builds the same map
+// from the opposite insertion order: ONE MAP FROM TWO INSERTION ORDERS
+// produces one image on every form, and the byte compare between them goes red
+// if the sort is dropped.
+static void build_fleet( FleetBuilder & b, bool reversed )
+{
+    Fleet * fleet = b.GetRoot();
+
+    const char * names[3] = { "bomber", "fighter", "scout" };
+    const int32_t health[3] = { 400, 100, 30 };
+    for ( int i = 0; i < 3; i++ )
+    {
+        const int k = reversed ? 2 - i : i;
+        ShipConfig * ship = FleetShipsInsert( b.main, fleet->ships, names[k] );
+        CHECK( ship != NULL );
+        memcpy( ship->name, names[k], strlen( names[k] ) );
+        ship->name_length = (int32_t) strlen( names[k] );
+        ship->health = health[k];
+    }
+
+    // a map of *T: TWO KEYS, ONE NODE. The map is DECLARED BEFORE `flagship`,
+    // so the walk reaches the shared node here and numbers it first — a walk
+    // that grouped maps after the pointer fields would number them the other
+    // way round and the pinned wire below says so.
+    TableRef * slot = FleetByIdInsert( b.main, fleet->by_id, 7 );
+    ShipConfig * shared = ShipConfigEmplace( b.main, *slot );
+    CHECK( shared != NULL );
+    memcpy( shared->name, "shared", 6 );
+    shared->name_length = 6;
+    shared->health = 50;
+    *FleetByIdInsert( b.main, fleet->by_id, 12 ) = *slot;
+    fleet->flagship = *slot; // the SAME node a third time, through a pointer field
+
+    // a map of maps, by value, recursing
+    TableMap<FleetLoadoutsEntryValueEntry> * kit = FleetLoadoutsInsert( b.main, fleet->loadouts, "kit" );
+    CHECK( kit != NULL );
+    FleetLoadoutsEntryValueInsert( b.main, *kit, (uint8_t) 9 )->count = 99;
+    FleetLoadoutsEntryValueInsert( b.main, *kit, (uint8_t) 2 )->count = 22;
+
+    // a SIGNED key: -3 sorts before 2, which an unsigned compare gets wrong
+    FleetTiersInsert( b.main, fleet->tiers, (int16_t) 2 )->count = 2;
+    FleetTiersInsert( b.main, fleet->tiers, (int16_t) -3 )->count = -3;
+}
+
+static uint8_t wire_full[1u << 16];
+static uint8_t wire_reversed[1u << 16];
+static int64_t bytes_full = 0;
+
+// ---- the writer (docs/SPEC-TABLES.md §2.8) ----
+
+static void test_writer()
+{
+    {
+        FleetBuilder b;
+        build_fleet( b, false );
+        const int64_t measured = FleetMeasure( b );
+        bytes_full = FleetSave( b, wire_full, sizeof( wire_full ) );
+        // measure == save over a map is a real check on TWO SORTS AGREEING:
+        // nothing passes between the two walks (§2.8)
+        CHECK_EQ( measured, bytes_full );
+        pin_golden( "map_full", wire_full, bytes_full );
+        // MEASURE EQUALS SAVE AT EXACT CAPACITY: the buffer is the measure and
+        // not a byte more, so a write that ran over would refuse rather than
+        // fit by accident, and one short of it refuses
+        static uint8_t exact[1u << 16];
+        CHECK_EQ( FleetSave( b, exact, measured ), measured );
+        CHECK( memcmp( exact, wire_full, (size_t) measured ) == 0 );
+        CHECK_EQ( FleetSave( b, exact, measured - 1 ), -1 );
+    }
+    {
+        // CONTROL: the writer emits INSERTION order instead of sorted. This
+        // instance is built out of key order, so the byte compare goes red
+        // while measure == save still holds — which says the sabotage is the
+        // sort and not the arithmetic.
+        FleetBuilder b;
+        build_fleet( b, true );
+        const int64_t measured = FleetMeasure( b );
+        const int64_t n = FleetSave( b, wire_reversed, sizeof( wire_reversed ) );
+        CHECK_EQ( measured, n );
+        CHECK_EQ( n, bytes_full );
+        CHECK( memcmp( wire_full, wire_reversed, (size_t) bytes_full ) == 0 );
+    }
+    {
+        // CONTROL: `Save` emits a DEAD entry. An instance that ERASES meets
+        // it: the byte compare against the pinned wire goes red while
+        // measure == save still holds.
+        FleetBuilder b;
+        build_fleet( b, false );
+        ShipConfig * doomed = FleetShipsInsert( b.main, b.GetRoot()->ships, "hauler" );
+        CHECK( doomed != NULL );
+        doomed->health = 7;
+        CHECK( FleetShipsErase( b.arena, b.GetRoot()->ships, "hauler" ) );
+        CHECK( !FleetShipsErase( b.arena, b.GetRoot()->ships, "hauler" ) ); // false when absent
+        CHECK_EQ( b.GetRoot()->ships.count, 3 );
+        static uint8_t erased[1u << 16];
+        const int64_t measured = FleetMeasure( b );
+        const int64_t n = FleetSave( b, erased, sizeof( erased ) );
+        CHECK_EQ( measured, n );
+        CHECK_EQ( n, bytes_full );
+        CHECK( memcmp( wire_full, erased, (size_t) bytes_full ) == 0 );
+    }
+    {
+        // an EMPTY map is elided under §3's by-value rule: a fresh Fleet is
+        // the terminator and nothing else
+        FleetBuilder b;
+        static uint8_t empty[64];
+        const int64_t n = FleetSave( b, empty, sizeof( empty ) );
+        CHECK_EQ( n, 2 );
+        pin_golden( "map_empty", empty, n );
+    }
+}
+
+// ---- the builder's five (docs/SPEC-TABLES.md §2.8) ----
+
+static void test_builder()
+{
+    FleetBuilder b;
+    Fleet * fleet = b.GetRoot();
+
+    // INSERT hands the value back at its defaults; a DUPLICATE key REPLACES,
+    // the value reset and the entry's address unchanged
+    ShipConfig * first = FleetShipsInsert( b.main, fleet->ships, "fighter" );
+    first->health = 100;
+    ShipConfig * again = FleetShipsInsert( b.main, fleet->ships, "fighter" );
+    CHECK( again == first );      // the same entry
+    CHECK_EQ( again->health, 0 ); // reset to its defaults
+    CHECK_EQ( fleet->ships.count, 1 );
+    again->health = 100;
+
+    // FIND on the builder is the linear scan; NULL when absent
+    CHECK( FleetShipsFind( b.arena, fleet->ships, "fighter" ) == first );
+    CHECK( FleetShipsFind( b.arena, fleet->ships, "absent" ) == NULL );
+
+    // CONTROL: a key longer than N on insert is REFUSED. The insert's NULL
+    // goes red if a control clamps instead — a truncated key is a merged entry.
+    char over[64];
+    memset( over, 'k', sizeof( over ) );
+    over[40] = 0;
+    CHECK( FleetShipsInsert( b.main, fleet->ships, over ) == NULL );
+    CHECK_EQ( fleet->ships.count, 1 );
+    over[32] = 0; // exactly the bound: accepted
+    CHECK( FleetShipsInsert( b.main, fleet->ships, over ) != NULL );
+    CHECK_EQ( fleet->ships.count, 2 );
+
+    // EACH on the builder: INSERTION order, live entries only
+    FleetShipsInsert( b.main, fleet->ships, "alpha" )->health = 1;
+    CHECK( FleetShipsErase( b.arena, fleet->ships, over ) );
+    int seen = 0;
+    const char * order[2] = { "fighter", "alpha" };
+    for ( auto [ key, ship ] : FleetShipsEach( b.arena, fleet->ships ) )
+    {
+        if ( seen < 2 ) { CHECK( strcmp( key, order[seen] ) == 0 ); }
+        (void) ship;
+        seen++;
+    }
+    CHECK_EQ( seen, 2 );
+
+    // MORE THAN ONE SEGMENT: an entry's address is stable for the arena's life,
+    // so a value handed back by an early insert survives every later one
+    FleetBuilder many;
+    Fleet * big = many.GetRoot();
+    Item * held = FleetTiersInsert( many.main, big->tiers, (int16_t) 0 );
+    held->count = 1234;
+    for ( int32_t i = 1; i < 200; i++ )
+    {
+        CHECK( FleetTiersInsert( many.main, big->tiers, (int16_t) i ) != NULL );
+    }
+    CHECK_EQ( big->tiers.count, 200 );
+    CHECK_EQ( held->count, 1234 ); // NOTHING EVER MOVES (§6.4)
+    CHECK( many.Lock() );
+    const TableMap<FleetTiersEntry> & sorted = many.AsConst()->tiers;
+    CHECK_EQ( sorted.size(), 200 );
+    for ( int32_t i = 0; i < 200; i++ ) { CHECK( sorted.Find( (int16_t) i ) != NULL ); }
+    CHECK_EQ( sorted.begin().at->key, 0 ); // and the sort put them in order
+}
+
+// ---- the const form: a locked region, a loaded one, an opened cook ----
+
+static void check_const_form( const Fleet * f, const char * where )
+{
+    if ( f == NULL ) { printf( "FAIL %s: no root\n", where ); failures++; return; }
+    CHECK_EQ( f->ships.size(), 3 );
+
+    // FIND: a binary search over the sorted array, in place
+    const ShipConfig * fighter = f->ships.Find( "fighter" );
+    CHECK( fighter != NULL );
+    if ( fighter != NULL ) { CHECK_EQ( fighter->health, 100 ); }
+    CHECK( f->ships.Find( "absent" ) == NULL );
+
+    // ITERATION is ASCENDING, whatever the insertion order was
+    const char * ascending[3] = { "bomber", "fighter", "scout" };
+    int i = 0;
+    for ( auto [ key, ship ] : f->ships )
+    {
+        if ( i < 3 ) { CHECK( strcmp( key, ascending[i] ) == 0 ); }
+        (void) ship;
+        i++;
+    }
+    CHECK_EQ( i, 3 );
+
+    // a map[K]*T's Find answers the RESOLVED pointer, and TWO KEYS HOLD ONE
+    // NODE: a shared node written twice would show up here and in the byte count
+    const ShipConfig * by7 = f->by_id.Find( (uint32_t) 7 );
+    const ShipConfig * by12 = f->by_id.Find( (uint32_t) 12 );
+    CHECK( by7 != NULL && by7 == by12 );
+    if ( by7 != NULL ) { CHECK_EQ( by7->health, 50 ); }
+    CHECK( ShipConfigAt( f->flagship ) == by7 ); // and the pointer field names it too
+
+    // a map of maps, at three depths
+    const TableMap<FleetLoadoutsEntryValueEntry> * kit = f->loadouts.Find( "kit" );
+    CHECK( kit != NULL );
+    if ( kit != NULL )
+    {
+        CHECK_EQ( kit->size(), 2 );
+        const Item * nine = kit->Find( (uint8_t) 9 );
+        const Item * two = kit->Find( (uint8_t) 2 );
+        CHECK( nine != NULL && nine->count == 99 );
+        CHECK( two != NULL && two->count == 22 );
+    }
+
+    // A SIGNED KEY COMPARES BY VALUE: -3 before 2, which an unsigned compare
+    // would put the other way round
+    CHECK_EQ( f->tiers.size(), 2 );
+    if ( f->tiers.size() == 2 ) { CHECK_EQ( f->tiers.begin().at->key, -3 ); }
+    const Item * low = f->tiers.Find( (int16_t) -3 );
+    CHECK( low != NULL && low->count == -3 );
+
+    // the OPTIONAL INDEX answers what Find answers, and allocates nothing past
+    // the storage the caller handed in
+    const int64_t bytes = FleetShipsIndexMeasure( f->ships );
+    CHECK( bytes > 0 );
+    void * storage = calloc( 1, (size_t) bytes );
+    TableMapIndex index = FleetShipsIndex( f->ships, storage, bytes );
+    CHECK( index.good );
+    const char * probes[4] = { "bomber", "fighter", "scout", "absent" };
+    for ( int p = 0; p < 4; p++ )
+    {
+        CHECK( FleetShipsIndexFind( index, f->ships, probes[p] ) == f->ships.Find( probes[p] ) );
+    }
+    free( storage );
+}
+
+static void test_const_forms()
+{
+    // LOCK: sorts once, drops dead entries, and produces the region
+    FleetBuilder b;
+    build_fleet( b, true );
+    CHECK( b.Lock() );
+    check_const_form( b.AsConst(), "the locked region" );
+
+    // a locked region re-saves the same bytes as the builder did
+    static uint8_t again[1u << 16];
+    const int64_t n = FleetSave( b.AsConst(), again, sizeof( again ) );
+    CHECK_EQ( n, bytes_full );
+    CHECK( memcmp( again, wire_full, (size_t) bytes_full ) == 0 );
+
+    // LOAD into the caller's exact-sized region
+    const int64_t need = FleetLoadMeasure( wire_full, bytes_full );
+    CHECK( need > 0 );
+    uint8_t * region = (uint8_t *) calloc( 1, (size_t) need );
+    TableReport report;
+    const Fleet * loaded = FleetLoad( region, need, wire_full, bytes_full, &report );
+    check_const_form( loaded, "a loaded region" );
+    CHECK_EQ( report.unknown, 0 );
+    CHECK_EQ( report.kind_mismatch, 0 );
+    CHECK_EQ( report.clamped, 0 );
+    CHECK_EQ( report.duplicate, 0 );
+    CHECK( !report.malformed );
+
+    // and a loaded region re-saves the same bytes
+    const int64_t back = FleetSave( loaded, again, sizeof( again ) );
+    CHECK_EQ( back, bytes_full );
+    CHECK( memcmp( again, wire_full, (size_t) bytes_full ) == 0 );
+
+    // LoadBuilder is the TOOL's path, and it produces EXACTLY the same report
+    FleetBuilder into;
+    TableReport tool;
+    CHECK( FleetLoadBuilder( into, wire_full, bytes_full, &tool ) );
+    CHECK_EQ( tool.unknown, report.unknown );
+    CHECK_EQ( tool.kind_mismatch, report.kind_mismatch );
+    CHECK_EQ( tool.clamped, report.clamped );
+    CHECK_EQ( tool.duplicate, report.duplicate );
+    CHECK_EQ( (int) tool.malformed, (int) report.malformed );
+    CHECK_EQ( into.GetRoot()->ships.count, 3 );
+    const int64_t relocked = FleetSave( into, again, sizeof( again ) );
+    CHECK_EQ( relocked, bytes_full );
+    CHECK( memcmp( again, wire_full, (size_t) bytes_full ) == 0 );
+
+    // the COOK: a region written verbatim, opened O(1) and searched in place
+    const int64_t cook_bytes = FleetCookMeasure( loaded );
+    CHECK( cook_bytes > 0 );
+    void * cooked = calloc( 1, (size_t) cook_bytes );
+    CHECK( FleetCook( loaded, cooked, (uint64_t) cook_bytes, host_byte_order() ) );
+    check_const_form( FleetOpen( cooked, (uint64_t) cook_bytes ), "an opened cook" );
+    // and two cooks of one instance are ONE artifact
+    void * twice = calloc( 1, (size_t) cook_bytes );
+    CHECK( FleetCook( loaded, twice, (uint64_t) cook_bytes, host_byte_order() ) );
+    CHECK( memcmp( cooked, twice, (size_t) cook_bytes ) == 0 );
+    free( twice );
+    free( cooked );
+    free( region );
+}
+
+// ---- the reader's rules, each on a hand-made body (§2.8) ----
+
+struct RowWire
+{
+    uint8_t bytes[4096];
+    int64_t size;
+    int64_t entry0; // where the first entry's length prefix sits
+    int64_t stride; // an entry's length prefix and body, all three equal
+};
+
+// three ascending entries and a field AFTER the map, so a body that stops the
+// map can still be seen to let the PARENT read on
+static RowWire good_row()
+{
+    RowBuilder b;
+    Row * row = b.GetRoot();
+    const char * keys[3] = { "aa", "bb", "cc" };
+    for ( int i = 0; i < 3; i++ ) { RowEntriesInsert( b.main, row->entries, keys[i] )->count = 10 + i; }
+    row->after = 777;
+    RowWire w;
+    w.size = RowSave( b, w.bytes, sizeof( w.bytes ) );
+    // `entries` is the first field: id(2) kind(1) L(4) elemkind(1) N(4)
+    w.entry0 = 12;
+    w.stride = ( (int64_t) rd32( w.bytes + 3 ) - 5 ) / 3;
+    return w;
+}
+
+struct Verdict
+{
+    int32_t count;
+    int32_t unknown, kind_mismatch, clamped, duplicate;
+    bool malformed;
+    int32_t after;
+    int32_t decoded[3];
+};
+
+static Verdict read_row( const RowWire & w )
+{
+    Verdict v = { -1, 0, 0, 0, 0, false, 0, { 0, 0, 0 } };
+    const int64_t need = RowLoadMeasure( w.bytes, w.size );
+    if ( need < 0 ) { v.count = -2; return v; } // the measure REFUSED the framing
+    uint8_t * region = (uint8_t *) calloc( 1, (size_t) need );
+    TableReport r;
+    const Row * row = RowLoad( region, need, w.bytes, w.size, &r );
+    if ( row != NULL )
+    {
+        v.count = row->entries.size();
+        v.after = row->after;
+        int i = 0;
+        for ( auto [ key, item ] : row->entries )
+        {
+            (void) key;
+            if ( i < 3 ) { v.decoded[i] = item->count; }
+            i++;
+        }
+    }
+    v.unknown = r.unknown;
+    v.kind_mismatch = r.kind_mismatch;
+    v.clamped = r.clamped;
+    v.duplicate = r.duplicate;
+    v.malformed = r.malformed;
+    free( region );
+
+    // EVERY LOAD PATH PRODUCES ONE REPORT (§2.8): the region load of §6.5 and
+    // LoadBuilder never disagree about a wire, which is what lets one set of
+    // counters be the expectation whichever path read it.
+    RowBuilder into;
+    TableReport t;
+    RowLoadBuilder( into, w.bytes, w.size, &t );
+    CHECK_EQ( t.unknown, v.unknown );
+    CHECK_EQ( t.kind_mismatch, v.kind_mismatch );
+    CHECK_EQ( t.clamped, v.clamped );
+    CHECK_EQ( t.duplicate, v.duplicate );
+    CHECK_EQ( (int) t.malformed, (int) v.malformed );
+    CHECK_EQ( into.GetRoot()->entries.count, v.count < 0 ? 0 : v.count );
+    return v;
+}
+
+static void test_reader()
+{
+    {
+        const Verdict v = read_row( good_row() );
+        CHECK_EQ( v.count, 3 );
+        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.unknown + v.kind_mismatch + v.clamped + v.duplicate + (int) v.malformed, 0 );
+    }
+    {
+        // CONTROL: the reader's ascending check is dropped. A SHUFFLED map
+        // meets it, and the row's `malformed` flag goes red.
+        RowWire w = good_row();
+        uint8_t hold[512];
+        memcpy( hold, w.bytes + w.entry0, (size_t) w.stride );
+        memcpy( w.bytes + w.entry0, w.bytes + w.entry0 + 2 * w.stride, (size_t) w.stride );
+        memcpy( w.bytes + w.entry0 + 2 * w.stride, hold, (size_t) w.stride );
+        const Verdict v = read_row( w );
+        CHECK( v.malformed );
+        CHECK_EQ( v.count, 1 ); // the ascending prefix it has
+    }
+    {
+        // CONTROL: the parent STOPS at a descending key instead of reading on.
+        // The holder carries `after` past the map, and its decoded value goes
+        // red — that is §4's framing-damage rule, at the map.
+        RowWire w = good_row();
+        memcpy( w.bytes + w.entry0 + 2 * w.stride, w.bytes + w.entry0, (size_t) w.stride );
+        const Verdict v = read_row( w );
+        CHECK( v.malformed );
+        CHECK_EQ( v.count, 2 );
+        CHECK_EQ( v.after, 777 ); // the PARENT read on past the field's length
+    }
+    {
+        // CONTROL: the duplicate rule is dropped, first wins or both kept. The
+        // repeat ELIDES a field the first occurrence set, so a reader that
+        // overlays instead of resetting reads 11 where the rule reads 0 — and
+        // it agrees with the rule on every other body.
+        RowWire w = good_row();
+        uint8_t * e = w.bytes + w.entry0 + 2 * w.stride;
+        memcpy( e, w.bytes + w.entry0 + w.stride, (size_t) w.stride ); // a second `bb`
+        const int64_t key_bytes = 3 + 4 + 2; // the key field: id, kind, L, two bytes
+        const int64_t drop = (int64_t) rd32( e ) - key_bytes - 2;
+        uint8_t * tail = e + 4 + key_bytes;
+        memmove( tail, tail + drop, (size_t) ( w.size - ( ( tail + drop ) - w.bytes ) ) );
+        wr32( e, (uint32_t) ( key_bytes + 2 ) );
+        wr32( w.bytes + 3, (uint32_t) ( rd32( w.bytes + 3 ) - drop ) );
+        w.size -= drop;
+        const Verdict v = read_row( w );
+        CHECK( !v.malformed );
+        CHECK_EQ( v.count, 2 );      // the map's count EXCLUDES the repeat
+        CHECK_EQ( v.duplicate, 1 );
+        CHECK_EQ( v.decoded[1], 0 ); // LAST WINS WHOLE
+        CHECK_EQ( v.after, 777 );
+    }
+    {
+        // CONTROL: the reader CLAMPS a key instead of dropping its entry. The
+        // DECODED VALUE is the half that says it — the `clamped` count alone
+        // cannot separate a merged entry from a dropped one.
+        RowWire w = good_row();
+        uint8_t * e = w.bytes + w.entry0 + w.stride; // the `bb` entry
+        const int64_t grow = 12;                     // past string(8)
+        uint8_t * after_key = e + 4 + 3 + 4 + 2;
+        memmove( after_key + grow, after_key, (size_t) ( w.size - ( after_key - w.bytes ) ) );
+        memset( after_key, 'b', (size_t) grow );
+        wr32( e + 4 + 3, 2 + (uint32_t) grow );
+        wr32( e, rd32( e ) + (uint32_t) grow );
+        wr32( w.bytes + 3, rd32( w.bytes + 3 ) + (uint32_t) grow );
+        w.size += grow;
+        const Verdict v = read_row( w );
+        CHECK( !v.malformed );
+        CHECK_EQ( v.count, 2 );
+        CHECK_EQ( v.clamped, 1 );     // one count per entry
+        CHECK_EQ( v.decoded[0], 10 ); // `aa`
+        CHECK_EQ( v.decoded[1], 12 ); // `cc`: the skipped entry neither reordered nor collided
+        CHECK_EQ( v.after, 777 );
+    }
+    {
+        // CONTROL: an ELEMENT KIND that is not 13 is §4's ordinary array kind
+        // mismatch, and nothing about a map is special-cased.
+        RowWire w = good_row();
+        w.bytes[7] = 12;
+        const Verdict v = read_row( w );
+        CHECK_EQ( v.count, 0 );
+        CHECK_EQ( v.kind_mismatch, 1 );
+        CHECK( !v.malformed );
+        CHECK_EQ( v.after, 777 );
+    }
+    {
+        // CONTROL: `N = 0xFFFFFFFF` under a short `L`. A row of a few dozen
+        // bytes asking for gigabytes — LoadMeasure's answer goes red if the fit
+        // check is dropped.
+        RowWire w = good_row();
+        wr32( w.bytes + 8, 0xFFFFFFFFu );
+        CHECK_EQ( RowLoadMeasure( w.bytes, w.size ), -1 );
+        const Verdict v = read_row( w );
+        CHECK_EQ( v.count, -2 );
+    }
+}
+
+// ---- the KEY KIND is the reader's declaration, never the first entry's ----
+
+static void test_key_kind()
+{
+    // A row written under a CHANGED KEY KIND: `Row`'s string keys read by
+    // `WideRow`'s uint32 declaration. CONTROL: the key-kind rule decodes
+    // anyway — the five counters go red, because an entry would land under a
+    // defaulted key where the rule says the map is EMPTY.
+    RowWire w = good_row();
+    const int64_t need = WideRowLoadMeasure( w.bytes, w.size );
+    CHECK( need > 0 );
+    uint8_t * region = (uint8_t *) calloc( 1, (size_t) need );
+    TableReport r;
+    const WideRow * wide = WideRowLoad( region, need, w.bytes, w.size, &r );
+    CHECK( wide != NULL );
+    CHECK_EQ( wide->entries.size(), 0 ); // the map RESETS TO EMPTY
+    CHECK_EQ( r.kind_mismatch, 1 );      // ONE for the map, never one per entry
+    CHECK_EQ( r.unknown, 0 );
+    CHECK_EQ( r.clamped, 0 );
+    CHECK_EQ( r.duplicate, 0 );
+    CHECK( !r.malformed );
+    CHECK_EQ( wide->after, 777 );        // the parent reads on
+    free( region );
+
+    // CONTROL: the key-kind event is counted PER ENTRY instead of once for the
+    // map. This row's SECOND entry is the first to disagree, so a per-entry
+    // count would read 2 where the rule reads 1.
+    WideRowBuilder b;
+    WideRow * row = b.GetRoot();
+    // KEYS FROM ONE, not zero: a key at its default elides under §3's rule, so
+    // a zero key would make the first entry a different length than the rest
+    for ( uint32_t i = 1; i <= 3; i++ ) { WideRowEntriesInsert( b.main, row->entries, i )->count = (int32_t) ( 10 + i ); }
+    row->after = 555;
+    static uint8_t mixed[4096];
+    const int64_t size = WideRowSave( b, mixed, sizeof( mixed ) );
+    const int64_t entry0 = 12;
+    const int64_t stride = ( (int64_t) rd32( mixed + 3 ) - 5 ) / 3;
+    // the SECOND entry's key rides under the STRING kind instead of the u32 one
+    mixed[entry0 + stride + 4 + 2] = 12; // kind 12 is an opaque byte payload (§3)
+    const int64_t need2 = WideRowLoadMeasure( mixed, size );
+    uint8_t * region2 = (uint8_t *) calloc( 1, (size_t) need2 );
+    TableReport r2;
+    const WideRow * mixed_row = WideRowLoad( region2, need2, mixed, size, &r2 );
+    CHECK( mixed_row != NULL );
+    CHECK_EQ( mixed_row->entries.size(), 0 ); // a map with half its keys is not a map
+    CHECK_EQ( r2.kind_mismatch, 1 );          // ONE, at the first entry that disagrees
+    CHECK_EQ( mixed_row->after, 555 ); // the parent reads on past the map's L
+    free( region2 );
+}
+
+// ---- LoadMeasure over a MAP OF MAPS (docs/SPEC-TABLES.md §2.8, §6.5) ----
+
+static void test_load_measure_depth()
+{
+    // CONTROL: `LoadMeasure`'s term is summed at ONE DEPTH only. The instance's
+    // value is itself a map, so the measure goes red against the region Load
+    // fills.
+    FleetBuilder b;
+    Fleet * fleet = b.GetRoot();
+    for ( int i = 0; i < 4; i++ )
+    {
+        char key[8];
+        snprintf( key, sizeof( key ), "kit%d", i );
+        TableMap<FleetLoadoutsEntryValueEntry> * kit = FleetLoadoutsInsert( b.main, fleet->loadouts, key );
+        CHECK( kit != NULL );
+        for ( uint8_t slot = 0; slot < 5; slot++ )
+        {
+            FleetLoadoutsEntryValueInsert( b.main, *kit, slot )->count = 100 * i + slot;
+        }
+    }
+    static uint8_t wire[1u << 16];
+    const int64_t n = FleetSave( b, wire, sizeof( wire ) );
+    const int64_t need = FleetLoadMeasure( wire, n );
+    CHECK( need > 0 );
+    uint8_t * region = (uint8_t *) calloc( 1, (size_t) need );
+    TableReport r;
+    const Fleet * loaded = FleetLoad( region, need, wire, n, &r );
+    CHECK( loaded != NULL );
+    CHECK( !r.malformed );
+    CHECK_EQ( loaded->loadouts.size(), 4 );
+    for ( int i = 0; i < 4; i++ )
+    {
+        char key[8];
+        snprintf( key, sizeof( key ), "kit%d", i );
+        const TableMap<FleetLoadoutsEntryValueEntry> * kit = loaded->loadouts.Find( key );
+        CHECK( kit != NULL );
+        if ( kit == NULL ) { continue; }
+        CHECK_EQ( kit->size(), 5 );
+        for ( uint8_t slot = 0; slot < 5; slot++ )
+        {
+            const Item * item = kit->Find( slot );
+            CHECK( item != NULL );
+            if ( item != NULL ) { CHECK_EQ( item->count, 100 * i + slot ); }
+        }
+    }
+    // A REGION EXACTLY ONE BYTE SHORT IS REFUSED, which is what says the
+    // measure is the measure and not an over-estimate with slack to spare
+    TableReport short_report;
+    CHECK( FleetLoad( region, need - 1, wire, n, &short_report ) == NULL );
+    free( region );
+}
+
+// ---- the TEXT form (docs/SPEC-TABLES.md §2.8, §16) ----
+
+static void test_text()
+{
+    FleetBuilder b;
+    build_fleet( b, true );
+    CHECK( b.Lock() );
+    const Fleet * locked = b.AsConst();
+
+    const int64_t need = FleetToJsonMeasure( locked );
+    CHECK( need > 0 );
+    char * text = (char *) calloc( 1, (size_t) need + 1 );
+    const int64_t written = FleetToJson( locked, text, need );
+    CHECK_EQ( written, need );
+
+    // A PLAIN JSON OBJECT KEYED BY THE KEY, in ASCENDING key order, with an
+    // integer key quoted — so `unpack` then `pack` is byte-stable and a diff of
+    // two texts is a diff of two maps.
+    CHECK( strstr( text, "\"bomber\"" ) != NULL );
+    CHECK( strstr( text, "\"fighter\"" ) != NULL );
+    CHECK( strstr( text, "\"7\"" ) != NULL );   // an integer key, quoted
+    CHECK( strstr( text, "\"12\"" ) != NULL );
+    CHECK( strstr( text, "\"-3\"" ) != NULL );  // and a SIGNED one
+    const char * bomber = strstr( text, "\"bomber\"" );
+    const char * fighter = strstr( text, "\"fighter\"" );
+    CHECK( bomber != NULL && fighter != NULL && bomber < fighter ); // ASCENDING
+
+    // and the text reads back: one instance, one text, both ways
+    FleetBuilder into;
+    TableReport report;
+    CHECK( FleetFromJson( into, text, written, &report ) );
+    CHECK_EQ( report.unknown, 0 );
+    CHECK_EQ( report.kind_mismatch, 0 );
+    CHECK_EQ( report.clamped, 0 );
+    CHECK_EQ( report.duplicate, 0 );
+    CHECK( !report.malformed );
+    CHECK_EQ( into.GetRoot()->ships.count, 3 );
+    CHECK_EQ( into.GetRoot()->by_id.count, 2 );
+    CHECK_EQ( into.GetRoot()->tiers.count, 2 );
+
+    // the ROUND TRIP is byte-stable: the same instance, the same text
+    CHECK( into.Lock() );
+    const int64_t again_bytes = FleetToJsonMeasure( into.AsConst() );
+    char * again = (char *) calloc( 1, (size_t) again_bytes + 1 );
+    CHECK_EQ( FleetToJson( into.AsConst(), again, again_bytes ), again_bytes );
+    CHECK_EQ( again_bytes, written );
+    CHECK( memcmp( again, text, (size_t) written ) == 0 );
+    // and so is the WIRE, which is what says the text carried the map whole
+    static uint8_t from_text[1u << 16];
+    CHECK_EQ( FleetSave( into.AsConst(), from_text, sizeof( from_text ) ), bytes_full );
+    CHECK( memcmp( from_text, wire_full, (size_t) bytes_full ) == 0 );
+    free( again );
+    free( text );
+
+    // A REPEATED KEY is LAST-WINS and counted duplicate, the object rule
+    // applied inside the map; an EMPTY OBJECT is an empty map; a key past the
+    // bound drops its entry and counts clamped; a key outside the key kind's
+    // range is kind_mismatch for that entry, dropped and never clamped.
+    struct Row { const char * text; int32_t count; int32_t dup; int32_t clamp; int32_t mismatch; };
+    const Row rows[] = {
+        { "{\"entries\":{},\"after\":5}", 0, 0, 0, 0 },
+        { "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{\"count\":2}},\"after\":5}", 1, 1, 0, 0 },
+        { "{\"entries\":{\"aaaaaaaaaaaa\":{\"count\":1}},\"after\":5}", 0, 0, 1, 0 },
+    };
+    for ( int i = 0; i < 3; i++ )
+    {
+        RowBuilder rb;
+        TableReport r;
+        CHECK( RowFromJson( rb, rows[i].text, (int64_t) strlen( rows[i].text ), &r ) );
+        CHECK_EQ( rb.GetRoot()->entries.count, rows[i].count );
+        CHECK_EQ( r.duplicate, rows[i].dup );
+        CHECK_EQ( r.clamped, rows[i].clamp );
+        CHECK_EQ( r.kind_mismatch, rows[i].mismatch );
+        CHECK_EQ( rb.GetRoot()->after, 5 );
+    }
+    {
+        // the duplicate's value is the LAST one, whole
+        const char * t = "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{}}}";
+        RowBuilder rb;
+        TableReport r;
+        CHECK( RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK_EQ( rb.GetRoot()->entries.count, 1 );
+        CHECK_EQ( RowEntriesFind( rb.arena, rb.GetRoot()->entries, "aa" )->count, 0 );
+    }
+    {
+        // AN INTEGER KEY IS READ BY §16.2's RULE AND BY NOTHING ELSE: "2.0" is
+        // the integer 2 and "1e3" is 1000, and a value outside the kind's
+        // range is kind_mismatch for that entry, dropped and never clamped.
+        const char * t = "{\"entries\":{\"2.0\":{\"count\":7},\"1e3\":{\"count\":8},\"99999999999\":{\"count\":9}}}";
+        WideRowBuilder rb;
+        TableReport r;
+        CHECK( WideRowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK_EQ( rb.GetRoot()->entries.count, 2 );
+        CHECK_EQ( r.kind_mismatch, 1 );
+        CHECK_EQ( r.clamped, 0 );
+        CHECK( WideRowEntriesFind( rb.arena, rb.GetRoot()->entries, (uint32_t) 2 ) != NULL );
+        CHECK( WideRowEntriesFind( rb.arena, rb.GetRoot()->entries, (uint32_t) 1000 ) != NULL );
+    }
+    {
+        // a MALFORMED key stops the read where §16.1's rule stops it
+        const char * t = "{\"entries\":{\"nope\":{\"count\":1}}}";
+        WideRowBuilder rb;
+        TableReport r;
+        CHECK( !WideRowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.malformed );
+    }
+}
+
+// ---- WHERE ELSE A MAP RIDES IN A HOLDER'S EXTENT (§2.8) ----
+//
+// One array per map reachable BY VALUE from the record, in depth-first field
+// order — which reaches a nested table, an array of them, an enum-keyed array
+// of them and a union arm. Each is a different framing the load's extent scan
+// has to walk, and each is a place the measure can under-count.
+
+static void test_depth()
+{
+    DepthBuilder b;
+    Depth * d = b.GetRoot();
+    SquadRosterInsert( b.main, d->one.roster, (uint8_t) 3 )->count = 33;
+    d->many_count = 2;
+    SquadRosterInsert( b.main, d->many[0].roster, (uint8_t) 1 )->count = 11;
+    SquadRosterInsert( b.main, d->many[1].roster, (uint8_t) 2 )->count = 22;
+    SquadRosterInsert( b.main, d->keyed[Slot::Alpha].roster, (uint8_t) 5 )->count = 55;
+    // AN ARM IS ESTABLISHED AT SELECTION (§2.6): the tag alone is the value's
+    // identity, and the payload is the caller's to reset before it is filled
+    d->arm.type = ForceType::Squad;
+    SquadReset( d->arm.squad );
+    SquadRosterInsert( b.main, d->arm.squad.roster, (uint8_t) 7 )->count = 77;
+    d->after = 9;
+
+    const int64_t measured = DepthMeasure( b );
+    static uint8_t wire[1u << 16];
+    const int64_t n = DepthSave( b, wire, sizeof( wire ) );
+    CHECK_EQ( measured, n );
+    pin_golden( "map_depth", wire, n );
+
+    const int64_t need = DepthLoadMeasure( wire, n );
+    CHECK( need > 0 );
+    uint8_t * region = (uint8_t *) calloc( 1, (size_t) need );
+    TableReport report;
+    const Depth * loaded = DepthLoad( region, need, wire, n, &report );
+    CHECK( loaded != NULL );
+    CHECK( !report.malformed );
+    if ( loaded != NULL )
+    {
+        const Item * one = loaded->one.roster.Find( (uint8_t) 3 );
+        CHECK( one != NULL && one->count == 33 );
+        CHECK_EQ( loaded->many_count, 2 );
+        if ( loaded->many_count == 2 )
+        {
+            const Item * first = loaded->many[0].roster.Find( (uint8_t) 1 );
+            const Item * second = loaded->many[1].roster.Find( (uint8_t) 2 );
+            CHECK( first != NULL && first->count == 11 );
+            CHECK( second != NULL && second->count == 22 );
+        }
+        const Item * slot = loaded->keyed[Slot::Alpha].roster.Find( (uint8_t) 5 );
+        CHECK( slot != NULL && slot->count == 55 );
+        CHECK_EQ( loaded->keyed[Slot::Beta].roster.size(), 0 );
+        CHECK( loaded->arm.type == ForceType::Squad );
+        if ( loaded->arm.type == ForceType::Squad )
+        {
+            const Item * armed = loaded->arm.squad.roster.Find( (uint8_t) 7 );
+            CHECK( armed != NULL && armed->count == 77 );
+        }
+        CHECK_EQ( loaded->after, 9 ); // and the parent read past all of them
+
+        // the region is EXACT: one byte short is refused, so the extent scan
+        // counted every one of those four reaches and not one twice
+        static uint8_t again[1u << 16];
+        CHECK_EQ( DepthSave( loaded, again, sizeof( again ) ), n );
+        CHECK( memcmp( again, wire, (size_t) n ) == 0 );
+        TableReport short_report;
+        CHECK( DepthLoad( region, need - 1, wire, n, &short_report ) == NULL );
+    }
+    free( region );
+
+    // AN UNREACHED NON-EMPTY MAP SLOT IS REFUSED by Cook and by Lock, the same
+    // refusal §7.6 gives a pointer in that position: a counted array's slots
+    // past its live count are storage the walk does not reach, so a non-empty
+    // map in one names entries the region will not hold and the write answers
+    // false with nothing partial written. The WIRE is not refused — a counted
+    // array rides its live slots and the unreached one simply does not ride.
+    {
+        DepthBuilder past;
+        Depth * p = past.GetRoot();
+        p->many_count = 1;
+        SquadRosterInsert( past.main, p->many[0].roster, (uint8_t) 1 )->count = 11;
+        SquadRosterInsert( past.main, p->many[2].roster, (uint8_t) 9 )->count = 99; // past the count
+        static uint8_t rides[1u << 16];
+        const int64_t measured_past = DepthMeasure( past );
+        CHECK_EQ( DepthSave( past, rides, sizeof( rides ) ), measured_past );
+        CHECK( !past.Lock() );
+        CHECK( past.AsConst() == NULL ); // nothing partial
+    }
+
+    // and the TOOL's path reads the same four reaches into a builder
+    DepthBuilder into;
+    TableReport tool;
+    CHECK( DepthLoadBuilder( into, wire, n, &tool ) );
+    CHECK_EQ( (int) tool.malformed, (int) report.malformed );
+    CHECK_EQ( into.GetRoot()->one.roster.count, 1 );
+    CHECK_EQ( into.GetRoot()->many_count, 2 );
+    CHECK_EQ( into.GetRoot()->keyed[Slot::Alpha].roster.count, 1 );
+    CHECK_EQ( into.GetRoot()->arm.squad.roster.count, 1 );
+    static uint8_t relocked[1u << 16];
+    CHECK_EQ( DepthSave( into, relocked, sizeof( relocked ) ), n );
+    CHECK( memcmp( relocked, wire, (size_t) n ) == 0 );
+}
+
+int main()
+{
+    test_writer();
+    test_builder();
+    test_const_forms();
+    test_reader();
+    test_key_kind();
+    test_load_measure_depth();
+    test_text();
+    test_depth();
+
+    if ( failures != 0 )
+    {
+        printf( "\n%d map check(s) failed\n", failures );
+        return 1;
+    }
+    printf( "maps: all checks passed (docs/SPEC-TABLES.md §2.8)\n" );
+    return 0;
+}

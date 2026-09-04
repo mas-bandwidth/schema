@@ -57,6 +57,9 @@ type CookReport struct {
 // bytes so a caller can decide about the softer differences; anything that
 // damaged the framing is an error and nothing is written.
 func (c *Compiler) Cook(u *ir.Unit, root string, wire []byte, opts CookOptions) ([]byte, CookReport, TableReport, error) {
+	if err := refuseToolMaps(u); err != nil {
+		return nil, CookReport{}, TableReport{}, err
+	}
 	var rep CookReport
 	m := tabletext.NewModel(u)
 	st := m.Lookup(root)
@@ -111,6 +114,9 @@ func orderWord(big bool) string {
 // It is a person's decision to run it, not a parameter on a load: the runtime
 // keeps one `Open` that matches the header and points.
 func (c *Compiler) CookCheck(u *ir.Unit, root string, file []byte) (CookReport, error) {
+	if err := refuseToolMaps(u); err != nil {
+		return CookReport{}, err
+	}
 	m := tabletext.NewModel(u)
 	res, err := tablecook.Check(m, file)
 	if err != nil {
@@ -141,6 +147,9 @@ func CookJoinAttribution(file, attribution []byte) ([]byte, error) {
 // no fact was lost in producing one. It is a tool's path and never a runtime's:
 // a runtime points at a cook where it lies.
 func (c *Compiler) Uncook(u *ir.Unit, root string, file []byte) ([]byte, error) {
+	if err := refuseToolMaps(u); err != nil {
+		return nil, err
+	}
 	m := tabletext.NewModel(u)
 	st := m.Lookup(root)
 	if st == nil || !st.IsTable {

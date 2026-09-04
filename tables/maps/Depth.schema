@@ -1,0 +1,30 @@
+package mapdemo
+
+// WHERE ELSE A MAP RIDES IN A HOLDER'S EXTENT (docs/SPEC-TABLES.md §2.8): "one
+// array per map reachable BY VALUE from the record, which includes a map inside
+// a nested table and a map inside an entry, in depth-first field order". A
+// nested table, an ARRAY of them, an ENUM-KEYED array of them and a UNION ARM
+// are each such a reach, and each is a different framing the load's extent scan
+// has to walk — an array of tables, a keyed body's pairs, an arm's payload.
+
+enum Slot { Alpha, Beta }
+
+table Squad
+{
+    roster map[uint8]Item
+}
+
+union Force
+{
+    squad Squad
+    plain int32
+}
+
+table Depth
+{
+    one   Squad          // a map inside a NESTED table
+    many  [..3]Squad     // inside an ARRAY of them
+    keyed [Slot]Squad    // inside an ENUM-KEYED array of them
+    arm   Force          // and inside a UNION ARM (§2.6)
+    after int32          // and a field past all of them, so a stop is visible
+}

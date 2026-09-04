@@ -15,8 +15,11 @@ import (
 
 // the tables corpora, from this package's directory. tables/messages is where
 // an arm of every shape lives (§2.6), so its file pins the ARM LINE's three
-// spellings (§18.1) as the others pin the field line's.
-var corpora = []string{"../../tables/examples", "../../tables/pointers", "../../tables/messages"}
+// spellings (§18.1) as the others pin the field line's; tables/maps is where a
+// generated ENTRY lives, and its file pins the ANONYMOUS key §2.8 gives one —
+// the holder's wire id and the map field's, chaining through a nested map, and
+// never the generated name, so a `was` rename moves no line.
+var corpora = []string{"../../tables/examples", "../../tables/pointers", "../../tables/messages", "../../tables/maps"}
 
 // TestCorpusBaselinesAreCurrent regenerates each committed baseline and
 // compares byte for byte — the idempotence the `--update` path promises,

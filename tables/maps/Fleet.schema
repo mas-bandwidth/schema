@@ -1,0 +1,27 @@
+package mapdemo
+
+// The MAP corpus (docs/SPEC-TABLES.md §2.8): a map of values, a map of
+// pointers, a map of maps, and the walk-order pin — a map of *T DECLARED
+// BEFORE a pointer field, so the map reaches the shared node first and numbers
+// it first. A walk that grouped the maps after the pointers would number the
+// two the other way round and the pinned wire would say so.
+
+table ShipConfig
+{
+    name   string(64)
+    health int32
+}
+
+table Item
+{
+    count int32
+}
+
+table Fleet
+{
+    ships    map[string(32)]ShipConfig // a lookup by name
+    by_id    map[uint32]*ShipConfig // by number; two keys may share one node
+    flagship *ShipConfig // AFTER by_id: the walk-order pin
+    loadouts map[string(16)]map[uint8]Item // a map is a value, so maps nest
+    tiers    map[int16]Item // a SIGNED key: -3 sorts before 2
+}

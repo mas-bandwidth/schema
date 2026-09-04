@@ -1,0 +1,81 @@
+schema-tables-baseline 6
+package mapdemo
+
+table 0a53e00afba279af.2d39
+    field key id=0xa079 kind=12 size=32
+    field value id=0x9194 kind=13 type=ShipConfig
+
+table 0a53e00afba279af.61ae
+    field key id=0xa079 kind=3
+    field value id=0x9194 kind=13 type=Item
+
+table 0a53e00afba279af.d91b
+    field key id=0xa079 kind=12 size=16
+    field value id=0x9194 kind=14 elem=13 array=map keykind=6
+
+table 0a53e00afba279af.d91b.9194
+    field key id=0xa079 kind=6
+    field value id=0x9194 kind=13 type=Item
+
+table 0a53e00afba279af.ff83
+    field key id=0xa079 kind=8
+    field value id=0x9194 kind=17 type=ShipConfig
+
+table Depth
+    field one id=0xa3c8 kind=13 type=Squad
+    field many id=0x6e35 kind=14 elem=13 type=Squad array=bounded bound=3
+    field keyed id=0x9208 kind=16 elem=13 type=Squad array=keyed bound=2 key=Slot
+    field arm id=0x1fda kind=15 union=Force
+    field after id=0x66a7 kind=4
+
+table Fleet
+    field ships id=0x2d39 kind=14 elem=13 array=map keykind=12 keybound=32
+    field by_id id=0xff83 kind=14 elem=13 array=map keykind=8
+    field flagship id=0x78df kind=17 type=ShipConfig
+    field loadouts id=0xd91b kind=14 elem=13 array=map keykind=12 keybound=16
+    field tiers id=0x61ae kind=14 elem=13 array=map keykind=3
+
+table Item
+    field count id=0xe445 kind=4
+
+table Row
+    field entries id=0xedab kind=14 elem=13 array=map keykind=12 keybound=8
+    field after id=0x66a7 kind=4
+
+table ShipConfig
+    field name id=0x30df kind=12 size=64
+    field health id=0x8617 kind=4
+
+table Squad
+    field roster id=0xa526 kind=14 elem=13 array=map keykind=6
+
+table WideRow
+    field entries id=0xedab kind=14 elem=13 array=map keykind=8
+    field after id=0x66a7 kind=4
+
+table a013e119fec906fb.edab
+    field key id=0xa079 kind=12 size=8
+    field value id=0x9194 kind=13 type=Item
+
+table b413964e3571a316.edab
+    field key id=0xa079 kind=8
+    field value id=0x9194 kind=13 type=Item
+
+table ec07a2f760550a91.a526
+    field key id=0xa079 kind=6
+    field value id=0x9194 kind=13 type=Item
+
+enum Slot
+    variant Alpha id=0x7103
+    variant Beta id=0x6d86
+
+union Force
+    arm squad id=0xde0e payload=Squad
+    arm plain id=0xecd9 kind=4
+
+## history
+### 2026-09-04 — the map corpus's first baseline: the generated entry is ANONYMOUS in the projection, keyed by the holder's wire id and the map field's (docs/SPEC-TABLES.md §2.8, §18.1)
+- baseline created over 12 tables — data written BEFORE this point is not covered by it
+
+### 2026-09-04 — the map corpus's Depth unit: a map inside a nested table, an array of them, an enum-keyed array of them and a union arm (docs/SPEC-TABLES.md §2.8, §2.6)
+- no compatibility-affecting edits; the wire absorbs the rest
