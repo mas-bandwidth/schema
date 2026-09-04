@@ -1049,6 +1049,8 @@ public final class Bench {
         public static final byte turret = 13;
         public static final byte drone = 14;
         public static final byte repair = 15;
+        // the declared variant count (SPEC §4.2)
+        public static final byte count = 15;
         // the exported extent (SPEC §4.2)
         public static final byte max = 15;
     }

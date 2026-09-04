@@ -187,6 +187,35 @@ func TestGoldenSourceElixir(t *testing.T) {
 	pinDir(t, filepath.Join(goldenDir, "elixir"), files)
 }
 
+// The enum `Count` export moves NEITHER WIRE. Count is generated-code
+// surface: it enters no wire-shape projection and no cook projection, so the
+// packet wire's protocol id and the table wire's build version must both
+// stand exactly where they stood before it existed. The numbers are written
+// here as literals rather than read from testdata/golden — a re-pin of those
+// files is precisely the mistake this refuses, and a gate that re-pins with
+// them would say nothing.
+func TestExportedSurfaceMovesNeitherWire(t *testing.T) {
+	for _, unit := range []struct {
+		name         string
+		dir          string
+		protocolId   uint64
+		buildVersion uint64
+	}{
+		{"examples", corpusDir, 0x91a8e85156dfe2b1, 0x5f535f12a00fb522},
+		{"examples128", corpus128Dir, 0x42050541a90eea8a, 0x2352e62e904fb4da},
+	} {
+		t.Run(unit.name, func(t *testing.T) {
+			u := loadCorpusDir(t, unit.dir)
+			if u.ProtocolId != unit.protocolId {
+				t.Errorf("protocol id = 0x%016x, want 0x%016x — the packet wire moved under an unchanged corpus (SPEC §3.1); a generated-code export must never reach it", u.ProtocolId, unit.protocolId)
+			}
+			if got := ir.BuildVersion(u); got != unit.buildVersion {
+				t.Errorf("build version = 0x%016x, want 0x%016x — the table wire moved under an unchanged corpus (docs/SPEC-TABLES.md §20); a generated-code export must never reach it", got, unit.buildVersion)
+			}
+		})
+	}
+}
+
 // TestGoldenLudicrousId pins the fixed-point + 128-bit unit's protocol id.
 func TestGoldenLudicrousId(t *testing.T) {
 	u := loadCorpusDir(t, corpus128Dir)

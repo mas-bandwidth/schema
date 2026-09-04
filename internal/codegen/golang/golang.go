@@ -214,6 +214,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	for i, v := range d.Variants {
 		g.pf("\t%s%s %s = %d\n", d.Name, v, d.Name, i+1)
 	}
+	g.pf("\t%sCount %s = %d // the declared variant count (SPEC §4.2)\n", d.Name, d.Name, len(d.Variants))
 	g.pf("\t%sMax %s = %d // the exported extent (SPEC §4.2)\n", d.Name, d.Name, d.Max)
 	g.pf(")\n\n")
 	// the uint64 parameter (not the enum type) keeps out-of-set values exact:

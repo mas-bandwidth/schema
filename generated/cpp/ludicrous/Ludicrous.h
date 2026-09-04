@@ -23,6 +23,7 @@ enum class DriveMode : uint8_t {
     Cruise = 1,
     Warp = 2,
     Ludicrous = 3,
+    Count = 3, // the declared variant count (SPEC §4.2)
     Max = 3, // the exported extent (SPEC §4.2)
 };
 

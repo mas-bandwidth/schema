@@ -531,7 +531,7 @@ var valuedAttr = map[string]bool{
 
 func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
 	if e.Sel == "Count" {
-		return c.flagsCount(e)
+		return c.declaredCount(e)
 	}
 	d, ok := c.astDecls[e.Enum]
 	if !ok {
@@ -569,25 +569,34 @@ func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
 	return big.NewInt(en.Max), true
 }
 
-// flagsCount resolves F.Count (SPEC §4.2): the DECLARED variant count of a
-// flags declaration — not the wire width, which a | max = K widening can
-// raise above it.
-func (c *checker) flagsCount(e *ast.MaxExpr) (*big.Int, bool) {
+// declaredCount resolves E.Count (SPEC §4.2): the DECLARED variant count of
+// an enum or a flags declaration — one word meaning one thing in both. It
+// excludes an enum's implicit None, and it is not the wire extent: under
+// | max = K headroom an enum's Max and a flags declaration's wire width rise
+// above the count, and Count stays the count. Unlike .Max it needs no bound,
+// so an enum whose | max = ... failed to resolve still answers it exactly.
+func (c *checker) declaredCount(e *ast.MaxExpr) (*big.Int, bool) {
 	d, ok := c.astDecls[e.Enum]
 	if !ok {
-		c.errf(e.Pos, "undefined flags %s in %s.Count", e.Enum, e.Enum)
+		c.errf(e.Pos, "undefined enum or flags %s in %s.Count", e.Enum, e.Enum)
 		return nil, false
 	}
-	fd, ok := d.(*ast.FlagsDecl)
-	if !ok {
-		c.errf(e.Pos, "%s is not a flags declaration — .Count names a flags declaration's variant count; an enum's extent is %s.Max (SPEC §4.2)", e.Enum, e.Enum)
-		return nil, false
+	switch d := d.(type) {
+	case *ast.FlagsDecl:
+		fl := c.resolveFlags(d)
+		if fl == nil {
+			return nil, false
+		}
+		return big.NewInt(int64(len(fl.Variants))), true
+	case *ast.EnumDecl:
+		en := c.resolveEnum(d)
+		if en == nil {
+			return nil, false
+		}
+		return big.NewInt(int64(len(en.Variants))), true
 	}
-	fl := c.resolveFlags(fd)
-	if fl == nil {
-		return nil, false
-	}
-	return big.NewInt(int64(len(fl.Variants))), true
+	c.errf(e.Pos, "%s is neither an enum nor a flags declaration — .Count names a declared variant count (SPEC §4.2)", e.Enum)
+	return nil, false
 }
 
 // generatedSetMax resolves E.Max over the GENERATED tag set (SPEC §4.2,
@@ -646,6 +655,10 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 		}
 		if v.Text == "Max" {
 			c.errf(v.Pos, "variant Max is a compile error — every generated enum carries its extent as the member Max, the same number E.Max names (SPEC §4.2)")
+			continue
+		}
+		if v.Text == "Count" {
+			c.errf(v.Pos, "variant Count is a compile error — every generated enum carries its declared variant count as the member Count, the same number E.Count names (SPEC §4.2)")
 			continue
 		}
 		if seen[v.Text] {
@@ -2871,7 +2884,12 @@ func (c *checker) checkClaimedNames() {
 			// including against the implicit NONE
 			add(name+"None", fmt.Sprintf("enum %s's generated None constant", name), d.Pos)
 			add(name+"Max", fmt.Sprintf("enum %s's generated Max extent (Go form)", name), d.Pos)
-			assoc := map[string]string{"NONE": "the implicit None variant", "MAX": "the generated Max extent"}
+			add(name+"Count", fmt.Sprintf("enum %s's generated Count constant (Go form)", name), d.Pos)
+			assoc := map[string]string{
+				"NONE":  "the implicit None variant",
+				"MAX":   "the generated Max extent",
+				"COUNT": "the generated Count constant",
+			}
 			for _, v := range d.Variants {
 				add(name+v.Text, fmt.Sprintf("enum %s's generated variant constant", name), v.Pos)
 				rv := ir.RustConstName(v.Text)
@@ -2883,14 +2901,15 @@ func (c *checker) checkClaimedNames() {
 				}
 			}
 			// the C target flattens variants as #define ENUM_VARIANT into the
-			// one preprocessor namespace, plus _NONE, _MAX and the debug-name
-			// function — spellings no other claim covers (they were
+			// one preprocessor namespace, plus _NONE, _MAX, _COUNT and the
+			// debug-name function — spellings no other claim covers (they were
 			// emitted and never registered, so a const like DriveModeLudicrous
 			// beside enum DriveMode { Ludicrous } produced a silent duplicate
 			// #define in C while every other target compiled)
 			whyC := fmt.Sprintf("enum %s's generated variant constants (C form)", name)
 			addRust(ir.RustConstName(name)+"_NONE", whyC, d.Pos, name+"None")
 			addRust(ir.RustConstName(name)+"_MAX", whyC, d.Pos)
+			addRust(ir.RustConstName(name)+"_COUNT", whyC, d.Pos, name+"Count")
 			addRust("enum_name_"+ir.RustSnake(name), fmt.Sprintf("enum %s's generated debug-name function (C form)", name), d.Pos)
 			for _, v := range d.Variants {
 				addRust(ir.RustConstName(name)+"_"+ir.RustConstName(v.Text), whyC, v.Pos, name+v.Text)

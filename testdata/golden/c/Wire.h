@@ -37,6 +37,7 @@ typedef uint8_t Weapon;
 #define WEAPON_LASER 1
 #define WEAPON_MISSILE 2
 #define WEAPON_RAILGUN 3
+#define WEAPON_COUNT 3
 #define WEAPON_MAX 15
 
 /* Debug/log name for any Weapon value, out-of-set included. */

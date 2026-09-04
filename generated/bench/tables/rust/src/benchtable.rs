@@ -57,6 +57,7 @@ impl TableWeapon {
     pub const TURRET: TableWeapon = TableWeapon(13);
     pub const DRONE: TableWeapon = TableWeapon(14);
     pub const REPAIR: TableWeapon = TableWeapon(15);
+    pub const COUNT: TableWeapon = TableWeapon(15); // the declared variant count (SPEC §4.2)
     pub const MAX: TableWeapon = TableWeapon(15); // the exported extent (SPEC §4.2)
 }
 

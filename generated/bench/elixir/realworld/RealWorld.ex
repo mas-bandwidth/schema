@@ -40,6 +40,8 @@ defmodule Realworld.PacketMode do
   def combat, do: 3
   def docked, do: 4
   def warping, do: 5
+  # the declared variant count (SPEC §4.2)
+  def count, do: 5
   # the exported extent (SPEC §4.2)
   def max, do: 5
 end

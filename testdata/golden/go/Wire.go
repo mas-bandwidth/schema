@@ -29,6 +29,7 @@ const (
 	WeaponLaser   Weapon = 1
 	WeaponMissile Weapon = 2
 	WeaponRailgun Weapon = 3
+	WeaponCount   Weapon = 3  // the declared variant count (SPEC §4.2)
 	WeaponMax     Weapon = 15 // the exported extent (SPEC §4.2)
 )
 

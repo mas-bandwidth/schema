@@ -28,6 +28,7 @@ export const Weapon = Object.freeze({
   Laser: 1,
   Missile: 2,
   Railgun: 3,
+  Count: 3, // the declared variant count (SPEC §4.2)
   Max: 15, // the exported extent (SPEC §4.2)
 });
 

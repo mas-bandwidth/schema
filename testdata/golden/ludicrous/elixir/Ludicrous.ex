@@ -38,6 +38,8 @@ defmodule Ludicrous.DriveMode do
   def cruise, do: 1
   def warp, do: 2
   def ludicrous, do: 3
+  # the declared variant count (SPEC §4.2)
+  def count, do: 3
   # the exported extent (SPEC §4.2)
   def max, do: 3
 end

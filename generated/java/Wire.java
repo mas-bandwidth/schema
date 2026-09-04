@@ -37,6 +37,8 @@ public final class Wire {
         public static final byte laser = 1;
         public static final byte missile = 2;
         public static final byte railgun = 3;
+        // the declared variant count (SPEC §4.2)
+        public static final byte count = 3;
         // the exported extent (SPEC §4.2)
         public static final byte max = 15;
     }

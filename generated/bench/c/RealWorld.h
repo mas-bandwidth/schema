@@ -38,6 +38,7 @@ typedef uint8_t PacketMode;
 #define PACKET_MODE_COMBAT 3
 #define PACKET_MODE_DOCKED 4
 #define PACKET_MODE_WARPING 5
+#define PACKET_MODE_COUNT 5
 #define PACKET_MODE_MAX 5
 
 /* Debug/log name for any PacketMode value, out-of-set included. */

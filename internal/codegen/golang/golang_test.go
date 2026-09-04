@@ -9,6 +9,9 @@ import (
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
@@ -21,6 +24,21 @@ func countAcross(files map[string][]byte, needle string) int {
 		n += strings.Count(string(src), needle)
 	}
 	return n
+}
+
+// collapseColumns squeezes each line's whitespace runs to one space, so a
+// needle can name a whole emitted line — symbol, value and trailing comment
+// — without pinning the column go/format aligned it into.
+func collapseColumns(files map[string][]byte) map[string][]byte {
+	out := make(map[string][]byte, len(files))
+	for name, src := range files {
+		lines := strings.Split(string(src), "\n")
+		for i, line := range lines {
+			lines[i] = strings.Join(strings.Fields(line), " ")
+		}
+		out[name] = []byte(strings.Join(lines, "\n"))
+	}
+	return out
 }
 
 // A bare float const infers float64 (SPEC §4.2, Go's literal rule): the Go
@@ -131,6 +149,109 @@ func TestEnumExtentEmitted(t *testing.T) {
 		for _, e := range tgt.expects {
 			if got := countAcross(tgt.files, e.needle); got != e.count {
 				t.Errorf("%s: %q emitted %d times, want %d — the enum extent must ride every generated enum surface", tgt.name, e.needle, got, e.count)
+			}
+		}
+	}
+}
+
+// Every generated enum carries its DECLARED variant count as the member
+// Count beside the extent Max (SPEC §4.2), in each target's own idiom and in
+// all nine. Without headroom the two numbers coincide; under | max = K they
+// part, and that is the case a loop written against Max alone gets wrong —
+// so both enums are pinned here, and Count < Max is asserted on the widened
+// one.
+func TestEnumDeclaredCountEmitted(t *testing.T) {
+	src := "package t\n\n" +
+		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
+		"enum Team { Red, Blue, Green }\n\n" +
+		"type Box {\n    w Weapon\n    t Team\n}\n"
+	f, perrs := parser.Parse("Counts.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Counts.schema", Name: "Counts.schema", Base: "Counts",
+		Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+	if got, max := len(u.Enums["Weapon"].Variants), u.Enums["Weapon"].Max; int64(got) >= max {
+		t.Fatalf("Weapon: Count = %d, Max = %d — the headroom case must have Count < Max", got, max)
+	}
+
+	type expectation struct {
+		needle string
+		count  int
+	}
+	type target struct {
+		name    string
+		files   map[string][]byte
+		genErr  error
+		expects []expectation
+	}
+	var targets []target
+	addTarget := func(name string, files map[string][]byte, err error, expects ...expectation) {
+		targets = append(targets, target{name, files, err, expects})
+	}
+
+	goFiles, goErr := Generate(u)
+	// go/format aligns a const block into columns, so the Go needles are
+	// matched against a space-collapsed copy: symbol, value and comment
+	// together, without a column position baked into the test
+	addTarget("Go", collapseColumns(goFiles), goErr,
+		expectation{"WeaponCount Weapon = 2 // the declared variant count (SPEC §4.2)", 1},
+		expectation{"TeamCount Team = 3 // the declared variant count (SPEC §4.2)", 1},
+		expectation{"WeaponMax Weapon = 15 // the exported extent (SPEC §4.2)", 1})
+	rustFiles, rustErr := rust.Generate(u)
+	addTarget("Rust", rustFiles, rustErr,
+		expectation{"pub const COUNT: Weapon = Weapon(2);", 1},
+		expectation{"pub const COUNT: Team = Team(3);", 1},
+		expectation{"pub const MAX: Weapon = Weapon(15);", 1})
+	csFiles, csErr := csharp.Generate(u)
+	addTarget("C#", csFiles, csErr,
+		expectation{"Count = 2,", 1},
+		expectation{"Count = 3,", 1},
+		expectation{"Max = 15,", 1})
+	jsFiles, jsErr := js.Generate(u)
+	addTarget("JS", jsFiles, jsErr,
+		expectation{"Count: 2,", 1},
+		expectation{"Count: 3,", 1},
+		expectation{"Max: 15,", 1})
+	cFiles, cErr := cgen.Generate(u)
+	addTarget("C", cFiles, cErr,
+		expectation{"#define WEAPON_COUNT 2", 1},
+		expectation{"#define TEAM_COUNT 3", 1},
+		expectation{"#define WEAPON_MAX 15", 1})
+	cppFiles, cppErr := cpp.Generate(u)
+	addTarget("C++", cppFiles, cppErr,
+		expectation{"Count = 2,", 1},
+		expectation{"Count = 3,", 1},
+		expectation{"Max = 15,", 1})
+	dartFiles, dartErr := dart.Generate(u)
+	addTarget("Dart", dartFiles, dartErr,
+		expectation{"static const int count = 2;", 1},
+		expectation{"static const int count = 3;", 1},
+		expectation{"static const int max = 15;", 1})
+	javaFiles, javaErr := java.Generate(u)
+	addTarget("Java", javaFiles, javaErr,
+		expectation{"public static final byte count = 2;", 1},
+		expectation{"public static final byte count = 3;", 1},
+		expectation{"public static final byte max = 15;", 1})
+	elixirFiles, elixirErr := elixir.Generate(u)
+	addTarget("Elixir", elixirFiles, elixirErr,
+		expectation{"def count, do: 2", 1},
+		expectation{"def count, do: 3", 1},
+		expectation{"def max, do: 15", 1})
+
+	for _, tgt := range targets {
+		if tgt.genErr != nil {
+			t.Errorf("%s: generate: %v", tgt.name, tgt.genErr)
+			continue
+		}
+		for _, e := range tgt.expects {
+			if got := countAcross(tgt.files, e.needle); got != e.count {
+				t.Errorf("%s: %q emitted %d times, want %d — every generated enum carries Count beside Max (SPEC §4.2)", tgt.name, e.needle, got, e.count)
 			}
 		}
 	}

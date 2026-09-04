@@ -103,6 +103,7 @@ typedef uint8_t MixedWeapon;
 #define MIXED_WEAPON_TURRET 13
 #define MIXED_WEAPON_DRONE 14
 #define MIXED_WEAPON_REPAIR 15
+#define MIXED_WEAPON_COUNT 15
 #define MIXED_WEAPON_MAX 15
 
 /* Debug/log name for any MixedWeapon value, out-of-set included. */

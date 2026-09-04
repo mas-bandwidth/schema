@@ -47,6 +47,7 @@ abstract final class DriveMode {
   static const int cruise = 1;
   static const int warp = 2;
   static const int ludicrous = 3;
+  static const int count = 3; // the declared variant count (SPEC §4.2)
   static const int max = 3; // the exported extent (SPEC §4.2)
 }
 

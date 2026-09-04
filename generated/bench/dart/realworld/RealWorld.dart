@@ -109,6 +109,7 @@ abstract final class PacketMode {
   static const int combat = 3;
   static const int docked = 4;
   static const int warping = 5;
+  static const int count = 5; // the declared variant count (SPEC §4.2)
   static const int max = 5; // the exported extent (SPEC §4.2)
 }
 

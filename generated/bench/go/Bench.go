@@ -359,6 +359,7 @@ const (
 	MixedWeaponTurret  MixedWeapon = 13
 	MixedWeaponDrone   MixedWeapon = 14
 	MixedWeaponRepair  MixedWeapon = 15
+	MixedWeaponCount   MixedWeapon = 15 // the declared variant count (SPEC §4.2)
 	MixedWeaponMax     MixedWeapon = 15 // the exported extent (SPEC §4.2)
 )
 

@@ -38,6 +38,7 @@ typedef uint8_t DriveMode;
 #define DRIVE_MODE_CRUISE 1
 #define DRIVE_MODE_WARP 2
 #define DRIVE_MODE_LUDICROUS 3
+#define DRIVE_MODE_COUNT 3
 #define DRIVE_MODE_MAX 3
 
 /* Debug/log name for any DriveMode value, out-of-set included. */

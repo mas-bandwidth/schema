@@ -302,6 +302,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	for i, v := range d.Variants {
 		g.pf("#define %s_%s %d\n", screaming(d.Name), screaming(v), i+1)
 	}
+	g.pf("#define %s_COUNT %d\n", screaming(d.Name), len(d.Variants))
 	g.pf("#define %s_MAX %d\n", screaming(d.Name), d.Max)
 
 	// the debug/log name, the counterpart of C++'s and Go's EnumName

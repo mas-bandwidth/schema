@@ -204,7 +204,7 @@ the source list at the end.
 | Declared numeric bounds | `\| min, max` in the type; bits on the type wire, clamp and count on the table wire (SPEC §4.3, §4) | — | — |
 | Fixed point | `fixed(I,F)`, `ufixed(I,F)`, exact round trip on both wires (SPEC §4.3; SPEC-TABLES §3, §16.2) | — | — |
 | Constants | `const`, typed or inferred, exported to every language, usable in bounds and extents | — | — |
-| Enums | implicit `None = 0`, dense from 1, `Max`; on the table wire a value rides as the hash of its name (§3) | explicit values on a declared integer type; `bit_flags` (FB-schema) | 32-bit values, first must be 0, aliases, reserved values, open or closed per edition (PB-enum) |
+| Enums | implicit `None = 0`, dense from 1, `Count` and `Max`; on the table wire a value rides as the hash of its name (§3) | explicit values on a declared integer type; `bit_flags` (FB-schema) | 32-bit values, first must be 0, aliases, reserved values, open or closed per edition (PB-enum) |
 | Flags | `flags`, up to 64 bits, `uint64` storage everywhere, `.Count`; rides as a mask (§3) | `enum (bit_flags)` | — |
 | Inline struct | a `type` nested by value; a whole fixed table is a plain struct (§2.2, §6.1) | `struct`: scalars and structs only, inline, unversioned (FB-internals) | — ; every message is length-delimited (PB-encoding) |
 | Nested composites | tables nest by value; a by-value cycle is refused naming it (§2) | tables by offset; depth bounded by the verifier's `max_depth` (FB-cpp) | unlimited nesting; parser recursion limit 100 (PB-limits) |

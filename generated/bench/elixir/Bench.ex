@@ -89,6 +89,8 @@ defmodule Bench.MixedWeapon do
   def turret, do: 13
   def drone, do: 14
   def repair, do: 15
+  # the declared variant count (SPEC §4.2)
+  def count, do: 15
   # the exported extent (SPEC §4.2)
   def max, do: 15
 end

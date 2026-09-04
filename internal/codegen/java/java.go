@@ -438,6 +438,8 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	for i, v := range d.Variants {
 		g.bpf("        public static final %s %s = %s;\n", typ, javaName(v), narrowLit(typ, big.NewInt(int64(i+1))))
 	}
+	g.bpf("        // the declared variant count (SPEC §4.2)\n")
+	g.bpf("        public static final %s count = %s;\n", typ, narrowLit(typ, big.NewInt(int64(len(d.Variants)))))
 	g.bpf("        // the exported extent (SPEC §4.2)\n")
 	g.bpf("        public static final %s max = %s;\n", typ, narrowLit(typ, big.NewInt(d.Max)))
 	g.bpf("    }\n\n")

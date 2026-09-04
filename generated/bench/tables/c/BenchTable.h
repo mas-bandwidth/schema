@@ -47,6 +47,7 @@ typedef uint8_t TableWeapon;
 #define TABLE_WEAPON_TURRET 13
 #define TABLE_WEAPON_DRONE 14
 #define TABLE_WEAPON_REPAIR 15
+#define TABLE_WEAPON_COUNT 15
 #define TABLE_WEAPON_MAX 15
 
 /* Debug/log name for any TableWeapon value, out-of-set included. */
