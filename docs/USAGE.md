@@ -1590,7 +1590,9 @@ send( buffer );
 ```
 
 ```cpp
-// the RECEIVER holds ONE table a direction for the life of the connection
+// the RECEIVER holds ONE table a direction for the life of the connection.
+// The table BORROWS the announcement's bytes rather than copying them, so
+// `first` has to outlive it: keep the announcement beside the connection.
 backenddemo::TableVocabulary vocabulary;
 backenddemo::TableReport report;
 if ( !backenddemo::AnnounceRead( vocabulary, first.data(), (int64_t) first.size(), &report ) )
