@@ -7,6 +7,7 @@ package tablewire
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 	"math/big"
 
@@ -14,20 +15,121 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// FormRefusal is the wire a reader will not decode at all: a FORM BYTE it does
+// not know (docs/SPEC-TABLES.md §3). The refusal is not one of §4's events and
+// moves none of the report's five counters, because nothing was decoded and
+// there is nothing to count — so it is returned rather than folded into the
+// report, and a caller must not carry on as if it had a value.
+type FormRefusal struct{ Form uint8 }
+
+func (e *FormRefusal) Error() string {
+	return fmt.Sprintf("wire form %d is newer than form %d, the one this reader carries — refused, and no damage is reported (docs/SPEC-TABLES.md §3)", e.Form, ir.TableWireForm)
+}
+
 // Decode fills one instance from a root table's wire bytes, counting every
-// evolution event in the report. The error is a REFUSAL — a root this engine
-// does not decode at all — and is returned rather than folded into the report,
-// because a caller must not carry on as if it had a value; false with a nil
-// error is framing damage past the point the walk could continue, and the
-// instance keeps what it decoded.
+// evolution event in the report. The error is a REFUSAL — a wire this engine
+// does not decode at all — and is returned rather than folded into the report;
+// false with a nil error is framing damage past the point the walk could
+// continue, and the instance keeps what it decoded.
 func Decode(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) (bool, error) {
+	// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so
+	// a file that is both a newer form and damaged is a refusal and never
+	// damage (§3).
+	if len(data) < 1 {
+		report.Malformed = true
+		return false, nil
+	}
+	if data[0] != ir.TableWireForm {
+		return false, &FormRefusal{Form: data[0]}
+	}
+	body, ids, ok := trailer(data)
+	if !ok {
+		// the one malformed case that stops the FILE rather than a nesting
+		// level: every id in every body resolves through the table, and a body
+		// read without it would be read without identity (§3)
+		report.Malformed = true
+		return false, nil
+	}
+	// ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
+	// MALFORMED, because no field claims it and the two ends of the file have
+	// met (§3). Nothing is decoded, and one event is counted.
+	if end, terminated := bodyExtent(body, ids); terminated && end != len(body) {
+		report.Malformed = true
+		return false, nil
+	}
 	if !ir.VariableTables(m.Unit)[inst.Def.Name] {
 		// a value-only table has no pointer, therefore no node table, therefore
 		// exactly the bytes §3 already describes
-		r := &wireReader{buf: data, report: report, m: m}
+		r := &wireReader{buf: body, report: report, m: m, ids: ids}
 		return r.body(inst), nil
 	}
-	return decodeVariable(m, inst, data, report)
+	return decodeVariable(m, inst, body, ids, report)
+}
+
+// trailer locates the ID TABLE from the END of the wire (docs/SPEC-TABLES.md
+// §3): the final eight bytes are the ENTRY COUNT, a fixed little-endian u64,
+// the `8 × count` bytes before them are the ENTRIES, and the body ends where
+// the first entry begins.
+//
+// A table that cannot be read whole is malformed: fewer than eight bytes in
+// the file, a count whose `8 × count + 8` runs past the front, a count that
+// leaves no room for the form byte, or ONE ID IN TWO ENTRIES.
+func trailer(data []byte) (body []byte, ids []uint64, ok bool) {
+	if len(data) < 9 {
+		return nil, nil, false
+	}
+	count := binary.LittleEndian.Uint64(data[len(data)-8:])
+	if count > uint64(len(data)) / 8 {
+		return nil, nil, false
+	}
+	span := int(count)*8 + 8
+	if span+1 > len(data) {
+		return nil, nil, false
+	}
+	first := len(data) - span
+	ids = make([]uint64, count)
+	seen := make(map[uint64]bool, count)
+	for i := range ids {
+		id := binary.LittleEndian.Uint64(data[first+i*8:])
+		if seen[id] {
+			// A TABLE THAT CARRIES ONE ID TWICE: the whole wire is malformed.
+			// A reader that resolved both entries would buy nothing, because no
+			// wire this schema writes carries a repeat, and it would leave one
+			// more shape of table for a hostile writer to aim at (§3).
+			return nil, nil, false
+		}
+		seen[id] = true
+		ids[i] = id
+	}
+	return data[1:first], ids, true
+}
+
+// bodyExtent walks a body's framing to the zero reference that ends it, so the
+// caller can tell a body that ENDED EARLY — leaving bytes no field claims —
+// from one that is merely damaged. `terminated` is false where the walk cannot
+// reach a terminator at all, which is §4's ordinary framing damage on that body
+// and not the file's.
+func bodyExtent(body []byte, ids []uint64) (end int, terminated bool) {
+	r := &wireReader{buf: body, report: &tabletext.Report{}, ids: ids}
+	for {
+		ref, next, good := readLeb(r.buf, r.off)
+		if !good {
+			return 0, false
+		}
+		r.off = next
+		if ref == 0 {
+			return r.off, true
+		}
+		if ref > uint64(len(ids)) {
+			return 0, false
+		}
+		if !r.has(1) {
+			return 0, false
+		}
+		if !r.skip(r.u8()) {
+			return 0, false
+		}
+	}
 }
 
 type wireReader struct {
@@ -35,6 +137,7 @@ type wireReader struct {
 	off    int
 	report *tabletext.Report
 	m      *tabletext.Model
+	ids    []uint64     // the file's id table, resolved once at open (§3)
 	st     *decodeState // the save's numbering, shared by every sub-reader
 }
 
@@ -43,12 +146,6 @@ func (r *wireReader) has(n int) bool { return n >= 0 && r.off+n <= len(r.buf) }
 func (r *wireReader) u8() uint8 {
 	v := r.buf[r.off]
 	r.off++
-	return v
-}
-
-func (r *wireReader) u16() uint16 {
-	v := binary.LittleEndian.Uint16(r.buf[r.off:])
-	r.off += 2
 	return v
 }
 
@@ -64,61 +161,91 @@ func (r *wireReader) u64() uint64 {
 	return v
 }
 
+// leb reads one length, count or index. ok is false where the encoding is
+// truncated or NON-CANONICAL, which is framing damage on the body carrying it
+// (§3).
+func (r *wireReader) leb() (v uint64, ok bool) {
+	v, next, good := readLeb(r.buf, r.off)
+	if !good {
+		return 0, false
+	}
+	r.off = next
+	return v, true
+}
+
+// id resolves one reference against the file's table. ok is false where the
+// reference is ABOVE the entry count, which is framing damage on the body that
+// carries it. Reference `0` never reaches here: it names NO ID, and the three
+// places it is a value read it before asking.
+func (r *wireReader) id(ref uint64) (uint64, bool) {
+	if ref == 0 || ref > uint64(len(r.ids)) {
+		return 0, false
+	}
+	return r.ids[ref-1], true
+}
+
 func (r *wireReader) sub(n int) *wireReader {
-	s := &wireReader{buf: r.buf[r.off : r.off+n], report: r.report, m: r.m, st: r.st}
-	return s
+	return &wireReader{buf: r.buf[r.off : r.off+n], report: r.report, m: r.m, ids: r.ids, st: r.st}
 }
 
 // skip steps past a field whose id this reader cannot name — the kind byte and
 // nothing else is needed, which is what makes an unknown field survivable (§3).
+// Four rules cover the set.
 func (r *wireReader) skip(kind uint8) bool {
 	switch kind {
 	case ir.TableKindBool, ir.TableKindI8, ir.TableKindU8,
 		ir.TableKindI16, ir.TableKindU16,
 		ir.TableKindI32, ir.TableKindU32, ir.TableKindF32,
 		ir.TableKindI64, ir.TableKindU64, ir.TableKindF64,
-		ir.TableKindPointer,
 		ir.TableKindI128, ir.TableKindU128,
 		ir.TableKindFixed8, ir.TableKindFixed16, ir.TableKindFixed32, ir.TableKindFixed64, ir.TableKindFixed128,
 		ir.TableKindUFixed8, ir.TableKindUFixed16, ir.TableKindUFixed32, ir.TableKindUFixed64, ir.TableKindUFixed128:
-		w := tabletext.KindWidth(int(kind))
+		w := ir.TableKindWidth(int(kind))
 		if !r.has(w) {
 			return false
 		}
 		r.off += w
 		return true
-	case ir.TableKindString, ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed:
-		if !r.has(4) {
+	case ir.TableKindPointer, ir.TableKindEnum:
+		// kinds 17 and 30 read one LEB128 value and stop
+		_, ok := r.leb()
+		return ok
+	case ir.TableKindString, ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed,
+		ir.TableKindEscape, ir.TableKindNoPayload:
+		n, ok := r.leb()
+		if !ok || !r.has(int(n)) || n > uint64(len(r.buf)) {
 			return false
 		}
-		n := int(r.u32())
-		if !r.has(n) {
-			return false
-		}
-		r.off += n
+		r.off += int(n)
 		return true
 	case ir.TableKindUnion:
-		if !r.has(2) {
+		// kind 15 reads the arm id reference and stops there if it is 0, else
+		// reads the kind byte, then L, and skips L bytes
+		arm, ok := r.leb()
+		if !ok {
 			return false
 		}
-		if r.u16() == 0 {
-			return true // an arm id of 0 is the empty union, and carries nothing
+		if arm == 0 {
+			return true
 		}
-		if !r.has(4) {
+		if !r.has(1) {
 			return false
 		}
-		n := int(r.u32())
-		if !r.has(n) {
+		r.off++ // the arm's kind byte
+		n, ok := r.leb()
+		if !ok || !r.has(int(n)) || n > uint64(len(r.buf)) {
 			return false
 		}
-		r.off += n
+		r.off += int(n)
 		return true
 	}
-	return false // a kind outside the closed set is framing damage
+	// A kind a reader does not know at all is not skippable, and is framing
+	// damage — which is why the set is closed and why kind 31 exists (§3).
+	return false
 }
 
 // wireKind is the kind byte a field's payload rides under. It is
-// ir.TableFieldKind with the one case that function does not see: a POINTER
+// ir.TableWireFieldKind with the one case that function does not see: a POINTER
 // field rides as a NODE INDEX under its own kind `17`, because a body that may
 // be named twice cannot also sit inline at one of its names (docs/SPEC-TABLES.md
 // §3.1). `*T` and a by-value `T` are therefore no longer one framing: `T` and
@@ -132,40 +259,58 @@ func wireKind(f *ir.Field) int {
 	if f.Type.Kind == ir.TBytes {
 		return ir.TableKindArray
 	}
-	return ir.TableFieldKind(f)
+	return ir.TableWireFieldKind(f)
 }
 
 func (r *wireReader) body(inst *tabletext.Instance) bool {
-	index := map[uint16]int{}
+	return r.bodyAt(inst, false)
+}
+
+// bodyAt decodes one table body. `nested` says the body is not the root's, and
+// it decides one rule: THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED, on
+// the numbering's own rule — a second numbering cannot exist, so a body
+// claiming one is damaged (§3.1).
+func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
+	index := map[uint64]int{}
 	for i := range inst.Fields {
-		index[ir.TableFieldId(inst.Fields[i].Def)] = i
+		index[ir.TableFieldWireId(inst.Fields[i].Def)] = i
 	}
 	for {
-		if !r.has(2) {
+		ref, ok := r.leb()
+		if !ok {
 			r.report.Malformed = true
 			return false
 		}
-		id := r.u16()
-		if id == 0 {
-			return true
+		if ref == 0 {
+			return true // the body ENDS AT ITS OWN ZERO REFERENCE
+		}
+		id, named := r.id(ref)
+		if !named {
+			r.report.Malformed = true
+			return false
 		}
 		if !r.has(1) {
 			r.report.Malformed = true
 			return false
 		}
 		kind := r.u8()
-		if id == ir.NodeTableFieldId && r.st != nil && r.m.IsVariable(inst.Def.Name) {
-			// the reserved id is this reader's OWN (§3.1), read before any body
-			// and not a field of the table: a VARIABLE-class body steps over it
-			// and never counts it unknown, as the C++ reference does. A reader
-			// that cannot name it — a fixed-class body, or a build without kind
-			// 17 — counts one per transport field, which is the case §4's
-			// counter describes.
-			if !r.skip(kind) {
+		if id == ir.TableNodeWireId {
+			if nested {
 				r.report.Malformed = true
 				return false
 			}
-			continue
+			if r.st != nil && r.m.IsVariable(inst.Def.Name) {
+				// the reserved id is this reader's OWN (§3.1), read before any
+				// body and not a field of the table: a VARIABLE-class root
+				// steps over it and never counts it unknown. A reader that
+				// cannot name it — a fixed-class body, or a build without kind
+				// 17 — counts one, which is the case §4's counter describes.
+				if !r.skip(kind) {
+					r.report.Malformed = true
+					return false
+				}
+				continue
+			}
 		}
 		i, known := index[id]
 		if !known {
@@ -178,6 +323,9 @@ func (r *wireReader) body(inst *tabletext.Instance) bool {
 		}
 		fv := &inst.Fields[i]
 		if int(kind) != wireKind(fv.Def) {
+			// AT A POSITION THE READER DOES NAME, a field that arrives under
+			// kind 31 or kind 32 where the declaration says otherwise takes
+			// this same rule and no other (§3)
 			r.report.KindMismatch++
 			if !r.skip(kind) {
 				r.report.Malformed = true
@@ -206,62 +354,86 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		// stored, never followed. There is no traversal on the load path, and
 		// therefore no traversal bound — no depth cap, no visited set, no
 		// ordering rule on the indices (docs/SPEC-TABLES.md §3.1).
-		if !r.has(4) {
+		index, ok := r.leb()
+		if !ok {
 			r.report.Malformed = true
 			return false
 		}
-		r.resolve(fv, r.u32())
+		r.resolve(fv, index)
 		return true
 	case f.KeyEnum != "":
 		return r.keyed(fv)
 	case f.Type.Kind == ir.TString:
-		if !r.has(4) {
+		n, ok := r.leb()
+		if !ok || !r.has(int(n)) || n > uint64(len(r.buf)) {
 			r.report.Malformed = true
 			return false
 		}
-		n := int(r.u32())
-		if !r.has(n) {
-			r.report.Malformed = true
-			return false
-		}
-		keep := n
+		keep := int(n)
 		if bound := int(f.Type.Size); keep > bound {
 			keep = bound
 			r.report.Clamped++
 		}
 		fv.Cell.Str = append([]byte(nil), r.buf[r.off:r.off+keep]...)
 		fv.Count = keep
-		r.off += n
+		r.off += int(n)
 		return true
 	case f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		return r.array(fv)
 	case tabletext.UnionOf(f) != nil:
 		return r.union(fv)
+	case tabletext.EnumOf(f) != nil:
+		return r.enumCell(&fv.Cell, f)
 	case tabletext.StructOf(f) != nil:
-		if !r.has(4) {
+		n, ok := r.leb()
+		if !ok || !r.has(int(n)) || n > uint64(len(r.buf)) {
 			r.report.Malformed = true
 			return false
 		}
-		n := int(r.u32())
-		if !r.has(n) {
-			r.report.Malformed = true
-			return false
-		}
-		sub := r.sub(n)
+		sub := r.sub(int(n))
 		fv.Cell.Tab = r.m.New(tabletext.StructOf(f))
-		sub.body(fv.Cell.Tab)
+		sub.bodyAt(fv.Cell.Tab, true)
 		// A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3): a body whose
-		// terminator is not the last two bytes of its L is framing damage —
-		// the payload stops, the field reads its declared defaults, and the
+		// terminator is not the last byte of its L is framing damage — the
+		// payload stops, the field reads its declared defaults, and the
 		// enclosing body continues past it by L.
-		if sub.off != n {
+		if sub.off != int(n) {
 			r.report.Malformed = true
 			fv.Cell.Tab = r.m.New(tabletext.StructOf(f))
 		}
-		r.off += n
+		r.off += int(n)
 		return true
 	}
 	return r.scalar(&fv.Cell, f, true)
+}
+
+// enumCell reads an enum value: kind 30's payload is the reference to the
+// VARIANT NAME's id, `0` for None. A reference this reader's enum cannot name
+// is §4's ordinary `unknown` — the field reads None and one event counts — and
+// a reference ABOVE the entry count is framing damage like any other (§3).
+func (r *wireReader) enumCell(cell *tabletext.Cell, f *ir.Field) bool {
+	ref, ok := r.leb()
+	if !ok {
+		r.report.Malformed = true
+		return false
+	}
+	if ref == 0 {
+		cell.U = 0 // the zero reference is the enum's None
+		return true
+	}
+	id, named := r.id(ref)
+	if !named {
+		r.report.Malformed = true
+		return false
+	}
+	v := enumValueForId(tabletext.EnumOf(f), id)
+	if v < 0 {
+		cell.U = 0
+		r.report.Unknown++
+		return true
+	}
+	cell.U = uint64(v)
+	return true
 }
 
 func (r *wireReader) array(fv *tabletext.Field) bool {
@@ -286,34 +458,45 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 	counted := f.Type.Kind == ir.TBytes || f.Array == ir.ArrayCounted
 	bodyLen := framed
 	if framed < 0 {
-		if !r.has(4) {
+		n, good := r.leb()
+		if !good || n > uint64(len(r.buf)) {
 			r.report.Malformed = true
 			return false, false
 		}
-		bodyLen = int(r.u32())
+		bodyLen = int(n)
 	}
 	if !r.has(bodyLen) {
 		r.report.Malformed = true
 		return false, false
 	}
 	end := r.off + bodyLen
-	// A body too short for its own header (element kind and count) is INERT
-	// (§4): the field keeps the value it has — a repeat under this id replaces
-	// nothing — no counter is raised, and the walk continues past the length.
-	if bodyLen >= 5 {
+	// A body too short for its own header — the element kind byte and the
+	// count, so fewer than two bytes — is INERT (§4): the field keeps the value
+	// it has, a repeat under this id replaces nothing, no counter is raised,
+	// and the walk continues past the length.
+	if bodyLen >= 2 {
 		decoded := 0
 		ek := r.u8()
-		count := int(r.u32())
-		if int(ek) != ir.TableElemKind(f) {
+		count, good := r.leb()
+		if !good {
+			r.report.Malformed = true
+			r.off = end
+			if f.Type.Optional {
+				fv.Present = true
+			}
+			return true, true
+		}
+		if int(ek) != ir.TableWireElemKind(f) {
 			// the element kind is part of the array's identity (§3): counted,
 			// the field left at its declared default — for an OPTIONAL array
-			// that default is ABSENT, so Present is not set below
+			// that default is ABSENT, so Present is not set below. AN ELEMENT
+			// KIND OF 31 OR 32 TAKES THAT SAME RULE AND NO OTHER.
 			r.report.KindMismatch++
 			r.off = end
 			return true, false
 		}
-		keep := count
-		if keep > bound {
+		keep := int(count)
+		if count > uint64(bound) {
 			keep = bound
 			r.report.Clamped++
 		}
@@ -358,13 +541,14 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 func (r *wireReader) element(fv *tabletext.Field, i int) bool {
 	f := fv.Def
 	if tabletext.UnionOf(f) != nil {
-		// an element of an ARRAY OF UNIONS: the union payload in its place (§3).
-		// The element is RESET the moment its arm id is READ, before the arm
-		// length that follows is checked, so a repeat under the field id leaves
+		// an element of an ARRAY OF UNIONS is an ARM HEADER and carries its own
+		// kind, so the arm rules apply once per element (§3). The element is
+		// RESET the moment its arm id is READ, before the kind byte and the arm
+		// length that follow are checked, so a repeat under the field id leaves
 		// no arm an earlier occurrence decoded standing — the last occurrence
 		// wins whole, even when its own framing is damaged (§3, §4). An element
 		// the body cannot even reach is not touched.
-		if !r.has(2) {
+		if !r.has(1) {
 			r.report.Malformed = true
 			return false
 		}
@@ -375,137 +559,157 @@ func (r *wireReader) element(fv *tabletext.Field, i int) bool {
 	if f.Type.Pointer {
 		// an element of an array of pointers: a node index, bounds-checked and
 		// stored, never followed (§3.1)
-		if !r.has(4) {
+		index, ok := r.leb()
+		if !ok {
 			r.report.Malformed = true
 			return false
 		}
-		r.resolveCell(&fv.Elems[i], f, r.u32())
+		r.resolveCell(&fv.Elems[i], f, index)
 		return true
 	}
-	if tabletext.StructOf(f) != nil && tabletext.EnumOf(f) == nil {
-		if !r.has(4) {
+	if tabletext.EnumOf(f) != nil {
+		return r.enumCell(&fv.Elems[i], f)
+	}
+	if tabletext.StructOf(f) != nil {
+		n, ok := r.leb()
+		if !ok || !r.has(int(n)) || n > uint64(len(r.buf)) {
 			r.report.Malformed = true
 			return false
 		}
-		n := int(r.u32())
-		if !r.has(n) {
-			r.report.Malformed = true
-			return false
-		}
-		sub := r.sub(n)
+		sub := r.sub(int(n))
 		fv.Elems[i].Tab = r.m.New(tabletext.StructOf(f))
-		sub.body(fv.Elems[i].Tab)
-		r.off += n
+		sub.bodyAt(fv.Elems[i].Tab, true)
+		r.off += int(n)
 		return true
 	}
 	return r.scalar(&fv.Elems[i], f, false)
 }
 
-// keyed places an enum-keyed array's pairs BY VARIANT ID, so a slot lands by
-// name however the enum moved (docs/SPEC-TABLES.md §3.2). A key this reader cannot
-// name is skipped by its length and counted unknown; a slot the writer never
-// sent keeps its declared default; a key of 0 is None, which keys no slot,
-// and is framing damage.
+// keyed places an enum-keyed array's triples BY KEY REFERENCE, so a slot lands
+// by name however the enum moved (docs/SPEC-TABLES.md §3.2). A key this reader
+// cannot name is skipped by its length and counted unknown; a slot the writer
+// never sent keeps its declared default; a stored key reference of `0` is
+// MALFORMED rather than an unknown variant, because `0` names no id at all and
+// a slot must say which variant it keys.
 func (r *wireReader) keyed(fv *tabletext.Field) bool {
 	f := fv.Def
-	if !r.has(4) {
+	n, ok := r.leb()
+	if !ok || n > uint64(len(r.buf)) {
 		r.report.Malformed = true
 		return false
 	}
-	bodyLen := int(r.u32())
+	bodyLen := int(n)
 	if !r.has(bodyLen) {
 		r.report.Malformed = true
 		return false
 	}
 	end := r.off + bodyLen
-	if bodyLen < 5 {
+	if bodyLen < 2 {
 		r.off = end
 		return true
 	}
 	elemKind := r.u8()
-	count := int(r.u32())
-	if elemKind != uint8(ir.TableElemKind(f)) {
+	count, good := r.leb()
+	if !good {
+		r.report.Malformed = true
+		r.off = end
+		return true
+	}
+	if int(elemKind) != ir.TableWireElemKind(f) {
 		r.report.KindMismatch++
 		r.off = end
 		return true
 	}
 	sub := r.sub(end - r.off)
 	for range count {
-		if !sub.has(2) {
-			r.report.Malformed = true
-			break
-		}
-		key := sub.u16()
-		if !sub.has(4) {
-			r.report.Malformed = true
-			break
-		}
-		elemLen := int(sub.u32())
-		if !sub.has(elemLen) {
+		key, good := sub.leb()
+		if !good {
 			r.report.Malformed = true
 			break
 		}
 		if key == 0 {
-			// None is the null key and 0 the id no name folds to, so a body
-			// carrying one is damaged: the read stops this body and keeps what
-			// it decoded (docs/SPEC-TABLES.md §3.2)
+			// None is the enum's null and keys no slot, and `0` names no id at
+			// all, so a body carrying one is damaged rather than merely
+			// foreign: the read stops this body and keeps what it decoded (§3.2)
 			r.report.Malformed = true
 			break
 		}
-		slot := tabletext.KeyedValueSlot(f, enumValueForId(f.KeyEnumRef, key))
+		keyID, named := sub.id(key)
+		if !named {
+			r.report.Malformed = true
+			break
+		}
+		elemLen, good := sub.leb()
+		if !good || elemLen > uint64(len(sub.buf)) || !sub.has(int(elemLen)) {
+			r.report.Malformed = true
+			break
+		}
+		slot := tabletext.KeyedValueSlot(f, enumValueForId(f.KeyEnumRef, keyID))
 		if slot < 0 {
 			r.report.Unknown++ // a slot this reader cannot name
-			sub.off += elemLen
+			sub.off += int(elemLen)
 			continue
 		}
-		elem := sub.sub(elemLen)
-		if tabletext.StructOf(f) != nil {
+		elem := sub.sub(int(elemLen))
+		switch {
+		case tabletext.EnumOf(f) != nil:
+			elem.enumCell(&fv.Elems[slot], f)
+		case tabletext.StructOf(f) != nil:
 			fv.Elems[slot].Tab = r.m.New(tabletext.StructOf(f))
-			elem.body(fv.Elems[slot].Tab)
-		} else {
+			elem.bodyAt(fv.Elems[slot].Tab, true)
+		default:
 			elem.scalar(&fv.Elems[slot], f, false)
 		}
-		sub.off += elemLen
+		sub.off += int(elemLen)
 	}
-	r.off = end // unread pairs and slack skip via the length
+	r.off = end // unread triples and slack skip via the length
 	return true
 }
 
 func (r *wireReader) union(fv *tabletext.Field) bool { return r.unionCell(&fv.Cell, fv.Def) }
 
 // unionCell decodes the union framing into one cell — a field's, or an element
-// of an array of unions (§3).
+// of an array of unions (§3). AN ARM HEADER IS A FIELD HEADER: the arm id
+// reference, the arm's KIND byte, `L`, then `L` bytes of arm payload.
 func (r *wireReader) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 	un := tabletext.UnionOf(f)
-	if !r.has(2) {
+	ref, ok := r.leb()
+	if !ok {
 		r.report.Malformed = true
 		return false
 	}
-	armID := r.u16()
-	if armID == 0 {
+	if ref == 0 {
 		cell.U = 0
 		cell.Tab = nil
 		cell.Arm = nil
-		return true // empty: the id is the whole payload
+		return true // empty: the id is the whole payload, not even a kind byte
 	}
-	if !r.has(4) {
+	armID, named := r.id(ref)
+	if !named {
 		r.report.Malformed = true
 		return false
 	}
-	n := int(r.u32())
-	if !r.has(n) {
+	if !r.has(1) {
 		r.report.Malformed = true
 		return false
 	}
-	sub := r.sub(n)
+	kind := r.u8()
+	n, good := r.leb()
+	if !good || n > uint64(len(r.buf)) || !r.has(int(n)) {
+		r.report.Malformed = true
+		return false
+	}
+	length := int(n)
+	sub := r.sub(length)
 	tag := 0
 	for i, v := range un.Variants {
-		if ir.VariantId(v.Name) == armID {
+		if ir.TableWireId(v.Name) == armID {
 			tag = i + 1
 			break
 		}
 	}
-	if tag == 0 {
+	switch {
+	case tag == 0:
 		// an arm this reader cannot name: the value reads EMPTY and the body
 		// is skipped by its length, never misdecoded. The reset is explicit: a
 		// repeated field id must not leave an arm an earlier occurrence
@@ -514,42 +718,55 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 		cell.Tab = nil
 		cell.Arm = nil
 		r.report.Unknown++
-	} else if arm := un.Variants[tag-1]; arm.Body() {
-		payload := r.m.New(arm.Ref)
-		sub.body(payload)
-		if sub.off != n {
-			// a body whose terminator is not the last two bytes of its L is
-			// framing damage: the union reads None and the enclosing body
-			// continues past the arm by L (§3)
-			r.report.Malformed = true
-			cell.U = 0
-			cell.Tab = nil
-		} else {
-			cell.U = uint64(tag)
-			cell.Tab = payload
-		}
-	} else {
+	case int(kind) != armWireKind(un.Variants[tag-1]):
+		// A RETYPED ARM IS JUDGED BY THE FIELD RULES: an arm arriving under a
+		// kind the reader does not declare for it is a KIND MISMATCH — the arm
+		// skips by L, the union reads None, and the parent reads on (§3).
+		cell.U = 0
 		cell.Tab = nil
-		if !sub.arm(cell, arm, tag, n) {
-			cell.U = 0
-			cell.Arm = nil
+		cell.Arm = nil
+		r.report.KindMismatch++
+	default:
+		arm := un.Variants[tag-1]
+		if arm.Body() {
+			payload := r.m.New(arm.Ref)
+			sub.bodyAt(payload, true)
+			if sub.off != length {
+				// a body whose terminator is not the last byte of its L is
+				// framing damage: the union reads None and the enclosing body
+				// continues past the arm by L (§3)
+				r.report.Malformed = true
+				cell.U = 0
+				cell.Tab = nil
+			} else {
+				cell.U = uint64(tag)
+				cell.Tab = payload
+			}
+		} else {
+			cell.Tab = nil
+			if !sub.arm(cell, arm, tag, length) {
+				cell.U = 0
+				cell.Arm = nil
+			}
 		}
 	}
-	r.off += n
+	r.off += length
 	return true
 }
 
 // arm decodes ONE ARM's payload out of a reader bounded to the arm's `L`
-// (docs/SPEC-TABLES.md §3's arm payload table). AN ARM CARRIES NO KIND BYTE,
-// so the length is the whole of what a reader can check: a fixed-width arm
-// whose `L` is not its width is a KIND MISMATCH, counted, the union left None
-// and the parent reading on past `L` (§2.6, §4).
+// (docs/SPEC-TABLES.md §3's arm payload table). The kind byte already agreed,
+// so what is left to check is the LENGTH: a fixed-width arm whose `L` is not
+// its kind's width, a reference-shaped arm whose `L` is not the byte count of
+// the reference it frames, and a length-shaped arm damaged inside its `L` are
+// that arm's own framing damage — the union reads None, `malformed` counts,
+// and the parent reads on past `L`.
 func (r *wireReader) arm(cell *tabletext.Cell, arm ir.UnionVariant, tag, n int) bool {
 	if arm.Void() {
 		if n != 0 {
-			// a payload-free arm carries no payload: a length that is not
-			// zero is a KIND MISMATCH (§2.6, §4)
-			r.report.KindMismatch++
+			// a payload-free arm carries nothing: an L that is not zero is
+			// that arm's own framing damage (§3)
+			r.report.Malformed = true
 			return false
 		}
 		cell.U = uint64(tag)
@@ -557,19 +774,20 @@ func (r *wireReader) arm(cell *tabletext.Cell, arm ir.UnionVariant, tag, n int) 
 		return true
 	}
 	f := arm.F
-	if w := ir.ArmFixedWidth(f); w > 0 && n != w {
-		r.report.KindMismatch++
+	if w := ir.ArmWireFixedWidth(f); w > 0 && n != w {
+		r.report.Malformed = true
 		return false
 	}
 	fv := r.m.NewArm(arm)
 	ok := true
 	switch {
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
-		if !r.has(4) {
+		index, good := r.leb()
+		if !good || r.off != n {
 			r.report.Malformed = true
 			return false
 		}
-		r.resolveCell(&fv.Cell, f, r.u32())
+		r.resolveCell(&fv.Cell, f, index)
 	case f.Type.Kind == ir.TString:
 		keep := n
 		if bound := int(f.Type.Size); keep > bound {
@@ -585,11 +803,17 @@ func (r *wireReader) arm(cell *tabletext.Cell, arm ir.UnionVariant, tag, n int) 
 		if ok && !selected {
 			// the payload declares another array's element kind: the arm is
 			// not this one, so the union reads None and the parent reads on
-			// past L, exactly as a fixed-width arm off its width does (§2.6)
+			// past L, exactly as a field's element-kind mismatch does (§3)
 			return false
 		}
 	case tabletext.UnionOf(f) != nil:
 		ok = r.unionCell(&fv.Cell, f)
+	case tabletext.EnumOf(f) != nil:
+		ok = r.enumCell(&fv.Cell, f)
+		if ok && r.off != n {
+			r.report.Malformed = true
+			return false
+		}
 	default:
 		ok = r.scalar(&fv.Cell, f, true)
 	}
@@ -606,24 +830,10 @@ func (r *wireReader) arm(cell *tabletext.Cell, arm ir.UnionVariant, tag, n int) 
 // prefix is kept and the loop breaks).
 func (r *wireReader) scalar(cell *tabletext.Cell, f *ir.Field, atField bool) bool {
 	kind := ir.TableScalarKind(f)
-	width := tabletext.KindWidth(kind)
+	width := ir.TableKindWidth(kind)
 	if !r.has(width) {
 		r.report.Malformed = true
 		return false
-	}
-	if e := tabletext.EnumOf(f); e != nil {
-		// identity is the variant's NAME (§5): an id this build cannot name
-		// reads as None and counts as unknown, exactly as an unknown FIELD id
-		// does — same event, one counter
-		id := r.u16()
-		v := enumValueForId(e, id)
-		if v < 0 {
-			cell.U = 0
-			r.report.Unknown++
-		} else {
-			cell.U = uint64(v)
-		}
-		return true
 	}
 	switch kind {
 	case ir.TableKindBool:
@@ -673,7 +883,8 @@ func (r *wireReader) scalar(cell *tabletext.Cell, f *ir.Field, atField bool) boo
 	case 1:
 		raw = uint64(r.u8())
 	case 2:
-		raw = uint64(r.u16())
+		raw = uint64(binary.LittleEndian.Uint16(r.buf[r.off:]))
+		r.off += 2
 	case 4:
 		raw = uint64(r.u32())
 	default:
@@ -723,12 +934,9 @@ func (r *wireReader) scalar(cell *tabletext.Cell, f *ir.Field, atField bool) boo
 
 // enumValueForId is the declaration-side value an id names, -1 when no variant
 // does.
-func enumValueForId(e *ir.Enum, id uint16) int64 {
-	if id == 0 {
-		return 0
-	}
+func enumValueForId(e *ir.Enum, id uint64) int64 {
 	for i, v := range e.Variants {
-		if ir.VariantId(v) == id {
+		if ir.TableWireId(v) == id {
 			return int64(i + 1)
 		}
 	}

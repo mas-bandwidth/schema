@@ -2,6 +2,7 @@ package tablewire_test
 
 import (
 	"encoding/binary"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -36,6 +37,103 @@ func place(t *testing.T, m *tabletext.Model, table, text string) *tabletext.Inst
 		t.Fatalf("%s: the text did not place cleanly: %+v", table, r)
 	}
 	return inst
+}
+
+// ---- the id-table wire, as a test reaches into it (docs/SPEC-TABLES.md §3) ----
+
+// trailerOf splits a wire into its body and its id table, which is what a
+// reader does at open: the final eight bytes are the entry count, the
+// `8 x count` before them are the entries, and the body ends where the first
+// entry begins.
+func trailerOf(t *testing.T, wire []byte) (body []byte, ids []uint64) {
+	t.Helper()
+	if len(wire) < 9 {
+		t.Fatal("a wire is at least a form byte and an entry count")
+	}
+	count := int(binary.LittleEndian.Uint64(wire[len(wire)-8:]))
+	first := len(wire) - count*8 - 8
+	ids = make([]uint64, count)
+	for i := range ids {
+		ids[i] = binary.LittleEndian.Uint64(wire[first+i*8:])
+	}
+	return wire[1:first], ids
+}
+
+// leb is one canonical unsigned LEB128, which every reference, length, count
+// and index on this wire is.
+func leb(v uint64) []byte {
+	var out []byte
+	for v >= 0x80 {
+		out = append(out, byte(v)|0x80)
+		v >>= 7
+	}
+	return append(out, byte(v))
+}
+
+// lebAt reads one canonical LEB128 at an offset and answers the offset after
+// it, which is how a test steps through a header whose numbers are variable.
+func lebAt(b []byte, off int) (v uint64, next int) {
+	shift := uint(0)
+	for {
+		x := b[off]
+		off++
+		v |= uint64(x&0x7F) << shift
+		if x&0x80 == 0 {
+			return v, off
+		}
+		shift += 7
+	}
+}
+
+// headerAt is the offset INSIDE the body of the field header naming `id` under
+// `kind`: the id's reference, then the kind byte.
+func headerAt(t *testing.T, wire []byte, id uint64, kind byte) int {
+	t.Helper()
+	body, ids := trailerOf(t, wire)
+	ref := uint64(0)
+	for i, entry := range ids {
+		if entry == id {
+			ref = uint64(i) + 1
+			break
+		}
+	}
+	if ref == 0 {
+		t.Fatalf("the id %016x is not in the wire's table", id)
+	}
+	want := append(leb(ref), kind)
+	for i := 0; i+len(want) <= len(body); i++ {
+		if string(body[i:i+len(want)]) == string(want) {
+			return i
+		}
+	}
+	t.Fatalf("no field header for %016x under kind %d", id, kind)
+	return -1
+}
+
+// withField prepends one field to a wire's ROOT body under an id the table
+// gains an entry for. Field ORDER within a body is not part of the contract
+// (§3), so a reader finds it wherever it sits.
+func withField(t *testing.T, wire []byte, id uint64, kind byte, payload []byte) []byte {
+	t.Helper()
+	body, ids := trailerOf(t, wire)
+	ref := uint64(len(ids)) + 1
+	for i, entry := range ids {
+		if entry == id {
+			ref = uint64(i) + 1
+		}
+	}
+	out := []byte{ir.TableWireForm}
+	out = append(out, leb(ref)...)
+	out = append(out, kind)
+	out = append(out, payload...)
+	out = append(out, body...)
+	if ref > uint64(len(ids)) {
+		ids = append(ids, id)
+	}
+	for _, entry := range ids {
+		out = binary.LittleEndian.AppendUint64(out, entry)
+	}
+	return binary.LittleEndian.AppendUint64(out, uint64(len(ids)))
 }
 
 // Encode then Decode is the identity on every table in the corpus, and the
@@ -108,22 +206,16 @@ func TestKeyZeroIsMalformed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// the thresholds body's first pair key sits after: id(2) kind(1) L(4)
-	// elemkind(1) N(4) — find the field header and zero the key that follows
+	// step over the field header, the body length, the element kind and the
+	// count to the first triple's KEY REFERENCE, and write the reference that
+	// names no id
 	fv, _ := inst.FieldByKey("thresholds")
-	id := ir.TableFieldId(fv.Def)
-	at := -1
-	for i := 0; i+3 <= len(wire); i++ {
-		if binary.LittleEndian.Uint16(wire[i:]) == id && wire[i+2] == ir.TableKindKeyed {
-			at = i
-			break
-		}
-	}
-	if at < 0 {
-		t.Fatal("the keyed field is not on the wire")
-	}
-	key := at + 2 + 1 + 4 + 1 + 4
-	binary.LittleEndian.PutUint16(wire[key:], 0)
+	body, _ := trailerOf(t, wire)
+	at := headerAt(t, wire, ir.TableFieldWireId(fv.Def), ir.TableKindKeyed)
+	_, off := lebAt(body, at)
+	_, off = lebAt(body, off+1)
+	_, off = lebAt(body, off+1)
+	body[off] = 0
 
 	back := m.New(m.Lookup("PackConfig"))
 	var r tabletext.Report
@@ -131,7 +223,7 @@ func TestKeyZeroIsMalformed(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !r.Malformed {
-		t.Fatalf("a None key should be framing damage, got %+v", r)
+		t.Fatalf("a key reference of 0 should be framing damage, got %+v", r)
 	}
 }
 
@@ -144,9 +236,9 @@ func TestUnknownFieldIsSkipped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// an unknown u32 field ahead of the body's own
-	unknown := []byte{0xEE, 0xEE, ir.TableKindU32, 1, 0, 0, 0}
-	hostile := append(append([]byte{}, unknown...), wire...)
+	// an unknown u32 field ahead of the body's own, under an id the table
+	// gains an entry for
+	hostile := withField(t, wire, 0xEEEEEEEEEEEEEEEE, ir.TableKindU32, []byte{1, 0, 0, 0})
 
 	back := m.New(m.Lookup("GlobalSettings"))
 	var r tabletext.Report
@@ -162,6 +254,172 @@ func TestUnknownFieldIsSkipped(t *testing.T) {
 	}
 }
 
+// §3: an entry this reader cannot name is never counted at RESOLVE time — a
+// table with an unnameable entry no body references counts nothing at all.
+func TestUnnameableEntryCountsNothing(t *testing.T) {
+	m := model(t)
+	inst := place(t, m, "GlobalSettings", `{ "tick_rate": 90 }`)
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, ids := trailerOf(t, wire)
+	out := append([]byte{ir.TableWireForm}, body...)
+	for _, id := range append(ids, 0xEEEEEEEEEEEEEEEE) {
+		out = binary.LittleEndian.AppendUint64(out, id)
+	}
+	out = binary.LittleEndian.AppendUint64(out, uint64(len(ids))+1)
+
+	back := m.New(m.Lookup("GlobalSettings"))
+	var r tabletext.Report
+	if ok, err := tablewire.Decode(m, back, out, &r); !ok || err != nil {
+		t.Fatalf("an unreferenced entry should not stop the decode: %v %+v", err, r)
+	}
+	if !r.Silent() {
+		t.Fatalf("resolving an unnameable entry counted something: %+v", r)
+	}
+}
+
+// §3: A TABLE THAT CARRIES ONE ID TWICE is malformed for the WHOLE wire, and
+// nothing is decoded.
+func TestRepeatedEntryIsMalformed(t *testing.T) {
+	m := model(t)
+	inst := place(t, m, "GlobalSettings", `{ "tick_rate": 90 }`)
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, ids := trailerOf(t, wire)
+	out := append([]byte{ir.TableWireForm}, body...)
+	for _, id := range append(ids, ids[0]) {
+		out = binary.LittleEndian.AppendUint64(out, id)
+	}
+	out = binary.LittleEndian.AppendUint64(out, uint64(len(ids))+1)
+
+	back := m.New(m.Lookup("GlobalSettings"))
+	var r tabletext.Report
+	ok, err := tablewire.Decode(m, back, out, &r)
+	if err != nil || ok || !r.Malformed {
+		t.Fatalf("one id in two entries is malformed for the whole wire: %v %v %+v", err, ok, r)
+	}
+	fv, _ := back.FieldByKey("tick_rate")
+	if fv.Cell.U == 90 {
+		t.Fatal("nothing is decoded under a malformed table")
+	}
+}
+
+// §3: a FORM BYTE this reader does not know is a named refusal and never
+// damage, whatever else is wrong with the file — the form byte is read FIRST.
+func TestUnknownFormIsARefusal(t *testing.T) {
+	m := model(t)
+	inst := place(t, m, "GlobalSettings", `{ "tick_rate": 90 }`)
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, form := range []byte{0, 2, 0xFF} {
+		damaged := append([]byte(nil), wire...)
+		damaged[0] = form
+		damaged = damaged[:len(damaged)-3] // and damaged too, in the trailer
+		back := m.New(m.Lookup("GlobalSettings"))
+		var r tabletext.Report
+		ok, err := tablewire.Decode(m, back, damaged, &r)
+		var refusal *tablewire.FormRefusal
+		if !errors.As(err, &refusal) {
+			t.Fatalf("form %d: expected a named refusal, got %v", form, err)
+		}
+		if ok || !r.Silent() {
+			t.Fatalf("form %d: a refusal moves no counter and reports no damage: %+v", form, r)
+		}
+	}
+}
+
+// §3: a reference ABOVE the entry count is framing damage on the body that
+// carries it, and the LAST legal slot must resolve.
+func TestReferenceBound(t *testing.T) {
+	m := model(t)
+	inst := place(t, m, "GlobalSettings", `{ "tick_rate": 90 }`)
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, ids := trailerOf(t, wire)
+	if body[0] != 1 {
+		t.Fatalf("the first field's reference is %d, not the first slot", body[0])
+	}
+	// the last legal slot RESOLVES
+	body[0] = byte(len(ids))
+	back := m.New(m.Lookup("GlobalSettings"))
+	var r tabletext.Report
+	if _, err := tablewire.Decode(m, back, wire, &r); err != nil {
+		t.Fatal(err)
+	}
+	if r.Malformed {
+		t.Fatalf("the last legal slot must resolve: %+v", r)
+	}
+	// one past it does not
+	body[0] = byte(len(ids) + 1)
+	back = m.New(m.Lookup("GlobalSettings"))
+	r = tabletext.Report{}
+	if _, err := tablewire.Decode(m, back, wire, &r); err != nil {
+		t.Fatal(err)
+	}
+	if !r.Malformed {
+		t.Fatalf("a reference past the table is framing damage: %+v", r)
+	}
+}
+
+// §3: a NON-CANONICAL reference is malformed — one value has one spelling.
+func TestNonCanonicalReferenceIsMalformed(t *testing.T) {
+	m := model(t)
+	inst := place(t, m, "GlobalSettings", `{ "tick_rate": 90 }`)
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, ids := trailerOf(t, wire)
+	out := append([]byte{ir.TableWireForm}, 0x81, 0x00)
+	out = append(out, body[1:]...)
+	for _, id := range ids {
+		out = binary.LittleEndian.AppendUint64(out, id)
+	}
+	out = binary.LittleEndian.AppendUint64(out, uint64(len(ids)))
+
+	back := m.New(m.Lookup("GlobalSettings"))
+	var r tabletext.Report
+	if _, err := tablewire.Decode(m, back, out, &r); err != nil {
+		t.Fatal(err)
+	}
+	if !r.Malformed {
+		t.Fatalf("a non-minimal reference is malformed: %+v", r)
+	}
+}
+
+// §3: a byte between the root's terminator and the table's first entry is
+// malformed for the WHOLE wire, because no field claims it.
+func TestStrayByteBeforeTheTableIsMalformed(t *testing.T) {
+	m := model(t)
+	inst := place(t, m, "GlobalSettings", `{ "tick_rate": 90 }`)
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, ids := trailerOf(t, wire)
+	out := append([]byte{ir.TableWireForm}, body...)
+	out = append(out, 0x7F) // a byte no field claims
+	for _, id := range ids {
+		out = binary.LittleEndian.AppendUint64(out, id)
+	}
+	out = binary.LittleEndian.AppendUint64(out, uint64(len(ids)))
+
+	back := m.New(m.Lookup("GlobalSettings"))
+	var r tabletext.Report
+	ok, err := tablewire.Decode(m, back, out, &r)
+	if err != nil || ok || !r.Malformed {
+		t.Fatalf("a stray byte is malformed for the whole wire: %v %v %+v", err, ok, r)
+	}
+}
+
 // §3.2, §4: a keyed body sent under the POSITIONAL array kind is an ordinary
 // kind mismatch — skipped, counted, never misdecoded, which is the whole point
 // of the keyed body carrying its own kind.
@@ -173,13 +431,10 @@ func TestKeyedUnderArrayKindIsAMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	fv, _ := inst.FieldByKey("thresholds")
-	id := ir.TableFieldId(fv.Def)
-	for i := 0; i+3 <= len(wire); i++ {
-		if binary.LittleEndian.Uint16(wire[i:]) == id && wire[i+2] == ir.TableKindKeyed {
-			wire[i+2] = ir.TableKindArray
-			break
-		}
-	}
+	body, _ := trailerOf(t, wire)
+	at := headerAt(t, wire, ir.TableFieldWireId(fv.Def), ir.TableKindKeyed)
+	_, kindAt := lebAt(body, at)
+	body[kindAt] = ir.TableKindArray
 	back := m.New(m.Lookup("PackConfig"))
 	var r tabletext.Report
 	if ok, err := tablewire.Decode(m, back, wire, &r); !ok || err != nil {
@@ -268,16 +523,19 @@ func TestOptionalArrayBeforeAPointerMovesNoNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// the same graph with the array PRESENT and empty: the five-byte array
-	// body rides in the root and nothing else moves
+	// the same graph with the array PRESENT and empty: the two-byte array body
+	// rides in the root under its own header and nothing else moves
 	present := place(t, m, "Holder", `{ "marks": [], "head": { "value": 1, "next": { "value": 2 } } }`)
 	presentWire, err := tablewire.Encode(m, present)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(presentWire) != len(absentWire)+3+4+5 {
+	// the header is the reference and the kind byte, the length is one byte,
+	// the body is the element kind and a zero count — and the id table gains
+	// the one entry `marks` costs, once
+	if len(presentWire) != len(absentWire)+1+1+1+2+8 {
 		t.Fatalf("a present empty optional array moved %d bytes, want %d",
-			len(presentWire)-len(absentWire), 3+4+5)
+			len(presentWire)-len(absentWire), 1+1+1+2+8)
 	}
 
 	// both read back with the graph intact, and the array's state is its own
