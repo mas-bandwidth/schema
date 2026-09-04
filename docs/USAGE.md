@@ -238,7 +238,10 @@ C generate the tagged union above; Go, C#, JS, Dart, Java and Elixir lay the
 tag beside one pre-allocated arm per variant; Rust gets a real
 `enum ColliderShape { None, Box(BoxCollider), ... }`.
 
-Payloads are declared types — wrap a scalar or enum in a type. Unions ride
+An arm is a field line: its type is any type a field's is, and an arm may
+name no type at all, which is an arm that selects and carries nothing. A
+union inside a `type` body takes arms that name declared types. A union with
+any other arm belongs to a table closure (SPEC-TABLES.md §2.6). Unions ride
 `type` bodies, arrays included.
 
 **Building your protocol.** A union of payload types is a message system
