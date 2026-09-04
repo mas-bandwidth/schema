@@ -103,9 +103,9 @@ inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 // reserved build-version id.
 //
 // A peer holds TWO of these for a connection, the one it writes with and the
-// one it reads with, and neither is the other's. A restart is a new connection
-// with empty tables and nothing is cached across connections, so its whole
-// life is one connection's. It BORROWS the announcement's bytes rather than
+// one it reads with, and neither is the other's. A restart opens a fresh
+// connection with empty tables and nothing is cached across connections, so
+// its whole life is one connection's. It BORROWS the announcement's bytes rather than
 // copying them, so a receiver holds one table a direction and its memory is
 // the bound below and nothing else.
 struct TableVocabulary

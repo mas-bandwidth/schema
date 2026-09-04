@@ -703,3 +703,61 @@ json-hostile blob-null                    blobdemo Catalog testdata/conformance/
 json-hostile blob-not-base64              blobdemo Catalog testdata/conformance/tables/json-hostile/blob-not-base64              0,1,0,0,false,read
 json-hostile blob-wrong-shape             blobdemo Catalog testdata/conformance/tables/json-hostile/blob-wrong-shape             0,2,0,0,false,read
 json-hostile blob-label-in-skipped-value  blobdemo Catalog testdata/conformance/tables/json-hostile/blob-label-in-skipped-value  0,2,0,0,false,read
+
+# ---- THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3) --------------------------
+#
+# A FILE carries its own id table and a MESSAGE STREAM announces one and then
+# carries none. Two line kinds carry it:
+#
+#   connection <key> <unit> <build version> <announcement wire file>
+#            one CONNECTION's announced table: the unit whose whole vocabulary
+#            it carries, the build version that keys it, and the ANNOUNCEMENT
+#            itself — an ordinary form 1 file whose trailer IS the table.
+#
+#   message  <name> <connection> <root> <file-form wire> <message-form wire>
+#            one value in BOTH forms. The file form is an ordinary instance and
+#            rides every surface an instance rides; the message form rides the
+#            WIRE surface alone, because its text is the file-form vector's byte
+#            for byte and a second json/ file would be one golden with two
+#            homes. What the pair pins is the RESOLVED FORM: the two bodies are
+#            equal once every reference is replaced by the id it names and every
+#            length recomputed, and their reference bytes are expected to differ.
+unit backenddemo tables/backend
+unit vocabdemo   tables/vocab
+
+connection backend_conn backenddemo 0x46ae4a4d6c9fe4a6 testdata/wire/tables/backend_conn.bin
+connection vocab_conn   vocabdemo   0x6952591c2cd71990 testdata/wire/tables/vocab_conn.bin
+connection graph_conn   graphdemo   0xa1f52e4e9db89bad testdata/wire/tables/graph_conn.bin
+
+# The three backend messages of schema#523, each in both instances: 106 / 273 /
+# 104 bytes as files against 58 / 225 / 48 as messages, and 10 / 43 / 10 against
+# 2 / 27 / 2 at their declared defaults. A count that moves is a wire that moved.
+instance login_full     backenddemo LoginRequest  testdata/wire/tables/login_full.bin
+instance login_default  backenddemo LoginRequest  testdata/wire/tables/login_default.bin
+instance match_full     backenddemo MatchResult   testdata/wire/tables/match_full.bin
+instance match_default  backenddemo MatchResult   testdata/wire/tables/match_default.bin
+instance store_full     backenddemo StorePurchase testdata/wire/tables/store_full.bin
+instance store_default  backenddemo StorePurchase testdata/wire/tables/store_default.bin
+
+message login_full    backend_conn LoginRequest  testdata/wire/tables/login_full.bin    testdata/wire/tables/login_full_message.bin
+message login_default backend_conn LoginRequest  testdata/wire/tables/login_default.bin testdata/wire/tables/login_default_message.bin
+message match_full    backend_conn MatchResult   testdata/wire/tables/match_full.bin    testdata/wire/tables/match_full_message.bin
+message match_default backend_conn MatchResult   testdata/wire/tables/match_default.bin testdata/wire/tables/match_default_message.bin
+message store_full    backend_conn StorePurchase testdata/wire/tables/store_full.bin    testdata/wire/tables/store_full_message.bin
+message store_default backend_conn StorePurchase testdata/wire/tables/store_default.bin testdata/wire/tables/store_default_message.bin
+
+# and the four the rules a value alone cannot reach: a WIDE vocabulary whose
+# slots fall on both sides of the one-byte boundary, a POINTERED root whose node
+# records name their type ids through the announced table, and a TWO-PEER pair
+# whose units announce different vocabularies and each decode the other's
+# messages against the table THAT peer announced.
+instance vocab_wide vocabdemo Wide09 testdata/wire/tables/vocab_wide.bin
+instance vocab_low  vocabdemo Wide00 testdata/wire/tables/vocab_low.bin
+instance peer_a     backenddemo StorePurchase testdata/wire/tables/peer_a.bin
+instance peer_b     vocabdemo   Wide00        testdata/wire/tables/peer_b.bin
+
+message vocab_wide vocab_conn   Wide09        testdata/wire/tables/vocab_wide.bin testdata/wire/tables/vocab_wide_message.bin
+message vocab_low  vocab_conn   Wide00        testdata/wire/tables/vocab_low.bin  testdata/wire/tables/vocab_low_message.bin
+message graph_tree graph_conn   Scene         testdata/wire/tables/graph_tree.bin testdata/wire/tables/graph_tree_message.bin
+message peer_a     backend_conn StorePurchase testdata/wire/tables/peer_a.bin     testdata/wire/tables/peer_a_message.bin
+message peer_b     vocab_conn   Wide00        testdata/wire/tables/peer_b.bin     testdata/wire/tables/peer_b_message.bin

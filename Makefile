@@ -1895,7 +1895,7 @@ TABLES_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -
 # nothing for it. Expanded in the recipe because these are build-time output.
 TABLES_JSON_SOURCES = $$(ls build/tables-generated/*/*Table.cpp)
 
-build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp
+build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 

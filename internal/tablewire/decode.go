@@ -317,6 +317,13 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			return false
 		}
 		kind := r.u8()
+		if id == ir.TableBuildVersionWireId {
+			// THE RESERVED BUILD-VERSION ID rides in the ANNOUNCEMENT and
+			// nowhere else (docs/SPEC-TABLES.md §3.3): a reserved id in any
+			// body but the one whose transport it is, is MALFORMED (§3.1).
+			r.report.Malformed = true
+			return false
+		}
 		if id == ir.TableNodeWireId {
 			if nested {
 				r.report.Malformed = true

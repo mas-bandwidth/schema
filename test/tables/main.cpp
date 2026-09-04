@@ -8625,6 +8625,8 @@ static void test_blob_golden_reload()
     reload_blob_golden( "blob_str16" );
 }
 
+#include "message_form.h"
+
 int main()
 {
     test_golden_wire();
@@ -8757,6 +8759,17 @@ int main()
     test_blob_json();
     test_blob_reflection();
     test_json_fuzz_tokenizer();
+
+    // THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3)
+    test_message_form_goldens();
+    test_message_form_reload();
+    test_message_form_wide_vocabulary();
+    test_message_form_pointered();
+    test_message_form_two_peers();
+    test_message_form_refusals();
+    test_message_form_announcement_check();
+    test_message_form_reserved_id_in_a_body();
+    test_message_form_reference_bound();
 
     if ( failures > 0 )
     {
