@@ -1353,7 +1353,8 @@ arm, with nothing to say" would be one value on the wire.
 **The storage is the FIELD's storage, overlaid.** A scalar, enum, `flags`,
 pointer, fixed array, nested union, `type` or `table` arm is ONE member and
 sits in the overlay as itself. An arm whose field storage needs a COMPANION
-— a `string(N)` or `bytes(N)` and its length, a counted array and its count
+— a `string(N)`, `wstring(N)` or `bytes(N)` and its length, a counted array
+and its count
 — rides as one member of an unnamed struct type, `value` beside
 `value_length` or `value_count`, because the pair must occupy ONE slot of
 the overlay and the dialect refuses an anonymous struct member (§13.9). **A
@@ -3345,8 +3346,10 @@ that instrument goes red.
   conformance manifest, whose pinned wire is compared byte for byte after a
   save. Red if a writer emits an id no field references, appends an id twice,
   or writes the table in any order but first use.
-- **The two reserved-id refusals** (§5, §11). No declarable name hashes to the
-  reserved node-table id or to another table's id at sixty-four bits, so each
+- **The three reserved-id refusals** (§5, §11). No declarable name hashes to
+  the reserved node-table id `0xFFFFFFFFFFFFFFFF` (§3.1), to the reserved
+  build-version id `0xFFFFFFFFFFFFFFFE` (§3.3), or to another table's id at
+  sixty-four bits, so each
   control **plants the collision BELOW the hash**, through a compiler test
   hook that returns the colliding value for one named spelling. Red if the
   checker accepts the planted name, or accepts it as a `was`.
@@ -4347,7 +4350,8 @@ the same way and every edit a reader can see, it sees the same way.
 - **The reserved build-version id in a body.** A row planting it in a message
   body and a row planting it in a nested body. Red if either counts anything but
   `malformed`.
-- **The two reserved-id refusals become three** (§5, §11). The compiler test hook
+- **The build-version id's own reserved-id refusal**, the third of §3's three
+  (§5, §11). The compiler test hook
   that returns a colliding value for one named spelling is pointed at
   `0xFFFFFFFFFFFFFFFE` as well. Red if the checker accepts the planted name, or
   accepts it as a `was`.
@@ -6170,11 +6174,9 @@ the wire, and keeps the flexibility that comes with it.
   `Open` would have been wrong at half its call sites the moment it was
   written.
 
-  | reason | what the check found |
-  |---|---|
   | clause | reason |
   |---|---|
-  | — | `ok`, the open succeeded, and this is the only value that comes with a non-null root |
+  | no clause fails | `ok`, and this is the only value that comes with a non-null root |
   | the magic, read bytewise | `not_a_cook` where it is neither this build's constant nor its byte reversal, so the bytes are not a cook at all. A BLOCK reads its own magic here, so a block handed to a cook's `Open` lands on this value and not on a version answer |
   | the same magic, the other way | `foreign_order` where it IS this build's constant byte-reversed: a cook of the other byte order (§7.1) |
   | the BYTE ORDER the magic established | `not_a_cook` again, and this is the one clause with no value of its own. A header whose `byte_order` word contradicts its own magic describes no cook in EITHER order, so there is nothing a distinct value would tell a caller that this one does not (§7.1) |
