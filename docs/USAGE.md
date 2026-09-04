@@ -404,20 +404,19 @@ char name[MaxName + 1] = {};
 int32_t name_length = 0;
 ```
 
-The write refuses embedded NULs and any length past the maximum; the read
-validates both.
+The write refuses embedded NULs and any length past the maximum, and the
+read validates both. In C and C++ a successful read also writes the zero
+byte at `name[name_length]`, so `name` is a valid C string every time the
+read succeeds, which is what the `+ 1` in the array is for. The other seven
+targets carry the buffer and the used length with nothing written past it.
 
-**`string(N)` also carries a UTF-8 contract, and it is the WRITER's.** The
-wire is byte-identical to `bytes(N)`; what the `string` spelling adds is the
-obligation that the payload is well-formed UTF-8 — never a reader's check,
-so a reader must accept whatever a conforming writer produced. Because the
-check is O(n), it is a DEBUG-only assert and only in the targets that carry
-one: C and C++ assert through a generated validator, Rust through
-`debug_assert!`, and C#, Dart, Elixir, Go, Java and JavaScript assert
-nothing. So Latin-1 bytes in a `string(32)` fire an assert in a C++ debug
-build and pass in a release one — if your payload is genuinely arbitrary
-bytes, declare `bytes(N)`, which is the same wire with no encoding contract
-(SPEC.md §4.7).
+**`string(N)` also carries a UTF-8 rule, and the READER enforces it.** The
+wire is byte-identical to `bytes(N)`. What the `string` spelling adds is
+that a payload which is not well-formed UTF-8 fails the read, in every
+target and in every build, and the failure is terminal like any other read
+failure. So Latin-1 bytes in a `string(32)` are refused by every reader that
+sees them. If your payload is genuinely arbitrary bytes, declare `bytes(N)`,
+which is the same wire with no encoding rule (SPEC.md §4.7).
 
 ### Arrays
 
