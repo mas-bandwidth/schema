@@ -2532,13 +2532,13 @@ Config.schema	tables.baseline
 fact per line, made to be read in a diff:
 
 ```
-schema-tables-baseline 6
+schema-tables-baseline 7
 package starlight
 
 table ShipConfig
-    field velocity id=0x2e46 kind=10 default=500.0
-    field damage id=0x15a9 kind=10 default=21.0
-    field perks id=0x2fc5 kind=9 flags=Perks
+    field velocity id=0x1733055702acb1d2 kind=10 default=500.0
+    field damage id=0x7f6308be8ab37fc0 kind=10 default=21.0
+    field perks id=0x4b06f5847096e54a kind=9 flags=Perks
 
 flags Perks
     variant Shielded bit=0
