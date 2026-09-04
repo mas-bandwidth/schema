@@ -253,6 +253,8 @@ func variableEdge(u *Unit, st *Struct) string {
 				return where + " is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it"
 			case f.IsMap():
 				return where + " is a map, and a map's entries are an extent inside the holder's own node, so there is no fixed pitch anywhere in it"
+			case f.IsList():
+				return where + " is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it"
 			}
 			if f.Type.Kind != TNamed {
 				continue
@@ -642,6 +644,16 @@ func fieldPieces(u *Unit, f *Field, projection bool) []storagePiece {
 		e := elementPiece(u, f)
 		pieces = append(pieces, storagePiece{size: mulSize(e.size, f.ArrayBound), align: e.align})
 		pieces = append(pieces, storagePiece{size: 4, align: 4}) // int32 count
+	case f.Array == ArrayList:
+		// AN UNBOUNDED ARRAY FIELD IS SIXTEEN BYTES (docs/SPEC-TABLES.md
+		// §2.9): it is the map's slot exactly, because it is the same two
+		// facts — an int64 self-relative reference to the element array and
+		// an int32 count — then padding to eight. ONE piece for the map's own
+		// reason: both spellings are one member of a TableList type, and a
+		// port that walked two would account for twelve bytes where sixteen
+		// are written. The ELEMENTS are not here: they are by-value records
+		// inside the holder's node extent, after the record's own storage.
+		pieces = append(pieces, storagePiece{size: 16, align: 8})
 	default:
 		pieces = append(pieces, elementPiece(u, f))
 	}

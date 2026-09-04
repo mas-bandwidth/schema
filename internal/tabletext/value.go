@@ -538,3 +538,9 @@ func WideValue(cell *Cell) *big.Int {
 	}
 	return cell.Wide
 }
+
+// ElementZero is one value-initialized array slot — what an UNBOUNDED ARRAY's
+// decode appends per element it reaches (docs/SPEC-TABLES.md §2.9), since a
+// list's slots are grown against the body rather than sized from the
+// declaration.
+func (m *Model) ElementZero(f *ir.Field) Cell { return m.elementZero(f) }

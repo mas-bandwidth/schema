@@ -179,7 +179,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 			// body — and every declared element for the fixed one. No content
 			// test anywhere: presence already decided.
 			count := int(f.ArrayBound)
-			if f.Array == ir.ArrayCounted {
+			if f.CountedOnWire() {
 				count = fv.Count
 			}
 			return encodeArray(e, w, fv, id, kind, count)
@@ -223,7 +223,10 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		w.raw(fv.Cell.Str)
 		return nil
 
-	case f.Array == ir.ArrayCounted:
+	case f.CountedOnWire():
+		// AN UNBOUNDED ARRAY IS THE COUNTED ARRAY'S OWN BYTES (§2.9): the
+		// same kind 14 body, the same element kind, the same count, and the
+		// same elision of an empty one under §3's by-value elision rule.
 		if fv.Count == 0 {
 			return nil
 		}
@@ -542,7 +545,7 @@ func encodeArm(e *encoder, arm ir.UnionVariant, cell *tabletext.Cell) ([]byte, e
 		w.raw(fv.Cell.Str)
 	case f.Array != ir.ArrayNone:
 		count := int(f.ArrayBound)
-		if f.Array == ir.ArrayCounted {
+		if f.CountedOnWire() {
 			count = fv.Count
 		}
 		elemKind := kind

@@ -121,7 +121,7 @@ func (m *Model) countField(g *graphOut, fv *Field, open map[*Instance]bool) erro
 		return nil
 	case f.Array != ir.ArrayNone:
 		count := int(f.ArrayBound)
-		if f.Array == ir.ArrayCounted {
+		if f.CountedOnWire() {
 			count = fv.Count
 		}
 		for i := 0; i < count; i++ {
@@ -315,7 +315,7 @@ func (m *Model) writeField(w *writer, fv *Field, depth int) error {
 		return m.writeKeyed(w, fv, depth)
 	case f.Array != ir.ArrayNone:
 		count := int(f.ArrayBound)
-		if f.Array == ir.ArrayCounted {
+		if f.CountedOnWire() {
 			count = fv.Count
 		}
 		if count == 0 {

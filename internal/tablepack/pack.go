@@ -246,7 +246,7 @@ func (p *packer) arrayDir(fv *tabletext.Field, dir string, entries []os.DirEntry
 		}
 		placed++
 	}
-	if f.Array == ir.ArrayCounted {
+	if f.CountedOnWire() {
 		fv.Count = placed
 	}
 }

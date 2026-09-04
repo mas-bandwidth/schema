@@ -191,6 +191,12 @@ func cookFieldLine(u *Unit, fl FieldLayout, enums map[string]*Enum, flags map[st
 		// which is where a key edit moves the id (§20.1).
 		kind = TableKindArray
 	}
+	if f.IsList() {
+		// AN UNBOUNDED ARRAY FIELD IS AN ARRAY LINE (docs/SPEC-TABLES.md
+		// §20.2): `kind=14`, `array=unbounded` and the element's own storage
+		// size in `elem=`, plus the `size=` its sixteen-byte slot produces.
+		kind = TableKindArray
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "    field %016x kind=%d offset=%d size=%d", TableFieldWireId(f), kind, fl.Offset, fl.Size)
 	b.WriteString(cookFacts(u, fl, enums, flags, unions))
@@ -318,6 +324,14 @@ func cookFacts(u *Unit, fl FieldLayout, enums map[string]*Enum, flags map[string
 		fmt.Fprintf(&b, " elem=%d array=fixed bound=%d", cookElemSize(fl), f.ArrayBound)
 	case f.Array == ArrayCounted:
 		fmt.Fprintf(&b, " elem=%d array=bounded bound=%d", cookElemSize(fl), f.ArrayBound)
+	case f.Array == ArrayList:
+		// `array=unbounded` is the shape and `elem=` the ELEMENT'S OWN storage
+		// size, the pitch its elements lie at inside the holder's node extent,
+		// as on every other array line here (docs/SPEC-TABLES.md §2.9, §20.2).
+		// There is no `bound=`, for the map's reason: it declares no extent
+		// and its count is a wire fact. The sixteen-byte slot is what `size=`
+		// on this same line already says.
+		fmt.Fprintf(&b, " elem=%d array=unbounded", elementPiece(u, f).size)
 	case f.Type.Blob():
 		// a byte buffer has no capacity: its blob node is exactly its size
 	case f.Type.Kind == TString, f.Type.Kind == TBytes:

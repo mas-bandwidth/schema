@@ -196,7 +196,7 @@ func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target 
 						return
 					}
 				}
-			case ir.ArrayCounted:
+			case ir.ArrayCounted, ir.ArrayList:
 				for k := 0; k < fv.Count && k < len(fv.Elems); k++ {
 					if fv.Elems[k].Node != nil && !visit(Node{Inst: fv.Elems[k].Node}, f.Name) {
 						return
@@ -215,7 +215,7 @@ func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target 
 				for k := range fv.Elems {
 					visitArmEdges(m, &fv.Elems[k], un, f.Name, visit)
 				}
-			case ir.ArrayCounted:
+			case ir.ArrayCounted, ir.ArrayList:
 				for k := 0; k < fv.Count && k < len(fv.Elems); k++ {
 					visitArmEdges(m, &fv.Elems[k], un, f.Name, visit)
 				}
@@ -241,8 +241,11 @@ func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target 
 					visitEdges(m, sub, visit)
 				}
 			}
-		case f.Array == ir.ArrayCounted:
-			// only the LIVE elements ride, so only they carry edges
+		case f.CountedOnWire():
+			// only the LIVE elements ride, so only they carry edges. An
+			// UNBOUNDED ARRAY is a by-value edge at its FIELD'S POSITION,
+			// its elements visited in index order and each descended before
+			// the next is reached (§2.9, §3.1)
 			for k := 0; k < fv.Count && k < len(fv.Elems); k++ {
 				if sub := fv.Elems[k].Tab; sub != nil {
 					visitEdges(m, sub, visit)
@@ -289,7 +292,7 @@ func visitArmEdges(m *tabletext.Model, cell *tabletext.Cell, un *ir.Union, field
 		}
 	case f.Type.Pointer:
 		live := len(fv.Elems)
-		if f.Array == ir.ArrayCounted && fv.Count < live {
+		if f.CountedOnWire() && fv.Count < live {
 			live = fv.Count
 		}
 		for k := 0; k < live; k++ {

@@ -94,3 +94,12 @@ func RefuseTableLists(u *Unit, backend string) error {
 		"(docs/SPEC-TABLES.md §2.9, §11: the C++ reference and the tool land `[]T` first, "+
 		"and each port lands it as a row on schema#366)", backend, strings.Join(fields, ", "))
 }
+
+// CountedOnWire reports a field whose array body carries a LIVE COUNT the
+// value decides rather than one the declaration fixes: the bounded spellings
+// `[..N]T` and `[Min..N]T`, and the unbounded `[]T` (docs/SPEC-TABLES.md §2.9,
+// §3). The two write the same bytes, so every walk that asks "how many
+// elements ride" asks this and not the spelling.
+func (f *Field) CountedOnWire() bool {
+	return f != nil && (f.Array == ArrayCounted || f.Array == ArrayList)
+}
