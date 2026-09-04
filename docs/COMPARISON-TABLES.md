@@ -160,7 +160,7 @@ Each with the section that defines it and the reason a game cares.
 | **Enum-keyed arrays that ride by name** and refuse a bad key in every build. | §2.4, §3.2 | Per-ship-type config survives inserting a ship type in the middle. |
 | **Evolution by name.** Fields, enum variants and union arms are identified by their name's hash. Add anywhere, remove, reorder. `was` renames; a collision is refused at compile time. | §5 | No append-only rule and no numbers to assign by hand. |
 | **A read report instead of pass or fail.** `unknown`, `kind_mismatch`, `clamped`, `duplicate`, `malformed`; never fatal on data from another build; a damaged level stops only itself. | §4 | Tools surface it, games set policy, and a corrupt sub-table does not kill the file. |
-| **The silent-edit class enumerated: exactly four**, with a compile-time baseline that refuses them and keeps a reasoned history. | §4.1, §18 | Saves from years ago read right, and when one does not the history says why. |
+| **The silent-edit class enumerated: exactly five**, with a compile-time baseline that refuses them and keeps a reasoned history. | §4.1, §18 | Saves from years ago read right, and when one does not the history says why. |
 | **A build version computed by the compiler.** Every fact a cook's bytes depend on, digested; `(asset hash, build version, byte order)` is a build-cache key. Split from the protocol id, so a table edit never forces a lockstep redeploy. | §10, §20 | Distributed cooking with no version numbers by hand; ship tools and game on different days. |
 | **The cook.** `Open` is a header match and a pointer: O(1), mmap-friendly, byte order settled offline, attribution separable. In every port, not only C++. | §7 | "Don't parse, just point" at a gigabyte catalog. |
 | **The block form.** A third projection of a fixed table: rows at a pitch the compiler computes and both languages' generated code asserts, filled wide by many threads by obligation. | §19, §12.1 | Render data C++ writes and C# reads at 60 Hz with no marshalling. This is the render-data case FlatBuffers was tried on first and replaced (§12.1). |
@@ -270,7 +270,7 @@ the source list at the end.
 | Unknown fields on read | skipped by length, counted (§3, §4) | ignored (FB-evolution) | retained in the unknown set (PB-proto3) |
 | Unknown fields on rewrite | dropped and counted, by design; the writer has a schema | the buffer keeps them if forwarded whole (FB-evolution) | preserved and re-serialized (PB-proto3) |
 | Read report | `unknown`, `kind_mismatch`, `clamped`, `duplicate`, `malformed`; nothing fatal from another build (§4) | verifier pass or fail (FB-cpp) | success or failure, plus the unknown set (PB-message) |
-| Silent edits enumerated | exactly four, each with its answer (§4.1) | scattered warnings (FB-evolution) | scattered (PB-dos) |
+| Silent edits enumerated | exactly five, each with its answer (§4.1) | scattered warnings (FB-evolution) | scattered (PB-dos) |
 | Compile-time guard | `tables.baseline`: refuses the silent four plus kind, spelling and key changes; `--update --reason` keeps a dated history (§18) | `flatc --conform` (FB-flatc) | `buf breaking`, third party (buf) |
 | Same-build fast forms | cook and block are same-build by construction: build version match or refuse (§7, §19.4, §20) | the buffer is always the evolvable form | — |
 | Version identity | protocol id and build version, both computed by the compiler; a table edit moves only the latter (§10, §20) | `file_identifier`, by hand (FB-schema) | none; editions version the language (PB-ed-overview) |
