@@ -25,6 +25,9 @@ func (dartTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseMaps(u, "dart"); err != nil {
 		return nil, err
 	}
+	if err := refuseLists(u, "dart"); err != nil {
+		return nil, err
+	}
 	files, err := dart.Generate(u)
 	if err != nil {
 		return nil, err

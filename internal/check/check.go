@@ -1251,67 +1251,68 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 			}
 			out.Array = ir.ArrayList
 		} else {
-		// an ENUM-KEYED array: the bound NAMES a declared enum rather than
-		// evaluating to a count — `ships [ShipType]ShipConfig`, one slot per
-		// variant, indexed by the variant (docs/SPEC-TABLES.md §2.4)
-		if !c.resolveKeyBound(f, out) {
-			return nil
-		}
-		switch {
-		case out.KeyEnum != "":
-			if out.Type.Pointer {
-				// a KEYED array of pointers is a named follow-on (docs/SPEC-TABLES.md
-				// §2.4, §15); the bounded spellings `[N]*T` and `[..N]*T` serve (§2.1)
-				c.errf(f.Type.Pos, "field %s: [%s]*%s is a named follow-on — an enum-keyed array of pointers; declare [..N]*%s or [N]*%s, or key an array of tables by value (docs/SPEC-TABLES.md §2.4, §15)",
-					f.Name, out.KeyEnum, f.Type.Name, f.Type.Name, f.Type.Name)
+			// an ENUM-KEYED array: the bound NAMES a declared enum rather than
+			// evaluating to a count — `ships [ShipType]ShipConfig`, one slot per
+			// variant, indexed by the variant (docs/SPEC-TABLES.md §2.4)
+			if !c.resolveKeyBound(f, out) {
 				return nil
 			}
-			if _, isUnion := out.Type.Ref.(*ir.Union); isUnion {
-				// a KEYED array of unions is a named follow-on (docs/SPEC-TABLES.md
-				// §2.6, §15); the bounded spellings `[N]U` and `[..N]U` serve
-				c.errf(f.Type.Pos, "field %s: [%s]%s is a named follow-on — an enum-keyed array of unions; declare [..N]%s or [N]%s (docs/SPEC-TABLES.md §2.6, §15)",
-					f.Name, out.KeyEnum, f.Type.Name, f.Type.Name, f.Type.Name)
-				return nil
-			}
-			// ONE SLOT PER NAMED VARIANT and not one more: None is the null
-			// key, so nothing is stored for it and the storage SHIFTS LEFT —
-			// the key k lives at index k-1 (docs/SPEC-TABLES.md §2.4). The bound is
-			// E.Max, the same count `[E.Max]T` resolves to, so the two
-			// spellings share one projection and one protocol id.
-			out.Array = ir.ArrayFixed
-			out.ArrayBound = out.KeyEnumRef.Max
-			out.ArrayExpr = f.Array.Hi
-		default:
-			hi, ok := c.evalInt(f.Array.Hi)
-			if !ok {
-				return nil
-			}
-			if !hi.IsInt64() || hi.Int64() < 1 {
-				c.errf(f.Pos, "array bound %s below 1 (SPEC §4.6)", hi)
-				return nil
-			}
-			if hi.Int64() > math.MaxInt32 {
-				c.errf(f.Pos, "array bound %s above %d — counts live in int32 storage (SPEC §4.3, §6.1)", hi, math.MaxInt32)
-				return nil
-			}
-			out.ArrayBound = hi.Int64()
-			out.ArrayExpr = f.Array.Hi
-			switch f.Array.Kind {
-			case ast.ArrayFixed:
+			switch {
+			case out.KeyEnum != "":
+				if out.Type.Pointer {
+					// a KEYED array of pointers is a named follow-on (docs/SPEC-TABLES.md
+					// §2.4, §15); the bounded spellings `[N]*T` and `[..N]*T` serve (§2.1)
+					c.errf(f.Type.Pos, "field %s: [%s]*%s is a named follow-on — an enum-keyed array of pointers; declare [..N]*%s or [N]*%s, or key an array of tables by value (docs/SPEC-TABLES.md §2.4, §15)",
+						f.Name, out.KeyEnum, f.Type.Name, f.Type.Name, f.Type.Name)
+					return nil
+				}
+				if _, isUnion := out.Type.Ref.(*ir.Union); isUnion {
+					// a KEYED array of unions is a named follow-on (docs/SPEC-TABLES.md
+					// §2.6, §15); the bounded spellings `[N]U` and `[..N]U` serve
+					c.errf(f.Type.Pos, "field %s: [%s]%s is a named follow-on — an enum-keyed array of unions; declare [..N]%s or [N]%s (docs/SPEC-TABLES.md §2.6, §15)",
+						f.Name, out.KeyEnum, f.Type.Name, f.Type.Name, f.Type.Name)
+					return nil
+				}
+				// ONE SLOT PER NAMED VARIANT and not one more: None is the null
+				// key, so nothing is stored for it and the storage SHIFTS LEFT —
+				// the key k lives at index k-1 (docs/SPEC-TABLES.md §2.4). The bound is
+				// E.Max, the same count `[E.Max]T` resolves to, so the two
+				// spellings share one projection and one protocol id.
 				out.Array = ir.ArrayFixed
-			case ast.ArrayUpTo:
-				out.Array = ir.ArrayCounted
-			case ast.ArrayRange:
-				out.Array = ir.ArrayCounted
-				lo, ok := c.evalInt(f.Array.Lo)
+				out.ArrayBound = out.KeyEnumRef.Max
+				out.ArrayExpr = f.Array.Hi
+			default:
+				hi, ok := c.evalInt(f.Array.Hi)
 				if !ok {
 					return nil
 				}
-				if lo.Sign() < 0 || !lo.IsInt64() || lo.Int64() >= hi.Int64() {
-					c.errf(f.Pos, "array count range [%s..%s] requires 0 <= Min < N (SPEC §4.6)", lo, hi)
+				if !hi.IsInt64() || hi.Int64() < 1 {
+					c.errf(f.Pos, "array bound %s below 1 (SPEC §4.6)", hi)
 					return nil
 				}
-				out.ArrayMin = lo.Int64()
+				if hi.Int64() > math.MaxInt32 {
+					c.errf(f.Pos, "array bound %s above %d — counts live in int32 storage (SPEC §4.3, §6.1)", hi, math.MaxInt32)
+					return nil
+				}
+				out.ArrayBound = hi.Int64()
+				out.ArrayExpr = f.Array.Hi
+				switch f.Array.Kind {
+				case ast.ArrayFixed:
+					out.Array = ir.ArrayFixed
+				case ast.ArrayUpTo:
+					out.Array = ir.ArrayCounted
+				case ast.ArrayRange:
+					out.Array = ir.ArrayCounted
+					lo, ok := c.evalInt(f.Array.Lo)
+					if !ok {
+						return nil
+					}
+					if lo.Sign() < 0 || !lo.IsInt64() || lo.Int64() >= hi.Int64() {
+						c.errf(f.Pos, "array count range [%s..%s] requires 0 <= Min < N (SPEC §4.6)", lo, hi)
+						return nil
+					}
+					out.ArrayMin = lo.Int64()
+				}
 			}
 		}
 	}
@@ -3270,6 +3271,22 @@ func (c *checker) checkClaimedNames() {
 					base := name + ir.GoExportName(f.Name)
 					for _, verb := range ir.MapFieldVerbs {
 						add(base+verb, whyMap, d.DeclPos())
+					}
+				}
+				// AND AN UNBOUNDED ARRAY claims three names on the table
+				// that declares it: <Table><Field> followed by Add, Each and
+				// Erase (docs/SPEC-TABLES.md §2.9, §11). Three where a map
+				// claims eight, and the difference is the key on both sides:
+				// an append needs none, so there is no entry to name, no
+				// insert, no find and no index to accelerate.
+				whyList := fmt.Sprintf("%s's generated unbounded-array surface (docs/SPEC-TABLES.md §2.9, §11)", name)
+				for _, f := range st.Fields {
+					if !f.IsList() {
+						continue
+					}
+					base := name + ir.GoExportName(f.Name)
+					for _, verb := range ir.ListFieldVerbs {
+						add(base+verb, whyList, d.DeclPos())
 					}
 				}
 			}

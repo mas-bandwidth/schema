@@ -502,6 +502,7 @@ func (p *parser) parseFieldLine(t scanner.Token) ast.Item {
 		}
 		if p.kind() == scanner.LBrack {
 			f.Array = p.parseArrayBound()
+			p.refuseArrayOfArrays()
 		}
 		if p.kind() == scanner.KwMap {
 			// `ships map[string(32)]ShipConfig` — a MAP (docs/SPEC-TABLES.md
@@ -579,6 +580,7 @@ func (p *parser) parseMapType() *ast.MapType {
 	}
 	if p.kind() == scanner.LBrack {
 		value.Array = p.parseArrayBound()
+		p.refuseArrayOfArrays()
 	}
 	if p.kind() == scanner.KwMap {
 		optional := value.Type.Optional
@@ -591,6 +593,20 @@ func (p *parser) parseMapType() *ast.MapType {
 	}
 	m.Value = value
 	return m
+}
+
+// refuseArrayOfArrays refuses a SECOND bracket where the element type stands
+// — `[][]T`, `[][..N]T`, `[..N][]T` and `[N][]T` — by name, and then consumes
+// the inner bound so the rest of the file's diagnostics still land. Arrays of
+// arrays are not in v1 (SPEC §4.3), and the fix an unbounded array's element
+// takes is a TABLE wrapper rather than a `type` wrapper, because a `type` body
+// refuses a `[]T` (docs/SPEC-TABLES.md §2.9, §11).
+func (p *parser) refuseArrayOfArrays() {
+	if p.kind() != scanner.LBrack {
+		return
+	}
+	p.errf(p.tok().Pos, "an array of arrays is not supported in v1 — wrap the inner array in a TABLE and declare an array of that table, which is the wrapper an unbounded array's element takes because a `type` body refuses a []T (SPEC §4.3, docs/SPEC-TABLES.md §2.9, §11)")
+	p.parseArrayBound() // consumed so the rest of the file's diagnostics land
 }
 
 func (p *parser) parseArrayBound() *ast.ArrayBound {

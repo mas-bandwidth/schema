@@ -11,7 +11,6 @@ package check
 
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // checkListSpelling holds every rule a `[]T` field carries that is not the
@@ -51,23 +50,10 @@ func (c *checker) checkListSpelling(f *ast.Field, inTable bool) bool {
 			// `json` key as any field does: both are about the field, not the
 			// construct (docs/SPEC-TABLES.md §2.9, §5, §16.4)
 		default:
-			c.errf(a.Pos, "field %s: %s does not apply to an unbounded array — THE COUNT IS THE DATA'S, and a bound would buy only a CLAMP, which drops a tail; drop the qualification, or declare [..N]%s, which is the same bytes with a bound (docs/SPEC-TABLES.md §2.9, §11)",
-				f.Name, a.Key, scalarSpelling(f.Type))
+			c.errf(a.Pos, "field %s: %s does not apply to an unbounded array — THE COUNT IS THE DATA'S, and a bound would buy only a CLAMP, which drops a tail; drop the qualification, or declare the array at a bound, [..N]T, which is the same bytes with a bound (docs/SPEC-TABLES.md §2.9, §11)",
+				f.Name, a.Key)
 			return false
 		}
 	}
 	return true
-}
-
-// listClaims registers the three names an unbounded array CLAIMS against its
-// field (docs/SPEC-TABLES.md §2.9, §11): `<Table>` followed by the PascalCase
-// of the field's name, then `Add`, `Each` or `Erase`. It claims THREE where a
-// map claims eight, and the difference is the key on both sides.
-func listClaims(table string, f *ir.Field) []string {
-	base := table + ir.GoExportName(f.Name)
-	out := make([]string, 0, len(ir.ListFieldVerbs))
-	for _, verb := range ir.ListFieldVerbs {
-		out = append(out, base+verb)
-	}
-	return out
 }
