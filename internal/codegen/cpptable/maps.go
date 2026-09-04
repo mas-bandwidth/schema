@@ -10,6 +10,7 @@ package cpptable
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -1898,10 +1899,5 @@ func (g *tableGen) rootHasExtent(root *ir.Struct) bool {
 	if !g.anyMap {
 		return false
 	}
-	for _, t := range g.pointerReachable(root) {
-		if g.hasMapExtent(t) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(g.pointerReachable(root), g.hasMapExtent)
 }
