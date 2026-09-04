@@ -8217,6 +8217,9 @@ in build version (§20.5).
   array of them, `[..N]*bytes` and `[N]*bytes`, which is the array-of-pointers
   follow-on (§15). And a unit that declares one under every backend but C++,
   named in the refusal, because the ports are a named follow-on (§15).
+  **`*wstring` is the third spelling and takes every clause above**, its bound
+  `*wstring(N)` refused with the other two, because a buffer at its used size
+  has no bound to declare whatever units it holds (§2.5).
 - **The block form** (§2.7), each refusal naming the table and the field or
   declaration at fault. **Nothing declares the form, so nothing is refused
   FOR it** — a table that cannot have one simply has none (§19) — and there
