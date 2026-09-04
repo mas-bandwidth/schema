@@ -725,3 +725,270 @@ whose rest state is not zero.
 
 **You now have** a real network message, three bytes on the wire, hostile input
 refused, in any of nine languages.
+
+---
+
+## Part 4 — the rest of the field types
+
+The ship state is about to grow. Each addition below is a problem Starlight
+actually has, and each introduces one field kind.
+
+### Ships have names: `string(N)`
+
+```
+const MaxShipName = 24
+
+    name string(MaxShipName)
+```
+
+```cpp
+    char name[MaxShipName + 1] = {}; // string(MaxShipName): max length, used length beside it (SPEC §4.7)
+    int32_t name_length = 0;
+```
+
+A string field is a fixed buffer at the bound you declare plus a used length.
+No heap, no `std::string`, nothing to allocate. On the wire it is the length in
+`[0, N]`, five bits here, followed by the bytes. The bound's only job on the
+wire is sizing the length prefix.
+
+The writer holds you to a contract, visible in the generated write:
+
+```cpp
+    for ( int32_t i = 0; i < value.name_length; i++ )
+    {
+        serialize_assert( value.name[i] != 0 );
+    }
+    serialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( value.name ), value.name_length ) );
+```
+
+No interior NULs, and well-formed UTF-8. A `string` is text by contract, and C,
+C++ and Rust assert it in a debug build. For raw bytes with no text contract,
+use `bytes(N)`, which has the same shape and no UTF-8 rule. The reader
+validates the length and rejects interior NULs.
+
+### The throttle: compressed floats
+
+A ship's throttle is a float in `[0, 1]`. A raw `float32` field costs 32 bits,
+and you do not care about the 24th decimal place:
+
+```
+    throttle float32 | min = 0, max = 1, resolution = 0.01
+```
+
+Ranged floats take `min`, `max` **and** `resolution`, all three together:
+
+```
+a float32 | min = 0, max = 1
+    Bad.schema:5:5: field a: a float range is min, max and resolution, all three together (SPEC §4.6)
+```
+
+The wire carries the step index, not the float. There are 101 steps here, so
+**seven bits instead of 32**:
+
+```cpp
+    {
+        float compressed_value = value.throttle;
+        serialize_compressed_float_precomputed( stream, compressed_value, 100u, 7, 1.0f, 0.0f );
+    }
+```
+
+The write rounds to the nearest step, half away from zero, one rounding rule in
+every language. Plain `float32` and `float64` with no attributes ride whole, at
+32 and 64 bits.
+
+### Position: composition
+
+```
+type Vector3
+{
+    x float64
+    y float64
+    z float64
+}
+
+    position Vector3
+```
+
+Types nest freely, and a composed field writes its parts inline with no
+pointers and no indirection:
+
+```cpp
+    if ( !WriteVector3( stream, value.position ) )
+    {
+        return false;
+    }
+```
+
+If your engine already has a vector type, `type Vector3 | cpp_native = Vec3,
+cpp_include = "vec.h"` maps the generated storage onto it, so simulation code
+does math directly on generated structs. One rule is worth knowing before you
+try it: the mapping applies where the type is referenced from **a different
+schema file** than the one that declares it. Declare `Vec2` and use it in one
+file and the generated output carries no trace of the mapping. Split the
+declaration and its use across two files in the same unit and the storage
+spells `::GameVec2` with the include beside it.
+
+### Heading: fixed point
+
+Floats differ by an ulp across compilers and architectures, which is fatal for
+a lockstep simulation. When a value must be **bit-identical everywhere**, use
+fixed point:
+
+```
+    heading fixed(16, 16) | min = -180, max = 180
+```
+
+```cpp
+    int32_t heading = 0; // fixed(16, 16) — Q16.16, raw value scaled by 2^16; bounds in whole units; wire [-180, 180]
+```
+
+`fixed(I, F)` is I integer bits, sign included, and F fractional bits, stored
+as the raw scaled integer. Bounds are required and given in whole units. It is
+an integer, so it adds exactly, everywhere. `ufixed(I, F)` is the unsigned
+sibling for values that cannot go negative.
+
+`I + F` must land on a storage width:
+
+```
+a ufixed(16, 8) | min = 0, max = 100
+    Bad.schema:5:7: ufixed(16, 8): I + F = 24 must equal a storage width — 8, 16, 32, 64 or 128 (SPEC §4.6)
+```
+
+### Cargo: arrays
+
+```
+    cargo [..8]uint32
+```
+
+Three array spellings, all bound first, in Go's order:
+
+| spelling | meaning | wire |
+|---|---|---|
+| `[4]Vector3` | exactly 4 | 4 elements, no count |
+| `[..8]uint32` | up to 8 | count in `[0, 8]`, 4 bits, then that many |
+| `[2..8]uint32` | between 2 and 8 | count encoded relative to 2, 3 bits, then that many |
+
+Storage is always the full-bound C array plus a `_count` companion:
+
+```cpp
+    uint32_t cargo[8] = {}; // used count beside it; wire count in [0, 8]
+    int32_t cargo_count = 0;
+```
+
+An older `[<= N]` spelling is retired, and the parser names the replacement:
+
+```
+a [<= 8]uint32
+    Bad.schema:5:8: the [<= N] bound is retired — spell it [..N], the range literal for a count in [0, N] (SPEC §4.3)
+```
+
+An element range that excludes zero is refused for the same reason a scalar's
+is, and the message says so:
+
+```
+a [..8]int32 | min = 1, max = 4
+    Bad.schema:5:5: field a: its range [1, 4] excludes zero, so every element is born outside it — an array takes no specified default, so widen the range to reach zero (SPEC §4.6)
+```
+
+The count bound is not held to that rule. `window [2..8]uint32` compiles, and a
+freshly constructed value has `window_count = 0`, which is outside the count's
+own wire range. Reach for `[A..B]` with A above zero only where your code sets
+the count before the value is ever written.
+
+### The odds and ends
+
+`bits(12)` is an unsigned field of exactly 12 bits, for when the width **is**
+the specification: sequence numbers, opaque tags. Storage is `uint32_t`.
+
+`bytes(1024)` is `string` with no text contract: a length-prefixed run of raw
+bytes in fixed storage.
+
+`int128` and `uint128` are full-width 128-bit integers, `serialize::uint128_t`
+in C++, for keys and hashes that ride through untouched.
+
+### The grown ship state
+
+```
+type ShipState
+{
+    ship_type ShipType
+    name      string(MaxShipName)
+    health    int32 = MaxHealth | min = 0, max = MaxHealth
+    throttle  float32           | min = 0, max = 1, resolution = 0.01
+    position  Vector3
+    heading   fixed(16, 16)     | min = -180, max = 180
+    systems   SystemFlags
+    docked    bool
+    cargo     [..8]uint32
+}
+```
+
+`health` grew a default of `= MaxHealth`. Ships start at full health, so the
+rest state is not zero, and now `ShipState ship;` starts at 1000 with no
+constructor anywhere:
+
+```cpp
+struct ShipState {
+    ShipType ship_type = ShipType::None;
+    char name[MaxShipName + 1] = {}; // string(MaxShipName): max length, used length beside it (SPEC §4.7)
+    int32_t name_length = 0;
+    int32_t health = MaxHealth; // wire [0, 1000]
+    float throttle = 0.0f; // compressed float [0, 1] @ 0.01
+    Vector3 position;
+    int32_t heading = 0; // fixed(16, 16) — Q16.16, raw value scaled by 2^16; bounds in whole units; wire [-180, 180]
+    SystemFlags systems = 0;
+    bool docked = false;
+    uint32_t cargo[8] = {}; // used count beside it; wire count in [0, 8]
+    int32_t cargo_count = 0;
+};
+
+inline constexpr int64_t ShipStateMaxBits = 705; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t ShipStateMaxBytes = 96; // 8-byte write granularity; read slack per the contract above
+```
+
+Everything is inline, fixed size and trivially copyable. You can `memcpy` a
+`ShipState`, hold arrays of them, or share them between processes. That property
+is by construction, and later parts build on it.
+
+`ShipStateMaxBytes` is the number to size a send buffer with, and it accounts
+for the read slack the contract asks for.
+
+### A program
+
+```cpp
+    ShipState ship;
+    ship.ship_type = ShipType::Freighter;
+    strcpy( ship.name, "Kestrel" );
+    ship.name_length = 7;
+    ship.throttle = 0.63f;
+    ship.position = { 100.0, 25.5, -3.0 };
+    ship.heading = (int32_t) ( 42.5 * 65536 );
+    ship.systems = SystemFlags_Shields;
+    ship.cargo_count = 3;
+    ship.cargo[0] = 11; ship.cargo[1] = 22; ship.cargo[2] = 33;
+
+    uint8_t buffer[ShipStateMaxBytes];
+    serialize::WriteStream writer( buffer, sizeof( buffer ) );
+    WriteShipState( writer, ship );
+    writer.Flush();
+
+    ShipState copy;
+    serialize::ReadStream reader( buffer, writer.GetBytesProcessed() );
+    ReadShipState( reader, copy );
+
+    printf( "%s \"%s\" health=%d throttle=%.2f heading=%.2f cargo=%d bytes=%lld of %lld max\n",
+        EnumName( copy.ship_type ), copy.name, copy.health, copy.throttle,
+        copy.heading / 65536.0, copy.cargo_count,
+        (long long) writer.GetBytesProcessed(), (long long) ShipStateMaxBytes );
+```
+
+```
+$ ./starlight
+Freighter "Kestrel" health=1000 throttle=0.63 heading=42.50 cargo=3 bytes=51 of 96 max
+```
+
+Fifty-one bytes, most of it the three `float64` of the position, which is what
+a `float64` costs when you ask for a whole one.
+
+**You now have** the full vocabulary of scalar and buffer fields, and a ship
+state that costs a fraction of its struct size on the wire.
