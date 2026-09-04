@@ -72,8 +72,12 @@ conventions. Delta serialization is out of scope for v1.
   any data and the differences are reported rather than fatal
   (SPEC-TABLES.md). This document specifies the type wire; the two share one
   language, one unit and one compiler, and nothing else.
-- **No unbounded collections.** Everything on the wire has a declared bound,
-  as everywhere in the serialize family.
+- **No unbounded collections ON THIS WIRE.** Everything the TYPE wire carries
+  has a declared bound, as everywhere in the serialize family, and a `type`
+  body refuses the unbounded spellings by name. The table wire, whose readers
+  own their own allocation, carries an unbounded `map` and an unbounded `[]T`
+  in a `table` body only (SPEC-TABLES.md §2.8, §2.9); neither is reachable
+  from a packet, because neither may be declared in a `type`.
 - **No annotation of existing hand-written types.** schema owns the types it
   serializes and generates them (§6); the `cpp_native` mapping (§4.2) lets
   hand-written types derive *from* generated ones, never the reverse.
