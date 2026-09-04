@@ -249,20 +249,51 @@ func (g *tableGen) noVariableEdges(st *ir.Struct) bool {
 }
 
 // emitEdgeWalk emits the walk over one member for one emitter.
+// A FIELD THE WRITER DOES NOT WRITE IS NOT AN EDGE (docs/SPEC-TABLES.md §3.1):
+// a pointer under a false guard, or inside an absent optional, is not visited
+// and its target takes no index, so a save never writes a record no written
+// field names. It is the same walk `Lock` lays a region out in, so the region
+// holds no such node either.
 func (g *tableGen) emitEdgeWalk(st *ir.Struct, v edgeVisitor) {
+	guards := guardWalk(st, v.read+".")
 	for _, f := range st.Fields {
-		switch g.edgeOf(f) {
-		case edgePointer:
-			g.emitPointerSlots(f, v, func(slot edgeExpr) { v.pointer(f, slot) })
-		case edgeBlob:
-			v.blob(f, v.at("."+f.Name))
-		case edgeNested:
-			g.emitVariableByValueWalk(f, v, func(expr edgeExpr) { v.descend(f.Type.Name, expr, "        ") })
-		case edgeArm:
-			g.emitVariableUnionWalk(f, v)
-		case edgeMap:
-			v.mapField(f)
+		if g.edgeOf(f) == edgeNone {
+			continue
 		}
+		open := ""
+		if cond, guarded := guards[f.Name]; guarded {
+			open = cond
+		}
+		if f.Type.Optional {
+			present := v.read + "." + f.Name + "_present"
+			if open == "" {
+				open = present
+			} else {
+				open = open + " && " + present
+			}
+		}
+		if open != "" {
+			g.pf("    if ( %s )\n    {\n", open)
+		}
+		g.emitEdgeOf(f, v)
+		if open != "" {
+			g.pf("    }\n")
+		}
+	}
+}
+
+func (g *tableGen) emitEdgeOf(f *ir.Field, v edgeVisitor) {
+	switch g.edgeOf(f) {
+	case edgePointer:
+		g.emitPointerSlots(f, v, func(slot edgeExpr) { v.pointer(f, slot) })
+	case edgeBlob:
+		v.blob(f, v.at("."+f.Name))
+	case edgeNested:
+		g.emitVariableByValueWalk(f, v, func(expr edgeExpr) { v.descend(f.Type.Name, expr, "        ") })
+	case edgeArm:
+		g.emitVariableUnionWalk(f, v)
+	case edgeMap:
+		v.mapField(f)
 	}
 }
 

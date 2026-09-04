@@ -54,6 +54,7 @@ unit tblm1     test/tables/M1.schema
 unit tblm2     test/tables/M2.schema
 unit tbla1     test/tables/A1.schema
 unit tbla2     test/tables/A2.schema
+unit tblg1     test/tables/G1.schema
 unit tblk1     test/tables/K1.schema
 unit tblk2     test/tables/K2.schema
 
@@ -230,6 +231,15 @@ report m1_open_as_m2  tblm2 Msg testdata/wire/tables/m1_open.bin
 report m1_save_as_m2  tblm2 Msg testdata/wire/tables/m1_save.bin
 report m2_close_as_m1 tblm1 Msg testdata/wire/tables/m2_close.bin
 report m2_open_as_m1  tblm1 Msg testdata/wire/tables/m2_open.bin
+
+# A FIELD THE WRITER DOES NOT WRITE IS NOT AN EDGE (§3.1, schema#440). One
+# value with both pointer slots filled: under a FALSE guard the numbering
+# visits one of them, so one record rides and the unwritten target takes no
+# index; the control is the same value with the guard TRUE, and it writes two.
+# A walk that visited every slot would write two both times. Both are `no-text`
+# by the form's own rule: a guarded group's untaken side has no text to carry.
+instance guard_false_no_edge   tblg1 Guarded testdata/wire/tables/guard_false_no_edge.bin   no-text
+instance guard_true_both_edges tblg1 Guarded testdata/wire/tables/guard_true_both_edges.bin no-text
 
 # THE ENUM KIND AGAINST THE RAW INTEGER (§3, §4). K2 declares K1's two field
 # names with the spellings swapped, so one wire read the other way names both

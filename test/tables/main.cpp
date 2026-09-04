@@ -40,6 +40,7 @@
 #include "A2Table.h"
 #include "K1Table.h"
 #include "K2Table.h"
+#include "G1Table.h"
 #include "ScalarsTable.h"
 #include "wirebuilder.h"
 
@@ -7009,6 +7010,81 @@ static void test_form_byte_refusals()
     }
 }
 
+// ---- A FIELD THE WRITER DOES NOT WRITE IS NOT AN EDGE (§3.1, schema#440) --
+//
+// A pointer under a FALSE GUARD is not visited by the numbering: its target
+// takes no index, so a save never writes a record no written field names. It
+// is the same walk `Lock` lays a region out in, so the region holds no such
+// node either.
+//
+// The control is the same value with the guard TRUE: two records where the
+// first writes one. A walk that visited every slot would write two both times,
+// and the byte counts say which walk ran.
+//
+// The other half of §3.1's sentence — a pointer inside an ABSENT OPTIONAL —
+// has no declaration yet: `?T` over a variable-length closure is a named
+// follow-on (§2.3, §15), and the walks gating on the presence companion, which
+// this change adds, is the precondition its diagnostic names.
+static void test_unwritten_fields_are_not_edges()
+{
+    static uint8_t wire[512];
+    int64_t one = 0;
+    {
+        tblg1::GuardedBuilder b;
+        tblg1::Guarded * root = b.GetRoot();
+        root->at_rest = false;                    // the guard is FALSE
+        root->always = b.Alloc<tblg1::Node>();
+        tblg1::NodeAt( b.arena, root->always )->value = 1;
+        root->resting = b.Alloc<tblg1::Node>();   // set, and under the false guard
+        tblg1::NodeAt( b.arena, root->resting )->value = 2;
+        one = tblg1::GuardedSave( b, wire, sizeof( wire ) );
+        CHECK( one > 0 );
+        CHECK( tblg1::GuardedMeasure( b ) == one );
+        pin_table_golden( "guard_false_no_edge", wire, one );
+    }
+    // the numbering wrote ONE record, so exactly one node's body rides
+    tblg1::TableReport report;
+    int64_t need = tblg1::GuardedLoadMeasure( wire, one );
+    CHECK( need > 0 );
+    std::vector<uint8_t> region( (size_t) need );
+    const tblg1::Guarded * loaded = tblg1::GuardedLoad( region.data(), need, wire, one, &report );
+    CHECK( loaded != NULL && !report.malformed && report.unknown == 0 );
+    if ( loaded != NULL )
+    {
+        CHECK( tblg1::NodeAt( loaded->always ) != NULL && tblg1::NodeAt( loaded->always )->value == 1 );
+        CHECK( tblg1::NodeAt( loaded->resting ) == NULL ); // never written, never read
+    }
+
+    // THE CONTROL: the same value with the guard TRUE
+    static uint8_t three_wire[512];
+    int64_t three = 0;
+    {
+        tblg1::GuardedBuilder b;
+        tblg1::Guarded * root = b.GetRoot();
+        root->at_rest = true;
+        root->always = b.Alloc<tblg1::Node>();
+        tblg1::NodeAt( b.arena, root->always )->value = 1;
+        root->resting = b.Alloc<tblg1::Node>();
+        tblg1::NodeAt( b.arena, root->resting )->value = 2;
+        three = tblg1::GuardedSave( b, three_wire, sizeof( three_wire ) );
+        CHECK( three > 0 );
+        pin_table_golden( "guard_true_both_edges", three_wire, three );
+    }
+    CHECK( three > one ); // two records against one
+    tblg1::TableReport control;
+    int64_t control_need = tblg1::GuardedLoadMeasure( three_wire, three );
+    std::vector<uint8_t> control_region( (size_t) control_need );
+    const tblg1::Guarded * all = tblg1::GuardedLoad( control_region.data(), control_need, three_wire, three, &control );
+    CHECK( all != NULL && !control.malformed );
+    if ( all != NULL )
+    {
+        CHECK( tblg1::NodeAt( all->resting ) != NULL && tblg1::NodeAt( all->resting )->value == 2 );
+    }
+    // and the REGION is the same walk: a locked region holds the nodes the
+    // numbering visited and no others, so its size moves with them
+    CHECK( control_need > need );
+}
+
 // ---- THE ENUM KIND AGAINST THE RAW INTEGER (docs/SPEC-TABLES.md §3, §4) ---
 //
 // An enum rides under its OWN kind 30 carrying the reference to its variant
@@ -8647,6 +8723,7 @@ int main()
     test_pointer_arrays();
     test_pointer_arrays_elision();
     test_form_byte_refusals();
+    test_unwritten_fields_are_not_edges();
     test_enum_kind_against_the_raw_integer();
     test_escape_and_payload_free_kinds();
     test_arm_kind_pins();

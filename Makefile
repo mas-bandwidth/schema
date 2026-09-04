@@ -106,6 +106,7 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/m1 test/tables/M1.schema
 	$(1) generate --lang cpp --out $(2)/m2 test/tables/M2.schema
 	$(1) generate --lang cpp --out $(2)/a1 test/tables/A1.schema
+	$(1) generate --lang cpp --out $(2)/g1 test/tables/G1.schema
 	$(1) generate --lang cpp --out $(2)/k1 test/tables/K1.schema
 	$(1) generate --lang cpp --out $(2)/k2 test/tables/K2.schema
 	$(1) generate --lang cpp --out $(2)/a2 test/tables/A2.schema
@@ -116,9 +117,9 @@ endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/k1 -I$(1)/k2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(SERIALIZE)
+	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
