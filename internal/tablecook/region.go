@@ -304,7 +304,12 @@ func (w *regionWriter) ref(at int64, f *ir.Field, target any) error {
 func (w *regionWriter) element(at int64, f *ir.Field, cell *tabletext.Cell) error {
 	t := f.Type
 	if t.Pointer {
-		return w.ref(at, f, cell.Node) // an element of an array of pointers (§2.1)
+		// an element of an array of pointers (§2.1); the nil guard matters
+		// because ref's target is `any` — a typed nil is not a nil interface
+		if cell.Node == nil {
+			return w.ref(at, f, nil)
+		}
+		return w.ref(at, f, cell.Node)
 	}
 	switch t.Kind {
 	case ir.TBool:

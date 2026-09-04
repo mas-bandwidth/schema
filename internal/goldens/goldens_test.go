@@ -278,6 +278,7 @@ func TestGoldenBuildVersion(t *testing.T) {
 		{"tables-blockhome", "../../tables/blockhome"},
 		{"tables-messages", "../../tables/messages"},
 		{"tables-stream", "../../tables/stream"},
+		{"tables-blobs", "../../tables/blobs"},
 		{"tables-scalars", "../../tables/scalars"},
 	}
 	for _, unit := range units {
