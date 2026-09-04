@@ -72,6 +72,10 @@
 #   BENCH_OPT_LEVEL  C/C++ optimization level for the standard leg (default
 #                 O3; §3.3 publishes O2 and O3). Recorded in the flags line
 #                 AND stamped into the runners' opt column via -DBENCH_OPT.
+#   BENCH_CXXFLAGS_PREFIX
+#                 flags prepended to the C++ bench compiles, empty in every
+#                 published pass. One caller: the perf gate's negative control
+#                 (bench/tools/perfgate, issue #546). See the definition below.
 #   BENCH_CPU     core to pin to where taskset exists (default 0)
 #   BENCH_NOISE   noise label recorded in the results preamble, e.g.
 #                 "NOISY: game server owns isolated cores, bench on shared core 0"

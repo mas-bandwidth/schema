@@ -25,9 +25,9 @@ build)
     fi
     mkdir -p build
     # BENCH_CXXFLAGS_PREFIX: prepended, empty in every published pass, one
-    # caller only. bench/run.sh carries the same hook and the same comment;
-    # the perf gate's negative control (bench/tools/perfgate, issue #546)
-    # points the include path at a scratch copy of the generated header
+    # caller only, and bench/run.sh carries the same hook and the same
+    # comment. The perf gate's negative control (bench/tools/perfgate, issue
+    # #546) points the include path at a scratch copy of the generated header
     # carrying a planted read cost, so the gate can be watched going red.
     $CXX ${BENCH_CXXFLAGS_PREFIX:-} -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
         "-$BENCH_OPT_LEVEL" -DNDEBUG -fno-rtti "-DBENCH_OPT=\"$BENCH_OPT_LEVEL\"" \
