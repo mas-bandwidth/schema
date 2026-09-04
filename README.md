@@ -102,7 +102,13 @@ Measured by [the benchmark](bench/). One 438-byte packet exercising every constr
 make                # builds the compiler at bin/schema
 bin/schema check    <dir of .schema files>
 bin/schema generate --lang c|cpp|cs|dart|elixir|go|java|js|rust --out <outdir> <dir>
+bin/schema fmt      <dir of .schema files>
 ```
+
+`fmt` is the only command that writes a `.schema` file. Every other command
+reads your schema files and leaves them alone, so a read-only checkout, a
+sandboxed build and an editor integration all work.
+
 ## Documentation
 
 | Document | What's in it |

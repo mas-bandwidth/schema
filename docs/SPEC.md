@@ -1763,7 +1763,7 @@ schema projection [dir|files...]               // print the wire shape projectio
 schema build-version [--facts] [dir|files...]  // the cook/block id, and the text it digests (SPEC-TABLES.md §20)
 schema tables-baseline [--update --reason "..."] [--verbose] [dir|files...]
                                                // the table wire's evolution gate (SPEC-TABLES.md §18)
-schema fmt        [--verbose] [dir|files...]   // the canonical formatter, standalone (editors, hooks)
+schema fmt        [--verbose] [dir|files...]   // the canonical formatter, and the only command that writes a schema file
 schema pack       --root <Table> --out <file> [--tolerate] [--verbose] <tree-dir> [dir|files...]
 schema unpack     --root <Table> --in  <file> [--one-file] [--tolerate] [--verbose] <tree-dir> [dir|files...]
                                                // a text tree to a table-wire file, and back (SPEC-TABLES.md §17)
@@ -1784,21 +1784,23 @@ set of declarations and both wires are declared in it.
 Success is silent. Commands whose printed output is their answer (`id`,
 `projection`, `build-version`, `version`) print it; everything else prints
 nothing unless `--verbose` asks for the per-file report — the files
-`generate` wrote, the files the formatter rewrote, `check`'s ok line, the
+`generate` wrote, the files `fmt` rewrote, `check`'s ok line, the
 header facts a cook was written with. Errors and
 diagnostics always reach stderr, and exit codes do not depend on verbosity.
 `pack` and `unpack` exit nonzero when their read report is not silent, and
 `--tolerate` accepts it.
 
-**Every command formats the unit's schema files in place before processing
-them**, `pack` and `unpack` excepted: those two are pointed at a config tree
-and only READ the declarations, and a verb that assembles a wire file
-rewriting the schema sources beside it is a surprise nobody asked for. One
-style, no options, no separate binary; a file already in format
-is never touched. The formatter carries two built-in refusers: it re-parses
-its own output and structurally compares the AST against the input's,
-refusing to write on any difference — a formatter must never change
-meaning — and it verifies its own idempotence on every run.
+**`fmt` is the only command that writes a schema file.** Every other command
+loads the unit as it sits on disk and leaves it byte for byte alone, so a
+read-only checkout, a sandboxed build, a concurrent generation and an editor
+integration all work, and a command that answers a question never edits the
+source it answered about. Formatting decides no answer: the unit a canonical
+file declares is the unit its unformatted twin declares, and the protocol id
+depends only on the wire shape (§3.1). One style, no options, no separate
+binary; a file already in format is never touched. The formatter carries two
+built-in refusers: it re-parses its own output and structurally compares the
+AST against the input's, refusing to write on any difference (a formatter must
+never change meaning), and it verifies its own idempotence on every run.
 
 ### 7.1 Pipeline
 
@@ -1893,8 +1895,8 @@ first test suite.
 ### 7.4 schemafmt — the one style
 
 gofmt's philosophy: one style, no options. Built as the parser's first
-consumer and run by every `schema` command over the unit before processing.
-Rules:
+consumer, and run by `schema fmt`, which is the only command that writes a
+schema file. Rules:
 
 1. **Indent: 4 spaces** per block level, never tabs. **Braces are Allman**
    (§4.1): a multi-line block's `{` on its own line at the construct's

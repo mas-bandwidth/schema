@@ -1,6 +1,6 @@
 // Package format is schemafmt (SPEC §7.4): gofmt's philosophy — one style,
-// no options — run by the compiler over every schema file before it is
-// processed.
+// no options — run by `schema fmt`, the one command that writes a schema
+// file.
 //
 // Safety is built in, not promised: Format re-parses its own output and
 // structurally compares it against the input's AST, and verifies its own

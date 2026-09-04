@@ -53,7 +53,8 @@
   emits what a careful expert would write against its serialize runtime: split
   `Write`/`Read` per type; per-target union representations (C++/C tagged union;
   Go/C#/JS tag beside pre-allocated arms; Rust enum); zero initialization with
-  specified defaults; `schemafmt` canonicalizing every input in place.
+  specified defaults; `schemafmt` canonicalizing a tree when `schema fmt` is run
+  over it, which is the only command that writes a schema file (#473).
 - **Trajectory** (Glenn, 2026-08-05): once design settles and implementation starts, this
   repo represents the most recent state only, not the total history of everything —
   prune toward that; git history is the archive.

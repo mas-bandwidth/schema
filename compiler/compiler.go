@@ -38,10 +38,11 @@ import (
 // the input tree, so concurrent loads must not name the same files.
 type Compiler struct {
 	// FormatInPlace canonicalizes every schema file on disk before parsing it
-	// (schemafmt, SPEC §7.4), which is what every CLI command does. An
-	// embedder that must not write to its input tree leaves this false; the
-	// unit is identical either way — formatting never changes what a file
-	// declares, and the protocol id depends only on the wire shape (SPEC
+	// (schemafmt, SPEC §7.4). It is off by default and the CLI never turns it
+	// on: `schema fmt` is the only command that writes a schema file, and an
+	// embedder that wants the repair as a side effect of loading opts into it
+	// here. The unit is identical either way — formatting never changes what a
+	// file declares, and the protocol id depends only on the wire shape (SPEC
 	// §3.1), never on source bytes.
 	FormatInPlace bool
 
@@ -70,8 +71,8 @@ type Compiler struct {
 
 // New returns a driver with the built-in generators registered — c, cpp, cs
 // (csharp), dart, elixir, go, java, js (javascript) and rust — and the load
-// policy of a library: no writes to the input tree. Set
-// [Compiler.FormatInPlace] for the CLI's behavior.
+// policy the CLI runs on: no writes to the input tree. Set
+// [Compiler.FormatInPlace] to canonicalize the sources on the way in.
 func New() *Compiler {
 	c := &Compiler{}
 	for _, g := range builtins() {
