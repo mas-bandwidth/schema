@@ -1321,95 +1321,109 @@ table Fleet
 
 **A map is a LOOKUP the runtime provides over ENTRIES the wire carries.** On
 the wire, in a region and in a cook a map is nothing new: an array of one
-generated table — the ENTRY, `{ key, value }` — held in ascending key order.
+generated table, the ENTRY `{ key, value }`, held in ascending key order.
 What the runtime adds is `Find`, a binary search over that array where it
 lies, and a builder that inserts, replaces and erases by key. That is the
-whole construct, and every rule below descends from it: the wire spends no
+whole construct, and every rule below descends from it. The wire spends no
 kind, a cook is looked up in place, and every language's map is the same
-bytes under the same order. Owner, 2026-09-03: *"map is ultimately a runtime
-thing, a lookup"* / *"on the wire it could just be an array of a new type
-which is (key,value) tuples."*
+bytes under the same order.
 
-**A map is declared in a TABLE body, and it makes its holder VARIABLE-LENGTH.**
-Owner: *"We can only support maps in tables, not in types. And maps
-immediately make a fixed table into a variable table."* A `type` body refuses
-one by name. §2.2's derivation gains one clause — a map is a variable edge,
-whatever its key and value are — so a table declaring one rides in the arena
-with the pointers, is read through a region and a root, and has no block form
-(§2.7). A unit with no map and no pointer is fixed exactly as it was, and the
-zero-cost gate holds for maps as it holds for pointers: not one symbol of the
-map machinery in a map-free unit's generated headers, held by the zero-cost
-gate's header scan — the build failure §2.2 states, the same scan that holds
-§13.9's hook rule — with the map symbols added to its list.
-
-**Backend status for this section: no backend, and no declaration reaches
-it.** The construct is sequenced AFTER 3.0.0 (schema#380), and the closing
-paragraphs of this section say why nothing in the 3.0.0 wire forecloses it.
-The spelling below does not parse today; a unit declaring it is refused by the
-parser where it stands.
+**A map is declared in a TABLE body, and it makes its holder
+VARIABLE-LENGTH.** A `type` body refuses one by name (§11). §2.2's
+derivation gains one clause: a map is a variable edge, whatever its key and
+value are. A table declaring one rides in the arena with the pointers, is
+read through a region and a root, and has no block form (§2.7). A unit with
+no map and no pointer is fixed exactly as it was, and the zero-cost gate
+holds for maps as it holds for pointers. Not one symbol of the map machinery
+appears in a map-free unit's generated headers, held by the zero-cost gate's
+header scan, the build failure §2.2 states and the same scan that holds
+§13.9's hook rule, with the map symbols added to its list.
 
 **The spelling is `map[K]V`.** It reads as what it is, and the bracket is the
-one the language already uses for every extent. Two alternatives were weighed:
-`[K]V`, extending `[E]T` — rejected, because `[uint32]T` reads as a positional
-array with a type for its bound, and because `[E]T` is a COMPLETE array while a
-map is a sparse lookup, two constructs that should not look like one; and
-`map<K, V>`, Protobuf's — rejected, because angle brackets appear nowhere else
-in the grammar and buy nothing over the bracket.
+one the language already uses for every extent. Two other spellings are
+refused. `[K]V`, extending `[E]T`, is refused because `[uint32]T` reads as a
+positional array with a type for its bound, and because `[E]T` is a COMPLETE
+array while a map is a sparse lookup, two constructs that should not look
+like one. `map<K, V>`, Protobuf's, is refused because angle brackets appear
+nowhere else in the grammar and buy nothing over the bracket.
 
 **Keys are BOUNDED STRINGS and INTEGERS, and nothing else.** `K` is
-`string(N)` or one of `int8` … `int64`, `uint8` … `uint64`, bare — no
-`| min`, no `| max`, no default, because a key is an identity and clamping an
-identity merges two entries. Refused by name, each with its reason in the
-diagnostic:
+`string(N)` or one of `int8` through `int64`, `uint8` through `uint64`,
+bare. No `| min`, no `| max`, no default, because a key is an identity and
+clamping an identity merges two entries. Every other key is refused by name,
+each with its reason in the diagnostic:
 
 - **An enum key**, because that is `[E]T`'s job and `[E]T` does it better
   (§2.4): one slot per named variant, complete by construction, positional
   storage of `E.Max × sizeof( T )`, one subtract to reach a slot, no count,
   no sort, and the FIXED class. A map keyed by an enum would be a sparse
   `[E]T` that pays a variable holder, a sort and `log n` compares to express
-  absence — which `?T` as the element already expresses in the fixed class,
-  for one bool a slot. And its order would be incoherent: an enum's storage is
-  an ordinal and its wire identity a name hash (§3), so no order the region
+  absence, which `?T` as the element already expresses in the fixed class for
+  one bool a slot. And its order would be incoherent: an enum's storage is an
+  ordinal and its wire identity a name hash (§3), so no order the region
   holds is an order the wire could carry. The diagnostic names `[E]T`.
-- **A `bool` key** — two slots, which is an array of two.
-- **A floating-point key** — `NaN` has no equality and `-0.0 == 0.0` are two
-  bit patterns, so no total order survives a byte compare.
-- **A `flags` key** — a mask names a set, not one thing.
+- **A `bool` key**, which is two slots, which is an array of two.
+- **A floating-point key**, because `NaN` has no equality and `-0.0 == 0.0`
+  are two bit patterns, so no total order survives a byte compare.
+- **A `flags` key**, because a mask names a set and not one thing.
 - **`bits(N)`, `bytes(N)`, a `type`, a `table`, a pointer, an optional and a
-  union** — none is a key.
+  union.** None is a key.
 
-**The ORDER is total, and it is the same in nine languages.** Integers compare
-by VALUE — signed for the signed kinds, unsigned for the unsigned. Strings
-compare by BYTES, unsigned, a shorter string that is a prefix of a longer one
-first: `memcmp` over the common length, then the lengths. Never a locale,
-never a code point, never a case fold. A port whose language has no unsigned
-compare spells one (Java: `Long.compareUnsigned`; and a string compares its
-BYTES, never its `char`s) and says so at the site.
+**The ORDER is total, and it is the same in nine languages.** Integers
+compare by VALUE, signed for the signed kinds and unsigned for the unsigned.
+Strings compare by BYTES, unsigned, a shorter string that is a prefix of a
+longer one first: `memcmp` over the common length, then the lengths. Never a
+locale, never a code point, never a case fold. A port whose language has no
+unsigned compare spells one and says so at the site. Java spells
+`Long.compareUnsigned`, and a string compares its BYTES and never its
+`char`s.
 
-**The count is UNBOUNDED, and the cost is stated.** There is no `[..N]map`
-and no `| max` on a map: the entries live in the arena on the authoring side
+**The COUNT is UNBOUNDED, and the cost is stated.** There is no `[..N]map`
+and no `| max` on a map. The entries live in the arena on the authoring side
 and in the node's own extent in a region, so nothing about the holder's
-storage needs a bound, and a bound would buy only a CLAMP — which for a map
-would drop entries by key order, a quieter loss than an array's dropped tail.
-What a program gets instead is §6.5's defense, unchanged: `LoadMeasure`
-answers from the framing — `N × sizeof( Entry )` per map — and the caller
-owns the allocation precisely so it can refuse a number it did not expect. A
-map takes no default and has no `?map`: a fresh map is empty, an empty map is
-elided (§3), and its count's zero IS its absence, §2.3's rule.
+storage needs a bound, and a bound would buy only a CLAMP, which for a map
+would drop entries by key order, a quieter loss than an array's dropped
+tail. What a program gets instead is §6.5's defense, unchanged.
+`LoadMeasure` answers from the framing, and the caller owns the allocation
+precisely so it can refuse a number it did not expect. A map takes no
+default and has no `?map`: a fresh map is empty, and an empty map is elided
+under §3's by-value elision rule, the rule that elides an empty array.
 
 **A VALUE is anything a table field can hold**: a scalar, an enum, a `flags`
 mask, `string(N)`, `bytes(N)`, a declared `type`, a table by value, `*T`,
-`?T`, a union, `[N]T`, `[..N]T`, `[E]T` — and a map, so
-`map[string(16)]map[uint8]Item` is one declaration and a map of maps of maps
-is nothing special. **That recursion is by value**, so the by-value cycle rule reaches it
-(§2): a table that holds a map of ITSELF has infinite size and is refused
-naming the cycle, and a table that holds a map of `*Self` is the ordinary
-legal recursion through a pointer. **A `*T` value is SHARED exactly as a
-pointer field is**: two keys naming one node hold one node — one index on the
-wire (§3.1), one body in a region (§6.3), one `&node` in the text (§16.7).
+`*bytes`, `*string` (§2.5), `?T`, `?[N]T`, `?[..N]T` (§2.3), a union, `[N]T`,
+`[..N]T`, `[E]T`, and a map. So `map[string(16)]map[uint8]Item` is one
+declaration and a map of maps of maps is nothing special. **That recursion is
+BY VALUE**, so §2's by-value composition rule reaches it: a table that holds
+a map of ITSELF is a by-value cycle and is refused naming the cycle, exactly
+as a table that nests itself is, and a table that holds a map of `*Self` is
+the ordinary legal recursion through a pointer. **A `*T` value is SHARED
+exactly as a pointer field is**: two keys naming one node hold one node, one
+index on the wire (§3.1), one body in a region (§6.3), one `&node` in the
+text (§16.7).
 
-**THE ENTRY TYPE.** Every map generates one table, named
-`<Table><Field>Entry` — `FleetShipsEntry` for the example — with two fields:
+**And a map is a BY-VALUE EDGE of the ONE declaration-order walk** (§3.1,
+schema#438). The numbering, the pack measure and the pack are one walk over
+the fields in declaration order that descends each by-value edge WHERE IT IS
+DECLARED, and a map is such an edge. It is reached at its field's position,
+its entries are visited in ASCENDING KEY ORDER, the order the wire carries
+and the order a region holds, so no walk needs a second one, and each
+entry's value is descended for the pointer slots inside it before the next
+entry is reached. A map declared before a pointer field therefore reaches a
+shared node first and numbers it first, exactly as a union arm or a nested
+table declared there does. The rule is the walk's and not the map's. Nothing
+about a map is grouped after anything, because nothing in that walk is
+grouped at all.
+
+**THE ENTRY TYPE.** Every map generates one table, named `<Table><Field>`
+followed by `Entry`, with the field's name in the PascalCase §11's accessor
+rule uses, so `by_id` on `Fleet` generates `FleetByIdEntry`. A map whose
+value is itself a map names the inner entry `<OuterEntry>ValueEntry`, so
+`Fleet.loadouts` generates `FleetLoadoutsEntry` and
+`FleetLoadoutsEntryValueEntry`. The entry is declared in the file that
+declares the holder, immediately before it, which is what puts its walk in
+that file under §7's rule that a member's walk lives in the file that
+declares it. It has two fields:
 
 ```
 table FleetShipsEntry      // generated; never spelled in a schema
@@ -1420,103 +1434,150 @@ table FleetShipsEntry      // generated; never spelled in a schema
 ```
 
 - **It is a real table of the closure**: a generated struct in the header
-  with its own `Reset`, a descriptor a walker meets as the element of an array
-  of tables (§8.1), the same layout model as every record (§20.3). It is not
-  a node: an entry is BY VALUE inside its holder's extent (the memory layout,
-  below), so it carries no type id on the wire and takes no node index.
+  with its own `Reset`, a descriptor a walker meets as the element of an
+  array of tables (§8.1), and the same layout model as every record (§20.3).
+  It is not a node. An entry is BY VALUE inside its holder's extent (the
+  memory layout, below), so it carries no type id on the wire and takes no
+  node index. **It is not a ROOT, and it is the one exception to §7's "a root
+  is any table"**: an entry is reached only through the map that generates it,
+  so it gets no `Open`, no `Cook`, no `Save` and no `Load` of its own, and its
+  walk, its layout and its cook body are the whole of what it carries. It
+  CLAIMS §11's suffix set all the same, as every closure member does, on that
+  list's own rule that a name free today must not become a collision
+  tomorrow.
 - **It is never declared and never spelled in a schema.** The name is CLAIMED
   on every table that declares a map, on the terms `<field>_present` is
-  claimed for an optional (§11): a unit that declares a table under that
-  spelling beside the map is refused, naming the map. The claim lands with the
-  construct rather than ahead of it, and that is safe: a stored file never
-  carries the name (an entry rides under kinds and field ids, never under a
-  type id), so a unit that declared `FleetShipsEntry` before maps existed
-  compiles today and would be refused only on its own later edit, which
-  touches no byte anyone wrote.
-- **Its field ids are two CONSTANTS**: `key` is `0xA079` and `value` is
-  `0x9194`, the fold (§5) of those two names, and they never move. That is what
-  makes a user's own `table Pair` — a `key string(32)` and a
-  `value ShipConfig` — under
-  `[..N]Pair` the SAME BYTES as the map — the migration path from the
-  table-of-pairs idiom a schema used before maps existed, and the proof that a
-  map is an array of tables rather than a new thing.
+  claimed for an optional (§11): a unit that declares anything under a name
+  the map claims is refused, naming the map. A stored file never
+  carries the name, because an entry rides under kinds and field ids and
+  never under a type id, so a unit that declared `FleetShipsEntry` before
+  maps existed is refused only on its own later edit, which touches no byte
+  anyone wrote.
+- **Its field ids are two CONSTANTS, and they are the ORDINARY hash of two
+  ordinary names.** Whatever the wire's id rule is, `key` and `value` ride
+  under it, so nothing about a map's entry is reserved and nothing is
+  special-cased. Under §5's fold `key` is `0xA079` and `value` is `0x9194`.
+  Under the uniform 64-bit wire (schema#435) the rule is `fnv1a64` of the same
+  two names, so `key` is `0x3DC94A19365B10EC` and `value` is
+  `0x7CE4FD9430E80CEA`, carried in that wire's id table like every other id,
+  first-use order and all, because an entry's two fields are two fields. The
+  constants move with the rule and never on their own. **That is what makes
+  the `[..N]Pair` MIGRATION true.** A user's own `table Pair` declares a
+  `key string(32)` and a `value ShipConfig`. Its bound array `[..N]Pair` is
+  the SAME BYTES as the map, because the two field ids are the same two
+  hashes. So the table-of-pairs idiom a schema used before maps existed is
+  the migration path, and a map is an array of tables rather than a new
+  thing.
 - **Its shape on the wire** is a kind `14` array of kind `13` elements: `L`,
-  then `element kind = 13`, `N`, then `N` entries, each `L` and a table body —
-  the `key` field, the `value` field, the `u16` terminator. Inside the body the
-  ordinary elision rule holds: a key at its default (`0`, or the empty string)
-  is not written and reads back as that default, and an all-default value is
-  not written; **but the ENTRY always rides**, because identity here is the
-  key and the entry's presence is the fact — an entry of key `0` holding a
-  default value is a body of two bytes, the terminator, and it rides.
+  then `element kind = 13`, `N`, then `N` entries, each an `L` and a table
+  body of the `key` field, the `value` field and the `u16` terminator. The
+  widths here are §3's wire as it stands. Under schema#435 ids are
+  references, `L` and `N` are canonical LEB128, and the terminator is the
+  zero reference. Inside the body the ordinary elision rule holds: a key at
+  its default, `0` or the empty string, is not written and reads back as that
+  default, and an all-default value is not written. **But the ENTRY always
+  rides**, because identity here is the key and the entry's presence is the
+  fact. An entry of key `0` holding a default value is a body of two bytes,
+  the terminator, and it rides.
 
-**THE SORT INVARIANT, and who holds it.** The WRITER holds it: `Measure`,
+**THE SORT INVARIANT, and who holds it.** The WRITER holds it. `Measure`,
 `Save`, `Lock` and `Cook` each write a map's entries in ascending key order
 with no key twice, deriving the order from the builder's entries as each walk
-derives the numbering (§3.1) — nothing passes between them, so `measure ==
-save` over a map is a real check on two sorts agreeing. A REGION and a COOK are
-therefore sorted, and `Find` never sorts. Byte-identical output against this
-implementation requires the order, as it requires declaration order and the
-node table's fill rule (§3).
+derives the numbering (§3.1). Nothing passes between them, so `measure ==
+save` over a map is a real check on two sorts agreeing. A REGION and a COOK
+are therefore sorted, and `Find` never sorts. Byte-identical output against
+this implementation requires the order, as it requires declaration order and
+the node table's fill rule (§3).
 
-**The READER trusts nothing and spends one compare per entry.** The region
-load (§6.5, the game's path) decodes entries in wire order and compares each
-key against the one before it:
+**THE READER TRUSTS NOTHING and spends one compare per entry.** Every load
+path applies the rules below and produces one report (§4), so the region load
+of §6.5 and `LoadBuilder` never disagree about a wire. That is what lets
+§4.2's oracle and §17.5's differential hold over a map: one wire, one set of
+counters, whichever path read it. A hand-made body is held to the sort like
+any other, and there is no path that forgives one.
 
-- **Ascending**: the entry lands in the next slot.
-- **Equal**: a DUPLICATE. The slot is RESET to the entry's defaults and the
-  repeat decodes into it — last wins WHOLE, so an elided field of the repeat
-  reads as its default and never as the first entry's value — and `duplicate`
-  is counted (§4). The map's count excludes it; the slot it would have taken
-  is the one slack a loaded region can carry, and a region packed by `Lock`
-  never has it, because the builder load already merged the repeat.
-- **Descending**: the body is not a map any conforming writer produced. The
-  map keeps the ascending prefix it has, `malformed` is set, and the parent
-  reads on past the field's length — §4's framing-damage rule, at the map.
-  Nothing is sorted at load, because the region path allocates nothing and
-  sorting entries that hold self-relative references would be a second pack
-  walk.
-
-**And the BUILDER load forgives what the region load reports.** `LoadBuilder`
-(the tool's path) inserts every entry by key — a repeat replaces, an order is
-irrelevant — and `Lock` sorts once, so a tool reads a plain array that was
-never sorted, or a hand-made body in any order, in full. That is §6.5's two
-paths doing what they already do: the fast path holds the writer to the
-contract and says so; the tool path takes anything and regenerates.
+- **THE KEY IS READ BEFORE THE SLOT IS CHOSEN.** Field order inside a body is
+  not contractual (§3), so the reader does not assume where the key sits.
+  Before an entry's body decodes, the reader SCANS that body's field headers
+  for the key's id and reads the key, which is a bounded string or an integer
+  and always a primitive. The scan decides the slot. Where the body carries
+  the key's id more than once the scan reads the occurrence §3's
+  repeated-field rule keeps, the last one. An entry whose body carries no key
+  field at all has the key's default. This implementation writes the key
+  first in every entry, so on any wire this schema wrote the scan ends at the
+  first header, and the rule is the scan and not the position.
+- **ASCENDING** against the key of the last entry that LANDED: the body
+  decodes into the next slot.
+- **EQUAL**: a DUPLICATE. The slot that entry took is RESET to the entry's
+  defaults and the repeat decodes into it, so last wins WHOLE and an elided field of
+  the repeat reads as its default and never as the first entry's value, and
+  `duplicate` is counted (§4). The map's count excludes it. The slot it would
+  have taken is the one slack a loaded region can carry, and a region packed
+  by `Lock` never has it, because the load already merged the repeat.
+- **DESCENDING**: the body is not a map any conforming writer produced. The
+  map keeps the ascending prefix it has, `malformed` is set, the map's
+  remaining bytes are skipped by the map's `L`, and the PARENT reads on past
+  the field's length. That is §4's framing-damage rule, at the map. Nothing
+  is sorted at load, because the region path allocates nothing and sorting
+  entries that hold self-relative references would be a second pack walk.
+- **KEYS NEVER CLAMP.** An entry whose key does not fit the reader's bound,
+  one longer than `N` or one a string value would clamp, is skipped by its
+  `L` and counted `clamped`, one count per entry. The order check compares
+  the WIRE keys of the entries that land, so a skipped entry can neither
+  reorder the map nor collide with one that stayed. A tightened key bound is
+  therefore lossy by whole entries and never malformed, and a widened one is
+  lossless. A key a string value would refuse as malformed makes the MAP
+  malformed.
+- **THE KEY KIND IS THE READER'S DECLARATION**, never the first entry's. At
+  the first entry whose key kind disagrees with the declaration the map
+  resets to EMPTY, ONE `kind_mismatch` is counted for the map, and the map's
+  remaining bytes are skipped by the map's `L`. Nothing after that entry is
+  decoded and nothing after it is counted. Events counted inside earlier
+  entries of that map stand. A map with half its keys is not a map, and an
+  entry placed under a defaulted key would be a misdecode wearing a default's
+  clothes. A VALUE field of the wrong kind is §4's ordinary per-field event
+  inside the entry: the value reads its default, the entry stays, and the
+  count is the field's. A map header whose ELEMENT kind is not `13` is the
+  ordinary array kind mismatch of §4.
 
 **How a FIXED-class reader skips a map**: it does not know it is one. A map
 is a kind `14` field, so a reader without the field reads `L` and skips `L`
-bytes under §3's second skip rule, counting `unknown`; a reader that declares
-the same name as a bounded array of a two-field table decodes it as that
-array. No new skip rule, no new kind, and a build from before maps existed
-reads a save that carries one.
+bytes under §3's second skip rule, counting `unknown`, and a reader that
+declares the same name as a bounded array of a two-field table decodes it as
+that array. No new skip rule, no new kind, and a build from before maps
+existed reads a save that carries one.
 
-**Tolerance and evolution**, each as §4's events:
+**Tolerance and evolution**, each as §4's events and each a row of §4.1's
+three-frames table:
 
-- **A key or a value that changed type between builds.** A kind mismatch
-  INSIDE the entry — `key` arriving as kind `12` where this reader declares
-  `uint32`, `value` arriving as `4` where this reader declares a table — is
-  the map's event, not the entry's: **the map reads EMPTY and ONE
-  `kind_mismatch` is counted.** The first entry decides — a writer writes one
-  key kind — and any later entry that disagrees is the same event, the map
-  reset to empty. A map with half its keys is not a map, and an entry placed
-  under a defaulted key would be a misdecode wearing a default's clothes.
-- **A map changed to or from `[..N]Entry`** is SILENT AND SAFE, the `T` / `?T`
-  class: the same bytes decode correctly in both directions, an array reading
-  a map's sorted entries and a map reading an array that was written ascending
-  — or reporting, as above, one that was not.
-- **A map changed to or from `[E]T`** is a kind mismatch (`14` against `16`,
-  §3.2); to or from a scalar, a string or a pointer, the same.
+- **A key or a value that changed KIND between builds.** A kind mismatch on
+  the KEY is the map's event, above. A kind mismatch on the value is the
+  entry's field event, above.
+- **A map changed to or from `[..N]Pair`**, where `Pair`'s fields are
+  exactly a `key` and a `value`, is the same bytes in both directions. The
+  MAP direction gains the order check, so a wire whose pairs were not
+  ascending reads short and says so. The baseline WARNS on the edit for that
+  reason (§18.2).
+- **A map changed to or from `[E]T`** is a kind mismatch, `14` against `16`
+  (§3.2), and to or from a scalar, a string or a pointer the same.
 - **A field added to, removed from or renamed under `was` in the VALUE's
-  table**: ordinary field evolution, inside every entry, reported per entry
+  table** is ordinary field evolution inside every entry, reported per entry
   as it is reported per table.
-- **A key's `string(N)` bound tightened**: a key longer than the reader's `N`
-  is clamped at a code point boundary and counted `clamped`, exactly as any
-  string is — and two keys that clamp to one are then a duplicate, last wins,
-  counted. A widened bound loses nothing.
+- **A key's `string(N)` bound tightened** drops the entries that no longer
+  fit and counts `clamped`, one per entry, by the rule above.
 - **A map renamed** is `was`'s case, as any field's is.
 - **The baseline** (§18) judges the entry's two fields as it judges any
-  field: a key or value kind change is refused until the baseline moves with a
-  reason.
+  field: a key or value kind change is refused until the baseline moves with
+  a reason.
+
+**THE BUILD VERSION AND THE BASELINE SEE THE ENTRY, AND NEITHER SEES ITS
+NAME.** The entry is ANONYMOUS in both projections. Its line is keyed by the
+holder's wire id and the map field's wire id, never by the generated name, so
+a `was` rename of the holder or of the map field moves no line and no cooked
+file is invalidated by a rename (§20.1, §18.1). The KEY's kind and its
+capacity ride on the entry's own `key` line, and the VALUE's on its `value`
+line, so a key kind changed, a key bound moved or a value retyped moves the
+id and moves the baseline exactly as any field's does.
 
 **THE TEXT FORM is a plain JSON object keyed by the KEY** (§16), the same
 shape an enum-keyed array already takes:
@@ -1536,220 +1597,240 @@ shape an enum-keyed array already takes:
 
 - **A string key is the string.** Every JSON key of a map object is a KEY OF
   THE MAP and none is a field key, so the `&` prefix §16.7 reserves for field
-  keys is ordinary data here — `"&x"` is a legal string key — and the `&node`
-  construct lives in the VALUE object, where a pointer's object already puts
-  it. Longer than `N` clamps and counts, as a string value does.
-- **An integer key is the integer's decimal spelling, quoted**, because a JSON
-  object's keys are strings: `"7"`, `"-3"`, `"18446744073709551615"`. A
-  writer spells the value as the number would be spelled unquoted; a reader
-  accepts exactly that — digits, one optional leading `-` on a signed kind, no
-  leading zero, no fraction, no exponent — and any other text under an integer
-  key is `malformed`, the label rule of §16.7 applied to a key. A value
-  outside the key kind's range is `kind_mismatch` for that entry, dropped and
-  counted, never clamped, because a clamped key is a merged entry.
-- **`ToJson` writes entries in ASCENDING KEY ORDER**, so `unpack` → `pack` is
-  byte-stable (§17.2) and a diff of two texts is a diff of two maps.
-- **`FromJson` reads keys in whatever order the text gives them**; a repeated
+  keys is ordinary data here and `"&x"` is a legal string key, and the
+  `&node` construct lives in the VALUE object, where a pointer's object
+  already puts it. A key longer than `N` drops its entry and counts
+  `clamped`, the wire's rule above, because a clamped key is a merged entry.
+- **An integer key is the integer's decimal spelling, quoted**, because a
+  JSON object's keys are strings: `"7"`, `"-3"`,
+  `"18446744073709551615"`. The token is read by §16.2's integer rule and by
+  nothing else, so `"2.0"` and `"1e3"` are the integers 2 and 1000 and
+  `"-0"` is zero. A token that rule calls `malformed` makes the KEY
+  malformed, and a malformed key stops the read where §16.1's rule stops it,
+  with the instance holding what was placed before the stop. A token with a
+  genuinely fractional value, and a value outside the key kind's range, is
+  `kind_mismatch` for that entry, which is dropped and counted, never
+  clamped.
+- **`ToJson` writes entries in ASCENDING KEY ORDER**, so `unpack` then `pack`
+  is byte-stable (§17.2) and a diff of two texts is a diff of two maps.
+- **`FromJson` reads keys in whatever order the text gives them.** A repeated
   key is last-wins and counted `duplicate`, the object rule (§16.2) applied
-  inside the map. An empty object is an empty map; `null` is `kind_mismatch`.
+  inside the map. An empty object is an empty map, and `null` is
+  `kind_mismatch`.
 
 **THE COOK, and the generated `Find`.** A cook is a region written verbatim
 (§7), so a cooked map is its sorted entry array where the cook put it, and
-`Find` is a binary search over it — `⌈log₂ n⌉ + 1` key compares, in place, no
-allocation, no parse, the same call in a locked region, a loaded one and an
-opened cook, because they are one encoding (§6.3). `schema cook-check` bounds
-a map as it bounds a count companion — `count × sizeof( Entry )` inside the
-node's extent — and checks the ORDER, entry by entry, because an out-of-order
-cook is one `Find` cannot search and a forged one is what the check is for. A
-cook and a loaded region are IMMUTABLE, and that is one rule for maps and for
-every node: there is no insert into a cook and no erase from a region; tools
-regenerate (§7).
+`Find` is a binary search over it: `floor( log2 n ) + 1` key compares, in
+place, no allocation, no parse, the same call in a locked region, a loaded
+one and an opened cook, because they are one encoding (§6.3). `schema
+cook-check` bounds a map as it bounds a count companion and checks the ORDER
+entry by entry (§7.4), because an out-of-order cook is one `Find` cannot
+search and a forged one is what the check is for. A cook and a loaded region
+are IMMUTABLE, and that is one rule for maps and for every node: there is no
+insert into a cook and no erase from a region, and tools regenerate (§7).
 
 **THE BLOCK FORM: none, and there is no variable case.** A map makes its
 holder variable-length, and a variable-length table has no block form (§2.7,
-§19) — no fixed pitch anywhere in its closure. A block-form table therefore
-never holds a map, and a map's entries are never rows: the absence is by
-absence, exactly as a pointered table's is, and nothing is refused for asking.
+§19), because there is no fixed pitch anywhere in its closure. A block-form
+table therefore never holds a map, and a map's entries are never rows. The
+absence is by absence, exactly as a pointered table's is, and nothing is
+refused for asking.
 
-**MEMORY LAYOUT.** The owner's question, 2026-09-03: *"how will the map be
-laid out in memory? Is it open or closed addressing?"* — and the answer is
-NEITHER, on the read side. **THE layout is a SORTED ENTRY ARRAY, and it is
-the same one in three places**: the wire's element order, the cook's bytes,
-and a loaded region.
+**MEMORY LAYOUT.** The layout is a SORTED ENTRY ARRAY, and it is neither open
+nor closed addressing on the read side. **It is the same array in three
+places**: the wire's element order, the cook's bytes, and a loaded region.
 
 - **In a record**, a map field is sixteen bytes: an `int64` self-relative
-  reference to the entry array and a `uint32` count, then padding to eight.
-  The reference is a `TableRef` like a pointer's (§6.3): in the arena it names
-  the builder's map head (below), in a region it is the delta from the slot to
-  the first entry, and `0` is the empty map in both. In the arena the slot's
-  count is the LIVE count — the head holds the dead count beside it — and
-  `Lock` writes the same number into the region.
+  reference to the entry array and an `int32` count, then padding to eight.
+  The reference is a `TableRef` like a pointer's (§6.3). In the arena it
+  names the builder's map head (below), in a region it is the delta from the
+  slot to the first entry, and `0` is the empty map in both. The count is the
+  `int32` every count companion has (§7.2), and §2.2's `int32` extent cap is
+  the cap: a wire `N` above it is refused as any array's count is, at both
+  wire widths. In the arena the slot's count is the LIVE count, the head
+  holds the dead count beside it, and `Lock` writes the same number into the
+  region.
 - **The entries are BY-VALUE RECORDS INSIDE THE HOLDER'S NODE EXTENT**, laid
   after the record's own storage: `count × sizeof( Entry )` at
   `alignof( Entry )`, zero slack, one array per map reachable by value from
-  the record — a map inside a nested table, a map inside an entry — in
-  depth-first field order. The placement is PRE-ORDER: a map's whole entry
-  array first, then, entry by entry in key order, the arrays of any map an
-  entry's value holds by value. A node's extent still runs to the next directory
-  entry (§6.3), `LoadMeasure` sums it from the framing (`N` is framing, not a
-  value), the directory gains no position and the wire's numbering gains no
-  index: a map is a bounded array whose bound was decided at pack time.
+  the record, which includes a map inside a nested table and a map inside an
+  entry, in depth-first field order. The placement is PRE-ORDER: a map's
+  whole entry array first, then, entry by entry in key order, the arrays of
+  any map an entry's value holds by value. A node's extent still runs to the
+  next directory entry (§6.3), `LoadMeasure` sums it from the framing, since
+  `N` is framing and not a value, and the directory gains no position and the
+  wire's numbering gains no index. A map is a bounded array whose bound was
+  decided at pack time.
+- **`LoadMeasure`'s term for a map is `N × sizeof( Entry )` rounded up to
+  `alignof( Entry )`, at every depth** (§6.5). A wire whose `N` cannot fit in
+  the map's `L` is refused, and the refusal is the `-1` every measure's
+  refusal answers (§7.6). An unreached non-empty map slot is refused by
+  `Cook` and by `Lock`, the same refusal §7.6 gives a pointer in that
+  position: a non-null slot in storage the walk did not reach names entries
+  the region will not hold, so the write answers `false` and nothing partial
+  is written.
 - **What that buys is everything the cook exists for.** Zero bytes past the
-  entries themselves; `Open` still O(1) and untouched; `Find` in place with
-  `log n` compares and no pointer chase; the same arithmetic in nine languages
-  with nothing to reproduce but a compare; `memcpy` relocation intact, because
-  the one reference is self-relative; and a byte-stable cook, because a sorted
-  array of records has exactly one image.
+  entries themselves. `Open` still O(1) and untouched. `Find` in place with
+  `log n` compares and no pointer chase. The same arithmetic in nine
+  languages with nothing to reproduce but a compare. `memcpy` relocation
+  intact, because the one reference is self-relative. And a byte-stable cook,
+  because a sorted array of records has exactly one image.
 - **NEVER closed addressing.** A node per entry is a pointer per entry, an
   allocation per entry on the authoring side, a directory entry per entry in
-  every cook and a pointer chase per probe on the read side — and a region
+  every cook and a pointer chase per probe on the read side, and a region
   would carry a linked structure whose every link is a relocatable reference.
   It answers the builder's growth question badly and the reader's lookup
   question worse.
-- **Open addressing with LINEAR PROBING is the OPTIONAL RUNTIME INDEX**, built
-  AT LOAD, for a map large enough that `log n` compares over a cold array cost
-  more than one hash and a probe. It is never stored: the caller measures it
-  (`<Table><Field>IndexMeasure` from the count), owns its storage, builds it
-  over the sorted array in one pass, and releases it whenever; slots are
-  entry indices. **Its HASH and its LOAD FACTOR are NOT a cross-port
-  contract, and that is a rule**: the index is never stored, so each
-  language's runtime picks its own hash and its own load factor, the wire and
-  the cook carry no index and no fact about one, and no golden, no
+- **Open addressing with LINEAR PROBING is the OPTIONAL RUNTIME INDEX**,
+  built AT LOAD, for a map large enough that `log n` compares over a cold
+  array cost more than one hash and a probe. It is never stored: the caller
+  measures it with `<Table><Field>IndexMeasure` from the count, owns its
+  storage, builds it over the sorted array in one pass, and releases it
+  whenever. Slots are entry indices. **Its HASH and its LOAD FACTOR are NOT a
+  cross-port contract, and that is a rule.** The index is never stored, so
+  each language's runtime picks its own hash and its own load factor, the
+  wire and the cook carry no index and no fact about one, and no golden, no
   `cook-check` rule and no build-version line ever names either. What a port
-  is held to is the CONTRACT of the lookup — the same value the sorted array's
+  is held to is the CONTRACT of the lookup: the same value the sorted array's
   `Find` returns for the same key, and no allocation past the storage the
-  caller handed in. **Storing it would have made both a COOK CONTRACT** — a
+  caller handed in. **Storing it would have made both a COOK CONTRACT**, a
   hash function, a slot count and a probe sequence that every port reproduces
-  byte for byte, that `schema cook-check` verifies, and that the build version
-  digests — for bytes per entry the sorted array does not spend. A lookup is a
-  runtime thing; the index is the runtime's. **And it is
-  measured before it is reached for**: eight compares over a few hundred
-  64-byte entries sit in one cache's worth of lines, and the size at which
-  the index wins is a number the tables bench states, not one this page
-  guesses.
+  byte for byte, that `schema cook-check` verifies and that the build version
+  digests, for bytes per entry the sorted array does not spend. A lookup is a
+  runtime thing, and the index is the runtime's. **And it is measured before
+  it is reached for**: eight compares over a few hundred 64-byte entries sit
+  in one cache's worth of lines, and the size at which the index wins is a
+  number the tables bench states.
 
-**ALLOCATION, GROWTH AND DELETES.** The owner's second question: *"How is
-memory for keys/values allocated? Grown? Does it support deletes?"*
+**ALLOCATION, GROWTH AND DELETES.**
 
 - **Entries are entry tables in the builder's arena, allocated in BULK
-  SEGMENTS through the builder's `TableAllocator` pair (§6.4, §13.9), never
-  one call per entry.** A map's builder head — a small node in the arena
-  holding the segment chain, the live count and the dead count —
-  is allocated when the first entry is inserted; each segment is a fixed
-  number of entries carved from one call to the pair, and a new segment is
-  appended when the current one fills. **Nothing ever moves** (§6.4): an
-  entry's address is stable for the arena's life, so a `ShipConfig *` handed
-  back by an insert stays valid while other entries arrive.
-- **The builder keeps INSERTION ORDER**, and sorting is the walk's job — once,
-  at `Measure`, `Save`, `Lock` and `Cook`, over an array of entry pointers
-  those walks allocate through the pair and release before returning, as the
-  numbering is (§3.1). Sorting the segments themselves would move entries
-  whose addresses a caller holds.
+  SEGMENTS through the builder's `TableAllocator` hook pair (§6.4, §13.9),
+  never one call per entry.** A map's builder HEAD, a small node in the arena
+  holding the segment chain, the live count and the dead count, is allocated
+  when the first entry is inserted. Each segment is a fixed number of entries
+  carved from one call to the pair, and a new segment is appended when the
+  current one fills. **Nothing ever moves** (§6.4): an entry's address is
+  stable for the arena's life, so a `ShipConfig *` handed back by an insert
+  stays valid while other entries arrive.
+- **The builder keeps INSERTION ORDER.** The four writing walks sort (above),
+  over an array of entry pointers they allocate through the pair and release
+  before returning, as the numbering is (§3.1). Sorting the segments
+  themselves would move entries whose addresses a caller holds.
 - **The builder builds NO INDEX, and that is a rule.** An insert APPENDS
-  after one LINEAR SCAN of the live entries for the key it may replace;
-  `Find` on an unlocked builder is that same scan — `O( n )` key compares
-  over the segments, in insertion order — and `Erase` is the scan and one
-  bit. The cost is stated so nobody is surprised by it: a build that inserts
-  `n` entries into one map pays `O( n² )` compares on the AUTHORING side,
-  where §6.5 licenses the cost and where a tool's map is hundreds of entries;
-  the sort happens ONCE, at `Lock`, `Save` or `Cook`, and every lookup that
-  matters runs over the sorted region. A builder-side hash index would be one
-  more structure with a growth rule, a lifetime and a per-port shape, for a
-  path the game never runs — one fewer case, and the builder keeps exactly
-  the two things it has for every node: segments that never move and a walk
-  that packs them.
-- **Insert of a DUPLICATE REPLACES**: the value is reset to its defaults and
+  after one LINEAR SCAN of the live entries for the key it may replace.
+  `Find` on an unlocked builder is that same scan, `O( n )` key compares over
+  the segments in insertion order, and `Erase` is the scan and one bit. A
+  build that inserts `n` entries into one map therefore pays `O( n² )`
+  compares on the AUTHORING side, where §6.5 licenses the cost and where a
+  tool's map is hundreds of entries. The sort happens ONCE, at `Lock`, `Save`
+  or `Cook`, and every lookup that matters runs over the sorted region. A
+  builder-side hash index would be one more structure with a growth rule, a
+  lifetime and a per-port shape, for a path the game never runs. One fewer
+  case, and the builder keeps exactly the two things it has for every node:
+  segments that never move and a walk that packs them.
+- **Insert of a DUPLICATE REPLACES.** The value is reset to its defaults and
   handed back to fill, the key and the entry's address unchanged. A caller
   that wants to know writes `Find` first.
 - **DELETES are the BUILDER's, and nowhere else.** `Erase` marks the entry
-  DEAD — one bit in the segment's slot, not in the entry table — and
-  decrements the live count. `Measure`, `Save`, `Lock`
-  and `Cook` skip dead entries, so a dead entry costs nothing on any wire and
-  in any region. **Its storage is reclaimed at RESET and never reused
-  mid-build**: an insert after an erase appends a new entry, because reusing
-  a slot would make "an entry's address is stable" false for exactly one
-  case. A REGION and a COOK are immutable, so they have no erase: tools
-  regenerate.
+  DEAD, one bit in the segment's slot and not in the entry table, and
+  decrements the live count. `Measure`, `Save`, `Lock` and `Cook` skip dead
+  entries, so a dead entry costs nothing on any wire and in any region. **Its
+  storage is reclaimed at RESET and never reused mid-build**: an insert after
+  an erase appends a new entry, because reusing a slot would make "an entry's
+  address is stable" false for exactly one case. A REGION and a COOK are
+  immutable (the cook, above), so they have no erase.
 - **One map, one worker at a time.** Two workers inserting into ONE map is
   the caller's synchronization problem, as writing one node from two workers
-  is (§6.4); two workers inserting into two different maps are safe, because
+  is (§6.4). Two workers inserting into two different maps are safe, because
   each map's head and segments are its own.
 
-**COST MODEL**, per entry unless stated.
+**COST MODEL**, per entry unless stated. The wire rows are §3's wire as it
+stands, and schema#435 moves them as it moves every framing width.
 
 | where | what it costs | note |
 |---|---|---|
-| the wire, a scalar value | `12 + key + value` bytes | `L`, two field headers, the terminator; a value that is a table adds its own `L` and terminator: `+6` |
-| the wire, the map field | `12` bytes once | id, kind, `L`, element kind, `N` — exactly an array of tables |
+| the wire, a scalar value | `12 + key + value` bytes | `L`, two field headers, the terminator; a value that is a table adds its own `L` and terminator, `+6` |
+| the wire, the map field | `12` bytes once | id, kind, `L`, element kind, `N`, exactly an array of tables |
 | a region or a cook | `sizeof( Entry )`, plus `16` per map field | zero framing, zero attribution beyond the holder node's own entry |
 | `Load` into a region | one key compare, no allocation | plus the decode every array of tables already pays |
-| `Find` | `⌈log₂ n⌉ + 1` key compares, no allocation | in place, one form, every language |
-| the optional index | slots of entry indices at the runtime's own load factor, one hash per lookup | caller-owned, built at load, never stored; hash and load factor are the port's |
-| the builder, insert | one linear scan of the live entries, then an append; no allocation on the fill path | segments come in bulk; `O( n² )` over a build of `n` |
+| `Find` | `floor( log2 n ) + 1` key compares, no allocation | in place, one form, every language |
+| the optional index | slots of entry indices at the runtime's own load factor, one hash per lookup | caller-owned, built at load, never stored |
+| the builder, insert | one linear scan of the live entries, then an append; no allocation on the fill path | segments come in bulk, `O( n² )` over a build of `n` |
 | the builder, find | one linear scan, `O( n )` | the builder has no index |
 | the builder, erase | one linear scan, one bit | storage held until reset |
 | `Lock`, `Save`, `Cook` | `O( n log n )` once per map, an array of `n` pointers | the authoring side, where §6.5 licenses it |
 
-**Against the alternatives**, stated once so nobody re-derives them: a
-dedicated map KIND would save twelve bytes an entry — the entry's `L`, both
-field headers and the terminator, with the key and value kinds ridden once in
-the map's header — and would
-make a key-kind change one event by construction; it costs a kind number no
-3.0.0 reader can skip, and it loses the `[..N]Pair` migration. FLATTENING the
-value's fields into the entry beside the key, FlatBuffers' `(key)` idiom,
-saves the value field's seven bytes an entry and loses the tuple: a scalar,
-a pointer and a map are then three shapes of entry where the tuple has one.
+**NEGATIVE CONTROLS the implementation carries.** Each names the sabotage,
+the corpus row or instance that meets it, and the one instrument that goes
+red:
 
-**NEGATIVE CONTROLS the implementation carries**, each naming what it stands
-in front of:
-
-- **The writer emits insertion order** instead of sorted: the pinned wire
-  golden reds, `measure == save` still holds, and the region-load check reds
-  on the first descending key — three instruments, one sabotage.
-- **The reader's ascending check is dropped**: a shuffled hostile body loads
-  clean and `Find` misses a key that is present; the gate that finds every
-  key after loading every corpus body reds.
-- **The duplicate rule is dropped** — first wins, or both kept: the corpus's
-  duplicate case reds on the value and on the counter.
-- **An allocation is planted in `Load` or `Find`**: the allocation audit reds
-  in every port that has one.
-- **A `TableMap` symbol is planted in a map-free unit's header**: the
-  zero-cost refuser reds.
-- **`schema cook-check`'s order check is dropped**: a cook with two entries
-  swapped passes the check and `Find` fails on it; the forgery battery reds.
-- **The key-kind rule decodes anyway**: an entry under a defaulted key lands;
-  the never-misdecoded gate reds.
-- **The enum-key refusal is dropped**: a schema declaring `map[ShipType]T`
-  compiles; the checker suite reds.
-- **A string key spelled with a leading zero**, an integer key spelled `1.0`,
-  and a duplicate JSON key: each refused or counted in both engines, in the
-  corpus battery.
-- **Two keys naming one node** resolve to one address after a text round trip
-  and to one body in a region; a control that writes the node twice reds the
-  identity check and the region's byte count.
-- **`Save` emits a DEAD entry**: the pinned golden reds while
-  `measure == save` still holds, which is what says the sabotage is the
-  skip and not the arithmetic.
+- **The writer emits insertion order** instead of sorted. An `instance` built
+  OUT OF KEY ORDER is what meets it, and the byte compare against its pinned
+  wire goes red while `measure == save` still holds, which is what says the
+  sabotage is the sort and not the arithmetic.
+- **The reader's ascending check is dropped.** A `report` row whose body is a
+  SHUFFLED map is what meets it, and the row's `malformed` flag goes red.
+- **The duplicate rule is dropped**, first wins or both kept. A `report` row
+  whose DUPLICATE entry ELIDES a field the first occurrence set is what meets
+  it, and the decoded value goes red, because a reader that overlays instead
+  of resetting agrees with the rule on every other body.
+- **The parent stops at a descending key** instead of reading on. A `report`
+  row whose map has a descending key and whose HOLDER carries a field after
+  the map is what meets it, and that field's decoded value goes red.
+- **The key-kind rule decodes anyway.** A `report` row written under a
+  CHANGED KEY KIND is what meets it, and its five counters go red, because an
+  entry lands under a defaulted key where the row says the map is empty.
+- **The key-kind event is counted PER ENTRY** instead of once for the map. A
+  `report` row whose SECOND entry is the first to disagree is what meets it,
+  and the `kind_mismatch` count goes red.
+- **An allocation is planted in `Load` or `Find`.** Every corpus body meets
+  it, and the allocation audit goes red in every port that has one.
+- **A `TableMap` symbol is planted in a map-free unit's header.** The
+  zero-cost gate's header scan (§2.2) goes red.
+- **`schema cook-check`'s order check is dropped.** A cook with two entries
+  swapped is what meets it, and `cook-check` goes red on it.
+- **`schema cook-check`'s entry-array check is dropped** (§7.4). A cook whose
+  map slot points its array past the holder's extent is what meets it, and
+  `cook-check` goes red on it.
+- **The enum-key refusal is dropped.** A schema declaring `map[ShipType]T` is
+  what meets it, and the checker's refusal test goes red.
+- **The by-value cycle `map[K]Self`, and a declared table under the claimed
+  entry name.** Each has its own schema, and the checker's refusal test goes
+  red if either compiles.
+- **The walk visits maps out of declaration order**, grouped after the
+  pointer fields. An `instance` whose map of `*T` values is DECLARED BEFORE a
+  pointer field and reaches a shared node first is what meets it, and the byte
+  compare against its pinned wire goes red on the node numbering.
+- **A shared node is written twice.** An `instance` whose two keys name one
+  node is what meets it, and both the region's byte count and the text round
+  trip's `&node` resolution go red.
+- **`Save` emits a DEAD entry.** An `instance` that ERASES is what meets it,
+  and the byte compare against its pinned wire goes red while `measure ==
+  save` still holds.
 - **One map from two insertion orders** produces one image on the wire, in a
-  region and in a cook; dropping the sort reds the byte compare.
-- **`LoadBuilder` of an UNSORTED body, then `Lock`**, is a sorted region with
-  every key present; the tool-path gate reds if the builder load rejects what
-  the region load reports.
-- **`N = 0xFFFFFFFF` under a six-byte `L`**: `LoadMeasure` refuses it as
-  `malformed` rather than answering `N × sizeof( Entry )`; dropping the fit
-  check reds on a wire of thirty bytes asking for gigabytes.
-- **A key longer than `N` on insert is REFUSED**, and the wire's
-  clamp-then-duplicate case — two keys that clamp to one — is in the corpus
-  with `clamped` and `duplicate` both counted; a control that clamps on insert
-  reds the refusal, and one that keeps the first entry reds the counter.
-- **The by-value cycle `map[K]Self` and a declared table under the claimed
-  entry name**: the checker suite reds if either compiles.
-- **The build version MOVES when the entry's record lines change** — a field
-  added to the value's table, a key bound raised — **and not before**: a
-  map-free unit's id is unchanged by the construct existing, and a `was`
-  rename of the map moves nothing.
+  region and in a cook. Two instances built in different orders meet it, and
+  the byte compare between them goes red if the sort is dropped.
+- **`N = 0xFFFFFFFF` under a six-byte `L`.** A `report` row of thirty bytes
+  asking for gigabytes is what meets it, and `LoadMeasure`'s answer goes red
+  if the fit check is dropped.
+- **`LoadMeasure` over a MAP OF MAPS.** An `instance` whose value is itself a
+  map is what meets it, and the measure goes red against the region `Load`
+  fills if the term is summed at one depth only.
+- **A key longer than `N` on insert is REFUSED.** An `instance` that inserts
+  one is what meets it, and the insert's NULL goes red if a control clamps
+  instead.
+- **The reader CLAMPS a key** instead of dropping its entry. A `report` row
+  whose key is longer than the reader's bound is what meets it, and the
+  DECODED VALUE goes red, because a clamped key merges two entries where the
+  rule drops one. The `clamped` count alone cannot separate the two, which is
+  why the value is the half that says it.
+- **The build version MOVES when the entry's lines change, and not before.** A
+  RAISED KEY BOUND is what meets it, because it moves the entry's `key` line
+  and nothing else. A map-free unit's id is unchanged by the construct
+  existing, and a `was` rename of the map moves nothing.
 
-**THE C++ SKETCH**, in the dialect (§13.9), a builder and a reader.
+**THE C++ SURFACE**, in the dialect (§13.9), a builder and a reader.
 
 ```cpp
 FleetBuilder builder;                                   // the arena, and the root
@@ -1781,7 +1862,7 @@ const Fleet * locked = builder.AsConst();
 // the const form — a locked region, a loaded one, an opened cook — is one surface
 const ShipConfig * ship = locked->ships.Find( "fighter" );   // log n, in place, NULL when absent
 for ( auto [ key, ship ] : locked->ships ) { ... }            // ASCENDING key order
-uint32_t n = locked->ships.size();
+int32_t n = locked->ships.size();
 
 // the optional index, the caller's memory, never stored
 int64_t bytes = FleetShipsIndexMeasure( locked->ships );
@@ -1793,67 +1874,66 @@ schema_release( storage );
 
 - **The const form's `Find`, `begin()`, `end()` and `size()` are MEMBERS of
   the storage type** `TableMap<FleetShipsEntry>`, as `TableKeyed`'s surface is
-  (§2.4): a region reference resolves from the slot's own address, so a member
-  needs no base and no context. Iteration yields the KEY beside a reference to
-  the VALUE, a proxy by value, ascending — the keyed array's shape, so a rule
-  learned there is the rule here — and carries no `iterator_traits` (§13.9).
-- **The builder's five are FREE FUNCTIONS taking the worker or the arena**,
-  as `Emplace` and the arena `At` overloads are (§6.2): an arena reference
-  resolves through the arena, so the builder's surface says which arena.
-  `Insert` takes the WORKER because it may allocate a segment; `Find`, `Erase`
-  and `Each` take the arena because they never do.
-- **A string key is a `const char *`** at the call site, NUL-terminated, the
-  same bytes the `string(N)` storage holds (§7.2); an integer key is its
-  integer. Longer than `N` is refused on insert — a truncated key would be
-  a merged entry — and clamped-and-counted on the wire and in a text, where
-  refusing is not the reader's to do.
+  (§2.4), because a region reference resolves from the slot's own address, so
+  a member needs no base and no context. Iteration yields the KEY beside a
+  reference to the VALUE, a proxy by value, ascending, which is the keyed
+  array's shape, so a rule learned there is the rule here, and it carries no
+  `iterator_traits` (§13.9). The key is yielded in the same form the call site
+  takes it, below.
+- **On a `map[K]*T` the const `Find` answers what a pointer field's accessor
+  answers**: the RESOLVED `const T *`, one add on the self-relative delta, and
+  NULL when the reference is null, exactly as `<T>At` answers it (§6.2, §6.3).
+- **The builder's five are FREE FUNCTIONS taking the worker or the arena**, as
+  `Emplace` and the arena `At` overloads are (§6.2), because an arena
+  reference resolves through the arena, so the builder's surface says which
+  arena. `Insert` takes the WORKER because it may allocate a segment.
+  `Find`, `Erase` and `Each` take the arena because they never do.
+- **A string key is a `const char *`** at the call site and out of an
+  iteration alike, NUL-terminated, the same bytes the `string(N)` storage
+  holds (§7.2), and an integer key is its integer. **`Insert` answers NULL for a key longer than `N` and for an arena
+  that cannot carve another segment alike**, because a truncated key would be
+  a merged entry. NULL means NOT INSERTED, and a caller that needs the reason
+  checks the key's length before the call. On the wire and in a text, where
+  refusing is not the reader's to do, an oversized key drops its entry and
+  counts `clamped`.
 - **`Emplace` and `Insert` compose**: a `map[K]*T`'s insert hands back the
   pointer SLOT at null, and `Emplace` fills it as it fills any pointer slot.
-- **`Find` on the builder is a linear scan; `Find` on the const form is the
-  binary search.** The two are different functions with one name because they
-  are one question over two encodings, exactly as `At` is — and the builder's
-  is the slow one on purpose, because the builder has no index (above).
+- **`Find` NAMES TWO FUNCTIONS over two encodings**, the builder's scan and
+  the const form's binary search, exactly as `At` does. One question, two
+  encodings, and the builder's is the slow one on purpose.
 - **Every port spells these in its own idiom and mirrors the contract**: a
   const `Find` that is a binary search and allocates nothing, ascending
-  iteration, and a builder surface where a port has a builder. The reading
-  tier (Elixir) has `Find` and iteration over an opened cook and a loaded
-  region and no builder, as it has no builder for anything (§2's status).
+  iteration, and a builder surface where a port has a builder. Elixir, the
+  READING TIER (the ladder), has `Find` and iteration over an opened cook and
+  a loaded region and no builder, as it has no builder for anything.
 
-**CAN a map ride on the kinds the wire has, and SHOULD it?** The owner's
-instruction, 2026-09-03: *"even if you can express it with no wire changes,
-ask it if you SHOULD."* Both answers, separately.
+**WHY THE MAP SPENDS NO WIRE KIND.** Every reader that exists skips a map by
+`L` or decodes it as the array of tables it is, on the shape above. Not one
+byte of framing is new and not one skip rule. **A kind is spent to close a
+SILENT edit** (§3.1, §3.2): kind `17` exists because a node index and a
+`uint32` are the same four bytes, and kind `16` because a keyed array and an
+array are. There is no silent edit here, because a map and an array of pairs
+are the same data read correctly either way in both directions, so a kind
+would buy bytes and nothing else, and every kind is a row nine ports skip
+forever. The unspent kind is also what keeps the `[..N]Pair` migration, which
+a dedicated kind would end.
 
-**CAN: yes, exactly.** A map is a kind `14` array of kind `13` entries whose
-bodies carry two fields under two constant ids. Every reader that exists
-skips it by `L` or decodes it as the array of tables it is; the sort is a
-writer's obligation a reader verifies with one compare and never depends on
-for framing; the count is the array's `N`; the entry's ids are the fold of
-`key` and `value`. Not one byte of framing is new and not one skip rule.
+**The price of the unspent kind, stated.** Twelve bytes an entry, the entry's
+`L`, both field headers and the terminator, which a dedicated kind would ride
+once in the map's header. It is paid on the WIRE only, the read-hot write-cold
+form whose framing is already 62% of a record (the ladder), and the region and
+the cook, the forms a game reads, spend zero. It also costs a per-map rule for
+a key-kind change that a dedicated kind would have made a field-level kind
+mismatch for free, and that rule is stated above. FLATTENING the value's
+fields into the entry beside the key, FlatBuffers' `(key)` idiom, would save
+the value field's seven bytes an entry and lose the tuple: a scalar, a pointer
+and a map would be three shapes of entry where the tuple has one.
 
-**SHOULD: yes, and the costs each way are these.** Riding on `14` and `13`
-costs twelve bytes an entry against a dedicated kind — the entry's `L`, both
-field headers and the terminator, with the key and value kinds ridden once in
-the map's header — on the wire ONLY, which is the read-hot, write-cold form whose
-framing is already 62% of a record (the ladder); the region and the cook, the
-forms a game reads, spend zero. It costs a per-map rule for a key-kind change
-where a dedicated kind would have made it a field-level kind mismatch for
-free; the rule is four lines and it is stated above. What it BUYS is
-decisive: a new kind is not skippable by a reader that does not know it (§3),
-so a dedicated map kind after 3.0.0 would make every 3.0.0 reader meet framing
-damage at the first map — which is a wire change, and the wire is settled at
-3.0.0 — while a map under `14`/`13` is bytes every 3.0.0 reader already
-handles. And it keeps the migration: a schema that spelled a lookup as
-`[..N]Pair` yesterday spells it `map[K]V` today and no stored file moves. A
-kind is spent to close a SILENT edit (§3.1, §3.2), and there is no silent edit
-here: a map and an array of pairs are the same data read correctly either way.
-So the kind stays unspent.
-
-**BEYOND BOTH.** Owner: *"Let's beat them both and do it better."* Protocol
-Buffers has `map<K, V>` — integral or string keys, no enum keys, order
-undefined, wire `repeated Entry { key = 1; value = 2 }`, lookup in the
-runtime's own hash map. FlatBuffers has no map: the idiom is a vector of tables
-sorted on a `(key)` field with `LookupByKey` binary-searching it. Row by row,
-with the section that holds each:
+**AGAINST THE FIELD.** Protocol Buffers has `map<K, V>`: integral or string
+keys, no enum keys, order undefined, wire `repeated Entry { key = 1; value = 2 }`,
+lookup in the runtime's own hash map. FlatBuffers has no map, and the idiom is
+a vector of tables sorted on a `(key)` field with `LookupByKey`
+binary-searching it. Row by row, with the section that holds each:
 
 | | schema | Protocol Buffers | FlatBuffers |
 |---|---|---|---|
@@ -1862,7 +1942,7 @@ with the section that holds each:
 | evolution by name | a key or value type change is reported, never misdecoded; the map reads empty and says so (§2.8, §4) | a type change misdecodes or drops by field number | none; a vtable slot's type is trusted |
 | a shared node as a value | `map[K]*T`: two keys, one node, on the wire, in a region and in the text as `&node` (§3.1, §16.7) | tree only; a value is copied per key | an `Offset` may be reused by the builder; nothing preserves it through text |
 | a map as a value | `map[K]map[K2]V`, by value, recursing (§2.8) | a map value may not be a map | a vector of tables of vectors, by hand |
-| zero allocation on `Load` and `Find`, every language | the region load allocates nothing and `Find` is in place (§6.5, §2.8); **the reading tier cannot claim zero and does not** — Elixir's count per iteration is pinned rather than zero, the instrument §2 states | a hash map is allocated on parse in every runtime | `LookupByKey` allocates nothing; in C++, Swift and C |
+| zero allocation on `Load` and `Find`, every language | the region load allocates nothing and `Find` is in place (§6.5, §2.8); **Elixir cannot claim zero and does not** — its count per iteration is pinned rather than zero, the instrument §2 states | a hash map is allocated on parse in every runtime | `LookupByKey` allocates nothing; in C++, Swift and C |
 | a cook looked up in place | `Open` is O(1) and `Find` runs over the mapped bytes (§7) | none; parse first | yes, the vector is the buffer |
 | byte-stable sorted output | `measure == save`, sorted by the writer, the same bytes from any insertion order (§9, §2.8) | order undefined; two serializations of one map may differ | the builder sorts when asked; nothing holds it to a byte |
 | the text form a plain object | `{ "key": value }`, integer keys quoted, ascending, `&node` for sharing (§16) | a JSON object, order unspecified | a JSON array of objects |
@@ -1871,24 +1951,8 @@ with the section that holds each:
 | the optional index at load | linear probing over the sorted array, caller-owned, never stored (§2.8) | the parsed map IS a hash map, always, allocated | none; binary search only |
 
 Where a row is not achievable it says so in the row: zero allocation is a
-claim about a language with caller-owned buffers, and the reading tier holds a
-pinned count instead, the same honest number it holds for every other read.
-
-**THE SEQUENCING.** Maps land AFTER 3.0.0, in the C++ reference first — the
-builder surface, the sort in the four walks, the region load's check, `Find`,
-the text form and the cook-check rule — then every port as a row on the
-parity matrix (schema#366), each holding the same goldens and the same
-allocation audit. **Nothing in the 3.0.0 wire forecloses it, and this is the
-explicit confirmation**: the wire's kind set is untouched (a map is `14` over
-`13`); the entry's field ids are folds of two names, computable by any reader
-from §5 alone; the sort is a writer rule a pre-map reader never sees; the
-text form is an object a pre-map fixed reader skips as an unknown key and
-counts; the region's layout puts entries inside a node's extent, so the
-directory and the numbering move nothing; the build version digests the
-entry's record lines when the record exists and not before; and the entry
-type's generated name is claimed with the construct, touching no stored byte.
-What 3.0.0 has to hold for maps to be possible it already holds for arrays of
-tables, and the sections above are the proof by construction.
+claim about a language with caller-owned buffers, and Elixir holds a pinned
+count instead, the same honest number it holds for every other read.
 
 ## 3. The wire
 
@@ -2157,7 +2221,8 @@ it; the pointer fields INSIDE an arm are indices like any other.
   order, array elements in index order, and descending through every
   by-value edge there is — a nested table, an element of a bounded or
   enum-keyed array, a member of a true `if` group, a present optional's
-  value, a union's set arm — to reach the pointer fields inside them. A
+  value, a union's set arm, an ENTRY OF A MAP in ascending key order
+  (§2.8) — to reach the pointer fields inside them. A
   node takes its index the first time it is reached and never again.
 - **A field the writer does not write is not an edge.** A pointer under a
   false guard, or inside an absent optional, is not visited and its
@@ -2624,13 +2689,17 @@ tolerance is the versioning model:
   reserved for a count the BODY cannot cover, which is framing damage and a
   different thing. The storage struct's size changes with the constant; the
   bytes do not.
-- **A MAP's key or value changed type** (§2.8): the kind mismatch is met
-  inside the first entry, and it is the MAP's event — the map reads EMPTY and
-  one `kind_mismatch` is counted, never an entry placed under a defaulted key.
-  A map changed to or from `[..N]Entry` is silent and safe, the same bytes read
-  correctly either way; to or from `[E]T` it is a kind mismatch (`14` against
-  `16`). A repeated key is `duplicate`, last wins; a descending key is
-  `malformed`, the map keeping its ascending prefix.
+- **A MAP's KEY changed type** (§2.8): the reader's declaration is the
+  reference, and at the first entry whose key kind disagrees with it the map
+  reads EMPTY, one `kind_mismatch` is counted for the map, and the rest of the
+  map is skipped by its `L`. An entry is never placed under a defaulted key. A
+  map's VALUE changed type is the ordinary per-field event inside the entry:
+  the value reads its default and the entry stays. A map changed to or from
+  `[..N]Pair` reads the same bytes in both directions, and the map direction
+  gains the order check. To or from `[E]T` it is a kind mismatch (`14` against
+  `16`). A repeated key is `duplicate` and last wins whole. A descending key is
+  `malformed`, the map keeping its ascending prefix. A key that does not fit
+  the reader's bound drops its entry and counts `clamped`, one per entry.
 - **Out-of-range value** (bounds tightened since the writer): clamped to
   the reader's declared bounds, counted. **A fixed field clamps on the RAW
   scale**: its declared bounds are whole units (SPEC.md §4.6) and the wire
@@ -2830,6 +2899,10 @@ only.
 | a field renamed under `was` | silent, and nothing is lost | passes; the edit that ADDS the `was` hints the `json =` pairing, because the wire id survives the rename and the text key does not (§16.4) | no — `was` holds the wire id fixed |
 | a field renamed a SECOND time, the new `was` naming the INTERMEDIATE spelling instead of the first | `unknown` on every old file; the new id was never written to | **refuses** — `was` names the first wire name, forever (§5) | **moves** |
 | an array BOUND or a string/`bytes` capacity moved | `clamped` past the reader's bound | warns on a shrink | **moves** |
+| a MAP's KEY kind changed (§2.8) | `kind_mismatch`, once for the map, which reads empty | **refuses** | **moves** |
+| a MAP's KEY BOUND tightened (§2.8) | `clamped`, one per entry dropped | warns on a shrink, as any capacity does | **moves** |
+| a MAP changed to or from `[..N]Pair` (§2.8) | silent where the pairs were ascending; the map's own `malformed` where they were not | **warns** — the read gains the order check, so a wire whose pairs were not ascending reads short | **moves** |
+| a MAP changed to or from `[E]T`, a scalar, a string or a pointer (§2.8) | `kind_mismatch` | **refuses** | **moves** |
 | a field moved between `T` and `?T` | silent — no byte moves | passes | **moves** — the presence companion is storage |
 | a field moved to or from `*T` | `kind_mismatch` | passes | **moves** |
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
@@ -2903,12 +2976,18 @@ that replays it:
    to write. A reader that reports correctly and fabricates a value from a
    neighbor's bytes fails here.
 4. **`LoadMeasure` never asks past a stated bound.** For a variable root the
-   region it asks for is held to the framing: when the node table read whole
-   the answer is EXACT — the root's storage, each record's storage by its type
-   id, and sixteen bytes of directory per node — and when it did not, the
-   answer may not exceed the most the framing could have commanded, which is
-   one record of the largest storage per twelve wire bytes. A measure that
-   sizes a region its own `Load` then refuses fails the first requirement.
+   region it asks for is held to the framing. When the node table read whole
+   AND the read reports nothing, the answer is EXACT: the root's storage, each
+   record's storage by its type id, each map's `N × sizeof( Entry )` rounded
+   up to `alignof( Entry )` at every depth (§2.8), and sixteen bytes of
+   directory per node. When the read REPORTS, the answer is an upper bound
+   rather than the region's fill, because an empty map on a key-kind mismatch
+   and a skipped entry each leave slots the measure counted unused. When the
+   node table did not read whole, the answer may not exceed the most the
+   framing could have commanded, which is one unit of the largest storage per
+   SIX wire bytes. An entry's `L` and its terminator is the smallest wire
+   footprint that commands one storage unit. A measure that sizes a region its
+   own `Load` then refuses fails the first requirement.
 
 **The line it prints** is the row the register carries: the seed, the seed
 count over the root count, the enumerated and random mutant counts, the wall
@@ -2982,7 +3061,10 @@ whose id does is refused naming the field.
 
 **A MAP's entry carries two ids that are CONSTANTS of this vocabulary** (§2.8):
 `key` is `0xA079` and `value` is `0x9194`, the same fold over those two names,
-fixed for every map in every unit — which is what lets a user's own
+fixed for every map in every unit. They are constants of the RULE, not beside
+it: the two names take the hash every field name takes, at whatever width this
+vocabulary rides at, so the pair moves when the rule moves and never on its own
+(§2.8). That is what lets a user's own
 `table Pair`, a `key K` beside a `value V`, under `[..N]Pair` be the map's
 bytes. The
 entry's generated NAME, `<Table><Field>Entry`, is a table name in the closure
@@ -3402,11 +3484,13 @@ The builder is designed to go wide, lock-free by ownership:
   directory from the framing, then decodes each body into its own
   storage, so a forward index resolves without scratch. The load path
   allocates nothing. **For a unit that declares a MAP (§2.8) the measure also
-  walks each record's field headers** — skipping every payload by its framing
-  and reading no value — to reach each map's `N` at every depth, and refuses
-  as `malformed` an `N` whose entries cannot fit in the map's `L` (six bytes
-  each at least: an entry's `L` and its terminator); a fixed unit and a
-  map-free pointered unit keep the one scan.
+  walks each record's field headers**, skipping every payload by its framing
+  and reading no value, to reach each map's `N` at every depth. A map's term
+  is `N × sizeof( Entry )` rounded up to `alignof( Entry )`, summed at every
+  depth. An `N` whose entries cannot fit in the map's `L` (six bytes each at
+  least: an entry's `L` and its terminator) is refused, and the refusal is the
+  `-1` every measure's refusal answers (§7.6). A fixed unit and a map-free
+  pointered unit keep the one scan.
 - **`LoadMeasure`'s answer is also the DEFENCE, and a caller is expected
   to bound it.** The smallest legal record is fourteen wire bytes and it
   commands `sizeof( T )` region bytes, so a wire can ask for far more
@@ -3885,7 +3969,9 @@ the wire, and keeps the flexibility that comes with it.
   lies. There is no node table and no graph, and the build version is the
   whole of what `Open` checks — which is the whole of what `Open` checks
   for any cook. **The generated `Open` reads one**, on exactly the terms above:
-  a root is any table, and this is a root.
+  a root is any table, and this is a root. **A MAP's generated entry is the one
+  exception** (§2.8): it is reached only through its map, so it gets no `Open`,
+  no `Cook`, no `Save` and no `Load` of its own.
   **It is ONE REGION OF ONE NODE and not a second shape**, and the
   attribution part names that node like any other: sixteen bytes, the root
   at offset zero. One shape is what lets `schema cook-check` bound a fixed
@@ -4039,7 +4125,7 @@ fields would get wrong:
 | `[..N]*T` | the same `N` slots, then `int32` used count; a slot past the live count is zero (a counted array writes all `N` slots, below) |
 | `*bytes`, `*string` | `int64` self-relative delta, eight bytes at eight, to a BLOB NODE (below) |
 | `?T` | the value's own pieces, then `bool` present |
-| `map[K]V` | `int64` self-relative delta to the entry array, then `uint32` count; the entries follow the record inside the node's extent (§2.8) |
+| `map[K]V` | `int64` self-relative delta to the entry array, then `int32` count; the entries follow the record inside the node's extent (§2.8) |
 
 - **An ENUM slot holds the ORDINAL**, at the enum's own derived storage width
   (SPEC.md §4.2) — not the wire's variant-name hash. What group 3 of the build
@@ -4218,11 +4304,14 @@ no reference:
    reason a companion is: a tag past the last arm steers a walker into storage
    no declaration describes.
 4. **Every MAP SLOT** (§2.8). Its delta must land inside the HOLDER's own
-   extent, at `alignof( Entry )`, at the offset the layout rule computes, and
-   `count × sizeof( Entry )` must fit before the extent's end; the entries'
-   own slots, companions and tags are then walked as a bounded array's
-   elements are; and the KEYS are read, ascending with no repeat, because a
-   cook `Find` cannot search is a forgery.
+   extent, at `alignof( Entry )`, with `count × sizeof( Entry )` fitting
+   before the extent's end and overlapping no other map's array in that node.
+   The check reads CONTAINMENT, ALIGNMENT, FIT and NO OVERLAP, and not the
+   offset the layout rule computes, so the layout rule stays independent of
+   the check exactly as the pack order does. The entries' own slots,
+   companions and tags are then walked as a bounded array's elements are. The
+   KEYS are read too, ascending with no repeat, because a cook `Find` cannot
+   search is a forgery.
 
 **Nothing else is read.** Not a scalar, not a string's bytes beyond a map
 key's, not an enum's ordinal, not a `flags` mask — none of them can steer a walker, so none of them
@@ -5340,9 +5429,22 @@ in build version (§20.5).
   attribute on the key (`| min`, `| max`, a default); `?map`, a default on a
   map, `| max` on a map and the bounded spellings `[..N]map` and `[N]map`; a
   table that holds a map of ITSELF by value, directly or through any chain
-  (the by-value cycle, named); and a declared table under the claimed
-  `<Table><Field>Entry` spelling beside the map that generates it, naming the
-  map.
+  (the by-value cycle, named); and a declaration under any name the map
+  CLAIMS, naming the map.
+
+  **A MAP CLAIMS EIGHT NAMES AGAINST ITS FIELD**, on the rule the row
+  accessors below already state: `<Table>` followed by the PascalCase of the
+  field's name, and then each of `Entry`, `Insert`, `Find`, `Erase`, `Each`,
+  `IndexMeasure`, `Index` and `IndexFind`. A `Fleet` with a `ships` map
+  therefore claims `FleetShipsEntry`, `FleetShipsInsert`, `FleetShipsFind`,
+  `FleetShipsErase`, `FleetShipsEach`, `FleetShipsIndexMeasure`,
+  `FleetShipsIndex` and `FleetShipsIndexFind`, and a declaration spelling any
+  of the eight is refused naming the map. That part of the set moves with the
+  declaration, which is why it is a rule here rather than a list. A language
+  whose lookup surface is members spells the same eight on the storage type
+  and claims nothing at file scope for them. And the generated ENTRY is a
+  closure member like every other, so it claims the suffix set below in its
+  own right.
 - **Byte buffers** (§2.5): `*bytes` or `*string` outside a table body; a
   bound on one, `*bytes(N)` (a buffer at its used size has no bound to
   declare); a specified default on one; `?` on one (already optional); and an
@@ -5560,7 +5662,8 @@ in build version (§20.5).
     the rest of the one registry the checker and the emitters share —
     `TableKeyed` (an enum-keyed array's storage, and a keyed array occurs in
     a `type` body: this document's own `ScoreBoard` declares one),
-    `TableRef`, `TableReport`, `TableWriter`, `TableReader`, `TableEnumId`,
+    `TableMap` (a map's storage) and `TableMapIndex` (the optional index's
+    handle, §2.8), `TableRef`, `TableReport`, `TableWriter`, `TableReader`, `TableEnumId`,
     `TableEnumValue`, the COOKED form's read runtime (`TableCookOpen`,
     `TableCookMagic`, `TableCookByteOrder`, `TableCookMaxAlign`,
     `table_cook_read64` — §7 — its WRITE runtime beside it (`TableByteOrder`,
@@ -6758,17 +6861,22 @@ inspects everything in the schema built:
   else identifies a build — a compiler version, a build stamp — is settled
   where build versioning is settled, and the registry gains a column then
   rather than inventing one first.
-- **MAPS** (§2.8), after 3.0.0, tracked as schema#380 — the construct is
-  designed on the page and no backend carries it. It lands in the C++
-  reference first: the parser's `map[K]V`, the checker's refusals, the
-  generated entry table, the builder surface (insert, erase, find, iterate),
-  the sort in the four walks, the region load's ascending check with its
-  `duplicate` and `malformed` events, the const `Find`, the text form's object,
-  `schema cook-check`'s order check, and the negative controls §2.8 lists; then
-  every port as a row on schema#366 against the same goldens. The OPTIONAL
-  RUNTIME INDEX rides after the sorted array has a bench number that says
-  where it wins, and not before (§2.8's memory layout). Nothing in the 3.0.0
-  wire forecloses any of it — §2.8's closing paragraph is the confirmation.
+- **MAPS IN EVERY BACKEND** (§2.8), tracked as schema#380. The LANGUAGE carries
+  the construct — the parser's `map[K]V`, the checker's refusals, the generated
+  entry table with its record and its two constant ids — and every backend
+  refuses a unit that declares one, by name (§11), until its codec lands. The
+  C++ reference and the tool are first: the builder surface (insert, erase,
+  find, iterate), the sort in the four walks, the region load's ascending check
+  with its `duplicate` and `malformed` events, the const `Find`, the text
+  form's object and `schema cook-check`'s order check. What a port needs is the entry as an ordinary array-of-tables element in its
+  measure, save and load, the writer's sort, the reader's one compare with its
+  two events, the const `Find` as a binary search that allocates nothing,
+  ascending iteration, and the text form's keyed object; each holds the same
+  goldens and the same allocation audit as a row on schema#366. The OPTIONAL
+  RUNTIME INDEX ships with the construct in the C++ reference and is a port's
+  own call, because it is never stored and no golden names it (§2.8's memory
+  layout): what is deferred is the BENCH NUMBER that says the size above which
+  a caller should reach for it, not the surface.
 - Keyed lookup conveniences over loaded collections (library-side, never
   stored semantics).
 - **AN ARRAY OF UNIONS in every ported backend** (§2.6): C++ and the tool
@@ -7091,7 +7199,7 @@ Per kind:
 | pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer. A node named MORE THAN ONCE is defined once under `&node`, with its fields, and named by `&node` alone after — §16.7's one construct, and the only thing this form adds for the variable class. An ARRAY of pointers (§2.1) is an array of this row, and a slot may define or name a node any other slot or field does |
 | `*bytes` | string, base64, or `null` | the blob in place, as `bytes(N)` spells its bytes, with NO bound to clamp against; `""` is a present blob of length zero and `null` is a null reference (§2.5). A body that is not base64 is `kind_mismatch`, the reference left null |
 | `*string` | string, or `null` | the blob's bytes as a string, with no bound; the same two values at the empty end |
-| `map[K]V` | object keyed by the KEY | a string key is the string; an integer key is its decimal spelling, quoted, and any other spelling under an integer key is `malformed`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7) |
+| `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` drops its entry and counts `clamped`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` makes the key malformed and one with a fractional value or out of the key kind's range drops its entry as `kind_mismatch`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7) |
 
 **A `table` arm takes the union row's form because a text mapping is a
 property of the KIND**: an arm is a body whether it names a type or a table
@@ -7750,8 +7858,9 @@ means.**
 file, no check.** It is a canonical text projection of the closure — the
 members sorted, each member's fields in declaration order, one fact per
 line: name, wire id, kind, an array's ELEMENT kind, array shape (fixed,
-bounded or enum-keyed, with the bound's EVALUATED value and, for a keyed
-array, the KEY enum it names), string and bytes capacity, the declared
+bounded, enum-keyed or MAP, with the bound's EVALUATED value, for a keyed
+array the KEY enum it names, and for a map the KEY's kind and the KEY's
+capacity), string and bytes capacity, the declared
 RANGE (`min=` and `max=`), presence of an optional, a fixed field's `F`
 (`frac=`, the one wire-invisible fact a wide kind has, §4.1), the specified
 default as exact canonical text — a fixed default as the RAW integer its
@@ -7768,6 +7877,13 @@ baseline silences it.
 **A field that names a declaration records WHICH KIND of declaration it
 names** — a table, an `enum`, a `flags` or a `union` — because those four
 are judged by four different identity rules (§18.3).
+
+**A MAP's generated ENTRY is a member here, and it is ANONYMOUS** (§2.8). Its
+member line is keyed by the holder's wire id and the map field's wire id
+rather than by the entry's generated name, so a `was` rename of the holder or
+of the map field moves no line. Its two fields are judged as any table's are,
+which is what puts a changed key kind, a moved key bound and a retyped value
+under the verdicts of §18.2.
 
 **Every line in it is a WIRE fact.** The block form's layout — the
 projection's offsets, each row's size, each pitch — is not recorded and not
@@ -7800,7 +7916,7 @@ It carries no protocol id and no packet fact: the type wire, the wire-shape
 projection and the protocol id are untouched by all of it (§10).
 
 ```
-schema-tables-baseline 4
+schema-tables-baseline 5
 package shipdemo
 
 table ShipConfig
@@ -7834,7 +7950,10 @@ committed file whenever one is there, and:
   so a second one aimed at the intermediate spelling hashes a name no byte
   was ever written under, and the refusal names both spellings and the one
   that is correct.
-- **WARNS** — an array bound or a string/bytes capacity shrunk; a declared
+- **WARNS** — an array bound or a string/bytes capacity shrunk, a map's KEY
+  bound included; a field changed between a map and the `[..N]Pair` its
+  entries already are (§2.8), because the read gains the order check and a
+  wire whose pairs were not ascending reads short; a declared
   RANGE tightened, from either end, or declared where the field had none; an
   enum variant or a union arm removed; a DECLARATION renamed, or otherwise no
   longer in the closure under its baseline name (§18.3); a field REMOVED and
@@ -8908,6 +9027,9 @@ keep, so it belongs in `none` with its reason or the token belongs on the line.
 | a union arm's payload type | layout + wire | `payload=` on the `arm` line, and the type's own facts through the protocol id |
 | array class and bound; string/`bytes` capacity | layout | `array=`, `bound=`, and the `size=` they produce |
 | a keyed array's KEY enum | layout | `key=` — its slots ride by that enum's variant-name hashes (§3.2) |
+| a MAP field's class and its ELEMENT | layout | `kind=14`, `elem=13` and `array=map` on the field line, and the `size=` the sixteen-byte slot produces (§2.8) |
+| a MAP's generated ENTRY, its layout and its two fields | layout | its own `record` line, keyed by the holder's wire id and the map field's wire id and never by the entry's generated name, with the `key` and `value` `field` lines under it (§2.8) |
+| a MAP's KEY kind and KEY capacity | layout | `kind=` and `bound=` on the entry's `key` line, which is where a key edit moves the id |
 | an out-of-line array's pitch | layout | `stride=` on the `slot` line |
 | `?T` presence companion | layout | `optional=true`, and the `size=`/`offset=`s the companion moves |
 | `*T` reference slot | layout | kind `17` with `type=` naming the pointee |
@@ -8976,7 +9098,7 @@ lines are what it produces:
 record <Name> sizeof=<n> alignof=<n>
     field <id> kind=<n> [ frac=<n> ] offset=<n> size=<n>
         [ type=<Name> | enum=<Name> | union=<Name> ]
-        [ elem=<n> ] [ array=fixed|bounded|keyed ] [ bound=<n> ] [ key=<Name> ]
+        [ elem=<n> ] [ array=fixed|bounded|keyed|map ] [ bound=<n> ] [ key=<Name> ]
         [ stride=<n> ] [ optional=true ]
         [ default=<v> ] [ min=<v> ] [ max=<v> ] [ step=<v> ]
 ```
@@ -9003,7 +9125,24 @@ of declaration it names"*:
   and they are not the same data.
 - **`array=` and `bound=`** name the array's CLASS and its evaluated extent,
   so a fixed array and a bounded one of the same width are distinguishable and
-  a moved bound is visible beside the `size` it produced.
+  a moved bound is visible beside the `size` it produced. **`array=map` is a
+  map field** (§2.8), which carries `elem=13` and no `bound=`, because a map
+  declares no extent and its count is a wire fact.
+- **A MAP's generated ENTRY takes a `record` line of its own, and it is
+  ANONYMOUS.** The line carries the HOLDER's wire id and the MAP FIELD's wire
+  id, joined by a dot, in place of a name, and it sorts with the named records
+  over that text:
+
+  ```
+  record <holder id>.<field id> sizeof=<n> alignof=<n>
+  ```
+
+  The entry's generated name is never digested, so a `was` rename of the
+  holder or of the map field moves no line and invalidates no cooked file,
+  which is the obligation every other line here is keyed by a wire id for. Its
+  two fields ride as ordinary `field` lines beneath it, so a key kind changed,
+  a key bound moved or a value retyped moves the id exactly as any field's
+  edit does.
 - **`optional=true`** marks a presence companion, which is a slot the other
   side reads.
 - **There is deliberately NO `flags=` token.** A flags field's referent is not
@@ -9209,7 +9348,10 @@ wrong fails to build instead of degrading.
   record is a fact, and it is a fact because it produces the offsets;
 - **a `was` rename** — a layout line carries the wire id, so the rename pair
   moves nothing, which is §7's stated obligation: a `was` rename must not
-  invalidate every cooked file in existence;
+  invalidate every cooked file in existence. **A map's generated entry moves
+  nothing either**, because its `record` line is keyed by the holder's wire id
+  and the map field's wire id and never by the entry's generated name (§20.2,
+  §2.8);
 - **any `flags` edit — a variant renamed, inserted, removed or reordered.** A
   mask rides as raw bits and a load copies it verbatim: the page states no
   mask-to-width rule and §4's report has no counter for a bit outside the
