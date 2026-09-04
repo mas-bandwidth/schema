@@ -2058,6 +2058,13 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) check-zero-range-negative-control
 	./build/schema_test_tables
 	./build/schema_test_tables_asan
+	# THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2): the tolerant read on hostile
+	# bytes against the engine, plain and sanitized, at a short random pass —
+	# the enumerated passes run whole whatever N is — and its two controls at
+	# N=0, where the enumerated passes alone turn each one red. The long pass
+	# is `make tables-cpp-release`.
+	$(MAKE) tables-wire-fuzz N=20000
+	$(MAKE) tables-wire-fuzz-negative-control N=0
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-graph-walk
@@ -2324,6 +2331,91 @@ build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.c
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) test/conformance/cpp/main.cpp \
 		$(CONFORMANCE_SOURCES) -o $@
+
+# ---- THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2; docs/SECURITY.md) -------------
+#
+# A table read is untrusted input, so the tolerant read IS the verifier, and
+# this is the gate on that claim for the C++ reference: `harness wire-fuzz`
+# mutates every pinned wire in the corpus, feeds each mutant to the leg on a
+# pipe and to the compiler's own engine, and requires the same report, the
+# same decoded value and a LoadMeasure inside the framing's bound, for every
+# mutant. The leg runs twice — plain, and under ASan and UBSan — because the
+# two see different heaps: the plain build is the divergence oracle at speed,
+# and the sanitized one turns a one-byte over-read into a finding on the
+# mutant that caused it. SEED and N size the random pass; the enumerated
+# passes run whatever N is.
+build/wire-fuzz-cpp: build/tables-generated/.stamp test/tables/wire_fuzz_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -O1 $(CONFORMANCE_INCLUDES) test/tables/wire_fuzz_main.cpp \
+		$(CONFORMANCE_SOURCES) -o $@
+
+build/wire-fuzz-cpp-asan: build/tables-generated/.stamp test/tables/wire_fuzz_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -O1 -fsanitize=address,undefined -fno-sanitize-recover=all \
+		-fno-omit-frame-pointer -g $(CONFORMANCE_INCLUDES) test/tables/wire_fuzz_main.cpp \
+		$(CONFORMANCE_SOURCES) -o $@
+
+.PHONY: tables-wire-fuzz
+tables-wire-fuzz: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
+		--failed build/wire-fuzz/failed-asan.bin
+
+# THE WIRE FUZZER'S NEGATIVE CONTROLS (docs/SPEC-TABLES.md §4.2). A fuzzer
+# that has never gone red proves nothing about the reader it points at, so
+# each control removes ONE check from the EMITTER — through `go build
+# -overlay`, so no tracked file moves — regenerates the corpus from the
+# sabotaged compiler, builds the same leg against it, and requires the fuzzer
+# to go red on the verdict that check guards. Two checks, because the tolerant
+# reader and the variable-class loader are two readers: a length check in the
+# string read, and the node-index range check in the numbering's resolve.
+#
+# $(1) the control's name  $(2) the emitter file  $(3) the sed program
+# $(4) the verdict the fuzzer must print
+define wire_fuzz_control
+	@rm -rf build/wire-fuzz-nc-$(1) && mkdir -p build/wire-fuzz-nc-$(1)
+	@sed -e '$(3)' $(2) > build/wire-fuzz-nc-$(1)/emitter.go.txt
+	@cmp -s $(2) build/wire-fuzz-nc-$(1)/emitter.go.txt && \
+		{ echo "NEGATIVE CONTROL: the $(1) sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/$(2)":"%s/build/wire-fuzz-nc-$(1)/emitter.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/wire-fuzz-nc-$(1)/overlay.json
+	go build -overlay build/wire-fuzz-nc-$(1)/overlay.json -o build/wire-fuzz-nc-$(1)/schema ./cmd/schema
+	$(call tables_generate,./build/wire-fuzz-nc-$(1)/schema,build/wire-fuzz-nc-$(1)/generated)
+	$(CXX) $(TABLES_CXXFLAGS) -O1 $(call tables_includes,build/wire-fuzz-nc-$(1)/generated) \
+		test/tables/wire_fuzz_main.cpp \
+		$(subst build/tables-generated/,build/wire-fuzz-nc-$(1)/generated/,$(CONFORMANCE_SOURCES)) \
+		-o build/wire-fuzz-nc-$(1)/leg
+	@if ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-nc-$(1)/leg --seed $(SEED) --n $(N) \
+			--failed build/wire-fuzz-nc-$(1)/failed.bin > build/wire-fuzz-nc-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) check is gone and the wire fuzzer stayed green"; \
+		cat build/wire-fuzz-nc-$(1)/log; exit 1; \
+	fi
+	@grep -q "$(4)" build/wire-fuzz-nc-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the $(1) check"; \
+		  cat build/wire-fuzz-nc-$(1)/log; exit 1; }
+	@grep -m1 "FAILED" build/wire-fuzz-nc-$(1)/log
+	@echo "negative control: removing the $(1) check from the emitter turns the wire fuzzer RED"
+endef
+
+# THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds.
+# certify.yml runs every `tables-<lang>-release` target by name.
+.PHONY: tables-cpp-release
+tables-cpp-release:
+	$(MAKE) tables-wire-fuzz N=500000
+	$(MAKE) tables-wire-fuzz SEED=2 N=500000
+
+.PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control
+tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control
+
+# the string read's `has( len )`: a length past the body is then copied, so the
+# sabotaged leg decodes a value out of a neighbor's bytes where the oracle stops
+tables-wire-fuzz-length-negative-control: build/conformance-harness
+	$(call wire_fuzz_control,length,internal/codegen/cpptable/codecs.go,s|if ( !r.has( len ) ) { r.report->malformed = true; return false; }|// NEGATIVE CONTROL: the length check is gone|,the decoded value differs)
+
+# the numbering's `index - 1 >= map.count`: an index past the node table then
+# reads a directory entry the region does not hold
+tables-wire-fuzz-index-negative-control: build/conformance-harness
+	$(call wire_fuzz_control,index,internal/codegen/cpptable/arena.go,s|if ( (int64_t) ( index - 1 ) >= map.count )|if ( false ) // NEGATIVE CONTROL: the range check is gone|,the report differs)
 
 # The GENERATED half of the data: the JSON text of every instance and the read
 # report of every evolution case, both from the compiler's own engine.

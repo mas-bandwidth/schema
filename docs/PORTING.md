@@ -1019,6 +1019,40 @@ a newer V8 and steady at sixteen bytes a call on the pinned one.
 |---|---|---|---|---|---|---|---|---|
 | — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ❌ #420 (escape analysis moves between compiler versions; nothing pins it) | ❌ #420 | ❌ #420 (pinned JDK; the gate SKIPS rather than refuses without the counter) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (pinned SDK; nothing refuses off it) | ❌ #420 (pinned OTP; the audit does not read it) |
 
+### I15 — The tolerant wire's differential fuzzer with an independent oracle
+
+**Method.** Every pinned wire in the corpus, mutated by enumerated passes
+aimed at each number the framing carries plus a seeded random pass, read by
+the language's leg on a pipe and by the compiler's own engine
+(`internal/tablewire` — a third reading of §3 no backend was written from),
+with four requirements per mutant: the read returns, the report matches, the
+re-saved bytes match, and `LoadMeasure` never asks past what the framing
+commands (docs/SPEC-TABLES.md §4.2). The mutators, the oracle and the
+comparison live in the harness once; a port's leg is the thin reader
+`test/conformance/README.md` states. The reference runs it plain and under
+ASan/UBSan; a failure writes the mutant and prints the one command that
+replays it.
+
+**Reference.** `test/conformance/harness/wirefuzz.go`,
+`test/conformance/harness/wireframe.go`, `test/tables/wire_fuzz_main.cpp`.
+
+**Proven in.** C++.
+
+**Measured effect.** 62,179 enumerated + 3,000,000 random mutants over 63
+seeds in 89 s plain (34,490 mutants/s), 562,179 under ASan/UBSan, 0
+divergences. Its sweeps caught the reference's §3.1 walk-order deviation
+(#433) and six deviations in the engine, each ruled by the page.
+
+**Negative control.** Two, through I2's overlay sabotage: the string read's
+`has( len )` removed reds on the decoded value; the numbering resolve's range
+check removed reds on the report.
+
+**Targets:** wire-fuzz, wire-fuzz-negative-control
+
+| cpp | c | rust | go | cs | java | js | dart | elixir |
+|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #391 | ❌ #391 | ❌ #391 | ❌ #391 | ❌ #391 | ❌ #391 | ❌ #391 | ❌ #391 |
+
 ### J1 — Accessor and descriptor agreement
 
 **Method.** The leg reads every row and every node of the block and cook

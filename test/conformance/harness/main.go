@@ -9,6 +9,7 @@
 //	harness generate              rewrite the generated half of the data
 //	harness run                   run every registered driver, print the matrix
 //	harness matrix                print the CI matrix the registry implies
+//	harness wire-fuzz             fuzz one language's tolerant wire read against the engine
 //
 // Flags are the same for both so a Makefile line reads the same way; see usage.
 package main
@@ -56,6 +57,13 @@ func usage() {
              test/conformance/<lang>/ci.json (README.md, "Registering a
              language").
 
+  wire-fuzz  mutate every pinned wire in the corpus, feed each mutant to one
+             language's leg on a pipe (--driver) and to the compiler's own
+             engine, and require the same report, the same decoded value and
+             a LoadMeasure inside the framing's bound, for every mutant
+             (docs/SPEC-TABLES.md §4.2). --seed and --n size the random pass;
+             the enumerated passes run whatever N is.
+
 flags:
   --manifest <path>   the conformance manifest
   --json <dir>        where an instance's JSON text lives
@@ -65,6 +73,10 @@ flags:
                       "<language> <command...>" lines (a substituted one)
   --work <dir>        scratch: fixtures, driver output, the derived manifest
   --only <lang>       run one registered language (run only)
+  --driver <cmd>      the leg to fuzz (wire-fuzz only)
+  --seed <S> --n <N>  the random pass (wire-fuzz only)
+  --replay <file> --unit <key> --root <table>
+                      run one saved mutant alone (wire-fuzz only)
 `)
 	os.Exit(2)
 }
@@ -82,6 +94,13 @@ func main() {
 	drivers := fs.String("drivers", defaultDrivers, "the driver registry")
 	work := fs.String("work", defaultWork, "scratch directory")
 	only := fs.String("only", "", "run one registered language")
+	driver := fs.String("driver", "", "the leg to fuzz, as a command (wire-fuzz only)")
+	seed := fs.Uint64("seed", 24845619678, "the random pass's seed (wire-fuzz only)")
+	n := fs.Int("n", 100000, "the random pass's mutant count (wire-fuzz only)")
+	replay := fs.String("replay", "", "one mutant file to run alone (wire-fuzz only)")
+	unit := fs.String("unit", "", "the replayed mutant's unit key (wire-fuzz only)")
+	root := fs.String("root", "", "the replayed mutant's root table (wire-fuzz only)")
+	failed := fs.String("failed", "build/wire-fuzz/failed.bin", "where a failing mutant is written (wire-fuzz only)")
 	if len(os.Args) > 2 {
 		_ = fs.Parse(os.Args[2:])
 	}
@@ -107,6 +126,10 @@ func main() {
 		}
 	case "pin":
 		if err := pin(m, *drivers, *work, "testdata/conformance/tables/cook"); err != nil {
+			fatalf("%v", err)
+		}
+	case "wire-fuzz":
+		if err := wireFuzz(m, wireFuzzOptions{driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, failed: *failed}); err != nil {
 			fatalf("%v", err)
 		}
 	case "run":

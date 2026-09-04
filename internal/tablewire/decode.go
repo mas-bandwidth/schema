@@ -154,11 +154,13 @@ func (r *wireReader) body(inst *tabletext.Instance) bool {
 			return false
 		}
 		kind := r.u8()
-		if id == ir.NodeTableFieldId && r.st != nil {
+		if id == ir.NodeTableFieldId && r.st != nil && r.m.IsVariable(inst.Def.Name) {
 			// the reserved id is this reader's OWN (§3.1), read before any body
-			// and not a field of the table: it is stepped over here, and never
-			// counted unknown. A reader that cannot name it counts one per
-			// transport field, which is the case §4's counter describes.
+			// and not a field of the table: a VARIABLE-class body steps over it
+			// and never counts it unknown, as the C++ reference does. A reader
+			// that cannot name it — a fixed-class body, or a build without kind
+			// 17 — counts one per transport field, which is the case §4's
+			// counter describes.
 			if !r.skip(kind) {
 				r.report.Malformed = true
 				return false
@@ -271,8 +273,11 @@ func (r *wireReader) array(fv *tabletext.Field) bool {
 		return false
 	}
 	end := r.off + bodyLen
-	decoded := 0
+	// A body too short for its own header (element kind and count) is INERT
+	// (§4): the field keeps the value it has — a repeat under this id replaces
+	// nothing — no counter is raised, and the walk continues past the length.
 	if bodyLen >= 5 {
+		decoded := 0
 		ek := r.u8()
 		count := int(r.u32())
 		if int(ek) != ir.TableElemKind(f) {
@@ -312,9 +317,9 @@ func (r *wireReader) array(fv *tabletext.Field) bool {
 				decoded = i + 1
 			}
 		}
-	}
-	if counted {
-		fv.Count = decoded
+		if counted {
+			fv.Count = decoded
+		}
 	}
 	if f.Type.Optional {
 		// the field rode with its own element kind (or a body too short to
@@ -329,7 +334,18 @@ func (r *wireReader) array(fv *tabletext.Field) bool {
 func (r *wireReader) element(fv *tabletext.Field, i int) bool {
 	f := fv.Def
 	if tabletext.UnionOf(f) != nil {
-		// an element of an ARRAY OF UNIONS: the union payload in its place (§3)
+		// an element of an ARRAY OF UNIONS: the union payload in its place (§3).
+		// The element is RESET the moment its arm id is READ, before the arm
+		// length that follows is checked, so a repeat under the field id leaves
+		// no arm an earlier occurrence decoded standing — the last occurrence
+		// wins whole, even when its own framing is damaged (§3, §4). An element
+		// the body cannot even reach is not touched.
+		if !r.has(2) {
+			r.report.Malformed = true
+			return false
+		}
+		fv.Elems[i].U = 0
+		fv.Elems[i].Tab = nil
 		return r.unionCell(&fv.Elems[i], f)
 	}
 	if f.Type.Pointer {
@@ -406,9 +422,11 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 			break
 		}
 		if key == 0 {
-			r.report.Malformed = true // None keys no record
-			sub.off += elemLen
-			continue
+			// None is the null key and 0 the id no name folds to, so a body
+			// carrying one is damaged: the read stops this body and keeps what
+			// it decoded (docs/SPEC-TABLES.md §3.2)
+			r.report.Malformed = true
+			break
 		}
 		slot := tabletext.KeyedValueSlot(f, enumValueForId(f.KeyEnumRef, key))
 		if slot < 0 {
@@ -509,7 +527,16 @@ func (r *wireReader) scalar(cell *tabletext.Cell, f *ir.Field, atField bool) boo
 		cell.B = r.u8() != 0
 		return true
 	case ir.TableKindF32:
-		v := float64(math.Float32frombits(r.u32()))
+		bits := r.u32()
+		if bits&0x7F800000 == 0x7F800000 && bits&0x007FFFFF != 0 {
+			// a NaN's PAYLOAD IS DATA the reference carries bit for bit: the
+			// hardware float32→float64 conversion would set the quiet bit, so
+			// the widening is done on the bits. A NaN compares outside every
+			// range, so the clamp below could not fire on it anyway.
+			cell.F = widenF32NaN(bits)
+			return true
+		}
+		v := float64(math.Float32frombits(bits))
 		if f.HasFloatRange {
 			if v < f.FMin {
 				v = f.FMin

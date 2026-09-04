@@ -83,6 +83,17 @@ what the language specifies, in a way that weakens a check.
   and compares emitted wire bit for bit against pinned goldens, on Linux and
   macOS, on every push. Divergence between languages fails CI.
 - Generated readers are exercised against hand-crafted hostile bytes.
+- The TABLES wire is read as untrusted input, exactly as the type wire is,
+  and the claim has its own gate: `make tables-wire-fuzz` mutates every pinned
+  table wire in the corpus — bit flips, truncation, lengths and counts past
+  the body, duplicate ids, kind swaps, node indices out of range — and requires
+  the generated read to return, to match an independent oracle (the compiler's
+  own engine) on the report and on the decoded value, and never to size a
+  region past what the framing can justify, plain and under ASan and UBSan,
+  with two negative controls that remove a check from the emitter and require
+  the fuzzer to go red (docs/SPEC-TABLES.md §4.2). The cooked and block forms
+  are the trusted class — opened at a build version, integrity by signature —
+  and their pages say so (§7.4, §19).
 
 None of that is proof. It is why we would rather hear from you.
 

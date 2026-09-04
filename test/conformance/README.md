@@ -272,6 +272,59 @@ classpath, so the cook's node dump and the 111-row cook forgery battery ride
 inside processes that were already starting. Both shapes satisfy the contract,
 because the contract is a COMMAND.
 
+## The wire-fuzz driver
+
+`harness wire-fuzz` (docs/SPEC-TABLES.md §4.2) is the tolerant wire's fuzzer,
+and its leg is a different shape from the surface drivers above: ONE process
+for the whole run, on a pipe, that only reads. The harness generates every
+mutant and holds the oracle; the leg loads each mutant through the generated
+tolerant read, saves whatever it decoded, and answers what happened. It
+decides nothing about what a mutant means.
+
+```
+make tables-wire-fuzz                      the C++ reference, plain and sanitized
+make tables-wire-fuzz-negative-control     both controls: a check removed, the fuzzer red
+./build/conformance-harness wire-fuzz --driver <cmd> [--seed S] [--n N]
+./build/conformance-harness wire-fuzz --driver <cmd> --replay <file> --unit <key> --root <table>
+```
+
+**The stream, little-endian throughout.** The working directory is the
+repository root; the driver is a command, split on whitespace, as every
+driver is.
+
+| direction | what | when |
+|---|---|---|
+| in | `u32` roster count, then per root: `u16 n`, the unit key, `u16 n`, the root table's name | once, first |
+| out | one byte per roster entry: `1` when this leg has a codec for it, else `0` | once, in reply |
+| in | per mutant: `u32` roster index, `u32` length, the bytes | until EOF |
+| out | per mutant: `u8 loaded`; `i32 unknown, kind_mismatch, clamped, duplicate`; `u8 malformed`; `i64 measure`; `i64 saved`, then that many bytes | one reply per mutant, flushed before the next is read |
+
+- **`loaded`** is whether a root came back. A FIXED root always loads — its
+  `Load` fills a value and reports — so the byte is `1` and the report says the
+  rest. A VARIABLE root's `Load` returns NULL when the caller's region was
+  wrong, and a `0` here fails the run: the leg sized the region from
+  `LoadMeasure`, so a refusal is the measure and the load disagreeing.
+- **`measure`** is what `LoadMeasure` asked for, region bytes in total; a FIXED
+  root answers `-1`. The harness holds it to the framing's bound (§4.2, §6.5).
+- **`saved`** is the length `Save` wrote, or `-1` when `Measure` or `Save`
+  refused the value. The bytes follow only when it is positive.
+- **Every buffer is allocated at exactly its size** — the mutant, the region,
+  the save — so that a sanitized build's redzone begins at the last byte a
+  reader may touch, and **every reply is flushed before the next mutant is
+  read**, so a crash is attributed to the mutant that caused it. A buffer of
+  ZERO bytes is the one exception to the sizing: it is allocated at one byte,
+  because `malloc(0)` may answer null and null is how a leg reports an
+  allocation that failed.
+- **A root the leg cannot name is a `0` in the roster and nothing more**: the
+  harness never sends it a mutant, and the line it prints says how many seeds
+  were absent. A port with no variable class registers its fixed roots and is
+  fuzzed over them.
+
+The C++ leg is `test/tables/wire_fuzz_main.cpp`: a codec table of
+`(unit, root, run)` triples, a fixed and a variable template, and the stream.
+A port's leg is that file's shape in its own language and nothing else — the
+mutators, the oracle and the comparison never move.
+
 ## The budget
 
 `make conformance` runs under the two-minute rule (#320). Measured on arm64
