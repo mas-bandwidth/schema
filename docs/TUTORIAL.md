@@ -4331,3 +4331,371 @@ has. Take `shield` back out and `./consume` reads the frame again.
 
 **You now have** the simulation to renderer handoff: filled in parallel at
 frame rate, read in place from another language, guarded by one comparison.
+
+---
+
+## Part 13: One schema, every language, and tools that walk it
+
+### The problem
+
+Starlight is not one program. The server is C++, the tools are C, and maybe the
+launcher is C#. Every one of them needs the same constants, the same packets
+and the same assets, and the tools team wants a generic config editor without
+hand-writing a UI per table.
+
+### Three wires cross to C
+
+Part 6 drew the line: the packet wire, the cook and the block cross all nine
+targets, and the table wire is C++'s within one build. This part runs all three
+crossings, from the same `starlight` unit, into C.
+
+Generate the C side of the unit you already have:
+
+```
+$ schema generate --lang c --out genc .
+```
+
+### The packet wire
+
+`writepacket.cpp`, entire:
+
+```cpp
+#include "NetWire.h"
+#include <cstdio>
+#include <cstring>
+
+int main()
+{
+    using namespace starlight;
+
+    ShipState ship;
+    ship.ship_type = ShipType::Corvette;
+    strcpy( ship.name, "Kestrel" );
+    ship.name_length = 7;
+    ship.health = 750;
+    ship.throttle = 0.63f;
+    ship.aim.x = 1.5f;
+    ship.aim.y = 0.25f;
+    ship.systems = SystemFlags_Shields | SystemFlags_WarpDrive;
+
+    uint8_t buffer[ShipStateMaxBytes];
+    serialize::WriteStream w( buffer, sizeof( buffer ) );
+    WriteShipState( w, ship );
+    w.Flush();
+
+    FILE * f = fopen( "packet.bin", "wb" );
+    fwrite( buffer, 1, w.GetBytesProcessed(), f );
+    fclose( f );
+    printf( "c++ wrote packet.bin, %lld bytes\n", (long long) w.GetBytesProcessed() );
+    return 0;
+}
+```
+
+`readpacket.c`, entire:
+
+```c
+#include "GameWire.h"
+#include <stdio.h>
+#include <string.h>
+
+int main( void )
+{
+    /* the read slack the contract asks for: 8 bytes past the packet data */
+    uint8_t buffer[SHIP_STATE_MAX_BYTES + 8];
+    memset( buffer, 0, sizeof( buffer ) );
+
+    FILE * f = fopen( "packet.bin", "rb" );
+    size_t bytes = fread( buffer, 1, SHIP_STATE_MAX_BYTES, f );
+    fclose( f );
+
+    serialize_read_stream_t stream;
+    serialize_read_stream_init( &stream, buffer, (int) bytes );
+
+    ShipState ship = new_ship_state();
+    if ( !read_ship_state( &stream, &ship ) )
+    {
+        printf( "c refused the packet\n" );
+        return 1;
+    }
+
+    char names[SYSTEM_FLAGS_NAMES_MAX];
+    printf( "c read the C++ packet: %s \"%s\" health=%d throttle=%.2f aim=(%g, %g) systems=%s\n",
+        enum_name_ship_type( ship.ship_type ), ship.name, ship.health, ship.throttle,
+        ship.aim.x, ship.aim.y,
+        flag_names_system_flags( ship.systems, names, sizeof( names ) ) );
+    return 0;
+}
+```
+
+```
+$ c++ -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -I gen -I . -I ../serialize -o writepacket writepacket.cpp
+$ ./writepacket
+c++ wrote packet.bin, 47 bytes
+$ cc -std=c99 -Wall -Wextra -Werror -ffp-contract=off -I genc -I ../serialize.c -o readpacket readpacket.c ../serialize.c/serialize.c -lm
+$ ./readpacket
+c read the C++ packet: Corvette "Kestrel" health=750 throttle=0.63 aim=(1.5, 0.25) systems=Shields|WarpDrive
+```
+
+Same Corvette, same 750, same compressed throttle, same mask. The same bits.
+
+Note the shape of the C names. Constants become macros, `SHIP_STATE_MAX_BYTES`
+and `SYSTEM_FLAGS_NAMES_MAX`, functions are `snake_case`, and a type's defaults
+arrive through `new_ship_state()`, because C structs have no member
+initializers. The read slack is in the buffer, because C and C++ read 64-bit
+windows.
+
+`aim` came through as a plain `Vector2`. The `cpp_native` mapping is a C++
+facility, so C generates the schema's own struct and the wire is identical
+either way.
+
+### The cook
+
+Part 12 added `Render.schema` to the unit, which moved the build version, so
+re-cook before crossing:
+
+```
+$ schema cook --root GameConfig --in tree --out Game.cook --verbose .
+cooked Game.cook: 464 bytes, build version 0x1b087f2fcefc4628, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
+```
+
+`opencook.c`, entire:
+
+```c
+#include "ConfigTable.h"
+#include <stdio.h>
+#include <stdlib.h>
+
+int main( void )
+{
+    FILE * f = fopen( "Game.cook", "rb" );
+    fseek( f, 0, SEEK_END );
+    long bytes = ftell( f );
+    fseek( f, 0, SEEK_SET );
+
+    void * aligned = NULL;
+    if ( posix_memalign( &aligned, 64, (size_t) bytes ) != 0 ) { return 1; }
+    if ( fread( aligned, 1, (size_t) bytes, f ) != (size_t) bytes ) { return 1; }
+    fclose( f );
+
+    const GameConfig * config = game_config_open( aligned, (uint64_t) bytes );
+    if ( config == NULL )
+    {
+        printf( "not this build's cook\n" );
+        return 0;
+    }
+    printf( "c opened the C++ cook: level=%.*s corvette health=%g\n",
+        config->level_name_length, config->level_name,
+        config->ships[SHIP_TYPE_CORVETTE - 1].max_health );
+    free( aligned );
+    return 0;
+}
+```
+
+```
+$ cc -std=c99 -Wall -Wextra -Werror -I genc -o opencook opencook.c genc/ConfigTable.c
+$ ./opencook
+c opened the C++ cook: level=Kuiper Run corvette health=500
+$ ./cook Game.cook
+opened: level=Kuiper Run corvette health=500
+wrote Mine.cook, 464 bytes
+```
+
+The same 464 bytes, opened by pointer from both languages. In C a keyed array
+is the plain array the comment describes, `ShipConfig ships[SHIP_TYPE_MAX]`
+with the key `k` at index `k - 1`, so the `- 1` that C++ hides in
+`TableKeyed` is visible here.
+
+### The block
+
+Part 12 already ran this crossing end to end: `produce.cpp` fills a
+`RenderFrame` block in C++, `consume.c` opens it in C at the same build
+version, and one flipped field on either side turns it into
+`not this build's block`.
+
+So the three crossings are the packet wire for data both ends ship together,
+the cook for assets one pipeline produces for one build, and the block for a
+60 Hz handoff inside one build.
+
+### Reflection: tools without hand-written mirrors
+
+Every type in a table closure carries a static descriptor with names, wire ids
+and kinds, storage offsets, ranges, enum vocabularies, optionals and branch
+guards. That is enough to write a generic editor, printer or differ with no
+RTTI and no schema files shipped at runtime. `reflect.cpp`, entire:
+
+```cpp
+#include "ConfigTable.h"
+#include <cstdio>
+
+int main()
+{
+    using namespace starlight;
+
+    const TableTypeInfo * type = ShipConfigTableType();
+    printf( "table %s (%u bytes, %d fields)\n", type->name, type->size, type->num_fields );
+    for ( int32_t i = 0; i < type->num_fields; i++ )
+    {
+        const TableFieldInfo & field = type->fields[i];
+        printf( "  %-13s %-15s id=0x%016llx kind=%-2d @%u",
+            field.name, field.type_name, (unsigned long long) field.id,
+            field.kind, field.offset );
+        if ( field.optional ) { printf( " optional" ); }
+        if ( field.has_range ) { printf( " [%g, %g]", field.range_min, field.range_max ); }
+        if ( field.enum_name != NULL )
+        {
+            // an enum's vocabulary starts at 1, because 0 is None. A FLAGS
+            // field's is indexed by BIT and starts at 0, and the tell is that
+            // flags variants have no per-variant wire id.
+            const int64_t first = field.variant_id != NULL ? 1 : 0;
+            for ( int64_t v = first; v <= field.enum_max; v++ )
+            {
+                printf( " %s", field.enum_name( (uint64_t) v ) );
+            }
+        }
+        printf( "\n" );
+    }
+    return 0;
+}
+```
+
+```
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o reflect reflect.cpp gen/ConfigTable.cpp
+$ ./reflect
+table ShipConfig (80 bytes, 8 fields)
+  display_name  string          id=0x2d21d7cd66bd5a5d kind=12 @0
+  max_health    float32         id=0xbe5aae184d021138 kind=10 @40
+  max_speed     float32         id=0x65052cb2d1409505 kind=10 @44
+  armor         int32           id=0xd19988b67e699194 kind=4  @48 [0, 10]
+  ship_type     ShipType        id=0x1f7d2e86a2e77268 kind=30 @52 Fighter Freighter Corvette
+  systems       SystemFlags     id=0x17dc1c552754cefd kind=9  @56 Shields Cloak WarpDrive Autopilot
+  settings      GunnerSettings  id=0xee5f6d7b48b44de8 kind=13 @64 optional
+  tier          int32           id=0x1e6f84ef2eb65989 kind=4  @72 optional
+```
+
+Those are the same ids Part 10's baseline printed, which is the point: one
+identity, in the file the compiler diffs and in the descriptor your tool walks.
+
+The comment in that loop earns its place. `enum_name` serves both enums and
+flags, and the two are indexed differently, so the descriptor gives you a tell:
+`variant_id` is non-NULL for an enum, whose values start at 1 because 0 is
+`None`, and NULL for a flags field, whose vocabulary is indexed by bit from 0.
+Get it wrong and `Shields` quietly vanishes from your editor.
+
+The descriptor carries more than the walk above prints: the JSON key beside the
+name, the offsets of `_count` and `_present` companions, a union's tag and arm
+table, an enum-keyed array's key vocabulary, the exact 128-bit range of a wide
+field, and a `reset` that puts an instance back at its declared defaults in
+place. Decoded tables are relocatable, trivially copyable, standard layout and
+pointer free, with generated static assertions enforcing it, so a walker can
+read any instance through those offsets wherever it sits, mapped files
+included.
+
+This is the machinery the JSON codec and `schema pack` ride, and it is yours
+too.
+
+### Embedding the compiler
+
+The `schema` binary is a thin client of a Go library, so anything the CLI does
+your build tools can do in process, and you can register your own generator
+beside the nine. A directory of its own, `docsgen/`, with a `go.mod`:
+
+```
+module docsgen
+
+go 1.26
+
+require github.com/mas-bandwidth/schema/v2 v2.4.0
+
+replace github.com/mas-bandwidth/schema/v2 => ../schema
+```
+
+`main.go`, entire:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sort"
+
+	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+// docs is a generator of our own, selected by --lang docs.
+type docs struct{}
+
+func (docs) Names() []string { return []string{"docs"} }
+
+func (docs) Generate(u *ir.Unit, opts compiler.Options) (map[string][]byte, error) {
+	names := make([]string, 0, len(u.Structs))
+	bits := map[string]int64{}
+	for _, s := range u.Structs {
+		names = append(names, s.Name)
+		bits[s.Name] = ir.MaxBitsStruct(s)
+	}
+	sort.Strings(names) // deterministic output is a generator's contract
+	out := []byte{}
+	for _, name := range names {
+		out = append(out, fmt.Sprintf("## %s — %d bits max\n", name, bits[name])...)
+	}
+	return map[string][]byte{"TYPES.md": out}, nil
+}
+
+func main() {
+	c := compiler.New()
+	if err := c.Register(docs{}); err != nil {
+		panic(err)
+	}
+	fmt.Println(c.Targets())
+
+	paths, err := compiler.GatherPaths([]string{"../starlight"})
+	if err != nil {
+		panic(err)
+	}
+	unit, err := c.Load(paths) // format free: writes nothing
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("package %s, protocol id 0x%016x\n", unit.Package, unit.ProtocolId)
+
+	files, err := c.Generate(unit, "docs", nil) // returns bytes, writes nothing
+	if err != nil {
+		panic(err)
+	}
+	fmt.Print(string(files["TYPES.md"]))
+}
+```
+
+```
+$ go build -o docsgen . && ./docsgen
+[c cpp cs dart docs elixir go java js rust]
+package starlight, protocol id 0xb786cca203ebb6ea
+## ChatLine — 990 bits max
+## Contact — 34 bits max
+## FireCommand — 41 bits max
+## LaserFire — 23 bits max
+## MissileFire — 18 bits max
+## Packet — 24779 bits max
+## PacketHeader — 39 bits max
+## ShipState — 769 bits max
+## Snapshot — 6188 bits max
+## Vector2 — 64 bits max
+## Vector3 — 192 bits max
+```
+
+Your generator receives the same resolved IR the built-in backends read, with
+types resolved, constants folded and widths derived. `ir.MaxBitsStruct` says
+769 bits for `ShipState`, which is the same number Part 4's header carried, and
+the protocol id is the one Part 5 printed.
+
+The `sort.Strings` is not decoration. `u.Structs` is a map, Go randomizes map
+iteration, and the golden gate compares a backend's output byte for byte. A
+generator that emits in map order passes on Monday and fails on Tuesday.
+
+The exported `compiler` and `ir` surfaces are under semantic versioning, and
+`internal/` is not.
+
+**You now have** Starlight's whole estate on one schema: a C++ simulation, C
+tools reading its packets, cooks and blocks, generic editors over the
+descriptors, and a compiler you can embed when the build gets opinionated.
