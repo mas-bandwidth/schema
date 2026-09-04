@@ -543,6 +543,16 @@ func fieldPieces(u *Unit, f *Field, projection bool) []storagePiece {
 	}
 	var pieces []storagePiece
 	switch {
+	case f.IsMap():
+		// A MAP FIELD IS SIXTEEN BYTES (docs/SPEC-TABLES.md §2.8, §7.2): an
+		// int64 self-relative reference to the entry array and a uint32 count,
+		// then padding to eight. ONE piece and not two, for the reason the
+		// out-of-line triple above is one: both backends spell it as one
+		// member of a TableMap type, and a port that walked two would account
+		// for twelve bytes where sixteen are written. The ENTRIES are not
+		// here — they are by-value records inside the holder's node extent,
+		// after the record's own storage.
+		pieces = append(pieces, storagePiece{size: 16, align: 8})
 	case f.Type.Pointer && f.Array == ArrayNone:
 		// TableRef: EIGHT bytes at eight (docs/SPEC-TABLES.md §6.3). The slot holds
 		// an arena offset in one form and a self-relative region delta in the

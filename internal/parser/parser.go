@@ -515,7 +515,17 @@ func (p *parser) parseMapType() *ast.MapType {
 	kw := p.expect(scanner.KwMap, "map")
 	m := &ast.MapType{Pos: kw.Pos}
 	p.expect(scanner.LBrack, "[ after map")
+	// the `?` prefix binds to the key exactly as it binds to a field type: what
+	// may carry one is the CHECKER's business, so the grammar takes the
+	// spelling and the diagnostic names the real problem — a key is an
+	// identity and every entry has one (docs/SPEC-TABLES.md §2.8)
+	keyOptional := false
+	if p.kind() == scanner.Question {
+		p.advance()
+		keyOptional = true
+	}
 	m.Key = p.parseScalar()
+	m.Key.Optional = keyOptional
 	p.expect(scanner.RBrack, "] after a map key")
 	value := &ast.Field{Name: "value", Pos: p.tok().Pos}
 	if p.kind() == scanner.Question {

@@ -184,6 +184,15 @@ func TableScalarKind(f *Field) int {
 // of the value it holds — absence is the absence of the field, not a kind of
 // its own — which is what keeps `T` and `?T` wire-identical.
 func TableFieldKind(f *Field) int {
+	if f.IsMap() {
+		// A MAP RIDES AS AN ARRAY OF TABLES and spends no kind of its own
+		// (docs/SPEC-TABLES.md §2.8, §3): kind 14 over element kind 13, an
+		// array of the generated `{ key, value }` entry in ascending key
+		// order. A reader that cannot name the field skips it by L; one that
+		// declares the same name as a bounded array of a two-field table
+		// decodes it as that array.
+		return TableKindArray
+	}
 	if f.KeyEnum != "" {
 		return TableKindKeyed
 	}
@@ -197,6 +206,9 @@ func TableFieldKind(f *Field) int {
 // for a field that is not an array on the wire. `bytes(N)` is an array of u8
 // (docs/SPEC-TABLES.md §3) even though it declares no array bound.
 func TableElemKind(f *Field) int {
+	if f.IsMap() {
+		return TableKindTable // a map's elements are its entry bodies (§2.8)
+	}
 	if f.Type.Kind == TBytes && !f.Type.Blob() {
 		return TableKindU8
 	}
@@ -319,6 +331,15 @@ func TableTypeSpelling(f *Field) string {
 		return "bytes"
 	case TNamed:
 		return f.Type.Name
+	case TMap:
+		// a MAP spells its two halves (docs/SPEC-TABLES.md §2.8), so a
+		// descriptor and a diagnostic name the declaration a reader wrote
+		key := MapKeyField(f)
+		spelling := "map[" + TableTypeSpelling(key)
+		if key.Type.Kind == TString {
+			spelling += "(" + itoa(int(key.Type.Size)) + ")"
+		}
+		return spelling + "]" + TableTypeSpelling(MapValueField(f))
 	}
 	return "?"
 }

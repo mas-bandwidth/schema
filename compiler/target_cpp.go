@@ -16,6 +16,9 @@ type cppTarget struct{}
 func (cppTarget) Names() []string { return []string{"cpp"} }
 
 func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseMaps(u, "cpp"); err != nil {
+		return nil, err
+	}
 	files, err := cpp.Generate(u)
 	if err != nil {
 		return nil, err
@@ -39,5 +42,4 @@ func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 func init() {
 	registerBuiltin(cppTarget{}, true, true, true, true)
 	registerOptionalArrayCarrier("cpp")
-	registerMapCarrier("cpp")
 }
