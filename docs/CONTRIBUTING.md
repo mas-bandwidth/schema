@@ -79,6 +79,9 @@ cost most of the wall clock.
 So a change to the C++ emitters wants a dispatch run on its branch before
 merging, not just a green pull request.
 
+One more gate is not CI at all. A pull request is not merged until its authors
+have signed the [Contributor Assignment Agreement](#the-contributor-assignment-agreement).
+
 ## Changing generated output
 
 Any change to a backend's emitted code will move the goldens, and that is
@@ -165,8 +168,45 @@ one that restates the code.
 If a change and the SPEC disagree, one of them is wrong and the pull request
 should say which.
 
-## Licence
+## The Contributor Assignment Agreement
 
-The compiler is AGPL-3.0, with an explicit exception for the code it generates
-(see [LICENSE](../LICENSE)). Contributions are accepted under those terms. There
-is no CLA.
+Contributions require signing the Contributor Assignment Agreement, the CAA. A
+workflow checks every human commit author on a pull request against a signature
+ledger. The pull request stays red until each of them has signed, and it is not
+merged before it is green. Maintainer accounts and bots are allowlisted and
+never sign.
+
+You sign once, on your first pull request to any Más Bandwidth repository, by
+posting this exact sentence as a comment on that pull request:
+
+> I have read the CAA and I hereby sign it, assigning copyright in my contributions to Más Bandwidth LLC.
+
+Read [the agreement](https://github.com/mas-bandwidth/.github/blob/main/CAA.md)
+before you sign it. It is the authority, and what follows is only a summary of
+it. You assign the copyright in your contribution to Más Bandwidth LLC. You
+keep a perpetual license to use your own work for any purpose. You grant a
+patent license covering your contribution. You state that the contribution is
+yours to submit, and that any employer with a claim on your work has cleared
+it. Third-party material you include is not assigned, so identify it and its
+license when you submit it. Section 3 of the agreement governs how Más
+Bandwidth licenses what you assign.
+
+Signatures are recorded in
+[`signatures/caa.json`](https://github.com/mas-bandwidth/.github/blob/cla-signatures/signatures/caa.json)
+on the `cla-signatures` branch of `mas-bandwidth/.github`, one entry per GitHub
+user. The ledger covers every Más Bandwidth repository, so one signature is
+enough for all of them.
+
+The check is an exact string match. A signature that carries extra text, or one
+posted on an issue rather than on a pull request, is still a valid signature,
+but a maintainer has to enter it in the ledger by hand. Comment `recheck` on a
+pull request to re-run the check once that is done. Any other open pull request
+of yours stays red until it is rechecked too.
+
+## License
+
+The compiler ships under the license in [LICENSE](../LICENSE), and the
+[README](../README.md#license) says what that means for you and for the code
+the compiler generates. Contributions are assigned under the CAA above, and Más
+Bandwidth licenses them under the project's license and any other license it
+chooses (CAA section 3).
