@@ -169,7 +169,7 @@ func TestTheTwoFormsResolveAlike(t *testing.T) {
 		if message[len(message)-1] != 0 {
 			t.Errorf("%s: a message's last byte is its body's terminator", msg.Name)
 		}
-		fileBody, fileIds, ok := tablewire.TrailerForTest(file)
+		fileBody, fileIds, ok := tablewire.Trailer(file)
 		if !ok {
 			t.Errorf("%s: the file form's trailer does not read", msg.Name)
 			continue

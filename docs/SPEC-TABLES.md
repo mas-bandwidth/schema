@@ -4172,8 +4172,12 @@ red on. **Each vector's own byte LENGTH is a pinned golden** rather than a numbe
 derived from the other form's.
 
 **RETENTION (§6.6) ON A MESSAGE BODY: the load side is unchanged and the save
-side REFUSES.** `LoadRetain` reads a form-`2` body exactly as it reads a file's:
-the body is framed the same way, every field is self-framed by its kind byte,
+side REFUSES.** Retention itself is NOT BUILT in any language (§6.6, owed as
+schema#525), so this paragraph is the rule that lands WITH it and is the one
+part of this subsection the tree does not carry today.
+
+`LoadRetain` reads a form-`2` body exactly as it reads a file's: the body is
+framed the same way, every field is self-framed by its kind byte,
 and the resolving walk replaces every reference with the id it names, resolving
 against the connection's table instead of a trailer. That substitution is the
 whole difference and it changes no rule of §6.6. **`SaveRetain` writing form `2`
