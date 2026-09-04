@@ -1722,8 +1722,8 @@ struct ShipConfig {
 ```
 
 ```
-fighter measures 2 with settings absent
-fighter measures 11 with settings present and all-default
+fighter measures 10 with settings absent
+fighter measures 22 with settings present and all-default
 ```
 
 That is the difference between `?T` and a plain nested `T`. A plain nesting at
@@ -1902,9 +1902,9 @@ The payload-free `close` arm is a value of the tag enum and no member at all.
 
 ```
 $ ./p7m
-seq 3, tag 1, path ship.cfg line 42, 42 bytes
-a ping message measures 22 bytes
-a payload-free close measures 18 bytes
+seq 3, tag 1, path ship.cfg line 42, 79 bytes
+a ping message measures 49 bytes
+a payload-free close measures 45 bytes
 ```
 
 On the table wire a union's arm rides under its **arm-name hash** with a length
@@ -1947,12 +1947,12 @@ table MatchLog
 
 ```
 $ ./p7
-fighter measures 2 with settings absent
-fighter measures 11 with settings present and all-default
+fighter measures 10 with settings absent
+fighter measures 22 with settings present and all-default
 slot Fighter health=100
 slot Freighter health=100
 slot Corvette health=400
-GameConfig is 99 bytes
+GameConfig is 142 bytes
 ```
 
 **You now have** `GameConfig`: one declared root, one binary format, with
