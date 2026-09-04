@@ -2096,7 +2096,7 @@ $ ./p8
   Gate (0, 0)
   Belt (120, 40)
   Station (300, -75)
-wire bytes: 172, region bytes: 256
+wire bytes: 163, region bytes: 256
 after round trip: shared=YES null=yes, head is Gate
 report: unknown=0 malformed=0
 sizeof(RouteBuilder) = 8264
@@ -2163,7 +2163,7 @@ $ ./p8map
   tier -3 -> 7
   tier 2 -> 9
 Find("dart") health=80, Find("ghost") is null
-3 ships, 2 tiers, 165 bytes on the wire
+3 ships, 2 tiers, 145 bytes on the wire
 ```
 
 Iteration is in **ascending key order**, not insertion order, because `Lock`
@@ -2203,7 +2203,7 @@ per-node atomic:
 
 ```
 $ ./wide
-walked 4000 waypoints; the wire measures 111989 bytes
+walked 4000 waypoints; the wire measures 51904 bytes
 ```
 
 Allocating on your own worker is safe concurrently. Writing fields of a node
@@ -2211,6 +2211,11 @@ another worker allocated is your synchronization problem, and `Lock` and `Save`
 are single-threaded. A builder is about 8 KB, because it carries the arena's
 segment table inline: fine on the stack, fine as a member, and not something
 for an array of thousands.
+
+Note the shape of that number against Part 6's. A pointer-heavy graph is where
+this wire is cheapest, because four thousand nodes name the same handful of
+field ids and the file carries each id once, in its trailer. A tiny message
+pays the framing instead, which is what Part 6's ten-byte floor was.
 
 ### Who allocates
 
