@@ -11135,7 +11135,7 @@ union Effect
     arm ping id=0xbf30e00dc53307a9 kind=none
 
 ## history
-### 2026-09-02 — first baseline before 1.0 ships
+### 2026-09-02 (UTC) — first baseline before 1.0 ships
 - baseline created over 1 table — data written BEFORE this point is not covered by it
 ```
 
@@ -11293,6 +11293,14 @@ therefore the one record the wire lacks — the log of every intentional
 break — and it is what a person consults when an old save or an old tool
 file reads back wrong. The update is idempotent: a unit that has not moved
 rewrites nothing.
+
+**The date is UTC, and the entry says so**: `### 2026-09-04 (UTC) — <reason>`.
+A baseline is a shared artifact read on other machines in other zones, so one
+clock is the only workable choice — and an unlabelled date is read in the
+reader's own, which is how an author east of Greenwich comes to read yesterday
+on the file they just wrote. Entries written before the label was added keep
+the spelling they have: the history is prose, salvaged verbatim by every
+rewrite, and nothing reads a date back.
 
 **`--update` works on a baseline the checker cannot read.** A corrupt file,
 another unit's file, or one written under a rendering version this compiler

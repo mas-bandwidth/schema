@@ -2893,10 +2893,10 @@ later when an old save loads wrong:
 
 ```
 ## history
-### 2026-09-02 — first baseline before 1.0 ships
+### 2026-09-02 (UTC) — first baseline before 1.0 ships
 - baseline created over 1 table — data written BEFORE this point is not covered by it
 
-### 2026-11-14 — damage rebalanced in 2.0; saves from 1.x read the new value
+### 2026-11-14 (UTC) — damage rebalanced in 2.0; saves from 1.x read the new value
 - ShipConfig.damage: specified default 21.0 -> 25.0 [refuse]
 ```
 
