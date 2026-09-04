@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -116,7 +117,10 @@ func TestMapsAreLegal(t *testing.T) {
 		t.Errorf("ShipConfig is not a pointer target — a map[K]*T names one (§2.8)")
 	}
 
-	want := []string{"Fleet.by_id", "Fleet.loadouts", "Fleet.ships", "FleetLoadoutsEntry.value"}
+	// only the fields an author WROTE: the nested map lives on the generated
+	// entry, which no source file names, so a refusal that listed it would
+	// send its reader looking for a declaration that is not there (§11)
+	want := []string{"Fleet.by_id", "Fleet.loadouts", "Fleet.ships"}
 	got := ir.MapFields(u)
 	if len(got) != len(want) {
 		t.Fatalf("MapFields = %v, want %v", got, want)
@@ -125,9 +129,6 @@ func TestMapsAreLegal(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("MapFields[%d] = %q, want %q", i, got[i], want[i])
 		}
-	}
-	if !ir.HasMap(u) {
-		t.Errorf("HasMap = false for a unit that declares three")
 	}
 }
 
@@ -159,8 +160,8 @@ func TestMapsAreRefusedByEveryTarget(t *testing.T) {
 // compiler's own surface (§2.2, §2.8).
 func TestMapFreeUnitIsUntouched(t *testing.T) {
 	u := unitFromSource(t, optionalArraySrc)
-	if ir.HasMap(u) {
-		t.Fatalf("HasMap = true for a map-free unit")
+	if got := ir.MapFields(u); len(got) != 0 {
+		t.Fatalf("MapFields = %v for a map-free unit", got)
 	}
 	c := New()
 	for _, target := range c.Targets() {
@@ -211,6 +212,50 @@ func TestMapTypeSpelling(t *testing.T) {
 	} {
 		if got := ir.TableTypeSpelling(byName[name]); got != want {
 			t.Errorf("%s spells %q, want %q", name, got, want)
+		}
+	}
+}
+
+// TestMapEntryIsNotARoot: §2.8 states the entry is the ONE EXCEPTION to §7's
+// "a root is any table" — it is reached only through the map that generates
+// it, so it gets no Open, no Cook, no Save and no Load of its own, and its
+// walk, its layout and its cook body are the whole of what it carries.
+//
+// The gate runs the C++ REFERENCE's table emitter directly, because every
+// registered target refuses a map-bearing unit until its codec lands
+// (schema#380) and this is a fact of the emitter rather than of the target's
+// gate. It is also where the checker and the emitter are held to ONE entry
+// name: the header declares the struct the checker claimed, `by_id` in
+// PascalCase and all.
+func TestMapEntryIsNotARoot(t *testing.T) {
+	files, err := cpptable.Generate(unitFromSource(t, mapSrc))
+	if err != nil {
+		t.Fatalf("generate the table header: %v", err)
+	}
+	var header string
+	for name, data := range files {
+		if strings.HasSuffix(name, "Table.h") {
+			header = string(data)
+		}
+	}
+	if header == "" {
+		t.Fatal("no Table header generated")
+	}
+	for _, entry := range []string{"FleetShipsEntry", "FleetByIdEntry", "FleetLoadoutsEntry", "FleetLoadoutsEntryValueEntry"} {
+		if !strings.Contains(header, "struct "+entry) {
+			t.Errorf("the header declares no %s — the checker claims that name, so the emitter must produce it (§2.8, §11)", entry)
+		}
+		for _, verb := range []string{"Open", "Cook", "CookMeasure", "Save", "Load"} {
+			if strings.Contains(header, entry+verb+"(") {
+				t.Errorf("the header emits %s%s — an entry is reached only through its map and is not a root (§2.8, §7)", entry, verb)
+			}
+		}
+	}
+	// and the ROOT that declares the maps keeps its whole surface, so the
+	// test above is about the entry and not about a header that emits nothing
+	for _, verb := range []string{"Open", "Cook", "Load"} {
+		if !strings.Contains(header, "Fleet"+verb+"(") {
+			t.Errorf("the header emits no Fleet%s — the holder is an ordinary root", verb)
 		}
 	}
 }

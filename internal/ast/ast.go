@@ -129,6 +129,15 @@ type MapType struct {
 	Pos   Pos
 	Key   ScalarType
 	Value *Field
+
+	// KeyAttrs and KeyDefault are a qualification and a default written ON
+	// THE KEY — `map[uint32 | max = 4]int32`, `map[uint32 = 5]int32`. The
+	// grammar takes them so the CHECKER can refuse them by name: a key is an
+	// identity, and clamping an identity merges two entries
+	// (docs/SPEC-TABLES.md §2.8, §11). Nothing downstream of the checker ever
+	// sees a key that carries one.
+	KeyAttrs   []Attr
+	KeyDefault Expr
 }
 
 type ArrayKind int

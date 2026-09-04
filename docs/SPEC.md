@@ -246,7 +246,7 @@ from this projection rather than carried in it.
   bound is a range literal (`[..N]`, `[A..B]`), never a truncated
   comparison, and the retired `[<= N]` spelling is refused with the
   replacement named.
-- **Reserved words:** `package const enum type table message object if else
+- **Reserved words:** `package const enum type table map message object if else
   switch case align reserved`, the wire-type keywords `bits bool float32
   float64 string bytes fixed ufixed`, and the integer family `int8 int16
   int32 int64 uint8 uint16 uint32 uint64 int128 uint128` — plus `int` and
@@ -332,12 +332,21 @@ ConstField  = "const" "(" IntExpr "," IntExpr ")" NL .          // (value, bits)
 Reserved    = "reserved" "(" IntExpr ")" NL .
 Align       = "align" NL .
 
-Type        = [ "?" ] [ "[" Bound "]" ] Scalar .                 // array bound is a PREFIX, Go's order.
+Type        = [ "?" ] [ "[" Bound "]" ] ( Scalar | Map ) .       // array bound is a PREFIX, Go's order.
                                                                  // "?" is the OPTIONAL prefix
                                                                  // (SPEC-TABLES.md §2.3): the value plus
                                                                  // a generated presence bool. TABLE
                                                                  // BODIES ONLY — a type body refuses one
                                                                  // by name, as it does a pointer
+Map         = "map" "[" Scalar "]" Type .                        // a LOOKUP over entries the wire
+                                                                 // carries as a sorted array of one
+                                                                 // generated { key, value } table
+                                                                 // (SPEC-TABLES.md §2.8). The KEY is
+                                                                 // string(N) or an integer kind, bare;
+                                                                 // the VALUE is a whole field type, so
+                                                                 // maps nest. TABLE BODIES ONLY — a type
+                                                                 // body refuses one by name, as it does
+                                                                 // a pointer
 Scalar      = IntType
             | "int128" | "uint128"                               // 128-bit integers (§4.3);
                                                                  // field types only, not ConstType

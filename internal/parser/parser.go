@@ -526,6 +526,17 @@ func (p *parser) parseMapType() *ast.MapType {
 	}
 	m.Key = p.parseScalar()
 	m.Key.Optional = keyOptional
+	// a DEFAULT and a QUALIFICATION on the key, on the same terms as the `?`:
+	// the grammar takes the spelling wherever a field's would stand, so the
+	// diagnostic is the checker's sentence about clamping an identity rather
+	// than a parse error about a bracket (docs/SPEC-TABLES.md §2.8, §11)
+	if p.kind() == scanner.Assign {
+		p.advance()
+		m.KeyDefault = p.parseExpr()
+	}
+	if p.kind() == scanner.Pipe {
+		m.KeyAttrs = p.parsePipeAttrs()
+	}
 	p.expect(scanner.RBrack, "] after a map key")
 	value := &ast.Field{Name: "value", Pos: p.tok().Pos}
 	if p.kind() == scanner.Question {

@@ -27,6 +27,15 @@ func init() {
 		// the variable-length names are: adding a keyed array to an existing table
 		// must not turn a legal declaration elsewhere into a collision.
 		Name{Name: "TableKeyed", What: "an enum-keyed array's slot storage"},
+		// the MAP's storage and its side index (docs/SPEC-TABLES.md §2.8),
+		// claimed on TableKeyed's exact terms: a backend emits them only
+		// into a unit that declares a map, and the claim is unconditional on
+		// a unit declaring a table, so adding a map to an existing table
+		// never turns a legal declaration elsewhere into a collision. They
+		// are claimed with the CONSTRUCT rather than with the codec — a name
+		// freed now is a collision the day the codec lands.
+		Name{Name: "TableMap", What: "a map field's sorted entry array and its count"},
+		Name{Name: "TableMapIndex", What: "a map's side index, built once and searched in place"},
 		// C++'s float <-> IEEE-754 bit pattern helpers
 		Name{Name: "table_bits_to_float", What: "u32 bits -> float"},
 		Name{Name: "table_float_to_bits", What: "float -> u32 bits"},

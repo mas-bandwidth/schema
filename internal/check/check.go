@@ -2982,6 +2982,22 @@ func (c *checker) checkClaimedNames() {
 					add(accessor, why, d.DeclPos())
 					add(accessor+"Span", why, d.DeclPos())
 				}
+				// AND A MAP claims its whole lookup surface on the table
+				// that declares it: <Table><Field> followed by Entry and
+				// each of the calls a map is (docs/SPEC-TABLES.md §2.8,
+				// §11). Like the block accessors, this part of the set moves
+				// with the declaration rather than with the unit, which is
+				// why §11 states it as a rule.
+				whyMap := fmt.Sprintf("%s's generated map surface (docs/SPEC-TABLES.md §2.8, §11)", name)
+				for _, f := range st.Fields {
+					if !f.IsMap() {
+						continue
+					}
+					base := name + ir.GoExportName(f.Name)
+					for _, verb := range ir.MapFieldVerbs {
+						add(base+verb, whyMap, d.DeclPos())
+					}
+				}
 			}
 		}
 	}

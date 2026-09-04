@@ -6,7 +6,11 @@
 // a walk has to descend.
 package ir
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
 
 // MapKeyFieldName, MapValueFieldName are the entry's two field names. They are
 // ordinary names taking the ordinary hash, which is what makes a user's own
@@ -40,38 +44,46 @@ func MapEntryName(owner, field string) string {
 // IsMap reports a `map[K]V` field.
 func (f *Field) IsMap() bool { return f.MapEntry != nil }
 
+// IsMapEntry reports a table the compiler GENERATED for a map field.
+//
+// It is the ONE EXCEPTION to §7's "a root is any table" (docs/SPEC-TABLES.md
+// §2.8): an entry is reached only through the map that generates it, so it
+// gets no `Open`, no `Cook`, no `Save` and no `Load` of its own. Its walk, its
+// layout and its cook body are the whole of what it carries, and every
+// backend's root surface asks this before emitting one.
+func (s *Struct) IsMapEntry() bool { return s != nil && s.MapEntryOf != "" }
+
 // MapKeyField, MapValueField are the entry's two fields. Both panic on a field
 // that is not a map, because every caller has already asked [Field.IsMap].
 func MapKeyField(f *Field) *Field   { return f.MapEntry.Fields[0] }
 func MapValueField(f *Field) *Field { return f.MapEntry.Fields[1] }
 
-// MapEntryStructs lists a unit's GENERATED entry tables in a deterministic
-// order — the order they were synthesized, innermost first, so a header that
-// emits them in list order declares an inner entry before the outer one that
-// holds it.
-func MapEntryStructs(u *Unit) []*Struct {
-	var out []*Struct
-	for _, f := range u.Files {
-		for _, st := range f.Tables {
-			if st.MapEntryOf != "" {
-				out = append(out, st)
-			}
-		}
-	}
-	return out
+// MapFieldVerbs is the SURFACE a map claims on the table that declares it
+// (docs/SPEC-TABLES.md §2.8, §11): `<Table><Field>` followed by each of these.
+// The entry's name is the first of them, and the rest are the lookup a map is
+// — so a unit that declares anything under one of these spellings is refused
+// at the source rather than at the user's build.
+//
+// The list is claimed with the CONSTRUCT and not with the codec, on the rule
+// §11 already follows for the block form's row accessors: a name free today
+// must not become a collision the day a backend emits it.
+var MapFieldVerbs = []string{
+	"Entry", "Insert", "Find", "Erase", "Each",
+	// the SIDE INDEX (§2.8): its measure, the build, and the lookup through it
+	"IndexMeasure", "Index", "IndexFind",
 }
 
-// MapFields lists the MAP fields of a unit's table closure as `Table.field`,
-// sorted — the names a backend that does not carry the construct puts in its
-// refusal (docs/SPEC-TABLES.md §11).
+// MapFields lists the map fields an author WROTE, as `Table.field`, sorted —
+// the names a backend that does not carry the construct puts in its refusal
+// (docs/SPEC-TABLES.md §11). A generated entry's own `value` is not one of
+// them: the entry is in the closure and holds the nested map, but no source
+// file names it, and a refusal that named it would send its reader looking
+// for a declaration that is not there.
 func MapFields(u *Unit) []string {
 	var out []string
 	for name := range TableClosure(u) {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
-		if st == nil {
+		st := memberStruct(u, name)
+		if st == nil || st.MapEntryOf != "" {
 			continue
 		}
 		for _, f := range st.Fields {
@@ -84,11 +96,56 @@ func MapFields(u *Unit) []string {
 	return out
 }
 
-// HasMap reports whether a unit's table closure declares one — the question
-// the zero-cost gate and every backend's refusal ask.
-func HasMap(u *Unit) bool { return len(MapFields(u)) > 0 }
+// MapEntryProjectionName is a generated entry's identity in the two
+// PROJECTIONS — the cook projection the build version digests
+// (docs/SPEC-TABLES.md §20.2) and the tables baseline (§18.1). It is
+// `<holder id>.<field id>`: the HOLDER'S WIRE ID and the MAP FIELD'S WIRE ID
+// joined by a dot, and never the generated name, for the reason §20.2 gives —
+// the generated name is derived from the field's SOURCE spelling, so a `was`
+// rename of the holder or of the map field would otherwise move a line and
+// invalidate a cooked file that no byte had moved under.
+//
+// A nested map's entry is held by an entry, so the key CHAINS: the outermost
+// holder is a declared table and contributes its type id, and each map field
+// on the way in contributes its own.
+func MapEntryProjectionName(u *Unit, st *Struct) string {
+	if st == nil || st.MapEntryOf == "" {
+		return ""
+	}
+	owner, field := splitMapEntryOf(st.MapEntryOf)
+	id := FieldId(field)
+	if holder := memberStruct(u, owner); holder != nil {
+		for _, f := range holder.Fields {
+			if f.Name == field {
+				id = TableFieldId(f)
+				break
+			}
+		}
+		if holder.MapEntryOf != "" {
+			return MapEntryProjectionName(u, holder) + fmt.Sprintf(".%04x", id)
+		}
+	}
+	return fmt.Sprintf("%016x.%04x", TableTypeId(owner), id)
+}
 
-// MapKeyIsString reports the key's family: a bounded string, or an integer.
-// Nothing else is a key (docs/SPEC-TABLES.md §2.8), so the two questions are
-// one.
-func MapKeyIsString(f *Field) bool { return MapKeyField(f).Type.Kind == TString }
+// ProjectionMemberName is the name one closure member takes in the two
+// projections: its own, and a generated entry's anonymous key
+// (see [MapEntryProjectionName]). Both projections sort their members by THIS
+// name and print it, so a `was` rename — which moves the generated name and
+// no byte — moves neither the order nor a line.
+func ProjectionMemberName(u *Unit, name string) string {
+	if st := memberStruct(u, name); st != nil && st.MapEntryOf != "" {
+		return MapEntryProjectionName(u, st)
+	}
+	return name
+}
+
+// splitMapEntryOf splits `Fleet.ships` into its holder and its field. A field
+// name carries no dot, so the LAST one separates them.
+func splitMapEntryOf(of string) (owner, field string) {
+	i := strings.LastIndex(of, ".")
+	if i < 0 {
+		return of, ""
+	}
+	return of[:i], of[i+1:]
+}
