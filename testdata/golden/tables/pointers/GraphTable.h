@@ -4939,6 +4939,7 @@ inline const ListNode * ListNodeLoad( uint8_t * region, int64_t region_bytes, co
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
         int64_t used = TableAlignUp64( (int64_t) sizeof( ListNode ) );
         int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             int64_t storage = ListNodeNodeStorage( type_id, length );
@@ -4947,7 +4948,7 @@ inline const ListNode * ListNodeLoad( uint8_t * region, int64_t region_bytes, co
                 // a record whose type id this build cannot name KEEPS ITS
                 // INDEX, is counted once here and not once per pointer, and
                 // every reference to it reads null (§3.1)
-                out->unknown++;
+                unknown_records++;
                 directory[k + 1].offset = kTableNodeAbsent;
                 directory[k + 1].type_id = type_id;
             }
@@ -4961,7 +4962,10 @@ inline const ListNode * ListNodeLoad( uint8_t * region, int64_t region_bytes, co
             k++;
         }
         nodes.good = TableNodeScanWhole( scan );
-        if ( !nodes.good ) { out->malformed = true; } // the table is whole or it is nothing
+        // the table is whole or it is nothing: a scan that failed counts
+        // malformed and NOT the unknowns it met on the way, because the
+        // numbering they belonged to does not exist (§3.1)
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
     }
 
     // PASS TWO: decode each body into its own storage. A forward index
@@ -5023,12 +5027,13 @@ inline bool ListNodeLoadBuilder( ListNodeBuilder & builder, const uint8_t * wire
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
         int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             uint32_t at = ListNodeNodeAlloc( type_id, builder.main, length );
             if ( at == 0 )
             {
-                out->unknown++;
+                unknown_records++;
                 directory[k + 1].offset = kTableNodeAbsent;
             }
             else
@@ -5039,7 +5044,7 @@ inline bool ListNodeLoadBuilder( ListNodeBuilder & builder, const uint8_t * wire
             k++;
         }
         nodes.good = TableNodeScanWhole( scan );
-        if ( !nodes.good ) { out->malformed = true; }
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
     }
     if ( nodes.good )
     {
@@ -5387,6 +5392,7 @@ inline const TreeNode * TreeNodeLoad( uint8_t * region, int64_t region_bytes, co
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
         int64_t used = TableAlignUp64( (int64_t) sizeof( TreeNode ) );
         int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             int64_t storage = TreeNodeNodeStorage( type_id, length );
@@ -5395,7 +5401,7 @@ inline const TreeNode * TreeNodeLoad( uint8_t * region, int64_t region_bytes, co
                 // a record whose type id this build cannot name KEEPS ITS
                 // INDEX, is counted once here and not once per pointer, and
                 // every reference to it reads null (§3.1)
-                out->unknown++;
+                unknown_records++;
                 directory[k + 1].offset = kTableNodeAbsent;
                 directory[k + 1].type_id = type_id;
             }
@@ -5409,7 +5415,10 @@ inline const TreeNode * TreeNodeLoad( uint8_t * region, int64_t region_bytes, co
             k++;
         }
         nodes.good = TableNodeScanWhole( scan );
-        if ( !nodes.good ) { out->malformed = true; } // the table is whole or it is nothing
+        // the table is whole or it is nothing: a scan that failed counts
+        // malformed and NOT the unknowns it met on the way, because the
+        // numbering they belonged to does not exist (§3.1)
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
     }
 
     // PASS TWO: decode each body into its own storage. A forward index
@@ -5471,12 +5480,13 @@ inline bool TreeNodeLoadBuilder( TreeNodeBuilder & builder, const uint8_t * wire
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
         int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             uint32_t at = TreeNodeNodeAlloc( type_id, builder.main, length );
             if ( at == 0 )
             {
-                out->unknown++;
+                unknown_records++;
                 directory[k + 1].offset = kTableNodeAbsent;
             }
             else
@@ -5487,7 +5497,7 @@ inline bool TreeNodeLoadBuilder( TreeNodeBuilder & builder, const uint8_t * wire
             k++;
         }
         nodes.good = TableNodeScanWhole( scan );
-        if ( !nodes.good ) { out->malformed = true; }
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
     }
     if ( nodes.good )
     {
@@ -5835,6 +5845,7 @@ inline const Layer * LayerLoad( uint8_t * region, int64_t region_bytes, const ui
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
         int64_t used = TableAlignUp64( (int64_t) sizeof( Layer ) );
         int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             int64_t storage = LayerNodeStorage( type_id, length );
@@ -5843,7 +5854,7 @@ inline const Layer * LayerLoad( uint8_t * region, int64_t region_bytes, const ui
                 // a record whose type id this build cannot name KEEPS ITS
                 // INDEX, is counted once here and not once per pointer, and
                 // every reference to it reads null (§3.1)
-                out->unknown++;
+                unknown_records++;
                 directory[k + 1].offset = kTableNodeAbsent;
                 directory[k + 1].type_id = type_id;
             }
@@ -5857,7 +5868,10 @@ inline const Layer * LayerLoad( uint8_t * region, int64_t region_bytes, const ui
             k++;
         }
         nodes.good = TableNodeScanWhole( scan );
-        if ( !nodes.good ) { out->malformed = true; } // the table is whole or it is nothing
+        // the table is whole or it is nothing: a scan that failed counts
+        // malformed and NOT the unknowns it met on the way, because the
+        // numbering they belonged to does not exist (§3.1)
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
     }
 
     // PASS TWO: decode each body into its own storage. A forward index
@@ -5919,12 +5933,13 @@ inline bool LayerLoadBuilder( LayerBuilder & builder, const uint8_t * wire, int6
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
         int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             uint32_t at = LayerNodeAlloc( type_id, builder.main, length );
             if ( at == 0 )
             {
-                out->unknown++;
+                unknown_records++;
                 directory[k + 1].offset = kTableNodeAbsent;
             }
             else
@@ -5935,7 +5950,7 @@ inline bool LayerLoadBuilder( LayerBuilder & builder, const uint8_t * wire, int6
             k++;
         }
         nodes.good = TableNodeScanWhole( scan );
-        if ( !nodes.good ) { out->malformed = true; }
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
     }
     if ( nodes.good )
     {
@@ -6291,6 +6306,7 @@ inline const Scene * SceneLoad( uint8_t * region, int64_t region_bytes, const ui
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
         int64_t used = TableAlignUp64( (int64_t) sizeof( Scene ) );
         int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             int64_t storage = SceneNodeStorage( type_id, length );
@@ -6299,7 +6315,7 @@ inline const Scene * SceneLoad( uint8_t * region, int64_t region_bytes, const ui
                 // a record whose type id this build cannot name KEEPS ITS
                 // INDEX, is counted once here and not once per pointer, and
                 // every reference to it reads null (§3.1)
-                out->unknown++;
+                unknown_records++;
                 directory[k + 1].offset = kTableNodeAbsent;
                 directory[k + 1].type_id = type_id;
             }
@@ -6313,7 +6329,10 @@ inline const Scene * SceneLoad( uint8_t * region, int64_t region_bytes, const ui
             k++;
         }
         nodes.good = TableNodeScanWhole( scan );
-        if ( !nodes.good ) { out->malformed = true; } // the table is whole or it is nothing
+        // the table is whole or it is nothing: a scan that failed counts
+        // malformed and NOT the unknowns it met on the way, because the
+        // numbering they belonged to does not exist (§3.1)
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
     }
 
     // PASS TWO: decode each body into its own storage. A forward index
@@ -6375,12 +6394,13 @@ inline bool SceneLoadBuilder( SceneBuilder & builder, const uint8_t * wire, int6
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
         int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             uint32_t at = SceneNodeAlloc( type_id, builder.main, length );
             if ( at == 0 )
             {
-                out->unknown++;
+                unknown_records++;
                 directory[k + 1].offset = kTableNodeAbsent;
             }
             else
@@ -6391,7 +6411,7 @@ inline bool SceneLoadBuilder( SceneBuilder & builder, const uint8_t * wire, int6
             k++;
         }
         nodes.good = TableNodeScanWhole( scan );
-        if ( !nodes.good ) { out->malformed = true; }
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
     }
     if ( nodes.good )
     {
@@ -6739,6 +6759,7 @@ inline const Depot * DepotLoad( uint8_t * region, int64_t region_bytes, const ui
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
         int64_t used = TableAlignUp64( (int64_t) sizeof( Depot ) );
         int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             int64_t storage = DepotNodeStorage( type_id, length );
@@ -6747,7 +6768,7 @@ inline const Depot * DepotLoad( uint8_t * region, int64_t region_bytes, const ui
                 // a record whose type id this build cannot name KEEPS ITS
                 // INDEX, is counted once here and not once per pointer, and
                 // every reference to it reads null (§3.1)
-                out->unknown++;
+                unknown_records++;
                 directory[k + 1].offset = kTableNodeAbsent;
                 directory[k + 1].type_id = type_id;
             }
@@ -6761,7 +6782,10 @@ inline const Depot * DepotLoad( uint8_t * region, int64_t region_bytes, const ui
             k++;
         }
         nodes.good = TableNodeScanWhole( scan );
-        if ( !nodes.good ) { out->malformed = true; } // the table is whole or it is nothing
+        // the table is whole or it is nothing: a scan that failed counts
+        // malformed and NOT the unknowns it met on the way, because the
+        // numbering they belonged to does not exist (§3.1)
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
     }
 
     // PASS TWO: decode each body into its own storage. A forward index
@@ -6823,12 +6847,13 @@ inline bool DepotLoadBuilder( DepotBuilder & builder, const uint8_t * wire, int6
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
         int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             uint32_t at = DepotNodeAlloc( type_id, builder.main, length );
             if ( at == 0 )
             {
-                out->unknown++;
+                unknown_records++;
                 directory[k + 1].offset = kTableNodeAbsent;
             }
             else
@@ -6839,7 +6864,7 @@ inline bool DepotLoadBuilder( DepotBuilder & builder, const uint8_t * wire, int6
             k++;
         }
         nodes.good = TableNodeScanWhole( scan );
-        if ( !nodes.good ) { out->malformed = true; }
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
     }
     if ( nodes.good )
     {
@@ -7195,6 +7220,7 @@ inline const Album * AlbumLoad( uint8_t * region, int64_t region_bytes, const ui
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
         int64_t used = TableAlignUp64( (int64_t) sizeof( Album ) );
         int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             int64_t storage = AlbumNodeStorage( type_id, length );
@@ -7203,7 +7229,7 @@ inline const Album * AlbumLoad( uint8_t * region, int64_t region_bytes, const ui
                 // a record whose type id this build cannot name KEEPS ITS
                 // INDEX, is counted once here and not once per pointer, and
                 // every reference to it reads null (§3.1)
-                out->unknown++;
+                unknown_records++;
                 directory[k + 1].offset = kTableNodeAbsent;
                 directory[k + 1].type_id = type_id;
             }
@@ -7217,7 +7243,10 @@ inline const Album * AlbumLoad( uint8_t * region, int64_t region_bytes, const ui
             k++;
         }
         nodes.good = TableNodeScanWhole( scan );
-        if ( !nodes.good ) { out->malformed = true; } // the table is whole or it is nothing
+        // the table is whole or it is nothing: a scan that failed counts
+        // malformed and NOT the unknowns it met on the way, because the
+        // numbering they belonged to does not exist (§3.1)
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
     }
 
     // PASS TWO: decode each body into its own storage. A forward index
@@ -7279,12 +7308,13 @@ inline bool AlbumLoadBuilder( AlbumBuilder & builder, const uint8_t * wire, int6
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
         int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             uint32_t at = AlbumNodeAlloc( type_id, builder.main, length );
             if ( at == 0 )
             {
-                out->unknown++;
+                unknown_records++;
                 directory[k + 1].offset = kTableNodeAbsent;
             }
             else
@@ -7295,7 +7325,7 @@ inline bool AlbumLoadBuilder( AlbumBuilder & builder, const uint8_t * wire, int6
             k++;
         }
         nodes.good = TableNodeScanWhole( scan );
-        if ( !nodes.good ) { out->malformed = true; }
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
     }
     if ( nodes.good )
     {

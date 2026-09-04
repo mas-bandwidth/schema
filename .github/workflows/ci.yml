@@ -183,6 +183,9 @@ jobs:
   # Registering a port is its driver and its ci.json, and no edit here — unless
   # its toolchain has no step yet, in which case it adds one step keyed on a
   # new field, which is the one edit this file still takes.
+      - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
+        run: make tables-block-zero-cost
+
   conformance-matrix:
     runs-on: ubuntu-latest
     timeout-minutes: 5
