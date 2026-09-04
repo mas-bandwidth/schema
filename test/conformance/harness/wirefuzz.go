@@ -60,6 +60,14 @@ type wireRoot struct {
 	model    *tabletext.Model
 	def      *ir.Struct
 	variable bool
+	// message is the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the mutants for
+	// this root are form 2 wires and their references resolve against the
+	// CONNECTION's table rather than a trailer of their own. `vocabulary` is
+	// that table — the unit's whole vocabulary, which is a pure function of
+	// the build version, so both sides derive it and neither carries it.
+	message    bool
+	vocabulary *tablewire.Vocabulary
+	entries    []uint64
 	// the C ABI storage each node type commands (docs/SPEC-TABLES.md §6.5,
 	// §20.3), by wire type id, eight-aligned as a reader's LoadMeasure rounds it
 	storage     map[uint64]int64
@@ -77,7 +85,7 @@ const nodeRecordHeaderBytes = int64(12)
 
 func alignUp8(n int64) int64 { return (n + 7) &^ 7 }
 
-func newWireRoot(u *units, unitKey, rootName string) (*wireRoot, error) {
+func newWireRoot(u *units, unitKey, rootName string, message bool) (*wireRoot, error) {
 	unit, err := u.get(unitKey)
 	if err != nil {
 		return nil, err
@@ -87,7 +95,14 @@ func newWireRoot(u *units, unitKey, rootName string) (*wireRoot, error) {
 	if def == nil {
 		return nil, fmt.Errorf("unit %s declares no table %s", unitKey, rootName)
 	}
-	r := &wireRoot{unit: unitKey, root: rootName, model: m, def: def, variable: m.IsVariable(rootName), storage: map[uint64]int64{}}
+	r := &wireRoot{unit: unitKey, root: rootName, model: m, def: def, variable: m.IsVariable(rootName), message: message, storage: map[uint64]int64{}}
+	if message {
+		r.vocabulary = &tablewire.Vocabulary{}
+		if err := r.vocabulary.AnnounceRead(ir.TableAnnouncement(unit), &tabletext.Report{}); err != nil {
+			return nil, fmt.Errorf("unit %s: its own announcement was refused: %w", unitKey, err)
+		}
+		r.entries = r.vocabulary.Entries()
+	}
 	r.rootStorage = alignUp8(ir.RecordLayout(unit, def).Size)
 	for name := range ir.TableClosure(unit) {
 		st := m.Lookup(name)
@@ -346,12 +361,15 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	var seeds []*wireSeed
 	var roots []*wireRoot
 	rootIndex := map[string]int{}
-	addRoot := func(unit, root string) (int, error) {
+	addRoot := func(unit, root string, message bool) (int, error) {
 		key := unit + "." + root
+		if message {
+			key += ".message"
+		}
 		if i, ok := rootIndex[key]; ok {
 			return i, nil
 		}
-		r, err := newWireRoot(u, unit, root)
+		r, err := newWireRoot(u, unit, root, message)
 		if err != nil {
 			return 0, err
 		}
@@ -360,19 +378,22 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		return len(roots) - 1, nil
 	}
 	seedRoot := map[*wireSeed]int{}
-	addSeed := func(name, unit, root, wirePath string) error {
+	addFormSeed := func(name, unit, root, wirePath string, message bool) error {
 		wire, err := os.ReadFile(wirePath)
 		if err != nil {
 			return err
 		}
-		ri, err := addRoot(unit, root)
+		ri, err := addRoot(unit, root, message)
 		if err != nil {
 			return err
 		}
-		s := &wireSeed{name: name, unit: unit, root: root, wire: wire, frame: frameWire(wire)}
+		s := &wireSeed{name: name, unit: unit, root: root, wire: wire, frame: frameWireForm(wire, roots[ri].entries)}
 		seeds = append(seeds, s)
 		seedRoot[s] = ri
 		return nil
+	}
+	addSeed := func(name, unit, root, wirePath string) error {
+		return addFormSeed(name, unit, root, wirePath, false)
 	}
 	if opts.replay != "" {
 		if opts.unit == "" || opts.root == "" {
@@ -389,6 +410,22 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		}
 		for _, rc := range m.Reports {
 			if err := addSeed(rc.Name, rc.Unit, rc.Root, rc.Wire); err != nil {
+				return err
+			}
+		}
+		// AND THE REFERENCE BOUND UNDER A CONNECTION TABLE
+		// (docs/SPEC-TABLES.md §3.3): the reference pass run with the table
+		// ANNOUNCED, so every reference is set to the entry count plus one and
+		// to the extremes the encoding can spell — which are malformed — and
+		// to the entry count itself, which is the last legal slot and must
+		// RESOLVE. A message has no trailer to mutate, so the whole of its
+		// attack surface is the body.
+		for _, msg := range m.Messages {
+			c, cerr := m.LookupConnection(msg.Connection)
+			if cerr != nil {
+				return cerr
+			}
+			if err := addFormSeed(msg.Name+"_message", c.Unit, msg.Root, msg.MessageWire, true); err != nil {
 				return err
 			}
 		}

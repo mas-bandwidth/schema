@@ -129,7 +129,29 @@ func lebBytes(v uint64) []byte { return appendLeb(nil, v) }
 
 // frameWire locates every number in one saved table: the form byte, the id
 // table it ends with, and every spot of the root body between them.
-func frameWire(data []byte) *wireFrame {
+func frameWire(data []byte) *wireFrame { return frameWireForm(data, nil) }
+
+// frameWireForm is frameWire over EITHER form (docs/SPEC-TABLES.md §3, §3.3).
+// `entries` nil is the FILE form, whose id table is its own trailer; entries
+// non-nil is the MESSAGE FORM, whose table is the CONNECTION's — so the wire
+// is the form byte and the root body, there is no trailer to locate and none
+// to mutate, and the whole of its attack surface is the body.
+func frameWireForm(data []byte, entries []uint64) *wireFrame {
+	if entries != nil {
+		f := &wireFrame{}
+		if len(data) < 2 {
+			return f
+		}
+		f.spots = append(f.spots, wireSpot{kind: spotForm, off: 0, width: 1, limit: len(data), value: uint64(data[0])})
+		f.entries = entries
+		f.entriesAt = len(data)
+		f.countAt = len(data)
+		f.bodyStart = 1
+		f.bodyEnd = len(data)
+		s := &frameScanner{data: data, f: f}
+		s.body(f.bodyStart, f.bodyEnd, true)
+		return f
+	}
 	f := &wireFrame{}
 	if len(data) < 9 {
 		return f
