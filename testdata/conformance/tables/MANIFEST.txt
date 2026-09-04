@@ -165,15 +165,18 @@ report parts_index_out_of_range streamdemo Feed testdata/wire/tables/parts_index
 # The bytes are pinned by the C++ leg (test/tables/main.cpp builds them).
 report batch_elem_kind   messagedemo ToolMessage testdata/wire/tables/batch_elem_kind.bin
 report batch_unknown_arm messagedemo ToolMessage testdata/wire/tables/batch_unknown_arm.bin
-# AN OPTIONAL ARRAY read under §2.3's rules, as shared rows: two hand-built
-# ToolMessage bodies with one `trace` field each. The element kind 8 where the
-# reader declares 13 is a kind mismatch and the field reads ABSENT — its
-# declared default, exactly as a skipped field's; four elements against a
-# bound of three keep the prefix, count clamped, and the field is PRESENT —
-# it rode with its own element kind. The bytes are pinned by the C++ leg
+# AN OPTIONAL ARRAY read under §2.3's rules, as shared rows: three hand-built
+# ToolMessage bodies with one optional-array field each. The element kind 8
+# where the reader declares 13 is a kind mismatch and the field reads ABSENT —
+# its declared default, exactly as a skipped field's; four elements against a
+# bound of three keep the prefix, count clamped, and the field is PRESENT — it
+# rode with its own element kind; and a variant id no build names, in the FIXED
+# spelling over enums, leaves that slot at None and counts it unknown while the
+# field stays present. The bytes are pinned by the C++ leg
 # (test/tables/main.cpp builds them).
-report trace_elem_kind        messagedemo ToolMessage testdata/wire/tables/trace_elem_kind.bin
-report trace_count_past_bound messagedemo ToolMessage testdata/wire/tables/trace_count_past_bound.bin
+report trace_elem_kind         messagedemo ToolMessage testdata/wire/tables/trace_elem_kind.bin
+report trace_count_past_bound  messagedemo ToolMessage testdata/wire/tables/trace_count_past_bound.bin
+report marks_unknown_variant   messagedemo ToolMessage testdata/wire/tables/marks_unknown_variant.bin
 # the message pair (§2.6, §4): M2 inserted `close` first, removed `save` and
 # grew Open, so open's tag moved and both sides meet an arm they cannot name
 report m1_open_as_m2  tblm2 Msg testdata/wire/tables/m1_open.bin

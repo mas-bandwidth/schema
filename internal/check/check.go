@@ -2281,6 +2281,18 @@ func (c *checker) checkOptionalSpelling(f *ast.Field, out *ir.Field, inTable boo
 		if name, _, ok := boundIdent(f.Array); ok {
 			if _, isEnum := c.astDecls[name].(*ast.EnumDecl); isEnum {
 				elem := scalarSpelling(f.Type)
+				if f.Array.Kind != ast.ArrayFixed {
+					// a BOUNDED enum-key is refused with the `?` and without
+					// it (docs/SPEC-TABLES.md §2.4), so the keyed refusal's
+					// "drop the ?" would not be true advice here — the bound
+					// is what has to go, and dropping the ? alone lands on
+					// §2.4's refusal instead. The spelling is not quoted back:
+					// either end may name the enum, so §2.4's own wording is
+					// what stays true whichever end the author wrote.
+					c.errf(f.Type.Pos, "field %s: a BOUNDED enum-keyed array is refused with the ? and without it — [%s] is COMPLETE by construction, one slot per variant, so ?[..%s] and ?[A..%s] name a count that cannot vary; size the optional array with a constant, ?[..N]%s or ?[N]%s, or spell the keyed array [%s]%s and drop the ? (docs/SPEC-TABLES.md §2.3, §2.4, §15)",
+						f.Name, name, name, name, elem, elem, name, elem)
+					return false
+				}
 				c.errf(f.Type.Pos, "field %s: ?[%s]%s is a named follow-on — a keyed array elides slots BY NAME, so what a presence bit means beside that elision wants stating before it is wire; declare ?[..N]%s or ?[N]%s, or drop the ? (docs/SPEC-TABLES.md §2.3, §15)",
 					f.Name, name, elem, elem, elem)
 				return false

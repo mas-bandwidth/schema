@@ -1,4 +1,4 @@
-0x9d1a5696f3651f6a
+0xbfda5e5122357c72
 schema-build-version 1
 protocol 8248fac3393e5575
 byteorder little
@@ -32,16 +32,18 @@ record Script sizeof=76 alignof=4
 record Selection sizeof=16 alignof=4
     field 61f4 kind=13 offset=0 size=8 type=Cursor
     field 1f24 kind=13 offset=8 size=8 type=Cursor
-record ToolMessage sizeof=5032 alignof=4
+record ToolMessage sizeof=5140 alignof=4
     field d32b kind=8 offset=0 size=4
-    field a2df kind=15 offset=4 size=1596 union=ToolBody
-    field cbae kind=15 offset=1600 size=3196 union=ToolBody elem=1596 array=bounded bound=2
-    field f493 kind=13 offset=4796 size=233 type=Script elem=76 array=bounded bound=3 optional=true
-record Transaction sizeof=1592 alignof=4
+    field a2df kind=15 offset=4 size=1632 union=ToolBody
+    field cbae kind=15 offset=1636 size=3268 union=ToolBody elem=1632 array=bounded bound=2
+    field f493 kind=13 offset=4904 size=233 type=Script elem=76 array=bounded bound=3 optional=true
+    field e15f kind=7 offset=5137 size=3 enum=Mode elem=1 array=fixed bound=2 optional=true
+record Transaction sizeof=1628 alignof=4
     field a6ba kind=12 offset=0 size=24 bound=16
     field 3d33 kind=13 offset=24 size=940 type=Edit elem=312 array=bounded bound=3
     field e683 kind=15 offset=964 size=616 union=EditBody elem=308 array=fixed bound=2
     field 990b kind=8 offset=1580 size=9 elem=4 array=fixed bound=2 optional=true
+    field 7daf kind=13 offset=1592 size=33 type=Selection elem=16 array=fixed bound=2 optional=true
 record User sizeof=24 alignof=4
     field 30df kind=12 offset=0 size=24 bound=16
 enum Mode

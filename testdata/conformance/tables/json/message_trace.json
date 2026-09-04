@@ -27,6 +27,28 @@
       "checkpoints": [
         0,
         0
+      ],
+      "snapshots": [
+        {
+          "start": {
+            "line": 3,
+            "column": 0
+          },
+          "end": {
+            "line": 4,
+            "column": 6
+          }
+        },
+        {
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          }
+        }
       ]
     }
   },
@@ -40,5 +62,9 @@
       "path": "",
       "line": 0
     }
+  ],
+  "marks": [
+    "Write",
+    "None"
   ]
 }

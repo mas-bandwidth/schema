@@ -1325,7 +1325,8 @@ table ShipConfig
 {
     health   float32 = 100.0
     settings ?GunnerSettings
-    tier     ?int32            // scalars too
+    tier     ?int32                          // scalars too
+    loadouts ?[..MaxWeapons]WeaponConfig     // and bounded arrays of them
 }
 ```
 

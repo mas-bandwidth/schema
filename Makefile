@@ -2228,7 +2228,11 @@ CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/messages/MessagesTable.cpp build/tables-generated/stream/StreamTable.cpp \
 	build/tables-generated/m1/M1Table.cpp build/tables-generated/m2/M2Table.cpp
 
-build/conformance-harness: $(wildcard test/conformance/harness/*.go)
+# the harness LINKS the compiler's own engine — internal/tablewire and
+# internal/tabletext, reached through compiler/ — so its dependencies are the
+# compiler's sources as well as its own. Without that, an edit to the engine
+# left a stale binary generating the data every other gate then compares.
+build/conformance-harness: $(wildcard test/conformance/harness/*.go) $(GO_SOURCES)
 	@mkdir -p build
 	go build -o $@ ./test/conformance/harness
 

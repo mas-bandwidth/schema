@@ -4958,7 +4958,9 @@ in build version (§20.5).
   (already optional); `?` on a union (its `None` IS the absence); `?` on a
   string or `bytes` (a named follow-on, §15 — the length already carries
   emptiness); `?` on an enum-keyed array (`?[E]T`, a named follow-on — the
-  keyed body elides slots by name, §3.2); `?` on an array of pointers, on
+  keyed body elides slots by name, §3.2), and `?[..E]T`/`?[A..E]T` under
+  §2.4's own refusal, which stands with the `?` and without it; `?` on an
+  array of pointers, on
   an array of unions, and on any value whose closure is VARIABLE (one
   named follow-on, §15 — an absent field is not an edge, and the authoring
   walks gate on presence when it lands). The bounded arrays `?[..N]T` and

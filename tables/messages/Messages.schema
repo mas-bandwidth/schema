@@ -7,10 +7,12 @@
 // ARRAY OF UNIONS (§2.6, §3) rides at the same three depths: history is a
 // counted batch of messages in the root, pending a fixed pair of edit bodies
 // inside a transaction, origins a counted array inside an insert. The
-// OPTIONAL ARRAY (§2.3) rides at the same three depths too: trace is a
-// counted optional array of tables in the root, checkpoints a fixed optional
-// array of scalars inside a transaction, modes a counted optional array of
-// enums inside an insert.
+// OPTIONAL ARRAY (§2.3) rides at the same three depths too, and in BOTH
+// spellings over every element class: trace is a counted optional array of
+// tables in the root and marks a fixed optional array of enums beside it,
+// checkpoints a fixed optional array of scalars inside a transaction and
+// snapshots a fixed optional array of tables beside it, modes a counted
+// optional array of enums inside an insert.
 //
 // Every table here is FIXED-SIZE: a union of fixed table arms leaves its
 // holder fixed, and the zero-cost gate holds over this unit as it does over
@@ -104,6 +106,7 @@ table Transaction
     edits       [..3]Edit
     pending     [2]EditBody
     checkpoints ?[2]uint32
+    snapshots   ?[2]Selection
 }
 
 union ToolBody
@@ -120,4 +123,5 @@ table ToolMessage
     body     ToolBody
     history  [..2]ToolBody
     trace    ?[..3]Script
+    marks    ?[2]Mode
 }

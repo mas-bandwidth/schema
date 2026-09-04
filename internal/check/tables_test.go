@@ -217,6 +217,16 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\nenum E { A, B }\ntable Node { x int32 }\ntable Tab { kids [E]*Node }\n"},
 		{name: "an optional keyed array is a named follow-on", want: "?[E]int32 is a named follow-on",
 			src: "package t\nenum E { A, B }\ntable Tab { xs ?[E]int32 }\n"},
+		// a BOUNDED enum-key is refused by §2.4 with the ? and without it, so
+		// the keyed refusal's "drop the ?" is not true advice here — dropping
+		// the ? alone lands on §2.4's refusal — and both bounded spellings
+		// take the refusal that names the bound
+		{name: "an optional up-to enum-keyed array names the bound", want: "a BOUNDED enum-keyed array is refused with the ? and without it",
+			src: "package t\nenum E { A, B }\ntable Tab { xs ?[..E]int32 }\n"},
+		{name: "an optional ranged enum-keyed array names the bound", want: "a BOUNDED enum-keyed array is refused with the ? and without it",
+			src: "package t\nenum E { A, B }\ntable Tab { xs ?[A..E]int32 }\n"},
+		{name: "an optional literal-ranged enum-keyed array names the bound", want: "a BOUNDED enum-keyed array is refused with the ? and without it",
+			src: "package t\nenum E { A, B }\ntable Tab { xs ?[2..E]int32 }\n"},
 		// a KEY is a closure vocabulary: it rides under a variant hash exactly
 		// as a value does, so both §5 refusals are owed to it even when the
 		// enum reaches the closure ONLY as a key

@@ -6765,12 +6765,24 @@ static void build_golden_message_trace( messagedemo::ToolMessage & m )
     m.body.transact.edits[0].body.insert = messagedemo::InsertText{};
     set_string( m.body.transact.edits[0].body.insert.text, m.body.transact.edits[0].body.insert.text_length, "hi" );
     m.body.transact.edits[0].body.insert.modes_present = true;
+    // depth two again: snapshots is FIXED ?[2]Selection, a fixed optional
+    // array of TABLES — every declared element rides, the second at all
+    // defaults
+    m.body.transact.snapshots_present = true;
+    m.body.transact.snapshots[0].start.line = 3;
+    m.body.transact.snapshots[0].end.line = 4;
+    m.body.transact.snapshots[0].end.column = 6;
     // depth one: trace is COUNTED ?[..3]Script in the root, present with a
     // live element and an ALL-DEFAULT element, which rides in its place
     m.trace_present = true;
     m.trace_count = 2;
     set_string( m.trace[0].path, m.trace[0].path_length, "boot.lua" );
     m.trace[0].line = 1;
+    // depth one again: marks is FIXED ?[2]Mode, a fixed optional array of
+    // ENUMS — each slot rides as its variant's name hash, None's reserved 0
+    // included
+    m.marks_present = true;
+    m.marks[0] = messagedemo::Mode::Write;
 }
 
 static void check_message_trace( const messagedemo::ToolMessage & m )
@@ -6783,10 +6795,16 @@ static void check_message_trace( const messagedemo::ToolMessage & m )
     CHECK( m.body.transact.edits[0].body.type == messagedemo::EditBodyType::Insert );
     CHECK( m.body.transact.edits[0].body.insert.modes_present );
     CHECK( m.body.transact.edits[0].body.insert.modes_count == 0 );
+    CHECK( m.body.transact.snapshots_present );
+    CHECK( m.body.transact.snapshots[0].start.line == 3 );
+    CHECK( m.body.transact.snapshots[0].end.line == 4 && m.body.transact.snapshots[0].end.column == 6 );
+    CHECK( m.body.transact.snapshots[1].start.line == 0 && m.body.transact.snapshots[1].end.line == 0 );
     CHECK( m.trace_present );
     CHECK( m.trace_count == 2 );
     CHECK( strcmp( m.trace[0].path, "boot.lua" ) == 0 && m.trace[0].line == 1 );
     CHECK( m.trace[1].path_length == 0 && m.trace[1].line == 0 );
+    CHECK( m.marks_present );
+    CHECK( m.marks[0] == messagedemo::Mode::Write && m.marks[1] == messagedemo::Mode::None );
     // the absent spellings elsewhere stay absent
     CHECK( !m.body.transact.edits[0].body.insert.origins_count );
 }
@@ -6850,16 +6868,27 @@ static void test_optional_arrays()
     for ( int32_t i = 0; i < type->num_fields; i++ )
     {
         const messagedemo::TableFieldInfo * f = &type->fields[i];
-        if ( strcmp( f->name, "trace" ) != 0 ) continue;
-        CHECK( f->kind == 13 && f->is_array && f->counted && f->array_bound == 3 );
-        CHECK( f->optional );
-        CHECK( f->present_offset == (uint32_t) offsetof( messagedemo::ToolMessage, trace_present ) );
-        CHECK( f->elem_size == sizeof( messagedemo::Script ) );
+        if ( strcmp( f->name, "trace" ) == 0 )
+        {
+            CHECK( f->kind == 13 && f->is_array && f->counted && f->array_bound == 3 );
+            CHECK( f->optional );
+            CHECK( f->present_offset == (uint32_t) offsetof( messagedemo::ToolMessage, trace_present ) );
+            CHECK( f->elem_size == sizeof( messagedemo::Script ) );
+        }
+        // the FIXED spelling carries the same columns with counted false, and
+        // no used-count companion to point at
+        if ( strcmp( f->name, "marks" ) == 0 )
+        {
+            CHECK( f->kind == 7 && f->is_array && !f->counted && f->array_bound == 2 );
+            CHECK( f->optional && f->count_offset == 0xffffffffu );
+            CHECK( f->present_offset == (uint32_t) offsetof( messagedemo::ToolMessage, marks_present ) );
+            CHECK( f->elem_size == sizeof( messagedemo::ToolMessage::marks[0] ) );
+        }
     }
 }
 
 // the elision rules at the empty end (§2.3): an ABSENT optional array writes
-// nothing — a message that sets none of the three is byte-identical to the
+// nothing — a message that sets none of the five is byte-identical to the
 // pinned message_transaction, the wire from before the fields were declared —
 // and a PRESENT one always rides: the fixed spelling whole at all defaults,
 // the counted spelling as its live count, zero included
@@ -6893,6 +6922,31 @@ static void test_optional_arrays_elision()
     CHECK( messagedemo::ToolMessageLoad( back, wire, with_empty, &report ) );
     CHECK( !report.malformed && back.trace_present && back.trace_count == 0 );
     CHECK( !back.body.transact.checkpoints_present );
+
+    // the fixed spelling over TABLE elements, present at all defaults: the
+    // array header, then each declared element's own length prefix and an
+    // all-default body, which is the terminator alone
+    m.trace_present = false;
+    m.body.transact.snapshots_present = true;
+    int64_t with_tables = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
+    CHECK( with_tables == wrote + 3 + 4 + 5 + 2 * ( 4 + 2 ) );
+    CHECK( messagedemo::ToolMessageMeasure( m ) == with_tables );
+    CHECK( messagedemo::ToolMessageLoad( back, wire, with_tables, &report ) );
+    CHECK( !report.malformed && back.body.transact.snapshots_present );
+    CHECK( back.body.transact.snapshots[0].start.line == 0 && back.body.transact.snapshots[1].end.column == 0 );
+    CHECK( !back.trace_present && !back.marks_present );
+
+    // the fixed spelling over ENUM elements: every declared slot rides as a
+    // u16 variant hash, the reserved None included
+    m.body.transact.snapshots_present = false;
+    m.marks_present = true;
+    int64_t with_enums = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
+    CHECK( with_enums == wrote + 3 + 4 + 5 + 2 * 2 );
+    CHECK( messagedemo::ToolMessageMeasure( m ) == with_enums );
+    CHECK( messagedemo::ToolMessageLoad( back, wire, with_enums, &report ) );
+    CHECK( !report.malformed && report.unknown == 0 && back.marks_present );
+    CHECK( back.marks[0] == messagedemo::Mode::None && back.marks[1] == messagedemo::Mode::None );
+    CHECK( !back.body.transact.snapshots_present );
 }
 
 // the element-kind separation under `?` (§2.3, §3): `trace` arriving with
@@ -6942,6 +6996,51 @@ static void test_optional_arrays_count_past_bound()
     CHECK( messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
     CHECK( !report.malformed && report.clamped == 1 );
     CHECK( out.trace_present && out.trace_count == 3 );
+}
+
+// an id no variant names, in a FIXED optional enum array (§5): the slot takes
+// None, the read counts it unknown, and the field is PRESENT — it rode with
+// its own element kind, and a fixed array has no count to clamp. The wire is
+// pinned as a shared report row every leg reads.
+static void test_optional_arrays_enum_unknown_variant()
+{
+    uint8_t wire[64];
+    size_t n = 0;
+    le16( wire + n, field_id( "marks" ) ); n += 2;
+    wire[n++] = 14;                        // kind: array
+    le32( wire + n, 5 + 2 * 2 ); n += 4;   // L: element kind, N, two u16 elements
+    wire[n++] = 7;                         // element kind: u16, an enum's variant hash
+    le32( wire + n, 2 ); n += 4;
+    le16( wire + n, field_id( "Write" ) ); n += 2; // a variant this build names
+    le16( wire + n, 0x4242 ); n += 2;      // an id no variant names
+    le16( wire + n, 0 ); n += 2;           // terminator
+    pin_table_golden( "marks_unknown_variant", wire, (int64_t) n );
+    messagedemo::ToolMessage out;
+    messagedemo::TableReport report;
+    CHECK( messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
+    CHECK( !report.malformed && report.unknown == 1 && report.kind_mismatch == 0 && report.clamped == 0 );
+    CHECK( out.marks_present );
+    CHECK( out.marks[0] == messagedemo::Mode::Write && out.marks[1] == messagedemo::Mode::None );
+}
+
+// the WRITE side of the same rule (§5): a fixed optional enum array is checked
+// element by element before it rides, so a slot holding a value no variant
+// names has no wire identity and the measure refuses the whole value rather
+// than writing a hash it cannot make. Presence is what puts the slots in
+// reach: the same value with the field absent measures fine.
+static void test_optional_arrays_enum_element_unnameable()
+{
+    static uint8_t wire[4096];
+    messagedemo::ToolMessage m;
+    build_golden_message_transaction( m );
+    m.marks[0] = (messagedemo::Mode) 77; // stored, and no variant names it
+    CHECK( messagedemo::ToolMessageMeasure( m ) > 0 ); // absent: the slots never ride
+    m.marks_present = true;
+    CHECK( messagedemo::ToolMessageMeasure( m ) == -1 );
+    CHECK( messagedemo::ToolMessageSave( m, wire, sizeof( wire ) ) < 0 );
+    m.marks[0] = messagedemo::Mode::Read; // nameable again, and it rides
+    CHECK( messagedemo::ToolMessageMeasure( m ) > 0 );
+    CHECK( messagedemo::ToolMessageSave( m, wire, sizeof( wire ) ) == messagedemo::ToolMessageMeasure( m ) );
 }
 
 // the text form's three hostile shapes (§16.2): the key's presence is
@@ -7078,6 +7177,8 @@ int main()
     test_optional_arrays_elision();
     test_optional_arrays_element_kind_mismatch();
     test_optional_arrays_count_past_bound();
+    test_optional_arrays_enum_unknown_variant();
+    test_optional_arrays_enum_element_unnameable();
     test_optional_arrays_json_hostile();
     test_json_fuzz_tokenizer();
 
