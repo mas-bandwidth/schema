@@ -1237,7 +1237,7 @@ refuses a unit that declares one, by name** (§11), and the ports are a named
 follow-on (§15). The corpus holds the construct in `tables/blobs`: a small
 blob beside a caption, a blob past 64 KiB, a shared blob, and a present blob
 and string of length zero beside null slots, each crossing the wire and the
-cook in the harness, and the text where the form can carry it.
+cook in the harness, and the text where the form can carry it. The `*wstring` blob is specified (§3, §3.1) ahead of its implementation and no backend emits it yet.
 
 ### 2.6 Union arms are field lines
 
@@ -2744,16 +2744,19 @@ each:
 | byte-stable output | `measure == save`, index order, one image from one value (§9) | field order is the writer's | the builder's order |
 | a fixed-table user pays nothing | a list-free unit carries no list machinery, held by the zero-cost gate's header scan (§2.2) | every runtime carries the repeated codec | every runtime carries the vector |
 
-**BACKEND STATUS: the C++ REFERENCE and the TOOL carry it, and every other
-backend refuses a unit that declares one, by name** (§11), on the same terms
-maps take: the ports are a named follow-on (§15). The corpus holds the
-construct in `tables/lists`: `list_empty` (an empty list beside a full one),
-`list_scalars`, `list_tables`, `list_shared` (two slots naming one node beside
-a null slot), `list_before_pointer` (the walk-order control above),
-`list_erased` (an erase from the middle with an add after it), `list_of_maps`
-and `list_nested` (a list of tables that hold lists), each crossing the wire,
-the text and the cook in the harness, with the report rows the negative
-controls above name and `make tables-list-measure-refusals` beside them.
+**BACKEND STATUS: OWED, not emitted.** This section is specified ahead of its
+implementation, on the same terms §3.3 and §6.6 take: no backend carries an
+unbounded array today, the front end refuses the spelling, and the corpus holds
+no `tables/lists`. The C++ REFERENCE and the TOOL land it first and every other
+backend refuses a unit that declares one, by name (§11), with the ports a named
+follow-on (§15). The corpus the implementation owes is `tables/lists`:
+`list_empty` (an empty list beside a full one), `list_scalars`, `list_tables`,
+`list_shared` (two slots naming one node beside a null slot),
+`list_before_pointer` (the walk-order control above), `list_erased` (an erase
+from the middle with an add after it), `list_of_maps` and `list_nested` (a list
+of tables that hold lists), each crossing the wire, the text and the cook in
+the harness, with the report rows the negative controls above name and
+`make tables-list-measure-refusals` beside them.
 
 **AND ONE GOLDEN IS THE MIGRATION ITSELF**, `list_migrates`, because "the same
 bytes" is a claim about two schemas and no single-schema instance can carry it:
