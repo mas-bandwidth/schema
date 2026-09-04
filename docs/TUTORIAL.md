@@ -1434,17 +1434,20 @@ because generated table code allocates nothing:
 ```
 $ c++ -std=c++17 -Wall -Wextra -Werror -o save save.cpp gen/ConfigTable.cpp
 $ ./save
-measured 42, saved 42 bytes
-an all-default ShipConfig measures 2 bytes
+measured 89, saved 89 bytes
+an all-default ShipConfig measures 10 bytes
 ```
 
 Measure is exact, so a buffer of exactly its answer always suffices. `Save`
 returns the size, or -1 for a buffer too small or a value that violates a
 storage bound.
 
-One fact explains both numbers: **values at their defaults stay off the wire.**
-`max_health = 250` rides, and a ship left at 100 would not. An all-default
-table saves as 2 bytes and loads back complete.
+One fact explains the first number: **values at their defaults stay off the
+wire.** `max_health = 250` rides, and a ship left at 100 would not.
+
+The second number is the floor. An all-default table is not empty on this wire:
+it is a form byte, the body's own terminator, and an eight-byte count of a
+trailer with no entries. Ten bytes, and every one of them is framing.
 
 ### The point: any build reads any data
 
@@ -1477,7 +1480,7 @@ those edits is a new protocol id. Here, load the 1.0 file with the 2.0 build:
 $ ./load ../v1/ship.bin
 load: ok
   name=Kestrel health=250 armor=5 type=Corvette shield=50
-  report: unknown=1 kind_mismatch=0 clamped=1 malformed=0
+  report: unknown=1 kind_mismatch=0 clamped=1 malformed=0 refused=0
 ```
 
 Read that slowly, because each value is a rule.
@@ -1514,10 +1517,9 @@ too. Unknown is skippable, absent is defaultable, and out of range is
 clampable. Contrast that with the packet wire, which **refuses** out-of-range
 values because the sender is an untrusted peer. Tables **clamp and count**,
 because the data is yours and half a config is better than none.
-
 ### The report is the witness
 
-`TableReport` is five counters:
+`TableReport` is five counters and a verdict:
 
 ```cpp
 struct TableReport
@@ -1527,6 +1529,7 @@ struct TableReport
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
     int32_t duplicate = 0;     // the text form saw a key twice: last wins, and the repeat is counted
     bool malformed = false;    // framing damage; decode stopped, partial result kept
+    bool refused = false;      // a form byte this reader does not carry: nothing was decoded
 };
 ```
 
@@ -1543,18 +1546,39 @@ The stored int under the `armor` id is not an int as far as this reader is
 concerned, so it is skipped and the field keeps its declared default. Never
 misdecoded.
 
-`malformed` is the only counter that stops a load. Truncate the file at byte 17:
+`malformed` is the counter that stops a load. Truncate the file anywhere:
 
 ```
 $ ./load ../v1/ship.bin 17
 load: malformed
-  name=Kestrel health=100 armor=1 type=None shield=50
-  report: unknown=0 kind_mismatch=0 clamped=0 malformed=1
+  name= health=100 armor=1 type=None shield=50
+  report: unknown=0 kind_mismatch=0 clamped=0 malformed=1 refused=0
 ```
 
-`Load` returned false and the good prefix was kept, so `Kestrel` survived and
-the fields after the cut sit at their defaults. Only structural damage does
-this, and every schema-drift event above is a counter rather than a failure.
+`Load` returned false and every field sits at its declared default. That is
+worth understanding, because it is the shape of the wire showing through. The
+file's **id table is its trailer**, and the reader locates it from the end,
+so a cut file has no vocabulary to name its own fields with. There is no useful
+prefix to keep. Cut at byte 40, 60 or 88 and the answer is the same.
+
+`refused` is not a counter and is not damage. The wire opens with a **form
+byte**, read before anything else, and a reader that meets a form it does not
+carry stops without decoding a thing:
+
+```
+$ ./load forged.bin
+load: malformed
+  name= health=100 armor=1 type=None shield=50
+  report: unknown=0 kind_mismatch=0 clamped=0 malformed=0 refused=1
+```
+
+Five zero counters and `malformed=0`, which is exactly what a clean read prints
+too. The verdict is what tells the two apart, so read `refused` before you read
+the counters. A file written by a build whose framing is newer than yours says
+so rather than pretending to be broken.
+
+Only structural damage and an unknown form stop a load. Every schema-drift
+event above is a counter rather than a failure.
 
 Adopt this discipline on day one: **log the counters**. A nonzero report means
 the data came from a different schema generation. It is still fully usable, but
@@ -1591,7 +1615,7 @@ baseline turns this law into a compile error.
 Edit a table, add fields, grow enums, reshape at will, and your protocol id
 **does not move**. Tables never touch it, and packets never pay for tolerance.
 The costs live where the tolerance lives: a table's wire is byte granular
-rather than bit packed, 42 bytes here against Part 3's three, and the read
+rather than bit packed, 89 bytes here against Part 3's three, and the read
 walks and matches ids instead of streaming bits. A fixed-size table like this
 one still allocates nothing and stays a plain struct. What "fixed size" means,
 and what the other class costs, is Part 8's story.
