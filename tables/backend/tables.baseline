@@ -1,0 +1,40 @@
+schema-tables-baseline 7
+package backenddemo
+
+table LoginRequest
+    field player_id id=0xc14ae3ff748dc438 kind=9 default=0
+    field session_token id=0x26860f8b6834fa0d kind=14 elem=6 size=32
+    field client_build id=0xb865d537bd0b08f9 kind=8 default=0
+    field region id=0xc755a623f50a24dd kind=7 enum=Region
+
+table MatchResult
+    field match_id id=0xf336e379ba146826 kind=9 default=0
+    field players id=0x98e3ac7518558b29 kind=14 elem=13 type=PlayerRow array=fixed bound=10
+
+table PlayerRow
+    field player_id id=0xc14ae3ff748dc438 kind=9 default=0
+    field score id=0xc10e63fbe7f624f5 kind=4 min=0 max=100000 default=0
+    field placement id=0x98a3024830754a20 kind=6 min=1 max=10 default=1
+
+table StorePurchase
+    field player_id id=0xc14ae3ff748dc438 kind=9 default=0
+    field sku id=0x82429a195ce84d1a kind=12 size=32
+    field quantity id=0xa3768bf56b809718 kind=6 min=1 max=99 default=1
+    field price_minor id=0xa745885cff2a8840 kind=8 default=0
+    field currency id=0x75a5fb9b890ad416 kind=7 enum=Currency
+
+enum Currency
+    variant USD id=0x61eeb119db28ec07
+    variant EUR id=0xd97d17198e7bf8c7
+    variant GBP id=0xea826519980a6a54
+    variant JPY id=0x5aed7719d7a8e8ca
+
+enum Region
+    variant NA id=0x09202b07b5b51eb0
+    variant EU id=0x08fb5f07b5965acf
+    variant APAC id=0x0b38df8be8d23c24
+    variant SA id=0x09460f07b5d5be59
+
+## history
+### 2026-09-04 — first baseline: the message form's corpus (docs/SPEC-TABLES.md §3.3)
+- baseline created over 4 tables — data written BEFORE this point is not covered by it

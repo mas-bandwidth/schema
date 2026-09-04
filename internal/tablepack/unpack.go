@@ -4,7 +4,6 @@
 package tablepack
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -65,7 +64,7 @@ func ReadReport(m *tabletext.Model, root string, wire []byte) (tabletext.Report,
 	}
 	var report tabletext.Report
 	ok, err := tablewire.Decode(m, m.New(st), wire, &report)
-	if _, refused := errors.AsType[*tablewire.FormRefusal](err); refused {
+	if tablewire.Refused(err) {
 		// THE REFUSAL IS THE ANSWER, not a failure to produce one: a form this
 		// reader does not carry is a verdict the report states, and nothing was
 		// decoded to report events over (docs/SPEC-TABLES.md §3)

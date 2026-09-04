@@ -1,0 +1,44 @@
+// Backend.schema — the MESSAGE FORM's corpus (docs/SPEC-TABLES.md §3.3): the
+// three backend messages the ruling measured, field for field, so the byte
+// figures the page prints have a golden behind them in both forms.
+//
+// A login, a match result and a store purchase are the shape the message form
+// exists for: a vocabulary close to the field count, where §3's per-file id
+// table amortizes over nothing. The unit declares no pointer, and its
+// announcement carries the node-table id and the three blob type ids all the
+// same — the unconditional tail, and this is the unit that pins it.
+package backenddemo
+
+enum Region { NA, EU, APAC, SA }
+
+enum Currency { USD, EUR, GBP, JPY }
+
+table LoginRequest
+{
+    player_id     uint64 = 0
+    session_token bytes(32)
+    client_build  uint32 = 0
+    region        Region
+}
+
+table PlayerRow
+{
+    player_id uint64 = 0
+    score     int32 = 0 | min = 0, max = 100000
+    placement uint8 = 1 | min = 1, max = 10
+}
+
+table MatchResult
+{
+    match_id uint64 = 0
+    players  [10]PlayerRow
+}
+
+table StorePurchase
+{
+    player_id   uint64 = 0
+    sku         string(32)
+    quantity    uint8 = 1 | min = 1, max = 99
+    price_minor uint32 = 0
+    currency    Currency
+}

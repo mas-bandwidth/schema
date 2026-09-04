@@ -41,6 +41,14 @@ func Decode(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *t
 	}
 	if data[0] != ir.TableWireForm {
 		report.Refused = true
+		if data[0] == ir.TableWireMessageForm {
+			// FORM `2` IS A STREAM FORM AND NEVER A FILE FORM
+			// (docs/SPEC-TABLES.md §3.3): a message stored on its own is not
+			// readable, because its table is somewhere else, so a reader
+			// handed one where a file was expected refuses BY NAME rather
+			// than merely by form byte.
+			return false, &MessageRefusal{Reason: ReasonMessageFormAsFile}
+		}
 		return false, &FormRefusal{Form: data[0]}
 	}
 	body, ids, ok := trailer(data)

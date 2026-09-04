@@ -14,6 +14,14 @@ package tablewire
 type idTable struct {
 	ids  []uint64
 	slot map[uint64]uint64
+
+	// THE MESSAGE FORM'S HALF (docs/SPEC-TABLES.md §3.3): the slot an id takes
+	// is settled by the compiler over the unit's whole vocabulary, so a
+	// form-`2` writer never interns and never writes an entry. `fixed` is that
+	// table when there is one, and `missing` is the id a walk asked for that
+	// the vocabulary does not spell — a compiler defect, reported at the call.
+	fixed   map[uint64]uint64
+	missing uint64
 }
 
 func newIdTable() *idTable { return &idTable{slot: map[uint64]uint64{}} }
@@ -22,6 +30,13 @@ func newIdTable() *idTable { return &idTable{slot: map[uint64]uint64{}} }
 // use. An id already in the table is referenced again and never appended
 // twice.
 func (t *idTable) ref(id uint64) uint64 {
+	if t.fixed != nil {
+		r, named := t.fixed[id]
+		if !named {
+			t.missing = id
+		}
+		return r
+	}
 	if r, seen := t.slot[id]; seen {
 		return r
 	}
@@ -38,6 +53,9 @@ func (t *idTable) ref(id uint64) uint64 {
 func (t *idTable) mark() int { return len(t.ids) }
 
 func (t *idTable) rollback(mark int) {
+	if t.fixed != nil {
+		return // a slot costs no entry, so an elided field has nothing to undo
+	}
 	for _, id := range t.ids[mark:] {
 		delete(t.slot, id)
 	}

@@ -100,7 +100,29 @@ type tableGen struct {
 	includes       map[string]bool // referenced files -> #include "<base>Table.h"
 	nativeIncludes map[string]bool // cpp_include headers of mapped types
 	indent         string          // extra per-line indent while emitting inside a branch guard
+	// slots is the unit's MESSAGE-FORM vocabulary, id -> slot
+	// (docs/SPEC-TABLES.md §3.3). Every id a generated field header can name
+	// has one, and the slot rides at the header as a LITERAL beside the id, so
+	// a form-`2` save does no lookup at all.
+	slots map[uint64]uint64
 }
+
+// wireRef is a field header's id reference: the id and its MESSAGE-FORM SLOT,
+// both literals. The FILE form interns the id and answers a first-use
+// reference; the MESSAGE form answers the slot and never touches the table
+// (docs/SPEC-TABLES.md §3, §3.3).
+func (g *tableGen) wireRef(id uint64) string {
+	return fmt.Sprintf("ids.ref( 0x%016xull, %d )", id, g.slots[id])
+}
+
+// hdrBytes is a field header's cost: the id reference and the kind byte, which
+// is the whole of it (§3).
+func (g *tableGen) hdrBytes(id uint64) string {
+	return "TableLebBytes( " + g.wireRef(id) + " ) + 1"
+}
+
+// slotOf is one id's message-form slot as a C++ literal.
+func (g *tableGen) slotOf(id uint64) string { return strconv.FormatUint(g.slots[id], 10) }
 
 func (g *tableGen) pf(format string, args ...any) {
 	s := fmt.Sprintf(format, args...)
@@ -333,7 +355,7 @@ struct TableKeyed
 // same way would be a redefinition.
 func tableInlineMacro(pkg string) string { return strings.ToUpper(pkg) + "_TABLE_INLINE" }
 
-func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyMap bool, idCap int) string {
+func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyMap bool, idCap int, u *ir.Unit) string {
 	// THE ID TABLE'S CAPACITY IS A COMPILE-TIME FACT of the unit (§3): the
 	// distinct names its table closure can spell, so a save allocates nothing.
 	// The bucket count is the next power of two at twice the capacity, so the
@@ -353,6 +375,7 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyMap bool, i
 	}
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
 	forceInline := tableInlineMacro(pkg)
+	messageForm := tableMessageForm(u, forceInline)
 	// the two pointer-era descriptor members exist only in a unit that HAS
 	// pointers: a unit of value-only tables emits the descriptor surface it
 	// always emitted, to the byte (docs/SPEC-TABLES.md §2, the zero-cost gate)
@@ -415,6 +438,25 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyMap bool, i
 
 namespace ` + pkg + ` {
 
+// WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
+// is not one of §4's events: nothing is decoded, no counter moves and no
+// damage is reported, so five zero counters and a false flag are what a clean
+// read prints too and only the verdict tells them apart. The reason says which
+// refusal it was.
+//
+// This is the MESSAGE PATH's vocabulary and not the cooked form's (§7.4): a
+// caller meeting one of these has been refused a MESSAGE on a connection,
+// which is a different recovery with a different owner than a file a header
+// match turned down.
+enum TableMessageReason
+{
+    newer_form,           // a FORM BYTE this reader does not carry (§3)
+    no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
+    second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
+    vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
+    message_form_as_file  // a form 2 wire where a FILE was expected: its table is somewhere else
+};
+
 // The table-wire read report — the permissive contract's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
 struct TableReport
@@ -432,6 +474,10 @@ struct TableReport
     // zero counters and a false flag are what a clean read prints too, so the
     // verdict is what tells the two apart.
     bool refused = false;
+    // WHICH refusal, and it is read only when refused is set: a read that
+    // was not refused has no reason, and this member is the one the caller
+    // must not look at then (docs/SPEC-TABLES.md §3.3).
+    TableMessageReason reason = newer_form;
 };
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
@@ -620,8 +666,16 @@ struct TableIds
     int32_t head[ kBuckets ];
     int32_t count;
     bool overflow;
+    // THE MESSAGE FORM'S SLOTS (docs/SPEC-TABLES.md §3.3). A form 2 wire
+    // names ids through the CONNECTION's table, which is the unit's whole
+    // vocabulary in a compiler-settled order — so every reference is known at
+    // compile time and rides at the header as a literal beside the id. This
+    // flag is what selects it: false interns the id in first-use order and
+    // writes a trailer, true answers the slot and writes none, and the walk
+    // that decides is one walk.
+    bool vocabulary;
 
-    TableIds() : count( 0 ), overflow( false )
+    TableIds() : count( 0 ), overflow( false ), vocabulary( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
     }
@@ -631,8 +685,16 @@ struct TableIds
         return uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> ` + idShift + ` ) & uint32_t( kBuckets - 1 );
     }
 
-    // the reference an id takes, appending it on first use
-    uint64_t ref( uint64_t id )
+    // the reference an id takes: its message-form SLOT under the connection's
+    // table, or the file's own first-use entry
+    ` + forceInline + ` uint64_t ref( uint64_t id, uint64_t slot )
+    {
+        if ( vocabulary ) { return slot; }
+        return intern( id );
+    }
+
+    // the FILE form's half, appending the id on first use
+    uint64_t intern( uint64_t id )
     {
         const uint32_t b = bucket_of( id );
         for ( int32_t i = head[b]; i >= 0; i = chain[i] )
@@ -648,6 +710,8 @@ struct TableIds
     // recent one in its bucket, so it sits at that bucket's head.
     void truncate( int32_t mark )
     {
+        // a SLOT costs no entry, so an elided field has nothing to undo
+        if ( vocabulary ) { return; }
         while ( count > mark )
         {
             count--;
@@ -883,7 +947,7 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
     }
 }
 
-` + keyedStorage + `inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
+` + messageForm + `` + keyedStorage + `inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
@@ -914,9 +978,17 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// table has one, and a consumer includes and compiles it only if it uses
 	// the form. The Table header below carries not one symbol of it.
 	out := generateBlockFiles(u, blocks, variable, targets)
+	// THE MESSAGE FORM'S VOCABULARY (docs/SPEC-TABLES.md §3.3), derived once
+	// for the unit: every id the closure can put on a wire, and the slot the
+	// compiler settled for it. A generated field header carries the slot as a
+	// literal beside the id.
+	slots := map[uint64]uint64{}
+	for i, id := range ir.TableVocabulary(u) {
+		slots[id] = uint64(i + 1)
+	}
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets,
-			includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
+			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
 		for _, d := range f.Decls {
@@ -963,6 +1035,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.emitTableWrite(st)
 				g.emitTableSave(st)
 				g.emitTableRead(st)
+				g.emitMessageEntries(st)
 			}
 			g.emitVariableSurface(members)
 			g.emitCookSurface(members)
@@ -1064,7 +1137,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			fmt.Fprintf(&h, "#include \"%s\"\n", n)
 		}
 		h.WriteString("\n")
-		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyMap, ir.TableWireIdCapacity(u)))
+		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyMap, ir.TableWireIdCapacity(u), u))
 		if anyVariable {
 			h.WriteString("\n")
 			h.WriteString(tableArenaRuntime(u.Package, anyMap))

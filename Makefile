@@ -33,6 +33,12 @@ SCHEMAS_TABLES_BLOBS := $(wildcard tables/blobs/*.schema)
 SCHEMAS_TABLES_SCALARS := $(wildcard tables/scalars/*.schema)
 # the MAP corpus (docs/SPEC-TABLES.md §2.8)
 SCHEMAS_TABLES_MAPS := $(wildcard tables/maps/*.schema)
+# the MESSAGE FORM's corpora (docs/SPEC-TABLES.md §3.3): the three backend
+# messages the ruling measured, and the WIDE-VOCABULARY unit test/vocabgen
+# writes, whose vocabulary passes 127 ids so its message names slots on both
+# sides of the one-byte boundary
+SCHEMAS_TABLES_BACKEND := $(wildcard tables/backend/*.schema)
+SCHEMAS_TABLES_VOCAB := $(wildcard tables/vocab/*.schema)
 
 # The soak length every leg's soak takes, in seconds. The hour is the release
 # act — `make tables-<lang>-soak SOAK_SECONDS=3600` — and `make test` runs the
@@ -113,13 +119,15 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
 	$(1) generate --lang cpp --out $(2)/maps tables/maps
 	$(1) generate --lang cpp --out $(2)/scalars2 test/tables/Scalars2.schema
+	$(1) generate --lang cpp --out $(2)/backend tables/backend
+	$(1) generate --lang cpp --out $(2)/vocab tables/vocab
 endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(SERIALIZE)
+	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/backend -I$(1)/vocab -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@

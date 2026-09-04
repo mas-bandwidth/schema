@@ -745,6 +745,13 @@ struct TableNodeEntry
 {
     const void * node;
     uint64_t type_id;
+    // the type id's MESSAGE-FORM SLOT (docs/SPEC-TABLES.md §3.3), stored where
+    // the numbering walk stores the id itself and for the same reason: the
+    // target's type is known STATICALLY at the site that numbers it, so a
+    // form 2 save reads the slot out of the entry instead of looking an id up.
+    // Every pointer target's type id is an entry of the announcement, which is
+    // what makes the slot a compile-time fact of a POINTERED message too.
+    uint64_t type_slot;
     int64_t ( * measure )( const void * ctx, const TableNumbering & numbering, TableIds & ids, const void * node );
     bool ( * save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node );
 };
@@ -870,7 +877,7 @@ inline int64_t TableNodeTablePayload( const Ctx & ctx, TableIds & ids, const Tab
     int64_t payload = TableLebBytes( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
     {
-        payload += TableLebBytes( ids.ref( n.entries[k].type_id ) );
+        payload += TableLebBytes( ids.ref( n.entries[k].type_id, n.entries[k].type_slot ) );
         const int64_t body = n.entries[k].measure( (const void *) &ctx, n, ids, n.entries[k].node );
         if ( body < 0 ) { return -1; }
         payload += TableLebBytes( (uint64_t) body ) + body;
@@ -882,7 +889,7 @@ template <typename Ctx>
 inline int64_t TableNodeTableMeasure( const Ctx & ctx, TableIds & ids, const TableNumbering & n )
 {
     if ( n.count == 0 ) { return 0; } // a root that reaches no nodes writes none of them
-    const uint64_t ref = ids.ref( kTableNodeTableFieldId );
+    const uint64_t ref = ids.ref( kTableNodeTableFieldId, kTableNodeTableFieldSlot );
     const int64_t payload = TableNodeTablePayload( ctx, ids, n );
     if ( payload < 0 ) { return -1; }
     return TableLebBytes( ref ) + 1 + TableLebBytes( (uint64_t) payload ) + payload;
@@ -892,7 +899,7 @@ template <typename Ctx>
 inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, TableIds & ids, const TableNumbering & n )
 {
     if ( n.count == 0 ) { return true; }
-    const uint64_t ref = ids.ref( kTableNodeTableFieldId );
+    const uint64_t ref = ids.ref( kTableNodeTableFieldId, kTableNodeTableFieldSlot );
     const int64_t payload = TableNodeTablePayload( ctx, ids, n );
     if ( payload < 0 ) { return false; }
     w.putleb( ref );
@@ -901,7 +908,7 @@ inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, TableIds & ids
     w.putleb( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
     {
-        w.putleb( ids.ref( n.entries[k].type_id ) );
+        w.putleb( ids.ref( n.entries[k].type_id, n.entries[k].type_slot ) );
         const int64_t body = n.entries[k].measure( (const void *) &ctx, n, ids, n.entries[k].node );
         if ( body < 0 ) { return false; }
         w.putleb( (uint64_t) body );
