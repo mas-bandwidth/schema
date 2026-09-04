@@ -54,11 +54,12 @@ Clone the repository and run `make`:
 ```
 $ make
 go build -ldflags "-X github.com/mas-bandwidth/schema/v2/internal/version.version=v2.4.0-143-g1e3c53b" -o bin/schema ./cmd/schema
-```
 
+```
 That is the whole install. `make` builds `bin/schema` and nothing else: no
-language toolchains, no runtime checkouts, no generation. Ask the binary what
-it is:
+language toolchains, no runtime checkouts, no generation. Put `bin` on your
+path, because every command on this page is spelled `schema`, and ask the
+binary what it is:
 
 ```
 $ schema version
