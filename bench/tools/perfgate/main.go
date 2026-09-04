@@ -1,0 +1,1068 @@
+// perfgate: the mechanical half of the zero-cost-diagnostic law (issue #546).
+//
+//	make perf-gate            measure the reference benches and render a verdict
+//	make perf-gate-control    the planted-cost negative control
+//	make perf-gate-pin        re-measure the pins (a PR whose diff is bench/PERF-PINS)
+//	make perf-gate-pinlock    the LOCK-model refusal, run on every pull request
+//
+// THE LAW IT ENFORCES. The owner's rule, 2026-09-05, issue #546: "i'm all for
+// greater diagnostics, but if it costs speed on read or write, it's not worth
+// it." A diagnostic surface is admitted at zero measured cost on the read path
+// and the write path, or it is declined. Prose cannot hold that line, because
+// the cost of a diagnostic is a number and prose has no numbers in it. This
+// does.
+//
+// WHAT IT MEASURES. The C++ reference, over the bench corpus, on both wires:
+//
+//	bench_mixed  write        the packet wire's write path (bench/cpp)
+//	bench_mixed  round_trip   the packet wire's read path, carried
+//	bench_table  write        the table wire's write path (bench/tables/cpp)
+//	bench_table  round_trip   the table wire's read path, carried
+//
+// THE READ ROW IS round_trip, AND THAT IS THE HONEST NAME FOR IT. Neither
+// bench measures a read on its own: the decode's output IS the re-encode's
+// input, which is how the read side gets its sink discipline for free in every
+// language (BENCH-STANDARD.md §2.7), and the read rate both runners print is
+// round-trip time minus write time, marked DERIVED and deliberately kept out
+// of the CSV. A gate that pinned a derived number would be pinning a
+// subtraction of two medians, whose noise is the sum of theirs. So the gate
+// pins what was measured. A cost planted on the read path raises round_trip
+// and leaves write flat, which is exactly what the negative control shows, and
+// a reader of a red verdict can tell a read regression from a write regression
+// by which of the two rows moved.
+//
+// THE BAND, AND WHY IT IS NOT ZERO. "Zero cost" is a claim about the code, and
+// a measurement of it lands inside a distribution. The band is the width of
+// that distribution on a quiet box, derived by repeated sittings and recorded
+// in bench/PERF-PINS beside the numbers it guards. A regression larger than
+// the band is a refusal. A regression smaller than the band is invisible to
+// this instrument, which the pin file states rather than implies.
+//
+// THE BOX IS PART OF THE PIN. A rate in messages per second is a fact about
+// one machine. bench/PERF-PINS names the box that produced it, and off that
+// box the gate REFUSES to render a verdict rather than compare a number to a
+// number from different silicon. What still runs anywhere is the negative
+// control, whose verdict is a ratio inside one sitting: it needs no pin, and
+// it is what certification runs on hardware nobody here owns.
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+)
+
+const pinsPath = "bench/PERF-PINS"
+
+// the four rows the gate pins, in report order
+var gateRows = [][2]string{
+	{"bench_mixed", "write"},
+	{"bench_mixed", "round_trip"},
+	{"bench_table", "write"},
+	{"bench_table", "round_trip"},
+}
+
+// ---------------------------------------------------------------------------
+// measured rows
+
+type row struct {
+	bench    string
+	path     string
+	rate     float64 // median_msgs_per_sec
+	spread   float64 // spread_pct, within the sitting
+	corpusID string
+	opt      string
+	iters    int64
+}
+
+func (r row) key() string { return r.bench + "/" + r.path }
+
+type sitting struct {
+	rows        map[string]row
+	arch        string
+	cpu         string
+	os          string
+	host        string
+	uptime      string
+	commit      string
+	compiler    string
+	date        string
+	prefixFlags string
+}
+
+// ---------------------------------------------------------------------------
+// the box
+
+func boxArch() string { return runtime.GOARCH }
+func boxOS() string   { return runtime.GOOS }
+
+func boxCPU() string {
+	if out, err := exec.Command("sysctl", "-n", "machdep.cpu.brand_string").Output(); err == nil {
+		if s := strings.TrimSpace(string(out)); s != "" {
+			return s
+		}
+	}
+	if b, err := os.ReadFile("/proc/cpuinfo"); err == nil {
+		for _, line := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(line, "model name") {
+				if i := strings.Index(line, ":"); i >= 0 {
+					return strings.TrimSpace(line[i+1:])
+				}
+			}
+		}
+	}
+	return "unknown"
+}
+
+func boxHost() string {
+	h, err := os.Hostname()
+	if err != nil {
+		return "unknown"
+	}
+	if i := strings.Index(h, "."); i > 0 {
+		h = h[:i]
+	}
+	return h
+}
+
+func boxUptime() string {
+	out, err := exec.Command("uptime").Output()
+	if err != nil {
+		return "unknown"
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func repoCommit() string {
+	out, err := exec.Command("git", "rev-parse", "--short", "HEAD").Output()
+	if err != nil {
+		return "unknown"
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func compilerVersion() string {
+	cxx := os.Getenv("CXX")
+	if cxx == "" {
+		cxx = "c++"
+	}
+	out, err := exec.Command(cxx, "--version").Output()
+	if err != nil {
+		return "unknown"
+	}
+	return strings.TrimSpace(strings.SplitN(string(out), "\n", 2)[0])
+}
+
+// ---------------------------------------------------------------------------
+// running the two reference benches
+//
+// NEITHER LEG'S FLAGS ARE SPELLED HERE, deliberately. The packet leg is
+// bench/run.sh's own cpp leg and the table leg is bench/tables/cpp/leg, so the
+// gate compiles the same translation units, with the same flags, as the
+// published passes do. A gate built with flags of its own would be measuring
+// a build nobody ships.
+
+func run(name string, args []string, prefixFlags string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(), "BENCH_CXXFLAGS_PREFIX="+prefixFlags)
+	return cmd.Run()
+}
+
+func runCapture(name string, args []string, prefixFlags string) ([]byte, error) {
+	var buf bytes.Buffer
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = &buf
+	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(), "BENCH_CXXFLAGS_PREFIX="+prefixFlags)
+	err := cmd.Run()
+	return buf.Bytes(), err
+}
+
+// measure builds and runs both reference benches and returns the sitting.
+// prefixFlags rides into both compiles. The negative control is its only user
+// and `pin` refuses a sitting that carries any.
+func measure(prefixFlags string) (*sitting, error) {
+	s := &sitting{
+		rows:        map[string]row{},
+		arch:        boxArch(),
+		cpu:         boxCPU(),
+		os:          boxOS(),
+		host:        boxHost(),
+		uptime:      boxUptime(),
+		commit:      repoCommit(),
+		compiler:    compilerVersion(),
+		date:        time.Now().Format("2006-01-02"),
+		prefixFlags: prefixFlags,
+	}
+
+	// the packet wire. bench/run.sh refuses to overwrite a results file, which
+	// is a rule about the published ledger under bench/results/ and not about
+	// a scratch file under build/, so the gate removes its own and lets the
+	// refusal stand everywhere else.
+	pkt := "build/perfgate/packet.csv"
+	if err := os.MkdirAll("build/perfgate", 0o755); err != nil {
+		return nil, err
+	}
+	if err := os.Remove(pkt); err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	if err := run("bench/run.sh", []string{"--only", "cpp", "--bare", "--out", pkt}, prefixFlags); err != nil {
+		return nil, fmt.Errorf("packet leg: %w", err)
+	}
+	pktCSV, err := os.ReadFile(pkt)
+	if err != nil {
+		return nil, err
+	}
+	if err := collect(s, pktCSV); err != nil {
+		return nil, fmt.Errorf("packet leg: %w", err)
+	}
+
+	// the table wire
+	if err := run("bench/tables/cpp/leg", []string{"build"}, prefixFlags); err != nil {
+		return nil, fmt.Errorf("table leg build: %w", err)
+	}
+	tblCSV, err := runCapture("bench/tables/cpp/leg", []string{"run", "--csv"}, prefixFlags)
+	if err != nil {
+		return nil, fmt.Errorf("table leg: %w", err)
+	}
+	if err := collect(s, tblCSV); err != nil {
+		return nil, fmt.Errorf("table leg: %w", err)
+	}
+
+	for _, want := range gateRows {
+		if _, ok := s.rows[want[0]+"/"+want[1]]; !ok {
+			return nil, fmt.Errorf("the sitting is missing the pinned row %s/%s. A gate that cannot see a row cannot guard it", want[0], want[1])
+		}
+	}
+	return s, nil
+}
+
+// collect parses whichever CSV rows a leg emitted and keeps the gate's four.
+// The two runners share one CSV schema (BENCH-STANDARD.md §5), so one parser
+// reads both.
+func collect(s *sitting, data []byte) error {
+	rd := csv.NewReader(bytes.NewReader(data))
+	rd.FieldsPerRecord = -1
+	recs, err := rd.ReadAll()
+	if err != nil {
+		return err
+	}
+	var header []string
+	for _, rec := range recs {
+		if len(rec) == 0 {
+			continue
+		}
+		if rec[0] == "lang" {
+			header = rec
+			continue
+		}
+		if header == nil {
+			continue
+		}
+		if rec[0] != "cpp" {
+			continue
+		}
+		m := map[string]string{}
+		for i, h := range header {
+			if i < len(rec) {
+				m[h] = rec[i]
+			}
+		}
+		r := row{bench: m["bench"], path: m["path"], corpusID: m["corpus_id"], opt: m["opt"]}
+		r.rate, _ = strconv.ParseFloat(m["median_msgs_per_sec"], 64)
+		r.spread, _ = strconv.ParseFloat(m["spread_pct"], 64)
+		r.iters, _ = strconv.ParseInt(m["iters"], 10, 64)
+		for _, want := range gateRows {
+			if want[0] == r.bench && want[1] == r.path {
+				s.rows[r.key()] = r
+			}
+		}
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// the pin file
+
+type pins struct {
+	directives map[string]string
+	rates      map[string]float64
+	corpus     map[string]string
+	lines      []string // the file verbatim, for the re-pin rewrite
+}
+
+var pinLine = regexp.MustCompile(`^pin\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s*$`)
+
+func loadPins(path string) (*pins, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	p := &pins{directives: map[string]string{}, rates: map[string]float64{}, corpus: map[string]string{}}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for sc.Scan() {
+		line := sc.Text()
+		p.lines = append(p.lines, line)
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		if m := pinLine.FindStringSubmatch(t); m != nil {
+			rate, err := strconv.ParseFloat(m[3], 64)
+			if err != nil {
+				return nil, fmt.Errorf("%s: unreadable rate on %q", path, t)
+			}
+			p.rates[m[1]+"/"+m[2]] = rate
+			p.corpus[m[1]+"/"+m[2]] = m[4]
+			continue
+		}
+		fields := strings.Fields(t)
+		if len(fields) < 2 {
+			return nil, fmt.Errorf("%s: unreadable line %q", path, t)
+		}
+		p.directives[fields[0]] = strings.TrimSpace(strings.TrimPrefix(t, fields[0]))
+	}
+	return p, sc.Err()
+}
+
+func (p *pins) num(key string) (float64, error) {
+	v, ok := p.directives[key]
+	if !ok {
+		return 0, fmt.Errorf("%s: missing directive %s", pinsPath, key)
+	}
+	return strconv.ParseFloat(v, 64)
+}
+
+// requiredDirectives: the sitting a re-pin has to state. The pin file is the
+// gate's whole authority, so a pin whose sitting is unstated is a number with
+// no provenance, and the gate refuses to read one.
+var requiredDirectives = []string{
+	"box.arch", "box.cpu", "box.os",
+	"band.pct", "spread.max.pct",
+	"sitting.date", "sitting.host", "sitting.uptime", "sitting.commit",
+	"sitting.compiler", "sitting.opt", "sitting.repeats", "sitting.worst.pct",
+}
+
+func (p *pins) validate() error {
+	for _, k := range requiredDirectives {
+		if strings.TrimSpace(p.directives[k]) == "" {
+			return fmt.Errorf("%s: the sitting does not state %s", pinsPath, k)
+		}
+	}
+	for _, want := range gateRows {
+		k := want[0] + "/" + want[1]
+		rate, ok := p.rates[k]
+		if !ok {
+			return fmt.Errorf("%s: no pin for %s", pinsPath, k)
+		}
+		// A zero pin is the skeleton, not a measurement. Every row divides by
+		// its pin, so an unmeasured file has to be a refusal rather than a
+		// division by nothing.
+		if rate <= 0 {
+			return fmt.Errorf("%s: the pin for %s is %g, which is the unmeasured skeleton. Cut the pins with `make perf-gate-pin` on a quiet box", pinsPath, k, rate)
+		}
+	}
+	for _, k := range []string{"band.pct", "spread.max.pct"} {
+		v, err := p.num(k)
+		if err != nil {
+			return err
+		}
+		if v <= 0 {
+			return fmt.Errorf("%s: %s is %g. A width of zero is not a width, and a gate with one refuses everything or nothing", pinsPath, k, v)
+		}
+	}
+	if len(p.rates) != len(gateRows) {
+		return fmt.Errorf("%s: %d pins for %d gate rows. The file and the gate disagree about what is guarded", pinsPath, len(p.rates), len(gateRows))
+	}
+	return nil
+}
+
+func (p *pins) onThisBox() bool {
+	return p.directives["box.arch"] == boxArch() &&
+		p.directives["box.os"] == boxOS() &&
+		p.directives["box.cpu"] == boxCPU()
+}
+
+// ---------------------------------------------------------------------------
+// the verdict
+
+type verdict struct {
+	key      string
+	pinned   float64
+	measured float64
+	deltaPct float64 // negative is slower than the pin
+	spread   float64
+	red      bool
+	note     string
+}
+
+func compare(s *sitting, p *pins, band, spreadMax float64) ([]verdict, bool) {
+	var out []verdict
+	red := false
+	for _, want := range gateRows {
+		k := want[0] + "/" + want[1]
+		r := s.rows[k]
+		pinned := p.rates[k]
+		v := verdict{key: k, pinned: pinned, measured: r.rate, spread: r.spread}
+		v.deltaPct = (r.rate - pinned) / pinned * 100
+		switch {
+		case p.corpus[k] != "" && r.corpusID != "" && p.corpus[k] != r.corpusID:
+			v.red, v.note = true, "CORPUS MOVED (pinned "+p.corpus[k]+", measured "+r.corpusID+"): different work, no comparison"
+		case r.spread > spreadMax:
+			v.red, v.note = true, fmt.Sprintf("SITTING TOO NOISY (spread %.1f%% over the %.1f%% cap): this box cannot render a verdict now", r.spread, spreadMax)
+		case v.deltaPct < -band:
+			v.red, v.note = true, fmt.Sprintf("SLOWER THAN THE PIN BY %.2f%%, past the %.2f%% band", -v.deltaPct, band)
+		case v.deltaPct > band:
+			v.note = fmt.Sprintf("faster than the pin by %.2f%%: the pin is stale, not the code", v.deltaPct)
+		default:
+			v.note = "within band"
+		}
+		if v.red {
+			red = true
+		}
+		out = append(out, v)
+	}
+	return out, red
+}
+
+func printVerdicts(w io.Writer, vs []verdict, band float64) {
+	fmt.Fprintf(w, "%-24s %14s %14s %9s %8s  %s\n", "row", "pinned M/s", "measured M/s", "delta", "spread", "verdict")
+	for _, v := range vs {
+		mark := "ok  "
+		if v.red {
+			mark = "RED "
+		}
+		fmt.Fprintf(w, "%-24s %14.3f %14.3f %8.2f%% %7.1f%%  %s%s\n",
+			v.key, v.pinned/1e6, v.measured/1e6, v.deltaPct, v.spread, mark, v.note)
+	}
+	fmt.Fprintf(w, "band: %.2f%% (bench/PERF-PINS states how it was derived)\n", band)
+}
+
+// ---------------------------------------------------------------------------
+// commands
+
+func cmdMeasure(args []string) int {
+	repeats := 1
+	parseFlags(args, map[string]*string{}, map[string]*int{"repeats": &repeats})
+	for i := 0; i < repeats; i++ {
+		s, err := measure(os.Getenv("BENCH_CXXFLAGS_PREFIX"))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "perfgate measure:", err)
+			return 1
+		}
+		fmt.Printf("# sitting %d/%d  %s  %s  %s\n", i+1, repeats, s.date, s.host, s.uptime)
+		for _, want := range gateRows {
+			r := s.rows[want[0]+"/"+want[1]]
+			fmt.Printf("sample %-12s %-11s %14.0f %6.1f %s\n", r.bench, r.path, r.rate, r.spread, r.corpusID)
+		}
+	}
+	return 0
+}
+
+// cmdBand is how the band in bench/PERF-PINS was derived, kept as a command so
+// the derivation is repeatable rather than a remembered number: N full
+// sittings, and for each row the worst deviation of any sitting from the
+// median of the sittings.
+func cmdBand(args []string) int {
+	repeats := 7
+	parseFlags(args, map[string]*string{}, map[string]*int{"repeats": &repeats})
+	samples := map[string][]float64{}
+	for i := 0; i < repeats; i++ {
+		s, err := measure("")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "perfgate band:", err)
+			return 1
+		}
+		fmt.Fprintf(os.Stderr, "== sitting %d/%d: %s\n", i+1, repeats, s.uptime)
+		for _, want := range gateRows {
+			k := want[0] + "/" + want[1]
+			samples[k] = append(samples[k], s.rows[k].rate)
+		}
+	}
+	worst := 0.0
+	fmt.Printf("%-24s %9s %9s %9s %9s\n", "row", "median", "min", "max", "worst dev")
+	for _, want := range gateRows {
+		k := want[0] + "/" + want[1]
+		v := append([]float64(nil), samples[k]...)
+		sort.Float64s(v)
+		med := v[len(v)/2]
+		if len(v)%2 == 0 {
+			med = (v[len(v)/2-1] + v[len(v)/2]) / 2
+		}
+		dev := 0.0
+		for _, x := range v {
+			d := (x - med) / med * 100
+			if d < 0 {
+				d = -d
+			}
+			if d > dev {
+				dev = d
+			}
+		}
+		if dev > worst {
+			worst = dev
+		}
+		fmt.Printf("%-24s %9.3f %9.3f %9.3f %8.2f%%\n", k, med/1e6, v[0]/1e6, v[len(v)-1]/1e6, dev)
+	}
+	fmt.Printf("\nworst deviation across %d sittings: %.2f%%\n", repeats, worst)
+	fmt.Printf("band to write into %s: %.1f (worst deviation, doubled, rounded up to a tenth)\n", pinsPath, roundBand(worst*2))
+	return 0
+}
+
+func roundBand(x float64) float64 {
+	// up to the next tenth of a percent
+	return float64(int((x+0.0999)*10)) / 10
+}
+
+func cmdCheck(args []string) int {
+	advisory := false
+	flags := map[string]*bool{"advisory": &advisory}
+	parseBoolFlags(args, flags)
+
+	p, err := loadPins(pinsPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate check:", err)
+		return 1
+	}
+	if err := p.validate(); err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate check:", err)
+		return 1
+	}
+	band, err := p.num("band.pct")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate check:", err)
+		return 1
+	}
+	spreadMax, err := p.num("spread.max.pct")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate check:", err)
+		return 1
+	}
+
+	if !p.onThisBox() {
+		fmt.Printf("NOT THE PINNED BOX.\n")
+		fmt.Printf("  pinned   %s / %s / %s\n", p.directives["box.arch"], p.directives["box.os"], p.directives["box.cpu"])
+		fmt.Printf("  this box %s / %s / %s\n", boxArch(), boxOS(), boxCPU())
+		fmt.Printf("A rate in messages per second is a fact about one machine, and the gate\n")
+		fmt.Printf("will not divide one box's number by another's. Re-pin from this box with a\n")
+		fmt.Printf("pull request that states its sitting, or run the gate where the pins were cut.\n")
+		if advisory {
+			fmt.Printf("advisory: the structural half passed. %s parses, and every gate row has a pin.\n", pinsPath)
+			return 0
+		}
+		return 2
+	}
+
+	s, err := measure("")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate check:", err)
+		return 1
+	}
+	vs, red := compare(s, p, band, spreadMax)
+	fmt.Printf("perf gate: %s, %s\n%s\n\n", s.host, s.date, s.uptime)
+	printVerdicts(os.Stdout, vs, band)
+	if red {
+		fmt.Printf("\nPERF GATE RED. A read or a write on the reference got slower than the pin by\n")
+		fmt.Printf("more than the band. If the change added a diagnostic, the law (issue #546)\n")
+		fmt.Printf("declines it: a diagnostic is admitted at zero measured cost on the read and\n")
+		fmt.Printf("write paths, or not at all. If the change is a deliberate cost the owner\n")
+		fmt.Printf("accepted, the pins move in their own pull request, which states its sitting.\n")
+		return 1
+	}
+	fmt.Printf("\nperf gate green.\n")
+	return 0
+}
+
+func cmdPin(args []string) int {
+	repeats := 1
+	parseFlags(args, map[string]*string{}, map[string]*int{"repeats": &repeats})
+
+	if strings.TrimSpace(os.Getenv("BENCH_CXXFLAGS_PREFIX")) != "" {
+		fmt.Fprintf(os.Stderr, "perfgate pin: BENCH_CXXFLAGS_PREFIX is set (%q).\n", os.Getenv("BENCH_CXXFLAGS_PREFIX"))
+		fmt.Fprintf(os.Stderr, "That hook exists for the negative control and for nothing else. A pin cut\n")
+		fmt.Fprintf(os.Stderr, "under flags the shipped build does not carry is a pin for a build nobody runs.\n")
+		return 1
+	}
+
+	// the pins are the median of `repeats` sittings, and the worst deviation
+	// across them is written into the file beside them, so the band's derivation
+	// travels with the numbers rather than living in someone's memory.
+	samples := map[string][]float64{}
+	var last *sitting
+	for i := 0; i < repeats; i++ {
+		s, err := measure("")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "perfgate pin:", err)
+			return 1
+		}
+		fmt.Fprintf(os.Stderr, "== sitting %d/%d: %s\n", i+1, repeats, s.uptime)
+		for _, want := range gateRows {
+			k := want[0] + "/" + want[1]
+			samples[k] = append(samples[k], s.rows[k].rate)
+		}
+		last = s
+	}
+	worst := 0.0
+	medians := map[string]float64{}
+	for _, want := range gateRows {
+		k := want[0] + "/" + want[1]
+		v := append([]float64(nil), samples[k]...)
+		sort.Float64s(v)
+		med := v[len(v)/2]
+		if len(v)%2 == 0 {
+			med = (v[len(v)/2-1] + v[len(v)/2]) / 2
+		}
+		medians[k] = med
+		for _, x := range v {
+			d := (x - med) / med * 100
+			if d < 0 {
+				d = -d
+			}
+			if d > worst {
+				worst = d
+			}
+		}
+	}
+
+	p, err := loadPins(pinsPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate pin:", err)
+		return 1
+	}
+	set := map[string]string{
+		"box.arch":          last.arch,
+		"box.cpu":           last.cpu,
+		"box.os":            last.os,
+		"sitting.date":      last.date,
+		"sitting.host":      last.host,
+		"sitting.uptime":    last.uptime,
+		"sitting.commit":    last.commit,
+		"sitting.compiler":  last.compiler,
+		"sitting.opt":       optOf(last),
+		"sitting.repeats":   strconv.Itoa(repeats),
+		"sitting.worst.pct": fmt.Sprintf("%.2f", worst),
+	}
+	var out []string
+	seen := map[string]bool{}
+	wrotePins := false
+	for _, line := range p.lines {
+		t := strings.TrimSpace(line)
+		if fields := strings.Fields(t); len(fields) > 0 && !strings.HasPrefix(t, "#") {
+			if v, ok := set[fields[0]]; ok {
+				out = append(out, fields[0]+strings.Repeat(" ", pad(fields[0]))+v)
+				seen[fields[0]] = true
+				continue
+			}
+			if strings.HasPrefix(t, "pin ") {
+				if !wrotePins {
+					for _, want := range gateRows {
+						k := want[0] + "/" + want[1]
+						out = append(out, fmt.Sprintf("pin %-12s %-11s %14.0f %s", want[0], want[1], medians[k], last.rows[k].corpusID))
+					}
+					wrotePins = true
+				}
+				continue
+			}
+		}
+		out = append(out, line)
+	}
+	if err := os.WriteFile(pinsPath, []byte(strings.Join(out, "\n")+"\n"), 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate pin:", err)
+		return 1
+	}
+	fmt.Printf("re-pinned %s from %d sitting(s) on %s (worst deviation %.2f%%)\n", pinsPath, repeats, last.host, worst)
+	fmt.Printf("REVIEW THE band.pct LINE BY HAND: this command records the sitting and the\n")
+	fmt.Printf("numbers, and leaves the band alone. Widening a band is a decision, never a\n")
+	fmt.Printf("side effect of re-measuring.\n")
+	return 0
+}
+
+func optOf(s *sitting) string {
+	for _, r := range s.rows {
+		if r.opt != "" {
+			return r.opt
+		}
+	}
+	return "unknown"
+}
+
+func pad(key string) int {
+	n := 20 - len(key)
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
+// ---------------------------------------------------------------------------
+// the negative control
+//
+// A gate nobody has seen go red is a gate nobody has tested. This plants the
+// exact shape the law refuses (a counter behind a runtime flag, one added
+// branch per field, on the READ path only) into a scratch copy of the
+// emitter's output, builds the same benches against it, and requires the gate
+// to call it. The plant is OFF at run time: the control measures the price of
+// the branch alone, which is the honest claim the law makes. Nothing under
+// generated/ or internal/codegen/ is touched, so the C/C++ lock (bench/LOCK)
+// is not approached.
+
+const plantBlock = `
+// ---------------------------------------------------------------------------
+// PLANTED BY bench/tools/perfgate: the negative control for issue #546.
+// This file is a scratch copy under build/. The tracked tree has no such code.
+#ifndef SCHEMA_PERFGATE_PLANT_DEFINED
+#define SCHEMA_PERFGATE_PLANT_DEFINED
+#include <stdlib.h>
+#include <stdint.h>
+// The shape of the diagnostic the law refuses: one counter, one runtime flag,
+// one added branch per field read. The flag comes from the environment at
+// static-initialization time, so no compiler can fold the branch away, and the
+// gate never sets it, so what gets measured is the branch and not the counting.
+static bool schema_perfgate_diag_enabled = ( getenv( "SCHEMA_PERFGATE_DIAG" ) != NULL );
+static uint64_t schema_perfgate_diag_count = 0;
+#define SCHEMA_PERFGATE_PLANT() if ( schema_perfgate_diag_enabled ) { schema_perfgate_diag_count++; }
+#endif
+// ---------------------------------------------------------------------------
+`
+
+var (
+	readFnStart  = regexp.MustCompile(`^SCHEMA_READ_INLINE bool Read`)
+	writeFnStart = regexp.MustCompile(`^SCHEMA_WRITE_INLINE bool Write`)
+	readMacro    = regexp.MustCompile(`^read_[a-z0-9_]+\(`)
+	loadFnStart  = regexp.MustCompile(`bool [A-Za-z0-9_]*Load(Body)?\(`)
+	saveFnStart  = regexp.MustCompile(`bool [A-Za-z0-9_]*(Save|Measure)[A-Za-z0-9_]*\(`)
+	caseLine     = regexp.MustCompile(`^case 0x[0-9a-fA-F]+ull:`)
+)
+
+// plantPacket: the packet wire's generated header. read_* is a macro and it
+// appears on the read path and nowhere else, so the site is the call.
+func plantPacket(src string) (string, int) {
+	lines := strings.Split(src, "\n")
+	inRead := false
+	planted := 0
+	var out []string
+	for _, line := range lines {
+		t := strings.TrimSpace(line)
+		switch {
+		case readFnStart.MatchString(line):
+			inRead = true
+		case writeFnStart.MatchString(line):
+			inRead = false
+		}
+		if inRead && readMacro.MatchString(t) {
+			out = append(out, indentOf(line)+"SCHEMA_PERFGATE_PLANT()")
+			planted++
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n"), planted
+}
+
+// plantTable: the table wire's generated header. The read path dispatches on
+// field id, so the site is the case label: one plant per field, once.
+func plantTable(src string) (string, int) {
+	lines := strings.Split(src, "\n")
+	inLoad := false
+	planted := 0
+	var out []string
+	for _, line := range lines {
+		t := strings.TrimSpace(line)
+		switch {
+		case loadFnStart.MatchString(line):
+			inLoad = true
+		case saveFnStart.MatchString(line):
+			inLoad = false
+		}
+		out = append(out, line)
+		if inLoad && caseLine.MatchString(t) {
+			out = append(out, indentOf(line)+"SCHEMA_PERFGATE_PLANT()")
+			planted++
+		}
+	}
+	return strings.Join(out, "\n"), planted
+}
+
+func indentOf(line string) string {
+	return line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+}
+
+func injectBlock(src string) string {
+	i := strings.Index(src, "#pragma once")
+	if i < 0 {
+		return plantBlock + src
+	}
+	j := i + len("#pragma once")
+	return src[:j] + "\n" + plantBlock + src[j:]
+}
+
+// writePlanted copies a generated tree into build/perfgate/planted/<name> and
+// plants the cost in the one header that carries the read path.
+func writePlanted(srcDir, dstDir, target string, plant func(string) (string, int)) (int, error) {
+	if err := os.RemoveAll(dstDir); err != nil {
+		return 0, err
+	}
+	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+		return 0, err
+	}
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return 0, err
+	}
+	planted := 0
+	for _, e := range entries {
+		if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(srcDir, e.Name()))
+		if err != nil {
+			return 0, err
+		}
+		text := string(b)
+		if e.Name() == target {
+			text, planted = plant(text)
+			text = injectBlock(text)
+		}
+		if err := os.WriteFile(filepath.Join(dstDir, e.Name()), []byte(text), 0o644); err != nil {
+			return 0, err
+		}
+	}
+	if planted == 0 {
+		return 0, fmt.Errorf("planted nothing in %s. The control would prove the gate green for the wrong reason", target)
+	}
+	return planted, nil
+}
+
+func cmdControl(args []string) int {
+	parseFlags(args, map[string]*string{}, map[string]*int{})
+
+	p, err := loadPins(pinsPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate control:", err)
+		return 1
+	}
+	if err := p.validate(); err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate control:", err)
+		return 1
+	}
+	band, err := p.num("band.pct")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate control:", err)
+		return 1
+	}
+
+	pktN, err := writePlanted("generated/bench/cpp", "build/perfgate/planted/cpp", "BenchWire.h", plantPacket)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate control:", err)
+		return 1
+	}
+	tblN, err := writePlanted("generated/bench/tables/cpp", "build/perfgate/planted/tables-cpp", "BenchTableTable.h", plantTable)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate control:", err)
+		return 1
+	}
+	fmt.Printf("planted %d read sites in BenchWire.h and %d in BenchTableTable.h (scratch copies under build/perfgate/planted)\n\n", pktN, tblN)
+
+	fmt.Fprintln(os.Stderr, "== control: the clean sitting ==")
+	clean, err := measure("")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate control:", err)
+		return 1
+	}
+	fmt.Fprintln(os.Stderr, "== control: the planted sitting ==")
+	planted, err := measure("-Ibuild/perfgate/planted/cpp -Ibuild/perfgate/planted/tables-cpp")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate control:", err)
+		return 1
+	}
+
+	// THE CONTROL IS A RATIO INSIDE ONE SITTING, not a comparison against the
+	// pins: the clean half is measured minutes before the planted half on the
+	// same box, so the verdict holds on hardware that has no pins at all.
+	fmt.Printf("%-24s %14s %14s %9s  %s\n", "row", "clean M/s", "planted M/s", "delta", "verdict")
+	readRed, writeMoved := false, false
+	for _, want := range gateRows {
+		k := want[0] + "/" + want[1]
+		c := clean.rows[k].rate
+		pl := planted.rows[k].rate
+		delta := (pl - c) / c * 100
+		red := delta < -band
+		mark := "ok  "
+		if red {
+			mark = "RED "
+		}
+		fmt.Printf("%-24s %14.3f %14.3f %8.2f%%  %s\n", k, c/1e6, pl/1e6, delta, mark)
+		if want[1] == "round_trip" && red {
+			readRed = true
+		}
+		if want[1] == "write" && red {
+			writeMoved = true
+		}
+	}
+	fmt.Printf("band: %.2f%%\n\n", band)
+
+	if !readRed {
+		fmt.Printf("CONTROL FAILED. One added branch per field on the read path did not move\n")
+		fmt.Printf("round_trip past the %.2f%% band on both wires. Either the plant did not\n", band)
+		fmt.Printf("reach the compiled code, or the band is wide enough to hide a real cost.\n")
+		fmt.Printf("A gate nobody has seen go red is a gate nobody has tested.\n")
+		return 1
+	}
+	fmt.Printf("CONTROL PASSED: the planted read cost is RED on round_trip.\n")
+	if writeMoved {
+		fmt.Printf("NOTE: write moved past the band too. Nothing was planted on the write path,\n")
+		fmt.Printf("so this is the box drifting under the two sittings, not the plant. Re-run it\n")
+		fmt.Printf("quiet before reading the read rows as a clean localization.\n")
+	} else {
+		fmt.Printf("write held inside the band on both wires, which is the localization the law\n")
+		fmt.Printf("needs: the gate says WHICH path got slower, not merely that something did.\n")
+	}
+	return 0
+}
+
+// ---------------------------------------------------------------------------
+// the pin lock, on bench/LOCK's model
+//
+// The pins are the gate's authority, so a re-pin of them is an act with its own
+// pull request and nothing else in the diff, the same shape the C/C++ lock
+// uses for a lift. This runs on every pull request, costs no measurement, and
+// makes an unstated re-pin impossible to merge quietly.
+
+func cmdPinlock(args []string) int {
+	base := "origin/main"
+	strs := map[string]*string{"base": &base}
+	parseFlags(args, strs, map[string]*int{})
+
+	out, err := exec.Command("git", "diff", "--name-only", base+"...HEAD").Output()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "perfgate pinlock: cannot diff against %s: %v\n", base, err)
+		return 1
+	}
+	var changed []string
+	for _, f := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if f != "" {
+			changed = append(changed, f)
+		}
+	}
+	touchesPins := false
+	for _, f := range changed {
+		if f == pinsPath {
+			touchesPins = true
+		}
+	}
+
+	p, err := loadPins(pinsPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate pinlock:", err)
+		return 1
+	}
+	if err := p.validate(); err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate pinlock:", err)
+		return 1
+	}
+	fmt.Printf("%s parses, states its sitting, and pins every gate row.\n", pinsPath)
+
+	if !touchesPins {
+		fmt.Println("the diff does not move the pins, nothing to refuse")
+		return 0
+	}
+	if len(changed) == 1 {
+		fmt.Printf("the diff is %s alone, the re-pin act, allowed\n", pinsPath)
+		fmt.Printf("  sitting %s on %s, %s\n", p.directives["sitting.date"], p.directives["sitting.host"], p.directives["sitting.commit"])
+		fmt.Printf("  uptime  %s\n", p.directives["sitting.uptime"])
+		return 0
+	}
+	fmt.Printf("\nPERF PIN REFUSAL. This pull request moves %s and %d other path(s):\n", pinsPath, len(changed)-1)
+	for _, f := range changed {
+		if f != pinsPath {
+			fmt.Println("  " + f)
+		}
+	}
+	fmt.Printf("\nThe pins are what the gate compares against, so a diff that changes the code\n")
+	fmt.Printf("and the pins together can make any regression green by definition. Re-pinning\n")
+	fmt.Printf("is its own pull request, whose diff is %s and nothing else, and whose\n", pinsPath)
+	fmt.Printf("file states the sitting that produced the numbers.\n")
+	return 1
+}
+
+// ---------------------------------------------------------------------------
+
+func parseFlags(args []string, strs map[string]*string, ints map[string]*int) []string {
+	var rest []string
+	for i := 0; i < len(args); i++ {
+		a := strings.TrimLeft(args[i], "-")
+		if p, ok := strs[a]; ok && i+1 < len(args) {
+			*p = args[i+1]
+			i++
+			continue
+		}
+		if p, ok := ints[a]; ok && i+1 < len(args) {
+			n, err := strconv.Atoi(args[i+1])
+			if err == nil {
+				*p = n
+			}
+			i++
+			continue
+		}
+		rest = append(rest, args[i])
+	}
+	return rest
+}
+
+func parseBoolFlags(args []string, flags map[string]*bool) {
+	for _, a := range args {
+		if p, ok := flags[strings.TrimLeft(a, "-")]; ok {
+			*p = true
+		}
+	}
+}
+
+func usage() {
+	fmt.Fprintln(os.Stderr, `perfgate: the zero-cost-diagnostic gate (issue #546)
+
+  perfgate check [-advisory]     measure and compare against bench/PERF-PINS
+  perfgate control               plant a read cost and require the gate to go red
+  perfgate measure [-repeats N]  measure only, print the rows
+  perfgate band [-repeats N]     derive the noise band from repeated sittings
+  perfgate pin [-repeats N]      rewrite the pins and the sitting they came from
+  perfgate pinlock [-base REF]   refuse a pull request that moves the pins with code`)
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		usage()
+		os.Exit(2)
+	}
+	args := os.Args[2:]
+	switch os.Args[1] {
+	case "check":
+		os.Exit(cmdCheck(args))
+	case "control":
+		os.Exit(cmdControl(args))
+	case "measure":
+		os.Exit(cmdMeasure(args))
+	case "band":
+		os.Exit(cmdBand(args))
+	case "pin":
+		os.Exit(cmdPin(args))
+	case "pinlock":
+		os.Exit(cmdPinlock(args))
+	default:
+		usage()
+		os.Exit(2)
+	}
+}

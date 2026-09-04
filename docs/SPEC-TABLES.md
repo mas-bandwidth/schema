@@ -9031,6 +9031,28 @@ are these rulings, in the owner's words:
   that case want to blow out memory with extra union tables you don't need
   and so on" — and the primitive itself, "yes, I like byte buffer as
   primitive", so that "we can include say, images or assets inside them."
+- **What a diagnostic may cost, which is nothing**: "i'm all for greater
+  diagnostics, but if it costs speed on read or write, it's not worth it",
+  and, on widening and the refusal reasons, "if this costs *any* time, then
+  we should not do this" at runtime, when the packet or the table is being
+  read.
+
+**THE ZERO-COST-DIAGNOSTIC LAW** (issue #546) is that last ruling made
+binding over every reporting surface this document defines: the read report
+and its counters, the refusal reasons, retain-unknown's counters (§6.6), the
+descriptor columns (§8.1), and anything added later that reports. Each is
+admitted at zero MEASURED cost on the read path and the write path of both
+wires, or it is declined and this page says so. Measured is the operative
+word, so the law arrives with an instrument rather than an intention:
+`make perf-gate` runs the C++ reference over the bench corpus on both wires
+and refuses a pull request whose read or write fell behind
+[bench/PERF-PINS](../bench/PERF-PINS) by more than a stated band, and
+`make perf-gate-control` plants one added branch per field on the read path
+and requires the gate to see it. Cost is admitted where the ladder above
+already admits it, on the authoring side and at build time, and the gate
+measures only the two paths the ruling names. A surface that wants a
+diagnostic and cannot pay for it out of the write side gets it behind a
+build-time switch or does not get it.
 
 ### 13.3 The fixed-class constructs, ruled
 
