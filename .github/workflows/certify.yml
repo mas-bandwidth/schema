@@ -52,7 +52,7 @@ concurrency:
 #   gh release list --repo mas-bandwidth/<repo> --limit 1
 env:
   SERIALIZE_TAG: v1.16.0
-  SERIALIZE_C_TAG: v1.9.0
+  SERIALIZE_C_TAG: v1.9.1
   SERIALIZE_GO_TAG: v1.15.0
   SERIALIZE_RS_TAG: v2.3.0
   SERIALIZE_CS_TAG: v1.9.0
