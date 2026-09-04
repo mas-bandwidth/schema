@@ -593,7 +593,7 @@ struct TableWriter
 
 // TableLebBytes is one value's spelling length, which a MEASURE needs before
 // the bytes exist — the length of a body has to be known before it is written,
-// because a variable-width length cannot be patched in place.
+// because a length whose own width moves cannot be patched in place.
 inline int64_t TableLebBytes( uint64_t v )
 {
     int64_t n = 1;

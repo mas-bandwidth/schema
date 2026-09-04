@@ -1,51 +1,51 @@
-0xda0fca2693cc8f68
-schema-build-version 2
+0x8ff011c5c8f96a59
+schema-build-version 3
 protocol ddbcdfad80ccdacc
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record Cursor sizeof=8 alignof=4
-    field 01fc kind=8 offset=0 size=4
-    field 27df kind=8 offset=4 size=4
+    field bf4ba5ad694f5907 kind=8 offset=0 size=4
+    field 5f531287628bf287 kind=8 offset=4 size=4
 record Edit sizeof=312 alignof=4
-    field b98e kind=8 offset=0 size=4
-    field a2df kind=15 offset=4 size=308 union=EditBody
+    field d6a4dbc46c8e8658 kind=8 offset=0 size=4
+    field cd4de79bc6c93295 kind=15 offset=4 size=308 union=EditBody
 record InsertText sizeof=304 alignof=4
-    field 42ad kind=13 offset=0 size=8 type=Cursor
-    field f3d8 kind=12 offset=8 size=40 bound=32
-    field 4330 kind=15 offset=48 size=80 union=Origin
-    field 53ab kind=15 offset=128 size=164 union=Origin elem=80 array=bounded bound=2
-    field ab38 kind=7 offset=292 size=9 enum=Mode elem=2 array=bounded bound=2 optional=true
+    field 089c4e07b545a968 kind=13 offset=0 size=8 type=Cursor
+    field fa04f4ef1995407e kind=12 offset=8 size=40 bound=32
+    field b9eae4fe785a14cf kind=15 offset=48 size=80 union=Origin
+    field 4437d86681113b74 kind=15 offset=128 size=164 union=Origin elem=80 array=bounded bound=2
+    field 9de526933e6e3ef3 kind=30 offset=292 size=9 enum=Mode elem=2 array=bounded bound=2 optional=true
 record OpenDocument sizeof=84 alignof=4
-    field c9b1 kind=12 offset=0 size=72 bound=64
-    field 0c7c kind=7 offset=72 size=1 enum=Mode default=Read
-    field d139 kind=13 offset=76 size=8 type=Cursor
+    field 03c52d0debd70676 kind=12 offset=0 size=72 bound=64
+    field 0d3deba2c41dadb2 kind=30 offset=72 size=1 enum=Mode default=Read
+    field f927453fbe6252ef kind=13 offset=76 size=8 type=Cursor
 record Ping sizeof=4 alignof=4
-    field 80f0 kind=8 offset=0 size=4
+    field 73a94c71d60dc0d8 kind=8 offset=0 size=4
 record RemoveText sizeof=16 alignof=4
-    field abc0 kind=13 offset=0 size=16 type=Selection
+    field 8b7dc019093cd0e1 kind=13 offset=0 size=16 type=Selection
 record SaveDocument sizeof=76 alignof=4
-    field c9b1 kind=12 offset=0 size=72 bound=64
-    field f12d kind=1 offset=72 size=1
+    field 03c52d0debd70676 kind=12 offset=0 size=72 bound=64
+    field e75ad8afb3eeebe4 kind=1 offset=72 size=1
 record Script sizeof=76 alignof=4
-    field c9b1 kind=12 offset=0 size=72 bound=64
-    field 01fc kind=8 offset=72 size=4
+    field 03c52d0debd70676 kind=12 offset=0 size=72 bound=64
+    field bf4ba5ad694f5907 kind=8 offset=72 size=4
 record Selection sizeof=16 alignof=4
-    field 61f4 kind=13 offset=0 size=8 type=Cursor
-    field 1f24 kind=13 offset=8 size=8 type=Cursor
+    field ee5d97ad45ad251f kind=13 offset=0 size=8 type=Cursor
+    field c2f00318f053500a kind=13 offset=8 size=8 type=Cursor
 record ToolMessage sizeof=5168 alignof=8
-    field d32b kind=8 offset=0 size=4
-    field a2df kind=15 offset=8 size=1640 union=ToolBody
-    field cbae kind=15 offset=1648 size=3284 union=ToolBody elem=1640 array=bounded bound=2
-    field f493 kind=13 offset=4932 size=233 type=Script elem=76 array=bounded bound=3 optional=true
-    field e15f kind=7 offset=5165 size=3 enum=Mode elem=1 array=fixed bound=2 optional=true
+    field aa38aca481f528a8 kind=8 offset=0 size=4
+    field cd4de79bc6c93295 kind=15 offset=8 size=1640 union=ToolBody
+    field 33428945bbd5f2ff kind=15 offset=1648 size=3284 union=ToolBody elem=1640 array=bounded bound=2
+    field dec59ea6c4eb9aee kind=13 offset=4932 size=233 type=Script elem=76 array=bounded bound=3 optional=true
+    field 9077d4a4e1726e29 kind=30 offset=5165 size=3 enum=Mode elem=1 array=fixed bound=2 optional=true
 record Transaction sizeof=1628 alignof=4
-    field a6ba kind=12 offset=0 size=24 bound=16
-    field 3d33 kind=13 offset=24 size=940 type=Edit elem=312 array=bounded bound=3
-    field e683 kind=15 offset=964 size=616 union=EditBody elem=308 array=fixed bound=2
-    field 990b kind=8 offset=1580 size=9 elem=4 array=fixed bound=2 optional=true
-    field 7daf kind=13 offset=1592 size=33 type=Selection elem=16 array=fixed bound=2 optional=true
+    field 65e8d7f3474f2639 kind=12 offset=0 size=24 bound=16
+    field 9478d06b697549e6 kind=13 offset=24 size=940 type=Edit elem=312 array=bounded bound=3
+    field 52dea0d6eeb5083c kind=15 offset=964 size=616 union=EditBody elem=308 array=fixed bound=2
+    field 028afa1c4d757704 kind=8 offset=1580 size=9 elem=4 array=fixed bound=2 optional=true
+    field 99dc6354a681403a kind=13 offset=1592 size=33 type=Selection elem=16 array=fixed bound=2 optional=true
 record User sizeof=24 alignof=4
-    field 30df kind=12 offset=0 size=24 bound=16
+    field c4bcadba8e631b86 kind=12 offset=0 size=24 bound=16
 enum Mode
     variant 1 Read
     variant 2 Write
@@ -55,7 +55,7 @@ union EditBody
     arm 3 count kind=4 offset=4 size=4 min=0 max=100
     arm 4 marks kind=7 offset=4 size=12 elem=2 array=bounded bound=3
     arm 5 blob kind=14 offset=4 size=8 bound=4
-    arm 6 mode kind=7 offset=4 size=1 enum=Mode
+    arm 6 mode kind=30 offset=4 size=1 enum=Mode
 union Origin
     arm 1 user payload=User
     arm 2 script payload=Script

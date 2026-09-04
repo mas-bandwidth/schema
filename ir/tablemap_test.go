@@ -160,15 +160,15 @@ func TestCookProjectionKeepsAMapAnonymous(t *testing.T) {
 		// generated entry's own storage size — the pitch its entries lie at,
 		// as on every other array line — `array=map`, and NO bound, because a
 		// map declares no extent (§20.2)
-		"field 2d39 kind=14 offset=0 size=16 elem=48 array=map\n",
-		"field ff83 kind=14 offset=16 size=16 elem=16 array=map\n",
+		"field 294a5c4913e1ad44 kind=14 offset=0 size=16 elem=48 array=map\n",
+		"field 7b024c46e98d3404 kind=14 offset=16 size=16 elem=16 array=map\n",
 		// and the ENTRY takes a record line of its own, keyed by the holder's
 		// wire id and the field's, the nested one chaining its holder's key
-		"record " + hex16(holder) + ".2d39 sizeof=48 alignof=4\n",
-		"record " + hex16(holder) + ".d91b.9194 sizeof=8 alignof=4\n",
+		"record " + hex16(holder) + ".294a5c4913e1ad44 sizeof=48 alignof=4\n",
+		"record " + hex16(holder) + ".294fa1b3f0f5f070.7ce4fd9430e80cea sizeof=8 alignof=4\n",
 		// the KEY's kind and capacity ride on the entry's own `key` line,
 		// which is where a key edit moves the id (§20.1)
-		"field a079 kind=12 offset=0 size=40 bound=32\n",
+		"field 3dc94a19365b10ec kind=12 offset=0 size=40 bound=32\n",
 	} {
 		if !strings.Contains(facts, want) {
 			t.Errorf("the cook projection has no line %q:\n%s", want, facts)

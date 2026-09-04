@@ -1,33 +1,33 @@
-0x9ebe680f43132468
-schema-build-version 2
+0xad75fcea740d7640
+schema-build-version 3
 protocol 0fc1a1667e54b144
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record ArmorConfig sizeof=40 alignof=8
-    field 3aa1 kind=13 offset=0 size=16 type=ArmorPlate
-    field 6b5c kind=13 offset=16 size=16 type=ArmorPlate
-    field e2d9 kind=10 offset=32 size=4
-    field e958 kind=6 offset=36 size=1
+    field 538b8c566e9e4b38 kind=13 offset=0 size=16 type=ArmorPlate
+    field 4ce65d1fbfdde703 kind=13 offset=16 size=16 type=ArmorPlate
+    field 4e79ecbefe5ff4d0 kind=10 offset=32 size=4
+    field 1e6f84ef2eb65989 kind=6 offset=36 size=1
 record ArmorPlate sizeof=16 alignof=8
-    field c81a kind=11 offset=0 size=8
-    field 0284 kind=8 offset=8 size=4
-    field 4750 kind=6 offset=12 size=1
+    field dbae65ca25b4f315 kind=11 offset=0 size=8
+    field 026f7568983161e0 kind=8 offset=8 size=4
+    field 84e39fec29768c56 kind=6 offset=12 size=1
 record FiringGroup sizeof=8 alignof=4
-    field 87ed kind=8 offset=0 size=4
-    field 2230 kind=10 offset=4 size=4
+    field 8ece059ad360b651 kind=8 offset=0 size=4
+    field dc2cbe6953343d48 kind=10 offset=4 size=4
 record GunnerSettings sizeof=304 alignof=4
-    field c79d kind=13 offset=0 size=260 type=FiringGroup elem=8 array=bounded bound=32
-    field 6a31 kind=13 offset=260 size=36 type=FiringGroup elem=8 array=bounded bound=4
-    field d08f kind=10 offset=296 size=4
-    field e0d2 kind=8 offset=300 size=4
+    field 260b8ca6b0c3db7f kind=13 offset=0 size=260 type=FiringGroup elem=8 array=bounded bound=32
+    field 3c99105aa087f6bc kind=13 offset=260 size=36 type=FiringGroup elem=8 array=bounded bound=4
+    field ad9b64728ea52486 kind=10 offset=296 size=4
+    field bd9be53180256e02 kind=8 offset=300 size=4
 record PartFrame sizeof=11280 alignof=8
-    field e8e6 kind=9 offset=0 size=8
-    field fc18 kind=13 offset=8 size=11268 type=PartRow elem=352 array=bounded bound=32
+    field bb62c62c9808ea37 kind=9 offset=0 size=8
+    field 0c519da7a1f958c5 kind=13 offset=8 size=11268 type=PartRow elem=352 array=bounded bound=32
 block PartFrame sizeof=48 alignof=8
-    slot e8e6 offset=24 size=8
-    slot fc18 offset=32 size=16 out_of_line stride=352
+    slot bb62c62c9808ea37 offset=24 size=8
+    slot 0c519da7a1f958c5 offset=32 size=16 out_of_line stride=352
 record PartRow sizeof=352 alignof=8
-    field 7c9d kind=13 offset=0 size=40 type=ArmorConfig
-    field 2bc9 kind=13 offset=40 size=304 type=GunnerSettings
-    field 6deb kind=8 offset=344 size=4
-    field 37e4 kind=6 offset=348 size=1
+    field d19988b67e699194 kind=13 offset=0 size=40 type=ArmorConfig
+    field 40dbb648c0cd44aa kind=13 offset=40 size=304 type=GunnerSettings
+    field 04d6206b33415104 kind=8 offset=344 size=4
+    field 6a771618f6fe31d1 kind=6 offset=348 size=1

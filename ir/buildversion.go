@@ -32,12 +32,12 @@ import (
 // directory's encoding, the header's shape — because without a version for
 // those a cook's bytes could diverge with the id unmoved.
 //
-// FORM 2 (schema#380, MAPS): the rendering gained `array=map` on a map field's
-// line and the anonymous `record <holder id>.<field id>` line its generated
-// entry takes (§20.2). Every unit's build version moves with it, map-free ones
-// included, which is what a form version is for: the text a cook's id is taken
-// over is not the text it was taken over before.
-const BuildVersionForm = 2
+// FORM 3 (schema#435, THE ID-TABLE WIRE): ids render at SIXTY-FOUR bits, an
+// enum field renders under its own kind 30, and a `flags` declaration takes a
+// block of its own — the enum block with the keyword swapped (§20.2). Every
+// unit's build version moves with it, which is what a form version is for: the
+// text a cook's id is taken over is not the text it was taken over before.
+const BuildVersionForm = 3
 
 // blockPrologueFacts renders the block projection's generated prologue as the
 // digest sees it: each word in order, named, with its width in bytes.
@@ -51,8 +51,8 @@ func blockPrologueFacts() string {
 }
 
 // TableKindPointer is a `*T` reference slot's wire kind (docs/SPEC-TABLES.md §3.1):
-// a pointer rides as a u32 index into the node table, and §20.2 renders it as
-// kind 17 with `type=` naming the pointee.
+// a pointer rides as a canonical LEB128 index into the node table, and §20.2
+// renders it as kind 17 with `type=` naming the pointee.
 const TableKindPointer = 17
 
 // BuildVersion is the unit's build version: the low 64 bits of SHA-256 over
@@ -65,9 +65,10 @@ func BuildVersion(u *Unit) uint64 {
 // CookProjection renders the unit's cook projection (docs/SPEC-TABLES.md §20.2).
 //
 // ASCII, every line terminated by one "\n", no blank lines; tokens separated
-// by exactly one space; a nested line indented four spaces. Ids are four
-// lowercase hex digits; sizes, offsets and bounds decimal; every value the
-// schemafmt-canonical text of the EVALUATED value.
+// by exactly one space; a nested line indented four spaces. Ids are SIXTEEN
+// lowercase hex digits, the fnv1a64 of the effective name (§5); sizes, offsets
+// and bounds decimal; every value the schemafmt-canonical text of the
+// EVALUATED value.
 func CookProjection(u *Unit) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "schema-build-version %d\n", BuildVersionForm)
@@ -131,7 +132,7 @@ func CookProjection(u *Unit) string {
 		if bl := blocks.Block(name); bl != nil && len(bl.Arrays) > 0 {
 			fmt.Fprintf(&b, "block %s sizeof=%d alignof=%d\n", name, bl.Projection.Size, bl.Projection.Align)
 			for _, fl := range bl.Projection.Fields {
-				fmt.Fprintf(&b, "    slot %04x offset=%d size=%d", TableFieldId(fl.Field), fl.Offset, fl.Size)
+				fmt.Fprintf(&b, "    slot %016x offset=%d size=%d", TableFieldWireId(fl.Field), fl.Offset, fl.Size)
 				if a := bl.ArrayByName(fl.Field.Name); a != nil {
 					fmt.Fprintf(&b, " out_of_line stride=%d", a.Stride)
 				}
@@ -168,7 +169,7 @@ func CookProjection(u *Unit) string {
 // exists.
 func cookFieldLine(u *Unit, fl FieldLayout, enums map[string]*Enum, unions map[string]*Union) string {
 	f := fl.Field
-	kind := TableScalarKind(f)
+	kind := TableWireScalarKind(f)
 	if f.IsMap() {
 		// A MAP FIELD IS AN ARRAY LINE (docs/SPEC-TABLES.md §20.1, §20.2):
 		// `kind=14`, `array=map` and the entry's own storage size in `elem=`,
@@ -178,7 +179,7 @@ func cookFieldLine(u *Unit, fl FieldLayout, enums map[string]*Enum, unions map[s
 		kind = TableKindArray
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "    field %04x kind=%d offset=%d size=%d", TableFieldId(f), kind, fl.Offset, fl.Size)
+	fmt.Fprintf(&b, "    field %016x kind=%d offset=%d size=%d", TableFieldWireId(f), kind, fl.Offset, fl.Size)
 	b.WriteString(cookFacts(u, fl, enums, unions))
 	b.WriteString("\n")
 	return b.String()
@@ -237,7 +238,7 @@ func cookArmLine(u *Unit, un *Union, tag int, v UnionVariant, enums map[string]*
 	size, align := ArmLayout(u, v)
 	fl := FieldLayout{Field: v.F, Offset: armOffset, Size: size, Align: align}
 	return fmt.Sprintf("    arm %d %s kind=%d offset=%d size=%d%s\n",
-		tag, v.Name, TableScalarKind(v.F), armOffset, size, cookFacts(u, fl, enums, unions))
+		tag, v.Name, TableWireScalarKind(v.F), armOffset, size, cookFacts(u, fl, enums, unions))
 }
 
 // cookFacts is the token tail a field line and an ARM line share: the scale,

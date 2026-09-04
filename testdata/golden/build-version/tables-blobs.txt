@@ -1,17 +1,17 @@
-0xe7a627afef0d063f
-schema-build-version 2
+0x0e82db6c0d83d28f
+schema-build-version 3
 protocol 1cc1b12ef296a1f6
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record Asset sizeof=72 alignof=8
-    field 30df kind=12 offset=0 size=40 bound=32
-    field 3b50 kind=8 offset=40 size=4
-    field 3ad7 kind=17 offset=48 size=8 type=bytes
-    field f376 kind=17 offset=56 size=8 type=string
-    field d15e kind=17 offset=64 size=8 type=Asset
+    field c4bcadba8e631b86 kind=12 offset=0 size=40 bound=32
+    field ef9c96d721673243 kind=8 offset=40 size=4
+    field 855b556730a34a05 kind=17 offset=48 size=8 type=bytes
+    field 5daa28eb864c02a5 kind=17 offset=56 size=8 type=string
+    field e5316cbaa025f028 kind=17 offset=64 size=8 type=Asset
 record Catalog sizeof=72 alignof=8
-    field 30df kind=12 offset=0 size=40 bound=32
-    field 79aa kind=17 offset=40 size=8 type=Asset
-    field 694f kind=17 offset=48 size=8 type=bytes
-    field 9da7 kind=17 offset=56 size=8 type=string
-    field fc71 kind=17 offset=64 size=8 type=bytes
+    field c4bcadba8e631b86 kind=12 offset=0 size=40 bound=32
+    field 0a8f12cc5f9a0c03 kind=17 offset=40 size=8 type=Asset
+    field 613b19720ff4b203 kind=17 offset=48 size=8 type=bytes
+    field 3bf8fbbad1587cdd kind=17 offset=56 size=8 type=string
+    field 509220bb65a646b7 kind=17 offset=64 size=8 type=bytes
