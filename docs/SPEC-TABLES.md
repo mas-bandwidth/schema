@@ -5318,6 +5318,16 @@ decided by whether it COMPILES that file (§8.4). An editor does; a game
 build never includes it. Nothing here rides a wire either: the view moves no
 protocol id, no generated wire byte and no baseline row (§10, §18).
 
+**This is also where what a PERSON wrote about a declaration comes out.** A
+doc comment (SPEC §4.1) and a tag (SPEC §4.2) are the language's two open
+channels — one prose, one an identifier in a namespace the compiler assigns
+no meaning — and they reach a tool through two descriptor columns, `doc` and
+`tags`, and through nothing else. They are id-neutral and byte-neutral in
+every direction the rest of this page measures, which is what lets the
+namespace stay open: annotating a shipped schema costs no redeploy, no
+re-cook and no baseline row. The columns are specified with the rest of the
+descriptors in §8.1 and appear on the registry's records in §8.3.
+
 ### 8.1 The descriptors
 
 For every table in the unit's closure the generated header carries static
@@ -5347,6 +5357,67 @@ what an element starts as.
 **A field carries its TEXT KEY** beside its name — the `json = "..."`
 attribute's value, else the field's own name (§16.4) — so a walker over the
 text form spells keys without a second table.
+
+**A field carries its DOC COMMENT and its TAGS.** These are the two columns
+that carry what a PERSON wrote about a declaration rather than what the
+compiler derived from it: `doc` is the comment block above the field,
+verbatim as SPEC §4.1 defines it, and `num_tags` with `tags` are the
+valueless identifiers right of the field's pipe (SPEC §4.2), in declared
+order. The same three members sit on the TYPE descriptor, `TableTypeInfo`,
+beside a table's name and its `reset` hook, so a walker that entered a
+nested table through the `table` column reads that declaration's own doc and
+tags there, with no registry (§8.3) compiled and no second lookup.
+
+**Absence has a spelling, and it is not NULL.** A declaration with no doc
+comment carries `doc` pointing at one shared static empty string; a
+declaration with no tags carries `num_tags` of 0 beside a NULL `tags`. A
+printer concatenates `doc` with no test — there is nothing an empty doc
+comment could mean that "no doc comment" does not — while a LIST has its
+count checked before it is walked whatever it holds, so each column takes
+the spelling its own walk already wanted. A unit that documents and tags
+nothing pays one pointer per row and not one byte of string data.
+
+**Both are STATIC, and they allocate nothing.** `doc` is a string literal in
+the generated file and `tags` an array of them, constant-initialized with the
+descriptor and cached with it exactly as the accessor columns are (above), so
+a walk that prints every doc and every tag in a unit allocates what a walk
+that prints none allocates, which is nothing. All nine targets carry the
+three members, each spelling them in its own immutable string and immutable
+ordered sequence; the COLUMNS are one vocabulary doing one job, as
+everywhere else in this section.
+
+**A descriptor carries its OWN doc and tags and nobody else's.** A field
+descriptor's vocabulary columns name an enum's values or a union's arms
+(above), and a VARIANT's doc and tags belong to the enum, flags or union
+DECLARATION rather than to a field that happens to reference it — so they
+ride that declaration's registry rows (§8.3), one lookup away by
+`type_name`, and no `variant_doc( value )` or `variant_tags( value )` joins
+the descriptor in nine ports to spell what the registry already spells.
+**The one place two records describe one item is a GENERAL ARM** (§2.6): an
+arm that names no record is a field line and carries a `TableFieldInfo`, so
+that descriptor holds the arm's own doc and tags and the arm's `ViewVariant`
+row holds the same two values. They agree by construction, and §8.7 is where
+that is checked rather than assumed.
+
+**The BLOCK field descriptor carries neither** (`TableBlockFieldInfo`,
+below). It says where a field sits in the block's projection, and that
+field's doc and tags are one record away on the table field descriptor for
+the same field. A second copy would be a second thing to keep in step, for
+the one form whose whole reason is layout.
+
+**Neither column is in reach of a byte, in any direction this page
+measures.** Both are excluded from the wire shape projection (SPEC §3.1) and
+from the cook projection (§20.2), so neither moves the protocol id and
+neither moves the build version; neither enters a baseline row (§18), so
+`schema check` never sees one and no doc or tag edit can be a warn or a
+refusal; and neither is a member of the silent class (§4.1), because there
+is no stored byte whose meaning a comment or an inert identifier could
+change. **The text form does not read them and never writes them** (§16):
+its keys are the `json` column and its values are the storage columns, and a
+doc comment is not a value. **The pack tree does not see them either**
+(§17): a directory and a file name a field by its text key, so nothing in a
+tree is ever spelled by a doc or a tag. Documenting and tagging a shipped
+schema is a free edit, and that is the property the open namespace rests on.
 
 **A field carries WHERE IT LIVES, and the spelling is the language's.** C++
 carries an offset and a width, because its storage is one flat struct; a
@@ -5618,6 +5689,10 @@ struct ViewConstant
     bool is_float;
     int64_t int_value;       // the folded value; float_value when is_float
     double float_value;
+    const char * doc;        // the doc comment above it, verbatim (SPEC §4.1);
+                             // "" when there is none, never NULL (§8.1)
+    int32_t num_tags;             // the declaration's tags (SPEC §4.2), in
+    const char * const * tags;    // DECLARED order; 0 and NULL when there are none
 };
 
 struct ViewVariant          // one enum variant, one flags bit, one union arm
@@ -5641,6 +5716,12 @@ struct ViewVariant          // one enum variant, one flags bit, one union arm
                                     // storage. NULL on an arm naming a `type` or
                                     // a `table`, on a payload-free arm, on tag 0,
                                     // and on an enum or flags row
+    const char * doc;               // the doc comment above this variant, bit or
+                                    // arm, verbatim; "" when there is none (§8.1)
+    int32_t num_tags;               // this row's own tags, in DECLARED order;
+    const char * const * tags;      // 0 and NULL when there are none. On a general
+                                    // arm the `field` descriptor above carries the
+                                    // same two values (§8.1)
 };
 
 struct ViewVocabulary       // an enum, a flags or a union declaration
@@ -5651,6 +5732,9 @@ struct ViewVocabulary       // an enum, a flags or a union declaration
     int32_t storage_bits;
     int32_t num_variants;
     const ViewVariant * variants;
+    const char * doc;             // the declaration's own doc comment; "" when none
+    int32_t num_tags;             // the declaration's own tags, in DECLARED order;
+    const char * const * tags;    // 0 and NULL when there are none
 };
 
 struct ViewType             // one declaration: a type, or a table
@@ -5658,9 +5742,12 @@ struct ViewType             // one declaration: a type, or a table
     const char * name;
     const char * file;
     bool table;                     // declared `table`
-    const TableTypeInfo * type;     // §8.1's descriptor: the properties
-    int32_t num_tags;               // the declaration's type tags (SPEC §4.2)
-    const char * const * tags;
+    const TableTypeInfo * type;     // §8.1's descriptor: the properties, and this
+                                    // declaration's own doc and tags beside them
+    const char * doc;               // the doc comment above it; "" when none. The
+                                    // same text `type->doc` carries (§8.1)
+    int32_t num_tags;               // the declaration's tags (SPEC §4.2), in
+    const char * const * tags;      // DECLARED order; the same list `type` carries
 };
 
 struct UnitViewInfo
@@ -5719,6 +5806,23 @@ const UnitViewInfo * UnitView();
   every generated file already names its source (SPEC §6.1) — a tool
   grouping a build's declarations the way a person navigates them needs no
   second table to do it.
+- **Every record carries `doc` and its two `tags` columns**, and they mean
+  one thing on all of them: the comment a person wrote above the item, and
+  the identifiers that person hung on it (§8.1). Every DECLARATION has them —
+  a type, a table, an enum, a flags, a union, a constant — and so does every
+  declared ITEM, which is what `ViewVariant` carries them for: an enum
+  variant, a flags bit and a union arm each has its own. A field's are on its
+  `TableFieldInfo` (§8.1), reached through the entry's `type`, so the
+  registry does not restate them. **Tag 0 of a union is the one row that has
+  neither**, along with everything else it has: it is not a declared arm, and
+  there was nothing above it to write.
+- **A REGISTRY LISTING IS THE WHOLE ANNOTATION SURFACE.** A tool that wants
+  every doc and every tag in a build walks `UnitView()` and reaches all of
+  them — declarations from the six sets, fields through each entry's
+  descriptor, variants and arms through each vocabulary's rows — with no
+  schema files on hand and no second pass. That is what makes an editor's
+  property grid, a documentation generator and a project's own claiming pass
+  (SPEC §4.2) consumers of one surface rather than three.
 - **Each set is ordered by DECLARATION NAME**, and deliberately not by where
   the declaration lives. File layout and declaration order move nothing in
   this language — not an id, not a wire byte (SPEC §3.2) — so a listing that
@@ -5801,18 +5905,29 @@ per-schema-file name does not.
 
 ### 8.6 What the view does not carry
 
-- **No semantics.** A type tag is an identifier the language assigns no
-  meaning (SPEC §4.2); the registry lists a declaration's tags because they
-  are part of what was declared, and claims nothing about them. A claiming
-  pass that gives a tag meaning changes what a consumer does with the
-  listing, never the listing.
-- **No UI hints.** Names, kinds, ids, bounds, extents, offsets, presence
-  companions and key vocabularies — the facts the declaration states, and
-  those alone. No widget, no grouping, no ordering hint, no unit of measure.
-- **No description strings, and no `| doc` attribute.** Doc comments are
-  deferred with their design pinned (SPEC §4.1, §9 q5); when they land the
-  view carries them as one more column. A second spelling for the same text
-  is not introduced ahead of them.
+- **No semantics.** A tag is an identifier the language assigns no meaning
+  (SPEC §4.2); the view lists what a declaration or an item was tagged with
+  because that is part of what was declared, and claims nothing about it. A
+  claiming pass that gives a tag meaning changes what a consumer does with
+  the listing, never the listing. **This is the line the open namespace buys
+  its safety with**: the view will report `ui_slider` and `asset_ref` and
+  `localized` exactly as written and will never act on one, so no tag can
+  ever become a fact a codec reads.
+- **No UI hints of its own.** Names, kinds, ids, bounds, extents, offsets,
+  presence companions and key vocabularies — the facts the declaration
+  states, and those alone. No widget column, no grouping column, no ordering
+  hint, no unit of measure. What a project wants there it writes as a tag and
+  reads back out of the `tags` column, which is the same answer one level
+  up: the language holds the channel and the project holds the meaning.
+- **No `| doc` attribute.** Documentation has one spelling, the doc comment
+  above the item (SPEC §4.1), and the view carries it in the `doc` column
+  (§8.1, §8.3). A valued `doc` key is refused by name (SPEC §4.11) so that
+  one text can never have two homes and a tool never has to decide which of
+  them won.
+- **No rendering of either.** `doc` is the block a person wrote, verbatim,
+  and `tags` are identifiers; the view does not reflow, wrap, escape, parse
+  or sort them, because every one of those would make the listing a function
+  of the walker rather than of the source.
 - **No per-field default VALUE.** A walker that fills a value establishes
   defaults through the descriptor's `reset` hook (§8.1) — one instance put
   back at its declared defaults, which is what a filler actually needs and
@@ -5864,6 +5979,37 @@ goes red for one reason: an arm whose `field` is NULL, or whose offset does
 not reach the value the compiler's own listing carries, prints a line the
 pin does not have.
 
+**DOC AND TAGS ARE IN THAT LISTING, on every row that has them** (§8.1,
+§8.3). The program prints each declaration's `doc` and its tags in declared
+order, each field's, and each variant's, bit's and arm's, and the compiler's
+listing carries the same text off the IR — so a target that drops a doc
+comment, reorders a tag list, reflows a block or fills `doc` with NULL where
+the pin has `""` prints a line the pin does not have. **The general arm's
+two records are checked against each other in the same pass**: an arm whose
+`field` descriptor and whose `ViewVariant` row disagree about either column
+is a red line, which is what makes "they agree by construction" a tested
+claim rather than a stated one.
+
+**ONE CORPUS DECLARATION SHOWS BOTH COLUMNS FILLED, and it is the golden
+this section is read against.** The `tabledemo` unit carries a declaration
+documented and tagged at every level the language admits — the declaration
+itself, a field, an enum variant, a union arm and a constant beside it — so
+the C++ reference's generated descriptors and its view listing exhibit `doc`
+and `tags` on a `TableFieldInfo`, a `TableTypeInfo`, a `ViewVariant`, a
+`ViewVocabulary`, a `ViewType` and a `ViewConstant`, with the rest of the
+corpus exhibiting the empty spelling beside it. The pinned source goldens
+carry that declaration's descriptor initializers verbatim, so both halves
+are held: what a filled column looks like, and that an undocumented,
+untagged unit still emits `""` and 0 and NULL rather than omitting the
+columns.
+
+**The COST claim is held too, and it is the one a game build cares about.**
+For a unit that documents and tags nothing, every `doc` in every descriptor
+is the SAME pointer — one shared empty string — and every `tags` is NULL, so
+the columns add three members per row to the descriptor tables and no string
+data at all to the binary. A backend that emits a distinct `""` per row, or
+an empty array per row, fails it.
+
 **A gate that cannot go red proves nothing.** Dropping one declaration, one
 property, one variant or one constant from an emitter's registry turns the
 corpus gate red, and that is established by doing it rather than assumed.
@@ -5874,6 +6020,16 @@ view adds a file and moves nothing else: every generated file other than
 view existed, and `schema id` reports the same protocol id. That is what
 proves reflection costs the type wire's generated code not one byte — §10's
 independence, claimed for a table edit, holding for a view.
+
+**Landing the doc and tags columns is the one edit that moves that gate's
+left-hand side, and it moves it once.** The columns sit on `TableFieldInfo`
+and `TableTypeInfo`, which live in the table headers (§8.5), so every
+descriptor initializer in the corpus gains three members and the source
+goldens are re-pinned in the same commit. What must NOT move with them is
+anything the wire touches — no protocol id, no build version, no wire
+golden, no baseline row — and that half stays red-capable afterwards, which
+is the half worth having: the columns are metadata, and a metadata edit that
+moved a wire byte would be the bug this page exists to make impossible.
 
 **Its left-hand side is the RECORDED SOURCE GOLDENS**, because with nothing
 selecting the view there is no second generate to compare against: "before
