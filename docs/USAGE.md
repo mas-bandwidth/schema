@@ -3445,6 +3445,38 @@ that first carries it; everything under `internal/` is not
 your own math type with `| cpp_native = Vector3, cpp_include = "vec.h"`, so
 simulation code does math directly on generated storage.
 
+Two things about that mapping are worth knowing before you try it, both
+stated in SPEC §4.2 and neither visible from the attribute's spelling.
+
+**The mapping is off inside the mapped type's own generated header.** Your
+`vec.h` derives from the generated basis struct, so it includes the header
+the basis is in; a mapped reference in that same header would be circular.
+The generated header a schema file produces covers every declaration in
+THAT FILE, so a sibling declared beside `Vector3` in one `.schema` stores
+the basis type and nothing in the output mentions your header. A unit of one
+file therefore never sees the mapping do anything, which is the first thing
+most people try:
+
+```
+$ cat A.schema
+package nat
+type Vec2 | cpp_native = GameVec2, cpp_include = "vec2.h" { x float32
+                                                            y float32 }
+type Body { p Vec2 }
+$ schema generate --lang cpp --out g . && grep -n 'GameVec2\|vec2.h' g/*.h
+$
+```
+
+Put `Body` in `B.schema` beside it and `g/B.h` gets both the `#include` and
+`::GameVec2 p;`. The attribute is accepted either way: it is a mapping, not
+a request, and there is nothing wrong with a file whose own siblings keep
+the basis type.
+
+**`cpp_native` names a GLOBAL type.** The value is an identifier and the
+emitted spelling is `::GameVec2`, so a namespaced engine type — `math::Vec2`,
+the common case — is named through a global alias you declare in your own
+header.
+
 **C#** — C# 9 / netstandard2.1-clean, so it runs on Unity-class runtimes.
 Reads scalars without boxing.
 
