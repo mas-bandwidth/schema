@@ -2,7 +2,7 @@
 //
 //	make perf-gate            measure the reference benches and render a verdict
 //	make perf-gate-control    the planted-cost negative control
-//	make perf-gate-pin        re-measure the pins (a PR whose diff is bench/PERF-PINS)
+//	make perf-gate-pin        re-measure the pins and the sitting they came off
 //	make perf-gate-pinlock    the LOCK-model refusal, run on every pull request
 //
 // THE LAW IT ENFORCES. The owner's rule, 2026-09-05, issue #546: "i'm all for
@@ -65,7 +65,7 @@ import (
 
 const pinsPath = "bench/PERF-PINS"
 
-// the four rows the gate pins, in report order
+// gateRows: the four rows the gate pins, in report order.
 var gateRows = [][2]string{
 	{"bench_mixed", "write"},
 	{"bench_mixed", "round_trip"},
@@ -114,10 +114,10 @@ func boxCPU() string {
 		}
 	}
 	if b, err := os.ReadFile("/proc/cpuinfo"); err == nil {
-		for _, line := range strings.Split(string(b), "\n") {
+		for line := range strings.SplitSeq(string(b), "\n") {
 			if strings.HasPrefix(line, "model name") {
-				if i := strings.Index(line, ":"); i >= 0 {
-					return strings.TrimSpace(line[i+1:])
+				if _, after, ok := strings.Cut(line, ":"); ok {
+					return strings.TrimSpace(after)
 				}
 			}
 		}
@@ -708,11 +708,7 @@ func optOf(s *sitting) string {
 }
 
 func pad(key string) int {
-	n := 20 - len(key)
-	if n < 1 {
-		n = 1
-	}
-	return n
+	return max(20-len(key), 1)
 }
 
 // ---------------------------------------------------------------------------
@@ -993,7 +989,7 @@ func cmdPinlock(args []string) int {
 		return 1
 	}
 	touchesPins := false
-	for _, f := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for f := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		if f == pinsPath {
 			touchesPins = true
 		}
