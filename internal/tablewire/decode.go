@@ -41,6 +41,14 @@ func Decode(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *t
 	}
 	if data[0] != ir.TableWireForm {
 		report.Refused = true
+		if data[0] == ir.TableWireMessageForm {
+			// FORM `2` IS A STREAM FORM AND NEVER A FILE FORM
+			// (docs/SPEC-TABLES.md §3.3): a message stored on its own is not
+			// readable, because its table is somewhere else, so a reader
+			// handed one where a file was expected refuses BY NAME rather
+			// than merely by form byte.
+			return false, &MessageRefusal{Reason: ReasonMessageFormAsFile}
+		}
 		return false, &FormRefusal{Form: data[0]}
 	}
 	body, ids, ok := trailer(data)
@@ -309,6 +317,13 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			return false
 		}
 		kind := r.u8()
+		if id == ir.TableBuildVersionWireId {
+			// THE RESERVED BUILD-VERSION ID rides in the ANNOUNCEMENT and
+			// nowhere else (docs/SPEC-TABLES.md §3.3): a reserved id in any
+			// body but the one whose transport it is, is MALFORMED (§3.1).
+			r.report.Malformed = true
+			return false
+		}
 		if id == ir.TableNodeWireId {
 			if nested {
 				r.report.Malformed = true

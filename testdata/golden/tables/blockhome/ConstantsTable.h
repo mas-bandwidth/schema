@@ -35,6 +35,25 @@
 
 namespace blockhome {
 
+// WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
+// is not one of §4's events: nothing is decoded, no counter moves and no
+// damage is reported, so five zero counters and a false flag are what a clean
+// read prints too and only the verdict tells them apart. The reason says which
+// refusal it was.
+//
+// This is the MESSAGE PATH's vocabulary and not the cooked form's (§7.4): a
+// caller meeting one of these has been refused a MESSAGE on a connection,
+// which is a different recovery with a different owner than a file a header
+// match turned down.
+enum TableMessageReason
+{
+    newer_form,           // a FORM BYTE this reader does not carry (§3)
+    no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
+    second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
+    vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
+    message_form_as_file  // a form 2 wire where a FILE was expected: its table is somewhere else
+};
+
 // The table-wire read report — the permissive contract's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
 struct TableReport
@@ -52,6 +71,10 @@ struct TableReport
     // zero counters and a false flag are what a clean read prints too, so the
     // verdict is what tells the two apart.
     bool refused = false;
+    // WHICH refusal, and it is read only when refused is set: a read that
+    // was not refused has no reason, and this member is the one the caller
+    // must not look at then (docs/SPEC-TABLES.md §3.3).
+    TableMessageReason reason = newer_form;
 };
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
@@ -240,8 +263,16 @@ struct TableIds
     int32_t head[ kBuckets ];
     int32_t count;
     bool overflow;
+    // THE MESSAGE FORM'S SLOTS (docs/SPEC-TABLES.md §3.3). A form 2 wire
+    // names ids through the CONNECTION's table, which is the unit's whole
+    // vocabulary in a compiler-settled order — so every reference is known at
+    // compile time and rides at the header as a literal beside the id. This
+    // flag is what selects it: false interns the id in first-use order and
+    // writes a trailer, true answers the slot and writes none, and the walk
+    // that decides is one walk.
+    bool vocabulary;
 
-    TableIds() : count( 0 ), overflow( false )
+    TableIds() : count( 0 ), overflow( false ), vocabulary( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
     }
@@ -251,8 +282,16 @@ struct TableIds
         return uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> 58 ) & uint32_t( kBuckets - 1 );
     }
 
-    // the reference an id takes, appending it on first use
-    uint64_t ref( uint64_t id )
+    // the reference an id takes: its message-form SLOT under the connection's
+    // table, or the file's own first-use entry
+    BLOCKHOME_TABLE_INLINE uint64_t ref( uint64_t id, uint64_t slot )
+    {
+        if ( vocabulary ) { return slot; }
+        return intern( id );
+    }
+
+    // the FILE form's half, appending the id on first use
+    uint64_t intern( uint64_t id )
     {
         const uint32_t b = bucket_of( id );
         for ( int32_t i = head[b]; i >= 0; i = chain[i] )
@@ -268,6 +307,8 @@ struct TableIds
     // recent one in its bucket, so it sits at that bucket's head.
     void truncate( int32_t mark )
     {
+        // a SLOT costs no entry, so an elided field has nothing to undo
+        if ( vocabulary ) { return; }
         while ( count > mark )
         {
             count--;
@@ -501,6 +542,178 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
         if ( !r.has( 1 ) ) { return false; }
         if ( !r.skip( r.get8() ) ) { return false; }
     }
+}
+
+// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): a FILE carries its own id
+// table and a MESSAGE STREAM announces one and then carries none.
+//
+// A form 2 wire is TWO PARTS, the form byte and the root body: the body ends
+// at its own zero reference as it does in a file, there is no trailer, and the
+// message's last byte is the body's terminator. Its references resolve against
+// the CONNECTION's table, which is the unit's whole vocabulary in the order
+// the compiler settled.
+const uint8_t kTableWireMessageForm = 2;
+
+// The RESERVED build-version id, the second id the language holds back (§5,
+// §11), beside the node table's. It is the announcement's one required field,
+// and a reserved id in any body but the one whose transport it is, is
+// malformed (§3.1).
+static const uint64_t kTableBuildVersionFieldId = 0xFFFFFFFFFFFFFFFEull;
+
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 26 entries and 228 bytes. It is an
+// ordinary form 1 FILE — the form byte, a body carrying the BUILD VERSION
+// under the reserved id at kind 9, and the trailer that IS the connection's
+// table, slot 1 the reserved id and slots 2 and up the vocabulary under one
+// numbering.
+//
+// The vocabulary is the unit's whole closure in the COOK PROJECTION's order
+// (§20.2) — each record in the order the projection renders it and each
+// record's fields in the order the projection renders them, then each enum's
+// variants and each union's arms — followed by the tail the projection does
+// not name: the reserved node-table id, the three blob type ids as bytes,
+// string and wstring, and every table's own name id in the projection's sorted
+// record order. The tail is UNCONDITIONAL, so an ordinary edit only ever grows
+// it at its end and never moves a slot a generated field header carries as a
+// literal.
+static const int64_t kTableAnnounceBytes = 228;
+static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
+    0x01, 0x01, 0x09, 0x40, 0x76, 0x0d, 0x74, 0xea, 0xfc, 0x75, 0xad, 0x00,
+    0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x38, 0x4b, 0x9e, 0x6e,
+    0x56, 0x8c, 0x8b, 0x53, 0x03, 0xe7, 0xdd, 0xbf, 0x1f, 0x5d, 0xe6, 0x4c,
+    0xd0, 0xf4, 0x5f, 0xfe, 0xbe, 0xec, 0x79, 0x4e, 0x89, 0x59, 0xb6, 0x2e,
+    0xef, 0x84, 0x6f, 0x1e, 0x15, 0xf3, 0xb4, 0x25, 0xca, 0x65, 0xae, 0xdb,
+    0xe0, 0x61, 0x31, 0x98, 0x68, 0x75, 0x6f, 0x02, 0x56, 0x8c, 0x76, 0x29,
+    0xec, 0x9f, 0xe3, 0x84, 0x51, 0xb6, 0x60, 0xd3, 0x9a, 0x05, 0xce, 0x8e,
+    0x48, 0x3d, 0x34, 0x53, 0x69, 0xbe, 0x2c, 0xdc, 0x7f, 0xdb, 0xc3, 0xb0,
+    0xa6, 0x8c, 0x0b, 0x26, 0xbc, 0xf6, 0x87, 0xa0, 0x5a, 0x10, 0x99, 0x3c,
+    0x86, 0x24, 0xa5, 0x8e, 0x72, 0x64, 0x9b, 0xad, 0x02, 0x6e, 0x25, 0x80,
+    0x31, 0xe5, 0x9b, 0xbd, 0x37, 0xea, 0x08, 0x98, 0x2c, 0xc6, 0x62, 0xbb,
+    0xc5, 0x58, 0xf9, 0xa1, 0xa7, 0x9d, 0x51, 0x0c, 0x94, 0x91, 0x69, 0x7e,
+    0xb6, 0x88, 0x99, 0xd1, 0xaa, 0x44, 0xcd, 0xc0, 0x48, 0xb6, 0xdb, 0x40,
+    0x04, 0x51, 0x41, 0x33, 0x6b, 0x20, 0xd6, 0x04, 0xd1, 0x31, 0xfe, 0xf6,
+    0x18, 0x16, 0x77, 0x6a, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f, 0x58, 0xfc, 0xaf, 0xfa,
+    0xd8, 0xe0, 0x4b, 0x70, 0xc7, 0xd4, 0x7b, 0x26, 0xb0, 0x9d, 0x29, 0x5f,
+    0xb1, 0x2f, 0x3a, 0x9e, 0xfd, 0xb7, 0xa1, 0x7c, 0xf0, 0xb1, 0x40, 0x26,
+    0x28, 0x61, 0xc4, 0x27, 0x1a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+// AnnounceMeasure is the announcement's byte count, which is a constant of the
+// unit and not a walk.
+inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+
+// Announce writes the announcement into the caller's buffer and answers the
+// bytes written — exactly AnnounceMeasure's answer — or -1 when the buffer is
+// too small. It allocates nothing and walks nothing.
+inline int64_t Announce( uint8_t * buffer, int64_t capacity )
+{
+    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
+    return kTableAnnounceBytes;
+}
+
+// TableVocabulary is ONE DIRECTION of ONE CONNECTION's id table (§3.3): the
+// entries an announcement carried, whole, under one numbering with slot 1 the
+// reserved build-version id.
+//
+// A peer holds TWO of these for a connection, the one it writes with and the
+// one it reads with, and neither is the other's. A restart opens a fresh
+// connection with empty tables and nothing is cached across connections, so
+// its whole life is one connection's. It BORROWS the announcement's bytes rather than
+// copying them, so a receiver holds one table a direction and its memory is
+// the bound below and nothing else.
+struct TableVocabulary
+{
+    // THE CONFORMING DEFAULT BOUND (§3.3): 32 KiB a direction, eight times the
+    // 500-id unit that is already a large one. A connection's table is bounded
+    // by nothing the wire carries, so the receiver declares the maximum and an
+    // announcement above it is refused by name before an entry is touched.
+    static const int64_t kDefaultMaxEntries = 4096;
+
+    TableIdTable table;
+    uint64_t build_version = 0;
+    bool announced = false;
+    int64_t max_entries = kDefaultMaxEntries;
+};
+
+// AnnounceRead reads an announcement into one direction's table (§3.3).
+//
+// THE BOUND IS CHECKED BEFORE ANYTHING IS ALLOCATED: the entry count is a
+// fixed little-endian u64 at the end, so a receiver reads it, compares it and
+// refuses without touching an entry. After that it is §3's ordinary FILE read,
+// because the announcement IS a file, with EXACTLY ONE STRICT CHECK over its
+// body: the reserved build-version field present, exactly once, under kind 9,
+// eight bytes wide. Everything else is an ordinary field under §4's tolerance,
+// so an unknown one is skipped and counted and the announcement can GAIN a
+// field in a later minor without a lockstep redeploy.
+//
+// The FIRST announcement sets the table and it is the only one that can. A
+// SECOND is refused by name: it does not replace the table, it does not amend
+// it and it changes nothing. A refused announcement sets NO TABLE.
+inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    if ( vocabulary.announced )
+    {
+        to->refused = true;
+        to->reason = second_announcement;
+        return false;
+    }
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireForm )
+    {
+        to->refused = true;
+        to->reason = buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        return false;
+    }
+    if ( bytes < 9 ) { to->malformed = true; return false; }
+    const uint8_t * tail = buffer + bytes - 8;
+    uint64_t lo = uint64_t( tail[0] ) | uint64_t( tail[1] ) << 8 | uint64_t( tail[2] ) << 16 | uint64_t( tail[3] ) << 24;
+    uint64_t hi = uint64_t( tail[4] ) | uint64_t( tail[5] ) << 8 | uint64_t( tail[6] ) << 16 | uint64_t( tail[7] ) << 24;
+    if ( ( lo | ( hi << 32 ) ) > (uint64_t) vocabulary.max_entries )
+    {
+        to->refused = true;
+        to->reason = vocabulary_too_large;
+        return false;
+    }
+    TableIdTable table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        else { to->refused = true; to->reason = newer_form; }
+        return false;
+    }
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) ) { to->malformed = true; return false; }
+    // the body, under §4's tolerance and this form's one strict check
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    uint64_t version = 0;
+    int32_t seen = 0;
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.getleb( ref ) ) { to->malformed = true; return false; }
+        if ( ref == 0 ) { break; }
+        if ( ref > (uint64_t) table.count || !r.has( 1 ) ) { to->malformed = true; return false; }
+        const uint64_t id = table.at( ref );
+        const uint8_t kind = r.get8();
+        if ( id != kTableBuildVersionFieldId )
+        {
+            to->unknown++;
+            if ( !r.skip( kind ) ) { to->malformed = true; return false; }
+            continue;
+        }
+        if ( kind != 9 || !r.has( 8 ) ) { to->refused = true; to->reason = no_vocabulary; return false; }
+        version = r.get64();
+        seen++;
+    }
+    if ( seen != 1 ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    vocabulary.table = table;
+    vocabulary.build_version = version;
+    vocabulary.announced = true;
+    return true;
 }
 
 inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }

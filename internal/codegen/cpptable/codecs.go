@@ -531,7 +531,7 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %s::None: ref = 0; return true;\n", e.Name)
 	for _, v := range e.Variants {
-		g.pf("        case %s::%s: ref = ids.ref( 0x%016xull ); return true;\n", e.Name, v, ir.TableWireId(v))
+		g.pf("        case %s::%s: ref = %s; return true;\n", e.Name, v, g.wireRef(ir.TableWireId(v)))
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
@@ -619,16 +619,6 @@ func guardWalk(st *ir.Struct, prefix string) map[string]string {
 // Save writes exactly this many bytes into a buffer of exactly this size. A value violating its storage invariants (a count or length outside
 // its bound, an out-of-range union tag) measures as -1, exactly as the
 // write side refuses it.
-// wireRef renders the reference an id takes, interned in first-use order. It
-// is idempotent: an id already in the table is referenced again and never
-// appended twice, so the FIRST call in the walk is the one that fixes the
-// entry's position (docs/SPEC-TABLES.md §3).
-func wireRef(id uint64) string { return fmt.Sprintf("ids.ref( 0x%016xull )", id) }
-
-// hdrBytes is a field header's cost: the id reference and the kind byte, which
-// is the whole of it (§3).
-func hdrBytes(id uint64) string { return "TableLebBytes( " + wireRef(id) + " ) + 1" }
-
 // framed is a length-shaped payload's cost: its own canonical length, then the
 // bytes.
 func framed(length string) string {
@@ -745,23 +735,23 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 				g.pf("        if ( value.%s_count < 0 || value.%s_count > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
 				count = fmt.Sprintf("value.%s_count", f.Name)
 			}
-			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, wireRef(id))
+			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 			g.pf("        int64_t body_%s = 0;\n", f.Name)
 			g.emitArrayBodyMeasure(f, elemKind, "body_"+f.Name, count, "value."+f.Name+"[%s]", "        ", "return -1;", "")
 			g.pf("        bytes += TableLebBytes( ref_%s ) + 1 + %s; // %s\n", f.Name, framed("body_"+f.Name), f.Name)
 		case kind == tkTable:
-			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, wireRef(id))
+			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 			g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, "value."+f.Name))
 			g.pf("        if ( body_%s < 0 ) { return -1; }\n", f.Name)
 			g.pf("        bytes += TableLebBytes( ref_%s ) + 1 + %s; // %s\n", f.Name, framed("body_"+f.Name), f.Name)
 		case kind == tkEnum:
 			g.pf("        uint64_t variant_%s = 0;\n", f.Name)
 			g.pf("        if ( !TableEnumNamed( value.%s ) ) { return -1; } // no variant names this value\n", f.Name)
-			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, wireRef(id))
+			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 			g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return -1; }\n", f.Name, f.Name)
 			g.pf("        bytes += TableLebBytes( ref_%s ) + 1 + TableLebBytes( variant_%s ); // %s: the variant's reference\n", f.Name, f.Name, f.Name)
 		default:
-			g.pf("        bytes += %s + %d; // %s\n", hdrBytes(id), width, f.Name)
+			g.pf("        bytes += %s + %d; // %s\n", g.hdrBytes(id), width, f.Name)
 		}
 		g.pf("    }\n")
 	case f.KeyEnum != "":
@@ -770,7 +760,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		// elides like any default, and an empty array elides whole.
 		g.pf("    {\n")
 		g.pf("        const int32_t mark_%s = ids.count;\n", f.Name)
-		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, wireRef(id))
+		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        int64_t pairs_%s = 0, body_%s = 0;\n", f.Name, f.Name)
 		g.pf("        for ( int32_t i = 0; i < %d; i++ ) // [%s]: every stored slot is a named variant's\n        {\n", f.ArrayBound, f.KeyEnum)
 		g.emitKeyedSlotRides(f, kind, "            ", "return -1;")
@@ -795,7 +785,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		// array: an empty one elides, and a live slot rides as its index, null as 0.
 		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
 		g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
-		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, wireRef(id))
+		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        int64_t body_%s = 0;\n", f.Name)
 		g.emitArrayBodyMeasure(f, tkNodeIndex, "body_"+f.Name, fmt.Sprintf("value.%s_count", f.Name), "value."+f.Name+"[%s]", "        ", "return -1;", "")
 		g.pf("        bytes += TableLebBytes( ref_%s ) + 1 + %s; // %s: [..%d]*%s\n", f.Name, framed("body_"+f.Name), f.Name, f.ArrayBound, f.Type.Name)
@@ -807,7 +797,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        bool any_%s = false;\n", f.Name)
 		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( %sAt( ctx, value.%s[i] ) != NULL ) { any_%s = true; break; } }\n", f.ArrayBound, f.Type.Name, f.Name, f.Name)
 		g.pf("        if ( any_%s )\n        {\n", f.Name)
-		g.pf("            const uint64_t ref_%s = %s;\n", f.Name, wireRef(id))
+		g.pf("            const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("            int64_t body_%s = 0;\n", f.Name)
 		g.emitArrayBodyMeasure(f, tkNodeIndex, "body_"+f.Name, strconv.FormatInt(f.ArrayBound, 10), "value."+f.Name+"[%s]", "            ", "return -1;", "")
 		g.pf("            bytes += TableLebBytes( ref_%s ) + 1 + %s; // %s: [%d]*%s\n", f.Name, framed("body_"+f.Name), f.Name, f.ArrayBound, f.Type.Name)
@@ -823,7 +813,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        if ( blob_%s != NULL )\n        {\n", f.Name)
 		g.pf("            uint64_t index_%s = 0;\n", f.Name)
 		g.pf("            if ( !TableNumberingIndex( numbering, (const void *) blob_%s, index_%s ) ) { return -1; }\n", f.Name, f.Name)
-		g.pf("            bytes += %s + TableLebBytes( index_%s );\n", hdrBytes(id), f.Name)
+		g.pf("            bytes += %s + TableLebBytes( index_%s );\n", g.hdrBytes(id), f.Name)
 		g.pf("        }\n    }\n")
 	case f.Type.Pointer:
 		t := f.Type.Name
@@ -837,21 +827,21 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        if ( pointee_%s != NULL )\n        {\n", f.Name)
 		g.pf("            uint64_t index_%s = 0;\n", f.Name)
 		g.pf("            if ( !TableNumberingIndex( numbering, (const void *) pointee_%s, index_%s ) ) { return -1; }\n", f.Name, f.Name)
-		g.pf("            bytes += %s + TableLebBytes( index_%s );\n", hdrBytes(id), f.Name)
+		g.pf("            bytes += %s + TableLebBytes( index_%s );\n", g.hdrBytes(id), f.Name)
 		g.pf("        }\n    }\n")
 	case f.Type.Kind == ir.TString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
-		g.pf("    if ( value.%s_length > 0 ) { bytes += %s + %s; } // %s\n", f.Name, hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
+		g.pf("    if ( value.%s_length > 0 ) { bytes += %s + %s; } // %s\n", f.Name, g.hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
 		g.pf("        const int64_t body_%s = 1 + TableLebBytes( (uint64_t) value.%s_length ) + value.%s_length;\n", f.Name, f.Name, f.Name)
-		g.pf("        bytes += %s + %s; // %s\n", hdrBytes(id), framed("body_"+f.Name), f.Name)
+		g.pf("        bytes += %s + %s; // %s\n", g.hdrBytes(id), framed("body_"+f.Name), f.Name)
 		g.pf("    }\n")
 	case f.Array == ir.ArrayCounted:
 		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
 		g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
-		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, wireRef(id))
+		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        int64_t body_%s = 0;\n", f.Name)
 		g.emitArrayBodyMeasure(f, elemKind, "body_"+f.Name, fmt.Sprintf("value.%s_count", f.Name), "value."+f.Name+"[%s]", "        ", "return -1;", "")
 		g.pf("        bytes += TableLebBytes( ref_%s ) + 1 + %s; // %s\n", f.Name, framed("body_"+f.Name), f.Name)
@@ -868,7 +858,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			g.pf("        if ( any_%s )\n        {\n", f.Name)
 			guard = "    "
 		}
-		g.pf("        %sconst uint64_t ref_%s = %s;\n", guard, f.Name, wireRef(id))
+		g.pf("        %sconst uint64_t ref_%s = %s;\n", guard, f.Name, g.wireRef(id))
 		g.pf("        %sint64_t body_%s = 0;\n", guard, f.Name)
 		g.emitArrayBodyMeasure(f, elemKind, "body_"+f.Name, strconv.FormatInt(f.ArrayBound, 10), "value."+f.Name+"[%s]", "        "+guard, "return -1;", "")
 		g.pf("        %sbytes += TableLebBytes( ref_%s ) + 1 + %s; // %s (fixed [%d])\n", guard, f.Name, framed("body_"+f.Name), f.Name, f.ArrayBound)
@@ -882,7 +872,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i] != %s ) { all_default_%s = false; break; } }\n",
 			f.ArrayBound, f.Name, g.fieldDefaultExpr(f), f.Name)
 		g.pf("        if ( !all_default_%s )\n        {\n", f.Name)
-		g.pf("            const uint64_t ref_%s = %s;\n", f.Name, wireRef(id))
+		g.pf("            const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("            int64_t body_%s = 0;\n", f.Name)
 		g.emitArrayBodyMeasure(f, elemKind, "body_"+f.Name, strconv.FormatInt(f.ArrayBound, 10), "value."+f.Name+"[%s]", "            ", "return -1;", "")
 		g.pf("            bytes += TableLebBytes( ref_%s ) + 1 + %s; // %s\n", f.Name, framed("body_"+f.Name), f.Name)
@@ -893,13 +883,13 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		// and an arm alike
 		un := f.Type.Ref.(*ir.Union)
 		g.pf("    if ( value.%s.type != %sType::None ) // None elides — the absence of the field is the None\n    {\n", f.Name, un.Name)
-		g.pf("        bytes += %s;\n", hdrBytes(id))
+		g.pf("        bytes += %s;\n", g.hdrBytes(id))
 		g.emitUnionPayloadMeasure(f, "value."+f.Name, "bytes", "        ", "")
 		g.pf("    }\n")
 	case kind == tkTable:
 		g.pf("    {\n")
 		g.pf("        const int32_t mark_%s = ids.count;\n", f.Name)
-		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, wireRef(id))
+		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, "value."+f.Name))
 		g.pf("        if ( body_%s < 0 ) { return -1; }\n", f.Name)
 		g.pf("        if ( body_%s > 1 ) { bytes += TableLebBytes( ref_%s ) + 1 + %s; } // %s\n", f.Name, f.Name, framed("body_"+f.Name), f.Name)
@@ -908,12 +898,12 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 	case kind == tkEnum:
 		g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
 		g.pf("        if ( !TableEnumNamed( value.%s ) ) { return -1; } // no variant names this value\n", f.Name)
-		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, wireRef(id))
+		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        uint64_t variant_%s = 0;\n", f.Name)
 		g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return -1; }\n", f.Name, f.Name)
 		g.pf("        bytes += TableLebBytes( ref_%s ) + 1 + TableLebBytes( variant_%s ); // %s: the variant's reference\n    }\n", f.Name, f.Name, f.Name)
 	default:
-		g.pf("    if ( value.%s != %s ) { bytes += %s + %d; } // %s\n", f.Name, g.fieldDefaultExpr(f), hdrBytes(id), width, f.Name)
+		g.pf("    if ( value.%s != %s ) { bytes += %s + %d; } // %s\n", f.Name, g.fieldDefaultExpr(f), g.hdrBytes(id), width, f.Name)
 	}
 }
 
@@ -929,7 +919,7 @@ func (g *tableGen) emitUnionPayloadMeasure(f *ir.Field, expr, into, ind, sfx str
 		g.noteRef(v.Type)
 		g.pf("%s    case %sType::%s:\n%s    {\n", ind, un.Name, ir.GoExportName(v.Name), ind)
 		g.pf("%s        int64_t %s = 0;\n", ind, body)
-		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, wireRef(ir.TableWireId(v.Name)))
+		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.Name)))
 		g.emitArmMeasure(v, expr, body, ind+"        ", "return -1;", sfx)
 		g.pf("%s        %s += TableLebBytes( arm_ref%s ) + 1 + %s;\n", ind, into, sfx, framed(body))
 		g.pf("%s        break;\n%s    }\n", ind, ind)
@@ -1101,7 +1091,7 @@ func (g *tableGen) emitArrayBodyWrite(f *ir.Field, elemKind int, n, access, ind,
 // length — measured first, because a canonical LEB128 cannot be patched in
 // place — and the body.
 func (g *tableGen) emitArrayField(f *ir.Field, id uint64, elemKind int, n, access, ind string) {
-	g.pf("%sconst uint64_t ref_%s = %s;\n", ind, f.Name, wireRef(id))
+	g.pf("%sconst uint64_t ref_%s = %s;\n", ind, f.Name, g.wireRef(id))
 	g.pf("%sint64_t body_%s = 0;\n", ind, f.Name)
 	g.emitArrayBodyMeasure(f, elemKind, "body_"+f.Name, n, access, ind, "return false;", "")
 	g.pf("%sw.putleb( ref_%s ); w.put8( %d ); w.putleb( (uint64_t) body_%s ); // %s\n", ind, f.Name, tkArray, f.Name, f.Name)
@@ -1137,19 +1127,19 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			}
 			g.emitArrayField(f, id, elemKind, count, "value."+f.Name+"[%s]", "        ")
 		case kind == tkTable:
-			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, wireRef(id))
+			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 			g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, "value."+f.Name))
 			g.pf("        if ( body_%s < 0 ) return false; // storage invariant, refused as measure refuses it\n", f.Name)
 			g.pf("        w.putleb( ref_%s ); w.put8( %d ); w.putleb( (uint64_t) body_%s ); // %s\n", f.Name, tkTable, f.Name, f.Name)
 			g.pf("        if ( !%s ) return false;\n", g.saveCall(f.Type.Name, "value."+f.Name))
 		case kind == tkEnum:
 			g.pf("        if ( !TableEnumNamed( value.%s ) ) { return false; }\n", f.Name)
-			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, wireRef(id))
+			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 			g.pf("        uint64_t variant_%s = 0;\n", f.Name)
 			g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return false; }\n", f.Name, f.Name)
 			g.pf("        w.putleb( ref_%s ); w.put8( %d ); w.putleb( variant_%s ); // %s\n", f.Name, tkEnum, f.Name, f.Name)
 		default:
-			g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", wireRef(id), kind, f.Name)
+			g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", g.wireRef(id), kind, f.Name)
 			g.emitTableWriteElement(f, kind, "value."+f.Name, "        ", "")
 		}
 		g.pf("    }\n")
@@ -1160,7 +1150,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		// agree byte for byte.
 		g.pf("    {\n")
 		g.pf("        const int32_t mark_%s = ids.count;\n", f.Name)
-		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, wireRef(id))
+		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        int64_t pairs_%s = 0, body_%s = 0;\n", f.Name, f.Name)
 		g.pf("        for ( int32_t i = 0; i < %d; i++ ) // [%s]: every stored slot is a named variant's\n        {\n", f.ArrayBound, f.KeyEnum)
 		g.emitKeyedSlotRides(f, kind, "            ", "return false;")
@@ -1230,7 +1220,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        if ( blob_%s != NULL )\n        {\n", f.Name)
 		g.pf("            uint64_t index_%s = 0;\n", f.Name)
 		g.pf("            if ( !TableNumberingIndex( numbering, (const void *) blob_%s, index_%s ) ) { return false; }\n", f.Name, f.Name)
-		g.pf("            w.putleb( %s ); w.put8( %d ); // %s — a NODE INDEX into the flat node table\n", wireRef(id), tkNodeIndex, f.Name)
+		g.pf("            w.putleb( %s ); w.put8( %d ); // %s — a NODE INDEX into the flat node table\n", g.wireRef(id), tkNodeIndex, f.Name)
 		g.pf("            w.putleb( index_%s );\n", f.Name)
 		g.pf("        }\n    }\n")
 	case f.Type.Pointer:
@@ -1240,20 +1230,20 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        if ( pointee_%s != NULL )\n        {\n", f.Name)
 		g.pf("            uint64_t index_%s = 0;\n", f.Name)
 		g.pf("            if ( !TableNumberingIndex( numbering, (const void *) pointee_%s, index_%s ) ) { return false; }\n", f.Name, f.Name)
-		g.pf("            w.putleb( %s ); w.put8( %d ); // %s — a NODE INDEX into the flat node table\n", wireRef(id), tkNodeIndex, f.Name)
+		g.pf("            w.putleb( %s ); w.put8( %d ); // %s — a NODE INDEX into the flat node table\n", g.wireRef(id), tkNodeIndex, f.Name)
 		g.pf("            w.putleb( index_%s );\n", f.Name)
 		g.pf("        }\n    }\n")
 	case f.Type.Kind == ir.TString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
-		g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", wireRef(id), tkString, f.Name)
+		g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", g.wireRef(id), tkString, f.Name)
 		g.pf("        w.putleb( (uint64_t) value.%s_length );\n", f.Name)
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
 		g.pf("        const int64_t body_%s = 1 + TableLebBytes( (uint64_t) value.%s_length ) + value.%s_length;\n", f.Name, f.Name, f.Name)
-		g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", wireRef(id), tkArray, f.Name)
+		g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", g.wireRef(id), tkArray, f.Name)
 		g.pf("        w.putleb( (uint64_t) body_%s );\n", f.Name)
 		g.pf("        w.put8( %d ); w.putleb( (uint64_t) value.%s_length );\n", tkU8, f.Name)
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
@@ -1293,7 +1283,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.noteRef(v.Type)
 		}
 		g.pf("    if ( value.%s.type != %sType::None )\n    {\n", f.Name, un.Name)
-		g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", wireRef(id), tkUnion, f.Name)
+		g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", g.wireRef(id), tkUnion, f.Name)
 		g.emitUnionPayloadSave(f, "value."+f.Name, "        ", "return false;", "")
 		g.pf("    }\n")
 	case kind == tkTable:
@@ -1303,7 +1293,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		// trips overflow on transient header bytes
 		g.pf("    {\n")
 		g.pf("        const int32_t mark_%s = ids.count;\n", f.Name)
-		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, wireRef(id))
+		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, "value."+f.Name))
 		g.pf("        if ( body_%s < 0 ) return false; // storage invariant, refused as measure refuses it\n", f.Name)
 		g.pf("        if ( body_%s > 1 ) // all-default nested elides\n        {\n", f.Name)
@@ -1318,13 +1308,13 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		// writing None over it
 		g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
 		g.pf("        if ( !TableEnumNamed( value.%s ) ) { return false; }\n", f.Name)
-		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, wireRef(id))
+		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        uint64_t variant_%s = 0;\n", f.Name)
 		g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return false; }\n", f.Name, f.Name)
 		g.pf("        w.putleb( ref_%s ); w.put8( %d ); w.putleb( variant_%s ); // %s\n    }\n", f.Name, tkEnum, f.Name, f.Name)
 	default:
 		g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
-		g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", wireRef(id), kind, f.Name)
+		g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", g.wireRef(id), kind, f.Name)
 		g.emitTableWriteElement(f, kind, "value."+f.Name, "        ", "")
 		g.pf("    }\n")
 	}
@@ -1341,7 +1331,7 @@ func (g *tableGen) emitUnionPayloadSave(f *ir.Field, expr, ind, onBad, sfx strin
 	for _, v := range un.Variants {
 		g.noteRef(v.Type)
 		g.pf("%s    case %sType::%s:\n%s    {\n", ind, un.Name, ir.GoExportName(v.Name), ind)
-		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, wireRef(ir.TableWireId(v.Name)))
+		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.Name)))
 		g.pf("%s        int64_t %s = 0;\n", ind, body)
 		g.emitArmMeasure(v, expr, body, ind+"        ", onBad, sfx)
 		g.pf("%s        w.putleb( arm_ref%s ); w.put8( %d ); w.putleb( (uint64_t) %s ); // %s\n", ind, sfx, armWireKind(v), body, v.Name)
@@ -1421,11 +1411,13 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("        const uint64_t field_id = r.ids->at( field_ref );\n")
 	g.pf("        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }\n")
 	g.pf("        uint8_t kind = r.get8();\n")
-	g.pf("        if ( field_id == kTableNodeTableFieldId && r.nested )\n        {\n")
-	g.pf("            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED\n")
-	g.pf("            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a\n")
-	g.pf("            // second numbering cannot exist, so a body claiming one is\n")
-	g.pf("            // damaged — that body stops and the parent reads on past its L.\n")
+	g.pf("        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )\n        {\n")
+	g.pf("            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,\n")
+	g.pf("            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node\n")
+	g.pf("            // table's is the ROOT body's alone, on the numbering's own\n")
+	g.pf("            // rule — a second numbering cannot exist — and the BUILD\n")
+	g.pf("            // VERSION's rides in the announcement and nowhere else. That\n")
+	g.pf("            // body stops and the parent reads on past its L.\n")
 	g.pf("            r.report->malformed = true;\n")
 	g.pf("            return false;\n        }\n")
 	if len(st.Fields) > 0 {
@@ -1517,7 +1509,14 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
 	g.pf("        %sReset( value );\n", st.Name)
 	g.pf("        if ( verdict == TableOpenDamaged ) { to->malformed = true; }\n")
-	g.pf("        else { to->refused = true; }\n")
+	g.pf("        else\n        {\n")
+	g.pf("            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message\n")
+	g.pf("            // stored on its own is not readable, because its table is\n")
+	g.pf("            // somewhere else, and the refusal says so BY NAME rather than\n")
+	g.pf("            // merely by form byte (docs/SPEC-TABLES.md §3.3).\n")
+	g.pf("            to->refused = true;\n")
+	g.pf("            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;\n")
+	g.pf("        }\n")
 	g.pf("        return verdict;\n    }\n")
 	g.pf("    // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS\n")
 	g.pf("    // MALFORMED, because no field claims it and the two ends of the file\n")

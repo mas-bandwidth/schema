@@ -78,6 +78,28 @@ func (c *Compiler) Pack(u *ir.Unit, root, dir string) ([]byte, []string, TableRe
 	return bytes, skipped, publicReport(report), err
 }
 
+// PackMessage is Pack over the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the
+// same tree and the same instance, and the form byte and root body alone come
+// out. The ids live in the CONNECTION's announced table, which the unit's own
+// [Announce] derives, so a message carries no trailer at all.
+func (c *Compiler) PackMessage(u *ir.Unit, root, dir string) ([]byte, []string, TableReport, error) {
+	bytes, skipped, report, err := tablepack.PackMessage(tabletext.NewModel(u), root, dir)
+	return bytes, skipped, publicReport(report), err
+}
+
+// Announce is the unit's ID TABLE MESSAGE, byte for byte (docs/SPEC-TABLES.md
+// §3.3): an ordinary form 1 file whose one field is the BUILD VERSION under
+// the reserved id, and whose trailer IS the connection's table. Every byte of
+// it is settled by the compiler.
+func (c *Compiler) Announce(u *ir.Unit) []byte { return ir.TableAnnouncement(u) }
+
+// UnpackMessage is the inverse over the MESSAGE FORM: the announcement is read
+// first, into the connection's table, and the message resolves against it.
+func (c *Compiler) UnpackMessage(u *ir.Unit, root string, announcement, message []byte, dir string, oneFile bool) (TableReport, error) {
+	report, err := tablepack.UnpackMessage(tabletext.NewModel(u), root, announcement, message, dir, oneFile)
+	return publicReport(report), err
+}
+
 // Unpack is the inverse (docs/SPEC-TABLES.md §17.3): it decodes a root table's wire
 // bytes and writes the tree back out through §16's text form, which is the
 // tool round trip §1 promises. `unpack` then `pack` is byte-stable — including

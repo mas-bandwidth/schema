@@ -233,16 +233,59 @@ func parsePatches(offsets, widths, values string) ([]Patch, error) {
 	return out, nil
 }
 
+// Connection is one CONNECTION's announced id table (docs/SPEC-TABLES.md
+// §3.3): the unit whose whole vocabulary it carries, the BUILD VERSION that
+// keys it, and the announcement itself — an ordinary form 1 file whose trailer
+// IS the table.
+//
+// The build version is a column rather than a fact read out of the file so
+// that a build that moves is visible in the review of this file, exactly as a
+// forgery's build-version word is.
+type Connection struct {
+	Key          string
+	Unit         string
+	BuildVersion uint64
+	Wire         string
+}
+
+// Message is one value in BOTH forms (docs/SPEC-TABLES.md §3.3). The file form
+// is an ordinary instance and rides every surface an instance rides; the
+// message form rides the WIRE surface alone, because its text is the file-form
+// vector's byte for byte.
+//
+// What the pair pins is the RESOLVED FORM: the two bodies are equal once every
+// reference is replaced by the id it names and every length recomputed, and
+// their reference bytes are expected to differ.
+type Message struct {
+	Name        string
+	Connection  string
+	Root        string
+	FileWire    string
+	MessageWire string
+}
+
 // Manifest is the whole registry.
 type Manifest struct {
-	Units      []Unit
-	Instances  []Instance
-	Reports    []ReportCase
-	Hostiles   []Hostile
-	Cooks      []Cook
-	CookWrites []CookWrite
-	Blocks     []Block
-	Forgeries  []Forgery
+	Units       []Unit
+	Connections []Connection
+	Messages    []Message
+	Instances   []Instance
+	Reports     []ReportCase
+	Hostiles    []Hostile
+	Cooks       []Cook
+	CookWrites  []CookWrite
+	Blocks      []Block
+	Forgeries   []Forgery
+}
+
+// LookupConnection returns the connection a key names.
+func (m *Manifest) LookupConnection(key string) (Connection, error) {
+	for _, c := range m.Connections {
+		if c.Key == key {
+			return c, nil
+		}
+	}
+	return Connection{}, fmt.Errorf("the manifest names no connection %q", key)
 }
 
 // LookupInstance returns the instance a name calls out, which is how a
@@ -311,6 +354,20 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				inst.NoText = true
 			}
 			m.Instances = append(m.Instances, inst)
+		case "connection":
+			if len(f) != 5 {
+				return nil, fmt.Errorf("%s: connection takes key, unit, build version, announcement wire", where)
+			}
+			version, verr := strconv.ParseUint(f[3], 0, 64)
+			if verr != nil {
+				return nil, fmt.Errorf("%s: %q is not a build version", where, f[3])
+			}
+			m.Connections = append(m.Connections, Connection{Key: f[1], Unit: f[2], BuildVersion: version, Wire: f[4]})
+		case "message":
+			if len(f) != 6 {
+				return nil, fmt.Errorf("%s: message takes name, connection, root, file-form wire, message-form wire", where)
+			}
+			m.Messages = append(m.Messages, Message{Name: f[1], Connection: f[2], Root: f[3], FileWire: f[4], MessageWire: f[5]})
 		case "report":
 			if len(f) != 5 {
 				return nil, fmt.Errorf("%s: report takes case, unit, root, wire", where)

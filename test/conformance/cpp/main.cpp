@@ -42,6 +42,11 @@
 // the WIDE-SCALAR unit and its evolved twin (docs/SPEC-TABLES.md §3, §4)
 #include "ScalarsTable.h"
 #include "Scalars2Table.h"
+// the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the three backend
+// messages the ruling measured, and the WIDE-VOCABULARY unit whose slots fall
+// on both sides of the one-byte boundary
+#include "BackendTable.h"
+#include "VocabTable.h"
 // the POINTERED unit (docs/SPEC-TABLES.md §6.2): a region and a root pointer,
 // never a value, which is why it gets its own row shape below
 #include "GraphTable.h"
@@ -260,6 +265,13 @@ static const Codec codecs[] = {
     CODEC( "tblk2", tblk2, Root ),
     CODEC( "scalars", scalardemo, SimState ),
     CODEC( "tblscalars2", scalardemo2, SimState ),
+    // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): their FILE-form
+    // vectors are ordinary instances and ride every surface an instance rides
+    CODEC( "backenddemo", backenddemo, LoginRequest ),
+    CODEC( "backenddemo", backenddemo, MatchResult ),
+    CODEC( "backenddemo", backenddemo, StorePurchase ),
+    CODEC( "vocabdemo", vocabdemo, Wide00 ),
+    CODEC( "vocabdemo", vocabdemo, Wide09 ),
 };
 
 // ---------------------------------------------------------------------------
@@ -338,6 +350,82 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "blobdemo", blobdemo, Catalog ),
     VARCODEC( "tblg1", tblg1, Guarded ),
 };
+
+// ---------------------------------------------------------------------------
+// the MESSAGE FORM's rows (docs/SPEC-TABLES.md §3.3)
+// ---------------------------------------------------------------------------
+//
+// A message is one round trip against the CONNECTION's announced table: the
+// announcement is read first, into this direction's table, and the message
+// resolves against it. That is the whole surface, so one column carries it —
+// and a POINTERED root takes the same column, because its region is inside
+// the call exactly as the variable rows' is.
+struct MsgCodec
+{
+    const char * unit;
+    const char * root;
+    bool ( *round_trip )( const uint8_t * announcement, int64_t announcement_bytes,
+                          const uint8_t * message, int64_t message_bytes,
+                          std::vector<uint8_t> & out, Report * r );
+};
+
+#define MSGCODEC( unit_key, ns, type )                                                          \
+    {                                                                                           \
+        unit_key, #type,                                                                        \
+        []( const uint8_t * a, int64_t an, const uint8_t * b, int64_t n,                        \
+            std::vector<uint8_t> & out, Report * r ) {                                          \
+            ns::TableVocabulary vocabulary;                                                     \
+            ns::TableReport inner;                                                              \
+            if ( !ns::AnnounceRead( vocabulary, a, an, &inner ) ) { copy_report( inner, r ); return false; } \
+            ns::type value;                                                                     \
+            ns::type##Reset( value );                                                           \
+            if ( !ns::type##LoadMessage( value, vocabulary, b, n, &inner ) ) { copy_report( inner, r ); return false; } \
+            copy_report( inner, r );                                                            \
+            int64_t size = ns::type##MeasureMessage( value );                                   \
+            if ( size < 0 ) return false;                                                       \
+            out.assign( (size_t) size, 0 );                                                     \
+            return ns::type##SaveMessage( value, out.data(), size ) == size;                    \
+        }                                                                                       \
+    }
+
+#define MSGVARCODEC( unit_key, ns, type )                                                       \
+    {                                                                                           \
+        unit_key, #type,                                                                        \
+        []( const uint8_t * a, int64_t an, const uint8_t * b, int64_t n,                        \
+            std::vector<uint8_t> & out, Report * r ) {                                          \
+            ns::TableVocabulary vocabulary;                                                     \
+            ns::TableReport inner;                                                              \
+            if ( !ns::AnnounceRead( vocabulary, a, an, &inner ) ) { copy_report( inner, r ); return false; } \
+            int64_t need = ns::type##LoadMeasure( vocabulary, b, n );                            \
+            if ( need < 0 ) return false;                                                       \
+            std::vector<uint8_t> region( (size_t) need, 0 );                                    \
+            const ns::type * root = ns::type##LoadMessage( region.data(), need, vocabulary, b, n, &inner ); \
+            copy_report( inner, r );                                                            \
+            if ( root == NULL ) return false;                                                   \
+            int64_t size = ns::type##MeasureMessage( root );                                    \
+            if ( size < 0 ) return false;                                                       \
+            out.assign( (size_t) size, 0 );                                                     \
+            return ns::type##SaveMessage( root, out.data(), size ) == size;                     \
+        }                                                                                       \
+    }
+
+static const MsgCodec msg_codecs[] = {
+    MSGCODEC( "backenddemo", backenddemo, LoginRequest ),
+    MSGCODEC( "backenddemo", backenddemo, MatchResult ),
+    MSGCODEC( "backenddemo", backenddemo, StorePurchase ),
+    MSGCODEC( "vocabdemo", vocabdemo, Wide00 ),
+    MSGCODEC( "vocabdemo", vocabdemo, Wide09 ),
+    MSGVARCODEC( "graphdemo", graphdemo, Scene ),
+};
+
+static const MsgCodec * find_msg_codec( const std::string & unit, const std::string & root )
+{
+    for ( size_t i = 0; i < sizeof( msg_codecs ) / sizeof( msg_codecs[0] ); i++ )
+    {
+        if ( unit == msg_codecs[i].unit && root == msg_codecs[i].root ) { return &msg_codecs[i]; }
+    }
+    return NULL;
+}
 
 static const VarCodec * find_var_codec( const std::string & unit, const std::string & root )
 {
@@ -681,6 +769,37 @@ static int surface_wire( const std::string & out )
         scratch.assign( (size_t) size, 0 );
         if ( codec->save( value, scratch.data(), size ) != size ) return 1;
         if ( !spill( out, f[1], scratch.data(), (size_t) size ) ) return 1;
+    }
+    return 0;
+}
+
+// THE MESSAGE SURFACE (docs/SPEC-TABLES.md §3.3): read the message against the
+// connection's announced table, and write it back. The expectation is the
+// message golden itself, exactly as the wire surface's is the wire golden.
+static int surface_message( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "message" ) continue;
+        // message <name> <connection> <root> <file-form wire> <message-form wire>
+        std::string unit, announcement_path;
+        for ( size_t j = 0; j < manifest_lines.size(); j++ )
+        {
+            const std::vector<std::string> & c = manifest_lines[j].field;
+            if ( c[0] == "connection" && c[1] == f[2] ) { unit = c[2]; announcement_path = c[4]; break; }
+        }
+        if ( unit.empty() ) { fprintf( stderr, "driver: no connection %s\n", f[2].c_str() ); return 1; }
+        std::vector<uint8_t> announcement, message;
+        if ( !slurp( announcement_path.c_str(), announcement ) ) { fprintf( stderr, "driver: cannot read %s\n", announcement_path.c_str() ); return 1; }
+        if ( !slurp( f[5].c_str(), message ) ) { fprintf( stderr, "driver: cannot read %s\n", f[5].c_str() ); return 1; }
+        const MsgCodec * codec = find_msg_codec( unit, f[3] );
+        if ( codec == NULL ) { fprintf( stderr, "driver: no message codec for %s.%s\n", unit.c_str(), f[3].c_str() ); return 1; }
+        std::vector<uint8_t> answer;
+        Report report;
+        if ( !codec->round_trip( announcement.data(), (int64_t) announcement.size(),
+                                 message.data(), (int64_t) message.size(), answer, &report ) ) { return 1; }
+        if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
     }
     return 0;
 }
@@ -1100,7 +1219,7 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
-        printf( "wire\nreport\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\n" );
+        printf( "wire\nmessage\nreport\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -1111,6 +1230,7 @@ int main( int argc, char ** argv )
     const std::string out = argv[3];
 
     if ( surface == "wire" ) return surface_wire( out );
+    if ( surface == "message" ) return surface_message( out );
     if ( surface == "report" ) return surface_report( out );
     if ( surface == "json-read" ) return surface_json_read( out );
     if ( surface == "json-write" ) return surface_json_write( out );

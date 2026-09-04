@@ -782,8 +782,21 @@ compile-time fact of the unit's closure so a save still allocates nothing),
 rather than from the reference, and §3.1's worked save is its golden.
 
 **Proven in.** C++ and the tool (#435). All 46 text-carrying conformance
-instances agree byte for byte between the two, and the wire fuzzer runs 93,651
-enumerated mutants over 89 seeds with no divergence, plain and sanitized.
+instances agree byte for byte between the two, and the wire fuzzer runs 103,286
+enumerated mutants over 112 seeds with no divergence, plain and sanitized.
+
+**THE MESSAGE FORM IS THIS MILESTONE's FOLLOW-ON** (docs/SPEC-TABLES.md §3.3).
+Form byte `2` is the same body with its id table moved one level up, to the
+CONNECTION: a peer announces its unit's whole vocabulary once a direction as an
+ordinary form-`1` file, and every message after it is the form byte and the
+root body alone. What a port owes is `LoadMessage`, `MeasureMessage` and
+`SaveMessage` beside the file form's three, `TableVocabulary` and the three
+unit-scope entry points `Announce`, `AnnounceMeasure` and `AnnounceRead`, each
+in that language's own naming convention. C++ and the tool carry it today and
+the harness's `message` surface prints ABSENT for every port, so the cell is
+where the work is counted. The form adds no rule to the body: the references
+resolve against the announced table instead of a trailer, and every framing,
+tolerance and malformed rule above is unchanged.
 
 **Measured effect.** 0.98x the corpus's bytes without its 210 KB blob and 0.99x
 over the whole of it, against 1.80x over the tiny class: an empty table is ten
@@ -791,12 +804,19 @@ bytes where it was two. The win grows with the file — a pointer-heavy graph of
 7,301 bytes becomes 3,319 — and a file with many distinct ids and few fields
 under each pays.
 
+**The message form's negative controls** are
+`tables-message-form-negative-control`: the tail's node-table id, the
+projection order the vocabulary takes, the substitution the resolved form IS,
+the announcement's bound, the second announcement's refusal and the writer's
+slot constant, each removed and each turning one named gate red, and the same
+slot removed from the C++ EMITTER, which turns the pinned message wire red.
+
 **Negative control.** `tables-wire-fuzz-negative-control`: the string read's
 unsigned fit check, the numbering's index range check, an arm's `L` against its
 kind's width, and an arm body's terminator, each removed from the emitter
 through `go build -overlay` and each turning the fuzzer red on its own verdict.
 
-**Targets:** tables-wire-fuzz, tables-wire-fuzz-negative-control
+**Targets:** tables-wire-fuzz, tables-wire-fuzz-negative-control, tables-message-form-negative-control, tables-vocab-schema
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|

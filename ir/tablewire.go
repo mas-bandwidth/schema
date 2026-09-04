@@ -8,6 +8,11 @@
 // (§18.1). Two copies of this mapping would be two wires.
 package ir
 
+import (
+	"encoding/binary"
+	"sort"
+)
+
 // TableWireId is the stable identity of a name on this wire: fnv1a64 of the
 // name, with no fold and no rebound. A field's wire id, an enum variant's, a
 // union arm's and a table's own name id are all this one function
@@ -240,4 +245,145 @@ func TableWireIdCapacity(u *Unit) int {
 		}
 	}
 	return len(ids)
+}
+
+// WstringWireTypeId is the third RESERVED node type id the message form's
+// announcement carries (docs/SPEC-TABLES.md §3.3): the same hash a table's
+// name takes, over the keyword `wstring`, which no table can be named. The
+// three blob ids ride in the announcement whether or not the unit declares a
+// blob, so this one is a constant of the rule rather than of a declaration.
+var WstringWireTypeId = TableWireId("wstring")
+
+// TableBuildVersionWireId is the RESERVED id the ANNOUNCEMENT's one required
+// field rides under (docs/SPEC-TABLES.md §3.3), and the second id the language
+// holds back (§5, §11), beside the node table's [TableNodeWireId]. A reserved
+// id in any body but the one whose transport it is, is malformed (§3.1).
+const TableBuildVersionWireId = uint64(0xFFFFFFFFFFFFFFFE)
+
+// TableWireMessageForm is the MESSAGE FORM's form byte (docs/SPEC-TABLES.md
+// §3.3). A form-2 wire is TWO PARTS, the form byte and the root body, and its
+// id table is the CONNECTION's rather than the wire's.
+const TableWireMessageForm = 2
+
+// TableVocabularyMaxEntries is the CONFORMING DEFAULT bound on an
+// announcement's entry count (docs/SPEC-TABLES.md §3.3): 32 KiB a direction,
+// eight times the 500-id unit that is already a large one. A connection's
+// table is bounded by nothing the wire carries, so a receiver declares a
+// maximum and refuses an announcement above it by name — reading the count,
+// comparing it, and touching no entry.
+const TableVocabularyMaxEntries = 4096
+
+// TableVocabulary is the whole id vocabulary a unit can put on a form-2 wire,
+// in the order §3.3 settles: the reserved build-version id at slot 1, then the
+// COOK PROJECTION's order (§20.2) — each record in the order the projection
+// renders it and each record's fields in the order the projection renders
+// them, then each enum's variants and each union's arms in that same order —
+// then the TAIL the projection does not name: the reserved node-table id, the
+// three blob type ids as `bytes`, `string`, `wstring`, and every table's own
+// name id in the projection's sorted record order.
+//
+// An id already placed is never placed twice, so a field name three records
+// share takes the slot its first appearance gave it. Slot k is entry k counted
+// from 1, which is the returned slice's index k-1.
+//
+// The tail is UNCONDITIONAL: a unit with no pointer announces the node-table
+// id and the three blob ids anyway, so that an ordinary edit — a first `*T`,
+// or a `*T` at a new type — only ever grows the tail at its end and never
+// reshuffles a slot a generated field header carries as a constant.
+func TableVocabulary(u *Unit) []uint64 {
+	var ids []uint64
+	seen := map[uint64]bool{}
+	place := func(id uint64) {
+		if seen[id] {
+			return
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	place(TableBuildVersionWireId)
+
+	closure := TableClosure(u)
+	names := make([]string, 0, len(closure))
+	for name := range closure {
+		names = append(names, name)
+	}
+	// THE ORDER IS THE COOK PROJECTION'S, so the members sort by the name the
+	// projection prints — which for a map's generated entry is its anonymous
+	// key, exactly as [CookProjection] sorts them.
+	sort.Slice(names, func(i, j int) bool {
+		return ProjectionMemberName(u, names[i]) < ProjectionMemberName(u, names[j])
+	})
+
+	enums := map[string]*Enum{}
+	flags := map[string]*Flags{}
+	unions := map[string]*Union{}
+	for _, name := range names {
+		st := memberStruct(u, name)
+		if st == nil {
+			continue
+		}
+		for _, fl := range layoutRecord(u, st).Fields {
+			place(TableFieldWireId(fl.Field))
+			// the vocabularies a field REACHES are collected exactly as the
+			// projection collects them, so the two orders are one order
+			cookFieldLine(u, fl, enums, flags, unions)
+		}
+	}
+	collectArmRefs(enums, flags, unions)
+	for _, name := range sortedKeysOf(enums) {
+		for _, v := range enums[name].Variants {
+			place(TableWireId(v))
+		}
+	}
+	// A `flags` DECLARATION NAMES NOTHING ON THIS WIRE: a mask rides raw, so
+	// no variant of it is ever an id (§20.1). It is skipped here rather than
+	// left unmentioned, because the projection renders a block for it between
+	// the enums and the unions.
+	for _, name := range sortedKeysOf(unions) {
+		for _, v := range unions[name].Variants {
+			place(TableWireId(v.Name))
+		}
+	}
+
+	place(TableNodeWireId)
+	place(BytesWireTypeId)
+	place(StringWireTypeId)
+	place(WstringWireTypeId)
+	for _, name := range names {
+		// A MAP'S GENERATED ENTRY IS NOT A TABLE OF THE DECLARATION'S, and
+		// its name is generated: it is reached only through the map that
+		// generates it, never through a pointer, so its name id is on no wire
+		// and hashing it here would let a `was` rename of the holder move a
+		// slot (§2.8, §20.2).
+		if st := memberStruct(u, name); st == nil || st.MapEntryOf != "" {
+			continue
+		}
+		if u.Tables[name] == nil {
+			continue // a `type` in the closure is nested by value and never pointed at
+		}
+		place(TableWireId(name))
+	}
+	return ids
+}
+
+// TableAnnouncement is the unit's ID TABLE MESSAGE, byte for byte
+// (docs/SPEC-TABLES.md §3.3). It is an ordinary form-`1` FILE whose body
+// carries one field, the BUILD VERSION under the reserved build-version id at
+// kind `9`, and whose trailer is the whole connection table: slot `1` the
+// reserved id, slots `2` and up the vocabulary.
+//
+// Every byte of it is settled by the compiler, which is why a backend may emit
+// it as a constant byte array and its length rather than as a walk.
+func TableAnnouncement(u *Unit) []byte {
+	ids := TableVocabulary(u)
+	out := make([]byte, 0, 1+11+8*len(ids)+8)
+	out = append(out, TableWireForm)
+	out = append(out, 1)                   // reference 1: the reserved build-version id, first-use
+	out = append(out, uint8(TableKindU64)) // kind 9
+	out = binary.LittleEndian.AppendUint64(out, BuildVersion(u))
+	out = append(out, 0) // the zero reference that ends the body
+	for _, id := range ids {
+		out = binary.LittleEndian.AppendUint64(out, id)
+	}
+	return binary.LittleEndian.AppendUint64(out, uint64(len(ids)))
 }

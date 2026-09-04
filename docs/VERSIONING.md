@@ -642,7 +642,10 @@ Two sharp edges come with it, and both are the same fact seen twice.
   refused by name rather than read. proto3 makes the same trade, since a
   `.proto` is required out of band, and the build version is what makes this
   one nameable: a receiver says which build's table it lacks. `schema pack`
-  and `schema unpack` are file-form tools and stay that way.
+  and `schema unpack` write and read the FILE form, and reach the message form
+  only when asked: `pack --message` writes one and `--announce` writes the
+  unit's announcement beside it, and `unpack --announce` reads a message back
+  against that announcement, because the table is the other half of the wire.
 - **The form needs an ordered, reliable channel, and the announcement has to
   arrive first.** On an unordered or lossy transport, or a stateless one, the
   answer is the file form, which is self-contained, or the packet wire, which

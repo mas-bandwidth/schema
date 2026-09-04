@@ -35,6 +35,25 @@
 
 namespace benchtable {
 
+// WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
+// is not one of §4's events: nothing is decoded, no counter moves and no
+// damage is reported, so five zero counters and a false flag are what a clean
+// read prints too and only the verdict tells them apart. The reason says which
+// refusal it was.
+//
+// This is the MESSAGE PATH's vocabulary and not the cooked form's (§7.4): a
+// caller meeting one of these has been refused a MESSAGE on a connection,
+// which is a different recovery with a different owner than a file a header
+// match turned down.
+enum TableMessageReason
+{
+    newer_form,           // a FORM BYTE this reader does not carry (§3)
+    no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
+    second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
+    vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
+    message_form_as_file  // a form 2 wire where a FILE was expected: its table is somewhere else
+};
+
 // The table-wire read report — the permissive contract's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
 struct TableReport
@@ -52,6 +71,10 @@ struct TableReport
     // zero counters and a false flag are what a clean read prints too, so the
     // verdict is what tells the two apart.
     bool refused = false;
+    // WHICH refusal, and it is read only when refused is set: a read that
+    // was not refused has no reason, and this member is the one the caller
+    // must not look at then (docs/SPEC-TABLES.md §3.3).
+    TableMessageReason reason = newer_form;
 };
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
@@ -240,8 +263,16 @@ struct TableIds
     int32_t head[ kBuckets ];
     int32_t count;
     bool overflow;
+    // THE MESSAGE FORM'S SLOTS (docs/SPEC-TABLES.md §3.3). A form 2 wire
+    // names ids through the CONNECTION's table, which is the unit's whole
+    // vocabulary in a compiler-settled order — so every reference is known at
+    // compile time and rides at the header as a literal beside the id. This
+    // flag is what selects it: false interns the id in first-use order and
+    // writes a trailer, true answers the slot and writes none, and the walk
+    // that decides is one walk.
+    bool vocabulary;
 
-    TableIds() : count( 0 ), overflow( false )
+    TableIds() : count( 0 ), overflow( false ), vocabulary( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
     }
@@ -251,8 +282,16 @@ struct TableIds
         return uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> 56 ) & uint32_t( kBuckets - 1 );
     }
 
-    // the reference an id takes, appending it on first use
-    uint64_t ref( uint64_t id )
+    // the reference an id takes: its message-form SLOT under the connection's
+    // table, or the file's own first-use entry
+    BENCHTABLE_TABLE_INLINE uint64_t ref( uint64_t id, uint64_t slot )
+    {
+        if ( vocabulary ) { return slot; }
+        return intern( id );
+    }
+
+    // the FILE form's half, appending the id on first use
+    uint64_t intern( uint64_t id )
     {
         const uint32_t b = bucket_of( id );
         for ( int32_t i = head[b]; i >= 0; i = chain[i] )
@@ -268,6 +307,8 @@ struct TableIds
     // recent one in its bucket, so it sits at that bucket's head.
     void truncate( int32_t mark )
     {
+        // a SLOT costs no entry, so an elided field has nothing to undo
+        if ( vocabulary ) { return; }
         while ( count > mark )
         {
             count--;
@@ -501,6 +542,212 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
         if ( !r.has( 1 ) ) { return false; }
         if ( !r.skip( r.get8() ) ) { return false; }
     }
+}
+
+// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): a FILE carries its own id
+// table and a MESSAGE STREAM announces one and then carries none.
+//
+// A form 2 wire is TWO PARTS, the form byte and the root body: the body ends
+// at its own zero reference as it does in a file, there is no trailer, and the
+// message's last byte is the body's terminator. Its references resolve against
+// the CONNECTION's table, which is the unit's whole vocabulary in the order
+// the compiler settled.
+const uint8_t kTableWireMessageForm = 2;
+
+// The RESERVED build-version id, the second id the language holds back (§5,
+// §11), beside the node table's. It is the announcement's one required field,
+// and a reserved id in any body but the one whose transport it is, is
+// malformed (§3.1).
+static const uint64_t kTableBuildVersionFieldId = 0xFFFFFFFFFFFFFFFEull;
+
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 77 entries and 636 bytes. It is an
+// ordinary form 1 FILE — the form byte, a body carrying the BUILD VERSION
+// under the reserved id at kind 9, and the trailer that IS the connection's
+// table, slot 1 the reserved id and slots 2 and up the vocabulary under one
+// numbering.
+//
+// The vocabulary is the unit's whole closure in the COOK PROJECTION's order
+// (§20.2) — each record in the order the projection renders it and each
+// record's fields in the order the projection renders them, then each enum's
+// variants and each union's arms — followed by the tail the projection does
+// not name: the reserved node-table id, the three blob type ids as bytes,
+// string and wstring, and every table's own name id in the projection's sorted
+// record order. The tail is UNCONDITIONAL, so an ordinary edit only ever grows
+// it at its end and never moves a slot a generated field header carries as a
+// literal.
+static const int64_t kTableAnnounceBytes = 636;
+static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
+    0x01, 0x01, 0x09, 0xed, 0x91, 0xf1, 0x9d, 0xb8, 0x55, 0xb8, 0xf4, 0x00,
+    0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xa4, 0xed, 0xca, 0xd5,
+    0x9a, 0x3e, 0x01, 0xa5, 0x22, 0xd0, 0xeb, 0x96, 0x4d, 0xac, 0xf1, 0xfb,
+    0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x0e, 0x31, 0x67, 0x76,
+    0x35, 0x37, 0x4b, 0xcb, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb,
+    0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb, 0xe8, 0x16, 0x8e, 0x79,
+    0x19, 0x8e, 0x4d, 0xb5, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6, 0xa9, 0x53,
+    0x67, 0xee, 0x60, 0xeb, 0xb6, 0xe6, 0xed, 0x6c, 0xb4, 0xec, 0x60, 0xeb,
+    0xb6, 0xe5, 0xed, 0x6c, 0xcd, 0xf1, 0x60, 0xeb, 0xb6, 0xe8, 0xed, 0x6c,
+    0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x01, 0x6e, 0x2c, 0x5f,
+    0x20, 0x10, 0xb6, 0xa0, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f,
+    0xa7, 0x3d, 0x24, 0xd1, 0xc1, 0x4f, 0xa4, 0x11, 0xca, 0x31, 0x90, 0x9b,
+    0xd1, 0xcf, 0x74, 0x76, 0x50, 0x50, 0xa2, 0x15, 0xc0, 0x9a, 0xbc, 0xb7,
+    0x25, 0xb9, 0x59, 0xb0, 0x65, 0xc3, 0xfb, 0x01, 0x2d, 0xa5, 0x9a, 0x8c,
+    0x90, 0x67, 0x61, 0x12, 0xfd, 0x15, 0xa1, 0x1a, 0xd9, 0x70, 0x5a, 0x6a,
+    0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x3e, 0x7c, 0x69, 0x56,
+    0x5c, 0x00, 0xbe, 0x0d, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d, 0xae, 0x9b,
+    0x05, 0x0b, 0x59, 0x0a, 0x65, 0xb5, 0xd7, 0xb7, 0x7e, 0x96, 0x95, 0xd0,
+    0xe2, 0x98, 0x7b, 0x6d, 0xd8, 0xc0, 0x0d, 0xd6, 0x71, 0x4c, 0xa9, 0x73,
+    0x85, 0xfc, 0x54, 0xbe, 0x51, 0x6b, 0xee, 0x3e, 0x12, 0x01, 0x6d, 0x7b,
+    0x5f, 0x03, 0xbc, 0x7b, 0xc6, 0x69, 0xbe, 0xf9, 0x75, 0x04, 0x46, 0x3c,
+    0x2a, 0x82, 0xb3, 0x7b, 0xb0, 0x0f, 0x5d, 0x93, 0x4c, 0x99, 0xb1, 0x45,
+    0xad, 0x9c, 0x63, 0xee, 0x90, 0x57, 0xaa, 0x21, 0x53, 0xdc, 0x35, 0x2e,
+    0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x6e, 0xe8, 0xf8, 0x2c,
+    0x54, 0x2f, 0xa6, 0x13, 0xe5, 0xe9, 0xb5, 0x63, 0xd0, 0xa9, 0xb8, 0xcf,
+    0xc9, 0x96, 0x42, 0xe2, 0xe5, 0x7b, 0xaf, 0xdb, 0x16, 0x95, 0x42, 0xe2,
+    0xe5, 0x7a, 0xaf, 0xdb, 0x63, 0x93, 0x42, 0xe2, 0xe5, 0x79, 0xaf, 0xdb,
+    0x57, 0xe4, 0xe2, 0xf7, 0xff, 0x31, 0xef, 0x9c, 0x04, 0x6c, 0x1f, 0x34,
+    0xc9, 0xf9, 0xb3, 0x5a, 0x16, 0xaf, 0x1f, 0x46, 0x80, 0x85, 0x34, 0xa3,
+    0x42, 0x26, 0xaf, 0x08, 0x79, 0xdd, 0x1b, 0xd6, 0xa9, 0x07, 0x33, 0xc5,
+    0x0d, 0xe0, 0x30, 0xbf, 0x5f, 0x51, 0xd8, 0xcc, 0x27, 0x65, 0x0d, 0x56,
+    0x72, 0x86, 0xfd, 0x6c, 0x17, 0x92, 0x82, 0xc0, 0x69, 0xcb, 0x79, 0xa9,
+    0x12, 0xee, 0x29, 0xfd, 0xfe, 0xbc, 0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78,
+    0x56, 0xbd, 0x4f, 0x86, 0x6d, 0xd0, 0x7f, 0x9e, 0x69, 0x69, 0xb1, 0xa2,
+    0x7e, 0xfe, 0x13, 0x81, 0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80,
+    0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x0c, 0xcf, 0x66, 0x27,
+    0xe1, 0xee, 0x90, 0xa7, 0x76, 0x84, 0xda, 0x35, 0xa8, 0xef, 0xbf, 0x9f,
+    0x95, 0x8a, 0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0xf1, 0x72, 0xf2, 0xc2,
+    0xb9, 0x67, 0x36, 0x2c, 0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c,
+    0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x55, 0x6a, 0x08, 0xc3,
+    0x47, 0x04, 0x9d, 0x22, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01,
+    0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89, 0x69, 0x44, 0x3b, 0x8b,
+    0x31, 0x25, 0x7f, 0x8d, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d, 0xcd, 0xd9,
+    0x76, 0x52, 0xff, 0xa8, 0xae, 0x16, 0xdc, 0x04, 0x17, 0x92, 0x12, 0x41,
+    0xc3, 0x3b, 0xe5, 0x35, 0x31, 0x88, 0xde, 0xb0, 0x2f, 0x28, 0xc8, 0x2c,
+    0x34, 0xb3, 0x8c, 0xbc, 0x21, 0xda, 0xba, 0x20, 0xaa, 0x80, 0x06, 0x30,
+    0x19, 0x28, 0x73, 0x33, 0x8b, 0x34, 0x5b, 0x0b, 0x91, 0x8d, 0xa3, 0xf2,
+    0x65, 0xb7, 0xec, 0x86, 0x1c, 0xa4, 0xa3, 0x9f, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f,
+    0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0xc7, 0xd4, 0x7b, 0x26,
+    0xb0, 0x9d, 0x29, 0x5f, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72, 0x61, 0x31,
+    0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x95, 0x9c, 0xb9, 0x69,
+    0xe6, 0xa8, 0x6a, 0x29, 0x4d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+// AnnounceMeasure is the announcement's byte count, which is a constant of the
+// unit and not a walk.
+inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+
+// Announce writes the announcement into the caller's buffer and answers the
+// bytes written — exactly AnnounceMeasure's answer — or -1 when the buffer is
+// too small. It allocates nothing and walks nothing.
+inline int64_t Announce( uint8_t * buffer, int64_t capacity )
+{
+    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
+    return kTableAnnounceBytes;
+}
+
+// TableVocabulary is ONE DIRECTION of ONE CONNECTION's id table (§3.3): the
+// entries an announcement carried, whole, under one numbering with slot 1 the
+// reserved build-version id.
+//
+// A peer holds TWO of these for a connection, the one it writes with and the
+// one it reads with, and neither is the other's. A restart opens a fresh
+// connection with empty tables and nothing is cached across connections, so
+// its whole life is one connection's. It BORROWS the announcement's bytes rather than
+// copying them, so a receiver holds one table a direction and its memory is
+// the bound below and nothing else.
+struct TableVocabulary
+{
+    // THE CONFORMING DEFAULT BOUND (§3.3): 32 KiB a direction, eight times the
+    // 500-id unit that is already a large one. A connection's table is bounded
+    // by nothing the wire carries, so the receiver declares the maximum and an
+    // announcement above it is refused by name before an entry is touched.
+    static const int64_t kDefaultMaxEntries = 4096;
+
+    TableIdTable table;
+    uint64_t build_version = 0;
+    bool announced = false;
+    int64_t max_entries = kDefaultMaxEntries;
+};
+
+// AnnounceRead reads an announcement into one direction's table (§3.3).
+//
+// THE BOUND IS CHECKED BEFORE ANYTHING IS ALLOCATED: the entry count is a
+// fixed little-endian u64 at the end, so a receiver reads it, compares it and
+// refuses without touching an entry. After that it is §3's ordinary FILE read,
+// because the announcement IS a file, with EXACTLY ONE STRICT CHECK over its
+// body: the reserved build-version field present, exactly once, under kind 9,
+// eight bytes wide. Everything else is an ordinary field under §4's tolerance,
+// so an unknown one is skipped and counted and the announcement can GAIN a
+// field in a later minor without a lockstep redeploy.
+//
+// The FIRST announcement sets the table and it is the only one that can. A
+// SECOND is refused by name: it does not replace the table, it does not amend
+// it and it changes nothing. A refused announcement sets NO TABLE.
+inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    if ( vocabulary.announced )
+    {
+        to->refused = true;
+        to->reason = second_announcement;
+        return false;
+    }
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireForm )
+    {
+        to->refused = true;
+        to->reason = buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        return false;
+    }
+    if ( bytes < 9 ) { to->malformed = true; return false; }
+    const uint8_t * tail = buffer + bytes - 8;
+    uint64_t lo = uint64_t( tail[0] ) | uint64_t( tail[1] ) << 8 | uint64_t( tail[2] ) << 16 | uint64_t( tail[3] ) << 24;
+    uint64_t hi = uint64_t( tail[4] ) | uint64_t( tail[5] ) << 8 | uint64_t( tail[6] ) << 16 | uint64_t( tail[7] ) << 24;
+    if ( ( lo | ( hi << 32 ) ) > (uint64_t) vocabulary.max_entries )
+    {
+        to->refused = true;
+        to->reason = vocabulary_too_large;
+        return false;
+    }
+    TableIdTable table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        else { to->refused = true; to->reason = newer_form; }
+        return false;
+    }
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) ) { to->malformed = true; return false; }
+    // the body, under §4's tolerance and this form's one strict check
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    uint64_t version = 0;
+    int32_t seen = 0;
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.getleb( ref ) ) { to->malformed = true; return false; }
+        if ( ref == 0 ) { break; }
+        if ( ref > (uint64_t) table.count || !r.has( 1 ) ) { to->malformed = true; return false; }
+        const uint64_t id = table.at( ref );
+        const uint8_t kind = r.get8();
+        if ( id != kTableBuildVersionFieldId )
+        {
+            to->unknown++;
+            if ( !r.skip( kind ) ) { to->malformed = true; return false; }
+            continue;
+        }
+        if ( kind != 9 || !r.has( 8 ) ) { to->refused = true; to->reason = no_vocabulary; return false; }
+        version = r.get64();
+        seen++;
+    }
+    if ( seen != 1 ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    vocabulary.table = table;
+    vocabulary.build_version = version;
+    vocabulary.announced = true;
+    return true;
 }
 
 inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -826,21 +1073,21 @@ inline bool TableEnumRef( TableIds & ids, TableWeapon value, uint64_t & ref )
     switch ( value )
     {
         case TableWeapon::None: ref = 0; return true;
-        case TableWeapon::Fists: ref = ids.ref( 0xa790eee12766cf0cull ); return true;
-        case TableWeapon::Pistol: ref = ids.ref( 0x9fbfefa835da8476ull ); return true;
-        case TableWeapon::Shotgun: ref = ids.ref( 0x188bbb1783928a95ull ); return true;
-        case TableWeapon::Rifle: ref = ids.ref( 0x2c3667b9c2f272f1ull ); return true;
-        case TableWeapon::Sniper: ref = ids.ref( 0x0ca8b41b00d755f6ull ); return true;
-        case TableWeapon::Smg: ref = ids.ref( 0x985fc819fab21a4eull ); return true;
-        case TableWeapon::Rocket: ref = ids.ref( 0x229d0447c3086a55ull ); return true;
-        case TableWeapon::Grenade: ref = ids.ref( 0x011c7b49a7228f9dull ); return true;
-        case TableWeapon::Plasma: ref = ids.ref( 0x89f7566e1123e15full ); return true;
-        case TableWeapon::Railgun: ref = ids.ref( 0x8d7f25318b3b4469ull ); return true;
-        case TableWeapon::Flamer: ref = ids.ref( 0xd9cd0dcc285b7816ull ); return true;
-        case TableWeapon::Mine: ref = ids.ref( 0x04dc16aea8ff5276ull ); return true;
-        case TableWeapon::Turret: ref = ids.ref( 0x35e53bc341129217ull ); return true;
-        case TableWeapon::Drone: ref = ids.ref( 0x2cc8282fb0de8831ull ); return true;
-        case TableWeapon::Repair: ref = ids.ref( 0x20bada21bc8cb334ull ); return true;
+        case TableWeapon::Fists: ref = ids.ref( 0xa790eee12766cf0cull, 53 ); return true;
+        case TableWeapon::Pistol: ref = ids.ref( 0x9fbfefa835da8476ull, 54 ); return true;
+        case TableWeapon::Shotgun: ref = ids.ref( 0x188bbb1783928a95ull, 55 ); return true;
+        case TableWeapon::Rifle: ref = ids.ref( 0x2c3667b9c2f272f1ull, 56 ); return true;
+        case TableWeapon::Sniper: ref = ids.ref( 0x0ca8b41b00d755f6ull, 57 ); return true;
+        case TableWeapon::Smg: ref = ids.ref( 0x985fc819fab21a4eull, 58 ); return true;
+        case TableWeapon::Rocket: ref = ids.ref( 0x229d0447c3086a55ull, 59 ); return true;
+        case TableWeapon::Grenade: ref = ids.ref( 0x011c7b49a7228f9dull, 60 ); return true;
+        case TableWeapon::Plasma: ref = ids.ref( 0x89f7566e1123e15full, 61 ); return true;
+        case TableWeapon::Railgun: ref = ids.ref( 0x8d7f25318b3b4469ull, 62 ); return true;
+        case TableWeapon::Flamer: ref = ids.ref( 0xd9cd0dcc285b7816ull, 63 ); return true;
+        case TableWeapon::Mine: ref = ids.ref( 0x04dc16aea8ff5276ull, 64 ); return true;
+        case TableWeapon::Turret: ref = ids.ref( 0x35e53bc341129217ull, 65 ); return true;
+        case TableWeapon::Drone: ref = ids.ref( 0x2cc8282fb0de8831ull, 66 ); return true;
+        case TableWeapon::Repair: ref = ids.ref( 0x20bada21bc8cb334ull, 67 ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -1015,27 +1262,27 @@ BENCHTABLE_TABLE_INLINE bool TablePickupEventLoadBody( TableReader & r, TablePic
 inline int64_t TableEntityMeasureBody( TableIds & ids, const TableEntity & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.entity_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x23fcfd6678e36712ull ) ) + 1 + 2; } // entity_id
-    if ( value.pos_x != 0 ) { bytes += TableLebBytes( ids.ref( 0xcb4b37357667310eull ) ) + 1 + 4; } // pos_x
-    if ( value.pos_y != 0 ) { bytes += TableLebBytes( ids.ref( 0xcb4b3835766732c1ull ) ) + 1 + 4; } // pos_y
-    if ( value.pos_z != 0 ) { bytes += TableLebBytes( ids.ref( 0xcb4b353576672da8ull ) ) + 1 + 4; } // pos_z
-    if ( value.yaw != 0 ) { bytes += TableLebBytes( ids.ref( 0xb54d8e19798e16e8ull ) ) + 1 + 2; } // yaw
-    if ( value.pitch != 0 ) { bytes += TableLebBytes( ids.ref( 0x53a9f665a90cc1b1ull ) ) + 1 + 2; } // pitch
-    if ( value.vel_x != 0 ) { bytes += TableLebBytes( ids.ref( 0x6cede6b6eb60ee67ull ) ) + 1 + 4; } // vel_x
-    if ( value.vel_y != 0 ) { bytes += TableLebBytes( ids.ref( 0x6cede5b6eb60ecb4ull ) ) + 1 + 4; } // vel_y
-    if ( value.vel_z != 0 ) { bytes += TableLebBytes( ids.ref( 0x6cede8b6eb60f1cdull ) ) + 1 + 4; } // vel_z
-    if ( value.health != 0 ) { bytes += TableLebBytes( ids.ref( 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
+    if ( value.entity_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x23fcfd6678e36712ull, 4 ) ) + 1 + 2; } // entity_id
+    if ( value.pos_x != 0 ) { bytes += TableLebBytes( ids.ref( 0xcb4b37357667310eull, 5 ) ) + 1 + 4; } // pos_x
+    if ( value.pos_y != 0 ) { bytes += TableLebBytes( ids.ref( 0xcb4b3835766732c1ull, 6 ) ) + 1 + 4; } // pos_y
+    if ( value.pos_z != 0 ) { bytes += TableLebBytes( ids.ref( 0xcb4b353576672da8ull, 7 ) ) + 1 + 4; } // pos_z
+    if ( value.yaw != 0 ) { bytes += TableLebBytes( ids.ref( 0xb54d8e19798e16e8ull, 8 ) ) + 1 + 2; } // yaw
+    if ( value.pitch != 0 ) { bytes += TableLebBytes( ids.ref( 0x53a9f665a90cc1b1ull, 9 ) ) + 1 + 2; } // pitch
+    if ( value.vel_x != 0 ) { bytes += TableLebBytes( ids.ref( 0x6cede6b6eb60ee67ull, 10 ) ) + 1 + 4; } // vel_x
+    if ( value.vel_y != 0 ) { bytes += TableLebBytes( ids.ref( 0x6cede5b6eb60ecb4ull, 11 ) ) + 1 + 4; } // vel_y
+    if ( value.vel_z != 0 ) { bytes += TableLebBytes( ids.ref( 0x6cede8b6eb60f1cdull, 12 ) ) + 1 + 4; } // vel_z
+    if ( value.health != 0 ) { bytes += TableLebBytes( ids.ref( 0x7f69d4b5288ba9cfull, 13 ) ) + 1 + 4; } // health
     if ( value.weapon != TableWeapon::None )
     {
         if ( !TableEnumNamed( value.weapon ) ) { return -1; } // no variant names this value
-        const uint64_t ref_weapon = ids.ref( 0xa0b610205f2c6e01ull );
+        const uint64_t ref_weapon = ids.ref( 0xa0b610205f2c6e01ull, 14 );
         uint64_t variant_weapon = 0;
         if ( !TableEnumRef( ids, value.weapon, variant_weapon ) ) { return -1; }
         bytes += TableLebBytes( ref_weapon ) + 1 + TableLebBytes( variant_weapon ); // weapon: the variant's reference
     }
-    if ( value.damage != 0 ) { bytes += TableLebBytes( ids.ref( 0x7f6308be8ab37fc0ull ) ) + 1 + 8; } // damage
-    if ( value.moving != false ) { bytes += TableLebBytes( ids.ref( 0x11a44fc1d1243da7ull ) ) + 1 + 1; } // moving
-    if ( value.firing != false ) { bytes += TableLebBytes( ids.ref( 0x7674cfd19b9031caull ) ) + 1 + 1; } // firing
+    if ( value.damage != 0 ) { bytes += TableLebBytes( ids.ref( 0x7f6308be8ab37fc0ull, 15 ) ) + 1 + 8; } // damage
+    if ( value.moving != false ) { bytes += TableLebBytes( ids.ref( 0x11a44fc1d1243da7ull, 16 ) ) + 1 + 1; } // moving
+    if ( value.firing != false ) { bytes += TableLebBytes( ids.ref( 0x7674cfd19b9031caull, 17 ) ) + 1 + 1; } // firing
     return bytes;
 }
 
@@ -1051,75 +1298,75 @@ BENCHTABLE_TABLE_INLINE bool TableEntitySaveBody( TableWriter & w, TableIds & id
 {
     if ( value.entity_id != 0 )
     {
-        w.putleb( ids.ref( 0x23fcfd6678e36712ull ) ); w.put8( 7 ); // entity_id
+        w.putleb( ids.ref( 0x23fcfd6678e36712ull, 4 ) ); w.put8( 7 ); // entity_id
         w.put16( uint16_t( value.entity_id ) );
     }
     if ( value.pos_x != 0 )
     {
-        w.putleb( ids.ref( 0xcb4b37357667310eull ) ); w.put8( 4 ); // pos_x
+        w.putleb( ids.ref( 0xcb4b37357667310eull, 5 ) ); w.put8( 4 ); // pos_x
         w.put32( uint32_t( value.pos_x ) );
     }
     if ( value.pos_y != 0 )
     {
-        w.putleb( ids.ref( 0xcb4b3835766732c1ull ) ); w.put8( 4 ); // pos_y
+        w.putleb( ids.ref( 0xcb4b3835766732c1ull, 6 ) ); w.put8( 4 ); // pos_y
         w.put32( uint32_t( value.pos_y ) );
     }
     if ( value.pos_z != 0 )
     {
-        w.putleb( ids.ref( 0xcb4b353576672da8ull ) ); w.put8( 4 ); // pos_z
+        w.putleb( ids.ref( 0xcb4b353576672da8ull, 7 ) ); w.put8( 4 ); // pos_z
         w.put32( uint32_t( value.pos_z ) );
     }
     if ( value.yaw != 0 )
     {
-        w.putleb( ids.ref( 0xb54d8e19798e16e8ull ) ); w.put8( 7 ); // yaw
+        w.putleb( ids.ref( 0xb54d8e19798e16e8ull, 8 ) ); w.put8( 7 ); // yaw
         w.put16( uint16_t( value.yaw ) );
     }
     if ( value.pitch != 0 )
     {
-        w.putleb( ids.ref( 0x53a9f665a90cc1b1ull ) ); w.put8( 7 ); // pitch
+        w.putleb( ids.ref( 0x53a9f665a90cc1b1ull, 9 ) ); w.put8( 7 ); // pitch
         w.put16( uint16_t( value.pitch ) );
     }
     if ( value.vel_x != 0 )
     {
-        w.putleb( ids.ref( 0x6cede6b6eb60ee67ull ) ); w.put8( 4 ); // vel_x
+        w.putleb( ids.ref( 0x6cede6b6eb60ee67ull, 10 ) ); w.put8( 4 ); // vel_x
         w.put32( uint32_t( value.vel_x ) );
     }
     if ( value.vel_y != 0 )
     {
-        w.putleb( ids.ref( 0x6cede5b6eb60ecb4ull ) ); w.put8( 4 ); // vel_y
+        w.putleb( ids.ref( 0x6cede5b6eb60ecb4ull, 11 ) ); w.put8( 4 ); // vel_y
         w.put32( uint32_t( value.vel_y ) );
     }
     if ( value.vel_z != 0 )
     {
-        w.putleb( ids.ref( 0x6cede8b6eb60f1cdull ) ); w.put8( 4 ); // vel_z
+        w.putleb( ids.ref( 0x6cede8b6eb60f1cdull, 12 ) ); w.put8( 4 ); // vel_z
         w.put32( uint32_t( value.vel_z ) );
     }
     if ( value.health != 0 )
     {
-        w.putleb( ids.ref( 0x7f69d4b5288ba9cfull ) ); w.put8( 4 ); // health
+        w.putleb( ids.ref( 0x7f69d4b5288ba9cfull, 13 ) ); w.put8( 4 ); // health
         w.put32( uint32_t( value.health ) );
     }
     if ( value.weapon != TableWeapon::None )
     {
         if ( !TableEnumNamed( value.weapon ) ) { return false; }
-        const uint64_t ref_weapon = ids.ref( 0xa0b610205f2c6e01ull );
+        const uint64_t ref_weapon = ids.ref( 0xa0b610205f2c6e01ull, 14 );
         uint64_t variant_weapon = 0;
         if ( !TableEnumRef( ids, value.weapon, variant_weapon ) ) { return false; }
         w.putleb( ref_weapon ); w.put8( 30 ); w.putleb( variant_weapon ); // weapon
     }
     if ( value.damage != 0 )
     {
-        w.putleb( ids.ref( 0x7f6308be8ab37fc0ull ) ); w.put8( 9 ); // damage
+        w.putleb( ids.ref( 0x7f6308be8ab37fc0ull, 15 ) ); w.put8( 9 ); // damage
         w.put64( uint64_t( value.damage ) );
     }
     if ( value.moving != false )
     {
-        w.putleb( ids.ref( 0x11a44fc1d1243da7ull ) ); w.put8( 1 ); // moving
+        w.putleb( ids.ref( 0x11a44fc1d1243da7ull, 16 ) ); w.put8( 1 ); // moving
         w.put8( value.moving ? 1 : 0 );
     }
     if ( value.firing != false )
     {
-        w.putleb( ids.ref( 0x7674cfd19b9031caull ) ); w.put8( 1 ); // firing
+        w.putleb( ids.ref( 0x7674cfd19b9031caull, 17 ) ); w.put8( 1 ); // firing
         w.put8( value.firing ? 1 : 0 );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -1149,12 +1396,14 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -1416,7 +1665,15 @@ inline TableOpenVerdict TableEntityLoadVerdict( TableEntity & value, const uint8
     {
         TableEntityReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -1444,11 +1701,54 @@ inline bool TableEntityLoad( TableEntity & value, const uint8_t * buffer, int64_
     return TableEntityLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t TableEntityMeasureMessage( const TableEntity & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = TableEntityMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t TableEntitySaveMessage( const TableEntity & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !TableEntitySaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == TableEntityMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool TableEntityLoadMessage( TableEntity & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    TableEntityReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return TableEntityLoadBody( r, value );
+}
+
 inline int64_t TableStatMeasureBody( TableIds & ids, const TableStat & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.stat_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x80ab75f0866dbf65ull ) ) + 1 + 1; } // stat_id
-    if ( value.delta != 0 ) { bytes += TableLebBytes( ids.ref( 0x52076675ec13a0c1ull ) ) + 1 + 4; } // delta
+    if ( value.stat_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x80ab75f0866dbf65ull, 51 ) ) + 1 + 1; } // stat_id
+    if ( value.delta != 0 ) { bytes += TableLebBytes( ids.ref( 0x52076675ec13a0c1ull, 52 ) ) + 1 + 4; } // delta
     return bytes;
 }
 
@@ -1464,12 +1764,12 @@ BENCHTABLE_TABLE_INLINE bool TableStatSaveBody( TableWriter & w, TableIds & ids,
 {
     if ( value.stat_id != 0 )
     {
-        w.putleb( ids.ref( 0x80ab75f0866dbf65ull ) ); w.put8( 6 ); // stat_id
+        w.putleb( ids.ref( 0x80ab75f0866dbf65ull, 51 ) ); w.put8( 6 ); // stat_id
         w.put8( uint8_t( value.stat_id ) );
     }
     if ( value.delta != 0 )
     {
-        w.putleb( ids.ref( 0x52076675ec13a0c1ull ) ); w.put8( 4 ); // delta
+        w.putleb( ids.ref( 0x52076675ec13a0c1ull, 52 ) ); w.put8( 4 ); // delta
         w.put32( uint32_t( value.delta ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -1499,12 +1799,14 @@ BENCHTABLE_TABLE_INLINE bool TableStatLoadBody( TableReader & r, TableStat & val
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -1567,7 +1869,15 @@ inline TableOpenVerdict TableStatLoadVerdict( TableStat & value, const uint8_t *
     {
         TableStatReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -1595,23 +1905,66 @@ inline bool TableStatLoad( TableStat & value, const uint8_t * buffer, int64_t by
     return TableStatLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t TableStatMeasureMessage( const TableStat & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = TableStatMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t TableStatSaveMessage( const TableStat & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !TableStatSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == TableStatMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool TableStatLoadMessage( TableStat & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    TableStatReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return TableStatLoadBody( r, value );
+}
+
 inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.protocol_magic != 0 ) { bytes += TableLebBytes( ids.ref( 0x6a5a70d91aa115fdull ) ) + 1 + 2; } // protocol_magic
-    if ( value.sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0xaa38aca481f528a8ull ) ) + 1 + 2; } // sequence
-    if ( value.ack_sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0x0dbe005c56697c3eull ) ) + 1 + 4; } // ack_sequence
-    if ( value.ack_bits != 0 ) { bytes += TableLebBytes( ids.ref( 0x9bae0da8b829ee03ull ) ) + 1 + 4; } // ack_bits
-    if ( value.session_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xb7d7b5650a590b05ull ) ) + 1 + 8; } // session_id
-    if ( value.client_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x6d7b98e2d095967eull ) ) + 1 + 4; } // client_id
-    if ( value.nonce != 1ull ) { bytes += TableLebBytes( ids.ref( 0x73a94c71d60dc0d8ull ) ) + 1 + 8; } // nonce
-    if ( value.world_time != 0 ) { bytes += TableLebBytes( ids.ref( 0x3eee6b51be54fc85ull ) ) + 1 + 8; } // world_time
-    if ( value.frame_tick != 0 ) { bytes += TableLebBytes( ids.ref( 0x7bbc035f7b6d0112ull ) ) + 1 + 8; } // frame_tick
-    if ( value.server_time != 0.0f ) { bytes += TableLebBytes( ids.ref( 0x3c460475f9be69c6ull ) ) + 1 + 4; } // server_time
+    if ( value.protocol_magic != 0 ) { bytes += TableLebBytes( ids.ref( 0x6a5a70d91aa115fdull, 21 ) ) + 1 + 2; } // protocol_magic
+    if ( value.sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0xaa38aca481f528a8ull, 22 ) ) + 1 + 2; } // sequence
+    if ( value.ack_sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0x0dbe005c56697c3eull, 23 ) ) + 1 + 4; } // ack_sequence
+    if ( value.ack_bits != 0 ) { bytes += TableLebBytes( ids.ref( 0x9bae0da8b829ee03ull, 24 ) ) + 1 + 4; } // ack_bits
+    if ( value.session_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xb7d7b5650a590b05ull, 25 ) ) + 1 + 8; } // session_id
+    if ( value.client_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x6d7b98e2d095967eull, 26 ) ) + 1 + 4; } // client_id
+    if ( value.nonce != 1ull ) { bytes += TableLebBytes( ids.ref( 0x73a94c71d60dc0d8ull, 27 ) ) + 1 + 8; } // nonce
+    if ( value.world_time != 0 ) { bytes += TableLebBytes( ids.ref( 0x3eee6b51be54fc85ull, 28 ) ) + 1 + 8; } // world_time
+    if ( value.frame_tick != 0 ) { bytes += TableLebBytes( ids.ref( 0x7bbc035f7b6d0112ull, 29 ) ) + 1 + 8; } // frame_tick
+    if ( value.server_time != 0.0f ) { bytes += TableLebBytes( ids.ref( 0x3c460475f9be69c6ull, 30 ) ) + 1 + 4; } // server_time
     if ( value.entities_count < 0 || value.entities_count > 8 ) { return -1; } // storage invariant
     if ( value.entities_count > 0 )
     {
-        const uint64_t ref_entities = ids.ref( 0x935d0fb07bb3822aull );
+        const uint64_t ref_entities = ids.ref( 0x935d0fb07bb3822aull, 31 );
         int64_t body_entities = 0;
         body_entities += 1 + TableLebBytes( (uint64_t) ( value.entities_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.entities_count; elem_i++ )
@@ -1625,7 +1978,7 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
     if ( value.stats_count < 0 || value.stats_count > 80 ) { return -1; } // storage invariant
     if ( value.stats_count > 0 )
     {
-        const uint64_t ref_stats = ids.ref( 0xee639cad45b1994cull );
+        const uint64_t ref_stats = ids.ref( 0xee639cad45b1994cull, 32 );
         int64_t body_stats = 0;
         body_stats += 1 + TableLebBytes( (uint64_t) ( value.stats_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.stats_count; elem_i++ )
@@ -1638,14 +1991,14 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
     }
     if ( value.game_event.type != TableEventType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref( 0x2e35dc5321aa5790ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref( 0x2e35dc5321aa5790ull, 33 ) ) + 1;
         switch ( value.game_event.type )
         {
             case TableEventType::None: break;
             case TableEventType::Hit:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x33732819300680aaull );
+                const uint64_t arm_ref = ids.ref( 0x33732819300680aaull, 68 );
                 {
                     const int64_t arm_body = TableHitEventMeasureBody( ids, value.game_event.hit );
                     if ( arm_body < 0 ) { return -1; }
@@ -1657,7 +2010,7 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
             case TableEventType::Chat:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xf2a38d910b5b348bull );
+                const uint64_t arm_ref = ids.ref( 0xf2a38d910b5b348bull, 69 );
                 {
                     const int64_t arm_body = TableChatEventMeasureBody( ids, value.game_event.chat );
                     if ( arm_body < 0 ) { return -1; }
@@ -1669,7 +2022,7 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
             case TableEventType::Pickup:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x9fa3a41c86ecb765ull );
+                const uint64_t arm_ref = ids.ref( 0x9fa3a41c86ecb765ull, 70 );
                 {
                     const int64_t arm_body = TablePickupEventMeasureBody( ids, value.game_event.pickup );
                     if ( arm_body < 0 ) { return -1; }
@@ -1686,7 +2039,7 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
         for ( int32_t i = 0; i < 4; i++ ) { if ( value.loadout[i] != 0 ) { all_default_loadout = false; break; } }
         if ( !all_default_loadout )
         {
-            const uint64_t ref_loadout = ids.ref( 0x5759ce7586bbb5a3ull );
+            const uint64_t ref_loadout = ids.ref( 0x5759ce7586bbb5a3ull, 34 );
             int64_t body_loadout = 0;
             body_loadout += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
             body_loadout += (int64_t) ( 4 ) * 1;
@@ -1694,30 +2047,30 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
         }
     }
     if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return -1; } // storage invariant
-    if ( value.player_name_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x13a62f542cf8e86eull ) ) + 1 + TableLebBytes( (uint64_t) ( value.player_name_length ) ) + ( value.player_name_length ); } // player_name
+    if ( value.player_name_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x13a62f542cf8e86eull, 35 ) ) + 1 + TableLebBytes( (uint64_t) ( value.player_name_length ) ) + ( value.player_name_length ); } // player_name
     if ( value.payload_length < 0 || value.payload_length > 16 ) { return -1; } // storage invariant
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
-        bytes += TableLebBytes( ids.ref( 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
+        bytes += TableLebBytes( ids.ref( 0xcfb8a9d063b5e9e5ull, 36 ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
-    if ( value.aim_x != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xdbaf7be5e24296c9ull ) ) + 1 + 4; } // aim_x
-    if ( value.aim_y != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xdbaf7ae5e2429516ull ) ) + 1 + 4; } // aim_y
-    if ( value.aim_z != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xdbaf79e5e2429363ull ) ) + 1 + 4; } // aim_z
-    if ( value.recoil != 0.0f ) { bytes += TableLebBytes( ids.ref( 0x9cef31fff7e2e457ull ) ) + 1 + 4; } // recoil
-    if ( value.drift != 0.0 ) { bytes += TableLebBytes( ids.ref( 0x5ab3f9c9341f6c04ull ) ) + 1 + 8; } // drift
-    if ( value.wide_key != 0 ) { bytes += TableLebBytes( ids.ref( 0xa3348580461faf16ull ) ) + 1 + 8; } // wide_key
-    if ( value.flux != 0 ) { bytes += TableLebBytes( ids.ref( 0xd61bdd7908af2642ull ) ) + 1 + 8; } // flux
-    if ( value.ping != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xbf30e00dc53307a9ull ) ) + 1 + 4; } // ping
-    if ( value.crc_hint != 0 ) { bytes += TableLebBytes( ids.ref( 0x560d6527ccd8515full ) ) + 1 + 4; } // crc_hint
-    if ( value.has_extra != false ) { bytes += TableLebBytes( ids.ref( 0xc08292176cfd8672ull ) ) + 1 + 1; } // has_extra
+    if ( value.aim_x != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xdbaf7be5e24296c9ull, 37 ) ) + 1 + 4; } // aim_x
+    if ( value.aim_y != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xdbaf7ae5e2429516ull, 38 ) ) + 1 + 4; } // aim_y
+    if ( value.aim_z != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xdbaf79e5e2429363ull, 39 ) ) + 1 + 4; } // aim_z
+    if ( value.recoil != 0.0f ) { bytes += TableLebBytes( ids.ref( 0x9cef31fff7e2e457ull, 40 ) ) + 1 + 4; } // recoil
+    if ( value.drift != 0.0 ) { bytes += TableLebBytes( ids.ref( 0x5ab3f9c9341f6c04ull, 41 ) ) + 1 + 8; } // drift
+    if ( value.wide_key != 0 ) { bytes += TableLebBytes( ids.ref( 0xa3348580461faf16ull, 42 ) ) + 1 + 8; } // wide_key
+    if ( value.flux != 0 ) { bytes += TableLebBytes( ids.ref( 0xd61bdd7908af2642ull, 43 ) ) + 1 + 8; } // flux
+    if ( value.ping != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xbf30e00dc53307a9ull, 44 ) ) + 1 + 4; } // ping
+    if ( value.crc_hint != 0 ) { bytes += TableLebBytes( ids.ref( 0x560d6527ccd8515full, 45 ) ) + 1 + 4; } // crc_hint
+    if ( value.has_extra != false ) { bytes += TableLebBytes( ids.ref( 0xc08292176cfd8672ull, 46 ) ) + 1 + 1; } // has_extra
     if ( value.has_extra )
     {
-        if ( value.extra != 0 ) { bytes += TableLebBytes( ids.ref( 0xfd29ee12a979cb69ull ) ) + 1 + 4; } // extra
+        if ( value.extra != 0 ) { bytes += TableLebBytes( ids.ref( 0xfd29ee12a979cb69ull, 47 ) ) + 1 + 4; } // extra
     }
     if ( !value.has_extra )
     {
-        if ( value.idle_ticks != 0 ) { bytes += TableLebBytes( ids.ref( 0x78101ac0aa8cbcfeull ) ) + 1 + 4; } // idle_ticks
+        if ( value.idle_ticks != 0 ) { bytes += TableLebBytes( ids.ref( 0x78101ac0aa8cbcfeull, 48 ) ) + 1 + 4; } // idle_ticks
     }
     return bytes;
 }
@@ -1734,58 +2087,58 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
 {
     if ( value.protocol_magic != 0 )
     {
-        w.putleb( ids.ref( 0x6a5a70d91aa115fdull ) ); w.put8( 7 ); // protocol_magic
+        w.putleb( ids.ref( 0x6a5a70d91aa115fdull, 21 ) ); w.put8( 7 ); // protocol_magic
         w.put16( uint16_t( value.protocol_magic ) );
     }
     if ( value.sequence != 0 )
     {
-        w.putleb( ids.ref( 0xaa38aca481f528a8ull ) ); w.put8( 7 ); // sequence
+        w.putleb( ids.ref( 0xaa38aca481f528a8ull, 22 ) ); w.put8( 7 ); // sequence
         w.put16( uint16_t( value.sequence ) );
     }
     if ( value.ack_sequence != 0 )
     {
-        w.putleb( ids.ref( 0x0dbe005c56697c3eull ) ); w.put8( 4 ); // ack_sequence
+        w.putleb( ids.ref( 0x0dbe005c56697c3eull, 23 ) ); w.put8( 4 ); // ack_sequence
         w.put32( uint32_t( value.ack_sequence ) );
     }
     if ( value.ack_bits != 0 )
     {
-        w.putleb( ids.ref( 0x9bae0da8b829ee03ull ) ); w.put8( 8 ); // ack_bits
+        w.putleb( ids.ref( 0x9bae0da8b829ee03ull, 24 ) ); w.put8( 8 ); // ack_bits
         w.put32( uint32_t( value.ack_bits ) );
     }
     if ( value.session_id != 0 )
     {
-        w.putleb( ids.ref( 0xb7d7b5650a590b05ull ) ); w.put8( 9 ); // session_id
+        w.putleb( ids.ref( 0xb7d7b5650a590b05ull, 25 ) ); w.put8( 9 ); // session_id
         w.put64( uint64_t( value.session_id ) );
     }
     if ( value.client_id != 0 )
     {
-        w.putleb( ids.ref( 0x6d7b98e2d095967eull ) ); w.put8( 8 ); // client_id
+        w.putleb( ids.ref( 0x6d7b98e2d095967eull, 26 ) ); w.put8( 8 ); // client_id
         w.put32( uint32_t( value.client_id ) );
     }
     if ( value.nonce != 1ull )
     {
-        w.putleb( ids.ref( 0x73a94c71d60dc0d8ull ) ); w.put8( 9 ); // nonce
+        w.putleb( ids.ref( 0x73a94c71d60dc0d8ull, 27 ) ); w.put8( 9 ); // nonce
         w.put64( uint64_t( value.nonce ) );
     }
     if ( value.world_time != 0 )
     {
-        w.putleb( ids.ref( 0x3eee6b51be54fc85ull ) ); w.put8( 5 ); // world_time
+        w.putleb( ids.ref( 0x3eee6b51be54fc85ull, 28 ) ); w.put8( 5 ); // world_time
         w.put64( uint64_t( value.world_time ) );
     }
     if ( value.frame_tick != 0 )
     {
-        w.putleb( ids.ref( 0x7bbc035f7b6d0112ull ) ); w.put8( 9 ); // frame_tick
+        w.putleb( ids.ref( 0x7bbc035f7b6d0112ull, 29 ) ); w.put8( 9 ); // frame_tick
         w.put64( uint64_t( value.frame_tick ) );
     }
     if ( value.server_time != 0.0f )
     {
-        w.putleb( ids.ref( 0x3c460475f9be69c6ull ) ); w.put8( 10 ); // server_time
+        w.putleb( ids.ref( 0x3c460475f9be69c6ull, 30 ) ); w.put8( 10 ); // server_time
         w.put32( table_float_to_bits( value.server_time ) );
     }
     if ( value.entities_count < 0 || value.entities_count > 8 ) { return false; } // storage invariant
     if ( value.entities_count > 0 )
     {
-        const uint64_t ref_entities = ids.ref( 0x935d0fb07bb3822aull );
+        const uint64_t ref_entities = ids.ref( 0x935d0fb07bb3822aull, 31 );
         int64_t body_entities = 0;
         body_entities += 1 + TableLebBytes( (uint64_t) ( value.entities_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.entities_count; elem_i++ )
@@ -1809,7 +2162,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.stats_count < 0 || value.stats_count > 80 ) { return false; } // storage invariant
     if ( value.stats_count > 0 )
     {
-        const uint64_t ref_stats = ids.ref( 0xee639cad45b1994cull );
+        const uint64_t ref_stats = ids.ref( 0xee639cad45b1994cull, 32 );
         int64_t body_stats = 0;
         body_stats += 1 + TableLebBytes( (uint64_t) ( value.stats_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.stats_count; elem_i++ )
@@ -1832,12 +2185,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     }
     if ( value.game_event.type != TableEventType::None )
     {
-        w.putleb( ids.ref( 0x2e35dc5321aa5790ull ) ); w.put8( 15 ); // game_event
+        w.putleb( ids.ref( 0x2e35dc5321aa5790ull, 33 ) ); w.put8( 15 ); // game_event
         switch ( value.game_event.type )
         {
             case TableEventType::Hit:
             {
-                const uint64_t arm_ref = ids.ref( 0x33732819300680aaull );
+                const uint64_t arm_ref = ids.ref( 0x33732819300680aaull, 68 );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = TableHitEventMeasureBody( ids, value.game_event.hit );
@@ -1850,7 +2203,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
             }
             case TableEventType::Chat:
             {
-                const uint64_t arm_ref = ids.ref( 0xf2a38d910b5b348bull );
+                const uint64_t arm_ref = ids.ref( 0xf2a38d910b5b348bull, 69 );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = TableChatEventMeasureBody( ids, value.game_event.chat );
@@ -1863,7 +2216,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
             }
             case TableEventType::Pickup:
             {
-                const uint64_t arm_ref = ids.ref( 0x9fa3a41c86ecb765ull );
+                const uint64_t arm_ref = ids.ref( 0x9fa3a41c86ecb765ull, 70 );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = TablePickupEventMeasureBody( ids, value.game_event.pickup );
@@ -1882,7 +2235,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
         for ( int32_t i = 0; i < 4; i++ ) { if ( value.loadout[i] != 0 ) { all_default_loadout = false; break; } }
         if ( !all_default_loadout )
         {
-            const uint64_t ref_loadout = ids.ref( 0x5759ce7586bbb5a3ull );
+            const uint64_t ref_loadout = ids.ref( 0x5759ce7586bbb5a3ull, 34 );
             int64_t body_loadout = 0;
             body_loadout += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
             body_loadout += (int64_t) ( 4 ) * 1;
@@ -1897,7 +2250,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return false; } // storage invariant
     if ( value.player_name_length > 0 )
     {
-        w.putleb( ids.ref( 0x13a62f542cf8e86eull ) ); w.put8( 12 ); // player_name
+        w.putleb( ids.ref( 0x13a62f542cf8e86eull, 35 ) ); w.put8( 12 ); // player_name
         w.putleb( (uint64_t) value.player_name_length );
         w.raw( value.player_name, value.player_name_length );
     }
@@ -1905,66 +2258,66 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
-        w.putleb( ids.ref( 0xcfb8a9d063b5e9e5ull ) ); w.put8( 14 ); // payload
+        w.putleb( ids.ref( 0xcfb8a9d063b5e9e5ull, 36 ) ); w.put8( 14 ); // payload
         w.putleb( (uint64_t) body_payload );
         w.put8( 6 ); w.putleb( (uint64_t) value.payload_length );
         w.raw( value.payload, value.payload_length );
     }
     if ( value.aim_x != 0.0f )
     {
-        w.putleb( ids.ref( 0xdbaf7be5e24296c9ull ) ); w.put8( 10 ); // aim_x
+        w.putleb( ids.ref( 0xdbaf7be5e24296c9ull, 37 ) ); w.put8( 10 ); // aim_x
         w.put32( table_float_to_bits( value.aim_x ) );
     }
     if ( value.aim_y != 0.0f )
     {
-        w.putleb( ids.ref( 0xdbaf7ae5e2429516ull ) ); w.put8( 10 ); // aim_y
+        w.putleb( ids.ref( 0xdbaf7ae5e2429516ull, 38 ) ); w.put8( 10 ); // aim_y
         w.put32( table_float_to_bits( value.aim_y ) );
     }
     if ( value.aim_z != 0.0f )
     {
-        w.putleb( ids.ref( 0xdbaf79e5e2429363ull ) ); w.put8( 10 ); // aim_z
+        w.putleb( ids.ref( 0xdbaf79e5e2429363ull, 39 ) ); w.put8( 10 ); // aim_z
         w.put32( table_float_to_bits( value.aim_z ) );
     }
     if ( value.recoil != 0.0f )
     {
-        w.putleb( ids.ref( 0x9cef31fff7e2e457ull ) ); w.put8( 10 ); // recoil
+        w.putleb( ids.ref( 0x9cef31fff7e2e457ull, 40 ) ); w.put8( 10 ); // recoil
         w.put32( table_float_to_bits( value.recoil ) );
     }
     if ( value.drift != 0.0 )
     {
-        w.putleb( ids.ref( 0x5ab3f9c9341f6c04ull ) ); w.put8( 11 ); // drift
+        w.putleb( ids.ref( 0x5ab3f9c9341f6c04ull, 41 ) ); w.put8( 11 ); // drift
         w.put64( table_double_to_bits( value.drift ) );
     }
     if ( value.wide_key != 0 )
     {
-        w.putleb( ids.ref( 0xa3348580461faf16ull ) ); w.put8( 9 ); // wide_key
+        w.putleb( ids.ref( 0xa3348580461faf16ull, 42 ) ); w.put8( 9 ); // wide_key
         w.put64( uint64_t( value.wide_key ) );
     }
     if ( value.flux != 0 )
     {
-        w.putleb( ids.ref( 0xd61bdd7908af2642ull ) ); w.put8( 5 ); // flux
+        w.putleb( ids.ref( 0xd61bdd7908af2642ull, 43 ) ); w.put8( 5 ); // flux
         w.put64( uint64_t( value.flux ) );
     }
     if ( value.ping != 0.0f )
     {
-        w.putleb( ids.ref( 0xbf30e00dc53307a9ull ) ); w.put8( 10 ); // ping
+        w.putleb( ids.ref( 0xbf30e00dc53307a9ull, 44 ) ); w.put8( 10 ); // ping
         w.put32( table_float_to_bits( value.ping ) );
     }
     if ( value.crc_hint != 0 )
     {
-        w.putleb( ids.ref( 0x560d6527ccd8515full ) ); w.put8( 8 ); // crc_hint
+        w.putleb( ids.ref( 0x560d6527ccd8515full, 45 ) ); w.put8( 8 ); // crc_hint
         w.put32( uint32_t( value.crc_hint ) );
     }
     if ( value.has_extra != false )
     {
-        w.putleb( ids.ref( 0xc08292176cfd8672ull ) ); w.put8( 1 ); // has_extra
+        w.putleb( ids.ref( 0xc08292176cfd8672ull, 46 ) ); w.put8( 1 ); // has_extra
         w.put8( value.has_extra ? 1 : 0 );
     }
     if ( value.has_extra )
     {
         if ( value.extra != 0 )
         {
-            w.putleb( ids.ref( 0xfd29ee12a979cb69ull ) ); w.put8( 4 ); // extra
+            w.putleb( ids.ref( 0xfd29ee12a979cb69ull, 47 ) ); w.put8( 4 ); // extra
             w.put32( uint32_t( value.extra ) );
         }
     }
@@ -1972,7 +2325,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     {
         if ( value.idle_ticks != 0 )
         {
-            w.putleb( ids.ref( 0x78101ac0aa8cbcfeull ) ); w.put8( 4 ); // idle_ticks
+            w.putleb( ids.ref( 0x78101ac0aa8cbcfeull, 48 ) ); w.put8( 4 ); // idle_ticks
             w.put32( uint32_t( value.idle_ticks ) );
         }
     }
@@ -2003,12 +2356,14 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -2693,7 +3048,15 @@ inline TableOpenVerdict TableMixedLoadVerdict( TableMixed & value, const uint8_t
     {
         TableMixedReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -2721,13 +3084,56 @@ inline bool TableMixedLoad( TableMixed & value, const uint8_t * buffer, int64_t 
     return TableMixedLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t TableMixedMeasureMessage( const TableMixed & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = TableMixedMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t TableMixedSaveMessage( const TableMixed & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !TableMixedSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == TableMixedMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool TableMixedLoadMessage( TableMixed & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    TableMixedReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return TableMixedLoadBody( r, value );
+}
+
 inline int64_t TableHitEventMeasureBody( TableIds & ids, const TableHitEvent & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xb7bc9ac015a25050ull ) ) + 1 + 2; } // target_id
-    if ( value.damage != 0 ) { bytes += TableLebBytes( ids.ref( 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
-    if ( value.hit_kind != 0 ) { bytes += TableLebBytes( ids.ref( 0x01fbc365b059b925ull ) ) + 1 + 4; } // hit_kind
-    if ( value.crit != false ) { bytes += TableLebBytes( ids.ref( 0x126167908c9aa52dull ) ) + 1 + 1; } // crit
+    if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xb7bc9ac015a25050ull, 18 ) ) + 1 + 2; } // target_id
+    if ( value.damage != 0 ) { bytes += TableLebBytes( ids.ref( 0x7f6308be8ab37fc0ull, 15 ) ) + 1 + 4; } // damage
+    if ( value.hit_kind != 0 ) { bytes += TableLebBytes( ids.ref( 0x01fbc365b059b925ull, 19 ) ) + 1 + 4; } // hit_kind
+    if ( value.crit != false ) { bytes += TableLebBytes( ids.ref( 0x126167908c9aa52dull, 20 ) ) + 1 + 1; } // crit
     return bytes;
 }
 
@@ -2743,22 +3149,22 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventSaveBody( TableWriter & w, TableIds & 
 {
     if ( value.target_id != 0 )
     {
-        w.putleb( ids.ref( 0xb7bc9ac015a25050ull ) ); w.put8( 7 ); // target_id
+        w.putleb( ids.ref( 0xb7bc9ac015a25050ull, 18 ) ); w.put8( 7 ); // target_id
         w.put16( uint16_t( value.target_id ) );
     }
     if ( value.damage != 0 )
     {
-        w.putleb( ids.ref( 0x7f6308be8ab37fc0ull ) ); w.put8( 4 ); // damage
+        w.putleb( ids.ref( 0x7f6308be8ab37fc0ull, 15 ) ); w.put8( 4 ); // damage
         w.put32( uint32_t( value.damage ) );
     }
     if ( value.hit_kind != 0 )
     {
-        w.putleb( ids.ref( 0x01fbc365b059b925ull ) ); w.put8( 4 ); // hit_kind
+        w.putleb( ids.ref( 0x01fbc365b059b925ull, 19 ) ); w.put8( 4 ); // hit_kind
         w.put32( uint32_t( value.hit_kind ) );
     }
     if ( value.crit != false )
     {
-        w.putleb( ids.ref( 0x126167908c9aa52dull ) ); w.put8( 1 ); // crit
+        w.putleb( ids.ref( 0x126167908c9aa52dull, 20 ) ); w.put8( 1 ); // crit
         w.put8( value.crit ? 1 : 0 );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -2788,12 +3194,14 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEve
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -2888,7 +3296,15 @@ inline TableOpenVerdict TableHitEventLoadVerdict( TableHitEvent & value, const u
     {
         TableHitEventReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -2916,11 +3332,54 @@ inline bool TableHitEventLoad( TableHitEvent & value, const uint8_t * buffer, in
     return TableHitEventLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t TableHitEventMeasureMessage( const TableHitEvent & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = TableHitEventMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t TableHitEventSaveMessage( const TableHitEvent & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !TableHitEventSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == TableHitEventMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool TableHitEventLoadMessage( TableHitEvent & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    TableHitEventReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return TableHitEventLoadBody( r, value );
+}
+
 inline int64_t TableChatEventMeasureBody( TableIds & ids, const TableChatEvent & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.channel != 0 ) { bytes += TableLebBytes( ids.ref( 0xa5013e9ad5caeda4ull ) ) + 1 + 4; } // channel
-    if ( value.speaker != 0 ) { bytes += TableLebBytes( ids.ref( 0xfbf1ac4d96ebd022ull ) ) + 1 + 2; } // speaker
+    if ( value.channel != 0 ) { bytes += TableLebBytes( ids.ref( 0xa5013e9ad5caeda4ull, 2 ) ) + 1 + 4; } // channel
+    if ( value.speaker != 0 ) { bytes += TableLebBytes( ids.ref( 0xfbf1ac4d96ebd022ull, 3 ) ) + 1 + 2; } // speaker
     return bytes;
 }
 
@@ -2936,12 +3395,12 @@ BENCHTABLE_TABLE_INLINE bool TableChatEventSaveBody( TableWriter & w, TableIds &
 {
     if ( value.channel != 0 )
     {
-        w.putleb( ids.ref( 0xa5013e9ad5caeda4ull ) ); w.put8( 4 ); // channel
+        w.putleb( ids.ref( 0xa5013e9ad5caeda4ull, 2 ) ); w.put8( 4 ); // channel
         w.put32( uint32_t( value.channel ) );
     }
     if ( value.speaker != 0 )
     {
-        w.putleb( ids.ref( 0xfbf1ac4d96ebd022ull ) ); w.put8( 7 ); // speaker
+        w.putleb( ids.ref( 0xfbf1ac4d96ebd022ull, 3 ) ); w.put8( 7 ); // speaker
         w.put16( uint16_t( value.speaker ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -2971,12 +3430,14 @@ BENCHTABLE_TABLE_INLINE bool TableChatEventLoadBody( TableReader & r, TableChatE
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -3040,7 +3501,15 @@ inline TableOpenVerdict TableChatEventLoadVerdict( TableChatEvent & value, const
     {
         TableChatEventReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -3068,11 +3537,54 @@ inline bool TableChatEventLoad( TableChatEvent & value, const uint8_t * buffer, 
     return TableChatEventLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t TableChatEventMeasureMessage( const TableChatEvent & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = TableChatEventMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t TableChatEventSaveMessage( const TableChatEvent & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !TableChatEventSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == TableChatEventMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool TableChatEventLoadMessage( TableChatEvent & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    TableChatEventReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return TableChatEventLoadBody( r, value );
+}
+
 inline int64_t TablePickupEventMeasureBody( TableIds & ids, const TablePickupEvent & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.item_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x9e7fd06d864fbd56ull ) ) + 1 + 2; } // item_id
-    if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref( 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
+    if ( value.item_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x9e7fd06d864fbd56ull, 49 ) ) + 1 + 2; } // item_id
+    if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref( 0x8113fe7ea2b16969ull, 50 ) ) + 1 + 4; } // amount
     return bytes;
 }
 
@@ -3088,12 +3600,12 @@ BENCHTABLE_TABLE_INLINE bool TablePickupEventSaveBody( TableWriter & w, TableIds
 {
     if ( value.item_id != 0 )
     {
-        w.putleb( ids.ref( 0x9e7fd06d864fbd56ull ) ); w.put8( 7 ); // item_id
+        w.putleb( ids.ref( 0x9e7fd06d864fbd56ull, 49 ) ); w.put8( 7 ); // item_id
         w.put16( uint16_t( value.item_id ) );
     }
     if ( value.amount != 0 )
     {
-        w.putleb( ids.ref( 0x8113fe7ea2b16969ull ) ); w.put8( 4 ); // amount
+        w.putleb( ids.ref( 0x8113fe7ea2b16969ull, 50 ) ); w.put8( 4 ); // amount
         w.put32( uint32_t( value.amount ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -3123,12 +3635,14 @@ BENCHTABLE_TABLE_INLINE bool TablePickupEventLoadBody( TableReader & r, TablePic
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( field_id == kTableNodeTableFieldId && r.nested )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
         {
-            // THE RESERVED ID INSIDE A NESTED BODY IS MALFORMED
-            // (docs/SPEC-TABLES.md §3.1), on the numbering's own rule: a
-            // second numbering cannot exist, so a body claiming one is
-            // damaged — that body stops and the parent reads on past its L.
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -3192,7 +3706,15 @@ inline TableOpenVerdict TablePickupEventLoadVerdict( TablePickupEvent & value, c
     {
         TablePickupEventReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; }
+        else
+        {
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // stored on its own is not readable, because its table is
+            // somewhere else, and the refusal says so BY NAME rather than
+            // merely by form byte (docs/SPEC-TABLES.md §3.3).
+            to->refused = true;
+            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
+        }
         return verdict;
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
@@ -3218,6 +3740,49 @@ inline TableOpenVerdict TablePickupEventLoadVerdict( TablePickupEvent & value, c
 inline bool TablePickupEventLoad( TablePickupEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return TablePickupEventLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
+}
+
+// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
+// body, and no trailer at all — the connection's announced table is where
+// the ids live. Every reference is a compile-time SLOT, so this walk does
+// no lookup and a save costs what a save costs.
+inline int64_t TablePickupEventMeasureMessage( const TablePickupEvent & value )
+{
+    TableIds ids;
+    ids.vocabulary = true;
+    const int64_t body = TablePickupEventMeasureBody( ids, value );
+    if ( body < 0 ) { return -1; }
+    return 1 + body;
+}
+
+inline int64_t TablePickupEventSaveMessage( const TablePickupEvent & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    ids.vocabulary = true;
+    w.put8( kTableWireMessageForm );
+    if ( !TablePickupEventSaveBody( w, ids, value ) || w.overflow ) { return -1; }
+    return w.offset; // == TablePickupEventMeasureMessage( value )
+}
+
+// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no table, no counter moves
+// and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a table, because a guessed table
+// decodes a body under the wrong names in silence.
+inline bool TablePickupEventLoadMessage( TablePickupEvent & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    TablePickupEventReset( value );
+    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
+    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
+    // there is no stray-byte rule to apply between one and a first entry
+    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    return TablePickupEventLoadBody( r, value );
 }
 
 // ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----

@@ -1,0 +1,55 @@
+{
+  "match_id": 72340172838076673,
+  "players": [
+    {
+      "player_id": 1000,
+      "score": 1234,
+      "placement": 1
+    },
+    {
+      "player_id": 1001,
+      "score": 1311,
+      "placement": 2
+    },
+    {
+      "player_id": 1002,
+      "score": 1388,
+      "placement": 3
+    },
+    {
+      "player_id": 1003,
+      "score": 1465,
+      "placement": 4
+    },
+    {
+      "player_id": 1004,
+      "score": 1542,
+      "placement": 5
+    },
+    {
+      "player_id": 1005,
+      "score": 1619,
+      "placement": 6
+    },
+    {
+      "player_id": 1006,
+      "score": 1696,
+      "placement": 7
+    },
+    {
+      "player_id": 1007,
+      "score": 1773,
+      "placement": 8
+    },
+    {
+      "player_id": 1008,
+      "score": 1850,
+      "placement": 9
+    },
+    {
+      "player_id": 1009,
+      "score": 1927,
+      "placement": 10
+    }
+  ]
+}

@@ -42,12 +42,16 @@ import (
 
 // wireFuzzOptions is what the command line settles.
 type wireFuzzOptions struct {
-	driver  string
-	seed    uint64
-	n       int
-	replay  string
-	unit    string
-	root    string
+	driver string
+	seed   uint64
+	n      int
+	replay string
+	unit   string
+	root   string
+	// message replays the file as a MESSAGE (docs/SPEC-TABLES.md §3.3),
+	// against the unit's own announced table rather than a trailer of its
+	// own. A failure on a message seed prints it.
+	message bool
 	failed  string
 	vectors string
 }
@@ -60,6 +64,14 @@ type wireRoot struct {
 	model    *tabletext.Model
 	def      *ir.Struct
 	variable bool
+	// message is the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the mutants for
+	// this root are form 2 wires and their references resolve against the
+	// CONNECTION's table rather than a trailer of their own. `vocabulary` is
+	// that table — the unit's whole vocabulary, which is a pure function of
+	// the build version, so both sides derive it and neither carries it.
+	message    bool
+	vocabulary *tablewire.Vocabulary
+	entries    []uint64
 	// the C ABI storage each node type commands (docs/SPEC-TABLES.md §6.5,
 	// §20.3), by wire type id, eight-aligned as a reader's LoadMeasure rounds it
 	storage     map[uint64]int64
@@ -77,7 +89,7 @@ const nodeRecordHeaderBytes = int64(12)
 
 func alignUp8(n int64) int64 { return (n + 7) &^ 7 }
 
-func newWireRoot(u *units, unitKey, rootName string) (*wireRoot, error) {
+func newWireRoot(u *units, unitKey, rootName string, message bool) (*wireRoot, error) {
 	unit, err := u.get(unitKey)
 	if err != nil {
 		return nil, err
@@ -87,9 +99,20 @@ func newWireRoot(u *units, unitKey, rootName string) (*wireRoot, error) {
 	if def == nil {
 		return nil, fmt.Errorf("unit %s declares no table %s", unitKey, rootName)
 	}
-	r := &wireRoot{unit: unitKey, root: rootName, model: m, def: def, variable: m.IsVariable(rootName), storage: map[uint64]int64{}}
+	r := &wireRoot{unit: unitKey, root: rootName, model: m, def: def, variable: m.IsVariable(rootName), message: message, storage: map[uint64]int64{}}
+	if message {
+		r.vocabulary = &tablewire.Vocabulary{}
+		if err := r.vocabulary.AnnounceRead(ir.TableAnnouncement(unit), &tabletext.Report{}); err != nil {
+			return nil, fmt.Errorf("unit %s: its own announcement was refused: %w", unitKey, err)
+		}
+		r.entries = r.vocabulary.Entries()
+	}
 	r.rootStorage = alignUp8(ir.RecordLayout(unit, def).Size)
-	for name := range ir.TableClosure(unit) {
+	// THE STORAGE A RECORD COMMANDS is its type's, and only for a type THIS
+	// ROOT can place: a table no pointer below the root targets is a node the
+	// reader cannot name, so it commands none (docs/SPEC-TABLES.md §3.1,
+	// §6.5), exactly as the reference's <Root>NodeStorage answers -1 for one.
+	for name := range ir.PointerReachable(unit, def) {
 		st := m.Lookup(name)
 		if st == nil {
 			continue
@@ -132,8 +155,18 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	}()
 	inst := r.model.New(r.def)
 	var rep tabletext.Report
-	ok, derr := tablewire.Decode(r.model, inst, data, &rep)
-	if _, refused := errors.AsType[*tablewire.FormRefusal](derr); refused {
+	// THE MESSAGE FORM's mutants are read against the CONNECTION's table and
+	// written back the same way (docs/SPEC-TABLES.md §3.3). Every other rule
+	// of the read is §3's and §4's, unchanged, so the branch is here and
+	// nowhere else in this file.
+	decode := func() (bool, error) { return tablewire.Decode(r.model, inst, data, &rep) }
+	encode := func() ([]byte, error) { return tablewire.Encode(r.model, inst) }
+	if r.message {
+		decode = func() (bool, error) { return tablewire.DecodeMessage(r.model, inst, data, r.vocabulary, &rep) }
+		encode = func() ([]byte, error) { return tablewire.EncodeMessage(r.model, inst) }
+	}
+	ok, derr := decode()
+	if tablewire.Refused(derr) {
 		// A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL, and the refusal
 		// is the answer: nothing was decoded, no counter moved, and no damage
 		// is reported (docs/SPEC-TABLES.md §3). A leg must say the same.
@@ -142,7 +175,7 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		// value at its declared defaults, which is what the fresh instance
 		// encodes here. Both must answer the same bytes, as they must on
 		// every other mutant (§4.2).
-		if encoded, eerr := tablewire.Encode(r.model, inst); eerr != nil {
+		if encoded, eerr := encode(); eerr != nil {
 			ans.encFail = true
 		} else {
 			ans.encoded = encoded
@@ -153,7 +186,7 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		return ans, fmt.Errorf("the oracle refused the root itself: %w", derr)
 	}
 	ans.report = Counts{Unknown: rep.Unknown, KindMismatch: rep.KindMismatch, Clamped: rep.Clamped, Duplicate: rep.Duplicate, Malformed: rep.Malformed || !ok}
-	encoded, eerr := tablewire.Encode(r.model, inst)
+	encoded, eerr := encode()
 	if eerr != nil {
 		ans.encFail = true
 	} else {
@@ -161,6 +194,9 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	}
 	if r.variable {
 		types, whole := tablewire.NodeRecordTypes(data)
+		if r.message {
+			types, whole = tablewire.NodeRecordTypesMessage(data, r.entries)
+		}
 		if whole {
 			ans.exact = true
 			ans.bytes = r.rootStorage + (int64(len(types))+1)*nodeDirEntryBytes
@@ -207,7 +243,15 @@ func startWireLeg(command string, roots []*wireRoot) (*wireLeg, error) {
 		return nil, fmt.Errorf("starting %q: %w", command, err)
 	}
 
-	// the roster: which roots the stream will name, and which the leg has
+	// the roster: which roots the stream will name, in which FORM, and which
+	// the leg has. The form is the wire's own byte (docs/SPEC-TABLES.md §3,
+	// §3.3) rather than a flag of this protocol's minting, so a leg reads the
+	// value it already knows: `1` is the file form and `2` is the message
+	// form, whose mutants resolve against the connection's announced table.
+	// A leg derives that table from its OWN unit's announcement, because the
+	// vocabulary is a pure function of the build version and both sides
+	// derive the same one, so the roster names the form and never carries an
+	// announcement.
 	var roster bytes.Buffer
 	_ = binary.Write(&roster, binary.LittleEndian, uint32(len(roots)))
 	for _, r := range roots {
@@ -215,6 +259,11 @@ func startWireLeg(command string, roots []*wireRoot) (*wireLeg, error) {
 		roster.WriteString(r.unit)
 		_ = binary.Write(&roster, binary.LittleEndian, uint16(len(r.root)))
 		roster.WriteString(r.root)
+		form := byte(ir.TableWireForm)
+		if r.message {
+			form = ir.TableWireMessageForm
+		}
+		roster.WriteByte(form)
 	}
 	if _, err := stdin.Write(roster.Bytes()); err != nil {
 		return nil, fmt.Errorf("the leg closed its input during the roster: %w", err)
@@ -346,12 +395,15 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	var seeds []*wireSeed
 	var roots []*wireRoot
 	rootIndex := map[string]int{}
-	addRoot := func(unit, root string) (int, error) {
+	addRoot := func(unit, root string, message bool) (int, error) {
 		key := unit + "." + root
+		if message {
+			key += ".message"
+		}
 		if i, ok := rootIndex[key]; ok {
 			return i, nil
 		}
-		r, err := newWireRoot(u, unit, root)
+		r, err := newWireRoot(u, unit, root, message)
 		if err != nil {
 			return 0, err
 		}
@@ -360,25 +412,28 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		return len(roots) - 1, nil
 	}
 	seedRoot := map[*wireSeed]int{}
-	addSeed := func(name, unit, root, wirePath string) error {
+	addFormSeed := func(name, unit, root, wirePath string, message bool) error {
 		wire, err := os.ReadFile(wirePath)
 		if err != nil {
 			return err
 		}
-		ri, err := addRoot(unit, root)
+		ri, err := addRoot(unit, root, message)
 		if err != nil {
 			return err
 		}
-		s := &wireSeed{name: name, unit: unit, root: root, wire: wire, frame: frameWire(wire)}
+		s := &wireSeed{name: name, unit: unit, root: root, wire: wire, message: message, frame: frameWireForm(wire, roots[ri].entries)}
 		seeds = append(seeds, s)
 		seedRoot[s] = ri
 		return nil
+	}
+	addSeed := func(name, unit, root, wirePath string) error {
+		return addFormSeed(name, unit, root, wirePath, false)
 	}
 	if opts.replay != "" {
 		if opts.unit == "" || opts.root == "" {
 			return fmt.Errorf("--replay needs --unit and --root")
 		}
-		if err := addSeed(filepath.Base(opts.replay), opts.unit, opts.root, opts.replay); err != nil {
+		if err := addFormSeed(filepath.Base(opts.replay), opts.unit, opts.root, opts.replay, opts.message); err != nil {
 			return err
 		}
 	} else {
@@ -392,6 +447,22 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 				return err
 			}
 		}
+		// AND THE REFERENCE BOUND UNDER A CONNECTION TABLE
+		// (docs/SPEC-TABLES.md §3.3): the reference pass run with the table
+		// ANNOUNCED, so every reference is set to the entry count plus one and
+		// to the extremes the encoding can spell — which are malformed — and
+		// to the entry count itself, which is the last legal slot and must
+		// RESOLVE. A message has no trailer to mutate, so the whole of its
+		// attack surface is the body.
+		for _, msg := range m.Messages {
+			c, cerr := m.LookupConnection(msg.Connection)
+			if cerr != nil {
+				return cerr
+			}
+			if err := addFormSeed(msg.Name+"_message", c.Unit, msg.Root, msg.MessageWire, true); err != nil {
+				return err
+			}
+		}
 		// THE PINNED VECTORS, each a red this fuzzer already found. They ride
 		// last and unmutated, so a run that goes red on one names the vector
 		// rather than a mutant index.
@@ -400,7 +471,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 			return err
 		}
 		for _, v := range vecs {
-			if err := addSeed(v.name, v.unit, v.root, v.file); err != nil {
+			if err := addFormSeed(v.name, v.unit, v.root, v.file, v.message); err != nil {
 				return err
 			}
 			seeds[len(seeds)-1].vector = true
@@ -538,8 +609,12 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if opts.replay != "" {
 		// replay sends the one mutant the file holds and nothing else, so the
 		// enumerated/random split has nothing to say about it
-		fmt.Printf("wire-fuzz: replay of %s over %s.%s, %d mutant, 0 divergences, %.1f s\n",
-			opts.replay, opts.unit, opts.root, total, elapsed.Seconds())
+		form := "file"
+		if opts.message {
+			form = "message"
+		}
+		fmt.Printf("wire-fuzz: replay of %s over %s.%s as a %s, %d mutant, 0 divergences, %.1f s\n",
+			opts.replay, opts.unit, opts.root, form, total, elapsed.Seconds())
 		return nil
 	}
 	rate := float64(total) / elapsed.Seconds()
@@ -585,18 +660,28 @@ func wireFailure(opts wireFuzzOptions, mut *wireMutant, passed int, verdict, det
 		bytesLine = fmt.Sprintf("\n  mutant sha256 %x, too large to print: reproduce with --seed %d and read %s",
 			sum, opts.seed, opts.failed)
 	}
-	msg := fmt.Sprintf("FAILED after %d mutants: %s\n  corpus seed %s (%s.%s), pass %s #%d, run seed %d, mutant of %d bytes written to %s%s\n%s\n  replay: %s wire-fuzz --driver %q --replay %s --unit %s --root %s",
+	// a MESSAGE seed's mutant is a form-2 wire, and a replay that read it as a
+	// file would read another wire entirely (docs/SPEC-TABLES.md §3.3)
+	form := ""
+	if mut.seed.message {
+		form = " --message"
+	}
+	msg := fmt.Sprintf("FAILED after %d mutants: %s\n  corpus seed %s (%s.%s), pass %s #%d, run seed %d, mutant of %d bytes written to %s%s\n%s\n  replay: %s wire-fuzz --driver %q --replay %s --unit %s --root %s%s",
 		passed, verdict, mut.seed.name, mut.seed.unit, mut.seed.root, mut.pass, mut.index, opts.seed, len(mut.data), opts.failed,
-		bytesLine, strings.TrimRight(detail, "\n"), os.Args[0], opts.driver, opts.failed, mut.seed.unit, mut.seed.root)
+		bytesLine, strings.TrimRight(detail, "\n"), os.Args[0], opts.driver, opts.failed, mut.seed.unit, mut.seed.root, form)
 	return fmt.Errorf("%s", msg)
 }
 
 // wireVector is one pinned red, as the index names it.
 type wireVector struct {
-	name string
-	unit string
-	root string
-	file string
+	// message marks a vector that is a MESSAGE rather than a file
+	// (docs/SPEC-TABLES.md §3.3): its references resolve against the unit's
+	// announced table, so the form is part of what the index has to say.
+	message bool
+	name    string
+	unit    string
+	root    string
+	file    string
 }
 
 // readWireVectors reads the pinned-vector index. An ABSENT index is an empty
@@ -620,10 +705,15 @@ func readWireVectors(path string) ([]wireVector, error) {
 			continue
 		}
 		f := strings.Fields(line)
-		if len(f) != 4 {
-			return nil, fmt.Errorf("%s:%d: a vector is <name> <unit> <root> <file>", path, i+1)
+		message := false
+		switch {
+		case len(f) == 4:
+		case len(f) == 5 && f[4] == "message":
+			message = true
+		default:
+			return nil, fmt.Errorf("%s:%d: a vector is <name> <unit> <root> <file> [message]", path, i+1)
 		}
-		out = append(out, wireVector{name: f[0], unit: f[1], root: f[2], file: f[3]})
+		out = append(out, wireVector{name: f[0], unit: f[1], root: f[2], file: f[3], message: message})
 	}
 	return out, nil
 }

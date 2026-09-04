@@ -154,6 +154,7 @@ One process per surface, so a runtime starts once rather than once per case.
 | surface | for each | the driver writes | the harness compares against |
 |---|---|---|---|
 | `wire` | `instance` | Load the wire file, Save, the bytes | the wire golden |
+| `message` | `message` | AnnounceRead the connection's announcement, LoadMessage the message-form wire against it, SaveMessage, the bytes | the message-form golden |
 | `report` | `report` | Load the wire file, the report as `u,k,c,d,m\n` | `reports.txt` |
 | `json-read` | `instance` | FromJson `json/<name>.json`, Save, the bytes | the wire golden |
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
@@ -169,6 +170,17 @@ One process per surface, so a runtime starts once rather than once per case.
 
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
+
+**`message` IS THE ONE SURFACE THAT READS TWO FILES**, because a message's id
+table is somewhere else (docs/SPEC-TABLES.md §3.3): the CONNECTION's
+announcement carries it, the driver reads that first into one direction's
+table, and the message resolves against it. The manifest's `connection` line
+names the announcement and the `message` line names the pair of wires, so the
+driver joins the two by key and never derives a table of its own. The C++
+reference answers it and the eight ports print ABSENT, which is the wire form's
+own absence one grain up: a port carries the FILE form alone, and its
+`LoadMessage`, `MeasureMessage` and `SaveMessage` are the follow-on PORTING.md
+M20 already registers.
 
 **`cook-write` IS THE ONE SURFACE WHERE A LANGUAGE WRITES AN ACCELERATOR RATHER
 THAN READING ONE, and the expectation is the TOOL's file.** Every other cook
@@ -267,8 +279,8 @@ shared file edited.
 **THE ELIXIR LEG's shape, because its cost is all start-up.** Its driver's own
 modules are compiled to `.beam` WITH the unit corpus rather than at every start:
 an `.exs` compiled per invocation cost 0.4 s on top of the BEAM's own 0.26 s
-boot, twelve times over. The leg answers all twelve surfaces in 5.6 s, and none
-of that is the cases.
+boot, twelve times over. The leg answers all twelve surfaces it carries in
+5.6 s, and none of that is the cases.
 
 The reference leg is `cpp`, and the harness sorts it first: `make conformance-pin`
 takes the cook dumps, the block row dumps and both forgery batteries' offsets
@@ -309,7 +321,7 @@ driver is.
 
 | direction | what | when |
 |---|---|---|
-| in | `u32` roster count, then per root: `u16 n`, the unit key, `u16 n`, the root table's name | once, first |
+| in | `u32` roster count, then per root: `u16 n`, the unit key, `u16 n`, the root table's name, `u8` the FORM | once, first |
 | out | one byte per roster entry: `1` when this leg has a codec for it, else `0` | once, in reply |
 | in | per mutant: `u32` roster index, `u32` length, the bytes | until EOF |
 | out | per mutant: `u8 loaded`; `i32 unknown, kind_mismatch, clamped, duplicate`; `u8 malformed`; `i64 measure`; `i64 saved`, then that many bytes | one reply per mutant, flushed before the next is read |
@@ -330,6 +342,15 @@ driver is.
   ZERO bytes is the one exception to the sizing: it is allocated at one byte,
   because `malloc(0)` may answer null and null is how a leg reports an
   allocation that failed.
+- **The FORM is the wire's own byte** (docs/SPEC-TABLES.md §3, §3.3): `1` is a
+  file and `2` is a message, and the two are separate roster entries over one
+  root, because they are two readers. A MESSAGE mutant resolves against the
+  CONNECTION's announced table, and the leg derives that table from its OWN
+  unit's announcement, the compile-time constant its backend emits, read
+  through the same `AnnounceRead` a receiver uses. The vocabulary is a pure
+  function of the build version, so both sides derive the same table and the
+  roster carries no announcement. A leg with no message codec answers `0`
+  for that entry, exactly as it does for a root it cannot name.
 - **A root the leg cannot name is a `0` in the roster and nothing more**: the
   harness never sends it a mutant, and the line it prints says how many seeds
   were absent. A port with no variable class registers its fixed roots and is
@@ -401,7 +422,7 @@ shape the contract allows and what puts its row among the fastest. A sixth leg
 cost the whole run less than the run's own spread across three repeats.
 
 The DART leg is AOT-COMPILED for exactly that reason: `dart run` would pay a JIT
-start-up per surface, and the leg answers all twelve out of one binary —
+start-up per surface, and the leg answers all twelve it carries out of one binary,
 thirteen execs of something that starts in milliseconds, which is what puts its
 row among the native legs rather than beside the C# one.
 

@@ -2388,8 +2388,8 @@ schema build-version [--facts] [dir|files...]  // the cook/block id, and the tex
 schema tables-baseline [--update --reason "..."] [--verbose] [dir|files...]
                                                // the table wire's evolution gate (SPEC-TABLES.md §18)
 schema fmt        [--verbose] [dir|files...]   // the canonical formatter, and the only command that writes a schema file
-schema pack       --root <Table> --out <file> [--tolerate] [--verbose] <tree-dir> [dir|files...]
-schema unpack     --root <Table> --in  <file> [--one-file] [--tolerate] [--verbose] <tree-dir> [dir|files...]
+schema pack       --root <Table> --out <file> [--message [--announce <file>]] [--tolerate] [--verbose] <tree-dir> [dir|files...]
+schema unpack     --root <Table> --in  <file> [--announce <file>] [--one-file] [--tolerate] [--verbose] <tree-dir> [dir|files...]
                                                // a text tree to a table-wire file, and back (SPEC-TABLES.md §17)
 schema cook       --root <Table> --in  <file|tree-dir> --out <file>
                   [--byte-order little|big] [--attribution <file>] [--tolerate] [--verbose] [dir|files...]

@@ -9,10 +9,13 @@
 # gate for the fix that closed it, and its negative control is that fix
 # reverted: the run must go red on this vector's name.
 #
-#   <name> <unit> <root> <file>
+#   <name> <unit> <root> <file> [message]
 #
 # The file is a path from the repository root, so a vector may live beside the
-# corpus it was mutated from.
+# corpus it was mutated from. The trailing `message` marks a vector that is a
+# MESSAGE and not a file (docs/SPEC-TABLES.md §3.3): its references resolve
+# against the unit's announced table, so the FORM is part of what the index has
+# to say about it.
 
 # THE COUNT WHOSE OWN SPELLING RUNS PAST THE BODY IT IS FRAMED BY (§3, §4). An
 # array body's `L` of 2 is the shortest that carries a header at all, being the
@@ -48,3 +51,17 @@ stream_count_past_body streamdemo Feed testdata/wire/tables/fuzz-vectors/stream_
 # each refusal returns rather than recursing away. Its three negative controls
 # are the two guards reverted and a counter added on the load path.
 pointer_self_cycle graphdemo Scene    testdata/wire/tables/fuzz-vectors/pointer_self_cycle.bin
+
+# A NODE RECORD OF A TYPE NO POINTER BELOW THIS ROOT NAMES (§3.1, §6.5, §3.3).
+# The message form is what makes this reachable: a connection's table announces
+# every table's name id whether or not a pointer names it, so a mutated node
+# record can claim a type the closure HAS and the root can never point at. In
+# graphdemo that type is Layer, which Scene nests by value and nothing points
+# at. The reference gives such a record no region storage and skips its body,
+# counting one unknown, which is §3.1's rule for a type id this reader cannot
+# name. The engine placed it, decoded it, and counted what was inside: four
+# unknown against the reference's two, and a region sixteen bytes wider. Found
+# by the random pass at mutant 113542 of seed 24845619678, on the message form's
+# own landing (#530). The fix is ir.PointerReachable, in the engine's node
+# table and in the fuzzer's own region arithmetic.
+message_node_type_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/message_node_type_unpointed.bin message

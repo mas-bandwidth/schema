@@ -7,6 +7,22 @@ func init() {
 	define(Cpp,
 		// the shared surface both backends define per unit
 		Name{Name: "TableReport", What: "the read report — the permissive contract's ledger"},
+		// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3), claimed whenever a unit
+		// declares a table, on the standing rule every runtime name here
+		// follows: a name free today must not become a collision the day a
+		// build starts speaking the form. The connection's own table, the
+		// vocabulary of refusal reasons, and the three unit-scope entry
+		// points, whose announcement is a compile-time constant of the unit.
+		Name{Name: "TableVocabulary", What: "one direction of one connection's announced id table"},
+		Name{Name: "TableMessageReason", What: "why a read was refused, by name — the message path's vocabulary, not the cooked form's (§7.4)"},
+		Name{Name: "newer_form", What: "a form byte this reader does not carry (§3)"},
+		Name{Name: "no_vocabulary", What: "no table for this connection"},
+		Name{Name: "second_announcement", What: "a second announcement on a connection: it sets nothing and the connection closes"},
+		Name{Name: "vocabulary_too_large", What: "an announcement above the receiver's declared bound"},
+		Name{Name: "message_form_as_file", What: "a form 2 wire where a FILE was expected"},
+		Name{Name: "Announce", What: "the unit's announcement, written into the caller's buffer (§3.3)"},
+		Name{Name: "AnnounceMeasure", What: "the announcement's byte count, a constant of the unit"},
+		Name{Name: "AnnounceRead", What: "read an announcement into one direction's table"},
 		Name{Name: "TableWriter", What: "the wire writer over the caller's buffer"},
 		Name{Name: "TableReader", What: "the wire reader over the caller's buffer"},
 		Name{Name: "TableTypeInfo", What: "a table's reflection descriptor"},

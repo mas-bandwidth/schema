@@ -2,7 +2,6 @@ package tablewire_test
 
 import (
 	"encoding/binary"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -310,6 +309,9 @@ func TestRepeatedEntryIsMalformed(t *testing.T) {
 
 // §3: a FORM BYTE this reader does not know is a named refusal and never
 // damage, whatever else is wrong with the file — the form byte is read FIRST.
+// Form 2 is the MESSAGE form and rides here too: a message stored on its own
+// is not readable, because its table is somewhere else, so a FILE reader
+// handed one refuses by name (docs/SPEC-TABLES.md §3.3).
 func TestUnknownFormIsARefusal(t *testing.T) {
 	m := model(t)
 	inst := place(t, m, "GlobalSettings", `{ "tick_rate": 90 }`)
@@ -324,7 +326,7 @@ func TestUnknownFormIsARefusal(t *testing.T) {
 		back := m.New(m.Lookup("GlobalSettings"))
 		var r tabletext.Report
 		ok, err := tablewire.Decode(m, back, damaged, &r)
-		if _, refused := errors.AsType[*tablewire.FormRefusal](err); !refused {
+		if !tablewire.Refused(err) {
 			t.Fatalf("form %d: expected a named refusal, got %v", form, err)
 		}
 		if ok || !r.Silent() {

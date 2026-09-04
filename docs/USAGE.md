@@ -1556,6 +1556,96 @@ every stored file, and `was` does not cover it: `was` preserves an identity,
 not a value. Change a default the way you would change data, or add a new
 field and leave the old one alone.
 
+### The message form: one id table a connection
+
+A saved table carries its own id table at the end, and that is right for a
+file: a config bin naming forty ids across ten thousand fields pays eight bytes
+an id once and spends one byte a field header. A four-field login is the
+opposite shape. Its vocabulary is close to its field count, and the table costs
+48 bytes of a 106-byte message.
+
+**Form byte `2` moves the table one level up, to the connection.** A peer
+announces its unit's whole vocabulary once, as an ordinary file, and every
+message after it is the form byte and the root body alone (SPEC-TABLES.md
+§3.3). Nothing else about the wire moves: the body is framed the same way,
+elision, defaults, the read report and every tolerance rule are what they were,
+and only where the ids live is different.
+
+```cpp
+#include "BackendTable.h"
+
+// the SENDER, once a connection: the announcement is a compile-time constant
+// of the unit, so this is a memcpy and not a walk
+std::vector<uint8_t> announcement( backenddemo::AnnounceMeasure() );
+backenddemo::Announce( announcement.data(), (int64_t) announcement.size() );
+send( announcement );
+
+// and every message after it
+backenddemo::LoginRequest login;
+login.player_id = 0x5c0ffee5;
+int64_t size = backenddemo::LoginRequestMeasureMessage( login );
+std::vector<uint8_t> buffer( size );
+backenddemo::LoginRequestSaveMessage( login, buffer.data(), size );
+send( buffer );
+```
+
+```cpp
+// the RECEIVER holds ONE table a direction for the life of the connection.
+// The table BORROWS the announcement's bytes rather than copying them, so
+// `first` has to outlive it: keep the announcement beside the connection.
+backenddemo::TableVocabulary vocabulary;
+backenddemo::TableReport report;
+if ( !backenddemo::AnnounceRead( vocabulary, first.data(), (int64_t) first.size(), &report ) )
+{
+    // report.reason names it: second_announcement, vocabulary_too_large,
+    // message_form_as_file or newer_form. A refused announcement sets NO
+    // table, and every message on that connection is refused after it.
+}
+
+backenddemo::LoginRequest received;
+if ( !backenddemo::LoginRequestLoadMessage( received, vocabulary, wire, wire_bytes, &report ) )
+{
+    // report.refused with reason no_vocabulary is a message that arrived
+    // before the announcement. Nothing was decoded, no counter moved, and
+    // report.malformed did NOT fire: it is a refusal, not damage.
+}
+```
+
+**What you get.** The three backend messages measured on schema#523 go from
+106, 273 and 104 bytes to 58, 225 and 48, which is 45%, 18% and 54% off, and
+from 10, 43 and 10 to 2, 27 and 2 when every field sits at its declared
+default. The announcement costs 252 bytes for that unit, so one round of the
+three messages pays for it partway into the second round.
+
+**What it asks of you.** A connection is one ordered, reliable byte stream in
+each direction: a TCP or WebSocket connection, or one stream of QUIC, counted
+per channel. A restart is a new connection with empty tables, and nothing is
+cached across connections. The announcement rides FIRST and exactly once. A
+second one on a connection is refused by name and the connection closes, and a
+receiver holds a table for the direction it reads and another for the one it
+writes. WHICH root a message is, and WHERE it ends, are yours: put a
+discriminator or a length in front of the bytes, or wrap the message set in one
+union root (§2.6).
+
+A stateless request-response transport is out of scope. An HTTP request that
+shares no state with the last one has nowhere to put an announcement, so the
+announcement would ride every request and cost more than the table it replaced.
+Write the file form there, which carries its own table and needs no connection.
+
+**The tool speaks both forms.** `schema pack --message --announce Conn.bin`
+writes the message and the unit's announcement beside it, and `schema unpack
+--announce Conn.bin` reads one back:
+
+```
+$ schema pack   --root LoginRequest --message --announce backend_conn.bin \
+                --out login.bin login/ tables/backend
+$ schema unpack --root LoginRequest --announce backend_conn.bin \
+                --in login.bin login/ tables/backend
+```
+
+Today the C++ backend and the tool carry form `2`, and the other eight targets
+carry the file form alone.
+
 ### Nesting: a root table IS a format
 
 A field whose type is another table nests it by value; bounded arrays of

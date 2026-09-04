@@ -6977,8 +6977,12 @@ static void test_form_byte_refusals()
     const int64_t bytes = tblv1::CfgSave( src, wire, sizeof( wire ) );
     CHECK( bytes > 0 );
 
-    const uint8_t forms[3] = { 0, 2, 0xFF };
-    const char * names[3] = { "form_zero", "form_two", "form_ff" };
+    // THE FORMS NO READER KNOWS. Form 2 is not among them: it is the MESSAGE
+    // FORM (docs/SPEC-TABLES.md §3.3), a form this build carries, and reading
+    // one where a FILE was expected is its own refusal under its own reason,
+    // pinned by the message_as_file row and by test_message_form_refusals.
+    const uint8_t forms[3] = { 0, 3, 0xFF };
+    const char * names[3] = { "form_zero", "form_three", "form_ff" };
     for ( int i = 0; i < 3; i++ )
     {
         static uint8_t forged[256];
@@ -6989,7 +6993,7 @@ static void test_form_byte_refusals()
         tblv1::Cfg out;
         tblv1::TableReport report;
         CHECK( tblv1::CfgLoadVerdict( out, forged, bytes, &report ) == tblv1::TableOpenRefused );
-        CHECK( report.refused );
+        CHECK( report.refused && report.reason == tblv1::newer_form );
         CHECK( !report.malformed );
         CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
         CHECK( report.clamped == 0 && report.duplicate == 0 );
@@ -8625,6 +8629,8 @@ static void test_blob_golden_reload()
     reload_blob_golden( "blob_str16" );
 }
 
+#include "message_form.h"
+
 int main()
 {
     test_golden_wire();
@@ -8757,6 +8763,17 @@ int main()
     test_blob_json();
     test_blob_reflection();
     test_json_fuzz_tokenizer();
+
+    // THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3)
+    test_message_form_goldens();
+    test_message_form_reload();
+    test_message_form_wide_vocabulary();
+    test_message_form_pointered();
+    test_message_form_two_peers();
+    test_message_form_refusals();
+    test_message_form_announcement_check();
+    test_message_form_reserved_id_in_a_body();
+    test_message_form_reference_bound();
 
     if ( failures > 0 )
     {

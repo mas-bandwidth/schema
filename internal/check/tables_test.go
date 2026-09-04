@@ -1191,15 +1191,20 @@ table Holder { history [..2]V }
 	}
 }
 
-// THE TWO RESERVED-ID REFUSALS, AND THE COLLISION REFUSALS BESIDE THEM
-// (docs/SPEC-TABLES.md §3, §5, §11). No declarable name hashes to the reserved
-// node-table id, or to another name's id at sixty-four bits, so each control
+// THE THREE RESERVED-ID REFUSALS, AND THE COLLISION REFUSALS BESIDE THEM
+// (docs/SPEC-TABLES.md §3, §3.3, §5, §11). No declarable name hashes to either
+// id the language holds back — the node table's 0xFFFFFFFFFFFFFFFF or the
+// announcement's build version 0xFFFFFFFFFFFFFFFE — or to another name's id at
+// sixty-four bits, so each control
 // PLANTS THE COLLISION BELOW THE HASH — the compiler's test hook returns the
 // colliding value for one named spelling and nothing for any other. Without the
 // hook there is no input that could turn these refusals red, and a refusal no
 // input can reach is a refusal nothing watches.
 func TestTheIdRefusalsUnderAPlantedCollision(t *testing.T) {
 	const reserved = uint64(0xFFFFFFFFFFFFFFFF)
+	// the second id the language holds back: the ANNOUNCEMENT's build version
+	// (docs/SPEC-TABLES.md §3.3), refused on exactly the node table's terms
+	const reservedBuildVersion = uint64(0xFFFFFFFFFFFFFFFE)
 	cases := []struct {
 		name  string
 		plant map[string]uint64
@@ -1210,19 +1215,37 @@ func TestTheIdRefusalsUnderAPlantedCollision(t *testing.T) {
 			name:  "a field name that takes the reserved node-table id",
 			plant: map[string]uint64{"head": reserved},
 			src:   "package t\ntable Tab { head int32 }\n",
-			want:  "takes the one id the language holds back",
+			want:  "takes one of the two ids the language holds back",
 		},
 		{
 			name:  "a `was` alias that takes the reserved node-table id",
 			plant: map[string]uint64{"old_head": reserved},
 			src:   "package t\ntable Tab { head int32 | was = \"old_head\" }\n",
-			want:  "takes the one id the language holds back",
+			want:  "takes one of the two ids the language holds back",
 		},
 		{
 			name:  "a table name that takes the reserved node-table id",
 			plant: map[string]uint64{"Tab": reserved},
 			src:   "package t\ntable Tab { x int32 }\n",
-			want:  "takes the one id the language holds back",
+			want:  "takes one of the two ids the language holds back",
+		},
+		{
+			name:  "a field name that takes the reserved build-version id",
+			plant: map[string]uint64{"head": reservedBuildVersion},
+			src:   "package t\ntable Tab { head int32 }\n",
+			want:  "takes one of the two ids the language holds back",
+		},
+		{
+			name:  "a `was` alias that takes the reserved build-version id",
+			plant: map[string]uint64{"old_head": reservedBuildVersion},
+			src:   "package t\ntable Tab { head int32 | was = \"old_head\" }\n",
+			want:  "takes one of the two ids the language holds back",
+		},
+		{
+			name:  "a table name that takes the reserved build-version id",
+			plant: map[string]uint64{"Tab": reservedBuildVersion},
+			src:   "package t\ntable Tab { x int32 }\n",
+			want:  "takes one of the two ids the language holds back",
 		},
 		{
 			name:  "two tables of one closure colliding on the type id",
