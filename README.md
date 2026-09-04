@@ -133,6 +133,10 @@ whatever terms you choose, including in closed-source projects. That grant is
 intentional and permanent. If you modify the compiler and run it as a service
 or distribute it, the AGPL's terms apply to those modifications.
 
+Contributing is a separate matter. Contributions are made under a Contributor
+Assignment Agreement, described in
+[CONTRIBUTING.md](docs/CONTRIBUTING.md#the-contributor-assignment-agreement).
+
 ## Author
 
 Glenn Fiedler and Rowan Claude, Más Bandwidth LLC.
