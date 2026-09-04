@@ -255,9 +255,10 @@ pipeline step; player saves hold state, which has no weekly default.
 
 Three mechanisms judge an edit, and each sees what the others cannot:
 
-- **The read report** says what a *reader* can tell happened: four counters,
-  `unknown`, `kind_mismatch`, `clamped` and `duplicate`, and a `malformed`
-  flag, filled on every load and never fatal on data from another build. A
+- **The read report** says what a *reader* can tell happened: five counters,
+  `unknown`, `kind_mismatch`, `widened`, `clamped` and `duplicate`, and a
+  `malformed` flag, filled on every load and never fatal on data from another
+  build. A
   caller that opts into retain-unknown reads two more on the same struct
   (SPEC-TABLES.md §6.6), and they report on retention rather than on the read.
 - **The baseline** says what the *compiler* refuses to let you do to data
@@ -283,7 +284,8 @@ does today.
 | a string, bytes or flags default changed | silent | refuses once #396 lands; not declarable today | moves |
 | a bound raised or lowered, a capacity or array bound grown | `clamped` where a stored value exceeds it | passes; warns on a shrink | moves |
 | a range tightened | `clamped` | warns | moves |
-| a field's kind changed (`int32`→`int64`, `T`→`*T`, `string`→`bytes`, `bits(8)`→`bits(9)`) | `kind_mismatch`; the value reads as the default | **refuses** | moves |
+| a field's kind changed (`T`→`*T`, `string`→`bytes`, `int64`→`int32`) | `kind_mismatch`; the value reads as the default | **refuses** | moves |
+| a field's kind WIDENED (`int32`→`int64`, `uint8`→`uint32`, `bits(8)`→`bits(9)`, `float32`→`float64`) | `widened`, and the value decodes exactly (SPEC-TABLES.md §4) | **refuses**: the tolerance runs one way, and the OLD build reading the new file still kind-mismatches | moves |
 | `T`→`?T`, `?T`→`T` | nothing: one framing. An old file's elided default reads as *absent* under `?T` | passes | moves (the presence flag is storage) |
 | an enum variant added or removed | `unknown` where a stored name is gone | passes; warns on a removal | moves, and the protocol id with it where a `type` reaches the enum |
 | an enum variant reordered | nothing | passes | moves, and the protocol id with it where a `type` reaches the enum |
@@ -316,7 +318,12 @@ data from another build. `unknown` is the ordinary sound of evolution and
 fires on every cross-version load by design. `duplicate` counts a REPEATED
 KEY, and it has one source on each side: a repeated JSON key in the text
 form, and a MAP's repeated key on the wire, which is the one wire event that
-raises it (SPEC-TABLES.md §2.8, §4). `kind_mismatch`, `clamped` and `malformed` are damage or a decision,
+raises it (SPEC-TABLES.md §2.8, §4). `widened` is the one counter that names
+NO LOSS: an integer kind read into a wider one of the same signedness, or an
+`f32` into an `f64`, decodes exactly, and the count says the bytes were not
+the shape this reader declares rather than that anything was dropped. It fires
+on the NEW build reading the OLD file, and never the other way, which is the
+whole shape of the pattern below. `kind_mismatch`, `clamped` and `malformed` are damage or a decision,
 and a game that alarms on those three and logs the others has the severity
 split it needs. A tool that wants to know *which* field was clamped re-walks
 the file with the descriptors, the per-field facts every table's generated
@@ -490,12 +497,15 @@ drift is a build error on both generated sides before it is anything else.
 ## The kind space and the wire form
 
 Every field on the table wire carries a kind byte from a closed set: bool,
-the integers by width and sign, the floats, string, table, array, union,
-keyed array, pointer index, the 128-bit integers, the fixed-point widths, a
+the integers by width and sign, the floats, string, wstring, table, array,
+union, keyed array, pointer index, the 128-bit integers, the fixed-point
+widths, a
 kind of its own for enums so that an enum and its raw integer can never be
 confused on the wire, the escape kind, and the payload-free kind a union arm
 takes. **A kind is spent only to close a silent
-edit**; blocks spend none.
+edit**; blocks spend none. One number past the set is RESERVED BY NAME and
+never written, `34` for `float16` (SPEC.md §4.10), so the construct a later
+major adds has its number written down before it is built.
 
 **A reader that does not know a kind cannot skip it.** That is the nature of
 a closed set, and it is why a new kind is a wire change. Two rules make that
@@ -744,13 +754,20 @@ against and a stale binary will contradict the current page.
 The features above answer most of what a live game does to a schema over
 years, and several of the answers are patterns rather than syntax.
 
-- **Widen a field.** There is no conversion path and no compatible-pairs
-  list: a changed kind is a kind mismatch, and old data reads as the default,
-  counted, never truncated, never misread. What is free: growing an array
-  bound, a string or bytes capacity, loosening a range. What is not: `int32`
-  to `int64`. The pattern: `gold2 ?int64` beside `gold`; old saves read
-  `gold2` absent, the load shim copies `gold` across, new saves write it
-  present; retire `gold` after the horizon.
+- **Widen a field.** A NEW build reads an OLD file's narrower integer of the
+  same signedness, and its `float32` as a `float64`, exactly, counting
+  `widened` (SPEC-TABLES.md §4). What is free besides: growing an array bound,
+  a string or bytes capacity, loosening a range. **What the widening does not
+  do is run backwards**, and that is the whole of the pattern: the OLD build
+  meets `int64` where it declares `int32`, which is a narrowing, and it reads
+  the default and counts `kind_mismatch`. So `int32` to `int64` is a one-way
+  edit, safe the moment every reader is on the new build and lossy for every
+  reader that is not. Flip the whole fleet first and the edit is one line.
+  Where a reader can still be old, the pattern is unchanged: `gold2 ?int64`
+  beside `gold`, old saves read `gold2` absent, the load shim copies `gold`
+  across, new saves write it present, retire `gold` after the horizon. Nothing
+  widens across the signed and unsigned ladders, out of the fixed-point kinds,
+  or from a `float64` back to a `float32`.
 - **Split, merge or move a field.** Identity is (table, name); nothing
   carries a value across that boundary. Keep the old fields declared through
   the migration horizon, shim on load, retire after. Five years of shims is
@@ -807,8 +824,15 @@ still open.
   `kind_mismatch`, `clamped` or `malformed` still loses what those name on a
   rewrite, so the never-clobber condition keeps all three beside
   `retain_lost`.
-- **There is no widening path**, by choice: a whitelist of compatible pairs
-  silently misdecodes everything outside the list.
+- **The widening path runs FORWARD only.** A new build reads an old file's
+  narrower integer of the same signedness, and its `float32` as a `float64`,
+  exactly, counting `widened`. An OLD build reading a NEW file gets nothing:
+  the narrowing is a `kind_mismatch` and the field reads its default. A rolling
+  deploy that widens a field therefore loses that field on every peer still
+  running the old build, and the baseline refuses the edit until a `--reason`
+  says the fleet is flipped. The pairs are the two integer ladders and the one
+  float rung and no others (SPEC-TABLES.md §4), which is what keeps the rest of
+  the kind space refusing loudly instead of guessing.
 - **A variant or union arm reordered or renamed is a lockstep redeploy**
   wherever a `type` reaches the declaration, a spelling fix included: those
   names ride in the projection in declaration order, because a reorder changes
@@ -831,9 +855,11 @@ still open.
 - **A field of a `type` that a table reaches cannot be renamed safely
   today** (#478): `was` is refused there, and a bare rename orphans every
   stored value.
-- **`bits(N)` widens freely only within a storage width**: `bits(8)` to
-  `bits(9)` is a kind change and loses every stored value on read; `bits(9)`
-  to `bits(16)` is free.
+- **`bits(N)` grows freely, and across a storage width it now costs a
+  counter rather than the values**: `bits(9)` to `bits(16)` is one kind and is
+  silent, and `bits(8)` to `bits(9)` moves kind `6` to kind `7`, which the
+  widening rule decodes exactly and counts `widened`. Old builds reading the
+  new file still lose it, on the row above.
 - **`string(N)` and `bytes(N)` are different kinds** on the table wire though
   the packet wire treats them as one construct; respelling one as the other
   is a kind change.
@@ -862,8 +888,16 @@ still open.
 - **Two 64-bit hex ids sit side by side in every unit that declares a
   table**, and nothing at the type level stops a build engineer keying a cook
   cache on the protocol id. Key it on the build version, in the triple.
-- **`Open` refuses in silence.** A wrong-version, corrupt or truncated cook
-  returns null; only the tool's `uncook` names the mismatch. Log the null.
+- **`Open` NAMES its refusal, and a caller that ignores the name is back
+  where it was.** A wrong-version, foreign-order, truncated or corrupt cook
+  returns null and fills a `TableOpenReason` beside it (SPEC-TABLES.md §7),
+  and `BlockOpen` answers the same enum. The parameter is optional in every
+  target so that no existing call site had to move, which means the silence is
+  now the CALLER's choice rather than the design's: a fallback that logs the
+  reason tells a build engineer whether to re-cook, to fix a cross-endian
+  pipeline, to re-download, or to fix its own unaligned pointer, and one that
+  passes nothing learns none of it. `unaligned_base` is the value worth
+  checking first, because it is the one the caller caused.
 - **Tiny messages pay for 64-bit identity.** A file carries each distinct id
   once at eight bytes, so a three-field message is about 45 bytes; a stream
   that wants small same-build messages is a `type` stream.
@@ -910,6 +944,11 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #524: the reachability-scoped wire-shape projection, and the negative
   control on the walk that a missed edge must turn red.
 - #525: retain-unknown, the two report counters, and the conformance rows.
+- #522: the `wstring` kind `33` on the id-table wire, `*wstring`, the cooked
+  storage, the text row and the table-form goldens (SPEC.md §4.12).
+- #523: the `widened` counter and its two integer ladders, the
+  `TableOpenReason` enum on `Open` and `BlockOpen`, and `//` and `/* */`
+  comments accepted by the text form's reader.
 - #439 and #460: the standard's own contradictions on `T`→`*T`, the flags
   row, writer misuse, the declaration-rename row, the count of silent edits,
   and the pages that still say schema is not an evolution system.

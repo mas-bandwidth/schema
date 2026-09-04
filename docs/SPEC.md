@@ -743,7 +743,8 @@ FloatExpr   = float expression over float literals, int literals and const names
     generated `<Union>Type` tag follows too).
   - **`flags Name { ... }`** — each variant names one bit, assigned densely
     from bit 0 in declaration order, **up to 64**; **storage is `uint64` in
-    every target**; no implicit `None` — the empty mask is 0 and needs no
+    every target, at the full width and never at the declared variant
+    count's**; no implicit `None` — the empty mask is 0 and needs no
     name. Wire: **W raw bits, W = variant count** (`| max = K` widens to K
     bits); every W-bit pattern is legal — a mask field's domain is all
     subsets. **More than 64 variants is a compile error** — one bit per
@@ -759,6 +760,20 @@ FloatExpr   = float expression over float literals, int literals and const names
     scope only, so a *field* named `flags` stays fully legal; declarations at
     file scope otherwise begin with reserved words, so one token of lookahead
     disambiguates.
+
+    **The full width is a VERSIONING decision, and the reason is worth
+    stating rather than reading as a convenience.** A mask rides on the table
+    wire as a raw `uint64`, kind `9` (SPEC-TABLES.md §3), so a build that
+    appended variants sends bits an older build has no name for. Full-width
+    storage is what lets that older build LOAD those bits, hold them, and
+    write them back on its next save unchanged: appended bits survive a read
+    and a rewrite. Storage derived from the declared variant count, the way
+    an `enum`'s is, would drop every bit above the older build's own last one
+    on the way in, and nothing could report it, because a mask is the wire's
+    one positional vocabulary and no counter can see a bit that is not there
+    (SPEC-TABLES.md §4.1). The cost is fifty-six bytes of storage nobody uses
+    in a three-variant declaration, and it buys the one property the
+    append-at-the-end law is worth having.
   - **The derived-range rule:** a field that indexes a declared set derives
     its range from the set, never restates it — both wires derive from the
     declaration; `min`/`max` are not valid on enum-family fields.
@@ -1610,6 +1625,22 @@ Pong may both name a field `sequence` because they are separate types;
   is an opt-in `[packed]` attribute on a type generating accessor-based
   storage — a generator-kind decision for a later pass, not a v1 wire
   construct.
+- **`float16`, DECLINED for this major, with kind `34` reserved by name.**
+  Half floats are a real want on a game's wire, and every route to them costs
+  more than the construct returns today. The storage is a language-level
+  problem before it is a wire one: C++ has no portable `_Float16`, C# has
+  `System.Half` only on modern targets, Go and Elixir have no half type at
+  all, and a generated struct that spells one differently in nine targets is
+  the layout identity SPEC-TABLES.md §20.3 asserts against. The wire half is
+  not the hard part and the conversion rules are: an `f32` to `f16` narrowing
+  rounds, and a rounding rule is a conformance surface in nine languages
+  before it is a feature. **The spelling a program uses today is `bits(16)`
+  with the conversion in application code**, which costs the same sixteen bits
+  on both wires, says exactly what it stores, and leaves the rounding where
+  the application can see it. **Kind `34` is held by name** in the table
+  wire's kind table (SPEC-TABLES.md §3) so that the number a later major
+  spends on half floats is the one already written down, and reserving it
+  costs no byte and no rule.
 - **Relative integers (`serialize_int_relative`) are out of scope for
   schema.** The construct belongs to the delta layer, and the delta layer is
   replicant's and serialize.pro's, where it sits beside the entropy coding
@@ -1721,11 +1752,24 @@ answer: no target traps, panics or aborts on a malformed payload.
 UTF-8 (§4.7) and `wstring(N)` refuses unpaired surrogates, both on the read
 path, both in all nine targets, and both terminal.
 
-**The packet wire carries `wstring(N)`, and the TABLE wire is the deferred
-half.** The id-table wire assigns wide text no kind, so a type holding a
-`wstring(N)` field is refused BY NAME inside a table closure until it does,
-and a map key stays `string(N)` or an integer kind
-(SPEC-TABLES.md §11 and §2.8). The protocol id needs no
+**BOTH WIRES CARRY `wstring(N)`, and they validate it differently on
+purpose.** The table wire gives wide text KIND `33`, `L` bytes holding `L / 2`
+UTF-16 code units two bytes each little-endian, with an odd `L` as framing
+damage and nothing else refused (SPEC-TABLES.md §3). Its unbounded twin is
+`*wstring`, a blob node under the reserved id `fnv1a64( "wstring" )`
+(SPEC-TABLES.md §2.5, §3.1), its storage is `char16_t[N + 1]` and an `int32`
+used length in code units (SPEC-TABLES.md §7.2), and its text form is a JSON
+string transcoded at the boundary (SPEC-TABLES.md §16.2). **What does NOT
+cross is the validation above.** A packet read is terminal, so it refuses an
+unpaired surrogate, a zero code unit and a group above `0xFFFF` and stops. A
+table read is tolerant, so it accepts every sixteen-bit unit into storage
+exactly as it accepts ill-formed UTF-8 into a `string(N)`, and the text form's
+writer answers with `U+FFFD` on the way out. The difference belongs to the two
+postures, not to the type: a reader that has somewhere to continue from and a
+report to fill does not need to refuse content, and one that has neither does.
+A `wstring(N)` MAP KEY is refused by name, the diagnostic naming `string(N)`,
+because `memcmp` over UTF-8 is a portable order and little-endian code units
+have none (SPEC-TABLES.md §2.8, §11). The protocol id needs no
 `ProjectionVersion` bump for any of this: a wstring field projects its
 capacity beside its kind (§3.1), and no unit could declare the construct
 before.
@@ -1805,6 +1849,30 @@ and `wstring-no-alignment-before-the-characters`, because their
 `buffer_size` of 1 and 2 sits below the N floor of 2. The no-alignment
 property loses nothing by it: the worked example's first group begins at bit
 3, so an align before the groups moves every byte after it.
+
+**The TABLE form's goldens take the same names with `-table` on them**, and
+they are the accepted set above and nothing else: `wstring-table-empty`,
+`wstring-table-single-basic-plane-character`,
+`wstring-table-accept-group-ffff`,
+`wstring-table-accept-just-below-the-surrogate-block`,
+`wstring-table-accept-just-above-the-surrogate-block`,
+`wstring-table-accept-surrogate-pair`,
+`wstring-table-accept-two-basic-plane-groups` and
+`wstring-table-accept-length-inside-a-five-character-buffer`, each the same
+text as its packet twin, each pinned as bytes under kind `33` and read back
+through the report. **The corpus's seventeen refusals do NOT carry over, and
+that is the point of naming them here.** Nine of them are the seven
+unpaired-surrogate vectors and the two group-above-`0xFFFF` vectors, and the
+table wire has no answer to give: a group above `0xFFFF` cannot be spelled in
+two bytes, and an unpaired surrogate is content this wire accepts. The three
+interior-null vectors are accepted here too. The two out-of-range length
+vectors become a CLAMP, `wstring-table-clamp-past-the-bound` and
+`wstring-table-clamp-splitting-a-surrogate-pair`, one `clamped` each. The
+three past-end vectors become the table wire's own framing damage, and the
+table form adds the two refusals that are its alone,
+`wstring-table-odd-length` and `wstring-table-length-past-the-body`, each one
+`malformed`. That accounting is the row's real content: **the same text on two
+wires, and a verdict table that differs by design rather than by omission.**
 
 Beside the corpus, the cross-language matrix is **owed** a `wstring(7)`
 field holding serialize.js's interop cases: empty, three basic-plane code

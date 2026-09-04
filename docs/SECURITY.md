@@ -47,12 +47,18 @@ the buffer. Specifically:
 - An array count, string length or bytes length past its declared bound that is
   not refused before it drives a copy or an allocation.
 - An enum value that is not a declared variant being accepted.
-- A text payload that is not well formed being accepted: malformed UTF-8 in a
+- A text payload that is not well formed being accepted ON THE PACKET WIRE:
+  malformed UTF-8 in a
   `string(N)`, or in a `wstring(N)` a code unit group above `0xFFFF`, an
   unpaired surrogate, or a zero group among the transmitted units. The rules
   are stated once in SPEC §4.7 and §4.12 and every target owes the same
   verdict, so a target that skips one is a divergence bug as well as an
-  acceptance bug.
+  acceptance bug. **The TABLE wire imposes no encoding on either text kind and
+  that is not a gap** (SPEC-TABLES §3): its read is tolerant rather than
+  terminal, the units land in storage as they arrive, and the text form
+  answers with `U+FFFD` on the way out. What IS in scope there is the framing:
+  a length past a declared bound, and an odd `L` on a kind `33` payload or a
+  `*wstring` blob, each of which must be refused before it drives a copy.
 - Any read that continues past the end of the stream instead of failing.
 - Integer overflow in a bit or byte count computed from wire data.
 - **Any divergence between the nine languages on the above** — if C++ refuses
