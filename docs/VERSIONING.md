@@ -1,33 +1,23 @@
 # Versioning
 
-```bash
-schema version
-schema id
-schema build-version --facts
-schema tables-baseline
-```
-
 If anything is going to be wrong with this library, it is going to be that we
 did not think something through for versioning. Serialization libraries do not
 die of slow code. They die in year three, when a save file written by a build
 nobody has anymore meets a build the writer never saw, and something that was
 promised on a page turns out not to be true in the bytes. This page is the
 promise, stated so that it can be checked. Every fact on it is one of three
-things: held by a test in the tree (a pinned *golden* the tests compare
+things: held by a test in the repository (a pinned *golden* the tests compare
 against, or a *negative control* that breaks the guarded thing and confirms
 the gate goes red), cited to the issue that will hold it, or wrong. There is
 no fourth category. A pull request that changes any fact here changes this
 page in the same pull request.
 
-The rules come from a small number of ideas, and a reader who holds the ideas
-can predict the rules, and can tell when a new rule would be wrong. That is why
-this page explains as well as lists.
-
 ## The promise
 
 The table wire is pre-release until 3.0.0. Before that release its files may
 change in a minor version, announced first, and the promises below are made
-at 3.0.0. The packet wire's promises hold today.
+at 3.0.0. The packet wire's promises hold today with two open holes in what
+its id can see, #462 and #463, named in its section below.
 
 1. **From 3.0.0, data written by any build reads in any other build of the
    same major, in either direction, and never crashes.** A table wire from a
@@ -35,21 +25,24 @@ at 3.0.0. The packet wire's promises hold today.
    difference lands in the read report; none is fatal.
 2. **Nothing is misdecoded.** A value is read as what it was written as, or
    it is skipped and counted. The edits the wire cannot report, the *silent
-   class*, are enumerated below and refused at compile time by a committed
-   baseline; the one the tree cannot refuse today, a retired name reused, is
-   #441.
+   class* (the bold cells in the table below), are refused at compile time by
+   a committed baseline, so commit one before the first build whose data
+   leaves the building; the one the repository cannot refuse today, a retired
+   name reused, is #441.
 3. **Identity is the name.** A field, an enum variant, a union arm and a
    table are identified on the table wire by the hash of their name. Add
    anywhere, remove, reorder. A rename that must keep its data declares the
-   old name with `was`, and a `was` moves nothing anywhere. `was` is a field
-   attribute today; tables (#396) and variants and arms (#442) get it before
-   3.0.0.
+   old name with `was`, and a `was` moves nothing anywhere. `was` is an
+   attribute of a table's own fields today; tables (#396), variants and arms
+   (#442), and the fields of a `type` that a table reaches (#478) get it
+   before 3.0.0.
 4. **Two ids and no third.** The *protocol id* versions the packet wire and
    is the only thing two peers compare before they talk. The *build version*
    versions the cooked and blocked forms and addresses every cooked asset. An
    edit inside a `table` body moves the build version and never the protocol
    id. An edit to a `type`, or to an enum, flags or union declaration, which
-   both wires share, moves both. A `was` rename moves neither.
+   both wires share, moves both, with the exception #462 closes: a reorder or
+   rename of variants moves neither today. A `was` rename moves neither.
 5. **Same-build forms match or refuse.** A cook or a block opens under
    exactly the build version that wrote it, by a header match, and otherwise
    refuses: `Open` returns null, and the tool's `uncook` names the mismatch.
@@ -61,18 +54,22 @@ at 3.0.0. The packet wire's promises hold today.
 7. **Ids are 64 bits, and the wire form is versioned.** Every id on the table
    wire is a 64-bit name hash, carried once per file in an id table; the
    file's first byte is the form version, so a reader that meets a later form
-   refuses by name rather than reading it as damage (#435).
+   refuses by name rather than reading it as damage (#435). A 2.x table file
+   is not a 3.0.0 table file: a studio already shipping on 2.x keeps its 2.x
+   binary, renders each file to text with it, and packs the text with 3.0.0.
+   The text form is keyed by names and carries no version, which is what makes
+   it the bridge.
 8. **Peers connect on the protocol id and may differ in build version.**
-   Table data crossing a connection between builds is the ordinary case, and
-   the read report is the witness.
+   Cooked assets are local on both sides, so a build-version difference is
+   not a connection question, and table data crossing a connection between
+   builds is the ordinary case.
 9. **A patch release never moves the protocol id or the build version's form,
    and never changes a byte under an unchanged id.** A minor may move either
    only together with the wire, announced first. A major is when your world
-   breaks.
-10. **This page moves with the facts.** A pull request that changes any fact
-    stated here changes this page in the same change. The one mechanical gate
-    on the page today is the evolution table's fixtures (#446); the rest is
-    review, and this sentence says so.
+   breaks. The cross-release gate that proves this is #463.
+10. **This page moves with the facts.** No mechanical gate reads this page
+    today; #446 adds one, the evolution table's fixtures, and the rest is
+    review.
 
 ## Two wires, two stories
 
@@ -91,10 +88,9 @@ The **table wire**, what `table` declarations produce, is self-describing and
 tolerant. Every field carries its identity and its kind; a reader skips what
 it does not know and defaults what it does not find. It costs bytes for that,
 deliberately: this is the wire for data that outlives the build that wrote it,
-on disk, in a database, or crossing a connection between builds. A
-five-year-old file reads in today's build, today's file reads in the
-five-year-old build, and each side learns exactly what it could not
-understand.
+whether on disk or crossing a connection between builds. A five-year-old file
+reads in today's build, today's file reads in the five-year-old build, and
+each side learns exactly what it could not understand.
 
 **Anything that outlives a build rides tables.** A replay recorded as packet
 streams dies with the first type edit; a replay recorded as tables reads for
@@ -113,7 +109,8 @@ source-text hash would produce spurious mismatches; hashing the compiler's
 internal structures could produce a spurious *match*, which is the dangerous
 direction. The projection is the thing in between, and it is versioned: its
 first line is `ProjectionVersion`, and bumping it moves every protocol id in
-existence.
+existence. `schema id` prints the id and `schema projection` prints the text
+it is taken over.
 
 Two things the projection must carry and does not yet, both open as defects:
 
@@ -122,7 +119,7 @@ Two things the projection must carry and does not yet, both open as defects:
   records only the variant count: reordering an enum or a flags declaration
   leaves the id unchanged, a spurious match. Variant names enter the
   projection in declaration order (#462); the consequence, that a variant
-  rename then moves the id, is priced by the deploy-together doctrine below.
+  rename then moves the id, is free under the redeploy rule below.
 - **The codec law.** A compiler change that alters the bytes a schema
   produces without changing its shape, such as a rounding rule, must move
   every id. The projection gains a wire-law version line (#463), and a
@@ -131,22 +128,21 @@ Two things the projection must carry and does not yet, both open as defects:
 
 **Same or refuse.** Two peers holding the same protocol id interoperate; two
 holding different ids refuse each other instead of misreading each other.
-Whether the id travels on the wire, in a connect token, a `const` field, or
-out of band, is the application's choice. There is no negotiation and no
+Whether the id travels on the wire, in a connect token, in a `const` field,
+or out of band, is the application's choice. There is no negotiation and no
 fallback, and everything downstream of the connection is simpler for it.
 
 **What the same-or-refuse rule costs, and who pays.** Every declaration in the
 unit contributes to the id, because a projection that guessed at reachability
 would fail in the dangerous direction. So any `type` edit moves the id, an
 unused helper type moves it, and so does any edit to an enum, flags or union
-declaration, even one that only tables reach: adding an item kind, a quest, an
-achievement to an enum is a protocol id move. The price of every id move is a
-coordinated redeploy of both ends. The recorded doctrine for this project's
-own games is that both sides of every connection redeploy together, always;
-cross-platform studios with certification lag ship both store builds dark
-behind a gate and flip the server when both have cleared. A studio that cannot
-force-update its clients is outside this model, and should know it before
-choosing the packet wire for anything long-lived.
+declaration, even one that only tables reach: adding an item kind or a quest
+to an enum is a protocol id move. The price of every id move is a coordinated
+redeploy of both ends. This project's own games redeploy both sides of every
+connection together, always; cross-platform studios with certification lag
+ship both store builds dark behind a gate and flip the server when both have
+cleared. A studio that cannot force-update its clients is outside this model,
+and should know it before choosing the packet wire for anything long-lived.
 
 **Table bodies never enter the projection.** No edit inside a `table` body
 can move the protocol id. That independence is held by test, and it is the
@@ -175,7 +171,7 @@ name. That one decision produces the whole evolution story:
   old name reads as the default from then on, counted `unknown`, and nothing
   reports that the two names were one field. A committed baseline is the one
   place the shape of a rename is visible, a removal and an addition in one
-  table in one edit, and it is being taught to warn on that pair (#444).
+  table in one edit, and it will warn on that pair (#444).
 - **Collisions are refused at compile time.** Two names in one vocabulary
   whose hashes coincide, or a `was` colliding with a live name, are a compile
   error naming both, and the refusal fires when the *new* name is added,
@@ -184,13 +180,11 @@ name. That one decision produces the whole evolution story:
 
 **Every vocabulary, the same rule.** Enum variants and union arms are
 identified by name hash exactly as fields are; a table's name is the node's
-type id. Ids are 64 bits, `fnv1a64(name)`, in every vocabulary, a single rule
-where the language once had a 16-bit fold for fields and variants and a 64-bit
-hash for tables. A 64-bit id gives a million-variant vocabulary an expected
+type id. Ids are 64 bits, `fnv1a64(name)`, in every vocabulary, one rule in
+place of the 16-bit fold the repository still carries for fields and variants
+until #435 lands. A 64-bit id gives a million-variant vocabulary an expected
 0.00000003 collisions over its life. The wire does not pay eight bytes per
-field for it; the layout is in the wire form section below. Until #435 lands
-the tree carries the 16-bit fold, and this section describes the committed
-rule.
+field for it; the layout is in the wire form section below.
 
 **Flags are the one positional vocabulary.** A mask rides raw, so a variant's
 identity is its bit. The rule for flags is *append at the end*; insert,
@@ -219,29 +213,31 @@ Three mechanisms judge an edit, and each sees what the others cannot:
   wrote is still this build's.
 
 One table reconciles them. It is the single statement of what an edit does;
-§4, §18.2 and §20.4 of SPEC-TABLES.md derive from it, and it gets a fixture
+SPEC-TABLES.md §4, §18.2 and §20.4 will derive from it once it has a fixture
 per row, each edit run through all three frames with the verdicts pinned
-(#446), so that it can go red. Every row was run against the tool on
-2026-09-04; the rows that name an issue describe the committed rule and say
-what the tree does today.
+(#446), so that it can go red. Every cell was run against the tool; the rows
+that name an issue describe the committed rule and say what the repository
+does today.
 
 | the edit | the read report | the baseline | the build version |
 |---|---|---|---|
 | a field added, removed or reordered | `unknown` on the side that lacks it | passes | moves (the record's layout moved) |
 | a field renamed under `was` | nothing | passes | **nothing**: keyed by wire id, not source name |
 | a field renamed bare | `unknown` on every old file; the new field reads its default | passes, in silence: a removal and an addition (#444 adds a warning on the pair) | moves |
+| a field of a `type` that a table reaches, renamed | `unknown` on every old file; `was` is refused there today (#478) | passes, in silence | moves, and so does the protocol id |
 | a scalar's default changed | **silent**: the same bytes mean something else | **refuses** | moves (a meaning fact) |
 | a string, bytes or flags default changed | silent | refuses once #396 lands; not declarable today | moves |
 | a bound raised or lowered, a capacity or array bound grown | `clamped` where a stored value exceeds it | passes; warns on a shrink | moves |
 | a range tightened | `clamped` | passes; a warning is #443 | moves |
 | a field's kind changed (`int32`→`int64`, `T`→`*T`, `string`→`bytes`, `bits(8)`→`bits(9)`) | `kind_mismatch`; the value reads as the default | **refuses** | moves |
 | `T`→`?T`, `?T`→`T` | nothing: one framing. An old file's elided default reads as *absent* under `?T` | passes | moves (the presence flag is storage) |
-| an enum variant added, removed or reordered | `unknown` where a stored name is gone | passes; warns on a removal | moves, and so does the protocol id |
+| an enum variant added or removed | `unknown` where a stored name is gone | passes; warns on a removal | moves, and so does the protocol id |
+| an enum variant reordered | nothing | passes | moves; the protocol id moves once #462 lands, **nothing today** |
 | an enum variant renamed | the old name reads `None`, counted | warns | moves |
 | a `fixed` field's `F` moved | **silent**: the raw integer reads at the new scale | **refuses** | moves |
 | a field's referent replaced by one that cannot stand in (an enum respelled as its raw integer) | **silent** | **refuses** | moves |
 | a flags variant inserted or removed | silent | refuses | moves, and so does the protocol id |
-| a flags variant reordered or renamed in place | **silent** | **refuses** | moves once #435's rule lands; **nothing today** |
+| a flags variant reordered or renamed in place | **silent** | **refuses** | moves once #435's rule lands; **nothing today**, and the protocol id moves once #462 lands |
 | a keyed array made positional | `kind_mismatch` | refuses | moves |
 | a keyed array's key enum swapped for another | `unknown`, one per slot; the kind stays | refuses | moves |
 | a guard added or removed | nothing | passes | nothing |
@@ -250,8 +246,8 @@ what the tree does today.
 | a retired name re-added with a new meaning | **silent** | **passes today**; the ledger is #441 | moves |
 | a language added to the build | nothing | nothing | nothing |
 
-Enum, flags and union declarations are shared by both wires, which is why two
-rows move the protocol id as well: see the packet wire section.
+Enum, flags and union declarations are shared by both wires, which is why
+some rows move the protocol id as well: see the packet wire section.
 
 ## The read report
 
@@ -261,8 +257,9 @@ fires on every cross-version load by design; `duplicate` is the text form's
 counter. `kind_mismatch`, `clamped` and `malformed` are damage or a decision,
 and a game that alarms on those three and logs the others has the severity
 split it needs. A tool that wants to know *which* field was clamped re-walks
-the file with the descriptors; per-event attribution on the generated read
-path is additive and safe to add after 3.0.0.
+the file with the descriptors, the per-field facts every table's generated
+header carries; per-event attribution on the generated read path is additive
+and safe to add after 3.0.0.
 
 **The never-clobber rule.** Unknown fields are dropped on rewrite, by
 decision: everything in schema has a schema, and a tool built from an older
@@ -279,14 +276,14 @@ before it writes.
 ## The baseline
 
 `tables.baseline`, in the unit's directory, is a committed projection of the
-table closure: every wire fact of every field, evaluated, keyed by wire id.
-`schema check` (and so `generate`) diffs the current schema against it and
-**refuses any edit that would make data already written unreadable or quietly
-change what it means**: the silent class above, plus kind changes,
-keyed-array respellings and referent drops. It warns on shrinks, removals and
-declaration renames, and passes in silence on everything the wire reports.
-`schema tables-baseline` prints the projection, and with `--update` rewrites
-the file.
+table closure, everything the unit's tables reach by value: every wire fact
+of every field, evaluated, keyed by wire id. `schema check` (and so
+`generate`) diffs the current schema against it and **refuses any edit that
+would make data already written unreadable or quietly change what it means**:
+the silent class above, plus kind changes, keyed-array respellings and
+referent drops. It warns on shrinks, removals and declaration renames, and
+passes in silence on everything the wire reports. `schema tables-baseline`
+prints the projection, and with `--update` rewrites the file.
 
 **Commit one.** The baseline is opt-in, no file, no check, and every
 "refuses" in the table above holds only for a unit that has one. A unit whose
@@ -329,7 +326,8 @@ array classes and bounds, strides), and the meaning a wire load puts in those
 slots (defaults, effective ranges, enum and union vocabularies, and, once
 #435 lands, each flags variant's bit position). It is compiler-settled:
 tooling cooks before any game binary exists, so the id must be knowable from
-the schema alone.
+the schema alone. `schema build-version --facts` prints it with the facts it
+was taken over.
 
 **What moves it:** anything that moves the protocol id; a record added,
 removed or renamed bare; any offset, size, alignment, kind or wire-id move;
@@ -359,13 +357,8 @@ at once. So: no patch release moves the build version's form; a minor release
 may bump it only together with a wire change, announced first in the release
 notes, exactly as the protocol id's rule reads; a major may. A schema edit
 moving the id is the user's own act and is priced by the cook cost model
-below. The tree today has a form version constant and no gate on which
+below. The repository today has a form version constant and no gate on which
 release may bump it; the 3.0.0 release adds the gate.
-
-**Peers connect on equal protocol ids and may differ in build version.**
-Cooked assets are local on both sides; each peer loads its own cooks, out of
-its own cache, and neither ever sees the other's, so a build-version
-difference is not a connection question.
 
 ## The same-build forms: cook and block
 
@@ -392,8 +385,8 @@ patcher, which is its layer, and tunables in studio-held configuration rather
 than in cooked assets.
 
 **The dev loop runs on the wire.** Cook and block are ship-load accelerators;
-if load time does not demand one, the game uses the generic table, which
-hot-reloads across any edit and reports what changed. No "ignore build
+if load time does not demand one, the game loads the table from the wire,
+which hot-reloads across any edit and reports what changed. No "ignore build
 version in development" flag exists, because the path such a flag would open
 already exists and is tolerant.
 
@@ -406,12 +399,12 @@ drift is a build error on both generated sides before it is anything else.
 
 ## The kind space and the wire form
 
-Every table-wire payload begins with a kind byte from a closed set: bool, the
-integers by width and sign, the floats, string, table, array, union, keyed
-array, pointer index, the 128-bit integers, the fixed-point widths, and
+Every field on the table wire carries a kind byte from a closed set: bool,
+the integers by width and sign, the floats, string, table, array, union,
+keyed array, pointer index, the 128-bit integers, the fixed-point widths, and
 (with #435) a kind of its own for enums, so that an enum and its raw integer
 can never be confused on the wire. **A kind is spent only to close a silent
-edit**; blocks and maps spend none.
+edit**; blocks spend none.
 
 **A reader that does not know a kind cannot skip it.** That is the nature of
 a closed set, and it is why a new kind is a wire change. Two rules make that
@@ -421,10 +414,10 @@ introduced as that framing carrying its own inner encoding, so a reader of
 this major skips it, counts it `unknown`, and continues (#434). Second, **the
 file's first byte is the wire form's version**, so a reader can say "newer
 form" rather than "malformed" when it meets one (#435). Neither is an
-envelope: no identity, no magic, no content hash rides on the table wire, and
-a file that needs to say what it is puts a field on its root table, `format
-uint32 = 3`, which an older reader still reads, a foreign file defaults, and
-that default is the provenance signal.
+envelope: no identity, no magic and no content hash ride on the table wire,
+and a file that needs to say what it is puts a field on its root table,
+`format uint32 = 3`, which an older reader still reads, a foreign file
+defaults, and that default is the provenance signal.
 
 **The layout under #435.** After the form byte comes the body, as today, with
 every id replaced by a reference and every width made variable: a field is
@@ -437,11 +430,9 @@ all references. The file ends with the id table: the distinct 64-bit ids the
 body used, in first-use order, then the count as a fixed u64, so that a
 one-pass writer never patches and a reader, which holds the whole buffer
 anyway, reads the count from the end, resolves the table once against its
-own descriptors, and dispatches every field through an array index. Measured
-over the conformance corpus, that is 17% fewer bytes than today's 16-bit wire
-on real files and a faster read; tiny messages pay, and the cost is under
-sharp edges. There is no mode: no implicit table, no width byte, no build
-version in the header.
+own descriptors, and dispatches every field through an array index. There is
+no mode: no implicit table, no width byte, no magic, no build version in the
+header. The measurements that chose this layout are on #435.
 
 ## The text form
 
@@ -451,10 +442,9 @@ keys keep their defaults, unknown keys are skipped and counted, values outside
 a range clamp and count, so a text and a wire loaded from the same data land
 the same instance. One consequence to plan for: **the text's identity is the
 name, and `was` does not carry it.** A field renamed under `was` is safe on
-the wire and breaks every hand-edited configuration file, modder file and
-editor that spelled the old key, unless the rename is paired with
-`| json = "old"`, which keeps the text key while the wire keeps its id. Pair
-them.
+the wire and breaks every hand-edited configuration file and editor that
+spelled the old key, unless the rename is paired with `| json = "old"`, which
+keeps the text key while the wire keeps its id.
 
 ## The compiler's own version
 
@@ -483,13 +473,12 @@ release of the same minor, and its protocol id and its build version are the
 same ids and its bytes are the same bytes. Patch releases are always safe to
 take.
 
-This is what the pinned goldens in CI exist to enforce. The conformance
-corpus's golden wire bytes pin every construct's encoding; `schema id` and
-`schema build-version` over the corpus are pinned as exact values; a compiler
-change that moves any of them is a stop-the-line event, never a quiet re-pin.
-Moving a golden is a deliberate act argued for in review, and the release that
-carries it wears the number these rules assign. The release gate that proves
-the patch promise across releases, the corpus generated by the previous
+The pinned goldens in CI enforce this within a release: the conformance
+corpus's golden wire bytes pin every construct's encoding, and `schema id`
+and `schema build-version` over the corpus are pinned as exact values, so a
+compiler change that moves any of them stops the build until it is argued
+for and the release that carries it takes the number these rules assign. The
+gate that proves it across releases, the corpus generated by the previous
 release and the new one and compared, is #463.
 
 **Recorded wire-affecting amendments.** The rules above are policy; this
@@ -505,9 +494,8 @@ the compatibility rules do.
   moved every id, in a minor, announced; this entry is the worked example of
   why that line exists.
 
-The standing risk calculus for every wire-affecting amendment: both sides of
-every connection redeploy together, so an amendment that moves bytes is
-priced by that doctrine, not by the fiction that deployed halves must
+Both sides of every connection redeploy together, so an amendment that moves
+bytes is priced by that rule and not by the fiction that deployed halves must
 interoperate across the change.
 
 **What is not covered.** The protocol id is not a version number; it is a
@@ -546,16 +534,15 @@ with their own version numbers:
 | [serialize.js](https://github.com/mas-bandwidth/serialize.js) | JavaScript |
 | [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) | Rust |
 
-They share a wire standard (`STANDARD.md`, kept identical across all six) and
-are checked against each other. CI pins each to a released tag, never to
-`main`; a given compiler release states the minimum runtime version it needs,
-and newer runtimes keep working with older generated code. Dart, Java and
-Elixir generate self-contained output and need only their pinned SDKs.
+They share one wire standard and are checked against each other. CI pins
+each to a released tag, never to `main`, and newer runtimes keep working with
+older generated code. Dart, Java and Elixir generate self-contained output
+and need only their pinned SDKs.
 
 **Release process.** Releases are tagged `vMAJOR.MINOR.PATCH` on `main`. CI
-must be green on the tagged commit: the cross-language corpus, the seeded fuzz
-corpus, and the certify chain. The build stamps `git describe` into the
-binary, so `schema version` on a release build reports the exact tag and on a
+must be green on the tagged commit, including the full certification run
+across every language. The build stamps `git describe` into the binary, so
+`schema version` on a release build reports the exact tag and on a
 development build the tag plus commits-since plus hash; quote that line in
 bug reports, because a refusal message cites the spec that binary was built
 against and a stale binary will contradict the current page.
@@ -585,18 +572,18 @@ years, and several of the answers are patterns rather than syntax.
   marker because removal is what deprecation exists to fake elsewhere. Do not
   re-add the name with a new meaning; until the ledger (#441) refuses it,
   nothing records that the name is haunted, so keep your own list.
-- **Rename anything.** `was` on the wire; `json =` for the text; never
-  re-point a `was`.
 - **Ship a schema change to a mixed fleet.** A table-body edit never forces a
   redeploy; a type, enum, flags or union edit always does. Write the
   never-clobber rule before the first staged rollout. Roll back freely: the
   old build reads the new files and counts what it cannot use.
-- **Keep a replay.** Record it as tables.
-- **Debug an old file.** `unpack` renders a wire file of any version to text;
-  `uncook` renders a cook written by this build's version and refuses any
-  other; the read report says what was not understood; the baseline history
-  says what changed and why, by date. Put a `format` field on your root
-  table so a restored backup can say which schema wrote it.
+- **Debug an old file.** `unpack --tolerate` renders a wire file of any
+  version to text and reports what it did not understand; without
+  `--tolerate` it refuses a file whose report is not silent, and a file
+  written before a flags variant was removed is refused either way, because
+  a bit with no name has no text spelling. `uncook` renders a cook written by
+  this build's version and refuses any other. The baseline history says what
+  changed and why, by date. The `format` field on the root table says which
+  schema wrote a restored backup.
 
 ## Sharp edges
 
@@ -608,11 +595,14 @@ still open.
   never-clobber rule as the required consequence, and no runtime enforcement.
 - **There is no widening path**, by choice: a whitelist of compatible pairs
   silently misdecodes everything outside the list.
-- **An enum, flags or union edit moves the protocol id**, even when only
-  tables reach the declaration: a content addition that is an enum variant is
-  a lockstep redeploy.
+- **A content addition that is an enum variant is a lockstep redeploy**, even
+  when only tables reach the enum, because the declaration is shared by both
+  wires.
 - **The protocol id cannot see an enum or flags reorder today** (#462): until
   it lands, a reorder is a spurious match. Do not reorder; append.
+- **A field of a `type` that a table reaches cannot be renamed safely
+  today** (#478): `was` is refused there, and a bare rename orphans every
+  stored value.
 - **`bits(N)` widens freely only within a storage width**: `bits(8)` to
   `bits(9)` is a kind change and loses every stored value on read; `bits(9)`
   to `bits(16)` is free.
@@ -649,7 +639,8 @@ still open.
   20 bytes to about 45; a stream that wants small same-build messages is a
   `type` stream.
 - **Deep pointered saves have no text form** past the text reader's depth
-  cap; the "debug an old file" pattern hits that wall on the largest saves.
+  cap of 128 levels; the "debug an old file" pattern hits that wall on the
+  largest saves.
 - **The enum vocabulary has three shapes**: a name hash on the wire, an
   ordinal in the cook and the block, storage at a derived width in memory.
   Reflection walkers read the descriptor, never the kind's width.
@@ -659,23 +650,18 @@ still open.
 
 ## Attacks considered
 
-On 2026-09-04 a red team was set against this design with the brief to argue
-every change a game team makes to a schema over five years, and every fleet,
-rollback, backup and ecosystem situation that breaks versioning; a blue team
-answered each attack with the feature and a worked example, and was allowed
-to be wrong. Thirty-five attacks: seven answered by a feature, nine by
-decisions already recorded, seventeen partially with the residue named, two
-unanswered, both the same root cause, a retired name reused, which is #441.
-The competitors' versioning machinery, Protocol Buffers, FlatBuffers, Avro,
-Cap'n Proto, was mapped mechanism by mechanism onto this design; every
-failure their machinery defends against is covered here except the
-retired-name ledger and renames beyond fields. The full record, all three
-documents verbatim, is #464.
+A red team argued every change a game team makes to a schema over five years
+and every fleet, rollback, backup and ecosystem situation that breaks
+versioning; a blue team answered each attack with the feature and a worked
+example, and was allowed to be wrong. The competitors' versioning machinery,
+Protocol Buffers, FlatBuffers, Avro and Cap'n Proto, was mapped mechanism by
+mechanism onto this design. The record, all three documents verbatim with the
+tally, is #464; the gaps it found are the issues in the list below.
 
 ## Owed before 3.0.0
 
-Each of these is a claim this page makes in the present tense with the tree
-not yet behind it. The 3.0.0 release holds the list at zero.
+Each of these is a claim this page makes in the present tense with the
+repository not yet behind it. The 3.0.0 release holds the list at zero.
 
 - #435: the uniform 64-bit wire, the form byte, the id table, the enum kind,
   flags bit positions in the build version, the reserved-id refusals.
@@ -687,13 +673,15 @@ not yet behind it. The 3.0.0 release holds the list at zero.
 - #396: table `was`; string, bytes and flags defaults in the baseline and
   the build version.
 - #441: the retired-names ledger.
-- #442: `was` for variants and arms.
+- #442: `was` for variants and arms; #478: `was` for the fields of a `type`
+  that a table reaches.
 - #443, #444, #445: range facts, `was` misuse and the rename-pair warning,
   the baseline nudge.
 - #446: the evolution table's fixtures.
-- #439: the standard's own contradictions on `T`→`*T`, the flags row, writer
-  misuse, and the rest of that read.
+- #439 and #460: the standard's own contradictions on `T`→`*T`, the flags
+  row, writer misuse, the declaration-rename row, the count of silent edits,
+  and the pages that still say schema is not an evolution system.
 
-When two sentences in the tree disagree, the one with the golden wins, and
-the other is a bug in prose. A full read of the standard, front to back, is
-re-run before each major.
+When two sentences in the repository disagree, the one with the golden wins,
+and the other is a bug in prose. A full read of the standard, front to back,
+is re-run before each major.
