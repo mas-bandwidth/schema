@@ -1771,3 +1771,438 @@ for, and they are the next part.
 **You now have** a complete network protocol: conditional layouts, typed
 messages, framing, and a handshake rule that makes wire mismatch impossible by
 construction.
+
+---
+
+## Part 6: Tables: data that outlives the build
+
+### The problem
+
+Everything so far is exact match: same protocol id or refuse. That is perfect
+for packets, because both ends redeploy together. Now Starlight needs a save
+game. A player's file gets written today and read by the build you ship next
+year, and "same or refuse" would mean every update deletes every save. Config
+files have the same shape, because designers tune `ShipConfig` weekly and last
+week's files must keep loading.
+
+The packet wire cannot do this, on purpose. For data that outlives the build
+that wrote it, the language has a second declaration: `table`.
+
+### Which language reads a table
+
+State this before you build on it, because it decides where you put your
+tables.
+
+**The table wire is C++'s within one build.** The other eight targets generate
+a table surface, and its wire is a different form, so a table saved by C++ does
+not read in them and a table saved by them does not read in C++. Issues #511 to
+#518 carry the port, one per language, and each names the work.
+
+**The packet wire, the cook and the block cross all nine.** Parts 3 through 5
+are the packet wire, Part 11 is the cook and Part 12 is the block, and Part 13
+runs each of the three from C against C++'s own bytes.
+
+So: a save format, a config format and a message channel are C++'s to read
+today. Data another language must read this week rides the packet wire when
+both sides ship together, and the cook or the block when they share a build.
+
+### Declaring one
+
+`Config.schema`, a new file in the same unit:
+
+```
+package starlight
+
+table ShipConfig
+{
+    display_name string(32)
+    max_health   float32 = 100.0
+    max_speed    float32 = 500.0
+    armor        int32 = 1       | min = 0, max = 10
+    ship_type    ShipType
+}
+```
+
+The body grammar is the type body's: same fields, same defaults, same ranges,
+and `ship_type` is the enum from Part 2, because a table may reference types
+freely. What changes is the wire and the lifecycle.
+
+### The notice
+
+`check` is no longer silent:
+
+```
+$ schema check .
+notice: starlight declares 1 table and . holds no tables.baseline — save-game evolution is unguarded (docs/SPEC-TABLES.md §18); commit one with: schema tables-baseline --update --reason "first baseline" .
+$ echo $?
+0
+```
+
+It is a **notice**, not an error: the exit status is 0 and nothing stops. The
+tool has spotted that you now have a format that outlives builds and no record
+of what shipped. Part 10 writes that record, and until then this line rides
+along with every `check` and every `generate`. It is the one thing that prints
+on success anywhere in the tool.
+
+### What generation adds
+
+```
+$ schema generate --lang cpp --out gen --verbose .
+...
+wrote gen/Config.h
+wrote gen/ConfigBlock.cpp
+wrote gen/ConfigBlock.h
+wrote gen/ConfigTable.cpp
+wrote gen/ConfigTable.h
+wrote gen/ConfigWire.h
+```
+
+`ConfigTable.h` and `ConfigTable.cpp` are the table surface. The Block pair is
+Part 12, so ignore it until then. The table header is includable from any
+translation unit and depends on nothing but the C standard headers:
+
+```cpp
+// package starlight — protocol id 0xb786cca203ebb6ea (packets only: tables version by field id, not by protocol id)
+// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
+// dependency — includable from any TU.
+```
+
+Note that banner. Adding a whole table to the unit did **not** move the
+protocol id: it is still `0xb786cca203ebb6ea`, the number Part 5 printed. The
+id covers what the packet wire reaches, and a table is not on it.
+
+The storage struct lives in the table header, and it looks exactly like a
+type's:
+
+```cpp
+struct ShipConfig {
+    char display_name[32 + 1] = {}; // string(32): max length, used length beside it
+    int32_t display_name_length = 0;
+    float max_health = 100.0f;
+    float max_speed = 500.0f;
+    int32_t armor = 1;
+    ShipType ship_type = ShipType::None;
+};
+```
+
+### Save
+
+The encode surface is a measure and save split, and you own every buffer,
+because generated table code allocates nothing. `save.cpp`, entire:
+
+```cpp
+#include "ConfigTable.h"
+#include <cstdio>
+#include <cstring>
+#include <vector>
+
+int main()
+{
+    using namespace starlight;
+
+    ShipConfig ship;
+    memcpy( ship.display_name, "Kestrel", 7 );
+    ship.display_name_length = 7;
+    ship.max_health = 250.0f;
+    ship.max_speed = 900.0f;
+    ship.armor = 8;
+    ship.ship_type = ShipType::Corvette;
+
+    int64_t size = ShipConfigMeasure( ship );          // exact, writes nothing
+    std::vector<uint8_t> buffer( size );
+    int64_t wrote = ShipConfigSave( ship, buffer.data(), size );
+    printf( "measured %lld, saved %lld bytes\n", (long long) size, (long long) wrote );
+
+    ShipConfig blank;
+    printf( "an all-default ShipConfig measures %lld bytes\n", (long long) ShipConfigMeasure( blank ) );
+
+    FILE * f = fopen( "ship.bin", "wb" );
+    fwrite( buffer.data(), 1, wrote, f );
+    fclose( f );
+    printf( "wrote ship.bin\n" );
+
+    // a file whose first byte is a framing form this reader does not carry
+    buffer[0] = 0x7F;
+    FILE * g = fopen( "forged.bin", "wb" );
+    fwrite( buffer.data(), 1, wrote, g );
+    fclose( g );
+    printf( "wrote forged.bin\n" );
+    return 0;
+}
+```
+
+```
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o save save.cpp gen/ConfigTable.cpp
+$ ./save
+measured 89, saved 89 bytes
+an all-default ShipConfig measures 10 bytes
+wrote ship.bin
+wrote forged.bin
+```
+
+That is the only C++ program on this page that needs a `.cpp` from `gen`
+alongside it: the table walk lives in `ConfigTable.cpp` so a header-only
+include stays cheap.
+
+Measure is exact, so a buffer of exactly its answer always suffices. `Save`
+returns the size, or -1 for a buffer too small or a value that violates a
+storage bound.
+
+One fact explains the first number: **values at their defaults stay off the
+wire.** `max_health = 250` rides, and a ship left at 100 would not.
+
+The second number is the floor. An all-default table is not empty on this wire:
+it is a form byte, the body's own terminator, and an eight-byte count of a
+trailer with no entries. Ten bytes, and every one of them is framing.
+
+`ship.bin` and `forged.bin` are used for the rest of this part and again in
+Part 13, so leave them where they are.
+
+### The point: any build reads any data
+
+Time passes. Copy the whole unit to `starlight-2.0`, the way a branch of your
+game would, and evolve it there. `Game.schema` gains a variant in the middle:
+
+```
+enum ShipType { Fighter, Interceptor, Freighter, Corvette }
+```
+
+and `Config.schema` becomes:
+
+```
+package starlight
+
+table ShipConfig
+{
+    display_name string(32)
+    max_health   float32 = 100.0
+    armor        int32 = 1       | min = 0, max = 5
+    ship_type    ShipType
+    shield       float32 = 50.0
+}
+```
+
+`max_speed` is gone, `shield` is new, the armor cap dropped from 10 to 5, and
+`Interceptor` landed in the middle of the enum. On the packet wire any one of
+those edits is a new protocol id.
+
+`load.cpp` in `starlight-2.0`, entire:
+
+```cpp
+#include "ConfigTable.h"
+#include <cstdio>
+#include <cstdlib>
+#include <vector>
+
+static std::vector<uint8_t> Slurp( const char * path )
+{
+    FILE * f = fopen( path, "rb" );
+    std::vector<uint8_t> bytes;
+    uint8_t chunk[256];
+    size_t n;
+    while ( ( n = fread( chunk, 1, sizeof( chunk ), f ) ) > 0 )
+    {
+        bytes.insert( bytes.end(), chunk, chunk + n );
+    }
+    fclose( f );
+    return bytes;
+}
+
+int main( int argc, char ** argv )
+{
+    using namespace starlight;
+
+    std::vector<uint8_t> buffer = Slurp( argv[1] );
+    int64_t bytes = (int64_t) buffer.size();
+    if ( argc > 2 ) { bytes = atoi( argv[2] ); }
+
+    TableReport report;
+    ShipConfig loaded;
+    bool ok = ShipConfigLoad( loaded, buffer.data(), bytes, &report );
+    printf( "load: %s\n", ok ? "ok" : "stopped" );
+    printf( "  name=%s health=%g armor=%d type=%s shield=%g\n",
+        loaded.display_name, loaded.max_health, loaded.armor,
+        EnumName( loaded.ship_type ), loaded.shield );
+    printf( "  report: unknown=%d kind_mismatch=%d clamped=%d duplicate=%d malformed=%d refused=%d\n",
+        report.unknown, report.kind_mismatch, report.clamped, report.duplicate,
+        (int) report.malformed, (int) report.refused );
+    return 0;
+}
+```
+
+```
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o load load.cpp gen/ConfigTable.cpp
+$ ./load ../starlight/ship.bin
+load: ok
+  name=Kestrel health=250 armor=5 type=Corvette shield=50
+  report: unknown=1 kind_mismatch=0 clamped=1 duplicate=0 malformed=0 refused=0
+```
+
+Read that slowly, because each value is a rule.
+
+`name=Kestrel` and `health=250`: fields that still exist load as written.
+
+`shield=50`: a field the file never heard of takes its declared default.
+
+`armor=5`: the stored 8 is **clamped** to the new `[0, 5]`, and counted.
+
+`type=Corvette`: an enum value rides as the hash of its variant's **name**, so
+inserting `Interceptor` in the middle moved nothing. On a packet wire, stored
+value 3 would now silently mean a different ship.
+
+`unknown=1`: the file's `max_speed` has no home here, so it was skipped by its
+length and counted, never misdecoded.
+
+It works in the other direction too. Save a `Dart` from the 2.0 unit, and read
+it with the 1.0 one:
+
+```
+$ ./save2
+wrote dart.bin, 58 bytes
+$ cd ../starlight && ./load ../starlight-2.0/dart.bin
+load: ok  name=Dart type=None speed=500
+  report: unknown=2 kind_mismatch=0 clamped=0
+```
+
+The 1.0 build skipped `shield` as unknown, and the `Interceptor` variant it has
+no name for loaded as `None`, also counted, never as a neighbor. Both
+directions, any distance apart.
+
+Field identity on the table wire is a hash of the field name, every field is
+length prefixed, and enum values and union arms ride under their name hashes
+too. Unknown is skippable, absent is defaultable, and out of range is
+clampable. Contrast that with the packet wire, which **refuses** out-of-range
+values because the sender is an untrusted peer. Tables **clamp and count**,
+because the data is yours and half a config is better than none.
+
+### The report is the witness
+
+`TableReport` is five counters and a verdict:
+
+```cpp
+struct TableReport
+{
+    int32_t unknown = 0;       // unknown field ids skipped (newer data)
+    int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
+    int32_t clamped = 0;       // out-of-range values clamped to declared bounds
+    // a key the TEXT form saw twice: last wins, and the repeat is counted
+    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
+    // id twice is legal input whose last occurrence wins, silently (§3).
+    int32_t duplicate = 0;
+    bool malformed = false;    // framing damage; decode stopped, partial result kept
+    // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
+    // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
+    // zero counters and a false flag are what a clean read prints too, so the
+    // verdict is what tells the two apart.
+    bool refused = false;
+};
+```
+
+`duplicate` belongs to the text form, which Part 9 reaches. The wire never
+raises it.
+
+You can see `kind_mismatch` by copying the unit again to `starlight-3.0` and
+making `armor` a `float32 = 1.0`:
+
+```
+$ ./load3 ../starlight/ship.bin
+load: ok  armor=1 (a float now)
+  report: unknown=1 kind_mismatch=1 clamped=0
+```
+
+The stored int under the `armor` id is not an int as far as this reader is
+concerned, so it is skipped and the field keeps its declared default. Never
+misdecoded.
+
+`malformed` is the counter that stops a load. The 2.0 `load` takes an optional
+byte count, so you can cut the file anywhere:
+
+```
+$ ./load ../starlight/ship.bin 17
+load: stopped
+  name= health=100 armor=1 type=None shield=50
+  report: unknown=0 kind_mismatch=0 clamped=0 duplicate=0 malformed=1 refused=0
+$ ./load ../starlight/ship.bin 40
+load: stopped
+  name= health=100 armor=1 type=None shield=50
+  report: unknown=0 kind_mismatch=0 clamped=0 duplicate=0 malformed=1 refused=0
+$ ./load ../starlight/ship.bin 88
+load: stopped
+  name= health=100 armor=1 type=None shield=50
+  report: unknown=0 kind_mismatch=0 clamped=0 duplicate=0 malformed=1 refused=0
+```
+
+Every field sits at its declared default, at every cut. That is the shape of
+the wire showing through: the file's **id table is its trailer**, and the
+reader locates it from the end, so a cut file has no vocabulary to name its own
+fields with. There is no useful prefix to keep, one byte short of the whole
+file or seventy.
+
+`refused` is not a counter and is not damage. The wire opens with a **form
+byte**, read before anything else, and a reader that meets a form it does not
+carry stops without decoding a thing. That is what `forged.bin` is: `ship.bin`
+with its first byte replaced.
+
+```
+$ ./load ../starlight/forged.bin
+load: stopped
+  name= health=100 armor=1 type=None shield=50
+  report: unknown=0 kind_mismatch=0 clamped=0 duplicate=0 malformed=0 refused=1
+```
+
+Five zero counters and `malformed=0`, which is exactly what a clean read prints
+too. The verdict is what tells the two apart, so read `refused` before you read
+the counters. A file written by a build whose framing is newer than yours says
+so rather than pretending to be broken.
+
+Only structural damage and an unknown form stop a load. Every schema-drift
+event above is a counter rather than a failure.
+
+Adopt this discipline on day one: **log the counters**. A nonzero report means
+the data came from a different schema generation. It is still fully usable, but
+that is drift you want visible on a dashboard rather than invisible in a save
+file.
+
+### Two rules the wire cannot enforce for you
+
+First, **a default is part of the wire contract.** An absent field means "the
+reader's declared default", and elision means fields at their default are
+absent. So changing `max_health = 100.0` to `= 120.0` changes what every
+already-written file says, silently, with no report event, because files that
+elided a genuine 100 now load 120. Change a default the way you would change
+data, or add a new field instead. Part 10 shows the tool that catches this
+edit.
+
+Second, **`flags` appends at the end, forever.** A mask rides as raw bits and
+there are no per-bit names on the wire, so a variant's identity is its bit
+position:
+
+```
+flags SystemFlags { Shields, Cloak, WarpDrive, Autopilot }             // as declared
+flags SystemFlags { Shields, Stealth, Cloak, WarpDrive, Autopilot }    // wrong: stored Cloak reads Stealth
+flags SystemFlags { Shields, Cloak, WarpDrive, Autopilot, Stealth }    // right: appended, nothing moves
+```
+
+Enums insert anywhere because they are name hashed. Flags append at the end
+because they are positional. Two declarations, two laws. Removing a flags
+variant frees no bit either, so retire the name and keep the position. Part 10's
+baseline turns this law into a compile error.
+
+### Where tables stand next to types
+
+Edit a table, add fields, grow enums, reshape at will, and your protocol id
+**does not move**, as the banner above showed. Tables never touch it, and
+packets never pay for tolerance. The costs live where the tolerance lives: a
+table's wire is byte granular rather than bit packed, 89 bytes here against
+Part 3's three, and the read walks and matches ids instead of streaming bits. A
+fixed-size table like this one still allocates nothing and stays a plain
+struct. What "fixed size" means, and what the other class costs, is Part 8's
+story.
+
+Two structural rules stand: a `type` cannot reference a table, because packets
+stay exact match while a table may reference types freely, and a table cannot
+nest itself by value.
+
+**You now have** a save format. Write it with any build of Starlight, read it
+with any other, and every difference between them is absorbed, counted and
+reported.
