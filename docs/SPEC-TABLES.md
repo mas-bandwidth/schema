@@ -8456,9 +8456,13 @@ in build version (§20.5).
   a `type` body holding one, and one that no table reaches. A union
   declared for the type wire takes `type` payloads only, because types are
   value semantics and the general arms wait on the ports (SPEC §4.8, §15).
-  The class is a union with a `table` arm, and a union with any arm that
-  does not name a declared `type`, each refusal naming the arm that makes
-  it one. And **such a union under every backend but C++**, refused naming
+  The class is a union with a `table` arm, and a union with any arm whose
+  PAYLOAD is not a declared `type` — a pointer, a scalar, an enum, a flags
+  mask, a string, a `bytes`, an array — each refusal naming the arm that
+  makes it one. **A payload-free arm is outside the class**: it has no
+  payload, so it rides the packet wire as its tag alone and a `type` body
+  takes it (SPEC §4.8). What that arm meets instead is the per-target
+  refusal below. And **such a union under every backend but C++**, refused naming
   the union and the target: the ports are a named follow-on (§15), and a
   port that emitted the union would name a table it never declares, or
   overlay storage its fixed-class codecs never met.

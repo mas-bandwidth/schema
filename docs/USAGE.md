@@ -274,9 +274,17 @@ tag beside one pre-allocated arm per variant; Rust gets a real
 
 An arm is a field line: its type is any type a field's is, and an arm may
 name no type at all, which is an arm that selects and carries nothing. A
-union inside a `type` body takes arms that name declared types. A union with
-any other arm belongs to a table closure (SPEC-TABLES.md §2.6). Unions ride
-`type` bodies, arrays included.
+union inside a `type` body takes arms that name declared types, plus arms
+that name nothing. A union with an arm whose payload is anything else — a
+`table`, a pointer, a scalar, a string, an array — belongs to a table
+closure (SPEC-TABLES.md §2.6). Unions ride `type` bodies, arrays included.
+
+The payload-free arm in a `type` body is carried by `--lang cs`, `dart`,
+`elixir`, `go`, `java`, `js` and `rust` today. `--lang c` and `--lang cpp`
+refuse the unit by name at generate time and say so: their tagged-union
+storage has no member for an arm that has none, and the pair is a named
+follow-on. `schema check` is target-neutral, so it accepts the unit and the
+refusal arrives at `schema generate`.
 
 **Building your protocol.** A union of payload types is a message system
 waiting for your framing, and the primitives compose into whichever framing
