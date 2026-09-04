@@ -79,6 +79,14 @@ static void pin_golden( const char * name, const uint8_t * data, int64_t bytes )
     }
 }
 
+// A COOK IS WRITTEN FOR THE BUILD THAT OPENS IT (docs/SPEC-TABLES.md §7): the
+// host's own order, so the round trip below holds on the big-endian leg too.
+static TableByteOrder host_byte_order()
+{
+    const uint16_t probe = 1;
+    return *(const uint8_t *) &probe == 1 ? TableByteOrder::Little : TableByteOrder::Big;
+}
+
 static uint32_t rd32( const uint8_t * at )
 {
     return (uint32_t) at[0] | ( (uint32_t) at[1] << 8 ) | ( (uint32_t) at[2] << 16 ) | ( (uint32_t) at[3] << 24 );
@@ -376,11 +384,11 @@ static void test_const_forms()
     const int64_t cook_bytes = FleetCookMeasure( loaded );
     CHECK( cook_bytes > 0 );
     void * cooked = calloc( 1, (size_t) cook_bytes );
-    CHECK( FleetCook( loaded, cooked, (uint64_t) cook_bytes, TableByteOrder::Little ) );
+    CHECK( FleetCook( loaded, cooked, (uint64_t) cook_bytes, host_byte_order() ) );
     check_const_form( FleetOpen( cooked, (uint64_t) cook_bytes ), "an opened cook" );
     // and two cooks of one instance are ONE artifact
     void * twice = calloc( 1, (size_t) cook_bytes );
-    CHECK( FleetCook( loaded, twice, (uint64_t) cook_bytes, TableByteOrder::Little ) );
+    CHECK( FleetCook( loaded, twice, (uint64_t) cook_bytes, host_byte_order() ) );
     CHECK( memcmp( cooked, twice, (size_t) cook_bytes ) == 0 );
     free( twice );
     free( cooked );
