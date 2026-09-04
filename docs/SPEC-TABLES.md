@@ -617,7 +617,7 @@ table ShipConfig
 A table body is a type body — the field grammar of SPEC §4.2, hosted by
 `table`: bare and ranged integers, `bits(N)`, `bool`, floats and
 compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
-`if` branches, and declared types as field groups. Seven additions:
+`if` branches, and declared types as field groups. Nine additions:
 
 - **Tables nest.** A named table is a field type (above); nesting is by
   value, and a bounded array of tables is a collection. A table may not
@@ -641,6 +641,11 @@ compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
   lookup by key over entries the wire carries as a sorted array of one
   generated `{ key, value }` table; it spends no wire kind, and it makes its
   holder variable-length.
+- **A table may hold an UNBOUNDED ARRAY** (§2.9). `placements []Placement`
+  and `log []*LogEntry` are counted arrays whose count the data decides,
+  storing a reference and a count where a bounded array stores its maximum,
+  and, like a map, they make their holder variable-length. The wire is the
+  bounded array's own.
 - **A table may hold a BYTE BUFFER at its used size** (§2.5). `data *bytes`
   and `caption *string` point at a blob node of exactly the bytes it holds —
   an image inside a table at its own size, null when absent — and, like every
@@ -723,7 +728,8 @@ at 2 GiB, and the scale a cook exists for is larger than that.
 The compiler works out which class a table belongs to; the schema never
 says. The rule is a least-fixed-point over BY-VALUE edges:
 
-- A table is **VARIABLE-LENGTH** if it declares a pointer or a map (§2.8),
+- A table is **VARIABLE-LENGTH** if it declares a pointer, a map (§2.8) or
+  an unbounded array (§2.9),
   or if anything it nests by value is variable-length. "Nests by value" reaches through every
   by-value edge there is: a plain nested table, an element of a bounded
   array, an element of an enum-keyed array, a member of a guarded (`if`)
@@ -1274,12 +1280,13 @@ union Value
 }
 ```
 
-**The admitted set is the field grammar's**, with nothing added and nothing
-held back: a type a field of this table may have is a type an arm may have,
-a `table` included inside a table closure and a `map` included wherever
-§2.8's field is. **An arm may also carry NO PAYLOAD**, written as its name
-alone, which is `ping` above: the arm selects and holds nothing. That is not
-the union's `None`, which says no arm was selected.
+**The admitted set is the field grammar's**, with nothing added and one thing
+held back: a type a field of this table may have is a type an arm may have, a
+`table` included inside a table closure. **THE ONE THING HELD BACK IS A FIELD
+WHOSE ELEMENTS LIVE IN THE HOLDER'S NODE EXTENT**, which is a `map` (§2.8) and
+an unbounded `[]T` (§2.9), both refused below and both on one ground. **An arm
+may also carry NO PAYLOAD**, written as its name alone, which is `ping` above: the arm selects and holds
+nothing. That is not the union's `None`, which says no arm was selected.
 
 **What an arm may not be, or carry, is refused because the arm position
 already spends what it would buy**, and each is refused by name (§11):
@@ -1299,7 +1306,21 @@ already spends what it would buy**, and each is refused by name (§11):
   and its `None` slot wants its rule stated before it is wire, exactly as
   `[E]*T` and `[E]Body` do (§15);
 - **an `if` guard** — a guard is a body construct, and a union body has no
-  fields to guard.
+  fields to guard;
+- **a MAP (§2.8) and an UNBOUNDED ARRAY, `[]T` or `[]*T` (§2.9)**, on one
+  ground, because an arm's storage is OVERLAID and neither construct's elements
+  are in the arm at all. Both are a reference and a count in the record, with
+  the entries or elements laid in the HOLDER'S NODE EXTENT by a placement walk
+  that visits every map and every list the record reaches BY VALUE, pre-order,
+  in declaration order (§2.8, §2.9). An arm is reached by value only when its
+  TAG SAYS SO, so an arm's array would make the extent's contents, and every
+  offset after it, depend on a discriminant. That is a layout no cook can be
+  byte-stable under and no `cook-check` clause can bound, since §7.4 checks
+  containment and no-overlap against arrays the declaration says are there.
+  **AN ARM HOLDING EITHER IS A TABLE ARM'S JOB**: name a `table` that declares
+  the map or the list, which costs the arm's own `L` and terminator and puts
+  the construct where the placement walk already reaches it, in a node whose
+  extent does not depend on anybody's tag.
 
 **Selection is presence, so a set arm ALWAYS rides, whatever it holds**
 (§3). A union FIELD holding `None` elides; a union holding a selected arm
@@ -1522,7 +1543,8 @@ under §3's by-value elision rule, the rule that elides an empty array.
 **A VALUE is anything a table field can hold**: a scalar, an enum, a `flags`
 mask, `string(N)`, `bytes(N)`, a declared `type`, a table by value, `*T`,
 `*bytes`, `*string` (§2.5), `?T`, `?[N]T`, `?[..N]T` (§2.3), a union, `[N]T`,
-`[..N]T`, `[E]T`, and a map. So `map[string(16)]map[uint8]Item` is one
+`[..N]T`, `[E]T`, a map, and an unbounded `[]T` (§2.9). So
+`map[string(16)]map[uint8]Item` is one
 declaration and a map of maps of maps is nothing special. **That recursion is
 BY VALUE**, so §2's by-value composition rule reaches it: a table that holds
 a map of ITSELF is a by-value cycle and is refused naming the cycle, exactly
@@ -2102,6 +2124,609 @@ Where a row is not achievable it says so in the row: zero allocation is a
 claim about a language with caller-owned buffers, and Elixir holds a pinned
 count instead, the same honest number it holds for every other read.
 
+### 2.9 Unbounded arrays: `placements []Placement`
+
+```
+table Placement
+{
+    x     float32
+    y     float32
+    model uint32
+}
+
+table LogEntry { tick uint32 }
+
+table Save
+{
+    placements []Placement       // as many as the world has
+    log        []*LogEntry       // pointer elements, two slots may name one node
+    scores     []int32           // a scalar element is an element like any other
+}
+```
+
+**An unbounded array is a COUNTED ARRAY whose count the DATA decides.** On the
+wire it is nothing new at all: the same kind `14` body a `[..N]T` writes, the
+same element kind, the same count. What it drops is the DECLARED BOUND, and
+with the bound goes the inline storage, so the slot holds a reference and a
+count and the elements live in the holder's node extent. **It is §2.8's map
+with the KEY and the SORT taken out**, and every rule below is either the map's
+rule read through that removal or a consequence of the removal itself. The
+consequences are named where they fall.
+
+**It is declared in a TABLE body, and it makes its holder VARIABLE-LENGTH.** A
+`type` body refuses one by name (§11), which is what keeps SPEC.md's "no
+unbounded collections" true of the TYPE wire: that wire is positional and
+same-or-refuse, and nothing riding it can be unbounded. §2.2's derivation gains
+one clause: an unbounded array is a variable edge, whatever its element is. A
+table declaring one rides in the arena with the pointers, is read through a
+region and a root, and has no block form (§2.7). A unit with no unbounded
+array, no map and no pointer is fixed exactly as it was, and the zero-cost gate
+holds for this construct as it holds for the other two. Not one symbol of the
+list machinery appears in a unit that declares none, held by the zero-cost
+gate's header scan and the build failure §2.2 states, with the list symbols
+added to its list.
+
+**The spelling is `[]T`, and `[]*T` is the same construct over pointer
+elements.** The bracket is the one every extent already uses and an EMPTY
+bracket is the absence of an extent, which is what the construct is. Two other
+spellings are refused. `[..]T` is refused because `[..N]` is a bound, so
+dropping its `N` reads as a bound someone failed to finish rather than a bound
+nobody declared, and the grammar's own `Bound` production has no such form: a
+count bound is a range LITERAL and never a truncated one (SPEC.md §4.2).
+`[0..]T` is refused on the same ground and reads worse, because
+it states a minimum and hides the missing maximum behind it.
+
+**THE ELEMENT SET IS `[..N]T`'s, EXACTLY, and that is the FIRST OF TWO
+DEPARTURES from the map.** A map's VALUE is a FIELD of a generated entry
+table, so §2.8 admits every field spelling there is. An unbounded array's
+element is an ARRAY ELEMENT, so the set is the one a bounded array already
+has: **whatever `[..N]T` admits, `[]T` admits, and whatever `[..N]T` refuses,
+`[]T` refuses on the bounded array's own diagnostic.** A scalar, an enum, a
+`flags` mask, a declared `type`, a table by value, `*T` (§2.1) and a union
+(§2.6) are the set as it stands. Nothing is added and nothing is held back,
+which is what keeps this construct from being a second element grammar to
+maintain. Four refusals follow from it and none is new:
+
+- **`[][]T` and `[][..N]T`**, because arrays of arrays are not in v1
+  (SPEC.md §4.3). **The fix is a TABLE WRAPPER and not a `type` wrapper**, and
+  it is worth spelling because SPEC.md's own advice does not reach here: a
+  `type` body refuses a `[]T` (§11), so the wrapper has to be a table.
+
+  ```
+  table Row  { items []Sample }     // the inner array, wrapped
+  table Sheet { rows []Row }        // the outer one, of that table
+  ```
+
+- **`[]map[K]V`**, as `[..N]map` and `[N]map` are refused (§11).
+- **`[]?T`**, as an array of `?T` is: an element's presence bit beside the
+  array's own count is a named follow-on (§15), and it is a different question
+  from `?[..N]T`, which is a presence bit on the ARRAY and landed (§2.3). **The
+  answer that serves today is `[]*T` with a NULL slot**, which spells "an
+  element that is not there" with the null every pointer already has (§2.1,
+  §3.1) and costs eight bytes a slot rather than a bit.
+- **`[]*bytes` and `[]*string`**, as `[..N]*bytes` is: the array-of-byte-buffers
+  follow-on (§15).
+
+**The reverse direction is the map's own rule and it holds unchanged**: a
+`[]T` IS a value a table field can hold, so a map may hold one, and §2.8's
+value list gains it. **An ARM may not**, and it is refused there on the same
+ground a `map` is: both put their elements in the holder's node extent, and an
+arm's storage is overlaid (§2.6, §11).
+
+**A table that holds a `[]` OF ITSELF by value is a by-value cycle** and is
+refused naming the cycle, exactly as a table that nests itself is (§2), and a
+table that holds `[]*Self` is the ordinary legal recursion through a pointer. A
+`*T` element is SHARED exactly as a pointer field is: two slots naming one node
+hold one node, one index on the wire (§3.1), one body in a region (§6.3), one
+`&node` in the text (§16.7).
+
+**THE COUNT IS THE DATA'S, and what bounds it is stated.** There is no `| max`
+on a `[]T` and there is no `?[]T`, for the reasons §2.8 gives a map: a bound
+would buy only a CLAMP, which drops a tail, and a fresh list is empty and an
+empty list is elided under §3's by-value elision rule, the rule that elides an
+empty counted array. What bounds it is three things and each belongs to one
+side:
+
+- **On the AUTHORING side, the ARENA.** Elements are carved from the builder's
+  arena in bulk segments (below), so an `Add` that cannot carve one answers
+  NULL, exactly as a map's `Insert` does.
+- **On the READING side, the CALLER'S ALLOCATION.** `LoadMeasure` answers the
+  exact region bytes from the framing (§6.5), the caller owns the allocation
+  precisely so it can refuse a number it did not expect, and that defense is
+  §6.5's, unchanged and not weakened by the missing bound. What a declared
+  bound gave a reader was a CLAMP and never a defense: a `[..8]T` field in a
+  wire carrying a million elements read eight and skipped the rest, and the
+  region it needed was eight elements either way. An unbounded array reads the
+  million or the caller refuses the measure, and those are the only two
+  outcomes there ever were for data the reader actually wants.
+- **In STORAGE, the `int32` COUNT SLOT.** §2.2's extent cap is the cap, and a
+  wire `N` above it is refused as any array's count is.
+
+**AND IT IS A BY-VALUE EDGE OF THE ONE DECLARATION-ORDER WALK** (§3.1). The
+numbering, the pack measure and the pack are one walk over the fields in
+declaration order that descends each by-value edge WHERE IT IS DECLARED, and an
+unbounded array is such an edge. It is reached at its field's position, its
+elements are visited in INDEX ORDER, and each element is descended for the
+pointer slots inside it before the next element is reached. A `[]*T` declared
+before a pointer field therefore reaches a shared node first and numbers it
+first, exactly as a map or a union arm declared there does. The rule is the
+walk's and not the construct's.
+
+**NO ENTRY TYPE IS GENERATED, and that is the SECOND departure, and the
+last.**
+A map generates `<Table><Field>Entry` because a key and a value have to be
+carried as one thing. An unbounded array carries the element and nothing
+beside it, so there is no generated table, no claimed entry name, no second
+member in the closure, and no two constant field ids. The element is `T`, with
+`T`'s own descriptor, `T`'s own layout and `T`'s own wire kind. **That is where
+most of §2.8's six bytes an entry go**: a map's entry spends its own `L`, two
+two-byte field headers and a terminator, and a `[]T` of tables spends the
+element's own `L` and its terminator and nothing else, so four of the six are
+gone and the other two are the key's own header, which goes with the key. A
+`[]T` of scalars spends the scalar's width and nothing at all.
+
+**ITS SHAPE ON THE WIRE is a kind `14` array of `T`'s own element kind**: `L`,
+then `element kind`, `N`, then `N` elements, framed exactly as §3 frames a
+bounded array's, with a table element preceded by its own `L`, a pointer
+element a node index under element kind `17` (§3.1), a union element the union
+payload in its place and a scalar element its fixed width. **So `[]T` and
+`[..N]T` ARE THE SAME BYTES**, which makes the migration true in both
+directions: a schema that outgrew its bound removes the bound and reads every
+file it ever wrote, and one that discovers a bound adds it and reads every file
+too, clamping past it. That is the `[..N]Pair` migration one construct over,
+and it is why the bound is a declaration-side fact and never a wire fact.
+
+**THERE IS NO SORT AND NO KEY, so there is no invariant for the writer to hold
+and no order check for the reader to run.** The order is INSERTION ORDER, on
+the wire, in a region and in a cook, and it is identity the way POSITION is
+identity in a fixed array. Three of the map's rules therefore have no
+counterpart here, and their absence is the design rather than an omission: no
+ascending check, so a `malformed` a map raises on a descending key cannot fire.
+No key equality, so `duplicate` cannot fire, and two equal elements are two
+elements. And no sort in the four writing walks, so `measure == save` over a
+list is a check on the arithmetic alone, which is one fewer thing the pair
+proves and one fewer thing it can get wrong.
+
+**AND POSITION HERE IS NOT A VOCABULARY**, which is worth saying because §2.4
+has just finished making `flags` the only positional vocabulary a table has. A
+list's positions are INDICES INTO DATA: they name no declaration, they carry no
+identity a schema edit can move, and no edit to a schema can shift the meaning
+of a stored element the way inserting a `flags` variant shifts the meaning of a
+stored bit. `[E.Max]T`'s refusal (§2.4) is about an ENUM read by position, and
+nothing here reopens it.
+
+**THE READER TRUSTS NOTHING and reads the array's own rules.** Every load path
+applies §3's array rules and produces one report (§4). **THE TWO PATHS AGREE ON
+EVERY WIRE EITHER OF THEM DECODES**, exactly as they do over a map, and the
+claim is scoped there deliberately: where they differ is at a REFUSAL, which is
+not a decode, and that difference is the two rows below. Two decoding events
+first, each the one an array already raises:
+
+- **AN ELEMENT KIND THAT DISAGREES** with the reader's declaration is §3's
+  element-kind rule: the field is skipped whole by its `L`, the array reads
+  empty, and one `kind_mismatch` counts. `[]int32` read into a `[]float32`
+  field, `[]T` read into a `[]*T` field and the reverse are all this event.
+- **A DAMAGED ELEMENT** inside a good count is that element's own framing
+  damage, and the array keeps what it decoded, exactly as a bounded array's
+  elements do.
+
+**AND TWO OVERFLOWS, WHOSE OUTCOME IS THE PATH'S**, because one path sizes a
+caller's region before it reads and the other allocates as it goes:
+
+| the wire says | into a REGION (§6.5) | into a BUILDER (`LoadBuilder`) |
+|---|---|---|
+| a count the BODY CANNOT COVER | `LoadMeasure` answers `-1` with the reason `count_over_length` (§6.5). No `Load` runs, and there is no report, because nothing was read | §4's framing damage: the prefix the body covers lands, `malformed` counts, and the parent reads on past the field's `L` |
+| a count above the `int32` STORAGE CAP | `LoadMeasure` answers `-1` with the reason `count_over_extent_cap` (§6.5). No `Load`, no report | `LoadBuilder` answers NULL. The partial builder is DISCARDED, and the report holds what it held when the count was met, which is what the caller reads to see how far the wire got |
+
+**NO COUNTER MOVES FOR A `LoadMeasure` REFUSAL**, on §3's rule for the form
+byte: nothing was decoded, so there is nothing to count, and a refusal is not
+one of §4's events. `LoadBuilder`'s NULL is a refusal too and moves no counter
+of its own, and the report it leaves behind is the one the decode had already
+written. **A caller that wants one answer for both paths measures first**,
+which is what §6.5 already tells a region caller to do.
+
+**`clamped` CANNOT FIRE ON THE COUNT, and that is the one counter this
+construct removes.** A bounded array raises it when a wire's `N` is past the
+reader's own bound, and an unbounded array has no such bound, so a count is
+either read, or refused before the read, or damaged. Values inside the elements
+clamp against their own declared ranges exactly as they always did, and a
+`string(N)` FIELD inside a table element still clamps at its own capacity. **A reader that declares
+`[..N]T` where the writer declared `[]T` clamps at N and counts, once**, which
+is the same event that reader raises for any oversized array and is the price
+of adding a bound.
+
+**A body TOO SHORT TO CARRY ITS OWN HEADER is INERT**, §4's rule unchanged: no
+element is decoded, no counter fires, and the field keeps the value it has.
+
+**How a reader without the field skips it**: by `L`, under §3's second skip
+rule, counting `unknown`. **How a FIXED-class reader meets one**: it does not
+know it is unbounded. A `[]T` is a kind `14` field, so a build that declares
+the same name as a `[..N]T` decodes it as that array and clamps, and a build
+that declares the name not at all skips it. No new skip rule, no new kind, and a
+build from before this construct existed reads a save that carries one.
+
+**Tolerance and evolution**, each as §4's events and each a row of §4.1's
+three-frames table:
+
+- **`[]T` changed to or from `[..N]T`** is the same bytes in both directions.
+  The direction that ADDS a bound gains the clamp, so the baseline warns on it
+  as it warns on any capacity shrunk, and the direction that removes one passes
+  as any capacity grown does (§18.2).
+- **`[]T` changed to or from `[N]T`**, the fixed spelling, is the same kind and
+  the same element kind, and the difference is elision at the empty end, which
+  is the difference `[..N]T` and `[N]T` already have (§3).
+- **`[]T` changed to or from `[E]T`** is a kind mismatch, `14` against `16`
+  (§3.2), and to or from a scalar, a string, a map or a pointer the same.
+- **The ELEMENT changed type**, `[]T` to `[]U` or `[]T` to `[]*T`, is §3's
+  element-kind mismatch: the field reads empty and one event counts.
+- **A field added to, removed from or renamed under `was` in the ELEMENT's
+  table** is ordinary field evolution inside every element, reported per
+  element as it is reported per table.
+- **A `[]T` renamed** is `was`'s case, as any field's is.
+
+**RETAIN-UNKNOWN READS THROUGH IT AS AN ORDINAL STEP** (§6.6). An element of a
+`[]T` is a step of a retained record's path, its INDEX, exactly as an element of
+a fixed or bounded array is and exactly as a map entry's value is under its key
+order. Nothing about retention changes for this construct: a path is the
+reader's own, computed from the reader's declaration and the region's directory,
+and an unknown field inside an element is addressed by the element it sits in.
+
+**AND §6.6'S CALLER HAZARD APPLIES UNCHANGED, which is worth saying plainly
+because the builder's `Erase` (below) is not what it is about.** Retention is a
+REGION round trip and the builder is not on that path at all (§6.6). In a
+region a list's count and its elements are ORDINARY WRITABLE MEMORY, exactly as
+a bounded array's count companion and elements are, so a caller that lowers the
+count or shifts the elements between `LoadRetain` and `SaveRetain` renumbers
+every ordinal after the edit, and §6.6's rule is the one that applies: the
+record held for the last element is dropped and counted `retain_lost`, and the
+records held for the ones before it land in a sibling's body with nothing able
+to see it. **Editing a VALUE in place invalidates nothing.** A list gets no
+exemption here and asks for none.
+
+**§4.1'S SILENT CLASS STAYS AT FOUR, and the construct adds nothing to it.**
+Changing the element's TYPE moves the element kind and is reported. Changing
+its POINTER-NESS moves the element kind between `13` and `17` and is reported,
+which is what kind `17` was spent for (§3.1). Removing or adding the BOUND
+moves no byte and loses no value, so it is not silent, it is nothing. What is
+silent about a `[]T` is exactly what is silent about any array: the element's
+REFERENT swapped for a twin that carries the same field ids under different
+defaults, which is §4.1's third member met one level down and the class §18
+exists for.
+
+**THE TEXT FORM IS A JSON ARRAY** (§16), the same shape a bounded array already
+takes:
+
+```json
+{
+  "placements": [ { "x": 1.0, "y": 2.0, "model": 3 },
+                  { "x": 3.0, "y": 4.0, "model": 7 } ],
+  "log": [ { "&node": 1, "tick": 7 }, { "&node": 1 }, null ],
+  "scores": [ 10, 20, 30 ]
+}
+```
+
+- **Every element the text carries is read**, because there is no bound to drop
+  a tail against. The bounded array's "more than N are dropped, counted" row
+  has no counterpart here, which is §16.2's mapping of the missing clamp above.
+- **`[]` is an empty list and `null` is `kind_mismatch`**, the array row's own
+  rule (§16.2).
+- **A `[]*T`'s elements take the pointer row**, so an element is the pointee's
+  object or `null`, and a slot may define or name a node any other slot or
+  field does under `&node` (§16.7).
+- **`ToJson` writes the elements in INDEX order**, which is the only order
+  there is, so `unpack` then `pack` is byte-stable (§17.2) without a rule of
+  its own.
+
+**THE COOK.** A cook is a region written verbatim (§7), so a cooked list is its
+element array where the cook put it, read in place with no allocation and no
+parse, the same slot in a locked region, a loaded one and an opened cook,
+because they are one encoding (§6.3). `schema cook-check` bounds the element
+array inside its holder's node as it bounds a count companion (§7.4). **It
+checks NO ORDER**, because there is none to check, which is the one clause the
+map's slot has that a list's does not. A cook and a loaded region are
+IMMUTABLE, so there is no append into a cook, and tools regenerate (§7).
+
+**THE BLOCK FORM: none, and there is no variable case.** An unbounded array
+makes its holder variable-length, and a variable-length table has no block form
+(§2.7, §19), because there is no fixed pitch anywhere in its closure. A
+block-form table therefore never holds one. The absence is by absence, exactly
+as a map-bearing table's and a pointered table's are, and nothing is refused
+for asking.
+
+**MEMORY LAYOUT.** It is the map's layout with the entry replaced by the
+element. **It is the same array in three places**: the wire's element order,
+the cook's bytes, and a loaded region.
+
+- **In a record**, a `[]T` field is SIXTEEN BYTES: an `int64` self-relative
+  reference to the element array and an `int32` count, then padding to eight.
+  The reference is a `TableRef` like a pointer's (§6.3). In the arena it names
+  the builder's list head (below), in a region it is the delta from the slot to
+  the first element, and `0` is the empty list in both. The count is the `int32`
+  every count companion has (§7.2), and §2.2's extent cap is its cap. It is the
+  map's slot exactly, because it is the same two facts.
+- **The ELEMENTS ARE BY-VALUE RECORDS INSIDE THE HOLDER'S NODE EXTENT**, laid
+  after the record's own storage: `count × sizeof( T )` at `alignof( T )`, zero
+  slack, one array per list reachable by value from the record, in depth-first
+  field order. The placement is PRE-ORDER and it INTERLEAVES WITH THE MAP'S ON
+  ONE RULE: a container's whole array first, then, element by element in the
+  container's own order, the arrays of any list or map that element holds by
+  value. Lists and maps are one population here, ordered by the declaration
+  order of the fields that hold them, because the extent has one layout and two
+  rules would be two answers for a record that holds both. **AN ELEMENT WHOSE
+  ALIGNMENT EXCEEDS THE ARENA'S IS REFUSED AT COMPILE TIME**, naming the field
+  and the alignment it asks for, on §2.8's own reason: a node's extent begins
+  at the arena's alignment and nothing inside it can ask for more. A node's
+  extent still runs to the next directory entry (§6.3), the directory gains no
+  position and the wire's numbering gains no index. An unbounded array is a
+  bounded array whose bound was decided at pack time.
+- **`LoadMeasure`'s term is `N × sizeof( T )` rounded up to `alignof( T )`, at
+  every depth** (§6.5), and the walk that reaches it is the map's: for a unit
+  that declares either construct the measure walks each record's field headers,
+  skipping every payload by its framing and reading no value, to reach each `N`.
+  An unreached non-empty list slot is refused by `Cook` and by `Lock`, the same
+  refusal §7.6 gives a pointer in that position. **Every `-1` here carries its
+  REASON**, from the one enum §6.5 states and the accelerators share.
+- **THE DESCRIPTORS DESCRIBE IT AS A COUNTED ARRAY WITH NO BOUND** (§8.1):
+  `array_bound` is `0`, which reads as "no declared bound", and a walker takes
+  its extent from the COUNT COMPANION exactly as it does for a `[..N]T`. The
+  element storage is reached through the reference rather than found inline,
+  which is what a map's entries already are. No descriptor column is added and
+  none moves.
+- **What that buys is what the cook exists for.** Zero bytes past the elements
+  themselves, `Open` still O(1) and untouched, indexing in place with one
+  multiply, `memcpy` relocation intact because the one reference is
+  self-relative, and a byte-stable cook, because an array of records in index
+  order has exactly one image.
+
+**ALLOCATION, GROWTH AND DELETES.**
+
+- **Elements are allocated in BULK SEGMENTS through the builder's
+  `TableAllocator` hook pair (§6.4, §13.9), never one call per element.** A
+  list's builder HEAD, a small node in the arena holding the segment chain and
+  the live count, is allocated when the first element is added. Each segment is
+  a fixed number of elements carved from one call to the pair, and a new segment
+  is appended when the current one fills. **Nothing ever moves** (§6.4): an
+  element's address is stable for the arena's life, so a `T *` handed back by
+  `Add` stays valid while other elements arrive.
+- **The builder keeps INDEX ORDER, which is the order it was given.** The four
+  writing walks copy the LIVE elements out of the segments in that order and
+  sort nothing, so the array of pointers a map's walks allocate has no
+  counterpart here.
+- **ERASE IS THE MAP'S MECHANISM, ADDRESSED BY THE POINTER** (§2.8). `Erase`
+  takes the element `Add` handed back and marks it DEAD, one bit in the
+  segment's slot and not in the element storage, and decrements the live count.
+  `Measure`, `Save`, `Lock` and `Cook` skip dead elements, so a dead element
+  costs nothing on any wire and in any region, and the surviving elements pack
+  in the order they were added. **Its storage is reclaimed at RESET and never
+  reused mid-build**, the map's rule for the map's reason: reusing a slot would
+  make "an element's address is stable" false for exactly one case. A REGION
+  and a COOK are immutable, so they have no erase.
+
+  **The KEY is what differs, and it is the pointer.** A map erases by the key
+  that identified the entry, and a list has no key, so its own ADDRESS is
+  the handle, which is the one thing the builder already promises never moves
+  (§6.4). `Erase` takes the arena and never allocates, exactly as the map's
+  does.
+
+  **WHY THE BUILDER CARRIES IT AT ALL**, since a locked region cannot: the
+  save-edit cycle is the tool's path (§6.5), which is `LoadBuilder`, then an
+  edit, then `Save`, and removal is most of what an edit is. And a game's own
+  inventory removes items IN SLOT ORDER, which is a thing a `map[K]T` keyed by
+  an id cannot keep: a map is ordered by its key and a list by its author, so
+  telling that case to use a map is telling it to give up the order it came
+  for.
+
+  **INDICES ARE NOT STABLE ACROSS AN ERASE, and that is the whole of its
+  cost.** Erasing element 2 of five leaves four, and what was index 3 is index 2
+  in the next `Save`, `Lock` or `Cook`. A caller holding an INDEX across an
+  erase is holding a stale one, and a caller holding the POINTER is not, which is
+  why the pointer is the handle.
+- **One list, one worker at a time.** Two workers adding to ONE list is the
+  caller's synchronization problem, as writing one node from two workers is
+  (§6.4). Two workers adding to two different lists are safe, because each
+  list's head and segments are its own.
+
+**COST MODEL**, per element unless stated. The wire rows are §3's, at the
+widths a small list takes.
+
+| where | what it costs | note |
+|---|---|---|
+| the wire, a scalar element | the scalar's width | back to back, no per-element framing at all |
+| the wire, a table element | `2 + body` bytes | the element's own `L` and its terminator, which is what an array of tables already pays |
+| the wire, the list field | `5` bytes once | the id reference, the kind, `L`, the element kind, `N`, exactly a bounded array |
+| a region or a cook | `sizeof( T )`, plus `16` per list field | zero framing, zero attribution beyond the holder node's own entry |
+| `Load` into a region | no allocation | the decode an array of that element already pays |
+| indexing the const form | one multiply and one add | in place, one form, every language |
+| the builder, add | an append, no allocation on the fill path | segments come in bulk |
+| the builder, erase | one bit, by the element's own pointer | storage held until reset, the map's rule (§2.8) |
+| `Lock`, `Save`, `Cook` | one pass in index order, dead elements skipped | no sort, and no array of pointers to hold one |
+
+**Against the map, the same data costs FOUR bytes of framing an element less
+on the wire, plus the key's own two-byte header and the key's bytes, and one
+`string(N)` or integer less in every region and every cook**, which is the
+whole of what the key was buying. Against `[..N]T`, it costs sixteen bytes in
+the record and a variable-length holder, and it saves the `N − count` unused
+elements the bounded spelling stores whether they are live or not. **That is
+the trade in one line: a bounded array pays for its maximum in every
+instance, and a list pays a reference and a count in every instance.**
+
+**NEGATIVE CONTROLS the implementation carries.** Each names the sabotage, the
+corpus row or instance that meets it, and the one instrument that goes red.
+
+- **The writer emits the elements out of order.** `list_scalars` is what meets
+  it, and the byte compare against its pinned wire goes red while `measure ==
+  save` still holds.
+- **The element array is laid out AFTER a nested container's**, breaking the
+  pre-order rule. `list_of_maps`, whose element holds a map, is what meets it,
+  and the region's byte compare and `schema cook-check`'s containment clause go
+  red together.
+- **The walk visits lists out of declaration order**, grouped after the pointer
+  fields. `list_before_pointer`, whose `[]*T` is DECLARED BEFORE a pointer field
+  and reaches a shared node first, is what meets it, and the byte compare
+  against its pinned wire goes red on the node numbering. It is
+  `stream_arm_first`'s shape at this construct (§3.1).
+- **A shared node is written twice.** `list_shared`, whose two slots name one
+  node, is what meets it, and both the region's byte count and the text round
+  trip's `&node` resolution go red.
+- **The reader CLAMPS the count** against something. A `report` row whose
+  `[]uint8` carries **100,000 elements**, which is past `2^16` and so past any
+  bound a schema on this page declares, is what meets it, and the decoded count
+  goes red. The count is pinned above `2^16` on purpose: a smaller one could be
+  clamped by a bound a control author happened to pick and the row would still
+  pass.
+- **`Save` emits a DEAD element.** `list_erased`, an instance that erases from
+  the middle and adds after it, is what meets it, and the byte compare against
+  its pinned wire goes red while `measure == save` still holds, which is what
+  says the sabotage is the skip and not the arithmetic. A control that erases
+  the LAST element passes under a writer that merely truncates, so the erase is
+  from the middle.
+- **The element-kind rule decodes anyway.** A `report` row written as
+  `[]int32` and read as `[]float32` is what meets it, and the decoded values go
+  red.
+- **`LoadMeasure` over a LIST OF TABLES HOLDING LISTS.** `list_nested` is what
+  meets it, and the measure goes red against the region `Load` fills if the
+  term is summed at one depth only.
+- **THE FOUR `LoadMeasure` REFUSALS ARE A UNIT TEST AND NOT A `report` ROW**,
+  `make tables-list-measure-refusals`, because a refusal produces no counters
+  and the `report` surface is counters (above). It builds each wire in memory,
+  with a SYNTHETIC count rather than a golden, and asserts the answer and the
+  REASON (§6.5): a count above the `int32` cap, which no golden could carry
+  because the file would be two gigabytes; a count whose elements cannot fit
+  the field's `L`; the same two at DEPTH, inside an element's own list; and a
+  clean wire beside them, which must measure. Red if any of the four answers
+  something other than `-1` with its own reason, if the clean one refuses, or
+  if any of them moves one of the report's counters.
+- **An allocation is planted in `Load` or in the const indexing.** Every corpus
+  body meets it, and the allocation audit goes red in every port that has one.
+- **A `TableList` symbol is planted in a list-free unit's header.** The
+  zero-cost gate's header scan (§2.2) goes red.
+- **`schema cook-check`'s element-array check is dropped** (§7.4). A cook whose
+  list slot points its array past the holder's extent is what meets it, and
+  `cook-check` goes red on it.
+- **The `type`-body refusal is dropped**, and the by-value cycle `[]Self`, and
+  a declaration under a claimed name. Each has its own schema, and the checker's
+  refusal test goes red if any compiles.
+- **The build version MOVES when the element's lines change, and not before.**
+  A `[]T` gaining a bound is what meets it, because it moves the field's array
+  shape and its storage and nothing else. A list-free unit's id is unchanged by
+  the construct existing, and a `was` rename of the list moves nothing.
+
+**THE C++ SURFACE**, in the dialect (§13.9), a builder and a reader.
+
+```cpp
+SaveBuilder builder;                                    // the arena, and the root
+Save * save = builder.GetRoot();
+
+// add: the element is appended at its defaults and handed back to fill
+Placement * placement = SavePlacementsAdd( builder.main, save->placements );
+placement->x = 1.0f;
+
+// a scalar element is the same call, and the same pointer
+*SaveScoresAdd( builder.main, save->scores ) = 10;
+
+// a pointer element: Add hands back the SLOT at null, Emplace fills it as it
+// fills any pointer slot, and a second slot may hold the same reference
+TableRef * slot = SaveLogAdd( builder.main, save->log );
+LogEntry * shared = LogEntryEmplace( builder.main, *slot );
+*SaveLogAdd( builder.main, save->log ) = *slot;         // two slots, one node
+
+// erase: by the element's own pointer, marks dead; false when it is not this
+// list's; storage held until the builder resets
+bool erased = SavePlacementsErase( builder.arena, save->placements, placement );
+
+// iterate on the builder: INDEX order, live elements only
+for ( Placement * e : SavePlacementsEach( builder.arena, save->placements ) ) {}
+
+builder.Lock();                                         // one pass, no sort
+const Save * locked = builder.AsConst();
+
+// the const form, a locked region or a loaded one or a cook, is one surface
+int32_t n = locked->placements.size();
+const Placement & first = locked->placements[ 0 ];
+for ( const Placement & p : locked->placements ) { ... }
+```
+
+- **The const form's `size()`, `operator[]` and the iteration are MEMBERS of the
+  storage type** `TableList<Placement>`, as `TableMap`'s surface is (§2.8) and
+  `TableKeyed`'s is (§2.4), because a region reference resolves from the slot's
+  own address, so a member needs no base and no context. Iteration yields the
+  ELEMENT and no key, which is the one place the map's proxy is not needed, and
+  it carries no `iterator_traits` (§13.9).
+- **`operator[]` IS BOUNDS-CHECKED IN EVERY BUILD**, on §2.4's rule and for
+  §2.4's reason. `NDEBUG` does not remove it: the extent is `size()`, which is
+  a number that CAME FROM A FILE, so an index past it is not a mistake a
+  release build gets to make cheaply. **There is no undefined-behavior path
+  here in any configuration**, and what varies is only how a language ends a
+  program: C++ asserts and then aborts, C# throws, Rust panics, Go panics
+  (§2.4). The cost is one perfectly predicted compare per index, over data a
+  reader did not write, which is not a price worth a class of out-of-region
+  reads.
+- **On a `[]*T` the const `operator[]` and the iteration answer the RESOLVED
+  `const T *`**, one add on the self-relative delta, NULL when the reference is
+  null, exactly as `<T>At` answers it and exactly as a `map[K]*T`'s `Find`
+  does (§6.2, §6.3, §2.8).
+- **The builder's three are FREE FUNCTIONS taking the worker or the arena**, as
+  `Emplace` and the map's five are. `Add` takes the WORKER because it may
+  allocate a segment. `Each` and `Erase` take the arena because neither ever
+  does.
+- **`Add` answers NULL for an arena that cannot carve another segment, and for
+  a count at the `int32` cap.** NULL means NOT ADDED, and a caller that needs
+  the reason checks `size()` before the call.
+- **Every port spells these in its own idiom and mirrors the contract**:
+  indexing and iteration that allocate nothing over a region or a cook, index
+  order, and a builder surface where a port has a builder. Elixir, the READING
+  TIER (the ladder), has indexing and iteration over an opened cook and a loaded
+  region and no builder, as it has no builder for anything.
+
+**WHY IT SPENDS NO WIRE KIND.** For the map's reason, one construct over
+(§2.8): every reader that exists skips it by `L` or decodes it as the array it
+is, not one byte of framing is new and not one skip rule, and **a kind is spent
+to close a SILENT edit**. There is no silent edit here. A `[]T` and a `[..N]T`
+are the same data read correctly in both directions, the element kind already
+separates every element type from every other (§3), and a dedicated kind would
+buy bytes and nothing else while ending the migration that makes a bound a
+declaration-side fact. Every kind is a row nine ports skip forever, and this
+construct asks for none.
+
+**AGAINST THE FIELD.** Protocol Buffers has `repeated T`, unbounded, a length
+prefix a message and a `RepeatedField` allocated on parse. FlatBuffers has
+unbounded vectors, read in place off the buffer, built through a builder that
+knows the length before it writes. Row by row, with the section that holds
+each:
+
+| | schema | Protocol Buffers | FlatBuffers |
+|---|---|---|---|
+| an unbounded collection in a record | `[]T`, a reference and a count, elements in the node's extent (§2.9) | `repeated T` | a vector, an offset from the table |
+| the bounded spelling beside it | `[..N]T` and `[N]T`, inline storage, no allocation, the FIXED class (§2.2) | none, every repeated field is heap | none |
+| the same bytes for both spellings | `[]T` and `[..N]T` are one wire, so a bound is added or removed without touching a stored file (§2.9) | not a question it has | not a question it has |
+| zero allocation on `Load` and on read, every language | the region load allocates nothing and indexing is in place (§6.5), and **Elixir cannot claim zero and does not**, its count per iteration being pinned rather than zero | a repeated field is allocated on parse in every runtime | reading allocates nothing, in C++, Swift and C |
+| a cook read in place | `Open` is O(1) and the elements are the mapped bytes (§7) | none, parse first | yes, the vector is the buffer |
+| a shared node as an element | `[]*T`: two slots, one node, on the wire, in a region and in the text as `&node` (§3.1, §16.7) | tree only, a message is copied per slot | an `Offset` may be reused by the builder, nothing preserves it through text |
+| element evolution by name | an element's type change is reported, never misdecoded (§3, §4) | a type change misdecodes or drops by field number | none, a vtable slot's type is trusted |
+| byte-stable output | `measure == save`, index order, one image from one value (§9) | field order is the writer's | the builder's order |
+| a fixed-table user pays nothing | a list-free unit carries no list machinery, held by the zero-cost gate's header scan (§2.2) | every runtime carries the repeated codec | every runtime carries the vector |
+
+**BACKEND STATUS: the C++ REFERENCE and the TOOL carry it, and every other
+backend refuses a unit that declares one, by name** (§11), on the same terms
+maps take: the ports are a named follow-on (§15). The corpus holds the
+construct in `tables/lists`: `list_empty` (an empty list beside a full one),
+`list_scalars`, `list_tables`, `list_shared` (two slots naming one node beside
+a null slot), `list_before_pointer` (the walk-order control above),
+`list_erased` (an erase from the middle with an add after it), `list_of_maps`
+and `list_nested` (a list of tables that hold lists), each crossing the wire,
+the text and the cook in the harness, with the report rows the negative
+controls above name and `make tables-list-measure-refusals` beside them.
+
+**AND ONE GOLDEN IS THE MIGRATION ITSELF**, `list_migrates`, because "the same
+bytes" is a claim about two schemas and no single-schema instance can carry it:
+ONE content, TWO declarations of the holder, one spelling the field `[..N]T`
+and one spelling it `[]T`, and ONE pinned wire that both write byte for byte
+and both read into equal values, with the report silent in both directions. The
+`[..N]T` side's bound is chosen ABOVE the instance's count, so the row proves
+the framing and not the clamp, and the clamp is the `report` row above. Red if
+either writer's bytes differ from the pin, if either read is not silent, or if
+the two loaded values are not equal field for field.
+
 ## 3. The wire
 
 **The wire is neutral.** It carries none of schema's packing opinions, no
@@ -2456,6 +3081,13 @@ twenty unnameable entries counts nothing at all if no body references them.
   descending one stops the map with what it has and flags `malformed` (§2.8).
   Byte-identical output against this implementation requires the order, as it
   requires declaration order.
+- **An UNBOUNDED ARRAY moves no byte on this wire either, and spends no kind**
+  (§2.9). It rides as the kind `14` array it is, under its element's own
+  element kind and its live count, so a reader that cannot name the field skips
+  it by `L` and one that declares the same name as a bounded array of the same
+  element decodes it and clamps at its own bound. There is no order to hold and
+  no key to compare, so the map's two reader events have no counterpart here,
+  and a bound is a declaration-side fact that never rides.
 - **Field ORDER within a body is not part of the contract.** This
   implementation writes fields in declaration order, and a reader must not
   rely on it: every field is found by its id, so any order decodes the same
@@ -3760,6 +4392,14 @@ tolerance is the versioning model:
   `16`). A repeated key is `duplicate` and last wins whole. A descending key is
   `malformed`, the map keeping its ascending prefix. A key that does not fit
   the reader's bound drops its entry and counts `clamped`, one per entry.
+- **An UNBOUNDED ARRAY** (§2.9) takes the array rules above and no rule of its
+  own. `[]T` and `[..N]T` are the same bytes, so an edit between them is silent
+  in the direction that removes the bound and `clamped` in the direction that
+  adds one. An element kind that disagrees is the array's kind mismatch, the
+  field reading empty. A count the body cannot cover is framing damage. And
+  **`clamped` cannot fire on the COUNT of a `[]T`**, because there is no reader
+  bound to clamp against: a count is read, or refused by `LoadMeasure` before
+  any decode, or damaged.
 - **Out-of-range value** (bounds tightened since the writer): clamped to
   the reader's declared bounds, counted. **A fixed field clamps on the RAW
   scale**: its declared bounds are whole units (SPEC.md §4.6) and the wire
@@ -4010,6 +4650,8 @@ only.
 | a MAP's KEY BOUND tightened (§2.8) | `clamped`, one per entry dropped | warns on a shrink, as any capacity does | **moves** |
 | a MAP changed to or from `[..N]Pair` (§2.8) | silent where the pairs were ascending; the map's own `malformed` where they were not | **warns** — the read gains the order check, so a wire whose pairs were not ascending reads short | **moves** |
 | a MAP changed to or from `[E]T`, a scalar, a string or a pointer (§2.8) | `kind_mismatch` | **refuses** | **moves** |
+| an array changed between `[]T` and `[..N]T` (§2.9) | silent where the count fits the new bound, `clamped` past it | **warns** on the direction that ADDS a bound, as any capacity shrunk, and passes on the one that removes it | **moves**, because the storage is a reference and a count on one side and the maximum inline on the other |
+| an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (§2.9) | `kind_mismatch`, the array reading empty | **refuses**, as any element kind changed | **moves** |
 | a field moved between `T` and `?T` | silent — no byte moves | passes | **moves** — the presence companion is storage |
 | a field moved to or from `*T` | `kind_mismatch` | passes | **moves** |
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
@@ -4641,10 +5283,12 @@ The builder is designed to go wide, lock-free by ownership:
   returns. `Load` is two passes over the same records: it fills the node
   directory from the framing, then decodes each body into its own
   storage, so a forward index resolves without scratch. The load path
-  allocates nothing. **For a unit that declares a MAP (§2.8) the measure also
+  allocates nothing. **For a unit that declares a MAP (§2.8) or an UNBOUNDED
+  ARRAY (§2.9) the measure also
   walks each record's field headers**, skipping every payload by its framing
-  and reading no value, to reach each map's `N` at every depth. A map's term
-  is `N × sizeof( Entry )` rounded up to `alignof( Entry )`, summed at every
+  and reading no value, to reach each `N` at every depth. A map's term
+  is `N × sizeof( Entry )` rounded up to `alignof( Entry )` and an unbounded
+  array's is `N × sizeof( T )` rounded up to `alignof( T )`, summed at every
   depth. An `N` whose entries cannot fit in the map's `L` (two bytes each at
   least: an entry's `L` and its terminator, §3) is refused, and the refusal is the
   `-1` every measure's refusal answers (§7.6). A fixed unit and a map-free
@@ -4658,8 +5302,33 @@ The builder is designed to go wide, lock-free by ownership:
   did not expect. The caller owns the allocation precisely so it
   can refuse a number it did not expect; nothing in the runtime decides
   that for it.
+- **A `-1` CARRIES A REASON, and it is the SAME ENUM the accelerators'
+  refusals carry.** `Open` and `BlockOpen` answer a null beside a refusal
+  reason (§7, §19.2), and a call that answers `-1` answers the same way, as an
+  enum out-parameter, with the same spellings in every target. One enum covers
+  both, because a caller asking "why can I not have this file" is asking one
+  question whichever call refused it, and two enums would be two vocabularies
+  for one answer in nine ports. **The enum's rule is §7's**, one value per
+  clause with nothing invented and nothing hiding behind another value, so what
+  this side adds is one value per refusal it distinguishes:
+
+  | value | what refused, and where it is stated |
+  |---|---|
+  | `unknown_form` | a form byte this build does not carry (§3). The read never begins, so it is a refusal and not damage, which is what §3 already says of it |
+  | `count_over_length` | an array or map count whose elements cannot fit the field's own `L` (§2.8, §2.9) |
+  | `count_over_extent_cap` | a count above the `int32` extent cap (§2.2), which no region can hold whatever its size |
+  | `blob_over_size_cap` | a blob whose length is past the derived-size cap (§3.1, §11) |
+  | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6) |
+
+  **A REFUSAL MOVES NO COUNTER** (§4): nothing was decoded, so there is nothing
+  to report, and the reason is where the answer lives. **This shares a surface
+  with the accelerators' refusal and lands with it**, so a build that has one
+  has the other.
 - **Into a builder** — the tool's path. The same tolerant decode into a
-  fresh builder, so loaded data can be edited and locked again.
+  fresh builder, so loaded data can be edited and locked again. **Its own
+  refusal is a NULL** rather than a `-1`, and the report it leaves behind is
+  what the decode had written before the refusal, which is stated where the
+  construct that can raise one is (§2.9).
 
 Contract split, stated once: the AUTHORING path (builder growth, `Lock`)
 may allocate; the reading path allocates nothing of its own — the caller
@@ -4847,7 +5516,8 @@ without re-reading its own error handling.
 - **Every further step names a CHILD BODY of the body before it, in the
   reader's own declaration order**: fields in declaration order, and within a
   field, elements in index order, which is a present `?T`, a nested `T`, an
-  element of a fixed, bounded or enum-keyed array, a map entry's value in
+  element of a fixed, bounded, enum-keyed or UNBOUNDED array (§2.9) in index
+  order, a map entry's value in
   ascending key order, and a union's set arm. **A pointer field is not a
   step**, because its target is a node and takes a first step of its own.
 - **A UNION's step is the ARM's OWN ORDINAL**, and not "whichever arm is
@@ -5639,6 +6309,7 @@ fields would get wrong:
 | `*bytes`, `*string` | `int64` self-relative delta, eight bytes at eight, to a BLOB NODE (below) |
 | `?T` | the value's own pieces, then `bool` present |
 | `map[K]V` | `int64` self-relative delta to the entry array, then `int32` count; the entries follow the record inside the node's extent (§2.8) |
+| `[]T`, `[]*T` | `int64` self-relative delta to the element array, then `int32` count; the elements follow the record inside the node's extent (§2.9), a `[]*T`'s elements being `int64` deltas of their own |
 
 - **An ENUM slot holds the ORDINAL**, at the enum's own derived storage width
   (SPEC.md §4.2) — not the wire's variant-name hash. What group 3 of the build
@@ -5681,6 +6352,13 @@ fields would get wrong:
   it bounds a count companion, walks each entry's pointer slots as it walks a
   bounded array's elements, and CHECKS THE ORDER, because a cook `Find` cannot
   search is a forgery.
+- **AN UNBOUNDED ARRAY's ELEMENTS are laid the same way** (§2.9): after the
+  record's own storage, `count × sizeof( T )` at the element's alignment, in
+  INDEX order, zero slack. Lists and maps are ONE POPULATION in that extent,
+  placed pre-order in the declaration order of the fields that hold them, so a
+  record holding both has one layout and not two. `schema cook-check` bounds
+  each element array inside its node and walks each element's slots as it does
+  a map's entries, and it checks NO ORDER, because a list has none.
 
 **EVERY BYTE NO FIELD COVERS IS ZERO** — interior padding, a record's trailing
 padding, a string's or `bytes`' unused tail, the bytes of a union outside its
@@ -5825,6 +6503,11 @@ no reference:
    companions and tags are then walked as a bounded array's elements are. The
    KEYS are read too, ascending with no repeat, because a cook `Find` cannot
    search is a forgery.
+5. **Every UNBOUNDED-ARRAY SLOT** (§2.9). The same four clauses as a map's:
+   CONTAINMENT, ALIGNMENT, FIT and NO OVERLAP, against the holder's own extent
+   and against every other element or entry array in that node, and then the
+   elements' own slots, companions and tags walked as a bounded array's are.
+   There is no fifth clause, because there are no keys and no order.
 
 **Nothing else is read.** Not a scalar, not a string's bytes beyond a map
 key's, not an enum's ordinal, not a `flags` mask — none of them can steer a walker, so none of them
@@ -6441,6 +7124,48 @@ it rides under — so a tool prints `ships[Bomber]` rather than `ships[2]`,
 with no schema files on hand. The element's own vocabulary columns are
 unaffected: a keyed array OF enums carries both (§2.4). A positional array
 leaves all three NULL.
+
+**A MAP AND AN UNBOUNDED ARRAY ARE ARRAY FIELDS WHOSE ELEMENTS ARE NOT
+INLINE, and `array_bound = 0` is what says so.** Neither had a written rule
+before this section, so the rule is here, one shape for both:
+
+- **`kind` is `14`** and the ELEMENT kind is `13` for a map, the element's own
+  kind for a list, exactly as the wire carries them (§2.8, §2.9).
+- **`element_size` is the pitch**: `sizeof( Entry )` for a map, `sizeof( T )`
+  for a list. It is the stride a walker steps, as on every array line.
+- **`counted` is set and `count_offset` names the `int32` count**, which sits
+  beside the reference in the sixteen-byte slot (§7.2), so a walker reads the
+  live extent where it reads any counted array's.
+- **`array_bound` IS `0`, and it is the ONE TELL**. Every other array shape has
+  a bound of at least one, since a fixed or bounded array with `N < 1` is
+  refused (SPEC.md §4.6) and a keyed array's is `E.Max`, so zero is free and
+  means
+  exactly this: **the field's `offset` names an `int64` REFERENCE, not the
+  first element**, and a walker resolves it before it steps. That is one
+  comparison in a generic walk and no new column in nine ports.
+- **`table` names the ELEMENT's descriptor**: the generated entry's for a map
+  (§2.8), the element type's own for a list of tables, and NULL for a list of
+  scalars, exactly as a bounded array of scalars leaves it NULL.
+- **The vocabulary and key columns are untouched.** `key_type_name`,
+  `key_name` and `key_id` are the ENUM-KEYED array's and stay NULL on both: a
+  map's key is a field of the entry and a walker meets it there, and a list has
+  no key at all.
+
+**BACKEND STATUS, because the reference does not carry this yet.** The C++
+map descriptor emitted today leaves `kind` at `0` and `is_array` false and
+describes the map through the ENTRY's own `TableTypeInfo` beside three
+map-specific FUNCTION columns, `map_count`, `map_at` and `map_insert`, which
+is what let the text walk reach a `TableMap<Entry>` it has no name for. **It
+moves to the columns above when the list lands**, and the two land together
+for one reason: a second out-of-line shape would otherwise need a second set
+of function columns, and three per construct is how a descriptor becomes a
+per-construct API instead of a vocabulary. **The function columns do not all
+go**: what the walk cannot spell for itself it still cannot spell, so a
+resolver stays where a resolver is needed, and what changes is that the SHAPE
+is read from `kind`, `is_array`, `counted`, `element_size` and
+`array_bound = 0` like every other array's rather than inferred from a
+non-NULL `entry`. A port that has neither construct carries neither column
+set, which is §2.2's gate doing its job.
 
 **The public currency is the KEY; the storage index is private** (§2.4).
 `array_bound` on a keyed field is the STORAGE EXTENT, `E.Max` — derived
@@ -7252,7 +7977,9 @@ in build version (§20.5).
   `bytes(N)`, an `int128` or `uint128`, a `fixed`/`ufixed`, a `type`, a
   `table`, a pointer, an optional or a union; an
   attribute on the key (`| min`, `| max`, a default); `?map`, a default on a
-  map, `| max` on a map and the bounded spellings `[..N]map` and `[N]map`; a
+  map, `| max` on a map and the bounded spellings `[..N]map` and `[N]map`; **a
+  map as a UNION ARM** (§2.6), on the ground `[]T` is refused there, the
+  diagnostic naming the table wrapper that serves; a
   table that holds a map of ITSELF by value, directly or through any chain
   (the by-value cycle, named); and a declaration under any name the map
   CLAIMS, naming the map.
@@ -7270,6 +7997,37 @@ in build version (§20.5).
   and claims nothing at file scope for them. And the generated ENTRY is a
   closure member like every other, so it claims the suffix set below in its
   own right.
+- **Unbounded arrays** (§2.9): a `[]T` in a `type` body, which is what keeps
+  the type wire's "no unbounded collections" true (SPEC.md §1) and what
+  refuses one on a packet; **a `[]T` or `[]*T` as a UNION ARM** (§2.6), the
+  diagnostic naming the table wrapper that serves, which is the refusal a
+  `map` takes there on the same ground; the near-miss spellings
+  `[..]T` and `[0..]T`, each naming `[]T` as the fix, because a count bound is
+  a range literal and never a truncated one (SPEC.md §4.2); `?[]T`, a specified
+  default on one, and `| max` on one; the bounded spellings of the construct
+  itself, `[..N][]T` and `[N][]T`, which are arrays of arrays and refused as
+  those are (SPEC.md §4.3); a table
+  that holds a `[]` of ITSELF by value, directly or through any chain (the
+  by-value cycle, named); an ELEMENT that a bounded array refuses, each on the
+  bounded array's own diagnostic and naming its own follow-on, which is
+  `[][]T`, `[]map[K]V`, `[]?T` and `[]*bytes`; an element whose ALIGNMENT
+  exceeds the arena's, naming the field and the alignment it asks for (§2.9);
+  and a declaration under any of the three names the construct CLAIMS.
+
+  **AN UNBOUNDED ARRAY CLAIMS THREE NAMES AGAINST ITS FIELD**, on the map's own
+  rule: `<Table>` followed by the PascalCase of the field's name, and then
+  `Add`, `Each` or `Erase`. A `Save` with a `placements` list therefore claims
+  `SavePlacementsAdd`, `SavePlacementsEach` and `SavePlacementsErase`, and a
+  declaration spelling any of the three is refused naming the field. **It
+  claims THREE where a map claims eight**, and the difference is the key on
+  both sides: `Add` is the one name a list has that a map does not, because an
+  append needs no key where an insert does, and of the map's eight it does not
+  claim `Entry`, because no entry table is generated (§2.9), `Insert` and
+  `Find`, because there is no key to insert under or look up by, or
+  `IndexMeasure`, `Index` and `IndexFind`, because there is no lookup to
+  accelerate. `Erase` it does claim, and it is addressed by the element's own
+  pointer (§2.9). A language whose surface is members spells the same three on
+  the storage type and claims nothing at file scope for them.
 - **Byte buffers** (§2.5): `*bytes` or `*string` outside a table body; a
   bound on one, `*bytes(N)` (a buffer at its used size has no bound to
   declare); a specified default on one; `?` on one (already optional); and an
@@ -7314,7 +8072,10 @@ in build version (§20.5).
   port that emitted the union would name a table it never declares, or
   overlay storage its fixed-class codecs never met.
 - **On an ARM** (§2.6, which states each reason): a specified default; `?`;
-  `was`; `json`; an enum-keyed array `[E]T`; and an `if` guard.
+  `was`; `json`; an enum-keyed array `[E]T`; an `if` guard; and **a MAP
+  (§2.8) or an UNBOUNDED ARRAY (§2.9)**, whose elements live in the holder's
+  NODE EXTENT and would make that extent depend on the union's tag, each
+  refusal naming the table wrapper that serves.
 - **An array of unions** (§2.6): the enum-KEYED spelling `[E]Body`, a named
   follow-on (§15) where the bounded `[..N]Body` and `[N]Body` are not; and
   **an array of unions in a table closure under every backend but C++**,
@@ -7489,6 +8250,7 @@ in build version (§20.5).
     the rest of the one registry the checker and the emitters share —
     `TableKeyed` (an enum-keyed array's storage, and a keyed array occurs in
     a `type` body: this document's own `ScoreBoard` declares one),
+    `TableList` (an unbounded array's storage, §2.9),
     `TableMap` (a map's storage) and `TableMapIndex` (the optional index's
     handle, §2.8), `TableRef`, `TableReport`, `TableWriter`, `TableReader`, `TableEnumId`,
     `TableEnumValue`, the COOKED form's read runtime (`TableCookOpen`,
@@ -8730,6 +9492,25 @@ inspects everything in the schema built:
   own call, because it is never stored and no golden names it (§2.8's memory
   layout): what is deferred is the BENCH NUMBER that says the size above which
   a caller should reach for it, not the surface.
+- **UNBOUNDED ARRAYS IN EVERY BACKEND** (§2.9). The LANGUAGE carries the
+  construct, which is the parser's `[]T`, the checker's refusals and its two
+  claimed names, and the record's reference-and-count slot, and every backend
+  refuses a unit that declares one, by name (§11), until its codec lands. The C++
+  reference and the tool are first: the builder's segments and `Add`, the four
+  walks in index order, the region load, the const `TableList` surface, the
+  text form's array and `schema cook-check`'s element-array clause. What a port
+  needs is SMALLER than what a map needed, and by exactly the key: the element
+  is an ordinary array element its measure, save and load already carry, there
+  is no sort, no key compare and neither of the map's two reader events, and
+  the const surface is indexing and iteration rather than a search. Each holds
+  the same goldens and the same allocation audit as a row on schema#366. **The
+  builder half is `Add`, `Each` and `Erase`**, the last addressed by the
+  element's own pointer, with the dead bit and the live count a map's entries
+  already have (§2.8, §2.9).
+- **AN UNBOUNDED ARRAY OF BYTE BUFFERS**, `[]*bytes` and `[]*string`, and an
+  unbounded array of `?T`. Each waits on the bounded spelling's own follow-on
+  above and lands with it, because the question each asks is about the ELEMENT
+  and not about the bound.
 - Keyed lookup conveniences over loaded collections (library-side, never
   stored semantics).
 - **AN ARRAY OF UNIONS in every ported backend** (§2.6): C++ and the tool
@@ -9076,6 +9857,7 @@ Per kind:
 | `*bytes` | string, base64, or `null` | the blob in place, as `bytes(N)` spells its bytes, with NO bound to clamp against; `""` is a present blob of length zero and `null` is a null reference (§2.5). A body that is not base64 is `kind_mismatch`, the reference left null |
 | `*string` | string, or `null` | the blob's bytes as a string, with no bound; the same two values at the empty end |
 | `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` drops its entry and counts `clamped`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` makes the key malformed and one with a fractional value or out of the key kind's range drops its entry as `kind_mismatch`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7) |
+| `[]T`, `[]*T` unbounded array | array | the bounded array's row with NO bound, so no element is dropped and `clamped` cannot fire on the count (§2.9); `[]` is an empty list and `null` is `kind_mismatch`; a `[]*T`'s elements take the pointer row above, `&node` and all; written in INDEX order, which is the only order there is |
 
 **The one-key object is the UNION's form, and the arm's own row supplies
 what goes under that key** (above). A `table` arm and a `type` arm take the
@@ -9740,7 +10522,8 @@ means.**
 file, no check.** It is a canonical text projection of the closure — the
 members sorted, each member's fields in declaration order, one fact per
 line: name, wire id, kind, an array's ELEMENT kind, array shape (fixed,
-bounded, enum-keyed or MAP, with the bound's EVALUATED value, for a keyed
+bounded, UNBOUNDED, enum-keyed or MAP, with the bound's EVALUATED value where
+the shape has one, for a keyed
 array the KEY enum it names, and for a map the KEY's kind and the KEY's
 capacity), string and bytes capacity, the declared
 RANGE (`min=` and `max=`), presence of an optional, a fixed field's `F`
@@ -9807,6 +10590,24 @@ and flows through an expression into a default shows up as the value it now
 produces, which is the whole point — the projection records what data will
 mean, not how it was spelled.
 
+**AN UNBOUNDED ARRAY RENDERS AS `array=unbounded` WITH NO `bound=`** (§2.9),
+and the rule for judging that is one sentence: **`bound=` APPEARING OR
+VANISHING ON AN `array=` MOVE IS THE CAPACITY FACT, and it is judged as a
+capacity SHRINK or a capacity GROWTH**: a warning where the bound appears,
+because the read gains a clamp, and silence where it vanishes, because no
+stored count can fail a bound that is gone (§18.2). It is the only token whose
+absence carries a verdict, and it carries the verdict the token itself would
+have carried. **Every other token keeps judging exactly as it did**: `elem=`,
+`type=`, `enum=`, `union=` and `kind=` are unmoved by the array's class, so an
+element retyped, a referent swapped or a kind changed refuses under the shape
+that was there and under the shape that replaces it alike.
+
+**AND IT BUMPS NO RENDERING VERSION.** The bump rule asks whether this
+rendering emits a token an older one did not, on a line an untouched schema
+still produces. No declaration written before this construct existed can be
+unbounded, so every committed baseline regenerates byte-identically, and the
+addition does not meet the test.
+
 **A RANGE IS AN EXTENT, and it is recorded like a capacity.** A reader
 clamps a stored value to its OWN declared bounds and counts `clamped` (§4),
 so a tightened range is a data edit — every stored value past the new bound
@@ -9872,7 +10673,9 @@ committed file whenever one is there, and:
   was ever written under, and the refusal names both spellings and the one
   that is correct.
 - **WARNS** — an array bound or a string/bytes capacity shrunk, a map's KEY
-  bound included; a field changed between a map and the `[..N]Pair` its
+  bound included, **and an unbounded `[]T` given a bound** (§2.9), which is a
+  capacity shrunk from every count to N; a field changed between a map and the
+  `[..N]Pair` its
   entries already are (§2.8), because the read gains the order check and a
   wire whose pairs were not ascending reads short; a declared
   RANGE tightened, from either end, or declared where the field or the ARM
@@ -9892,7 +10695,9 @@ committed file whenever one is there, and:
 - **PASSES, in silence** — everything the wire absorbs: fields added,
   removed, reordered or renamed under `was`; enum variants and union arms
   added anywhere; flags variants APPENDED at the end; bounds, capacities and
-  ranges grown; a bounded array made fixed or the reverse; a field moved
+  ranges grown, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
+  which is the largest growth there is; a bounded array made fixed or the
+  reverse; a field moved
   between `T`, `?T` and `*T`.
 
 **The BLOCK FORM takes no row here at all** (§18.1). A table's layout is a
@@ -10982,6 +11787,7 @@ keep, so it belongs in `none` with its reason or the token belongs on the line.
 | array class and bound; string/`bytes` capacity | layout | `array=`, `bound=`, and the `size=` they produce |
 | a keyed array's KEY enum | layout | `key=` — its slots ride by that enum's variant-name hashes (§3.2) |
 | a MAP field's class and its ELEMENT | layout | `kind=14`, `array=map` and `elem=` the generated entry's own storage size on the field line, the pitch its entries lie at, and the `size=` the sixteen-byte slot produces (§2.8) |
+| an UNBOUNDED ARRAY field's class and its ELEMENT | layout | `kind=14`, `array=unbounded` and `elem=` the element's own storage size on the field line, the pitch its elements lie at, and the `size=` the sixteen-byte slot produces (§2.9). It carries no `bound=`, for the map's reason: it declares no extent and its count is a wire fact |
 | a MAP's generated ENTRY, its layout and its two fields | layout | its own `record` line, keyed by the holder's wire id and the map field's wire id and never by the entry's generated name, with the `key` and `value` `field` lines under it (§2.8) |
 | a MAP's KEY kind and KEY capacity | layout | `kind=` and `bound=` on the entry's `key` line, which is where a key edit moves the id |
 | an out-of-line array's pitch | layout | `stride=` on the `slot` line |
@@ -11054,7 +11860,8 @@ lines are what it produces:
 record <Name> sizeof=<n> alignof=<n>
     field <id> kind=<n> offset=<n> size=<n> [ frac=<n> ]
         [ type=<Name> | enum=<Name> | union=<Name> ]
-        [ elem=<n> ] [ array=fixed|bounded|keyed|map ] [ bound=<n> ] [ key=<Name> ]
+        [ elem=<n> ] [ array=fixed|bounded|unbounded|keyed|map ]
+        [ bound=<n> ] [ key=<Name> ]
         [ optional=true ]
         [ default=<v> ] [ min=<v> ] [ max=<v> ] [ step=<v> ]
 ```
@@ -11082,11 +11889,15 @@ of declaration it names"*:
 - **`array=` and `bound=`** name the array's CLASS and its evaluated extent,
   so a fixed array and a bounded one of the same width are distinguishable and
   a moved bound is visible beside the `size` it produced. **`array=map` is a
-  map field** (§2.8). `elem=` is the ELEMENT'S STORAGE SIZE on every array
+  map field** (§2.8) and **`array=unbounded` is a `[]T`** (§2.9). `elem=` is
+  the ELEMENT'S STORAGE SIZE on every array
   line this projection writes — `elem=4` for a `float32` — so a map's is the
   generated entry's own `sizeof`, the pitch its entries lie at inside the
-  holder's node. A map carries no `bound=`, because it declares no extent and
-  its count is a wire fact.
+  holder's node, and an unbounded array's is the element type's own. **Neither
+  carries a `bound=`**, because neither declares an extent and both take their
+  count from the wire. An unbounded array generates no second record, because
+  it generates no entry (§2.9), so its element's own `record` line is the only
+  one it needs and that line is already there under the element's name.
 - **A MAP's generated ENTRY takes a `record` line of its own, and it is
   ANONYMOUS.** The line carries the HOLDER's wire id and the MAP FIELD's wire
   id, joined by a dot, in place of a name, and it sorts with the named records
@@ -11166,8 +11977,9 @@ field line's meanings: the kind and the shape are layout, the bounds are
 meaning, `size=` is the arm's storage width and rides unconditionally as a
 field's does, and `offset=` is the arm's offset within the union's storage,
 whose tag sits at 0 (§8.1). An arm takes no default and no `?`, so no
-`default=` and no `optional=` reaches an `arm` line, and a keyed array is
-refused at an arm (§2.6), so neither `array=keyed` nor `key=` does. **An arm
+`default=` and no `optional=` reaches an `arm` line, and a keyed array, a
+`map` and an unbounded `[]T` are all refused at an arm (§2.6), so none of
+`array=keyed`, `array=map`, `array=unbounded` or `key=` does. **An arm
 with NO PAYLOAD carries `kind=none`**, the second line, which is this
 projection's spelling of the payload-free kind the arm carries on the wire
 (§3), and §18.1's too. The three spellings are disjoint, so a unit whose arms all
