@@ -10387,9 +10387,13 @@ touching a stored file.
 - **THE WIDE TEXT ROWS**: a `wstring(N)` at empty, at one basic-plane
   character, at an astral pair, at exactly `N` code units and at one past it,
   which clamps, a clamp whose cut falls between a surrogate pair, which drops
-  the high half with it, storage holding an unpaired surrogate and storage
-  holding an interior zero unit, each writing `U+FFFD` (§16.3), and the same
-  values through a `*wstring` blob, where nothing clamps.
+  the high half with it, storage BUILT IN CODE holding an unpaired surrogate,
+  which writes `U+FFFD`, and storage built in code holding a zero unit, which
+  writes `\u0000` (§16.3), and the same
+  values through a `*wstring` blob, where nothing clamps. The two storage rows
+  are built in code deliberately: no wire can deliver either (§3), and a row
+  that reached them through a load would be pinning a case the reader now
+  refuses.
 - **The ARM rows of that battery** (§16.2), each red for one reason, a
   counter or a union state that is not the one the row pins:
   `{ "count": "7" }` and `{ "count": null }` at a scalar arm are
