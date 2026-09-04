@@ -180,38 +180,78 @@ CLOSURE over the unit's `type` declarations, not a listing of the unit.
 go on a wire. A `type` is a struct and its codec, every one of them is
 emitted, and any of them may be handed to a writer, so scoping the ROOTS by
 use would be the dangerous direction, and an unused helper type projects like
-a used one. From those roots the walk descends through every named referent a
-packet byte can reach: a field's named `type`, `enum` or `union`, an array's
-element type, the members of both sides of a branch, and a union arm's payload
-and the arm's own field facts. **An `enum` or a `union` the walk never reaches
-is not in the projection**, so a declaration only `table` bodies reach
-contributes nothing to this id. `flags` is the one vocabulary held out of the
-rule, and it projects whether a `type` reaches it or not.
+a used one. **An `enum` or a `union` the walk never reaches is not in the
+projection**, so a declaration only `table` bodies reach contributes nothing to
+this id. `flags` is the one vocabulary held out of the rule, and it projects
+whether a `type` reaches it or not.
 
-**Why `flags` projects unconditionally.** A flags mask is the table wire's one
-POSITIONAL vocabulary (SPEC-TABLES.md §3). A variant's identity is its bit, an
-insert or a reorder remaps every stored file, and no read report can see it,
-which makes it the second member of the silent class (SPEC-TABLES.md §4.1).
-The protocol id is the only frame that refuses two peers holding different bit
-assignments before they exchange table data over one connection. Content never
-rides in a flags declaration, because sixty-four bits is the ceiling and the
-law is append at the end, so the case this scoping exists for, a content enum
-of item kinds, quests or achievements growing weekly, cannot arise in one.
-Holding `flags` in keeps the fail-safe direction exactly where the report
-cannot help, and it costs a redeploy only for an edit that was a redeploy
-before. It is one line of the walk rather than a case anyone has to remember.
+**THE EDGES, ENUMERATED, because the walk is the whole of what this rests
+on.** A declaration is reached when a `type`'s own facts reach it by any of
+these, and the list is exhaustive rather than illustrative:
+
+1. **A field's named TYPE**: a `type`, an `enum`, a `union` or a `flags`
+   declaration a field line names, in any spelling, `T`, `?T` or `*T`.
+2. **An array's ELEMENT type**, which is the same set one level in.
+3. **An array's BOUND, where the bound names an enum**. `[E.Max]T` puts
+   `E`'s VARIANT COUNT in the extent, so an enum reached by nothing but a
+   bound still sets how many elements ride, and a variant added to it moves
+   packet bytes. This is the edge a walk that followed only types would
+   miss, and missing it is the spurious MATCH.
+4. **A keyed array's KEY enum**, `[E]T`. In a `type` body the spelling
+   lowers to the positional `[E.Max]T` (SPEC-TABLES.md §2.4), so the key
+   enum is an extent by another name and the third edge's reason is its
+   reason.
+5. **A CONSTANT's value expression**, followed through to what it names. A
+   `const` declaration does not project, because its value is already
+   resolved into the bound or the default that does, so the walk has to
+   reach the enum BEHIND a `const N = E.Max` exactly as it reaches one
+   spelled at the bound.
+6. **A UNION ARM's payload type, and the arm's own field facts**, which
+   re-enter the list at 1.
+7. **The members of BOTH SIDES of a branch**, which re-enter the list at 1.
+   An untaken branch's members are wire facts (§4.4), so an `else` body
+   reaches what a `then` body does.
+8. **Every item of a `type` the walk has reached**, transitively, which is
+   what makes it a closure rather than one step.
+
+**Why `flags` projects unconditionally, and it is the ONE exception.** A
+flags mask is the table wire's one POSITIONAL vocabulary (SPEC-TABLES.md §3):
+a variant's identity is its bit, an insert or a reorder remaps every stored
+file, and no read report can see it, which makes it the second member of the
+silent class (SPEC-TABLES.md §4.1). **Stated as the narrowing it is: this one
+line narrows the reachability rule, because `flags` is the only vocabulary a
+table cannot report a move in, the committed baseline is only a COMPILE-TIME
+guard and a studio may not have one, and the protocol id is the only RUNTIME
+frame that refuses two peers holding different bit assignments before they
+exchange table data over one connection.** Content never rides in a flags
+declaration, because sixty-four bits is the ceiling and the law is append at
+the end, so the case this scoping exists for, a content enum of item kinds,
+quests or achievements growing weekly, cannot arise in one. The other
+positional vocabulary a table could have had is gone rather than excepted:
+`[E.Max]T` is REFUSED in a table body by name (SPEC-TABLES.md §2.4, §11), so
+`[E]T` is the table form and an enum a table reaches moves no slot when it
+changes. Flags is therefore the whole of the exception, and there is no
+second.
 
 **What reachability does not change is what the projection MEANS.** The
 contract is that two units rendering one projection produce the same packet
 bytes, and an unreachable declaration produces no packet byte by construction,
 so the closure preserves it exactly. What moves is the other direction, the
 spurious MISMATCH: two units whose packet halves are identical and whose table
-halves differ now hold one id, which is correct. **So the walk is the whole of
-what this rests on.** A missed edge is the dangerous direction, a declaration
-a packet byte reaches that the walk does not, which is two incompatible builds
-shaking hands. The obligation is a negative control: remove one edge from the
-walk and `internal/check/projection_test.go`'s "an edit that moves bytes must
-move the id" leg goes red.
+halves differ now hold one id, which is correct.
+
+**THE NEGATIVE CONTROL IS ONE CASE PER EDGE KIND**, and that is what the
+obligation costs. A missed edge is the dangerous direction, a declaration a
+packet byte reaches that the walk does not, which is two incompatible builds
+shaking hands, so a single control over a single edge proves nothing about the
+other seven. Each case is a unit in which one declaration is reachable ONLY
+through that edge kind, edited so that packet bytes move, with
+`internal/check/projection_test.go`'s "an edit that moves bytes must move the
+id" leg required to go red when that edge is removed from the walk: an enum
+named only as a field type, one named only as an array element, one named only
+by an `[E.Max]` bound, one named only as an `[E]T` key, one named only through
+a `const`, a union named only as an arm payload, a declaration named only
+inside an `else` body, and one named only through a `type` two steps away.
 
 **The projection carries two version lines.** `ProjectionVersion` rides the
 first, so a change to the RENDERING moves every id deliberately and visibly
@@ -276,22 +316,34 @@ Consequences, in both directions:
   because the use that moved is a `type` edit in the same commit, so it costs
   no id move that was not owed already.
 - **What scoping OPENED, read against the silent class.** The four edits the
-  table wire cannot report (SPEC-TABLES.md §4.1) gain no fifth member here,
-  because reachability moves no byte, no kind and no counter. What it removes
-  is an INCIDENTAL guard. A declaration both wires shared was covered by the
-  connect gate as a side effect, so two peers whose vocabularies disagreed
-  refused each other before they exchanged a byte, table data included. Each
-  of the four was re-read against losing that. A changed DEFAULT and a moved
-  fixed `F` are facts of a `table` body, which never entered this projection
-  at all. A REFERENT swapped for a twin is the tables baseline's
-  (SPEC-TABLES.md §18), and the build version moves on it either way
-  (SPEC-TABLES.md §20.4). FLAGS is the one member the connect gate was really
-  covering, and it is held in the projection for exactly that reason (§3.1).
-  **And nothing that left this id left the BUILD VERSION.** §20.4 lists an
-  enum, flags or union variant edit as its own mover, and the cook projection
-  carries every such declaration's variant names and bit positions in a block
-  of its own (SPEC-TABLES.md §20.2), so a cook written before the edit still
-  refuses to open after it.
+  table wire cannot report (SPEC-TABLES.md §4.1) gain no fifth member, and the
+  claim rests on two facts rather than on inspection. **One: a table has
+  exactly one positional vocabulary, and it is `flags`.** `[E.Max]T` is
+  refused in a table body by name (SPEC-TABLES.md §2.4, §11), so an enum a
+  table reaches is read by variant name at every site and a variant inserted,
+  removed or reordered moves no stored slot. **Two: `flags` is held in this
+  projection** (§3.1), so the one vocabulary whose move a table cannot report
+  is the one the connect gate still refuses. Reachability itself moves no
+  byte, no kind and no counter, so it cannot author a silent edit of its own.
+- **NOTHING IS MISDECODED, and the reason is the table wire and not this id.**
+  A field, an enum variant, a union arm and a table are identified on the
+  table wire by the hash of their name (SPEC-TABLES.md §5), so a variant
+  reordered reads back as itself, a variant renamed or removed reads `None`
+  and counts `unknown`, and a retyped field is a counted kind mismatch. That
+  promise was never the protocol id's to keep, and scoping makes the division
+  explicit: the connect gate holds the PACKET wire, whose bytes say nothing
+  about themselves, and the table wire holds itself. `flags` is the single
+  place where the table wire cannot, which is why it did not move.
+- **What scoping does REMOVE is an incidental guard, and the page says so.** A
+  declaration both wires shared was covered by the connect gate as a side
+  effect, so two peers whose table-only vocabularies disagreed refused each
+  other before they exchanged a byte. They now connect, correctly, and a
+  table-only vocabulary is guarded by the tables baseline and the build
+  version instead. **Nothing that left this id left the BUILD VERSION**:
+  §20.4 lists an enum, flags or union variant edit as its own mover, and the
+  cook projection carries every such declaration's variant names and bit
+  positions in a block of its own (SPEC-TABLES.md §20.2), so a cook written
+  before the edit still refuses to open after it.
 - **File layout, declaration order across files, comments and whitespace move
   nothing.** Variant order inside an enum or a flags declaration is not
   declaration order in this sense: it is the wire, and it moves the id (§3.1).

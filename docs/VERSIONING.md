@@ -73,10 +73,15 @@ what proves them across releases, #463, named in its section below.
     fields are dropped on rewrite by default, and the never-clobber rule below
     is the consequence. A caller that opts in at `Load`, with a bounded side
     buffer it declares and owns, keeps every unknown FIELD's bytes, and `Save`
-    writes them back. A player who rolls back to an older build, saves, and
-    rolls forward again then loses nothing the older build could not name. It
-    is opt-in, it allocates nothing, and the report says whether it held:
-    `retain_lost` at zero is the whole of the check. Specified in
+    writes them back into the body they came from, so a player who rolls back
+    to an older build, saves, and rolls forward again keeps the newer build's
+    fields. **The promise is exactly as wide as the sharp edge below says.**
+    It is a REGION round trip and not a builder one. It covers unknown FIELDS
+    and not unknown enum variants, union arms, keyed-array slots, node
+    records, node indices or the node table itself. And it covers the
+    `unknown` class alone, so a load that reported `kind_mismatch`, `clamped`
+    or `malformed` still loses what those counters name. It is opt-in, it
+    allocates nothing, and every gap counts `retain_lost`. Specified in
     SPEC-TABLES.md §6.6, owed as #525.
 11. **This page moves with the facts.** No mechanical gate reads this page
     today; #446 adds one, the evolution table's fixtures, and the rest is
@@ -287,7 +292,7 @@ does today.
 | a flags variant inserted or removed | silent | refuses | moves, and so does the protocol id |
 | a flags variant reordered or renamed in place | **silent** | **refuses** | moves: the cook projection digests each variant's bit position, and the protocol id moves too |
 | a union arm reordered or renamed | `unknown` for an arm this reader lacks; a reorder is silent and safe | warns on a vanished name | moves, and the protocol id with it where a `type` reaches the union: the arm names are what a same-typed reorder moves |
-| a keyed array made positional | `kind_mismatch` | refuses | moves |
+| a keyed array made positional | `kind_mismatch` | refuses; and in a TABLE body the positional spelling no longer compiles at all (SPEC-TABLES.md §2.4) | moves |
 | a keyed array's key enum swapped for another | `unknown`, one per slot; the kind stays | refuses | moves |
 | a map's KEY kind changed, or its KEY bound tightened (SPEC-TABLES.md §2.8) | a changed kind is one `kind_mismatch` for the map, which reads empty. A tightened bound drops the entries that no longer fit and counts `clamped`, one per entry | **refuses** a changed kind, warns on a tightened bound | moves |
 | a guard added or removed | nothing | passes | nothing |
@@ -334,16 +339,23 @@ the runtime enforces this: no generated `Save` refuses when the last load's
 report was not silent, so the game keeps the report beside the instance and
 checks it before it writes.
 
-**RETAIN-UNKNOWN is the opt-in that answers the case the rule exists for**
-(SPEC-TABLES.md §6.6, owed as #525). A caller that hands `Load` a bounded side
-buffer it declares and owns keeps every unknown FIELD's bytes, and `Save`
-writes them back into the body they came from. The rule then reads: **a save
-cycle or a rewriting tool never overwrites a file whose read report is not
-silent, UNLESS retention was on and `retain_lost` is zero.** One counter, read
-after the save and not only after the load, is the whole of the check. The
-default is unchanged, every existing caller keeps the behavior it has, and a
-caller that treats `retain_lost` as fatal and refuses its own rewrite is back
-at the rule above with no code path of its own.
+**RETAIN-UNKNOWN is the opt-in that answers the case the rule exists for, and
+it strikes out ONE of the four counters** (SPEC-TABLES.md §6.6, owed as #525).
+A caller that hands `LoadRetain` a bounded side buffer it declares and owns
+keeps every unknown FIELD's bytes, and `SaveRetain` writes them back into the
+body they came from. Retention covers the `unknown` class and nothing else, so
+the rule reads: **a save cycle or a rewriting tool never overwrites a file
+whose read report is not silent, UNLESS retention was on and `retain_lost`,
+`kind_mismatch`, `clamped` and `malformed` are all zero after the save.** That
+is the original condition with `unknown` struck out and nothing else moved,
+and it is precisely what retention buys. The other three still name real loss:
+a `kind_mismatch` field was skipped and read its declared default, a `clamped`
+value was changed on the way in, and a `malformed` load kept a partial decode.
+The condition is read after the SAVE and not only after the load, because a
+retained record can also fail to be placed. The default is unchanged, every
+existing caller keeps the behavior it has, and a caller that treats
+`retain_lost` as fatal and refuses its own rewrite is back at the rule above
+with no code path of its own.
 
 ## The baseline
 
@@ -656,7 +668,8 @@ years, and several of the answers are patterns rather than syntax.
   an enum or union edit a `type` reaches. Write the never-clobber rule before
   the first staged rollout, or turn retain-unknown on and check `retain_lost`.
   Roll back freely: the old build reads the new files and counts what it
-  cannot use, and under retention it writes them back out unharmed.
+  cannot use, and under retention it writes the unknown fields back out
+  unharmed.
 - **Debug an old file.** `unpack --tolerate` renders a wire file of any
   version to text and reports what it did not understand; without
   `--tolerate` it refuses a file whose report is not silent, and a file
@@ -672,13 +685,26 @@ A versioning page that hides its edges is how the failure this page exists to
 prevent happens. These are the places the design chose a cost, or has one
 still open.
 
-- **Unknown fields do not survive a rewrite unless the caller asks.** The
-  default is a drop, with the never-clobber rule as the required consequence
-  and no runtime enforcement. Retain-unknown (SPEC-TABLES.md §6.6, #525) is
-  opt-in, is bounded by a buffer the caller sizes, and covers unknown FIELDS
-  only. An unknown enum variant, an unknown union arm, an unknown keyed-array
-  slot and a node record whose type id is unnameable are still dropped, and
-  each of those counts `retain_lost` so the caller knows.
+- **Unknown fields do not survive a rewrite unless the caller asks, and even
+  then not all of them.** The default is a drop, with the never-clobber rule
+  as the required consequence and no runtime enforcement. Retain-unknown
+  (SPEC-TABLES.md §6.6, #525) is opt-in, is bounded by a buffer the caller
+  sizes, and is a REGION round trip only: `LoadRetain` loads into a region and
+  `SaveRetain` saves from that region, and the BUILDER path carries no
+  retention, because a builder has no node directory to anchor a record on and
+  re-derives its numbering from the reader's own declaration order. Seven
+  things are still dropped and each counts `retain_lost`. A field of kind
+  `17`, an array whose element kind is `17`, and the reserved node-table field
+  itself, all three because a node index means nothing in a numbering this
+  reader re-derives. An unknown enum variant, an unknown union arm and an
+  unknown keyed-array slot, none of which is a field the reader can append.
+  And a node record whose type id is unnameable, which is a whole node. A
+  record whose inner structure the resolving walk finds damaged is dropped
+  too, and that never turns the plain read `malformed`.
+- **Retention covers `unknown` and no other counter.** A load that counted
+  `kind_mismatch`, `clamped` or `malformed` still loses what those name on a
+  rewrite, so the never-clobber condition keeps all three beside
+  `retain_lost`.
 - **There is no widening path**, by choice: a whitelist of compatible pairs
   silently misdecodes everything outside the list.
 - **A variant or union arm reordered or renamed is a lockstep redeploy**
@@ -690,13 +716,16 @@ still open.
   was real while it lasted.** Scoping the projection by reachability (SPEC.md
   §3.1) ends an INCIDENTAL protection: two peers whose enum or union
   declarations disagreed used to refuse each other before they exchanged a
-  byte, table data included, and they now connect. Nothing is misdecoded,
-  because a variant and an arm ride as name hashes on the table wire, so a
-  reorder is invisible and safe and a rename is `unknown`, counted. `flags`,
-  the one vocabulary where a reorder IS silent, is held in the projection for
-  exactly this reason. The residue is that a table-only vocabulary is guarded
-  by the tables baseline and the build version and no longer by the connect
-  gate.
+  byte, table data included, and they now connect. Nothing is misdecoded, and
+  the reason is the table wire rather than this id. A variant and an arm ride
+  as name hashes, so a reorder is invisible and safe and a rename is
+  `unknown`, counted. **Two things had to be true for that to hold, and both
+  were made true rather than found true.** `flags`, the one vocabulary where a
+  reorder IS silent, is held in the projection. And `[E.Max]T` is refused in a
+  table body (SPEC-TABLES.md §2.4, §11), so the other positional vocabulary a
+  table could have had is gone rather than excepted. The residue is that a
+  table-only enum or union is guarded by the tables baseline and the build
+  version and no longer by the connect gate.
 - **A field of a `type` that a table reaches cannot be renamed safely
   today** (#478): `was` is refused there, and a bare rename orphans every
   stored value.
