@@ -1,4 +1,4 @@
-0xb988925b9b0fa580
+0xbfda5e5122357c72
 schema-build-version 1
 protocol 8248fac3393e5575
 byteorder little
@@ -6,14 +6,15 @@ block prologue=magic:8,build_version:8,byte_order:8
 record Cursor sizeof=8 alignof=4
     field 01fc kind=8 offset=0 size=4
     field 27df kind=8 offset=4 size=4
-record Edit sizeof=300 alignof=4
+record Edit sizeof=312 alignof=4
     field b98e kind=8 offset=0 size=4
-    field a2df kind=15 offset=4 size=296 union=EditBody
-record InsertText sizeof=292 alignof=4
+    field a2df kind=15 offset=4 size=308 union=EditBody
+record InsertText sizeof=304 alignof=4
     field 42ad kind=13 offset=0 size=8 type=Cursor
     field f3d8 kind=12 offset=8 size=40 bound=32
     field 4330 kind=15 offset=48 size=80 union=Origin
     field 53ab kind=15 offset=128 size=164 union=Origin elem=80 array=bounded bound=2
+    field ab38 kind=7 offset=292 size=9 enum=Mode elem=2 array=bounded bound=2 optional=true
 record OpenDocument sizeof=84 alignof=4
     field c9b1 kind=12 offset=0 size=72 bound=64
     field 0c7c kind=7 offset=72 size=1 enum=Mode default=Read
@@ -31,14 +32,18 @@ record Script sizeof=76 alignof=4
 record Selection sizeof=16 alignof=4
     field 61f4 kind=13 offset=0 size=8 type=Cursor
     field 1f24 kind=13 offset=8 size=8 type=Cursor
-record ToolMessage sizeof=4580 alignof=4
+record ToolMessage sizeof=5140 alignof=4
     field d32b kind=8 offset=0 size=4
-    field a2df kind=15 offset=4 size=1524 union=ToolBody
-    field cbae kind=15 offset=1528 size=3052 union=ToolBody elem=1524 array=bounded bound=2
-record Transaction sizeof=1520 alignof=4
+    field a2df kind=15 offset=4 size=1632 union=ToolBody
+    field cbae kind=15 offset=1636 size=3268 union=ToolBody elem=1632 array=bounded bound=2
+    field f493 kind=13 offset=4904 size=233 type=Script elem=76 array=bounded bound=3 optional=true
+    field e15f kind=7 offset=5137 size=3 enum=Mode elem=1 array=fixed bound=2 optional=true
+record Transaction sizeof=1628 alignof=4
     field a6ba kind=12 offset=0 size=24 bound=16
-    field 3d33 kind=13 offset=24 size=904 type=Edit elem=300 array=bounded bound=3
-    field e683 kind=15 offset=928 size=592 union=EditBody elem=296 array=fixed bound=2
+    field 3d33 kind=13 offset=24 size=940 type=Edit elem=312 array=bounded bound=3
+    field e683 kind=15 offset=964 size=616 union=EditBody elem=308 array=fixed bound=2
+    field 990b kind=8 offset=1580 size=9 elem=4 array=fixed bound=2 optional=true
+    field 7daf kind=13 offset=1592 size=33 type=Selection elem=16 array=fixed bound=2 optional=true
 record User sizeof=24 alignof=4
     field 30df kind=12 offset=0 size=24 bound=16
 enum Mode

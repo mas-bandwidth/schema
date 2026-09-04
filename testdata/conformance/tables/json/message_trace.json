@@ -1,0 +1,70 @@
+{
+  "sequence": 12,
+  "body": {
+    "transact": {
+      "reason": "trace",
+      "edits": [
+        {
+          "revision": 5,
+          "body": {
+            "insert": {
+              "at": {
+                "line": 0,
+                "column": 0
+              },
+              "text": "hi",
+              "origin": {},
+              "origins": [],
+              "modes": []
+            }
+          }
+        }
+      ],
+      "pending": [
+        {},
+        {}
+      ],
+      "checkpoints": [
+        0,
+        0
+      ],
+      "snapshots": [
+        {
+          "start": {
+            "line": 3,
+            "column": 0
+          },
+          "end": {
+            "line": 4,
+            "column": 6
+          }
+        },
+        {
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          }
+        }
+      ]
+    }
+  },
+  "history": [],
+  "trace": [
+    {
+      "path": "boot.lua",
+      "line": 1
+    },
+    {
+      "path": "",
+      "line": 0
+    }
+  ],
+  "marks": [
+    "Write",
+    "None"
+  ]
+}

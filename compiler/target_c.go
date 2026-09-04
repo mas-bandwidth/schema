@@ -22,6 +22,9 @@ func (cTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseUnionArrays(u, "c"); err != nil {
 		return nil, err
 	}
+	if err := refuseOptionalArrays(u, "c"); err != nil {
+		return nil, err
+	}
 	files, err := cgen.Generate(u)
 	if err != nil {
 		return nil, err

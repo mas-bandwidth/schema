@@ -559,6 +559,47 @@ post-order numbering the same way.
 |---|---|---|---|---|---|---|---|---|
 | ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ❌ #433 (its `pack_measure` and `pack` take every pointer field before every by-value nesting, `internal/codegen/ctable/pointers.go:220`, `:280`) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
 
+### M16 — The presence companion rides beside the array walks
+
+**Method.** An optional array — `?[..N]T`, `?[N]T` (docs/SPEC-TABLES.md §2.3)
+— is the presence companion carried BESIDE the array walks rather than a
+second array walk. Measure and save gate the whole array framing on
+`<field>_present` and never on the count: absent writes nothing, present
+always rides, a counted array as its live count with ZERO INCLUDED and a
+fixed array whole. Load sets the companion where the field rode, and the ONE
+place it does not is the element-kind mismatch, which returns before the
+assignment so a foreign element kind leaves the field at its declared default
+— absent. The descriptors carry `optional` and `present_offset` on an ARRAY
+field beside the array columns, so a generic walker reaches presence the same
+way on every field shape. The text form reads the KEY's presence as presence
+and writes a present empty array as `[]`. The shape to refuse is presence
+derived from the count, because it makes "present and empty" and "absent" one
+value — the exact thing the presence bit exists to spell.
+
+**Reference.** `internal/codegen/cpptable/codecs.go:588` (the optional branch
+of `emitTableMeasureField`), the write side at `:894`, the read side's
+`_present` assignment at `:1229`; the tool's are
+`internal/tablewire/encode.go:131` and `internal/tablewire/decode.go:319`.
+
+**Proven in.** C++ and the tool (#392).
+
+**Measured effect.** Structural: the `message_trace` instance carries the
+construct at three depths in both spellings — counted over tables, fixed over
+tables, fixed over scalars, fixed over enums, counted over enums — and the
+wire, the text and the cook agree with the tool byte for byte.
+
+**Negative control.** `TestReportRowsDecodeThroughTheEngine` pins the
+optional-field state of every hostile row, so a load that sets presence on an
+element-kind mismatch goes red where no counter moves; dropping the fixed
+spelling's measure arm reds `test/tables/main.cpp`'s `test_optional_arrays`
+on the corpus rows that carry it.
+
+**Targets:** none
+
+| cpp | c | rust | go | cs | java | js | dart | elixir |
+|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/codecs.go:588` `test/tables/main.cpp:6814` `TestReportRowsDecodeThroughTheEngine` | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
+
 ### I1 — The independent allocation gate
 
 **Method.** The read path's "allocates nothing" is MEASURED, with an

@@ -591,6 +591,33 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		// absent and present-at-default would be one value on the wire
 		g.pf("    if ( value.%s_present ) // ?%s: presence decides, not content\n    {\n", f.Name, tableFieldTypeName(f))
 		switch {
+		case f.Array == ir.ArrayCounted && kind == tkTable:
+			// an OPTIONAL ARRAY rides whole when present (docs/SPEC-TABLES.md
+			// §2.3): the live count, ZERO INCLUDED — the five-byte body — where
+			// the plain counted array elides at zero
+			g.pf("        if ( value.%s_count < 0 || value.%s_count > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
+			g.pf("        bytes += 3 + 4 + 5; // %s: ?[..%d]%s, count zero included\n", f.Name, f.ArrayBound, f.Type.Name)
+			g.pf("        for ( int32_t i = 0; i < value.%s_count; i++ )\n        {\n", f.Name)
+			g.pf("            int64_t elem_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, fmt.Sprintf("value.%s[i]", f.Name)))
+			g.pf("            if ( elem_%s < 0 ) { return -1; }\n", f.Name)
+			g.pf("            bytes += 4 + elem_%s;\n", f.Name)
+			g.pf("        }\n")
+		case f.Array == ir.ArrayCounted:
+			g.pf("        if ( value.%s_count < 0 || value.%s_count > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
+			g.emitEnumElementCheck(f, fmt.Sprintf("value.%s[i]", f.Name), fmt.Sprintf("value.%s_count", f.Name), "        ", "return -1;")
+			g.pf("        bytes += 3 + 4 + 5 + int64_t( value.%s_count ) * %d; // %s: ?[..%d], count zero included\n", f.Name, width, f.Name, f.ArrayBound)
+		case f.Array == ir.ArrayFixed && kind == tkTable:
+			// a present FIXED optional array rides every declared element, all
+			// defaults included — presence already decided (§2.3)
+			g.pf("        bytes += 3 + 4 + 5; // %s: ?[%d]%s rides whole\n", f.Name, f.ArrayBound, f.Type.Name)
+			g.pf("        for ( int32_t i = 0; i < %d; i++ )\n        {\n", f.ArrayBound)
+			g.pf("            int64_t elem_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, fmt.Sprintf("value.%s[i]", f.Name)))
+			g.pf("            if ( elem_%s < 0 ) { return -1; }\n", f.Name)
+			g.pf("            bytes += 4 + elem_%s;\n", f.Name)
+			g.pf("        }\n")
+		case f.Array == ir.ArrayFixed:
+			g.emitEnumElementCheck(f, fmt.Sprintf("value.%s[i]", f.Name), fmt.Sprintf("%d", f.ArrayBound), "        ", "return -1;")
+			g.pf("        bytes += 3 + 4 + 5 + %d; // %s: ?[%d] rides whole\n", f.ArrayBound*int64(width), f.Name, f.ArrayBound)
 		case kind == tkTable:
 			g.pf("        int64_t body_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, "value."+f.Name))
 			g.pf("        if ( body_%s < 0 ) { return -1; }\n", f.Name)
@@ -870,6 +897,24 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		// wire-identical (docs/SPEC-TABLES.md §2.3, §3.1)
 		g.pf("    if ( value.%s_present ) // ?%s\n    {\n", f.Name, tableFieldTypeName(f))
 		switch {
+		case f.Array != ir.ArrayNone:
+			// an OPTIONAL ARRAY rides the array framing whole when present
+			// (docs/SPEC-TABLES.md §2.3): the live count for the counted
+			// spelling — ZERO INCLUDED, the five-byte body — and every declared
+			// element for the fixed one. No content test: presence decided.
+			count := fmt.Sprintf("value.%s_count", f.Name)
+			if f.Array == ir.ArrayCounted {
+				g.pf("        if ( value.%s_count < 0 || value.%s_count > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
+			} else {
+				count = strconv.FormatInt(f.ArrayBound, 10)
+			}
+			g.pf("        w.put16( 0x%04x ); w.put8( %d ); // %s: ?%s\n", id, tkArray, f.Name, tableFieldTypeName(f))
+			g.pf("        int64_t len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
+			g.pf("        w.put8( %d ); w.put32( uint32_t( %s ) );\n", kind, count)
+			g.pf("        for ( int32_t i = 0; i < %s; i++ )\n        {\n", count)
+			g.emitTableWriteElement(f, kind, fmt.Sprintf("value.%s[i]", f.Name), "            ")
+			g.pf("        }\n")
+			g.pf("        w.patch32( len_at_%s, uint32_t( w.offset - len_at_%s - 4 ) );\n", f.Name, f.Name)
 		case kind == tkTable:
 			g.pf("        int64_t body_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, "value."+f.Name))
 			g.pf("        if ( body_%s < 0 ) return false; // storage invariant, refused as measure refuses it\n", f.Name)

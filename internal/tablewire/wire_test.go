@@ -2,6 +2,8 @@ package tablewire_test
 
 import (
 	"encoding/binary"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -228,4 +230,77 @@ func TestVariableRootRidesTheWire(t *testing.T) {
 		return
 	}
 	t.Skip("the pointers corpus declares no variable-length root")
+}
+
+// AN OPTIONAL ARRAY DECLARED BEFORE A POINTER, in a table the pointer makes
+// VARIABLE (docs/SPEC-TABLES.md §2.3, §3.1). `?[..N]T` of a scalar holds no
+// edge, so the declaration-order pointer walk must step over it and reach the
+// pointer alone: the node table is the same whether the array is absent or
+// present, and only the root body's bytes differ by the array's own framing.
+// A walk that counted the array as an edge would number a different graph,
+// and #433's law is that the numbering, the pack measure and the pack are one
+// walk — so a field it must skip is worth pinning where it is declared FIRST.
+func TestOptionalArrayBeforeAPointerMovesNoNode(t *testing.T) {
+	dir := t.TempDir()
+	src := "package edgecase\n\n" +
+		"table Node\n{\n    value int32\n    next  *Node\n}\n\n" +
+		"table Holder\n{\n    marks ?[..2]int32\n    head  *Node\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "EdgeCase.schema"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := compiler.New()
+	paths, err := compiler.GatherPaths([]string{dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := c.Load(paths)
+	if err != nil {
+		t.Fatalf("an optional array beside a pointer field did not compile: %v", err)
+	}
+	if !ir.VariableTables(u)["Holder"] {
+		t.Fatal("Holder holds a pointer and is not derived VARIABLE")
+	}
+	m := tabletext.NewModel(u)
+
+	// a two-node chain off `head`, and the array absent
+	absent := place(t, m, "Holder", `{ "head": { "value": 1, "next": { "value": 2 } } }`)
+	absentWire, err := tablewire.Encode(m, absent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the same graph with the array PRESENT and empty: the five-byte array
+	// body rides in the root and nothing else moves
+	present := place(t, m, "Holder", `{ "marks": [], "head": { "value": 1, "next": { "value": 2 } } }`)
+	presentWire, err := tablewire.Encode(m, present)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(presentWire) != len(absentWire)+3+4+5 {
+		t.Fatalf("a present empty optional array moved %d bytes, want %d",
+			len(presentWire)-len(absentWire), 3+4+5)
+	}
+
+	// both read back with the graph intact, and the array's state is its own
+	for _, arm := range []struct {
+		name    string
+		wire    []byte
+		present bool
+	}{{"absent", absentWire, false}, {"present", presentWire, true}} {
+		back := m.New(m.Lookup("Holder"))
+		var r tabletext.Report
+		ok, err := tablewire.Decode(m, back, arm.wire, &r)
+		if err != nil || !ok || !r.Silent() {
+			t.Fatalf("%s: the decode did not read clean: %v %v %+v", arm.name, err, ok, r)
+		}
+		if back.Fields[0].Present != arm.present {
+			t.Fatalf("%s: marks reads present=%v", arm.name, back.Fields[0].Present)
+		}
+		head := back.Fields[1].Cell.Node
+		if head == nil || head.Fields[1].Cell.Node == nil {
+			t.Fatalf("%s: the two-node chain off head did not survive the walk", arm.name)
+		}
+		if head.Fields[0].Cell.I != 1 || head.Fields[1].Cell.Node.Fields[0].Cell.I != 2 {
+			t.Fatalf("%s: the chain's values moved", arm.name)
+		}
+	}
 }

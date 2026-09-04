@@ -1912,7 +1912,80 @@ func (c *checker) checkTables() {
 		}
 	}
 	c.checkTableVariantIdentity(names)
+	c.checkOptionalVariableClosures(names)
 	c.checkJsonKeysInClosure()
+}
+
+// checkOptionalVariableClosures refuses an OPTIONAL whose value's closure is
+// VARIABLE-LENGTH — `?T` and `?[N]T`/`?[..N]T` where T declares or nests a
+// pointer — as a named follow-on (docs/SPEC-TABLES.md §2.3, §15). An absent
+// field is not an edge (§3.1), so the authoring walks (the numbering, the
+// pack, Lock's sizing) must gate on the presence companion before an optional
+// field may hold pointer edges; until that gating lands, the refusal is what
+// keeps the two writers byte-identical. The derivation mirrors
+// ir.VariableTables over the checker's own members, because the unit is not
+// assembled yet when this runs.
+func (c *checker) checkOptionalVariableClosures(names []string) {
+	variable := map[string]bool{}
+	for changed := true; changed; {
+		changed = false
+		for _, name := range names {
+			if variable[name] {
+				continue
+			}
+			st := c.closureMember(name)
+			if st == nil {
+				continue
+			}
+			for _, f := range st.Fields {
+				if f.Type.Pointer {
+					variable[name] = true
+					break
+				}
+				if f.Type.Kind != ir.TNamed {
+					continue
+				}
+				switch ref := f.Type.Ref.(type) {
+				case *ir.Struct:
+					variable[name] = variable[name] || variable[ref.Name]
+				case *ir.Union:
+					for _, v := range ref.Variants {
+						if variable[v.Type] {
+							variable[name] = true
+							break
+						}
+					}
+				}
+				if variable[name] {
+					break
+				}
+			}
+			if variable[name] {
+				changed = true
+			}
+		}
+	}
+	for _, name := range names {
+		st := c.closureMember(name)
+		if st == nil {
+			continue
+		}
+		pos := ast.Pos{}
+		if d, ok := c.astDecls[name]; ok {
+			pos = d.DeclPos()
+		}
+		for _, f := range st.Fields {
+			if !f.Type.Optional {
+				continue
+			}
+			ref, ok := f.Type.Ref.(*ir.Struct)
+			if !ok || !variable[ref.Name] {
+				continue
+			}
+			c.errf(pos, "%s.%s: ? on a value whose closure is variable-length is a named follow-on — %s holds a pointer, an absent field is not an edge, and the authoring walks must gate on the presence companion before an optional field may hold pointer edges; drop the ?, or point at the table instead (docs/SPEC-TABLES.md §2.3, §15)",
+				name, f.Name, ref.Name)
+		}
+	}
 }
 
 // checkJsonKeysInClosure refuses `json = "key"` on a field no table closure
@@ -2187,10 +2260,12 @@ func (c *checker) checkPointerSpelling(f *ast.Field, inTable bool, d ast.Decl) b
 	return true
 }
 
-// checkOptionalSpelling enforces the `?T` spelling's rules, each refused by
-// name (docs/SPEC-TABLES.md §11). An optional is a table-body construct: it costs
-// one presence bool beside the value, and PRESENCE — not content — decides
-// whether the field rides.
+// checkOptionalSpelling enforces the `?T` and `?[N]T` spellings' rules, each
+// refused by name (docs/SPEC-TABLES.md §11). An optional is a table-body
+// construct: it costs one presence bool beside the value — the array and its
+// count included — and PRESENCE, not content, decides whether the field
+// rides. The variable-closure refusal runs later, in checkTables, because the
+// mode is a closure fact this function cannot see.
 func (c *checker) checkOptionalSpelling(f *ast.Field, out *ir.Field, inTable bool) bool {
 	spelling := "?" + scalarSpelling(f.Type)
 	if !inTable {
@@ -2198,13 +2273,48 @@ func (c *checker) checkOptionalSpelling(f *ast.Field, out *ir.Field, inTable boo
 			f.Name, spelling)
 		return false
 	}
+	if f.Array != nil {
+		// `?[..N]T` and `?[N]T` are legal (docs/SPEC-TABLES.md §2.3): presence
+		// decides whether the field rides, and a present array always does —
+		// its live count included, zero and all. The refusals below are the
+		// element shapes §2.3 holds back, each a named follow-on.
+		if name, _, ok := boundIdent(f.Array); ok {
+			if _, isEnum := c.astDecls[name].(*ast.EnumDecl); isEnum {
+				elem := scalarSpelling(f.Type)
+				if f.Array.Kind != ast.ArrayFixed {
+					// a BOUNDED enum-key is refused with the `?` and without
+					// it (docs/SPEC-TABLES.md §2.4), so the keyed refusal's
+					// "drop the ?" would not be true advice here — the bound
+					// is what has to go, and dropping the ? alone lands on
+					// §2.4's refusal instead. The spelling is not quoted back:
+					// either end may name the enum, so §2.4's own wording is
+					// what stays true whichever end the author wrote.
+					c.errf(f.Type.Pos, "field %s: a BOUNDED enum-keyed array is refused with the ? and without it — [%s] is COMPLETE by construction, one slot per variant, so ?[..%s] and ?[A..%s] name a count that cannot vary; size the optional array with a constant, ?[..N]%s or ?[N]%s, or spell the keyed array [%s]%s and drop the ? (docs/SPEC-TABLES.md §2.3, §2.4, §15)",
+						f.Name, name, name, name, elem, elem, name, elem)
+					return false
+				}
+				c.errf(f.Type.Pos, "field %s: ?[%s]%s is a named follow-on — a keyed array elides slots BY NAME, so what a presence bit means beside that elision wants stating before it is wire; declare ?[..N]%s or ?[N]%s, or drop the ? (docs/SPEC-TABLES.md §2.3, §15)",
+					f.Name, name, elem, elem, elem)
+				return false
+			}
+		}
+		if f.Type.Pointer {
+			c.errf(f.Type.Pos, "field %s: ? on an array of pointers is a named follow-on — an absent field is not an edge, and the authoring walks must gate on the presence companion before an optional field may hold pointer edges; declare the array without the ?, or wrap it in a table and make that optional (docs/SPEC-TABLES.md §2.3, §15)", f.Name)
+			return false
+		}
+		if _, isUnion := out.Type.Ref.(*ir.Union); isUnion {
+			c.errf(f.Type.Pos, "field %s: ? on an array of unions is a named follow-on — a union arm can nest a variable closure, and the authoring walks must gate on the presence companion before an optional field may hold pointer edges; declare the array without the ?, or wrap it in a table and make that optional (docs/SPEC-TABLES.md §2.3, §15)", f.Name)
+			return false
+		}
+		if f.Default != nil {
+			c.errf(f.Pos, "field %s: an optional field takes no specified default — PRESENCE is the only default an optional has, and an absent optional reads as absent with its value at the type's own zero (docs/SPEC-TABLES.md §2.3)", f.Name)
+			return false
+		}
+		return true
+	}
 	if f.Type.Pointer {
 		c.errf(f.Type.Pos, "field %s: %s marks a pointer optional, and a pointer is ALREADY optional — null is its absence, and it rides exactly as an absent optional does; drop the ? (docs/SPEC-TABLES.md §2.3)",
 			f.Name, spelling)
-		return false
-	}
-	if f.Array != nil {
-		c.errf(f.Type.Pos, "field %s: ? on an ARRAY is a named follow-on — a counted array's count already carries emptiness, and a fixed array's slots are all present by construction; wrap the array in a table and make that optional (docs/SPEC-TABLES.md §15)", f.Name)
 		return false
 	}
 	switch out.Type.Kind {

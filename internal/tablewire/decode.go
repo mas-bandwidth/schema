@@ -186,9 +186,11 @@ func (r *wireReader) body(inst *tabletext.Instance) bool {
 		if !r.field(fv) {
 			return false
 		}
-		if fv.Def.Type.Optional {
+		if fv.Def.Type.Optional && fv.Def.Array == ir.ArrayNone {
 			// the field rode, so it is PRESENT — content decides nothing here
-			// either (docs/SPEC-TABLES.md §2.3)
+			// either (docs/SPEC-TABLES.md §2.3). An optional ARRAY's presence is
+			// settled inside r.array instead: a foreign ELEMENT kind leaves it
+			// absent, exactly as the generated reader does (§2.3).
 			fv.Present = true
 		}
 	}
@@ -274,6 +276,9 @@ func (r *wireReader) array(fv *tabletext.Field) bool {
 		ek := r.u8()
 		count := int(r.u32())
 		if int(ek) != ir.TableElemKind(f) {
+			// the element kind is part of the array's identity (§3): counted,
+			// the field left at its declared default — for an OPTIONAL array
+			// that default is ABSENT, so Present is not set below
 			r.report.KindMismatch++
 			r.off = end
 			return true
@@ -310,6 +315,12 @@ func (r *wireReader) array(fv *tabletext.Field) bool {
 	}
 	if counted {
 		fv.Count = decoded
+	}
+	if f.Type.Optional {
+		// the field rode with its own element kind (or a body too short to
+		// carry one), so it is PRESENT (§2.3); the element-kind mismatch above
+		// returned before this line
+		fv.Present = true
 	}
 	r.off = end // excess elements and slack skip via the length
 	return true
