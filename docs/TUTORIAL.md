@@ -2205,3 +2205,229 @@ customization surface.
 **You now have** patrol routes as real linked structure and fleets keyed by
 name: built in parallel, locked into one relocatable region, saved on the same
 tolerant wire as everything else, with sharing preserved.
+
+---
+
+## Part 9 — the text form: designers edit JSON, the game loads bytes
+
+### The problem
+
+`GameConfig` is a binary format now, and binary is exactly what a designer
+cannot open. Starlight's tuning workflow wants text that is diffable,
+mergeable, and editable in anything, without maintaining a hand-written JSON
+mapping beside the real schema.
+
+### Every table reads and writes JSON
+
+The reflection descriptors every table carries, which Part 13 walks directly,
+drive a generic JSON codec, so there is no per-table code to write:
+
+```cpp
+    int64_t size = ShipConfigToJsonMeasure( ship );   // exact, writes nothing
+    ShipConfigToJson( ship, text.data(), size );
+```
+
+```json
+{
+  "display_name": "Kestrel",
+  "max_health": 250,
+  "max_speed": 500,
+  "armor": 8,
+  "ship_type": "Corvette"
+}
+```
+
+`ToJson` writes **every field, defaults included**, because a text is for
+people and a person reading a config wants the whole state. `max_speed: 500`
+above is a default the binary wire would have elided. Enums render by variant
+name. The output is pretty-printed with a two-space indent and one trailing
+newline.
+
+In C++ the walk lives in the generated `ConfigTable.cpp`, so add that to your
+build once. That is the whole cost, and a project that never touches text does
+not compile it.
+
+Reading text uses the same report as the wire, with one extra counter in play.
+Feed it a designer's hand-edited file with a typo and an accidental repeat:
+
+```json
+{
+  "display_name": "Kestrel II",
+  "max_helth": 300,
+  "armor": 4,
+  "armor": 6,
+  "ship_type": "Corvette"
+}
+```
+
+```
+from json: ok  name=Kestrel II health=100 armor=6
+report: unknown=1 duplicate=1 clamped=0
+```
+
+`max_helth` is `unknown`, and `max_health` stayed at its default, so the typo
+did not vanish silently. The doubled `armor` reads last wins and counts
+`duplicate`. Mentioned-fields-only semantics match the wire: what the text
+omits takes its declared default.
+
+The writer refuses to lie. Hand `ToJson` an enum value no variant names and it
+returns -1 rather than inventing JSON:
+
+```cpp
+    ShipConfig bad;
+    bad.ship_type = (ShipType) 99;
+    printf( "ToJsonMeasure on an unnamed enum value: %lld\n", (long long) ShipConfigToJsonMeasure( bad ) );
+```
+
+```
+ToJsonMeasure on an unnamed enum value: -1
+```
+
+If your text has to meet an existing convention, `| json = "type"` renames the
+key in text only, and no wire byte moves:
+
+```
+table Prop
+{
+    kind  string(16) | json = "type"
+    solid bool
+}
+```
+
+```json
+{
+  "type": "rock",
+  "solid": false
+}
+```
+
+### Graphs in text: `&node`
+
+The variable class has a text form too, and it handles what plain JSON cannot:
+sharing. Here is the `Route` from Part 8 with one waypoint referenced twice:
+
+```json
+{
+  "head": null,
+  "stops": [
+    {
+      "&node": 1,
+      "name": "Gate",
+      "x": 5,
+      "y": 0,
+      "next": null
+    },
+    {
+      "&node": 1
+    },
+    null
+  ],
+  "loops": false
+}
+```
+
+The first reference is the node's body, labeled `"&node": 1`. The second
+reference is the label alone. A null pointer is `null`. `RouteFromJson` reads
+into a **builder**, because text becomes a graph and graphs are built, and the
+shared node comes back shared:
+
+```
+from json: ok  shared=YES null=yes
+```
+
+### `schema pack` and `schema unpack`: the tree workflow
+
+One JSON file per root works. A **directory** per root works better with
+version control, because designers touch one small file per edit and diffs stay
+readable. The tool speaks that shape directly. Start from the binary you
+already have and let `unpack` show you the layout:
+
+```
+$ schema unpack --root GameConfig --in game.bin --verbose tree .
+report: silent — the data matched the schema exactly
+unpacked game.bin into tree
+$ find tree -type f | sort
+tree/friendly_fire.json
+tree/level_name.json
+tree/ships/Corvette.json
+tree/ships/Fighter.json
+tree/ships/Freighter.json
+tree/weapons.json
+```
+
+A directory named for a field holds that field's value, an enum-keyed array is
+one `<Variant>.json` per slot, and there is no `None.json` because a `None` key
+names no slot. Anything can collapse to a single `<field>.json`:
+
+```
+$ cat tree/weapons.json
+[
+  {
+    "damage": 35,
+    "homing": false
+  },
+  {
+    "damage": 21,
+    "homing": true
+  }
+]
+```
+
+Designers edit:
+
+```
+$ cat tree/ships/Corvette.json
+{
+  "display_name": "Corvette",
+  "max_health": 500,
+  "settings": { "sensitivity": 0.8 }
+}
+```
+
+and the build packs the tree back into the root's wire bytes:
+
+```
+$ schema pack --root GameConfig --out packed.bin tree .
+```
+
+The game loads `packed.bin` with the same `GameConfigLoad` as ever:
+
+```
+$ ./load packed.bin
+ok: level=Kuiper Run weapons=2 w0.damage=35 corvette=500 sens=0.8
+```
+
+The output is the table's wire bytes and nothing else. No magic, no hash,
+because envelopes stay yours. `--one-file` gives you the single-JSON shape
+instead:
+
+```
+$ schema unpack --root GameConfig --in packed.bin --one-file --verbose one .
+report: silent — the data matched the schema exactly
+unpacked packed.bin into one
+$ ls one
+GameConfig.json
+```
+
+`unpack` prunes files it owns and did not write, so a deleted field's stale
+`.json` cannot haunt the tree.
+
+Both verbs are strict by default, and any non-silent report is a nonzero exit.
+Tune a Freighter to `"max_health": "very strong"`:
+
+```
+$ schema pack --root GameConfig --out packed2.bin tree .
+report: unknown 0, kind_mismatch 1, clamped 0, duplicate 0, malformed false
+schema: the report is not silent — pass --tolerate to accept it
+$ echo $?
+1
+```
+
+A string where a float belongs is a kind mismatch, and your CI stops until
+someone fixes the text or explicitly tolerates it. JSON has one number type, so
+`2` and `2.0` both read into an integer field, a genuinely fractional value
+into an integer field is a mismatch, and `1.2.3` is malformed. Numbers never
+get quietly mangled.
+
+**You now have** the designer loop: binary for the game, text for people, one
+schema driving both, and drift counted at every crossing.
