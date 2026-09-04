@@ -40,9 +40,11 @@ what proves them across releases, #463, named in its section below.
    is the only thing two peers compare before they talk. The *build version*
    versions the cooked and blocked forms and addresses every cooked asset. An
    edit inside a `table` body moves the build version and never the protocol
-   id. An edit to a `type`, or to an enum, flags or union declaration, which
-   both wires share, moves both — a variant or arm reordered or renamed
-   included, because that order is the wire. A `was` rename moves neither.
+   id. An edit to a `type`, to an enum or union declaration a `type` REACHES,
+   or to any `flags` declaration, moves both, a variant or arm reordered or
+   renamed included, because that order is the wire. An enum or a union only
+   tables reach moves the build version alone, which is what makes a content
+   addition a table edit (SPEC.md §3.1). A `was` rename moves neither.
 5. **Same-build forms match or refuse.** A cook or a block opens under
    exactly the build version that wrote it, by a header match, and otherwise
    refuses: `Open` returns null, and the tool's `uncook` names the mismatch.
@@ -67,7 +69,21 @@ what proves them across releases, #463, named in its section below.
    and never changes a byte under an unchanged id.** A minor may move either
    only together with the wire, announced first. A major is when your world
    breaks. The cross-release gate that proves this is #463.
-10. **This page moves with the facts.** No mechanical gate reads this page
+10. **A build can keep what it cannot name, when the caller asks.** Unknown
+    fields are dropped on rewrite by default, and the never-clobber rule below
+    is the consequence. A caller that opts in at `Load`, with a bounded side
+    buffer it declares and owns, keeps every unknown FIELD's bytes, and `Save`
+    writes them back into the body they came from, so a player who rolls back
+    to an older build, saves, and rolls forward again keeps the newer build's
+    fields. **The promise is exactly as wide as the sharp edge below says.**
+    It is a REGION round trip and not a builder one. It covers unknown FIELDS
+    and not unknown enum variants, union arms, keyed-array slots, node
+    records, node indices or the node table itself. And it covers the
+    `unknown` class alone, so a load that reported `kind_mismatch`, `clamped`
+    or `malformed` still loses what those counters name. It is opt-in, it
+    allocates nothing, and every gap counts `retain_lost`. Specified in
+    SPEC-TABLES.md §6.6, owed as #525.
+11. **This page moves with the facts.** No mechanical gate reads this page
     today; #446 adds one, the evolution table's fixtures, and the rest is
     review.
 
@@ -105,11 +121,12 @@ The projection is a text rendering of every fact that determines packet bytes:
 field order and names, kinds, widths, bounds, capacities, defaults, branch
 structure, enum storage, flags bits, enum and flags variant names in
 declaration order, union arm order and arm names. It excludes what the bytes
-cannot see: comments, layout, declaration order across records. A
-source-text hash would produce spurious mismatches; hashing the compiler's
-internal structures could produce a spurious *match*, which is the dangerous
-direction. The projection is the thing in between. `schema id` prints the id
-and `schema projection` prints the text it is taken over.
+cannot see: comments, layout, declaration order across records, and every
+declaration no `type` reaches, `flags` excepted. A source-text hash would
+produce spurious mismatches, and hashing the compiler's internal structures
+could produce a spurious *match*, which is the dangerous direction. The
+projection is the thing in between. `schema id` prints the id and
+`schema projection` prints the text it is taken over.
 
 Two version lines ride the top of that text, and bumping either moves every
 protocol id in existence:
@@ -144,17 +161,31 @@ Whether the id travels on the wire, in a connect token, in a `const` field,
 or out of band, is the application's choice. There is no negotiation and no
 fallback, and everything downstream of the connection is simpler for it.
 
-**What the same-or-refuse rule costs, and who pays.** Every declaration in the
-unit contributes to the id, because a projection that guessed at reachability
-would fail in the dangerous direction. So any `type` edit moves the id, an
-unused helper type moves it, and so does any edit to an enum, flags or union
-declaration, even one that only tables reach: adding an item kind or a quest
-to an enum is a protocol id move. The price of every id move is a coordinated
-redeploy of both ends. This project's own games redeploy both sides of every
-connection together, always; cross-platform studios with certification lag
-ship both store builds dark behind a gate and flip the server when both have
-cleared. A studio that cannot force-update its clients is outside this model,
-and should know it before choosing the packet wire for anything long-lived.
+**What the same-or-refuse rule costs, and who pays.** The projection is the
+CLOSURE over the unit's `type` declarations, plus every `flags` declaration
+(SPEC.md §3.1). So any `type` edit moves the id, an unused helper type moves
+it, since every `type` is a root because nothing in the language says which
+types go on a wire, and so does any edit to an `enum` or `union` a `type`
+reaches, or to any `flags` declaration at all. **What does NOT move it is a
+declaration only tables reach.** Adding an item kind, a quest or an
+achievement to a content enum no packet carries is a table edit, and it costs
+no redeploy. That is the one concession, and it is aimed at the game that
+takes the README at its word and keeps packets, saves, config and assets in
+one unit. The price of every id move that remains is a coordinated redeploy of
+both ends. This project's own games redeploy both sides of every connection
+together, always. Cross-platform studios with certification lag ship both
+store builds dark behind a gate and flip the server when both have cleared. A
+studio that cannot force-update its clients is outside this model, and should
+know it before choosing the packet wire for anything long-lived.
+
+**`flags` is held in the projection deliberately, and it is the exception to
+the closure.** A mask is the table wire's one positional vocabulary, so an
+insert, a reorder or a rename in place is the silent class's second member and
+no read report can see it. The protocol id is the only frame that refuses two
+peers holding different bit assignments while they exchange table data over
+one connection. Content never rides in a flags declaration, because
+sixty-four bits is the ceiling and the law is append at the end, so holding it
+in costs nothing the closure was meant to buy.
 
 **Table bodies never enter the projection.** No edit inside a `table` body
 can move the protocol id. That independence is held by test, and it is the
@@ -223,7 +254,9 @@ Three mechanisms judge an edit, and each sees what the others cannot:
 
 - **The read report** says what a *reader* can tell happened: four counters,
   `unknown`, `kind_mismatch`, `clamped` and `duplicate`, and a `malformed`
-  flag, filled on every load and never fatal on data from another build.
+  flag, filled on every load and never fatal on data from another build. A
+  caller that opts into retain-unknown reads two more on the same struct
+  (SPEC-TABLES.md §6.6), and they report on retention rather than on the read.
 - **The baseline** says what the *compiler* refuses to let you do to data
   already written: the edits the wire cannot report, caught before they ship.
 - **The build version** says whether a cooked or blocked file this build
@@ -249,17 +282,17 @@ does today.
 | a range tightened | `clamped` | warns | moves |
 | a field's kind changed (`int32`→`int64`, `T`→`*T`, `string`→`bytes`, `bits(8)`→`bits(9)`) | `kind_mismatch`; the value reads as the default | **refuses** | moves |
 | `T`→`?T`, `?T`→`T` | nothing: one framing. An old file's elided default reads as *absent* under `?T` | passes | moves (the presence flag is storage) |
-| an enum variant added or removed | `unknown` where a stored name is gone | passes; warns on a removal | moves, and so does the protocol id |
-| an enum variant reordered | nothing | passes | moves, and so does the protocol id |
-| an enum variant renamed | the old name reads `None`, counted | warns | moves, and so does the protocol id: order is spelled in names |
+| an enum variant added or removed | `unknown` where a stored name is gone | passes; warns on a removal | moves, and the protocol id with it where a `type` reaches the enum |
+| an enum variant reordered | nothing | passes | moves, and the protocol id with it where a `type` reaches the enum |
+| an enum variant renamed | the old name reads `None`, counted | warns | moves, and the protocol id with it where a `type` reaches the enum: order is spelled in names |
 | a `fixed` field's `F` moved | **silent**: the raw integer reads at the new scale | **refuses** | moves |
 | a field's referent replaced by one that cannot stand in (a nested table swapped for a same-shaped twin) | **silent** | **refuses** | moves |
 | a field or a union arm changed between an enum and its raw integer | `kind_mismatch`: an enum has a kind of its own | **refuses** | moves |
 | a union arm's declared type changed | `kind_mismatch` where the kind moved, `malformed` where the length no longer frames it | **refuses** | moves |
 | a flags variant inserted or removed | silent | refuses | moves, and so does the protocol id |
 | a flags variant reordered or renamed in place | **silent** | **refuses** | moves: the cook projection digests each variant's bit position, and the protocol id moves too |
-| a union arm reordered or renamed | `unknown` for an arm this reader lacks; a reorder is silent and safe | warns on a vanished name | moves, and so does the protocol id: the arm names are what a same-typed reorder moves |
-| a keyed array made positional | `kind_mismatch` | refuses | moves |
+| a union arm reordered or renamed | `unknown` for an arm this reader lacks; a reorder is silent and safe | warns on a vanished name | moves, and the protocol id with it where a `type` reaches the union: the arm names are what a same-typed reorder moves |
+| a keyed array made positional | `kind_mismatch` | refuses; and in a TABLE body the positional spelling no longer compiles at all (SPEC-TABLES.md §2.4) | moves |
 | a keyed array's key enum swapped for another | `unknown`, one per slot; the kind stays | refuses | moves |
 | a map's KEY kind changed, or its KEY bound tightened (SPEC-TABLES.md §2.8) | a changed kind is one `kind_mismatch` for the map, which reads empty. A tightened bound drops the entries that no longer fit and counts `clamped`, one per entry | **refuses** a changed kind, warns on a tightened bound | moves |
 | a guard added or removed | nothing | passes | nothing |
@@ -268,8 +301,10 @@ does today.
 | a retired name re-added with a new meaning | **silent** | **passes today**; the ledger is #441 | moves |
 | a language added to the build | nothing | nothing | nothing |
 
-Enum, flags and union declarations are shared by both wires, which is why
-some rows move the protocol id as well: see the packet wire section.
+Enum, flags and union declarations are shared by both wires, which is why some
+rows move the protocol id as well. An enum or a union does so only where a
+`type` reaches it, and a `flags` declaration always does: see the packet wire
+section.
 
 ## The read report
 
@@ -285,17 +320,42 @@ the file with the descriptors, the per-field facts every table's generated
 header carries; per-event attribution on the generated read path is additive
 and safe to add after 3.0.0.
 
-**The never-clobber rule.** Unknown fields are dropped on rewrite, by
-decision: everything in schema has a schema, and a tool built from an older
-schema that rewrites a newer file drops what it does not know and counts it.
-That decision has one consequence every studio with a mixed fleet must write
-into its own code before the first staged rollout: **a save cycle or a
-rewriting tool never overwrites a file whose read report is not silent.** The
-`unknown` counter fires on the exact load that precedes the destructive
-rewrite. Write beside the file, or refuse the rewrite. Nothing in the runtime
-enforces this: no generated `Save` refuses when the last load's report was
-not silent, so the game keeps the report beside the instance and checks it
-before it writes.
+**Two more counters ride on the same struct and stay zero unless a caller asks
+for them**: `retained` and `retain_lost`, the retain-unknown pair
+(SPEC-TABLES.md §6.6). They report on RETENTION and not on the read. A
+retained field still counts `unknown`, because `unknown` says what a reader
+could not name and that stays true, so no existing counter changes meaning and
+no existing caller sees a number move.
+
+**The never-clobber rule, and the opt-in that lifts it.** Unknown fields are
+dropped on rewrite BY DEFAULT: everything in schema has a schema, and a tool
+built from an older schema that rewrites a newer file drops what it does not
+know and counts it. That default has one consequence every studio with a mixed
+fleet must write into its own code before the first staged rollout: **a save
+cycle or a rewriting tool never overwrites a file whose read report is not
+silent.** The `unknown` counter fires on the exact load that precedes the
+destructive rewrite. Write beside the file, or refuse the rewrite. Nothing in
+the runtime enforces this: no generated `Save` refuses when the last load's
+report was not silent, so the game keeps the report beside the instance and
+checks it before it writes.
+
+**RETAIN-UNKNOWN is the opt-in that answers the case the rule exists for, and
+it strikes out ONE of the four counters** (SPEC-TABLES.md §6.6, owed as #525).
+A caller that hands `LoadRetain` a bounded side buffer it declares and owns
+keeps every unknown FIELD's bytes, and `SaveRetain` writes them back into the
+body they came from. Retention covers the `unknown` class and nothing else, so
+the rule reads: **a save cycle or a rewriting tool never overwrites a file
+whose read report is not silent, UNLESS retention was on and `retain_lost`,
+`kind_mismatch`, `clamped` and `malformed` are all zero after the save.** That
+is the original condition with `unknown` struck out and nothing else moved,
+and it is precisely what retention buys. The other three still name real loss:
+a `kind_mismatch` field was skipped and read its declared default, a `clamped`
+value was changed on the way in, and a `malformed` load kept a partial decode.
+The condition is read after the SAVE and not only after the load, because a
+retained record can also fail to be placed. The default is unchanged, every
+existing caller keeps the behavior it has, and a caller that treats
+`retain_lost` as fatal and refuses its own rewrite is back at the rule above
+with no code path of its own.
 
 ## The baseline
 
@@ -603,9 +663,13 @@ years, and several of the answers are patterns rather than syntax.
   re-add the name with a new meaning; until the ledger (#441) refuses it,
   nothing records that the name is haunted, so keep your own list.
 - **Ship a schema change to a mixed fleet.** A table-body edit never forces a
-  redeploy; a type, enum, flags or union edit always does. Write the
-  never-clobber rule before the first staged rollout. Roll back freely: the
-  old build reads the new files and counts what it cannot use.
+  redeploy, and neither does an edit to an enum or a union no `type` reaches,
+  which is where content lives. A type or flags edit always does, and so does
+  an enum or union edit a `type` reaches. Write the never-clobber rule before
+  the first staged rollout, or turn retain-unknown on and check `retain_lost`.
+  Roll back freely: the old build reads the new files and counts what it
+  cannot use, and under retention it writes the unknown fields back out
+  unharmed.
 - **Debug an old file.** `unpack --tolerate` renders a wire file of any
   version to text and reports what it did not understand; without
   `--tolerate` it refuses a file whose report is not silent, and a file
@@ -621,17 +685,47 @@ A versioning page that hides its edges is how the failure this page exists to
 prevent happens. These are the places the design chose a cost, or has one
 still open.
 
-- **Unknown fields do not survive a rewrite.** By decision, with the
-  never-clobber rule as the required consequence, and no runtime enforcement.
+- **Unknown fields do not survive a rewrite unless the caller asks, and even
+  then not all of them.** The default is a drop, with the never-clobber rule
+  as the required consequence and no runtime enforcement. Retain-unknown
+  (SPEC-TABLES.md §6.6, #525) is opt-in, is bounded by a buffer the caller
+  sizes, and is a REGION round trip only: `LoadRetain` loads into a region and
+  `SaveRetain` saves from that region, and the BUILDER path carries no
+  retention, because a builder has no node directory to anchor a record on and
+  re-derives its numbering from the reader's own declaration order. Seven
+  things are still dropped and each counts `retain_lost`. A field of kind
+  `17`, an array whose element kind is `17`, and the reserved node-table field
+  itself, all three because a node index means nothing in a numbering this
+  reader re-derives. An unknown enum variant, an unknown union arm and an
+  unknown keyed-array slot, none of which is a field the reader can append.
+  And a node record whose type id is unnameable, which is a whole node. A
+  record whose inner structure the resolving walk finds damaged is dropped
+  too, and that never turns the plain read `malformed`.
+- **Retention covers `unknown` and no other counter.** A load that counted
+  `kind_mismatch`, `clamped` or `malformed` still loses what those name on a
+  rewrite, so the never-clobber condition keeps all three beside
+  `retain_lost`.
 - **There is no widening path**, by choice: a whitelist of compatible pairs
   silently misdecodes everything outside the list.
-- **A content addition that is an enum variant is a lockstep redeploy**, even
-  when only tables reach the enum, because the declaration is shared by both
-  wires.
-- **A variant or union arm reordered or renamed is a lockstep redeploy**, a
-  spelling fix included: those names ride in the projection in declaration
-  order, because a reorder changes what every ordinal means and nothing else
-  can see it, so a rename moves the protocol id with it.
+- **A variant or union arm reordered or renamed is a lockstep redeploy**
+  wherever a `type` reaches the declaration, a spelling fix included: those
+  names ride in the projection in declaration order, because a reorder changes
+  what every ordinal means and nothing else can see it, so a rename moves the
+  protocol id with it.
+- **The protocol id no longer guards a table-only vocabulary, and that guard
+  was real while it lasted.** Scoping the projection by reachability (SPEC.md
+  §3.1) ends an INCIDENTAL protection: two peers whose enum or union
+  declarations disagreed used to refuse each other before they exchanged a
+  byte, table data included, and they now connect. Nothing is misdecoded, and
+  the reason is the table wire rather than this id. A variant and an arm ride
+  as name hashes, so a reorder is invisible and safe and a rename is
+  `unknown`, counted. **Two things had to be true for that to hold, and both
+  were made true rather than found true.** `flags`, the one vocabulary where a
+  reorder IS silent, is held in the projection. And `[E.Max]T` is refused in a
+  table body (SPEC-TABLES.md §2.4, §11), so the other positional vocabulary a
+  table could have had is gone rather than excepted. The residue is that a
+  table-only enum or union is guarded by the tables baseline and the build
+  version and no longer by the connect gate.
 - **A field of a `type` that a table reaches cannot be renamed safely
   today** (#478): `was` is refused there, and a bare rename orphans every
   stored value.
@@ -708,6 +802,9 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #442: `was` for variants and arms; #478: `was` for the fields of a `type`
   that a table reaches.
 - #446: the evolution table's fixtures.
+- #524: the reachability-scoped wire-shape projection, and the negative
+  control on the walk that a missed edge must turn red.
+- #525: retain-unknown, the two report counters, and the conformance rows.
 - #439 and #460: the standard's own contradictions on `T`→`*T`, the flags
   row, writer misuse, the declaration-rename row, the count of silent edits,
   and the pages that still say schema is not an evolution system.
