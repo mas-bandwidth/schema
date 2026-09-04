@@ -15,6 +15,7 @@
 #include "FleetTable.h"
 #include "RowsTable.h"
 #include "DepthTable.h"
+#include "wirebuilder.h"
 
 using namespace mapdemo;
 
@@ -86,15 +87,6 @@ static TableByteOrder host_byte_order()
 {
     const uint16_t probe = 1;
     return *(const uint8_t *) &probe == 1 ? TableByteOrder::Little : TableByteOrder::Big;
-}
-
-static uint32_t rd32( const uint8_t * at )
-{
-    return (uint32_t) at[0] | ( (uint32_t) at[1] << 8 ) | ( (uint32_t) at[2] << 16 ) | ( (uint32_t) at[3] << 24 );
-}
-static void wr32( uint8_t * at, uint32_t v )
-{
-    for ( int i = 0; i < 4; i++ ) { at[i] = (uint8_t) ( v >> ( 8 * i ) ); }
 }
 
 // ---- the instances (docs/SPEC-TABLES.md §2.8) ----
@@ -203,11 +195,12 @@ static void test_writer()
     }
     {
         // an EMPTY map is elided under §3's by-value rule: a fresh Fleet is
-        // the terminator and nothing else
+        // the framing and nothing else — the form byte, the zero reference and
+        // the entry count of an id table with no entries
         FleetBuilder b;
         static uint8_t empty[64];
         const int64_t n = FleetSave( b, empty, sizeof( empty ) );
-        CHECK_EQ( n, 2 );
+        CHECK_EQ( n, empty_wire_bytes );
         pin_golden( "map_empty", empty, n );
     }
 }
@@ -405,30 +398,88 @@ static void test_const_forms()
 
 // ---- the reader's rules, each on a hand-made body (§2.8) ----
 
+// ---- a Row body written FROM THE GRAMMAR (docs/SPEC-TABLES.md §2.8, §3) ----
+//
+// A map rides as kind 14 over element kind 13 — an array of the generated
+// `{ key, value }` entry — so nothing here is a map-specific framing rule. The
+// controls vary the ENTRY LIST and one knob each rather than patching a saved
+// wire, because a canonical LEB128 length cannot be patched in place and a
+// forgery has to say one thing.
 struct RowWire
 {
     uint8_t bytes[4096];
     int64_t size;
-    int64_t entry0; // where the first entry's length prefix sits
-    int64_t stride; // an entry's length prefix and body, all three equal
 };
 
-// three ascending entries and a field AFTER the map, so a body that stops the
-// map can still be seen to let the PARENT read on
-static RowWire good_row()
+struct RowEntrySpec
 {
-    RowBuilder b;
-    Row * row = b.GetRoot();
+    const char * key;
+    int32_t key_bytes; // -1: the key's own length
+    int32_t count;
+    uint8_t key_kind;  // 0: the declaration's own kind
+};
+
+struct RowSpec
+{
+    RowEntrySpec entries[8];
+    int32_t n;
+    uint8_t element_kind; // 0: kind 13, an array of entry bodies
+    int64_t declared_n;   // -1: the entry count itself
+    int32_t after;
+};
+
+static RowSpec ascending_spec()
+{
+    RowSpec spec = {};
     const char * keys[3] = { "aa", "bb", "cc" };
-    for ( int i = 0; i < 3; i++ ) { RowEntriesInsert( b.main, row->entries, keys[i] )->count = 10 + i; }
-    row->after = 777;
+    for ( int i = 0; i < 3; i++ )
+    {
+        spec.entries[i].key = keys[i];
+        spec.entries[i].key_bytes = -1;
+        spec.entries[i].count = 10 + i;
+        spec.entries[i].key_kind = 0;
+    }
+    spec.n = 3;
+    spec.element_kind = 0;
+    spec.declared_n = -1;
+    spec.after = 777;
+    return spec;
+}
+
+static RowWire build_row( const RowSpec & spec )
+{
+    WireBuilder b;
+    b.field( "entries", 14 );
+    const int64_t map_body = b.open_len();
+    b.u8( spec.element_kind != 0 ? spec.element_kind : 13 );
+    b.leb( spec.declared_n >= 0 ? (uint64_t) spec.declared_n : (uint64_t) spec.n );
+    for ( int32_t i = 0; i < spec.n; i++ )
+    {
+        const RowEntrySpec & e = spec.entries[i];
+        const int64_t entry = b.open_len();
+        const int32_t key_bytes = e.key_bytes >= 0 ? e.key_bytes : (int32_t) strlen( e.key );
+        b.field( "key", e.key_kind != 0 ? e.key_kind : 12 );
+        b.leb( (uint64_t) key_bytes );
+        for ( int32_t k = 0; k < key_bytes; k++ ) { b.u8( (uint8_t) e.key[ k < (int32_t) strlen( e.key ) ? k : (int32_t) strlen( e.key ) - 1 ] ); }
+        b.field( "value", 13 );
+        const int64_t value = b.open_len();
+        b.field( "count", 4 );
+        b.u32( (uint32_t) e.count );
+        b.end();
+        b.close_len( value );
+        b.end();
+        b.close_len( entry );
+    }
+    b.close_len( map_body );
+    b.field( "after", 4 );
+    b.u32( (uint32_t) spec.after );
+    b.end();
     RowWire w;
-    w.size = RowSave( b, w.bytes, sizeof( w.bytes ) );
-    // `entries` is the first field: id(2) kind(1) L(4) elemkind(1) N(4)
-    w.entry0 = 12;
-    w.stride = ( (int64_t) rd32( w.bytes + 3 ) - 5 ) / 3;
+    w.size = b.finish( w.bytes );
     return w;
 }
+
+static RowWire good_row() { return build_row( ascending_spec() ); }
 
 struct Verdict
 {
@@ -492,12 +543,11 @@ static void test_reader()
     {
         // CONTROL: the reader's ascending check is dropped. A SHUFFLED map
         // meets it, and the row's `malformed` flag goes red.
-        RowWire w = good_row();
-        uint8_t hold[512];
-        memcpy( hold, w.bytes + w.entry0, (size_t) w.stride );
-        memcpy( w.bytes + w.entry0, w.bytes + w.entry0 + 2 * w.stride, (size_t) w.stride );
-        memcpy( w.bytes + w.entry0 + 2 * w.stride, hold, (size_t) w.stride );
-        const Verdict v = read_row( w );
+        RowSpec spec = ascending_spec();
+        const RowEntrySpec hold = spec.entries[0];
+        spec.entries[0] = spec.entries[2];
+        spec.entries[2] = hold;
+        const Verdict v = read_row( build_row( spec ) );
         CHECK( v.malformed );
         CHECK_EQ( v.count, 1 ); // the ascending prefix it has
     }
@@ -505,9 +555,9 @@ static void test_reader()
         // CONTROL: the parent STOPS at a descending key instead of reading on.
         // The holder carries `after` past the map, and its decoded value goes
         // red — that is §4's framing-damage rule, at the map.
-        RowWire w = good_row();
-        memcpy( w.bytes + w.entry0 + 2 * w.stride, w.bytes + w.entry0, (size_t) w.stride );
-        const Verdict v = read_row( w );
+        RowSpec spec = ascending_spec();
+        spec.entries[2] = spec.entries[0]; // `aa` again, behind `bb`
+        const Verdict v = read_row( build_row( spec ) );
         CHECK( v.malformed );
         CHECK_EQ( v.count, 2 );
         CHECK_EQ( v.after, 777 ); // the PARENT read on past the field's length
@@ -517,17 +567,10 @@ static void test_reader()
         // repeat ELIDES a field the first occurrence set, so a reader that
         // overlays instead of resetting reads 11 where the rule reads 0 — and
         // it agrees with the rule on every other body.
-        RowWire w = good_row();
-        uint8_t * e = w.bytes + w.entry0 + 2 * w.stride;
-        memcpy( e, w.bytes + w.entry0 + w.stride, (size_t) w.stride ); // a second `bb`
-        const int64_t key_bytes = 3 + 4 + 2; // the key field: id, kind, L, two bytes
-        const int64_t drop = (int64_t) rd32( e ) - key_bytes - 2;
-        uint8_t * tail = e + 4 + key_bytes;
-        memmove( tail, tail + drop, (size_t) ( w.size - ( ( tail + drop ) - w.bytes ) ) );
-        wr32( e, (uint32_t) ( key_bytes + 2 ) );
-        wr32( w.bytes + 3, (uint32_t) ( rd32( w.bytes + 3 ) - drop ) );
-        w.size -= drop;
-        const Verdict v = read_row( w );
+        RowSpec spec = ascending_spec();
+        spec.entries[2] = spec.entries[1]; // a second `bb`
+        spec.entries[2].count = 0;         // at its default, so the field elides
+        const Verdict v = read_row( build_row( spec ) );
         CHECK( !v.malformed );
         CHECK_EQ( v.count, 2 );      // the map's count EXCLUDES the repeat
         CHECK_EQ( v.duplicate, 1 );
@@ -537,18 +580,10 @@ static void test_reader()
     {
         // CONTROL: the reader CLAMPS a key instead of dropping its entry. The
         // DECODED VALUE is the half that says it — the `clamped` count alone
-        // cannot separate a merged entry from a dropped one.
-        RowWire w = good_row();
-        uint8_t * e = w.bytes + w.entry0 + w.stride; // the `bb` entry
-        const int64_t grow = 12;                     // past string(8)
-        uint8_t * after_key = e + 4 + 3 + 4 + 2;
-        memmove( after_key + grow, after_key, (size_t) ( w.size - ( after_key - w.bytes ) ) );
-        memset( after_key, 'b', (size_t) grow );
-        wr32( e + 4 + 3, 2 + (uint32_t) grow );
-        wr32( e, rd32( e ) + (uint32_t) grow );
-        wr32( w.bytes + 3, rd32( w.bytes + 3 ) + (uint32_t) grow );
-        w.size += grow;
-        const Verdict v = read_row( w );
+        // cannot separate a merged entry from a dropped one. KEYS NEVER CLAMP.
+        RowSpec spec = ascending_spec();
+        spec.entries[1].key_bytes = 14; // past string(8)
+        const Verdict v = read_row( build_row( spec ) );
         CHECK( !v.malformed );
         CHECK_EQ( v.count, 2 );
         CHECK_EQ( v.clamped, 1 );     // one count per entry
@@ -559,20 +594,21 @@ static void test_reader()
     {
         // CONTROL: an ELEMENT KIND that is not 13 is §4's ordinary array kind
         // mismatch, and nothing about a map is special-cased.
-        RowWire w = good_row();
-        w.bytes[7] = 12;
-        const Verdict v = read_row( w );
+        RowSpec spec = ascending_spec();
+        spec.element_kind = 12;
+        const Verdict v = read_row( build_row( spec ) );
         CHECK_EQ( v.count, 0 );
         CHECK_EQ( v.kind_mismatch, 1 );
         CHECK( !v.malformed );
         CHECK_EQ( v.after, 777 );
     }
     {
-        // CONTROL: `N = 0xFFFFFFFF` under a short `L`. A row of a few dozen
-        // bytes asking for gigabytes — LoadMeasure's answer goes red if the fit
-        // check is dropped.
-        RowWire w = good_row();
-        wr32( w.bytes + 8, 0xFFFFFFFFu );
+        // CONTROL: an `N` past what the map's `L` can carry. A row of a few
+        // dozen bytes asking for gigabytes — LoadMeasure's answer goes red if
+        // the fit check is dropped (§4.2).
+        RowSpec spec = ascending_spec();
+        spec.declared_n = 0xFFFFFFFFll;
+        RowWire w = build_row( spec );
         CHECK_EQ( RowLoadMeasure( w.bytes, w.size ), -1 );
         const Verdict v = read_row( w );
         CHECK_EQ( v.count, -2 );
@@ -605,19 +641,38 @@ static void test_key_kind()
 
     // CONTROL: the key-kind event is counted PER ENTRY instead of once for the
     // map. This row's SECOND entry is the first to disagree, so a per-entry
-    // count would read 2 where the rule reads 1.
-    WideRowBuilder b;
-    WideRow * row = b.GetRoot();
-    // KEYS FROM ONE, not zero: a key at its default elides under §3's rule, so
-    // a zero key would make the first entry a different length than the rest
-    for ( uint32_t i = 1; i <= 3; i++ ) { WideRowEntriesInsert( b.main, row->entries, i )->count = (int32_t) ( 10 + i ); }
-    row->after = 555;
+    // count would read 2 where the rule reads 1. The body is built from the
+    // grammar with a uint32 key on entries one and three and a STRING key on
+    // entry two.
     static uint8_t mixed[4096];
-    const int64_t size = WideRowSave( b, mixed, sizeof( mixed ) );
-    const int64_t entry0 = 12;
-    const int64_t stride = ( (int64_t) rd32( mixed + 3 ) - 5 ) / 3;
-    // the SECOND entry's key rides under the STRING kind instead of the u32 one
-    mixed[entry0 + stride + 4 + 2] = 12; // kind 12 is an opaque byte payload (§3)
+    int64_t size = 0;
+    {
+        WireBuilder b;
+        b.field( "entries", 14 );
+        const int64_t map_body = b.open_len();
+        b.u8( 13 );
+        b.leb( 3 );
+        // KEYS FROM ONE, not zero: a key at its default elides under §3's rule
+        for ( uint32_t i = 1; i <= 3; i++ )
+        {
+            const int64_t entry = b.open_len();
+            b.field( "key", i == 2 ? 12 : 8 ); // kind 12 is an opaque byte payload (§3)
+            if ( i == 2 ) { b.leb( 4 ); b.u32( i ); } else { b.u32( i ); }
+            b.field( "value", 13 );
+            const int64_t value = b.open_len();
+            b.field( "count", 4 );
+            b.u32( 10 + i );
+            b.end();
+            b.close_len( value );
+            b.end();
+            b.close_len( entry );
+        }
+        b.close_len( map_body );
+        b.field( "after", 4 );
+        b.u32( 555 );
+        b.end();
+        size = b.finish( mixed );
+    }
     const int64_t need2 = WideRowLoadMeasure( mixed, size );
     uint8_t * region2 = (uint8_t *) calloc( 1, (size_t) need2 );
     TableReport r2;
