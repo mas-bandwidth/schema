@@ -1896,6 +1896,16 @@ build/schema_test_tables_be: build/tables-generated/.stamp test/tables/main.cpp
 	@mkdir -p build
 	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
+# THE MAP GATE, for a BIG-ENDIAN target (docs/SPEC-TABLES.md §2.8, §3). Its
+# wire goldens were written by a LITTLE-ENDIAN build, so a codec that reached
+# for host byte order anywhere in the map's framing — the array's L, its N, an
+# entry's L, the key's length — would read them wrong and write them back
+# differently. The sorted entry array is the same bytes on both hosts because
+# the ORDER is over the wire's bytes and never over a machine word.
+build/schema_test_maps_be: build/tables-generated/.stamp test/tables/maps_main.cpp
+	@mkdir -p build
+	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/maps_main.cpp $(MAPS_SOURCES) -o $@
+
 # The COOK's read side, for a BIG-ENDIAN target. A cook is produced in the byte
 # order of the build it is cooked for (docs/SPEC-TABLES.md §7), so this is where that
 # stops being a sentence: the big-endian build opens the big-endian cook
@@ -1918,9 +1928,10 @@ build/schema_test_block_endian_be: build/tables-generated/.stamp test/tables/blo
 	$(BE_CXX) $(BLOCK_CXXFLAGS) -static $(BLOCK_INCLUDES) test/tables/block_endian_main.cpp $(BLOCK_SOURCES) -o $@
 
 .PHONY: tables-big-endian
-tables-big-endian: build/schema_test_tables_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
+tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
 	$(BE_RUN) ./build/schema_test_tables_be
-	@echo "big-endian leg: the wire crosses the byte order"
+	$(BE_RUN) ./build/schema_test_maps_be
+	@echo "big-endian leg: the wire crosses the byte order, a map's framing and its sorted entry array with it"
 	./build/schema_test_block_endian write build/block-host.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be write build/block-target.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be accept build/block-target.bin
