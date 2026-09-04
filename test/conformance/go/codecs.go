@@ -70,6 +70,10 @@ var codecTable = []codec{
 // surfaces is what this backend implements. A surface not listed prints as
 // ABSENT in the matrix, which is a missing FEATURE and not a failing test.
 func surfaces() []string {
-	return []string{"wire", "report", "json-read", "json-write", "json-hostile",
-		"cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery"}
+	// THE FIVE WIRE-CARRYING SURFACES ARE ABSENT (test/conformance/README.md):
+	// this port writes the wire's PREVIOUS form and the corpus is pinned in the
+	// id-table form (docs/SPEC-TABLES.md §3), so `wire`, `report`, `json-read`,
+	// `json-write` and `json-hostile` — every surface whose expectation is wire
+	// bytes — say so rather than failing. schema#511 is the port's row.
+	return []string{"cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery"}
 }

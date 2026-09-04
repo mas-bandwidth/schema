@@ -310,8 +310,10 @@ defmodule CookDump do
 end
 
 defmodule Driver do
-  @surfaces ~w(wire report json-read json-write json-hostile
-               cook cook-foreign block block-foreign block-dump forgery cook-forgery)
+  # the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
+  # PREVIOUS form and the corpus is pinned in the id-table form
+  # (docs/SPEC-TABLES.md §3). schema#515 is the port's row.
+  @surfaces ~w(cook cook-foreign block block-foreign block-dump forgery cook-forgery)
 
   def main([manifest, "list"]) do
     _ = manifest

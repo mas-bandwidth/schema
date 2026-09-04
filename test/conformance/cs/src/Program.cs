@@ -685,7 +685,10 @@ static class Program
         string surface = args[1];
         if (surface == "list")
         {
-            Console.Out.Write("wire\nreport\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\n");
+            // the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
+            // PREVIOUS form and the corpus is pinned in the id-table form
+            // (docs/SPEC-TABLES.md §3). schema#513 is the port's row.
+            Console.Out.Write("block\nblock-foreign\nblock-dump\nforgery\n");
             return 0;
         }
         if (args.Length < 3)

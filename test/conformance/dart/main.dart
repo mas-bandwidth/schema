@@ -1111,7 +1111,10 @@ int surfaceCook(String outDir) {
 }
 
 const String surfaces =
-    'wire\nreport\njson-read\njson-write\njson-hostile\n'
+    // the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
+    // PREVIOUS form and the corpus is pinned in the id-table form
+    // (docs/SPEC-TABLES.md §3). schema#514 is the port's row.
+    ''
     'cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\n';
 

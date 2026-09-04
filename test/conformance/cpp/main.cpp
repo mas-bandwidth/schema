@@ -58,6 +58,9 @@
 #include "M2Table.h"
 #include "A1Table.h"
 #include "A2Table.h"
+#include "K1Table.h"
+#include "K2Table.h"
+#include "G1Table.h"
 // the BYTE BUFFER unit (docs/SPEC-TABLES.md §2.5): a blob at its used size,
 // pointed at — a variable root like any pointered one
 #include "AssetsTable.h"
@@ -253,6 +256,8 @@ static const Codec codecs[] = {
     CODEC( "tblm2", tblm2, Msg ),
     CODEC( "tbla1", tbla1, Root ),
     CODEC( "tbla2", tbla2, Root ),
+    CODEC( "tblk1", tblk1, Root ),
+    CODEC( "tblk2", tblk2, Root ),
     CODEC( "scalars", scalardemo, SimState ),
     CODEC( "tblscalars2", scalardemo2, SimState ),
 };
@@ -331,6 +336,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "tblp2", tblp2, Chain ),
     VARCODEC( "streamdemo", streamdemo, Feed ),
     VARCODEC( "blobdemo", blobdemo, Catalog ),
+    VARCODEC( "tblg1", tblg1, Guarded ),
 };
 
 static const VarCodec * find_var_codec( const std::string & unit, const std::string & root )

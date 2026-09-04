@@ -1328,7 +1328,10 @@ fn main() {
     let surface = args[2].as_str();
     if surface == "list" {
         println!(
-            "wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
+            // the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
+            // PREVIOUS form and the corpus is pinned in the id-table form
+            // (docs/SPEC-TABLES.md §3). schema#518 is the port's row.
+            "cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
         );
         return;
     }

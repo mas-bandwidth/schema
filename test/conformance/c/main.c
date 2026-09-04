@@ -544,7 +544,10 @@ int main( int argc, char ** argv )
     surface = argv[2];
     if ( strcmp( surface, "list" ) == 0 )
     {
-        printf( "wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
+        /* the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
+           PREVIOUS form and the corpus is pinned in the id-table form
+           (docs/SPEC-TABLES.md §3). schema#512 is the port's row. */
+        printf( "cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
         return 0;
     }
     if ( argc < 4 )
