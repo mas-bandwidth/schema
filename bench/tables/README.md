@@ -76,6 +76,15 @@ true, the enum never `None`, no zero scalar, string and byte-buffer lengths
 pinned — and refuses to emit a corpus whose 64 records are not all the same
 length. That check is what proves the construction held.
 
+**The id table is part of that length.** A record's trailer carries one
+eight-byte entry per distinct id the record uses, and an enum rides as its
+VARIANT's id, so a variant drawn at random moves the record length by eight
+bytes per entry the draw added or dropped. Every enum is therefore pinned by
+its slot rather than drawn: the eight entity slots take `Fists` through
+`Grenade` in every record, so the set of ids is fixed while the value still
+differs from slot to slot. A `flags` needs no such pin, because it rides as
+raw bits and names no id.
+
 ## The protocol
 
 The sitting is the type bench's, clause for clause (BENCH-STANDARD.md §1.5,
