@@ -613,3 +613,245 @@ $ schema id .
 
 **You now have** named ship types and system masks, with logging names, in
 every language, and no hand-maintained constants.
+
+---
+
+## Part 3: The first packet: types and ranged integers
+
+### The problem
+
+Starlight's server needs to tell every client about every ship: what kind it
+is, how much health it has, which systems are up, whether it is docked. Sixty
+times a second, for dozens of ships. Hand-rolled binary packing is a reader and
+a writer that drift, and JSON at 60 Hz is a joke. You want to declare the
+message once and get matching, fast, safe code on both ends.
+
+### type
+
+Add one constant and one declaration to `Game.schema`. The constants now read:
+
+```
+const MaxPlayers   = 64
+const MaxHealth    = 1000
+const TickRate     = 60
+const TickInterval = 1.0 / TickRate
+const Pi float32   = 3.14159265359
+```
+
+and at the end of the file:
+
+```
+type ShipState
+{
+    ship_type ShipType
+    health    int32       | min = 0, max = MaxHealth
+    systems   SystemFlags
+    docked    bool
+}
+```
+
+A `type` is a plain struct: one field per line, no commas, the name first and
+then the field's type. `ship_type` and `systems` use the declarations from Part
+2, because an enum and a flags are field types like any other.
+
+The interesting line is `health`. After the `|`, the same qualification syntax
+as the enum's `| max`, you give the field a **range**, and the range is part of
+the type. This is the most useful feature in the language, so look at what it
+generates:
+
+```cpp
+struct ShipState {
+    ShipType ship_type = ShipType::None;
+    int32_t health = 0; // wire [0, 1000]
+    SystemFlags systems = 0;
+    bool docked = false;
+};
+
+inline constexpr int64_t ShipStateMaxBits = 17; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t ShipStateMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+```
+
+```cpp
+SCHEMA_WRITE_INLINE bool WriteShipState( serialize::WriteStream & stream, const ShipState & value )
+{
+    serialize_assert( int32_t( value.ship_type ) >= int32_t( 0 ) && int32_t( value.ship_type ) <= int32_t( 3 ) );
+    write_bits( stream, uint32_t( value.ship_type ), 2 );
+    serialize_assert( int32_t( value.health ) >= int32_t( 0 ) && int32_t( value.health ) <= int32_t( MaxHealth ) );
+    write_bits( stream, uint32_t( value.health ), 10 );
+    serialize_assert( value.systems < ( 1ull << 4 ) );
+    write_bits( stream, value.systems, 4 );
+    write_bool( stream, value.docked );
+    return true;
+}
+```
+
+Count the bits. Two for the ship type, four values counting `None`. **Ten for
+the health**, because 1001 values need ten. Four for the flags, one per
+variant. One for the bool. Seventeen bits, which is what `ShipStateMaxBits`
+says. A hand-written struct would have spent 32 bits on the health alone. You
+declared what the value *is*, between 0 and `MaxHealth`, and the wire cost
+followed from it. Storage stays `int32_t`, and only the wire is narrow.
+
+The read side validates everything it reads:
+
+```cpp
+SCHEMA_READ_INLINE bool ReadShipState( serialize::ReadStream & stream, ShipState & value )
+{
+    {
+        int32_t enum_value = 0;
+        read_int( stream, enum_value, 0, 3 );
+        value.ship_type = ShipType( enum_value );
+    }
+    read_int( stream, value.health, 0, MaxHealth );
+    read_bits( stream, value.systems, 4 );
+    read_bool( stream, value.docked );
+    return true;
+}
+```
+
+Those bare-looking `read_int` calls are serialize macros that `return false`
+out of the function on failure, so the error handling is there, hidden in the
+spelling.
+
+### Run it
+
+`GameWire.h` includes `serialize.h`, which is the header-only checkout you made
+in Part 1. `main.cpp`, entire:
+
+```cpp
+#include "GameWire.h"
+#include <cstdio>
+
+int main()
+{
+    using namespace starlight;
+
+    ShipState ship;
+    ship.ship_type = ShipType::Corvette;
+    ship.health = 750;
+    ship.systems = SystemFlags_Shields | SystemFlags_WarpDrive;
+
+    uint8_t buffer[64];
+    serialize::WriteStream writer( buffer, sizeof( buffer ) );
+    WriteShipState( writer, ship );
+    writer.Flush();
+    printf( "wrote %lld bytes\n", (long long) writer.GetBytesProcessed() );
+
+    ShipState copy;
+    serialize::ReadStream reader( buffer, writer.GetBytesProcessed() );
+    if ( ReadShipState( reader, copy ) )
+    {
+        char names[SystemFlagsNamesMax];
+        printf( "read back: %s health=%d systems=%s docked=%d\n",
+            EnumName( copy.ship_type ), copy.health,
+            FlagNamesSystemFlags( copy.systems, names, sizeof( names ) ), copy.docked );
+    }
+
+    uint8_t evil[64] = {};
+    serialize::WriteStream forge( evil, sizeof( evil ) );
+    write_bits( forge, 3, 2 );        // ship_type = Corvette
+    write_bits( forge, 1013, 10 );    // health = 1013, out of range
+    write_bits( forge, 0, 4 );        // systems
+    write_bits( forge, 0, 1 );        // docked
+    forge.Flush();
+
+    ShipState hacked;
+    serialize::ReadStream check( evil, forge.GetBytesProcessed() );
+    printf( "hostile read: %s\n", ReadShipState( check, hacked ) ? "ACCEPTED" : "refused" );
+    return 0;
+}
+```
+
+```
+$ c++ -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -I gen -I ../serialize -o starlight main.cpp
+$ ./starlight
+wrote 3 bytes
+read back: Corvette health=750 systems=Shields|WarpDrive docked=0
+hostile read: refused
+```
+
+Three bytes for the whole ship state, which is seventeen bits flushed to byte
+granularity. That compile line is the one every later part uses, so keep it.
+
+Note `-ffp-contract=off`. Generated float code must produce identical bits on
+both ends of a connection, and a contracted multiply-add produces different
+bits from the pair, so build wire code with contraction off.
+
+### The reader assumes the bytes are hostile
+
+The second half of that program forges a packet: the same bit layout, written
+by hand, with 1013 in the health bits. A value outside its declared range is
+**refused, not clamped**. The read returns false and you drop the packet. The
+same goes for counts past an array bound, string lengths past their maximum,
+enum values above the extent, and reads that run past the end of the buffer.
+This holds in all nine languages, because the same compiler wrote all nine
+readers.
+
+One buffer contract to know before this ships. The C and C++ readers pull a
+64-bit word at a time, so a receive buffer's **allocation** must extend at
+least 8 bytes past the packet data. Size the buffer with slack and pass the
+true length. The requirement is per target: Rust and JavaScript want 8 bytes,
+Go wants 7 for its fast path, and C#, Dart, Java and Elixir need none. SPEC
+§6.3 carries the table.
+
+### The write side is yours
+
+Notice that the writes were `serialize_assert`, not checks. Writing
+`health = 2000` asserts in a debug build and truncates in a C++ release build.
+That is deliberate. Your simulation already keeps health in `[0, MaxHealth]`,
+and re-validating every field of every outgoing packet at 60 Hz is a cost with
+no buyer. The guarantee is on *reads*, where hostile data arrives. Each
+language reports writer misuse its own way, and keeping your values in bounds
+means none of that machinery ever fires.
+
+### When you get the range wrong
+
+Each of these is a `bad/Bad.schema` of the form
+
+```
+package bad
+
+type T
+{
+    <the field line below>
+}
+```
+
+and each refusal names the rule:
+
+```
+h int32 | min = 0
+    Bad.schema:5:5: field h: min without max (or vice versa) is a compile error (SPEC §4.6)
+    schema: 1 error(s)
+
+h int32 | min = 10, max = 5
+    Bad.schema:5:15: inverted range [10, 5] — min must not exceed max (SPEC §4.6)
+    schema: 1 error(s)
+
+h int8 | min = 0, max = 1000
+    Bad.schema:5:5: field h: range [0, 1000] does not fit its declared storage int8 (SPEC §4.6 — a legal wire value the storage truncates would be silent corruption)
+    schema: 1 error(s)
+
+h int32 = 2000 | min = 0, max = 1000
+    Bad.schema:5:15: field h: default 2000 is outside its range [0, 1000]
+    schema: 1 error(s)
+
+count int32 | min = 1, max = 4
+    Bad.schema:5:5: field count: its range [1, 4] excludes zero, so the implicit zero default is outside it — declare a default in range, count = 1 (SPEC §4.6)
+    schema: 1 error(s)
+```
+
+The last one deserves a beat. Everything in this language zero-initializes, so
+a range that excludes zero would leave a freshly constructed value outside its
+own range. The compiler makes you pick the rest state:
+`count int32 = 1 | min = 1, max = 4`. That is also your introduction to
+**defaults**, the `= value` before the `|`, which exist for exactly the fields
+whose rest state is not zero.
+
+```
+$ schema id .
+0xf1e2edc1eb4168d8
+```
+
+**You now have** a real network message, three bytes on the wire, hostile input
+refused, in any of nine languages.
