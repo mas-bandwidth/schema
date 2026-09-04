@@ -63,6 +63,11 @@ printed, so a build wrapping this command stays clean. Add `--verbose` to
 list every file written (`check` and `fmt` take the same flag).
 Errors always print, whatever the verbosity.
 
+Your `.schema` files are read, never written. `schema fmt` is the only command
+that rewrites one, so `check`, `generate`, `id` and the rest run against a
+read-only checkout, and they answer the same way whether or not the source is
+in canonical form.
+
 You get a struct and a pair of wire functions:
 
 ```cpp
@@ -2879,18 +2884,19 @@ if diags, ok := errors.AsType[compiler.Diagnostics](err); ok {
 }
 ```
 
-The CLI formats every file in place before reading it (schemafmt, one style, no
-options). That is a policy, not a law, and it is two fields:
+`Load` writes nothing, which is the CLI's policy too: `schema fmt` is the only
+command that writes a schema file. A tool that wants the canonical form on disk
+as a side effect of loading opts into it, and it is two fields:
 
 ```go
 c.FormatInPlace = true
 c.OnFormat = func(path string) { fmt.Printf("formatted %s\n", path) }
 ```
 
-For formatting on its own there is `compiler.FormatFile(path)` — canonicalize
-in place, reporting whether the file actually changed — and `compiler.Format(path,
-src)`, which formats bytes and touches nothing, for a drift check that must not
-repair what it is measuring.
+For formatting on its own there is `compiler.FormatFile(path)`, which
+canonicalizes in place and reports whether the file actually changed, and
+`compiler.Format(path, src)`, which formats bytes and touches nothing, for a
+drift check that must not repair what it is measuring.
 
 ### Your own generator
 

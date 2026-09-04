@@ -6,7 +6,7 @@
 //	schema projection [dir|files...]                 print the wire shape the id hashes
 //	schema build-version [--facts] [dir|files...]    print the build version, or the cook projection it hashes
 //	schema tables-baseline [--update --reason "..."]  print or move the tables baseline
-//	schema fmt        [dir|files...]                 canonicalize schema files in place
+//	schema fmt        [dir|files...]                 canonicalize schema files in place — the ONLY command that writes one
 //	schema pack       --root T --out F <dir>         a directory tree becomes one table's wire bytes
 //	schema unpack     --root T --in  F <dir>         the wire bytes become the tree again
 //	schema cook       --root T --in F --out C        the wire becomes the cooked form (§7)
@@ -39,18 +39,18 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
-	// The CLI's load policy: every command formats the unit's files in place
-	// before processing them (schemafmt, SPEC §7.4). Success is silent —
-	// --verbose announces the files a command rewrote or emitted; errors
-	// always reach stderr.
+	// The CLI's load policy: `fmt` is the ONLY command that writes a schema
+	// file. Every other command reads the unit as it sits on disk and leaves
+	// it byte for byte alone, so a read-only checkout, a sandboxed build, a
+	// concurrent generation and an editor integration all work, and a command
+	// that answers a question never edits the source it answered about.
+	// Formatting changes no answer — the unit a canonical file declares is the
+	// unit its unformatted twin declares, and the protocol id depends only on
+	// the wire shape (SPEC §3.1) — so nothing here needs the repair to be on
+	// disk. Success is silent; --verbose announces the files a command emitted,
+	// and errors always reach stderr.
 	c := compiler.New()
-	c.FormatInPlace = true
 	verbose := false // set by each subcommand's --verbose flag before any file is loaded
-	c.OnFormat = func(path string) {
-		if verbose {
-			fmt.Printf("formatted %s\n", path)
-		}
-	}
 	// Warnings are never quiet and never gated on --verbose: a warning nobody
 	// reads is a warning that does not exist. Today they come from the tables
 	// baseline's warn class (docs/SPEC-TABLES.md §18.2).
@@ -155,8 +155,10 @@ func main() {
 			}
 		}
 	case "fmt":
-		// standalone formatting; check/generate/id already format before
-		// processing, so this exists for editors and pre-commit hooks
+		// THE ONE WRITER (SPEC §7.4). Every other command reads the unit and
+		// leaves it alone, so canonicalizing a tree is this command's job and
+		// nobody else's: editors, pre-commit hooks and `make fmt` run it, and a
+		// pipeline that wants the repair asks for it here.
 		fs := flag.NewFlagSet("fmt", flag.ExitOnError)
 		fs.BoolVar(&verbose, "verbose", false, "list the files rewritten")
 		migrate := fs.Bool("migrate", false, "one-shot migration: additionally accept the retired spellings ([ ... ] attribute blocks, [<= N] bounds) and rewrite them to the current grammar (SPEC §7.4)")
@@ -221,7 +223,7 @@ func main() {
 		if *root == "" || *out == "" {
 			fatalf("pack needs --root <Table> and --out <file>")
 		}
-		unit := loadTree(c, rest)
+		unit := loadUnit(c, rest)
 		bytes, skipped, report, err := c.Pack(unit, *root, dir)
 		if err != nil {
 			fail(err)
@@ -256,7 +258,7 @@ func main() {
 		if err != nil {
 			fatalf("%v", err)
 		}
-		unit := loadTree(c, rest)
+		unit := loadUnit(c, rest)
 		unpack := c.Unpack
 		if *oneFile {
 			unpack = c.UnpackOneFile
@@ -293,7 +295,7 @@ func main() {
 		default:
 			fatalf("--byte-order takes little or big, not %q", *byteOrder)
 		}
-		unit := loadTree(c, fs.Args())
+		unit := loadUnit(c, fs.Args())
 		wire := cookInput(c, unit, *root, *in, verbose, *tolerate)
 		bytes, cooked, report, err := c.Cook(unit, *root, wire, opts)
 		if err != nil {
@@ -355,7 +357,7 @@ func main() {
 		if len(rest) == 0 {
 			rest = []string{"."}
 		}
-		unit := loadTree(c, rest)
+		unit := loadUnit(c, rest)
 		res, err := c.CookCheck(unit, *root, file)
 		if err != nil {
 			fail(err)
@@ -391,7 +393,7 @@ func main() {
 				fail(err)
 			}
 		}
-		unit := loadTree(c, fs.Args())
+		unit := loadUnit(c, fs.Args())
 		wire, err := c.Uncook(unit, *root, file)
 		if err != nil {
 			fail(err)
@@ -450,18 +452,6 @@ func packTree(verb string, args []string) (string, []string) {
 		rest = []string{"."}
 	}
 	return args[0], rest
-}
-
-// loadTree loads the unit for pack and unpack WITHOUT the CLI's format-in-place
-// policy. Every other command formats the unit's sources because formatting is
-// part of what it is doing to them; these two are pointed at a config tree and
-// only READ the declarations, and a verb that assembles Config.bin rewriting
-// the schema sources beside it is a surprise nobody asked for.
-func loadTree(c *compiler.Compiler, args []string) *ir.Unit {
-	format := c.FormatInPlace
-	c.FormatInPlace = false
-	defer func() { c.FormatInPlace = format }()
-	return loadUnit(c, args)
 }
 
 // writeAtomic writes through a temporary beside the destination and renames it
@@ -534,12 +524,12 @@ func usage() {
   schema uncook     --root <Table> --in  <file.cook> --out <file> [--attribution <file>] [--verbose] [dir|files...]
   schema version
 
-Every command formats the unit's schema files in place before processing them
-(schemafmt — one style, no options); a file already in format is not touched.
-pack and unpack are the exception — they read the declarations and never write
-to them. Success is silent: --verbose lists the files a command wrote or
-reformatted. pack and unpack exit nonzero when their read report is not
-silent; --tolerate accepts it.
+fmt is the only command that writes a schema file (schemafmt — one style, no
+options); a file already in format is not touched. Every other command reads
+the unit as it sits on disk and leaves it alone, so a read-only tree works and
+a check never edits what it checked. Success is silent: --verbose lists the
+files a command wrote. pack and unpack exit nonzero when their read report is
+not silent; --tolerate accepts it.
 `)
 }
 
