@@ -169,3 +169,28 @@ func TestMapFreeUnitIsUntouched(t *testing.T) {
 		}
 	}
 }
+
+// TestMapRefusalNamesTheCarrierOnceThereIsOne: the refusal has two shapes, and
+// the second one is what every other construct's says. This exercises the
+// carrier registry directly rather than waiting for the C++ codec to land, so
+// the day target_cpp.go registers, the message it produces is already held.
+func TestMapRefusalNamesTheCarrierOnceThereIsOne(t *testing.T) {
+	if len(mapTargets) != 0 {
+		t.Fatalf("mapTargets = %v, want empty until a backend carries the codec (schema#380)", mapTargets)
+	}
+	defer func() { mapTargets = nil }()
+	registerMapCarrier("cpp")
+
+	u := unitFromSource(t, mapSrc)
+	err := refuseMaps(u, "go")
+	if err == nil {
+		t.Fatalf("refuseMaps accepted a map-bearing unit for a non-carrier")
+	}
+	for _, want := range []string{"a map is cpp only today", "Fleet.ships", "--lang cpp"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
+		}
+	}
+	// a CARRIER never calls refuseMaps at all — it registers instead, exactly as
+	// target_cpp.go does for the optional array — so there is no third shape.
+}
