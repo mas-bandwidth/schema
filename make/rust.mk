@@ -331,3 +331,30 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 TEST_LEGS         += test-rust
 CONFORMANCE_LEGS  += build/conformance-rust
 BENCH_TABLES_LEGS += generated/bench/tables/rust/.stamp
+
+# THE RUST NATIVE GATE (issue #547). rustfmt and clippy are the two
+# instruments a Rust reader runs, and this holds the generated crates of both
+# corpora to them: `cargo fmt --check`, which has no options to argue about,
+# and `cargo clippy` with `-D warnings`, which is what "red on any finding"
+# means here.
+#
+# IT IS NOT tables-rust-clippy, and neither replaces the other. That target
+# asks whether a CONSUMER's build survives the generated code, so it runs
+# clippy's default exit status and stays green on a lint; this one asks
+# whether the emitted text is what a Rust author would have written, so a lint
+# is the finding. The cost of the difference is named: clippy's lint set moves
+# with the stable toolchain, so this leg can go red on a rustup release with
+# no commit here, exactly as govulncheck can. That is the gate the law asks
+# for, and the pin question belongs to the workflow that installs the
+# toolchain.
+.PHONY: native-rust
+native-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp build/tables-generated-rust/.stamp
+	@for c in generated/rust generated/rust-ludicrous build/tables-generated-rust/*/; do \
+		test -f $$c/Cargo.toml || continue; \
+		echo "native-rust: $$c"; \
+		( cd $$c && PATH="$(RUSTUP_BIN):$$PATH" cargo fmt --check ) || exit 1; \
+		( cd $$c && PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --quiet --all-targets -- -D warnings ) || exit 1; \
+	done
+	@echo "native Rust: rustfmt-canonical and clippy clean over the examples and tables corpora"
+
+NATIVE_LEGS       += native-rust

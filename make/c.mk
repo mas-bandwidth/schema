@@ -497,3 +497,18 @@ TEST_LEGS         += test-c
 CONFORMANCE_LEGS  += build/conformance-c
 BENCH_TABLES_LEGS += generated/bench/tables/c/.stamp
 GOLDENS_LEGS      += update-goldens-c
+
+# THE C NATIVE GATE (issue #547), the C++ leg's twin in the Makefile: the same
+# two instruments, the same style file, the same pinned major, over the C
+# emitter's output for both corpora.
+NATIVE_C_DIRS = generated/c generated/c-ludicrous $(wildcard build/tables-generated-c/*/)
+
+.PHONY: native-c
+native-c: generated/c/.stamp generated/c-ludicrous/.stamp build/tables-generated-c/.stamp
+	$(CLANG_FORMAT) --dry-run --Werror \
+		generated/c/*.h generated/c-ludicrous/*.h \
+		build/tables-generated-c/*/*.h build/tables-generated-c/*/*.c
+	$(call native_clang_tidy,-xc -std=c99,$(SERIALIZE_C),$(NATIVE_C_DIRS),h c)
+	@echo "native C: clang-format canonical and clang-tidy clean over the examples and tables corpora"
+
+NATIVE_LEGS       += native-c

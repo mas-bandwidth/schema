@@ -3036,3 +3036,63 @@ registry:
 	@echo "conformance: $(CONFORMANCE_LEGS)"
 	@echo "bench-tables: $(BENCH_TABLES_LEGS)"
 	@echo "goldens: $(GOLDENS_LEGS)"
+	@echo "native: $(NATIVE_LEGS)"
+
+# ---- THE C AND C++ NATIVE GATE (issue #547) --------------------------------
+#
+# clang-format and clang-tidy are the instruments a C or C++ reader runs, and
+# these two legs hold the emitted text of both corpora to them. The style is
+# the repository's .clang-format, which is written from the estate's own C and
+# C++ and says why each option is what it is; clang-tidy runs its DEFAULT
+# check set, which is the reading the law asks for, with every diagnostic an
+# error.
+#
+# THE VERSION IS NAMED, never `clang-format` bare: which diagnostics exist and
+# how a construct is formatted are exactly toolchain-version facts, so a leg
+# that took whatever a machine had installed would prove a different thing on
+# every machine. CI installs this major at an exact package version; a
+# workstation that has another one overrides these two variables.
+CLANG_MAJOR  ?= 18
+CLANG_FORMAT ?= clang-format-$(CLANG_MAJOR)
+CLANG_TIDY   ?= clang-tidy-$(CLANG_MAJOR)
+
+# clang-tidy is one process per translation unit over ~200 units per leg, and
+# every one of them is independent.
+NATIVE_JOBS ?= 4
+
+# $(1) the language flag clang wants, $(2) the include the runtime lives in,
+# $(3) the directories to walk, $(4) the file extensions in them.
+define native_clang_tidy
+	@set -e; fail=0; \
+	for d in $(3); do \
+		files=$$(ls $$(for e in $(4); do echo $$d/*.$$e; done) 2>/dev/null || true); \
+		[ -n "$$files" ] || continue; \
+		printf '%s\n' $$files | xargs -P $(NATIVE_JOBS) -I{} \
+			$(CLANG_TIDY) --quiet --warnings-as-errors='*' {} -- \
+			$(1) -I$$d -I$(2) || fail=1; \
+	done; \
+	if [ $$fail -ne 0 ]; then exit 1; fi
+endef
+
+NATIVE_CPP_DIRS = generated/cpp generated/cpp/ludicrous $(wildcard build/tables-generated/*/)
+
+.PHONY: native-cpp
+native-cpp: generated/cpp/.stamp generated/cpp/ludicrous/.stamp build/tables-generated/.stamp
+	$(CLANG_FORMAT) --dry-run --Werror \
+		generated/cpp/*.h generated/cpp/ludicrous/*.h \
+		build/tables-generated/*/*.h build/tables-generated/*/*.cpp
+	$(call native_clang_tidy,-xc++ -std=c++17,$(SERIALIZE),$(NATIVE_CPP_DIRS),h cpp)
+	@echo "native C++: clang-format canonical and clang-tidy clean over the examples and tables corpora"
+
+NATIVE_LEGS += native-cpp
+
+# THE NATIVE GATE (issue #547): every registered leg's formatter and analyzer
+# over its own generated code. One target per language, registered by that
+# language's make/<lang>.mk exactly as its test and conformance legs are, so a
+# port lands its native gate by adding the target and nothing else.
+#
+# CI runs the legs SHARDED, one job each, because a leg's wall is its own
+# toolchain's; this target is the whole set, for a workstation with every
+# toolchain installed.
+.PHONY: native
+native: $(NATIVE_LEGS)

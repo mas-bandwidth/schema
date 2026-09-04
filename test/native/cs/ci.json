@@ -1,0 +1,3 @@
+{"targets": "native-cs",
+ "runtime": "serialize.cs", "runtime_tag": "SERIALIZE_CS_TAG",
+ "dotnet": ".github/dotnet-version"}

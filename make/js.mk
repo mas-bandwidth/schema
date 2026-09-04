@@ -451,3 +451,39 @@ test-js: generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.s
 TEST_LEGS         += test-js
 CONFORMANCE_LEGS  += build/tables-generated-js/.stamp
 BENCH_TABLES_LEGS += generated/bench/tables/js/.stamp
+
+# npm, from the same pinned Node the leg above documents; CI installs the same
+# major and overrides with NPM=npm.
+NPM ?= $(CURDIR)/dist/node-v20.20.2-darwin-arm64/bin/npm
+
+# THE JAVASCRIPT NATIVE GATE (issue #547). ESLint is the language's standard
+# analyzer, and JavaScript has no standard formatter to pair with it — so this
+# leg is the analyzer alone, at its own recommended severities, over the
+# generated ES modules of both corpora.
+#
+# THE ANALYZER IS PINNED like every other dependency in this tree: the version
+# lives in test/native/js/package.json and the whole closure in the lockfile
+# beside it, and `npm ci` installs exactly that. Nothing here runs @latest and
+# nothing reaches for a system eslint.
+#
+# IT INSTALLS UNDER build/_native-js, and the leading underscore is the whole
+# reason: `go build ./...` and `go test ./...` walk build/, npm packages ship
+# Go files, and the Go tool skips a directory whose name starts with an
+# underscore. The config is copied in beside the tree so that its own
+# `import "@eslint/js"` resolves where the packages are.
+NATIVE_JS_DIR := build/_native-js
+
+$(NATIVE_JS_DIR)/.stamp: test/native/js/package.json test/native/js/package-lock.json test/native/js/eslint.config.mjs
+	@mkdir -p $(NATIVE_JS_DIR)
+	cp test/native/js/package.json test/native/js/package-lock.json test/native/js/eslint.config.mjs $(NATIVE_JS_DIR)/
+	cd $(NATIVE_JS_DIR) && $(NPM) ci
+	@touch $@
+
+.PHONY: native-js
+native-js: generated/js/.stamp generated/js-ludicrous/.stamp build/tables-generated-js/.stamp $(NATIVE_JS_DIR)/.stamp
+	$(NODE) $(NATIVE_JS_DIR)/node_modules/eslint/bin/eslint.js \
+		--no-config-lookup --config $(NATIVE_JS_DIR)/eslint.config.mjs \
+		generated/js generated/js-ludicrous build/tables-generated-js
+	@echo "native JavaScript: ESLint clean over the examples and tables corpora"
+
+NATIVE_LEGS       += native-js

@@ -77,6 +77,13 @@ env:
   SERIALIZE_CS_TAG: v1.9.1
   SERIALIZE_JS_TAG: v1.4.2
 
+  # The C and C++ native legs' clang tooling, by EXACT archive version
+  # (issue #547). ubuntu-24.04 is the archive; the major each leg wants is its
+  # row's, and this is the version that major resolves to there. Bumping it is
+  # a deliberate one-line edit, and the version comes from the policy the
+  # failing install prints.
+  CLANG_APT_PIN: "1:18.1.3-1ubuntu1"
+
 jobs:
   # The compiler's own test suite, and the only job in this file that reads a
   # Go source file. `go test ./...` covers internal/fuzz, whose seeded corpus
@@ -302,6 +309,148 @@ jobs:
 
       - name: the ${{ matrix.lang }} leg over every surface
         run: env ${{ matrix.env }} ./build/conformance-harness run --only ${{ matrix.lang }}
+
+  # THE NATIVE GATE (issue #547), one job per port row of the matrix (#366).
+  #
+  # The law is that what schema emits for a target reads as that language's own
+  # code. Two of its three parts are machine-checkable and this is where they
+  # run: the language's standard FORMATTER in check mode, and its standard
+  # ANALYZER at default strictness, over the GENERATED code of both corpora —
+  # the examples corpus under generated/, the tables corpus under build/ — red
+  # on any finding. The third part, the fluent-reader review, is a person's and
+  # lives on the row's pull request.
+  #
+  # WHAT EACH LEG RUNS is `make native-<lang>`, and that target lives in the
+  # port's own make/<lang>.mk beside its test and conformance legs. So the
+  # instruments a language is held to are a decision made in that language's
+  # file, by whoever knows it, rather than a line in this one.
+  #
+  # THE MATRIX IS DISCOVERED, NOT TYPED, the same way the conformance matrix
+  # above is: `test/native/matrix` reads every test/native/<lang>/ci.json, and
+  # refuses a tree where a port has a conformance driver and no native row. A
+  # row names the make target, the sibling runtime the analyzer needs on disk
+  # to typecheck what the emitter wrote, the toolchain steps to install and
+  # the make overrides that point the leg at them. Registering a port's native
+  # gate is its make target and its ci.json, and no edit here.
+  #
+  # SHARDED PER LEG for the reason the conformance matrix is: a leg's wall is
+  # its own toolchain's, so one job per language keeps the SLOWEST leg inside
+  # the rule rather than the SUM of them, and a leg that stops fitting is named
+  # by the job that missed.
+  native-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - id: discover
+        name: the native registry, as a matrix
+        run: |
+          matrix=$(go run ./test/native/matrix)
+          echo "$matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  native:
+    name: native (${{ matrix.lang }})
+    needs: native-matrix
+    # NAMED rather than `-latest`, the argument the big-endian and msvc jobs
+    # make: the C and C++ legs install their tooling by exact package version,
+    # and a package version is only meaningful against one archive.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.native-matrix.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # An ANALYZER needs the runtime on disk for the same reason a compiler
+      # does: it typechecks what the emitter wrote, and generated Go, Rust, C#,
+      # C and C++ name a sibling. A leg whose generated code names no runtime
+      # leaves the row's two fields empty and clones nothing.
+      - name: Check out the sibling runtime this leg needs (pinned release)
+        if: matrix.runtime != ''
+        run: |
+          tag=$(printenv "${{ matrix.runtime_tag }}")
+          git clone --quiet --depth 1 --branch "$tag" "https://github.com/mas-bandwidth/${{ matrix.runtime }}.git" "../${{ matrix.runtime }}"
+
+      # bin/schema and the generated trees come out of Go in every leg.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: read the .NET SDK pin
+        if: matrix.dotnet != ''
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: matrix.dotnet != ''
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: matrix.node != ''
+        with:
+          node-version: ${{ matrix.node }}
+
+      # rustfmt and clippy are NAMED here: they are the two instruments this
+      # leg is, and a toolchain installed without them fails on a missing
+      # binary rather than on a finding.
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        if: matrix.rust != ''
+        with:
+          components: rustfmt, clippy
+
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.dart != ''
+        with:
+          sdk: ${{ matrix.dart }}
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        if: matrix.java != ''
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.otp != ''
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+
+      # THE C AND C++ TOOLING, by EXACT package version for the reason the
+      # big-endian job installs its cross compiler that way: which diagnostics
+      # clang-tidy has and how clang-format lays a construct out are
+      # toolchain-version facts, so a leg on a floating version would prove a
+      # different thing each month. The row names the major and CLANG_APT_PIN
+      # holds the archive's version; a failing install prints the policy, which
+      # is where the next pin comes from.
+      - name: the pinned clang tooling
+        if: matrix.clang != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            "clang-format-${{ matrix.clang }}=$CLANG_APT_PIN" \
+            "clang-tidy-${{ matrix.clang }}=$CLANG_APT_PIN" || {
+              apt-cache policy "clang-format-${{ matrix.clang }}" "clang-tidy-${{ matrix.clang }}"
+              exit 1
+            }
+          clang-format-${{ matrix.clang }} --version
+          clang-tidy-${{ matrix.clang }} --version
+
+      # NATIVE_JOBS is the fan-out the C and C++ legs use for clang-tidy, which
+      # is one process per translation unit over a couple of hundred of them
+      # and is the only leg here whose wall is not one tool's.
+      - name: the ${{ matrix.lang }} formatter and analyzer over the generated code
+        run: make ${{ matrix.targets }} ${{ matrix.env }} NATIVE_JOBS="$(nproc)"
+
 
   # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is
   # little-endian and byte-oriented throughout; §7 says a cook is produced in
