@@ -69,6 +69,33 @@ func Pack(m *tabletext.Model, root, dir string) ([]byte, []string, tabletext.Rep
 	return bytes, p.skipped, *p.report, nil
 }
 
+// PackMessage is Pack over the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the
+// same tree, the same instance and the same walk, and the form byte and root
+// body alone come out — the ids live in the connection's announced table
+// rather than in a trailer of this wire's.
+//
+// The tree is unchanged, which is the text form's own claim: a message's text
+// is its file form's text, byte for byte.
+func PackMessage(m *tabletext.Model, root, dir string) ([]byte, []string, tabletext.Report, error) {
+	st := m.Unit.Tables[root]
+	if st == nil {
+		return nil, nil, tabletext.Report{}, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", root, strings.Join(m.Roots(), ", "))
+	}
+	inst := m.New(st)
+	p := &packer{m: m, report: &tabletext.Report{}}
+	if err := p.rootTree(inst, root, dir); err != nil {
+		return nil, p.skipped, *p.report, err
+	}
+	if len(p.refusals) > 0 {
+		return nil, p.skipped, *p.report, p.refusals
+	}
+	bytes, err := tablewire.EncodeMessage(m, inst)
+	if err != nil {
+		return nil, p.skipped, *p.report, err
+	}
+	return bytes, p.skipped, *p.report, nil
+}
+
 // rootTree reads the tree at dir into the root instance. The root may simply
 // be one `<Root>.json` (§17.2's last rule); anything beside that file is a
 // second claim on the root and is refused rather than merged.

@@ -79,7 +79,32 @@ func ReadReport(m *tabletext.Model, root string, wire []byte) (tabletext.Report,
 	return report, nil
 }
 
+// UnpackMessage is Unpack over the MESSAGE FORM (docs/SPEC-TABLES.md §3.3),
+// resolving every reference against the CONNECTION's announced table. The
+// announcement is an ordinary form 1 file and is read first, tolerantly, with
+// its one strict check; a refused announcement sets no table, so the message
+// is refused for want of one and nothing is written.
+func UnpackMessage(m *tabletext.Model, root string, announcement, message []byte, dir string, oneFile bool) (tabletext.Report, error) {
+	var report tabletext.Report
+	var vocabulary tablewire.Vocabulary
+	if err := vocabulary.AnnounceRead(announcement, &report); err != nil {
+		return report, err
+	}
+	if !vocabulary.Announced() {
+		return report, fmt.Errorf("the announcement is malformed and set no table (docs/SPEC-TABLES.md §3, §3.3)")
+	}
+	return unpackWith(m, root, message, dir, oneFile, &vocabulary)
+}
+
 func unpack(m *tabletext.Model, root string, wire []byte, dir string, oneFile bool) (tabletext.Report, error) {
+	return unpackWith(m, root, wire, dir, oneFile, nil)
+}
+
+// unpackWith is both forms' one walk: a nil vocabulary reads the FILE form,
+// whose id table is its own trailer, and a non-nil one reads the MESSAGE form
+// against the connection's (docs/SPEC-TABLES.md §3, §3.3). Nothing else about
+// the tree, the text or the report differs.
+func unpackWith(m *tabletext.Model, root string, wire []byte, dir string, oneFile bool, vocabulary *tablewire.Vocabulary) (tabletext.Report, error) {
 	st := m.Unit.Tables[root]
 	if st == nil {
 		return tabletext.Report{}, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", root, strings.Join(m.Roots(), ", "))
@@ -89,7 +114,11 @@ func unpack(m *tabletext.Model, root string, wire []byte, dir string, oneFile bo
 	var report tabletext.Report
 	// the refusal comes back BEFORE anything is written: a root this engine
 	// does not decode is not a tree half-written to disk
-	ok, err := tablewire.Decode(m, inst, wire, &report)
+	decode := func() (bool, error) { return tablewire.Decode(m, inst, wire, &report) }
+	if vocabulary != nil {
+		decode = func() (bool, error) { return tablewire.DecodeMessage(m, inst, wire, vocabulary, &report) }
+	}
+	ok, err := decode()
 	if err != nil {
 		return report, err
 	}

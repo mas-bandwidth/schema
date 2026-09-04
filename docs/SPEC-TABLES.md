@@ -3928,13 +3928,6 @@ nothing. The measurement on schema#523 is the number: 48 bytes of id table on a
 stream of messages between two peers it is the UNIT's, sent once, and saying that
 one level up is the whole of this subsection.
 
-**Backend status for this subsection: NOTHING WRITES IT YET.** The form is
-specified here first and built in the C++ reference next, on the ruling's own
-order (schema#523). No backend, no port and no tool reads or writes form `2`
-today, and every figure below is arithmetic over form-`1` bytes this
-repository's own compiler produced, which is stated so that a reader knows which
-sentences on this page have a golden behind them and which are owed one.
-
 **FORM BYTE `2` IS THE MESSAGE FORM, and form byte `1` does not move.** A
 form-`1` wire is the three parts §3 describes and every rule above holds over it
 unchanged. Nothing in this subsection touches a file.
@@ -4218,6 +4211,14 @@ because its table is somewhere else. That cost is the form's one real one and it
 is stated rather than hidden. proto3 makes the same trade, since a `.proto` is
 required out of band, and the build version is what makes this one nameable: a
 receiver says which build's table it lacks.
+
+**WHERE THE FORM IS CARRIED TODAY.** The C++ reference and the compiler's own
+engine — `schema pack` and `schema unpack` — read and write form `2`, and the
+eight ports carry the FILE form alone: a port's `LoadMessage`, `MeasureMessage`
+and `SaveMessage` are a named follow-on beside the wire-form work M20 already
+registers (test/conformance/README.md), and the harness's `message` surface
+prints ABSENT for each rather than failing it. Every figure below is a PINNED
+GOLDEN of this repository's corpus, in both forms.
 
 **THE SURFACE, OWED TO §11's CLAIMED SET.** Every name below is a name a user
 may still take until the checker refuses it, so the claim is deliberately not
@@ -8520,14 +8521,15 @@ in build version (§20.5).
   Cook  CookMeasure  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
+  MeasureMessage  SaveMessage  LoadMessage
   ```
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. That list is the
-  checker's own, and this section is held to it: the three lists here — 38, then
+  checker's own, and this section is held to it: the three lists here — 41, then
   the block form's nine, then the C backend's seven — are `tableGeneratedVerbs`
-  entire, spelling for spelling and 54 in all, because a claim the page states
+  entire, spelling for spelling and 57 in all, because a claim the page states
   and the checker does not make is a name a user may take.
 
   **`Open` AND `Cook` ARE BOTH EMITTED NOW — in different languages, and that is

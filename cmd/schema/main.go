@@ -217,16 +217,38 @@ func main() {
 		root := fs.String("root", "", "the root `table` the tree mirrors")
 		out := fs.String("out", "", "file to write the root's wire bytes to")
 		tolerate := fs.Bool("tolerate", false, "exit 0 even when the report is not silent (see below)")
+		// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the same tree and the
+		// same text, written as the form byte and the root body alone. Its ids
+		// live in the CONNECTION's announced table, so `--announce <file>`
+		// writes that announcement beside the message — a receiver that has
+		// not read one holds no table and refuses every message on the wire.
+		message := fs.Bool("message", false, "write the `message` form (docs/SPEC-TABLES.md §3.3) instead of the file form")
+		announce := fs.String("announce", "", "with --message, also write the unit's announcement to this `file`")
 		fs.BoolVar(&verbose, "verbose", false, "print the read report even when it is silent, and name what the walk passed over")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		dir, rest := packTree("pack", fs.Args())
 		if *root == "" || *out == "" {
 			fatalf("pack needs --root <Table> and --out <file>")
 		}
+		if *announce != "" && !*message {
+			fatalf("--announce is the message form's own: pass --message beside it (docs/SPEC-TABLES.md §3.3)")
+		}
 		unit := loadUnit(c, rest)
-		bytes, skipped, report, err := c.Pack(unit, *root, dir)
+		pack := c.Pack
+		if *message {
+			pack = c.PackMessage
+		}
+		bytes, skipped, report, err := pack(unit, *root, dir)
 		if err != nil {
 			fail(err)
+		}
+		if *announce != "" {
+			if err := writeAtomic(*announce, c.Announce(unit)); err != nil {
+				fatalf("%v", err)
+			}
+			if verbose {
+				fmt.Printf("announced %s: %d bytes\n", *announce, len(c.Announce(unit)))
+			}
 		}
 		// the report decides the exit code, and a run that exits nonzero must
 		// leave NO output behind: a `.bin` newer than its prerequisites makes
@@ -248,6 +270,11 @@ func main() {
 		in := fs.String("in", "", "file holding the root's wire bytes")
 		oneFile := fs.Bool("one-file", false, "write the root as one <Root>.json instead of a tree of fields")
 		tolerate := fs.Bool("tolerate", false, "exit 0 even when the report is not silent (see below)")
+		// A MESSAGE'S TABLE IS SOMEWHERE ELSE (docs/SPEC-TABLES.md §3.3), so
+		// reading one takes the announcement that carried it: a message stored
+		// on its own is not readable, and this flag is where the other half
+		// comes from.
+		announce := fs.String("announce", "", "read --in as the `message` form against the announcement in this file (docs/SPEC-TABLES.md §3.3)")
 		fs.BoolVar(&verbose, "verbose", false, "print the read report even when it is silent")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		dir, rest := packTree("unpack", fs.Args())
@@ -259,11 +286,20 @@ func main() {
 			fatalf("%v", err)
 		}
 		unit := loadUnit(c, rest)
-		unpack := c.Unpack
-		if *oneFile {
-			unpack = c.UnpackOneFile
+		var report compiler.TableReport
+		if *announce != "" {
+			announcement, aerr := os.ReadFile(*announce)
+			if aerr != nil {
+				fatalf("%v", aerr)
+			}
+			report, err = c.UnpackMessage(unit, *root, announcement, wire, dir, *oneFile)
+		} else {
+			unpack := c.Unpack
+			if *oneFile {
+				unpack = c.UnpackOneFile
+			}
+			report, err = unpack(unit, *root, wire, dir)
 		}
-		report, err := unpack(unit, *root, wire, dir)
 		if err != nil {
 			fail(err)
 		}

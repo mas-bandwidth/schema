@@ -1948,9 +1948,9 @@ func (c *checker) checkReservedWireIds(names []string) {
 		if st.IsTable {
 			what = "table"
 		}
-		if id := ir.TableWireId(name); id == ir.TableNodeWireId {
-			c.errf(at, "%s %s: its name takes the one id the language holds back, the node table's 0x%016x — rename it (docs/SPEC-TABLES.md §3.1, §5)",
-				what, name, ir.TableNodeWireId)
+		if id := ir.TableWireId(name); id == ir.TableNodeWireId || id == ir.TableBuildVersionWireId {
+			c.errf(at, "%s %s: its name takes one of the two ids the language holds back, 0x%016x — rename it (docs/SPEC-TABLES.md §3.1, §3.3, §5)",
+				what, name, id)
 		} else if prev, dup := byId[id]; dup {
 			c.errf(at, "tables %s and %s collide on table-wire type id 0x%016x — a node record says what it is by that id alone, so the two would be indistinguishable in a save; rename one (docs/SPEC-TABLES.md §3.1, §5)",
 				prev, name, id)
@@ -1958,11 +1958,17 @@ func (c *checker) checkReservedWireIds(names []string) {
 			byId[id] = name
 		}
 		for _, f := range st.Fields {
-			if ir.TableFieldWireId(f) != ir.TableNodeWireId {
+			// THE TWO RESERVED IDS (docs/SPEC-TABLES.md §3.1, §3.3, §5): the
+			// node table's 0xFFFFFFFFFFFFFFFF and the announcement's build
+			// version 0xFFFFFFFFFFFFFFFE. A reserved id in any body but the
+			// one whose transport it is, is malformed, so a declared name that
+			// takes one — a `was` included — is refused at the source.
+			id := ir.TableFieldWireId(f)
+			if id != ir.TableNodeWireId && id != ir.TableBuildVersionWireId {
 				continue
 			}
-			c.errf(at, "%s %s: field %s takes the one id the language holds back, the node table's 0x%016x — rename it, or name another `was` (docs/SPEC-TABLES.md §3.1, §5)",
-				what, name, describeTableField(f), ir.TableNodeWireId)
+			c.errf(at, "%s %s: field %s takes one of the two ids the language holds back, 0x%016x — rename it, or name another `was` (docs/SPEC-TABLES.md §3.1, §3.3, §5)",
+				what, name, describeTableField(f), id)
 		}
 	}
 }
@@ -3310,6 +3316,10 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 // name went with the design.
 var tableGeneratedVerbs = []string{
 	"Measure", "MeasureBody", "Save", "SaveInto", "SaveBody", "SaveBodyFields", "Load", "LoadBody",
+	// the MESSAGE FORM's three suffixes (docs/SPEC-TABLES.md §3.3), beside the
+	// file form's own: a message is measured, saved and loaded exactly as a
+	// file is, and only where its id table lives differs
+	"MeasureMessage", "SaveMessage", "LoadMessage",
 	"Reset", "LoadMeasure", "LoadBuilder", "TableType", "Builder",
 	"At", "Emplace", "Pack", "PackMeasure",
 	// the FLAT NODE TABLE's own spellings (docs/SPEC-TABLES.md §3.1): the
