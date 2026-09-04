@@ -816,8 +816,7 @@ unsigned fit check, the numbering's index range check, an arm's `L` against its
 kind's width, and an arm body's terminator, each removed from the emitter
 through `go build -overlay` and each turning the fuzzer red on its own verdict.
 
-**Targets:** tables-wire-fuzz, tables-wire-fuzz-negative-control,
-tables-message-form-negative-control
+**Targets:** tables-wire-fuzz, tables-wire-fuzz-negative-control, tables-message-form-negative-control, tables-vocab-schema
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
