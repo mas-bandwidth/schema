@@ -40,6 +40,7 @@ func Decode(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *t
 		return false, nil
 	}
 	if data[0] != ir.TableWireForm {
+		report.Refused = true
 		return false, &FormRefusal{Form: data[0]}
 	}
 	body, ids, ok := trailer(data)

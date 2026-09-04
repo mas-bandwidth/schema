@@ -168,6 +168,15 @@ report p3_as_p1       tblp1 Chain testdata/wire/tables/chain_optional.bin
 report p1_empty_as_p3 tblp3 Chain testdata/wire/tables/chain_value_empty.bin
 report p3_empty_as_p1 tblp1 Chain testdata/wire/tables/chain_optional_empty.bin
 
+# THE FORM BYTE, AND THE REFUSAL ABOVE IT (§3): one row each for form 0, form 2
+# and form 0xFF, over a wire that is otherwise a good v1 Cfg. A reader that
+# meets a byte it does not know refuses by name and NEVER reports damage — the
+# refusal moves none of §4's five counters, because nothing was decoded. It is
+# why a report carries a VERDICT: a clean read prints the same five zeros.
+report form_zero      tblv1 Cfg   testdata/wire/tables/form_zero.bin
+report form_two       tblv1 Cfg   testdata/wire/tables/form_two.bin
+report form_ff        tblv1 Cfg   testdata/wire/tables/form_ff.bin
+
 # THE POINTER SPELLING IS ITS OWN FRAMING (§3.1). T and ?T are wire-identical
 # and read each other as instances above; *T rides as a u32 NODE INDEX under
 # kind 17 with the body in the node table, so a reader of either other spelling
@@ -482,99 +491,99 @@ forgery cook_open_directory_entry      cook Scene Scene 0    0x1030       8     
 # spelled per row: the bytes it produces load CLEAN in the generated backend —
 # report all zero — and re-save byte-identically. That half is
 # test/tables/hostile_main.cpp's, which reads these very rows.
-json-hostile array-past-bound             tabledemo RootConfig  testdata/conformance/tables/json-hostile/array-past-bound             0,0,2,0,false
-json-hostile base64-empty                 tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-empty                 0,0,0,0,false
-json-hostile base64-unpadded              tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-unpadded              0,0,0,0,false
-json-hostile bits-at-max                  tabledemo RootConfig  testdata/conformance/tables/json-hostile/bits-at-max                  0,0,0,0,false
-json-hostile bits-over-range              tabledemo RootConfig  testdata/conformance/tables/json-hostile/bits-over-range              0,0,1,0,false
-json-hostile bytes-not-base64             tabledemo RootConfig  testdata/conformance/tables/json-hostile/bytes-not-base64             0,1,0,0,false
-json-hostile bytes-overlong               tabledemo RootConfig  testdata/conformance/tables/json-hostile/bytes-overlong               0,0,1,0,false
+json-hostile array-past-bound             tabledemo RootConfig  testdata/conformance/tables/json-hostile/array-past-bound             0,0,2,0,false,read
+json-hostile base64-empty                 tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-empty                 0,0,0,0,false,read
+json-hostile base64-unpadded              tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-unpadded              0,0,0,0,false,read
+json-hostile bits-at-max                  tabledemo RootConfig  testdata/conformance/tables/json-hostile/bits-at-max                  0,0,0,0,false,read
+json-hostile bits-over-range              tabledemo RootConfig  testdata/conformance/tables/json-hostile/bits-over-range              0,0,1,0,false,read
+json-hostile bytes-not-base64             tabledemo RootConfig  testdata/conformance/tables/json-hostile/bytes-not-base64             0,1,0,0,false,read
+json-hostile bytes-overlong               tabledemo RootConfig  testdata/conformance/tables/json-hostile/bytes-overlong               0,0,1,0,false,read
 json-hostile comment-refused              tabledemo RootConfig  testdata/conformance/tables/json-hostile/comment-refused              refused
 # THE RESERVED PREFIX (§16.7): a key beginning with `&` is how a shared node is
 # named, and no declaration may take one — so a FIXED reader meeting it is not
 # meeting a field it lacks. It refuses, counted, rather than skipping the key
 # and reading a shared graph as a tree with an empty object at every reference.
 json-hostile reserved-ampersand-key       tabledemo RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-key       refused
-json-hostile reserved-ampersand-in-skipped-value tabledemo RootConfig testdata/conformance/tables/json-hostile/reserved-ampersand-in-skipped-value 1,0,0,0,false
-json-hostile dup-key                      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key                      0,0,0,1,false
-json-hostile dup-key-array                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-array                0,0,0,1,false
-json-hostile dup-key-placeable            tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable            0,0,0,1,false
-json-hostile dup-key-rejected-element     tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-element     0,1,0,1,false
-json-hostile dup-key-rejected-float       tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-float       0,1,0,1,false
-json-hostile dup-key-rejected-keyed       tabledemo PackConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-keyed       0,1,0,1,false
-json-hostile dup-key-rejected-nested      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-nested      0,1,0,1,false
-json-hostile dup-key-rejected-scalar      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-scalar      0,1,0,1,false
-json-hostile dup-key-table                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-table                0,0,0,1,false
-json-hostile dup-key-union                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-union                0,0,0,1,false
-json-hostile dup-key-wrong-shape          tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-wrong-shape          0,1,0,1,false
-json-hostile enum-unknown-name            tabledemo RootConfig  testdata/conformance/tables/json-hostile/enum-unknown-name            1,0,0,0,false
-json-hostile flags-unknown-name           tabledemo RootConfig  testdata/conformance/tables/json-hostile/flags-unknown-name           1,0,0,0,false
-json-hostile guard-key-after-fields       tabledemo RootConfig  testdata/conformance/tables/json-hostile/guard-key-after-fields       0,0,0,0,false
-json-hostile json-key-declared-name       tabledemo PackConfig  testdata/conformance/tables/json-hostile/json-key-declared-name       1,0,0,0,false
-json-hostile keyed-duplicate-mixed        tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-mixed        2,0,0,1,false
-json-hostile keyed-duplicate-none         tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-none         2,0,0,0,false
-json-hostile keyed-duplicate-slot         tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-slot         0,0,0,1,false
-json-hostile keyed-duplicate-unknown      tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-unknown      2,0,0,0,false
-json-hostile keyed-none-key               tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-none-key               1,0,0,0,false
-json-hostile keyed-unknown-key            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-unknown-key            1,0,0,0,false
-json-hostile keyed-wrong-shape            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-wrong-shape            0,1,0,0,false
+json-hostile reserved-ampersand-in-skipped-value tabledemo RootConfig testdata/conformance/tables/json-hostile/reserved-ampersand-in-skipped-value 1,0,0,0,false,read
+json-hostile dup-key                      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key                      0,0,0,1,false,read
+json-hostile dup-key-array                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-array                0,0,0,1,false,read
+json-hostile dup-key-placeable            tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable            0,0,0,1,false,read
+json-hostile dup-key-rejected-element     tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-element     0,1,0,1,false,read
+json-hostile dup-key-rejected-float       tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-float       0,1,0,1,false,read
+json-hostile dup-key-rejected-keyed       tabledemo PackConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-keyed       0,1,0,1,false,read
+json-hostile dup-key-rejected-nested      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-nested      0,1,0,1,false,read
+json-hostile dup-key-rejected-scalar      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-scalar      0,1,0,1,false,read
+json-hostile dup-key-table                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-table                0,0,0,1,false,read
+json-hostile dup-key-union                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-union                0,0,0,1,false,read
+json-hostile dup-key-wrong-shape          tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-wrong-shape          0,1,0,1,false,read
+json-hostile enum-unknown-name            tabledemo RootConfig  testdata/conformance/tables/json-hostile/enum-unknown-name            1,0,0,0,false,read
+json-hostile flags-unknown-name           tabledemo RootConfig  testdata/conformance/tables/json-hostile/flags-unknown-name           1,0,0,0,false,read
+json-hostile guard-key-after-fields       tabledemo RootConfig  testdata/conformance/tables/json-hostile/guard-key-after-fields       0,0,0,0,false,read
+json-hostile json-key-declared-name       tabledemo PackConfig  testdata/conformance/tables/json-hostile/json-key-declared-name       1,0,0,0,false,read
+json-hostile keyed-duplicate-mixed        tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-mixed        2,0,0,1,false,read
+json-hostile keyed-duplicate-none         tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-none         2,0,0,0,false,read
+json-hostile keyed-duplicate-slot         tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-slot         0,0,0,1,false,read
+json-hostile keyed-duplicate-unknown      tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-unknown      2,0,0,0,false,read
+json-hostile keyed-none-key               tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-none-key               1,0,0,0,false,read
+json-hostile keyed-unknown-key            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-unknown-key            1,0,0,0,false,read
+json-hostile keyed-wrong-shape            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-wrong-shape            0,1,0,0,false,read
 json-hostile nesting-past-depth-cap       tabledemo RootConfig  testdata/conformance/tables/json-hostile/nesting-past-depth-cap       refused
-json-hostile null-optional                tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-optional                0,0,0,0,false
-json-hostile null-scalar                  tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-scalar                  0,1,0,0,false
+json-hostile null-optional                tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-optional                0,0,0,0,false,read
+json-hostile null-scalar                  tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-scalar                  0,1,0,0,false,read
 json-hostile num-bare-minus               tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-bare-minus               refused
 json-hostile num-double-dot               tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-double-dot               refused
 json-hostile num-double-minus             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-double-minus             refused
-json-hostile num-float32-midpoint         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-midpoint         0,1,0,0,false
-json-hostile num-float32-overflow         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-overflow         0,1,0,0,false
-json-hostile num-float32-subnormal        tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-subnormal        0,0,0,0,false
-json-hostile num-float32-upper-band       tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-upper-band       0,0,0,0,false
-json-hostile num-float64-overflow         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float64-overflow         0,1,0,0,false
-json-hostile num-fraction                 tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-fraction                 0,1,0,0,false
-json-hostile num-int-overflow             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-int-overflow             0,0,2,0,false
-json-hostile num-int64-min                tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-int64-min                0,0,0,0,false
-json-hostile num-integral-forms           tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-integral-forms           0,0,0,0,false
+json-hostile num-float32-midpoint         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-midpoint         0,1,0,0,false,read
+json-hostile num-float32-overflow         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-overflow         0,1,0,0,false,read
+json-hostile num-float32-subnormal        tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-subnormal        0,0,0,0,false,read
+json-hostile num-float32-upper-band       tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-upper-band       0,0,0,0,false,read
+json-hostile num-float64-overflow         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float64-overflow         0,1,0,0,false,read
+json-hostile num-fraction                 tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-fraction                 0,1,0,0,false,read
+json-hostile num-int-overflow             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-int-overflow             0,0,2,0,false,read
+json-hostile num-int64-min                tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-int64-min                0,0,0,0,false,read
+json-hostile num-integral-forms           tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-integral-forms           0,0,0,0,false,read
 json-hostile num-leading-plus             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-leading-plus             refused
 json-hostile num-leading-zero             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-leading-zero             refused
-json-hostile num-negative-unsigned        tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-negative-unsigned        0,0,1,0,false
-json-hostile num-negative-zero            tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-negative-zero            0,0,0,0,false
+json-hostile num-negative-unsigned        tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-negative-unsigned        0,0,1,0,false,read
+json-hostile num-negative-zero            tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-negative-zero            0,0,0,0,false,read
 json-hostile num-no-exp-digits            tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-no-exp-digits            refused
 json-hostile num-no-int                   tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-no-int                   refused
 json-hostile num-three-part               tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-three-part               refused
 json-hostile num-trailing-dot             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-trailing-dot             refused
 json-hostile num-trailing-plus            tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-trailing-plus            refused
 json-hostile num-two-exponents            tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-two-exponents            refused
-json-hostile optional-present-empty       tabledemo PackConfig  testdata/conformance/tables/json-hostile/optional-present-empty       0,0,0,0,false
-json-hostile optional-wrong-shape         tabledemo PackConfig  testdata/conformance/tables/json-hostile/optional-wrong-shape         0,1,0,0,false
-json-hostile str-clamp-boundary           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-clamp-boundary           0,0,1,0,false
-json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       0,0,0,0,false
-json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,false
-json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,false
-json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,false
-json-hostile union-table-arm-unknown        messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown        1,0,0,0,false
+json-hostile optional-present-empty       tabledemo PackConfig  testdata/conformance/tables/json-hostile/optional-present-empty       0,0,0,0,false,read
+json-hostile optional-wrong-shape         tabledemo PackConfig  testdata/conformance/tables/json-hostile/optional-wrong-shape         0,1,0,0,false,read
+json-hostile str-clamp-boundary           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-clamp-boundary           0,0,1,0,false,read
+json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       0,0,0,0,false,read
+json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,false,read
+json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,false,read
+json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,false,read
+json-hostile union-table-arm-unknown        messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown        1,0,0,0,false,read
 json-hostile union-table-arm-two-keys       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys       refused
-json-hostile union-table-arm-wrong-shape    messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-wrong-shape    0,1,0,0,false
-json-hostile union-table-arm-nested-unknown messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-nested-unknown 1,0,0,0,false
+json-hostile union-table-arm-wrong-shape    messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-wrong-shape    0,1,0,0,false,read
+json-hostile union-table-arm-nested-unknown messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-nested-unknown 1,0,0,0,false,read
 # THE GENERAL ARMS in the text (§16.2): an arm value takes the arm's own row,
 # and a value of the wrong shape for that row is a KIND MISMATCH — the union
 # reads None and the enclosing object continues. A payload-free arm's value is
 # null, and anything else is that same mismatch; a POINTER arm's null is a null
 # pointer with the arm SELECTED, not None.
-json-hostile arm-scalar-string             messagedemo ToolMessage testdata/conformance/tables/json-hostile/arm-scalar-string             0,1,0,0,false
-json-hostile arm-scalar-null               messagedemo ToolMessage testdata/conformance/tables/json-hostile/arm-scalar-null               0,1,0,0,false
-json-hostile arm-void-not-null             messagedemo ToolMessage testdata/conformance/tables/json-hostile/arm-void-not-null             0,1,0,0,false
-json-hostile arm-pointer-null              streamdemo  Feed        testdata/conformance/tables/json-hostile/arm-pointer-null              0,0,0,0,false
-json-hostile pointer-array-element-shape    streamdemo  Feed        testdata/conformance/tables/json-hostile/pointer-array-element-shape    0,1,0,0,false
-json-hostile pointer-array-shared-label     streamdemo  Feed        testdata/conformance/tables/json-hostile/pointer-array-shared-label     0,0,0,0,false
-json-hostile union-array-element-shape      messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-shape      0,1,0,0,false
+json-hostile arm-scalar-string             messagedemo ToolMessage testdata/conformance/tables/json-hostile/arm-scalar-string             0,1,0,0,false,read
+json-hostile arm-scalar-null               messagedemo ToolMessage testdata/conformance/tables/json-hostile/arm-scalar-null               0,1,0,0,false,read
+json-hostile arm-void-not-null             messagedemo ToolMessage testdata/conformance/tables/json-hostile/arm-void-not-null             0,1,0,0,false,read
+json-hostile arm-pointer-null              streamdemo  Feed        testdata/conformance/tables/json-hostile/arm-pointer-null              0,0,0,0,false,read
+json-hostile pointer-array-element-shape    streamdemo  Feed        testdata/conformance/tables/json-hostile/pointer-array-element-shape    0,1,0,0,false,read
+json-hostile pointer-array-shared-label     streamdemo  Feed        testdata/conformance/tables/json-hostile/pointer-array-shared-label     0,0,0,0,false,read
+json-hostile union-array-element-shape      messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-shape      0,1,0,0,false,read
 json-hostile union-array-element-two-keys   messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-two-keys   refused
-json-hostile union-array-element-unknown    messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-unknown    1,0,0,0,false
-json-hostile optional-array-shape           messagedemo ToolMessage testdata/conformance/tables/json-hostile/optional-array-shape           0,1,0,0,false
-json-hostile optional-array-null            messagedemo ToolMessage testdata/conformance/tables/json-hostile/optional-array-null            0,0,0,0,false
-json-hostile optional-array-element-shape   messagedemo ToolMessage testdata/conformance/tables/json-hostile/optional-array-element-shape   0,1,0,0,false
-json-hostile trailing-commas              tabledemo RootConfig  testdata/conformance/tables/json-hostile/trailing-commas              0,0,0,0,false
+json-hostile union-array-element-unknown    messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-unknown    1,0,0,0,false,read
+json-hostile optional-array-shape           messagedemo ToolMessage testdata/conformance/tables/json-hostile/optional-array-shape           0,1,0,0,false,read
+json-hostile optional-array-null            messagedemo ToolMessage testdata/conformance/tables/json-hostile/optional-array-null            0,0,0,0,false,read
+json-hostile optional-array-element-shape   messagedemo ToolMessage testdata/conformance/tables/json-hostile/optional-array-element-shape   0,1,0,0,false,read
+json-hostile trailing-commas              tabledemo RootConfig  testdata/conformance/tables/json-hostile/trailing-commas              0,0,0,0,false,read
 json-hostile union-two-keys               tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-two-keys               refused
-json-hostile union-unknown-arm            tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-unknown-arm            1,0,0,0,false
-json-hostile unknown-key                  tabledemo RootConfig  testdata/conformance/tables/json-hostile/unknown-key                  1,0,0,0,false
+json-hostile union-unknown-arm            tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-unknown-arm            1,0,0,0,false,read
+json-hostile unknown-key                  tabledemo RootConfig  testdata/conformance/tables/json-hostile/unknown-key                  1,0,0,0,false,read
 
 # THE SHARING CONSTRUCT'S OWN EDGES (docs/SPEC-TABLES.md §16.7), over the
 # pointered root: `&node` is a LABEL — with fields after it, it defines a node
@@ -593,10 +602,10 @@ json-hostile label-negative                 graphdemo Scene       testdata/confo
 json-hostile label-leading-zero             graphdemo Scene       testdata/conformance/tables/json-hostile/label-leading-zero             refused
 json-hostile label-overflow                 graphdemo Scene       testdata/conformance/tables/json-hostile/label-overflow                 refused
 json-hostile label-self-reference           graphdemo Scene       testdata/conformance/tables/json-hostile/label-self-reference           refused
-json-hostile label-type-mismatch            graphdemo Scene       testdata/conformance/tables/json-hostile/label-type-mismatch            0,1,0,0,false
-json-hostile label-dropped-definition       graphdemo Scene       testdata/conformance/tables/json-hostile/label-dropped-definition       0,0,1,0,false
-json-hostile label-in-unknown-key           graphdemo Scene       testdata/conformance/tables/json-hostile/label-in-unknown-key           1,0,0,0,false
-json-hostile shared-node-by-label           graphdemo Scene       testdata/conformance/tables/json-hostile/shared-node-by-label           0,0,0,0,false
+json-hostile label-type-mismatch            graphdemo Scene       testdata/conformance/tables/json-hostile/label-type-mismatch            0,1,0,0,false,read
+json-hostile label-dropped-definition       graphdemo Scene       testdata/conformance/tables/json-hostile/label-dropped-definition       0,0,1,0,false,read
+json-hostile label-in-unknown-key           graphdemo Scene       testdata/conformance/tables/json-hostile/label-in-unknown-key           1,0,0,0,false,read
+json-hostile shared-node-by-label           graphdemo Scene       testdata/conformance/tables/json-hostile/shared-node-by-label           0,0,0,0,false,read
 
 # THE WIDE SCALARS (docs/SPEC-TABLES.md §3, §16.2): every scalar the type wire
 # carries, in a table — the fixed-point family at every width and signedness,
@@ -621,33 +630,33 @@ cook-write scalars_edges   testdata/conformance/tables/cook-write/scalars_edges.
 # one as the wrong shape, never rounding; out of range clamps on the raw scale;
 # a magnitude past 128 bits saturates and counts; a 128-bit integer takes any
 # integral token, exact past 2^53
-json-hostile fixed-fraction-too-fine  scalars SimState testdata/conformance/tables/json-hostile/fixed-fraction-too-fine  0,1,0,0,false
-json-hostile fixed-exact-fraction     scalars SimState testdata/conformance/tables/json-hostile/fixed-exact-fraction     0,0,0,0,false
-json-hostile fixed-integral-token     scalars SimState testdata/conformance/tables/json-hostile/fixed-integral-token     0,0,0,0,false
-json-hostile fixed-over-range         scalars SimState testdata/conformance/tables/json-hostile/fixed-over-range         0,0,3,0,false
-json-hostile fixed-huge-exponent      scalars SimState testdata/conformance/tables/json-hostile/fixed-huge-exponent      0,0,3,0,false
-json-hostile fixed-below-resolution   scalars SimState testdata/conformance/tables/json-hostile/fixed-below-resolution   0,2,0,0,false
-json-hostile fixed-negative-zero      scalars SimState testdata/conformance/tables/json-hostile/fixed-negative-zero      0,0,0,0,false
-json-hostile fixed-at-bound           scalars SimState testdata/conformance/tables/json-hostile/fixed-at-bound           0,0,0,0,false
-json-hostile ufixed-negative          scalars SimState testdata/conformance/tables/json-hostile/ufixed-negative          0,0,2,0,false
-json-hostile fixed-array-elements     scalars SimState testdata/conformance/tables/json-hostile/fixed-array-elements     0,2,2,0,false
-json-hostile fixed-wrong-shape        scalars SimState testdata/conformance/tables/json-hostile/fixed-wrong-shape        0,2,0,0,false
-json-hostile int128-beyond-int64      scalars SimState testdata/conformance/tables/json-hostile/int128-beyond-int64      0,0,0,0,false
-json-hostile int128-over-range        scalars SimState testdata/conformance/tables/json-hostile/int128-over-range        0,0,2,0,false
-json-hostile int128-fractional        scalars SimState testdata/conformance/tables/json-hostile/int128-fractional        0,1,0,0,false
-json-hostile int128-integral-forms    scalars SimState testdata/conformance/tables/json-hostile/int128-integral-forms    0,0,0,0,false
-json-hostile uint128-max              scalars SimState testdata/conformance/tables/json-hostile/uint128-max              0,0,0,0,false
-json-hostile uint128-over             scalars SimState testdata/conformance/tables/json-hostile/uint128-over             0,0,2,0,false
-json-hostile uint128-negative         scalars SimState testdata/conformance/tables/json-hostile/uint128-negative         0,0,1,0,false
-json-hostile int128-saturated-below   scalars SimState testdata/conformance/tables/json-hostile/int128-saturated-below   0,0,2,0,false
-json-hostile fixed-nested-type        scalars SimState testdata/conformance/tables/json-hostile/fixed-nested-type        0,1,1,0,false
+json-hostile fixed-fraction-too-fine  scalars SimState testdata/conformance/tables/json-hostile/fixed-fraction-too-fine  0,1,0,0,false,read
+json-hostile fixed-exact-fraction     scalars SimState testdata/conformance/tables/json-hostile/fixed-exact-fraction     0,0,0,0,false,read
+json-hostile fixed-integral-token     scalars SimState testdata/conformance/tables/json-hostile/fixed-integral-token     0,0,0,0,false,read
+json-hostile fixed-over-range         scalars SimState testdata/conformance/tables/json-hostile/fixed-over-range         0,0,3,0,false,read
+json-hostile fixed-huge-exponent      scalars SimState testdata/conformance/tables/json-hostile/fixed-huge-exponent      0,0,3,0,false,read
+json-hostile fixed-below-resolution   scalars SimState testdata/conformance/tables/json-hostile/fixed-below-resolution   0,2,0,0,false,read
+json-hostile fixed-negative-zero      scalars SimState testdata/conformance/tables/json-hostile/fixed-negative-zero      0,0,0,0,false,read
+json-hostile fixed-at-bound           scalars SimState testdata/conformance/tables/json-hostile/fixed-at-bound           0,0,0,0,false,read
+json-hostile ufixed-negative          scalars SimState testdata/conformance/tables/json-hostile/ufixed-negative          0,0,2,0,false,read
+json-hostile fixed-array-elements     scalars SimState testdata/conformance/tables/json-hostile/fixed-array-elements     0,2,2,0,false,read
+json-hostile fixed-wrong-shape        scalars SimState testdata/conformance/tables/json-hostile/fixed-wrong-shape        0,2,0,0,false,read
+json-hostile int128-beyond-int64      scalars SimState testdata/conformance/tables/json-hostile/int128-beyond-int64      0,0,0,0,false,read
+json-hostile int128-over-range        scalars SimState testdata/conformance/tables/json-hostile/int128-over-range        0,0,2,0,false,read
+json-hostile int128-fractional        scalars SimState testdata/conformance/tables/json-hostile/int128-fractional        0,1,0,0,false,read
+json-hostile int128-integral-forms    scalars SimState testdata/conformance/tables/json-hostile/int128-integral-forms    0,0,0,0,false,read
+json-hostile uint128-max              scalars SimState testdata/conformance/tables/json-hostile/uint128-max              0,0,0,0,false,read
+json-hostile uint128-over             scalars SimState testdata/conformance/tables/json-hostile/uint128-over             0,0,2,0,false,read
+json-hostile uint128-negative         scalars SimState testdata/conformance/tables/json-hostile/uint128-negative         0,0,1,0,false,read
+json-hostile int128-saturated-below   scalars SimState testdata/conformance/tables/json-hostile/int128-saturated-below   0,0,2,0,false,read
+json-hostile fixed-nested-type        scalars SimState testdata/conformance/tables/json-hostile/fixed-nested-type        0,1,1,0,false,read
 
 # THE BYTE BUFFER's text rules (§2.5, §16.2): `""` and `null` are two values;
 # a body that is not base64, or not a string at all, is `kind_mismatch` with
 # the reference left null; and an `&node` label inside a value a mismatch
 # SKIPPED defines nothing, so a later reference to it is one more mismatch.
-json-hostile blob-empty-string            blobdemo Catalog testdata/conformance/tables/json-hostile/blob-empty-string            0,0,0,0,false
-json-hostile blob-null                    blobdemo Catalog testdata/conformance/tables/json-hostile/blob-null                    0,0,0,0,false
-json-hostile blob-not-base64              blobdemo Catalog testdata/conformance/tables/json-hostile/blob-not-base64              0,1,0,0,false
-json-hostile blob-wrong-shape             blobdemo Catalog testdata/conformance/tables/json-hostile/blob-wrong-shape             0,2,0,0,false
-json-hostile blob-label-in-skipped-value  blobdemo Catalog testdata/conformance/tables/json-hostile/blob-label-in-skipped-value  0,2,0,0,false
+json-hostile blob-empty-string            blobdemo Catalog testdata/conformance/tables/json-hostile/blob-empty-string            0,0,0,0,false,read
+json-hostile blob-null                    blobdemo Catalog testdata/conformance/tables/json-hostile/blob-null                    0,0,0,0,false,read
+json-hostile blob-not-base64              blobdemo Catalog testdata/conformance/tables/json-hostile/blob-not-base64              0,1,0,0,false,read
+json-hostile blob-wrong-shape             blobdemo Catalog testdata/conformance/tables/json-hostile/blob-wrong-shape             0,2,0,0,false,read
+json-hostile blob-label-in-skipped-value  blobdemo Catalog testdata/conformance/tables/json-hostile/blob-label-in-skipped-value  0,2,0,0,false,read

@@ -18,6 +18,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -106,7 +107,14 @@ func decodeWire(t *testing.T, u *units, unitKey, root, wire string) (*tabletext.
 	}
 	inst := m.New(def)
 	var report tabletext.Report
-	if _, err := tablewire.Decode(m, inst, data, &report); err != nil {
+	_, err = tablewire.Decode(m, inst, data, &report)
+	var refusal *tablewire.FormRefusal
+	if errors.As(err, &refusal) {
+		// A REFUSAL IS THE ANSWER (docs/SPEC-TABLES.md §3): the verdict rides
+		// on the report and nothing was decoded to count over
+		return inst, report
+	}
+	if err != nil {
 		t.Fatalf("%s: the decode refused the root: %v", wire, err)
 	}
 	return inst, report
@@ -195,6 +203,7 @@ func TestReportRowsDecodeThroughTheEngine(t *testing.T) {
 			Clamped:      report.Clamped,
 			Duplicate:    report.Duplicate,
 			Malformed:    report.Malformed,
+			Refused:      report.Refused,
 		}
 		if got != want {
 			t.Errorf("%s: the engine reads %s and the corpus pins %s", rc.Name, got, want)

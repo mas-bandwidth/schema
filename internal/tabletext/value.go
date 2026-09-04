@@ -28,6 +28,10 @@ type Report struct {
 	Clamped      int
 	Duplicate    int
 	Malformed    bool
+	// Refused is the VERDICT, not one of §4's events (docs/SPEC-TABLES.md §3):
+	// a FORM BYTE this reader does not carry. It moves no counter and reports
+	// no damage, so without it a refusal and a clean read are the same answer.
+	Refused bool
 }
 
 // Add folds another report into this one, which is how a pack over a tree of

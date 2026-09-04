@@ -27,6 +27,11 @@ type TableReport struct {
 	// Malformed is set when a text or a body was damaged past the point the
 	// walk could continue.
 	Malformed bool
+	// Refused is the VERDICT beside the counters (docs/SPEC-TABLES.md §3): a
+	// FORM BYTE this reader does not carry. Nothing was decoded, no counter
+	// moved, and no damage is reported — which is why the verdict has to be
+	// said, since a clean read prints the same five zeros.
+	Refused bool
 }
 
 // Silent reports whether nothing at all was counted.
@@ -41,6 +46,7 @@ func publicReport(r tabletext.Report) TableReport {
 		Clamped:      r.Clamped,
 		Duplicate:    r.Duplicate,
 		Malformed:    r.Malformed,
+		Refused:      r.Refused,
 	}
 }
 

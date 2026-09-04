@@ -6954,6 +6954,59 @@ static void test_pointer_arrays_elision()
     }
 }
 
+// ---- THE FORM BYTE, AND THE REFUSAL ABOVE IT (docs/SPEC-TABLES.md §3) ------
+//
+// A reader that meets a byte it does not know refuses the wire by name, saying
+// the form is newer than the one it carries, and it NEVER REPORTS DAMAGE. The
+// refusal is not one of §4's events and moves none of the report's five
+// counters, because nothing was decoded and there is nothing to count — which
+// is why the report format carries a VERDICT: five zero counters and a false
+// flag are what a clean read prints too.
+//
+// The form byte is read FIRST, before the trailer and before any body, so a
+// file that is both a newer form and damaged is a refusal and never damage.
+// These three rows are pinned as shared report rows every leg reads.
+static void test_form_byte_refusals()
+{
+    tblv1::Cfg src;
+    src.a = 42;
+    uint8_t wire[256];
+    const int64_t bytes = tblv1::CfgSave( src, wire, sizeof( wire ) );
+    CHECK( bytes > 0 );
+
+    const uint8_t forms[3] = { 0, 2, 0xFF };
+    const char * names[3] = { "form_zero", "form_two", "form_ff" };
+    for ( int i = 0; i < 3; i++ )
+    {
+        static uint8_t forged[256];
+        memcpy( forged, wire, (size_t) bytes );
+        forged[0] = forms[i];
+        pin_table_golden( names[i], forged, bytes );
+
+        tblv1::Cfg out;
+        tblv1::TableReport report;
+        CHECK( tblv1::CfgLoadVerdict( out, forged, bytes, &report ) == tblv1::TableOpenRefused );
+        CHECK( report.refused );
+        CHECK( !report.malformed );
+        CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
+        CHECK( report.clamped == 0 && report.duplicate == 0 );
+        CHECK( !tblv1::CfgLoad( out, forged, bytes, &report ) );
+        CHECK( out.a == 5 ); // nothing was decoded: the declared default stands
+    }
+
+    // AND THE FORM BYTE IS READ FIRST: a file that is both a newer form and
+    // damaged is a refusal, never damage
+    {
+        static uint8_t both[256];
+        memcpy( both, wire, (size_t) bytes );
+        both[0] = 0xFF;
+        tblv1::Cfg out;
+        tblv1::TableReport report;
+        CHECK( tblv1::CfgLoadVerdict( out, both, 3, &report ) == tblv1::TableOpenRefused );
+        CHECK( report.refused && !report.malformed );
+    }
+}
+
 // the element-kind separation (§3, §3.1): `parts` arriving as an array of
 // uint32 — element kind 8 where this reader declares 17 — is a kind mismatch,
 // counted, and the field stays empty; nothing reads a number as an index
@@ -8377,6 +8430,7 @@ int main()
     test_message_variable_arm();
     test_pointer_arrays();
     test_pointer_arrays_elision();
+    test_form_byte_refusals();
     test_pointer_arrays_element_kind_mismatch();
     test_pointer_arrays_count_past_bound();
     test_pointer_arrays_index_out_of_range();

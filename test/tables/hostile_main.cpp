@@ -78,9 +78,12 @@ struct Expected
 
 static bool parse_expected( const char * text, Expected & out )
 {
+    // the five counters and the VERDICT beside them (docs/SPEC-TABLES.md §3);
+    // a text read never refuses, so only the flag is read here
     char flag[16] = {};
-    if ( sscanf( text, "%d,%d,%d,%d,%15s", &out.unknown, &out.kind_mismatch,
-                 &out.clamped, &out.duplicate, flag ) != 5 )
+    char verdict[16] = {};
+    if ( sscanf( text, "%d,%d,%d,%d,%15[^,],%15s", &out.unknown, &out.kind_mismatch,
+                 &out.clamped, &out.duplicate, flag, verdict ) != 6 )
     {
         return false;
     }
