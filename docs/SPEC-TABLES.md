@@ -2555,7 +2555,9 @@ and framing that are most of it.
 that instrument goes red.
 
 - **The form byte, and the refusal above it.** Three `report` rows, one each
-  for form `0`, form `2` and form `0xFF`. **The report format carries a
+  for form `0`, form `3` and form `0xFF`, which are the forms no reader knows.
+  Form `2` is the MESSAGE FORM and has rows of its own (§3.3).
+  **The report format carries a
   REFUSAL VERDICT distinct from a clean read**, because five zero counters and
   a false flag are what a clean read prints too, and the implementation that
   lands this form adds that verdict to
@@ -2771,10 +2773,14 @@ the payload opens with the count and then carries the records:
   — not a by-value nesting, not an array element, not a union arm, not a
   variable-length table nested by value inside another (§2.2), and not a
   record. A save has one numbering and every index anywhere in it names
-  that one. **The reserved id inside a NESTED body is malformed**, on the
-  numbering's own rule: a second numbering cannot exist, so a body claiming
-  one is damaged, that body stops, `malformed` counts, and the parent reads
-  on past its length (§4).
+  that one. **A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+  MALFORMED**, and the language holds two back (§5). The NODE-TABLE id's own
+  body is a wire's ROOT body, so the id inside a NESTED body is malformed on
+  the numbering's own rule: a second numbering cannot exist. The BUILD-VERSION
+  id's own body is the id table message's (§3.3), so that id anywhere else, in
+  a file and in a message alike, is malformed on the same terms. Each is
+  damage rather than a foreign name: that body stops, `malformed` counts, and
+  the parent reads on past its length (§4).
 - This implementation writes the node-table field LAST in the root body,
   after the root's own declared fields, so that **a reader which gives up
   inside the node table has already decoded the ROOT'S OWN FIELDS** — the
@@ -3144,26 +3150,26 @@ on the reading path, with the two carve-outs the ladder names: the
 variable-length class allocates by nature, and a union arm may allocate in
 a backend whose language has no native union.
 
-### 3.3 The message form: an id table scoped to the connection
+### 3.3 The message form: the unit's id table, announced once a connection
 
-**A FILE carries its own id table. A MESSAGE STREAM does not have to.** §3's
-trailer costs eight bytes plus eight an entry, and it is right for the shape it
-was built for: a config bin naming forty distinct ids across ten thousand
-fields pays it once and spends one byte a field header where an inline id would
-have spent eight. A four-field login is the opposite shape, its vocabulary is
-close to its field count, and the trailer amortizes over nothing. The
-measurement on schema#523 is the number: 48 bytes of id table on a 106-byte
-login, 56 on a 104-byte purchase. **The scope is the only thing wrong.** §3
-already says it out loud, that the table is the FILE's and not a body's. For a
-stream of messages between two peers it is the CONNECTION's, and saying that one
-level up is the whole of this subsection.
+**A FILE carries its own id table. A MESSAGE STREAM announces one and then
+carries none.** §3's trailer costs eight bytes plus eight an entry, and it is
+right for the shape it was built for: a config bin naming forty distinct ids
+across ten thousand fields pays it once and spends one byte a field header where
+an inline id would have spent eight. A four-field login is the opposite shape,
+its vocabulary is close to its field count, and the trailer amortizes over
+nothing. The measurement on schema#523 is the number: 48 bytes of id table on a
+106-byte login, 56 on a 104-byte purchase. **The scope is the only thing wrong.**
+§3 already says it out loud, that the table is the FILE's and not a body's. For a
+stream of messages between two peers it is the UNIT's, sent once, and saying that
+one level up is the whole of this subsection.
 
 **Backend status for this subsection: NOTHING WRITES IT YET.** The form is
 specified here first and built in the C++ reference next, on the ruling's own
 order (schema#523). No backend, no port and no tool reads or writes form `2`
 today, and every figure below is arithmetic over form-`1` bytes this
-repository's own compiler produced, which is stated so that a reader knows
-which sentences on this page have a golden behind them and which are owed one.
+repository's own compiler produced, which is stated so that a reader knows which
+sentences on this page have a golden behind them and which are owed one.
 
 **FORM BYTE `2` IS THE MESSAGE FORM, and form byte `1` does not move.** A
 form-`1` wire is the three parts §3 describes and every rule above holds over it
@@ -3173,42 +3179,90 @@ unchanged. Nothing in this subsection touches a file.
 at its own zero reference, as it does in a file, and there is no trailer. The
 message's last byte is the body's terminator.
 
-**THE BODY IS BYTE-IDENTICAL TO THE FILE FORM'S.** The same fields in the same
-order, the same references, the same kind bytes, the same lengths, the same
-elision, the same declared defaults, the same terminator. Strip the form byte
-and the trailer from a form-`1` wire and what remains is the form-`2` body of
-the same value under the same vocabulary, byte for byte. **No kind is spent, no
-payload row moves, no skip rule changes, and no reference, length, count or
-index is encoded differently.** This form is FRAMING and nothing else, which is
-what makes it cheap to specify and cheap to carry.
+**WHAT A CONNECTION IS, and where this form does not go.** A CONNECTION is one
+transport connection carrying an ordered, reliable byte stream in each
+direction: a TCP or a WebSocket connection, or ONE stream or reliable ordered
+channel of QUIC or of a reliable-UDP transport, counted per channel and not per
+socket. **A restart is a new connection with empty tables**, and a receiver
+CACHES NOTHING ACROSS CONNECTIONS, because a cache that survives a peer buys one
+announcement and costs an invalidation rule this form does not want. **A
+STATELESS REQUEST-RESPONSE TRANSPORT IS OUT OF SCOPE for this form and the page
+says so rather than leaving it to be tried**: an HTTP request that shares no
+state with the last one has nowhere to put an announcement, so the announcement
+would ride every request and cost more than the trailer it replaced. The FILE
+form rides there, self-contained, exactly as it rides a disk.
 
-**REFERENCES RESOLVE AGAINST THE CONNECTION'S ID TABLE, and the resolution rule
-itself is unchanged.** Reference `k` is the table's `k`th entry, counted from
-`1`. Reference `0` names no id and is the body terminator, the enum's `None` and
-the union's empty arm, the three places on this wire where "no id" is a value.
-An entry this reader cannot name is §4's ordinary `unknown` when a field, a
+**THE VOCABULARY IS THE UNIT'S WHOLE CLOSURE, IN A COMPILER-SETTLED ORDER.** A
+peer announces every id its unit's table closure CAN put on this wire, not the
+ids one message happens to use:
+
+- **every field name** of every record in the closure, a generated map entry's
+  `key` and `value` included (§2.8).
+- **every enum variant name** and **every union arm name** in the closure.
+- **every table NAME id that can ride as a node record's type id**, and **the
+  reserved node-table id** (§3.1), when the unit has a variable class at all.
+  A unit with no pointer can put neither on the wire, so it announces neither.
+  One rule decides both, and it is the rule above: what the closure CAN write.
+
+**THREE PROPERTIES FOLLOW, and they are why the vocabulary is the unit's rather
+than the message's.**
+
+- **THE TABLE IS A PURE FUNCTION OF THE BUILD VERSION.** The closure and the
+  order are both compiler-settled (§20), so two peers at one build version
+  derive one table, and "keyed by the build version" is literally true rather
+  than a name written on a cache.
+- **THE WRITER'S SLOT NUMBERS ARE COMPILE-TIME CONSTANTS.** A generated field
+  header carries its reference as a literal, exactly as it carries its kind
+  byte, so **there is no runtime slot lookup on the send path** and a save costs
+  what a save costs.
+- **THE RECEIVER RESOLVES ONCE.** It reads the announcement, resolves every
+  entry against its own descriptors, and every message after it dispatches
+  through one array index, which is §3's resolve-at-open with the open moved to
+  the connection.
+
+**THE ORDER IS THE COOK PROJECTION'S**, after slot `1`, because that order is
+already compiler-settled, already total over the closure, and already printable
+and diffable by `schema build-version --facts` (§20.2, §20.7): each record in
+the order the projection renders it and each record's fields in the order the
+projection renders them, then each enum's variants and each union's arms in that
+same order, then the node-table id and the type ids where they apply, which the
+projection does not name and which go last in the projection's own record order.
+**An id already placed is never placed twice**, so a field name three records
+share takes the slot its first appearance gave it. Nothing is derived from the
+vocabulary and fed back into the projection, so there is no cycle here (§20.7):
+the projection is read for its order and never written to. **A unit past 127 ids
+spends two bytes on the references beyond there** rather than one, and the
+compiler cannot know which ids are hot, so that is a cost of the unit's size and
+not a knob.
+
+**REFERENCES RESOLVE AGAINST THAT TABLE, and the resolution rule itself is
+unchanged.** Reference `k` is the table's `k`th entry, counted from `1`.
+Reference `0` names no id and is the body terminator, the enum's `None` and the
+union's empty arm, the three places on this wire where "no id" is a value. An
+entry this reader cannot name is §4's ordinary `unknown` when a field, a
 variant, an arm or a key names it, and never at resolve time. Only the table's
 HOME moved.
 
-**THE TABLE IS PER CONNECTION AND PER DIRECTION.** Each peer announces the
-vocabulary it writes under, and its own messages resolve against it. A peer
-holds two tables for a connection, the one it writes with and the one it reads
-with, and neither is the other's.
+**THE TABLE IS PER CONNECTION AND PER DIRECTION.** Each peer announces its own
+unit's vocabulary and its own messages resolve against it. A peer holds two
+tables for a connection, the one it writes with and the one it reads with,
+neither is the other's, and two peers at different build versions is the
+ordinary case.
 
 **THE ID TABLE MESSAGE ANNOUNCES IT, and it is an ordinary FILE.** The
 announcement is a form-`1` wire, so it needs no second form byte, no envelope
-and no rule of its own beyond the two below:
+and no rule of its own beyond the ones below:
 
 ```
 form byte 1
 
-the root body, one field:
+the root body:
     reference 1, kind 9 (u64), the eight bytes of the BUILD VERSION
     the zero reference
 
 the trailer:
-    entry 1   the reserved build-version id
-    entries 2..E  the ids this peer's messages will name
+    entry 1       the reserved build-version id
+    entries 2..E  the unit's vocabulary, in the order above
     the entry count, a fixed little-endian u64, value E
 ```
 
@@ -3216,28 +3270,29 @@ the trailer:
   language holds back (§5, §11), beside the node table's
   `0xFFFFFFFFFFFFFFFF`. It takes an ordinary entry like every other id, and
   first-use order puts it at slot `1` because the body's one field used it
-  first.
-- **THE CONNECTION'S TABLE IS THAT TRAILER, WHOLE.** Slot `1` is the reserved
-  id and slots `2` and up are the vocabulary, under ONE numbering with no
-  renumbering rule anywhere. Slot `1` costs one of the 127 references that
-  spell in a single byte, which is the price of having one numbering instead
-  of two.
-- **The reserved build-version id in any body but the announcement's own is
-  malformed**, in a file and in a message alike, on the node table's own rule
-  (§3.1): it is not a field of any table, it is the transport this one fact
-  rides in, and another body claiming it is damaged rather than merely foreign.
+  first. **A reserved id in any body but the one whose transport it is, is
+  malformed** (§3.1).
+- **THE CONNECTION'S TABLE IS THAT TRAILER, WHOLE.** Slot `1` is the reserved id
+  and slots `2` and up are the vocabulary, under ONE numbering with no
+  renumbering rule anywhere. Slot `1` costs one of the 127 references that spell
+  in a single byte, which is the price of having one numbering instead of two.
+- **THE ANNOUNCEMENT READS TOLERANTLY, WITH EXACTLY ONE STRICT CHECK**: the
+  reserved build-version field present, exactly once, under kind `9`, eight
+  bytes wide. Everything else in its body is an ordinary field under §4's
+  tolerance, so an unknown one is skipped and counted like any other, and **the
+  announcement can GAIN a field in a later minor without a lockstep redeploy**.
+  That is the whole reason it is a table body rather than a fixed header.
 - **THE ANNOUNCEMENT IS THE ONE WIRE THAT WRITES AN ID NO FIELD REFERENCES**,
-  and the exception is named here rather than left to be discovered. §3's
-  writer rule is that an id no body references is never written, and it holds
-  over every wire this schema produces but this one, whose whole purpose is to
-  carry a vocabulary ahead of the bodies that will use it. The corpus row that
-  pins it is the announcement's own, and it is the only place the rule is
-  relaxed.
+  and the exception is named here rather than left to be discovered. §3's writer
+  rule is that an id no body references is never written, and it holds over
+  every wire this schema produces but this one, whose whole purpose is to carry
+  a vocabulary ahead of the bodies that will use it. The corpus row that pins it
+  is the announcement's own, and it is the only place the rule is relaxed.
 
 **WHICH MESSAGE AND WHICH FIELD, stated exactly.** The connection's first
-message is the ID TABLE MESSAGE, and the build version is its one field, under
-the reserved id, kind `9`, eight bytes. Nothing is inferred from an application
-message, and no application field is nominated.
+message is the ID TABLE MESSAGE, and the build version is its one required
+field, under the reserved id, kind `9`, eight bytes. Nothing is inferred from an
+application message, and no application field is nominated.
 
 **The shape declined, and why.** The obvious alternative is to key the table off
 a field the application already declares, the way a login request already
@@ -3251,41 +3306,42 @@ it has decoded anything, which a field inside the body it cannot decode cannot
 give it. The reserved id costs eight bytes once a connection and has none of
 those problems.
 
-**ONCE A CONNECTION PER BUILD VERSION, and the most recent announcement
-governs.** A peer sends an id table message before the first form-`2` message it
-sends, and again whenever the build version it writes under or the vocabulary it
-writes with changes. Every form-`2` message a peer sends resolves against the
-last id table message that peer sent. That is one rule, it costs no byte in a
-message, and it is why the form needs an ORDERED, RELIABLE channel between the
-two peers: a message with no trailer is not self-describing, so the announcement
-has to have arrived and to have arrived first. **On an unordered or lossy
-transport the answer is the file form or the packet wire**, and this form has
-nothing to offer there.
+**ONCE A CONNECTION PER DIRECTION, AND NEVER AGAIN. There is no
+re-announcement.** The vocabulary is the unit's and the unit is the process's,
+so a build change is a new binary, a new process and a new connection, and there
+is no state machine here at all: no "the most recent governs", no amendment, no
+widening.
 
-**THE BUILD VERSION IS A LABEL AND NEVER A GATE, and §20.5 stands.** Peers
-connect on the protocol id and may differ in build version (§20.5), and nothing
-here changes that: a receiver never refuses a message because the announced
-build version is not its own, and reading a message from another build is the
-ordinary case this whole wire exists for. What the label buys is three things
-and no fourth. A refusal can NAME the build version whose table it lacks, which
-is what an operator reads. A receiver that meets the same build version and the
-same entries again knows it has already resolved them. And it ties an
-announcement to one compilation of one unit, so a vocabulary and the messages
-under it are traceable to a build in a log.
+- **The FIRST announcement sets the table, and it is the only one that can.**
+- **A SECOND announcement on a connection is REFUSED BY NAME.** It does not
+  replace the table, it does not amend it, and it changes nothing. A peer that
+  sends one is not speaking this form, and a receiver closes the connection.
+- **A REFUSED announcement sets NO TABLE.** There is no earlier table to keep,
+  because there was never an earlier one, so every message on that connection is
+  refused for want of a table until the connection ends.
 
-**WHAT A PEER DOES WHEN IT LACKS THAT BUILD VERSION'S TABLE: IT REFUSES THE
-MESSAGE BY NAME.** A form-`2` message that arrives before any id table message,
-or after one that was refused, is refused: nothing is decoded, the reader says
-it holds no table for the connection and names the build version if one was ever
-announced, and **no counter moves and `malformed` does not fire**, on the form
-byte's own terms (§3). It is the same REFUSAL VERDICT the form byte already
-needs, with a second reason.
+**THE BUILD VERSION KEYS THE TABLE AND NEVER GATES THE CONNECTION.** §20.5
+stands: peers connect on the protocol id and may differ in build version, and a
+receiver NEVER refuses a message because the announced build version is not its
+own. Reading a message from another build is the ordinary case this whole wire
+exists for. What the key buys is that the table a build announces is derivable
+from that build alone, that a refusal can name the build version it could not
+resolve, and that a vocabulary and the messages under it are traceable to one
+compilation of one unit in a log.
 
-The two recoveries are the SENDER'S, and each is named rather than invented:
+**WHAT A PEER DOES WHEN IT HAS NO TABLE FOR THE CONNECTION: IT REFUSES THE
+MESSAGE BY NAME.** A form-`2` message that arrives before the announcement, or
+after one that was refused, is refused: nothing is decoded, the reader says it
+holds no table for the connection and names the build version if one was ever
+read, and **no counter moves and `malformed` does not fire**, on the form byte's
+own terms (§3). It is the same REFUSAL VERDICT the form byte already needs, with
+more reasons.
 
-- **The sender re-announces.** How a receiver asks for that is the
-  application's own message set and not this wire's. schema declines RPC, so
-  nothing here defines a request.
+The recovery is the SENDER'S, and each is named rather than invented:
+
+- **The sender opens a new connection and announces first.** How a receiver asks
+  for that is the application's own message set and not this wire's. schema
+  declines RPC, so nothing here defines a request.
 - **The sender writes the FILE form**, which carries its own table and needs no
   connection at all.
 
@@ -3294,37 +3350,66 @@ form-`2` wire has no trailer to fall back to, and it does not guess a table,
 because a guessed table decodes a body under the wrong names in silence, which
 is the one class this wire exists to make impossible.
 
-**A REFERENCE PAST THE TABLE IS MALFORMED**, on §3's rule with one difference
-that follows from the framing. In a NESTED body, one under an `L`, the rule is
-unchanged: the body stops, `malformed` counts once, and the parent reads on past
-the length that frames it. In the ROOT body there is no enclosing length, so
-**the whole message is malformed, nothing is decoded, and one event is
-counted**. A reference of `0` where an id is required, a non-canonical
-reference, length, count or index, and a body whose terminator falls short are
-each exactly what §3 says they are, at the level they occur.
+**A REFERENCE PAST THE TABLE IS §3'S FRAMING DAMAGE, at the level it occurs, and
+this form adds no rule.** In a NESTED body, one under an `L`, the body stops,
+`malformed` counts once, and the parent reads on past the length that frames it.
+In the ROOT body there is no parent to read on into, so the body stops there,
+`malformed` counts once, **and the fields decoded before it stand**. There is no
+second pass and no rule that throws a message away whole. A reference of `0`
+where an id is required, a non-canonical reference, length, count or index, and
+a body whose terminator falls short are each exactly what §3 says they are.
+
+**WHAT THIS FORM DOES NOT CARRY, and whose job each is.** Two things a stream
+needs are deliberately not on this wire, which is §1's no-envelope promise held
+at the message level:
+
+- **WHICH ROOT a message is, is the APPLICATION's.** A stream carries messages
+  of many roots and nothing in a form-`2` wire says which table to decode it as.
+  A peer that needs to dispatch puts a discriminator in front of the bytes, or
+  wraps its messages in one root holding a union of them, which is what §2.6 is
+  for and costs an arm reference and a kind byte.
+- **WHERE a message ENDS is the TRANSPORT's.** A form-`2` body is
+  self-delimiting to a reader that WALKS it, since the kinds frame themselves
+  and the terminator is a zero reference, but a peer that wants the length
+  without walking puts one in front. schema writes no length prefix, no magic
+  and no envelope here for the same reason §17.3 gives on a file.
 
 **ELISION, DEFAULTS AND THE READ REPORT ARE UNCHANGED.** A field at its declared
 default is not written, an empty string, array, union or all-default nested
 table is not written, a field under a false guard is not written, and presence
 rather than content decides `?T` and `*T`. The declared default is part of the
-wire contract exactly as §3 and §4 state it. The five counters keep their
-meanings and their sources, `retained` and `retain_lost` keep theirs (§6.6), and
-this form adds no counter and moves none. **The only report-side addition is a
-REASON on the refusal verdict**, which the form byte already introduced.
+wire contract exactly as §3 and §4 state it. The counters keep their meanings
+and their sources, `retained` and `retain_lost` keep theirs (§6.6), and this
+form adds no counter and moves none. **The only report-side addition is a REASON
+on the refusal verdict**, which the form byte already introduced.
+
+**THE BODIES ARE NOT BYTE-IDENTICAL ACROSS THE TWO FORMS, AND THE RESOLVED FORMS
+ARE.** A file's slots are its own FIRST-USE order and a connection's slots are
+the unit's declaration order, so the same value writes different reference bytes
+under the two forms, and a length framing a body whose references changed width
+changes with them. What is invariant is the RESOLVED FORM, the normal form §6.6
+already uses for a retained record: **every reference replaced by the
+sixty-four-bit id it names, and every length recomputed to frame that
+substitution.** A value's resolved form is the same byte string under both wire
+forms, and that is the claim this subsection makes and the one a golden can go
+red on. **Each vector's own byte LENGTH is a pinned golden** rather than a number
+derived from the other form's.
 
 **RETENTION (§6.6) ON A MESSAGE BODY: the load side is unchanged and the save
-side drops.** `LoadRetain` reads a form-`2` body exactly as it reads a file's:
-the body is the same bytes, every field is self-framed by its kind byte, and the
-resolving walk replaces every reference with the sixty-four-bit id it names,
-resolving against the connection's table instead of a trailer. That substitution
-is the whole difference and it changes no rule of §6.6. **`SaveRetain` writing
-form `2` drops every retained record and counts one `retain_lost` each.** A
-form-`2` writer names ids through slots of a table it announced, a retained id
-is by definition one this build cannot name and therefore never announced, and
-appending it to the connection's vocabulary would make a save mutate the
-connection and put a third build's names in this peer's table. A caller that must
-carry unknowns across a rewrite saves the FILE form, which carries its own table
-and takes §6.6 unchanged. **And a RELAY needs neither**: a service forwarding
+side REFUSES.** `LoadRetain` reads a form-`2` body exactly as it reads a file's:
+the body is framed the same way, every field is self-framed by its kind byte,
+and the resolving walk replaces every reference with the id it names, resolving
+against the connection's table instead of a trailer. That substitution is the
+whole difference and it changes no rule of §6.6. **`SaveRetain` writing form `2`
+REFUSES BY NAME and returns `-1`.** A form-`2` writer names ids through slots of
+a vocabulary the compiler settled, a retained id is by definition one this
+build's closure does not contain and therefore one no slot names, and there is
+no honest byte string to write. It is a MISUSE refusal on §6.6's own precedent,
+the one that refuses a null report, and **never a silent drop**: a caller that
+asked to keep unknowns and would have lost them is told at the call rather than
+through a counter it might not read. The two answers are named. A caller that
+must carry unknowns across a rewrite writes the FILE form, which carries its own
+table and takes §6.6 unchanged. **A RELAY needs neither**: a service forwarding
 another peer's messages forwards that peer's id table message and its message
 bytes verbatim, which is exact, allocates nothing, and loses nothing.
 
@@ -3334,30 +3419,37 @@ body reaches a pointer. A message that reaches none carries no node-table field
 and the tail is simply the body's last content before the zero reference, which
 is §6.6's general rule already. A message that reaches one carries the field and
 the rule applies verbatim. Neither case needs a clause of its own, and the whole
-question is moot for form-`2` OUTPUT, where retention drops.
+question is moot for form-`2` OUTPUT, where retention refuses.
 
 **A POINTERED MESSAGE rides unchanged** (§3.1). The node table is a field of the
 root body under the reserved node-table id, not part of the trailer, so it is
 inside what a form-`2` message carries. Its records name their type ids through
-the connection's table like every other reference, and the numbering, the flat
-encoding and every malformed rule of §3.1 are untouched.
+the connection's table like every other reference, which is why the node-table
+id and every pointer target's type id are entries of the announcement, and the
+numbering, the flat encoding and every malformed rule of §3.1 are untouched.
 
 **FORM `2` IS A STREAM FORM AND NEVER A FILE FORM.** `schema pack` writes form
 `1`, `schema unpack` reads form `1`, and a reader handed a form-`2` wire where a
-file was expected refuses by name for a third reason: a message stored on its own
-is not readable, because its table is somewhere else. That cost is the form's one
-real one and it is stated rather than hidden. proto3 makes the same trade, since
-a `.proto` is required out of band, and the build version is what makes this one
-recoverable: a receiver that has no table for a build names it.
+file was expected refuses by name: a message stored on its own is not readable,
+because its table is somewhere else. That cost is the form's one real one and it
+is stated rather than hidden. proto3 makes the same trade, since a `.proto` is
+required out of band, and the build version is what makes this one nameable: a
+receiver says which build's table it lacks.
 
-**THE PACKET WIRE IS OUT OF SCOPE FOR THIS FORM, and the reason is the peers.**
-The packet wire is positional and gated same-or-refuse on an equal protocol id
-(SPEC.md §3, §20.5), so both ends must ship together. A message stream between a
-deployed game client and a backend is exactly the case where they do not, which
-is why the tolerant wire carries it at all. The packet wire pays NO identity cost
-to begin with, so there is nothing on it to hoist: on schema#523's three messages
-it is 46, 115 and 36 bytes and already the floor. Not one bit of SPEC.md moves
-for this subsection, and the two wires stay what §10 says they are.
+**THE SURFACE, OWED TO §11's CLAIMED SET.** Every name below is a name a user
+may still take until the checker refuses it, so the claim is deliberately not
+made in this page's own change, on §6.6's precedent. What lands with the form is
+**`TableVocabulary`** in the unit-scope registry beside `TableReport` and
+`TableRetain`, the unit-scope entry points **`Announce`, `AnnounceMeasure` and
+`AnnounceRead`** beside `UnitView`, the three suffixes **`LoadMessage`,
+`MeasureMessage` and `SaveMessage`** in `tableGeneratedVerbs`, and the refusal
+reason values **`no_vocabulary`, `second_announcement`, `vocabulary_too_large`
+and `message_form_as_file`** beside the form byte's own `newer_form`. **Dart's
+member spellings** are `loadMessage`, `measureMessage` and `saveMessage`, which
+take that backend's claimed field-name verbs up by three, with
+`TableVocabulary`, `announce`, `announceMeasure` and `announceRead` in the Dart
+library-scope registry the names negative control holds. Every target carries
+all of them in its own naming convention (SPEC.md §6.1).
 
 **WHAT IT MEASURES, as this page's own claim.** The three backend messages of
 schema#523, each in both instances, the file form against the message form:
@@ -3379,14 +3471,16 @@ the reason is the one structural advantage that survives at any size: proto3
 cannot express "the default is 1", so it pays for every field whose value
 happens to be the sensible one.
 
-**THE ANNOUNCEMENT'S OWN COST, and where it amortizes.** A connection carrying
-all three messages names fourteen distinct ids between them, so its announcement
-is 140 bytes: one form byte, an eleven-byte body, and a trailer of fifteen
-entries and its count. One round of the three messages saves 152 bytes, so the
-announcement is paid back inside the first round and every round after it is
-profit. **The vocabulary's ORDER is the writer's**, and a writer that puts its
-hottest ids in slots `1` through `127` spends one byte a field header for all of
-them, which is what every figure above assumes.
+**THE ANNOUNCEMENT'S OWN COST, and where it amortizes.** The `backenddemo` unit
+below has twenty ids in its closure, twelve field names and eight enum variant
+names, so with the reserved id its announcement carries twenty-one entries and
+is **188 bytes**: one form byte, an eleven-byte body, and a trailer of
+twenty-one entries and its count. One round of the three messages saves 152
+bytes, so the announcement is paid back partway into the SECOND round and every
+message after that is profit. **The unit's whole vocabulary is what is paid
+for**, not the part a connection uses, which is the cost of ruling out the
+re-announcement state machine and is stated rather than buried: a unit of 500 ids
+announces 4 KB once.
 
 **WHAT DOES NOT MOVE.** The BUILD VERSION does not (§20.2 digests wire ids and
 kinds, and none move). The PROTOCOL ID does not (no type-wire fact is touched).
@@ -3394,77 +3488,90 @@ The TABLES BASELINE does not (§18 records ids, kinds and meanings, and no file'
 bytes move). The TEXT FORM does not (§16 is JSON keyed by names and carries no
 framing at all, so a message's text is its file form's text, byte for byte). The
 COOK and the BLOCK do not (§7, §19 are compiler-settled layout and this is
-framing). **No row of §4's evolution table moves**, because the body is
-identical and every edit a reader can see, it sees the same way.
+framing). **No row of §4's evolution table moves**, because the body is framed
+the same way and every edit a reader can see, it sees the same way.
 
 **SECURITY.**
 
-- **A hostile peer announcing a build version it does not have gains nothing**,
-  because the build version is a label and not a gate (above, §20.5). It cannot
-  make a receiver decode a field as another field either, and that is the
-  property worth stating: an entry is a 64-bit id and a receiver matches the ID
-  against its own descriptors, so substituting entries only changes WHICH of the
-  receiver's own fields a message writes to, which the sender could do anyway by
-  writing that field. An id the receiver cannot name is `unknown` (§4) and never
-  a schema difference. The worst a lie achieves is a mislabeled table in a log.
+- **A RECEIVER NEITHER CHECKS NOR NEEDS TO CHECK THAT A VOCABULARY MATCHES THE
+  BUILD VERSION IT CAME WITH.** It cannot: it does not hold the sender's schema,
+  which is the whole reason the vocabulary rides at all. It does not need to,
+  and that is the property worth stating: an entry is a 64-bit id and a receiver
+  matches the ID against its OWN descriptors, so substituting entries only
+  changes WHICH of the receiver's own fields a message writes to, which the
+  sender could do anyway by writing that field. An id the receiver cannot name
+  is `unknown` (§4) and never a schema difference. **So a hostile peer
+  announcing a build version it does not have gains nothing**, because the key
+  gates nothing (above, §20.5) and the entries carry their own identity. The
+  worst a lie achieves is a wrong build version beside a real vocabulary in a
+  log, and the log is the only thing that reads it.
 - **A TABLE PAST A BOUND IS REFUSED BEFORE ANYTHING IS ALLOCATED.** A file's
   table is bounded by the file's own length and a connection's table is bounded
   by nothing the wire carries, so **a receiver declares a maximum entry count for
   a connection and refuses an announcement above it by name**. The count is a
   fixed little-endian u64 at the end of the announcement, so a receiver reads it,
   compares it, and refuses without touching an entry. **The conforming default is
-  4096 entries**, which is 32 KiB a direction and two orders above what any unit
-  in this repository's corpus uses, where the widest wire names 40 distinct ids.
-  A receiver holds ONE table a direction, the most recent, so its memory is
-  bounded by that number and not by how many announcements arrive.
-- **A RE-ANNOUNCEMENT STORM is bounded by the receiver, and it is a policy rather
-  than a wire rule.** An announcement costs a resolve over its entries, so a peer
-  that re-announces before every message costs a receiver one resolve a message.
-  A receiver caps announcements per connection or per unit of time and closes the
-  connection past the cap, on the same reasoning the entry bound rests on: the
-  work is the receiver's and the bound has to be too.
+  4096 entries**, which is 32 KiB a direction and eight times the 500-id unit
+  that is already a large one. A receiver holds ONE table a direction for the
+  life of the connection, so its memory is that bound and nothing else.
+- **THERE IS NO ANNOUNCEMENT STORM, because there is no second announcement.**
+  One announcement a direction is the whole of the resolve work a connection can
+  ask for, and a peer that sends a second is refused by name and closed. That is
+  the security half of ruling out re-announcement, and it is why the rule is a
+  refusal rather than a rate limit.
 - **A REFERENCE STORM IS LINEAR AND ALLOCATES NOTHING.** A reference is at least
   one byte and resolves through one array index against a table bounded above, so
   a message that is nothing but references costs one bounded lookup a byte, and
   the transport bounds the message's bytes as it bounds any datagram. A reference
-  past the count stops the root body at the first one, so a storm of BAD
-  references costs a single lookup. Nothing in this form is superlinear in a
-  message's length.
+  past the count stops the body at the first one, so a storm of BAD references
+  costs a single lookup. Nothing in this form is superlinear in a message's
+  length.
 - **Every §3 malformed rule already covers the announcement**, because it is a
   file: a trailer that cannot be read whole, a count whose `8 × count + 8` runs
   past the front, bytes left between the body's terminator and the first entry,
   and **a table carrying one id twice** are each the whole wire malformed, and a
-  refused announcement leaves the connection with no table, which is the refusal
-  above.
-- **An announcement whose body is not exactly the reserved field is refused**,
-  not read tolerantly. It is the one wire on this form whose shape is fixed
-  rather than declared, so a second field, a missing field, a wrong kind or a
-  wrong width is a refusal naming the announcement, and the connection keeps
-  whatever table it already had.
+  refused announcement leaves the connection with no table at all.
 
 **HELD BY TEST.**
 
-- **The form byte's third and fourth rows.** The `report` rows §3 already asks
-  for gain a form-`2` row read as a file, which must REFUSE and not decode, and a
-  form-`2` message with no announcement, which must refuse naming the missing
-  table. Red if either prints a clean read, reports `malformed`, or moves a
-  counter.
-- **The body-identity pin.** Each of the twelve vectors below: the file form's
-  bytes with the form byte and the trailer stripped must equal the message
-  form's bytes with the form byte stripped, byte for byte. Red if one byte
-  differs, which is the negative control on every rule in this subsection, since
-  every one of them says the body does not move.
+- **The form byte's new rows.** The `report` rows §3 already asks for gain a
+  form-`2` wire read as a FILE, which must REFUSE and not decode, and a form-`2`
+  message with no announcement, which must refuse naming the missing table. Red
+  if either prints a clean read, reports `malformed`, or moves a counter.
+- **The resolved-form pin.** For each of the twelve vectors below, the file
+  form's body and the message form's body must be equal under RESOLUTION, every
+  reference replaced by the id it names and every length recomputed. Red if one
+  byte of a resolved form differs, which is the negative control on every rule
+  here that says the body's content does not move, and the reference bytes
+  themselves are expected to differ.
+- **A slot at or past 128.** A unit whose vocabulary passes 127 ids, with a
+  message naming an id in a two-byte slot and an id in a one-byte slot. Red if a
+  leg spells a reference non-minimally, or sizes a message as though every
+  reference were one byte.
+- **Per-direction independence.** A vector pair written by two peers whose units
+  announce different vocabularies, each decoding the other's messages against the
+  table that peer announced. Red if a leg resolves a message against its own
+  table, or shares one table between the directions.
+- **A pointered message.** A form-`2` message over a pointered root, whose node
+  records name their type ids through the announced table. Red if the node-table
+  id or a type id is missing from the announcement, or if the numbering differs
+  from the file form's.
+- **A refused second announcement.** A connection carrying two announcements. Red
+  if the second sets, replaces or amends a table, or if it is anything but a
+  refusal by name.
 - **The reference bound under a connection table.** The fuzzer's reference pass
-  (§4.2), run with the table hoisted: every reference set to the connection
-  table's entry count plus one and to the extremes the encoding can spell, which
-  are malformed and stop the whole message, and to the entry count itself, which
-  is the last legal slot and must RESOLVE. Red if a leg resolves past the table,
-  refuses the last slot, or decodes any field of a message whose ROOT body
-  carried a reference past the count.
-- **The announcement's own shape.** Rows for a body carrying a second field, a
-  body carrying no field, the reserved id under a kind other than `9`, a width
-  that is not eight, an entry count one above the receiver's bound, and one id in
-  two entries. Red if any of them sets a table.
+  (§4.2), run with the table announced: every reference set to the entry count
+  plus one and to the extremes the encoding can spell, which are malformed, and
+  to the entry count itself, which is the last legal slot and must RESOLVE. Red if
+  a leg resolves past the table, refuses the last slot, or discards the fields a
+  root body decoded BEFORE a bad reference.
+- **The announcement's one strict check, and its tolerance.** Rows for a body
+  with the reserved field absent, present twice, under a kind other than `9`, and
+  at a width that is not eight, each a refusal, and a row for a body carrying an
+  UNKNOWN field beside the reserved one, which must set the table and count one
+  `unknown`. Red if a refusal sets a table, or if the tolerant row refuses.
+- **The bound.** An announcement one entry above the receiver's bound. Red if a
+  leg touches an entry before refusing.
 - **The reserved build-version id in a body.** A row planting it in a message
   body and a row planting it in a nested body. Red if either counts anything but
   `malformed`.
@@ -3473,12 +3580,12 @@ identical and every edit a reader can see, it sees the same way.
   `0xFFFFFFFFFFFFFFFE` as well. Red if the checker accepts the planted name, or
   accepts it as a `was`.
 - **Retention across the forms.** A message loaded with retention and saved in
-  form `2`, which must count one `retain_lost` a retained record and write none
-  of them, and the same load saved in form `1`, which must write every one under
-  §6.6's rules. Red if a form-`2` save writes a retained field, or if a form-`1`
-  save loses one.
-- **The cost rows.** The twelve pinned wires themselves. A byte figure in the
-  table above that drifts moves a pinned wire.
+  form `2`, which must return `-1` and write nothing, and the same load saved in
+  form `1`, which must write every retained record under §6.6's rules. Red if a
+  form-`2` save writes a byte, or returns anything but `-1`, or if a form-`1`
+  save loses a record.
+- **The cost rows.** The twelve pinned wires and the announcement. A byte figure
+  in the tables above that drifts moves a pinned wire.
 
 **THE GOLDENS: the three messages of schema#523, in both forms.** The corpus
 gains one unit and one connection, and the declaration is that measurement's,
@@ -3523,16 +3630,21 @@ table StorePurchase
 ```
 
 - **The unit is `backenddemo`, at `tables/backend`**, and the connection is
-  `backend_conn`, whose announcement is `testdata/wire/tables/backend_conn.bin`
-  and whose vocabulary is the fourteen ids the six values name, in the order
-  above.
+  `backend_conn`, whose announcement is `testdata/wire/tables/backend_conn.bin`,
+  twenty-one entries and 188 bytes: the reserved id, then the twelve distinct
+  field names and the eight variant names in the cook projection's order. The
+  unit has no pointer, so it announces no node-table id and no type id, which
+  is the one rule above deciding both.
 - **Six FILE-form vectors**, `login_full`, `login_default`, `match_full`,
   `match_default`, `store_full` and `store_default`, are ordinary `instance`
   lines and ride every surface an instance rides, the text form included.
 - **Six MESSAGE-form vectors** under the same six names ride the WIRE surface
   alone. Their text is the file-form vector's, byte for byte, because the value
-  and the body are the same, so a second `json/` file would be one golden with
-  two homes.
+  is the same, so a second `json/` file would be one golden with two homes.
+- **Four more vectors carry the rules a value alone cannot reach**: a unit whose
+  vocabulary passes 127 ids, a pointered root over the `graphdemo` unit, a
+  two-peer pair for per-direction independence, and a connection carrying a
+  second announcement.
 - **Two manifest line kinds carry them**, and the corpus's own page states their
   columns:
 
@@ -3541,8 +3653,8 @@ table StorePurchase
   message    <name> <connection> <root> <file-form wire> <message-form wire>
   ```
 
-- **The pinned byte counts are the table above**, and the announcement is 140.
-  A vector whose count moves is a wire that moved.
+- **The pinned byte counts are the tables above.** A vector whose count moves is
+  a wire that moved.
 
 ## 4. Versioning is wire tolerance
 
