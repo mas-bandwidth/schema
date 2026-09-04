@@ -5627,6 +5627,13 @@ in build version (§20.5).
 - `table` bodies containing `const`/`reserved`/`align` (§2 — no bit
   positions). Extents have no wire ceiling (§3); an extent past the
   language's own int32 storage cap is refused there, not here.
+- **A DERIVED SIZE past the cap** (SPEC §4.6): extents are capped one at a
+  time, and a record's storage, an array's whole storage, a block form's
+  extent (§19.3) and a wire width are each refused past 2^40 bytes, naming
+  the field and the product, so a schema of individually legal bounds cannot
+  hand a backend a number the arithmetic no longer represents. The cap is
+  above every node body the wire can frame (a node's length is a `u32`,
+  §3.1) and far below where an int64 size stops being exact.
 - Recursive nesting (§2 — the cycle is named).
 - A bare rename hazard: `was` naming the field's own name (§5).
 - Id collisions, hash or `was`-induced (§5).

@@ -455,7 +455,7 @@ func UnionLayout(u *Unit, un *Union) (size, align, tag, armOffset int64) {
 		align = armAlign
 	}
 	armOffset = alignUp(tag, armAlign)
-	size = alignUp(armOffset+armSize, align)
+	size = alignUp(addSize(armOffset, armSize), align)
 	return size, align, tag, armOffset
 }
 
@@ -475,13 +475,6 @@ func memberStruct(u *Unit, name string) *Struct {
 type storagePiece struct {
 	size  int64
 	align int64
-}
-
-func alignUp(v, a int64) int64 {
-	if a <= 1 {
-		return v
-	}
-	return (v + a - 1) / a * a
 }
 
 // layoutRecord walks one generated record's storage the way a C compiler does.
@@ -504,7 +497,7 @@ func layoutRecord(u *Unit, st *Struct) *MemberLayout {
 			if start < 0 {
 				start = offset
 			}
-			offset += p.size
+			offset = addSize(offset, p.size)
 		}
 		if start < 0 {
 			continue
@@ -544,7 +537,7 @@ func layoutProjection(u *Unit, st *Struct) MemberLayout {
 			if start < 0 {
 				start = offset
 			}
-			offset += p.size
+			offset = addSize(offset, p.size)
 		}
 		if start < 0 {
 			continue
@@ -575,7 +568,7 @@ func BlockFieldPieceOffsets(u *Unit, f *Field, fieldOffset int64, projection boo
 	for _, p := range pieces {
 		at = alignUp(at, p.align)
 		out = append(out, BlockFieldPiece{Offset: at, Size: p.size})
-		at += p.size
+		at = addSize(at, p.size)
 	}
 	return out
 }
@@ -619,20 +612,20 @@ func fieldPieces(u *Unit, f *Field, projection bool) []storagePiece {
 		// region reaches everything, which is the scale §7 is built for.
 		pieces = append(pieces, storagePiece{size: 8, align: 8})
 	case f.Type.Kind == TString:
-		pieces = append(pieces, storagePiece{size: f.Type.Size + 1, align: 1}) // char[N+1]
-		pieces = append(pieces, storagePiece{size: 4, align: 4})               // int32 length
+		pieces = append(pieces, storagePiece{size: addSize(f.Type.Size, 1), align: 1}) // char[N+1]
+		pieces = append(pieces, storagePiece{size: 4, align: 4})                       // int32 length
 	case f.Type.Kind == TBytes:
 		pieces = append(pieces, storagePiece{size: f.Type.Size, align: 1}) // uint8[N]
 		pieces = append(pieces, storagePiece{size: 4, align: 4})           // int32 length
 	case f.KeyEnum != "":
 		e := elementPiece(u, f)
-		pieces = append(pieces, storagePiece{size: e.size * f.ArrayBound, align: e.align})
+		pieces = append(pieces, storagePiece{size: mulSize(e.size, f.ArrayBound), align: e.align})
 	case f.Array == ArrayFixed:
 		e := elementPiece(u, f)
-		pieces = append(pieces, storagePiece{size: e.size * f.ArrayBound, align: e.align})
+		pieces = append(pieces, storagePiece{size: mulSize(e.size, f.ArrayBound), align: e.align})
 	case f.Array == ArrayCounted:
 		e := elementPiece(u, f)
-		pieces = append(pieces, storagePiece{size: e.size * f.ArrayBound, align: e.align})
+		pieces = append(pieces, storagePiece{size: mulSize(e.size, f.ArrayBound), align: e.align})
 		pieces = append(pieces, storagePiece{size: 4, align: 4}) // int32 count
 	default:
 		pieces = append(pieces, elementPiece(u, f))
@@ -709,7 +702,7 @@ func elementPiece(u *Unit, f *Field) storagePiece {
 			if armAlign > align {
 				align = armAlign
 			}
-			size = alignUp(size, armAlign) + armSize
+			size = addSize(alignUp(size, armAlign), armSize)
 			return storagePiece{size: alignUp(size, align), align: align}
 		}
 	}
@@ -733,7 +726,7 @@ func BlockExtent(bl *BlockLayout, elemAligns []int64, counts []int64) (starts []
 	starts = make([]int64, len(bl.Arrays))
 	for i, a := range bl.Arrays {
 		starts[i] = BlockArrayStart(offset, elemAligns[i])
-		offset = starts[i] + counts[i]*a.Stride
+		offset = addSize(starts[i], mulSize(counts[i], a.Stride))
 	}
 	used = alignUp(offset, BlockAlign)
 	if used < bl.Projection.Size {
@@ -749,7 +742,7 @@ func blockMaxBytes(bl *BlockLayout) int64 {
 	offset := bl.Projection.Size
 	for _, a := range bl.Arrays {
 		offset = BlockArrayStart(offset, elemAlignOf(a))
-		offset += a.Max * a.Stride
+		offset = addSize(offset, mulSize(a.Max, a.Stride))
 	}
 	return alignUp(offset, BlockAlign)
 }
