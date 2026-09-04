@@ -24,6 +24,12 @@
 //     default by construction, and this check is what proves the construction
 //     held. It is the tables leg's form of §2.7's "structure fields stay
 //     fixed".
+//
+//     THE ID TABLE IS PART OF THAT LENGTH. A record's trailer carries one
+//     eight-byte entry per DISTINCT id the record uses, and an enum's id is
+//     its VARIANT's, so a variant drawn at random moves the length as surely
+//     as an elided field does. Every enum below is therefore pinned by slot
+//     rather than drawn, which is why fill_entity takes one.
 //   * A record that does not survive Load -> Save byte-identically.
 //   * Two records that are equal. §2.7 rotates 64 buffers so no single buffer
 //     can be memorised; 64 copies of one instance would defeat that silently.
@@ -77,7 +83,16 @@ static int64_t signed_off_zero( int64_t lo, int64_t hi )
     return v;
 }
 
-static void fill_entity( TableEntity & e )
+// THE WEAPON IS STRUCTURE, not a varied value (docs/SPEC-TABLES.md §3). An
+// enum rides as its VARIANT's id and every distinct variant a record uses costs
+// one entry in that record's id table, so a variant drawn at random moves the
+// record LENGTH by eight bytes per entry the draw happened to add or drop. The
+// slot's own index picks the variant instead: eight slots take Fists through
+// Grenade in every record, so the set of ids is fixed while the value still
+// differs from slot to slot. It is the same rule the pinned union arm below
+// follows, and the reason `flags` needs no such pin: TableDamage rides as raw
+// bits and names no id.
+static void fill_entity( TableEntity & e, int slot )
 {
     e.entity_id = (uint32_t) in_span( 4095 );
     e.pos_x = (int32_t) signed_off_zero( -16383, 16383 );
@@ -91,7 +106,7 @@ static void fill_entity( TableEntity & e )
     e.health = (int32_t) in_span( 1000 );
     // never None: an enum at None elides, and None is also the value a
     // declared variant must never collide with (§3)
-    e.weapon = (TableWeapon) in_span( 15 );
+    e.weapon = (TableWeapon) ( 1 + ( slot % 15 ) );
     e.damage = (TableDamage) in_span( 255 );
     e.moving = true;    // structure: a false bool is the default and elides
     e.firing = true;
@@ -121,7 +136,7 @@ static void fill( TableMixed & v )
     v.server_time = 1.0f + (float) ( next_rng() % 65534 );
 
     v.entities_count = PinnedEntities;
-    for ( int i = 0; i < PinnedEntities; i++ ) fill_entity( v.entities[i] );
+    for ( int i = 0; i < PinnedEntities; i++ ) fill_entity( v.entities[i], i );
 
     v.stats_count = PinnedStats;
     for ( int i = 0; i < PinnedStats; i++ ) fill_stat( v.stats[i] );
