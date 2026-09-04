@@ -296,12 +296,21 @@ func main() {
 			fatalf("--byte-order takes little or big, not %q", *byteOrder)
 		}
 		unit := loadUnit(c, fs.Args())
-		wire := cookInput(c, unit, *root, *in, verbose, *tolerate)
+		wire, packed := cookInput(c, unit, *root, *in, verbose, *tolerate)
 		bytes, cooked, report, err := c.Cook(unit, *root, wire, opts)
 		if err != nil {
 			fail(err)
 		}
-		reportLine(report, verbose, *tolerate)
+		// TWO READS, TWO REPORTS, EACH NAMED. `cook --in <dir>` packs the tree
+		// and then cooks the wire, so it reads twice and reports twice — and
+		// two identical unlabelled lines read as the cook having read one
+		// input twice (#521 G-12). With a wire file for --in there is one read
+		// and the line stays unlabelled.
+		stage := ""
+		if packed {
+			stage = "cook"
+		}
+		reportLineStage(report, verbose, *tolerate, stage)
 		if *attribution != "" {
 			// the attribution is SEPARABLE (§6.3): a caller may place the two
 			// parts together or apart, and a build that ships no tooling need
@@ -414,7 +423,9 @@ func main() {
 // first through the existing engine (§17) so one command covers the pipeline
 // the owner describes — tooling does the build, then cooks to the rad binary
 // format, and the game just points at it and works.
-func cookInput(c *compiler.Compiler, unit *ir.Unit, root, in string, verbose, tolerate bool) []byte {
+// It answers whether it PACKED, which is whether the command read twice: the
+// caller labels its own report when it did.
+func cookInput(c *compiler.Compiler, unit *ir.Unit, root, in string, verbose, tolerate bool) ([]byte, bool) {
 	info, err := os.Stat(in)
 	if err != nil {
 		fatalf("%v", err)
@@ -424,19 +435,19 @@ func cookInput(c *compiler.Compiler, unit *ir.Unit, root, in string, verbose, to
 		if err != nil {
 			fatalf("%v", err)
 		}
-		return wire
+		return wire, false
 	}
 	wire, skipped, report, err := c.Pack(unit, root, in)
 	if err != nil {
 		fail(err)
 	}
-	reportLine(report, verbose, tolerate)
+	reportLineStage(report, verbose, tolerate, "pack")
 	if verbose {
 		for _, name := range skipped {
 			fmt.Printf("passed over %s: a hidden file that is not JSON\n", name)
 		}
 	}
-	return wire
+	return wire, true
 }
 
 // packTree splits pack's positional arguments: the FIRST is the tree, and
@@ -493,14 +504,25 @@ func writeAtomic(path string, data []byte) error {
 // stopping, not about the tool's exit code. --tolerate is the way to say the
 // report is expected.
 func reportLine(r compiler.TableReport, verbose, tolerate bool) {
+	reportLineStage(r, verbose, tolerate, "")
+}
+
+// reportLineStage is reportLine with the READ named. A command that reads once
+// leaves the stage empty and prints "report:"; `cook --in <dir>` packs and then
+// cooks, so it names "pack" and "cook" and the two lines are told apart.
+func reportLineStage(r compiler.TableReport, verbose, tolerate bool, stage string) {
+	label := "report"
+	if stage != "" {
+		label = "report (" + stage + ")"
+	}
 	if r.Silent() {
 		if verbose {
-			fmt.Println("report: silent — the data matched the schema exactly")
+			fmt.Println(label + ": silent — the data matched the schema exactly")
 		}
 		return
 	}
-	fmt.Printf("report: unknown %d, kind_mismatch %d, clamped %d, duplicate %d, malformed %v\n",
-		r.Unknown, r.KindMismatch, r.Clamped, r.Duplicate, r.Malformed)
+	fmt.Printf("%s: unknown %d, kind_mismatch %d, clamped %d, duplicate %d, malformed %v\n",
+		label, r.Unknown, r.KindMismatch, r.Clamped, r.Duplicate, r.Malformed)
 	if tolerate {
 		return
 	}
