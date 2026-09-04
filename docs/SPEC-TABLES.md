@@ -2285,6 +2285,17 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
   id the reader could not name, met before the damage, is not an `unknown`
   event, because the numbering it belonged to does not exist — counting it
   would be salvaging part of a numbering.
+  **The table's damage is the table's, and the root body's is the root's.** A
+  node-table field arriving under a kind other than `12`, or one whose LENGTH
+  runs past the root body, is damage to the NUMBERING: the whole table is
+  malformed, as above, and every pointer in the save reads null. Damage to the
+  root body ELSEWHERE — a field of another id whose length the gathering scan
+  cannot skip, a body that runs out before its terminator — is §4's framing
+  damage on the ROOT BODY and not the table's: the scan stops there, and what
+  it has gathered is the table. Nothing is salvaged by that rule, because
+  `node_count` still has to match: a table the damage cut short fails its own
+  count and is malformed anyway, while a table already whole before the damage
+  is not condemned by bytes that came after it.
 
 **LOAD IS A SCAN, and that is the whole of its bound.** Reading follows
 no reference. `LoadMeasure` walks the records once — a record's type id
@@ -2515,6 +2526,17 @@ tolerance is the versioning model:
   the last occurrence wins whole even when its own framing is damaged, and
   the element reads `None`. An element the body cannot reach at all — no
   two bytes left for an arm id — is not touched.
+  An ARRAY body too short to carry its own header — the element kind byte and
+  the four-byte count, so fewer than five bytes — is **INERT**: no element is
+  decoded, no counter fires, and the field keeps the value it has. On a first
+  occurrence that value is the declared default; under a repeat it is whatever
+  the earlier occurrence left, so **a repeat that arrives this short replaces
+  nothing**. The framing is not damaged — the length agrees with the enclosing
+  body and the walk continues past it — so this is not `malformed`, and there
+  is nothing else to count either: the reader never saw an element kind to
+  mismatch or a count to clamp. An OPTIONAL array in this shape still reads
+  PRESENT (§2.3), because the field rode — presence is the one thing a body
+  this short does state.
 
 Every event lands in the **read report**, whose counters are `unknown`,
 `kind_mismatch`, `clamped`, `duplicate` and the `malformed` flag.
@@ -2714,10 +2736,11 @@ has:
   last kind included;
 - **an id renamed** to `0`, to the reserved `0xFFFF`, to a neighbor's id and
   to a bit-flipped one; a keyed slot's key and a union's arm id likewise;
-- **in the variable class**, every node index to `0`, `1`, the last record,
-  the two past it, and the three the width can spell (`0x7FFFFFFF`,
-  `0x80000000`, `0xFFFFFFFF`); `node_count` off by one each way and at both
-  extremes; a record's type id flipped and cleared;
+- **in the variable class**, every node index to `0` (null), `1` (the root),
+  `2` (the first record), to `node_count` and the three indices above it — the
+  LAST record and the two past it — and to the three the width can spell
+  (`0x7FFFFFFF`, `0x80000000`, `0xFFFFFFFF`); `node_count` off by one each way
+  and at both extremes; a record's type id flipped and cleared;
 - **a window spliced in** from another seed of the same unit.
 
 The enumerated passes run every mutant they name, whatever `N` is, so the
@@ -2732,7 +2755,10 @@ that replays it:
 
 1. **The read returns.** No crash, no hang, and under the sanitized build no
    finding — every buffer the leg holds is allocated at exactly its size, so
-   the redzone begins one byte past the last one a reader may touch.
+   the redzone begins one byte past the last one a reader may touch. A
+   zero-byte buffer is the one exception, allocated at one byte, because
+   `malloc(0)` may answer null and null is how a leg reports an allocation
+   that failed.
 2. **The report matches an independent oracle.** The oracle is the compiler's
    own engine, `internal/tablewire` — a third reading of §3 that no backend
    was written from, and the one that writes `reports.txt`. The five counters
@@ -2751,8 +2777,8 @@ that replays it:
 
 **The line it prints** is the row the register carries: the seed, the seed
 count over the root count, the enumerated and random mutant counts, the wall
-and the rate — `wire-fuzz: seed 24845619678, 63 seeds over 18 roots, 62179
-enumerated + 500000 random = 562179 mutants, 0 divergences, 17.6 s, 31990
+and the rate — `wire-fuzz: seed 24845619678, 67 seeds over 18 roots, 63840
+enumerated + 500000 random = 563840 mutants, 0 divergences, 17.8 s, 31646
 mutants/s`, which is one leg of `make tables-cpp-release`. `SEED` and `N` are
 the two knobs, on the command line and on the `make` line.
 

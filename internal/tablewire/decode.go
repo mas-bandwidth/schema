@@ -273,9 +273,9 @@ func (r *wireReader) array(fv *tabletext.Field) bool {
 		return false
 	}
 	end := r.off + bodyLen
-	// A body too short for its own header (element kind and count) is INERT,
-	// as the reference reads it: the field keeps the value it has — a repeat
-	// under this id replaces nothing — and the walk continues past the length.
+	// A body too short for its own header (element kind and count) is INERT
+	// (§4): the field keeps the value it has — a repeat under this id replaces
+	// nothing — no counter is raised, and the walk continues past the length.
 	if bodyLen >= 5 {
 		decoded := 0
 		ek := r.u8()

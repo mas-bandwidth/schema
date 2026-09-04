@@ -310,7 +310,10 @@ driver is.
 - **Every buffer is allocated at exactly its size** — the mutant, the region,
   the save — so that a sanitized build's redzone begins at the last byte a
   reader may touch, and **every reply is flushed before the next mutant is
-  read**, so a crash is attributed to the mutant that caused it.
+  read**, so a crash is attributed to the mutant that caused it. A buffer of
+  ZERO bytes is the one exception to the sizing: it is allocated at one byte,
+  because `malloc(0)` may answer null and null is how a leg reports an
+  allocation that failed.
 - **A root the leg cannot name is a `0` in the roster and nothing more**: the
   harness never sends it a mutant, and the line it prints says how many seeds
   were absent. A port with no variable class registers its fixed roots and is

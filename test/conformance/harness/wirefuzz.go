@@ -460,6 +460,13 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		return fmt.Errorf("FAILED: the leg exited with an error after the last mutant: %w\n%s", err, leg.stderr.String())
 	}
 	elapsed := time.Since(start)
+	if opts.replay != "" {
+		// replay sends the one mutant the file holds and nothing else, so the
+		// enumerated/random split has nothing to say about it
+		fmt.Printf("wire-fuzz: replay of %s over %s.%s, %d mutant, 0 divergences, %.1f s\n",
+			opts.replay, opts.unit, opts.root, total, elapsed.Seconds())
+		return nil
+	}
 	rate := float64(total) / elapsed.Seconds()
 	absence := ""
 	if absent > 0 {

@@ -90,9 +90,9 @@ func (e *encoder) appendNodeTable(body []byte, g *NodeGraph) ([]byte, error) {
 // malformed, every pointer in the save reads null, and one event is counted.
 // Damage to the root body ELSEWHERE — a field of another id the scan cannot
 // skip, a missing terminator — is §4's framing damage on the root body, not
-// the table's: the scan stops there and what it has found is the table, as
-// the C++ reference reads it. The root body still reads on past the fields,
-// so the root's own values survive.
+// the table's: the scan stops there and what it has found is the table
+// (docs/SPEC-TABLES.md §3.1), which `node_count` then has to match. The root
+// body still reads on past the fields, so the root's own values survive.
 func nodeTableBytes(data []byte, report *tabletext.Report) (payload []byte, present bool, ok bool) {
 	r := &wireReader{buf: data, report: &tabletext.Report{}}
 	for {

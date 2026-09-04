@@ -420,8 +420,9 @@ func enumerated(seed *wireSeed, emit func(pass string, data []byte)) {
 				}
 			}
 		case spotIndex:
-			// null, the root, the first record, the last, the two past the
-			// last, and the two the sign bit and the width can spell
+			// null, the root, the first record, `node_count` read as an
+			// index, the last record, the two past it, and the three the
+			// sign bit and the width can spell
 			for _, v := range []uint64{0, 1, 2, records, records + 1, records + 2, records + 3, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF} {
 				if v != sp.value {
 					emit("index", patched(seed, sp, v))
