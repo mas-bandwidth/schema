@@ -3140,3 +3140,128 @@ exported `compiler` and `ir` surfaces are under semantic versioning, and
 **You now have** Starlight's whole estate on one schema: a C++ simulation, C
 tools, generic editors, plus a compiler you can embed when the build gets
 opinionated.
+
+---
+
+## Part 14 — the tool belt, and where the edges are
+
+### Every command you now know
+
+All of these appeared on the way, and this is the map. `fmt` is the only one
+that writes a `.schema` file, so every other command reads the unit as it sits
+on disk and a read-only checkout works. Every one is silent on success:
+
+```
+schema check      [--verbose] [dir|files...]          compile, no output
+schema generate   [--lang ...] [--out ...] [dir]      code for one target
+schema fmt        [--verbose] [dir|files...]          format, the only writer
+schema id         [dir]                               the protocol id
+schema projection [dir]                               the text the id hashes
+schema build-version [--facts] [dir]                  the cook and block key, and its inputs
+schema tables-baseline [--update --reason "..."]      commit the evolution baseline
+schema pack       --root T --out f.bin <tree>         directory tree to wire bytes
+schema unpack     --root T --in f.bin [--one-file]    wire bytes to directory tree
+schema cook       --root T --in x --out f.cook        wire or tree to cooked file
+                  [--byte-order little|big] [--attribution f]
+schema cook-check [--root T] f.cook                   offline validation, on purpose
+schema uncook     --root T --in f.cook --out f.bin    cook to wire, the no-loss proof
+schema version                                        which build of the tool
+```
+
+Flags come before the paths. A flag after the first path is read as another
+path, and the failure says so awkwardly:
+
+```
+$ schema generate --lang cpp --out gen . --verbose
+schema: stat --verbose: no such file or directory
+```
+
+`pack`, `unpack` and `cook` exit nonzero on any non-silent report, `--tolerate`
+accepts it, and `--verbose` prints it regardless.
+
+When something refuses and you want to know which schema fact is in play,
+`schema projection` for packets and `schema build-version --facts` for tables,
+cooks and blocks print the exact text the ids digest. Diff those between two
+checkouts and the moved line is your answer.
+
+One nudge you will meet the first time you declare a table without committing a
+baseline:
+
+```
+notice: bad declares 1 table and . holds no tables.baseline — save-game evolution is unguarded (docs/SPEC-TABLES.md §18); commit one with: schema tables-baseline --update --reason "first baseline" .
+```
+
+It is a notice and not an error, so nothing stops. Take it the day your format
+first ships to anyone.
+
+One habit the ids reward: check `schema version` against the docs you are
+reading. The language moves, and a refusal that cites a specification section
+cites the tool's specification at its build, not necessarily the page you have
+open.
+
+### Where the edges are
+
+Three deliberate boundaries you will meet, so you do not read a refusal as a
+defect.
+
+**Packet-wire framing stays off the table wire.** `const`, `reserved` and
+`align` are bit positions, and a table's wire has none:
+
+```
+table T { const(0xC7, 8) ... }
+    Bad.schema:3:11: const(value, bits) is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table T (docs/SPEC-TABLES.md)
+```
+
+**A `type` never reaches a table.** Packets are exact match and value
+semantics, so a `type` cannot hold a table, a pointer or a map. A table may
+hold types freely. That one-way rule is what keeps a packet's cost independent
+of everything tables buy.
+
+**`bytes` needs a bound.** `bytes(N)` is a bounded buffer, and a bare `bytes`
+does not parse. For a buffer whose size is a runtime fact, point at it, since
+`*bytes` and `*string` are pointer fields like any other.
+
+One thing the specification describes that no backend emits yet: the **unit
+registry**, SPEC-TABLES §8.3's `UnitView()`, one entry point listing every
+declaration in the build. The per-table and per-type descriptors Part 13 walked
+are live in every target. The unit-wide root is not:
+
+```
+$ schema generate --lang cpp --out gen --verbose .
+wrote gen/Config.h
+wrote gen/ConfigBlock.cpp
+wrote gen/ConfigBlock.h
+wrote gen/ConfigTable.cpp
+wrote gen/ConfigTable.h
+wrote gen/ConfigWire.h
+```
+
+No view file, in any of the nine. Build your tool on the per-type descriptors
+and hold the type list yourself.
+
+### Where to go next
+
+[SPEC.md](SPEC.md) is the packet language precisely: the grammar, every field
+kind's wire encoding, the trust model, and the refusal catalogue.
+
+[SPEC-TABLES.md](SPEC-TABLES.md) is the table system end to end: the wire, the
+two classes, the cook, the block, the baseline, and every ruling with its
+reasons.
+
+[USAGE.md](USAGE.md) is every feature with the code it generates, per language.
+
+[PORTING.md](PORTING.md) is the per-language register, with a cell for every
+method and instrument a backend carries.
+
+`examples/` in the repository holds canonical schemas exercising the whole
+surface, and `make check` runs the compiler over them.
+
+### What you built
+
+Starlight's protocol, from one constant to a nine-language estate: packets that
+refuse hostile bytes in three bytes a ship, saves that survive two years of
+schema drift and say exactly what they absorbed, a designer JSON loop, fleets
+keyed by name, cooked configs that open by pointer, and a 60 Hz block handoff
+read in place from another language.
+
+Every byte of it came out of declarations short enough to read aloud.
