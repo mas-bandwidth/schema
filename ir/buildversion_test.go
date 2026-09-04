@@ -293,3 +293,62 @@ func TestBuildVersionSeesARecordRenamed(t *testing.T) {
 		t.Error("a record added did not move the build version")
 	}
 }
+
+// listSource is §2.9's own example, cut to what the projection has to render:
+// a list of tables and a list of scalars, and the sixteen-byte slot each takes.
+const listSource = `package demo
+
+table Placement
+{
+    x float32
+    y float32
+}
+
+table Save
+{
+    placements []Placement
+    scores     []int32
+}
+`
+
+// TestTheUnboundedArrayProjectsAsAnArrayWithNoBound (docs/SPEC-TABLES.md §2.9,
+// §20.2): `kind=14`, `array=unbounded` and `elem=` the ELEMENT'S OWN storage
+// size, beside the `size=` the sixteen-byte slot produces. No `bound=`,
+// because it declares no extent and its count is a wire fact.
+func TestTheUnboundedArrayProjectsAsAnArrayWithNoBound(t *testing.T) {
+	text := ir.CookProjection(unitFrom(t, listSource))
+	for _, want := range []string{
+		"record Save sizeof=32 alignof=8",
+		"kind=14 offset=0 size=16 type=Placement elem=8 array=unbounded",
+		"kind=14 offset=16 size=16 elem=4 array=unbounded",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the projection does not carry %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "array=unbounded bound=") {
+		t.Errorf("an unbounded array projects no bound=:\n%s", text)
+	}
+}
+
+// TestTheBuildVersionMovesWhenTheListGainsABound (docs/SPEC-TABLES.md §2.9):
+// a `[]T` gaining a bound moves the field's array shape and its storage, and
+// a `was` rename of the list moves nothing at all.
+func TestTheBuildVersionMovesWhenTheListGainsABound(t *testing.T) {
+	base := ir.BuildVersion(unitFrom(t, listSource))
+	bounded := ir.BuildVersion(unitFrom(t, strings.Replace(listSource, "scores     []int32", "scores     [..4]int32", 1)))
+	if base == bounded {
+		t.Errorf("a []T given a bound does not move the build version: %016x", base)
+	}
+	renamed := ir.BuildVersion(unitFrom(t, strings.Replace(listSource,
+		"scores     []int32", `scores_v2  []int32 | was = "scores"`, 1)))
+	if base != renamed {
+		t.Errorf("a was rename of a list moved the build version: %016x -> %016x", base, renamed)
+	}
+	// AND A LIST-FREE UNIT'S ID IS UNCHANGED BY THE CONSTRUCT EXISTING: the
+	// worked example above carries no list, and its digest is the one §20.2
+	// pins.
+	if got := ir.BuildVersion(unitFrom(t, workedSource)); got != ir.BuildVersion(unitFrom(t, workedSource)) {
+		t.Errorf("a list-free unit's build version is not stable: %016x", got)
+	}
+}

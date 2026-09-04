@@ -2755,11 +2755,13 @@ each:
 | a fixed-table user pays nothing | a list-free unit carries no list machinery, held by the zero-cost gate's header scan (§2.2) | every runtime carries the repeated codec | every runtime carries the vector |
 
 **BACKEND STATUS: OWED, not emitted.** This section is specified ahead of its
-implementation, on the same terms §3.3 and §6.6 take: no backend carries an
-unbounded array today, the front end refuses the spelling, and the corpus holds
-no `tables/lists`. The C++ REFERENCE and the TOOL land it first and every other
-backend refuses a unit that declares one, by name (§11), with the ports a named
-follow-on (§15). The corpus the implementation owes is `tables/lists`:
+implementation, on the same terms §3.3 and §6.6 take: **the FRONT END takes the
+spelling and holds every refusal above, and the TOOL's WIRE and TEXT halves
+carry the construct**, so `pack` and `unpack` read and write a `[]T` and the
+projections render it. **No CODE GENERATOR carries it**, every one of them
+refuses a unit that declares one by name (§11), and the corpus holds no
+`tables/lists`. The C++ REFERENCE lands the codec next and every other backend
+keeps refusing, with the ports a named follow-on (§15). The corpus the implementation owes is `tables/lists`:
 `list_empty` (an empty list beside a full one), `list_scalars`, `list_tables`,
 `list_shared` (two slots naming one node beside a null slot),
 `list_before_pointer` (the walk-order control above), `list_erased` (an erase

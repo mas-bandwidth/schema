@@ -22,6 +22,13 @@ func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refusePacketVoidArms(u, "cpp"); err != nil {
 		return nil, err
 	}
+	// the UNBOUNDED ARRAY is OWED in this target (docs/SPEC-TABLES.md §2.9):
+	// the reference lands the codec first and registers through
+	// registerListCarrier when it does. Until then it refuses one by name
+	// rather than emitting an array whose elements it never laid out.
+	if err := refuseLists(u, "cpp"); err != nil {
+		return nil, err
+	}
 	files, err := cpp.Generate(u)
 	if err != nil {
 		return nil, err
@@ -45,6 +52,5 @@ func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 func init() {
 	registerBuiltin(cppTarget{}, true, true, true, true)
 	registerOptionalArrayCarrier("cpp")
-	registerMapCarrier("cpp")  // the C++ reference carries the map codecs (docs/SPEC-TABLES.md §2.8)
-	registerListCarrier("cpp") // and the unbounded array's (docs/SPEC-TABLES.md §2.9)
+	registerMapCarrier("cpp") // the C++ reference carries the map codecs (docs/SPEC-TABLES.md §2.8)
 }

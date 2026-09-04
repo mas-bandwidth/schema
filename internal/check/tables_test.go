@@ -332,6 +332,54 @@ func TestTableRefusals(t *testing.T) {
 		{name: "a declaration named TableMapIndex is refused", want: "TABLE-wire runtime",
 			src: "package t\nenum TableMapIndex { A, B }\ntable Tab { x int32 }\n"},
 
+		// ---- UNBOUNDED ARRAYS (docs/SPEC-TABLES.md §2.9, §11) ----
+		//
+		// The element set is `[..N]T`'s exactly, so every refusal below is
+		// either the construct's own placement rule or the bounded array's
+		// own diagnostic met one spelling over.
+		{name: "a []T in a type body is refused by name", want: "an UNBOUNDED ARRAY is a table-only construct",
+			src: "package t\ntype P { xs []int32 }\n"},
+		{name: "a []T as a union arm is refused by name", want: "a []T is not an arm",
+			src: "package t\ntable E { a uint32 }\nunion U { xs []E }\ntable Tab { u U }\n"},
+		{name: "[..]T names []T as the fix", want: "[..]T is not the unbounded array",
+			src: "package t\ntable E { a uint32 }\ntable Tab { xs [..]E }\n"},
+		{name: "[Min..]T names []T as the fix", want: "[Min..]T is not the unbounded array",
+			src: "package t\ntable E { a uint32 }\ntable Tab { xs [0..]E }\n"},
+		{name: "?[]T is refused by name", want: "there is no ?[]T",
+			src: "package t\ntable E { a uint32 }\ntable Tab { xs ?[]E }\n"},
+		{name: "a default on a []T is refused by name", want: "a []T takes no specified default",
+			src: "package t\ntable Tab { xs []int32 = 0 }\n"},
+		{name: "a qualification on a []T is refused by name", want: "does not apply to an unbounded array",
+			src: "package t\ntable Tab { xs []int32 | max = 4 }\n"},
+		// the bounded spellings of the construct itself, and the element set's
+		// own four refusals, each on the bounded array's own diagnostic
+		{name: "[][]T is an array of arrays", want: "an array of arrays is not supported in v1",
+			src: "package t\ntable Tab { xs [][]int32 }\n"},
+		{name: "[..N][]T is an array of arrays", want: "an array of arrays is not supported in v1",
+			src: "package t\ntable Tab { xs [..4][]int32 }\n"},
+		{name: "[N][]T is an array of arrays", want: "an array of arrays is not supported in v1",
+			src: "package t\ntable Tab { xs [4][]int32 }\n"},
+		{name: "[]map takes the map's own bound refusal", want: "a map takes no array bound",
+			src: "package t\ntable Tab { xs []map[uint32]int32 }\n"},
+		{name: "[]*bytes takes the byte buffer's own array refusal", want: "an array of byte buffers is a named follow-on",
+			src: "package t\ntable Tab { xs []*bytes }\n"},
+		// a table that holds a [] of ITSELF by value closes a by-value cycle,
+		// and a []*Self is the ordinary legal recursion through a pointer
+		{name: "a [] of ITSELF closes a by-value cycle", want: "type composition cycle",
+			src: "package t\ntable Tab { xs []Tab }\n"},
+		{name: "a [] of a table that holds one closes a by-value cycle too", want: "type composition cycle",
+			src: "package t\ntable A { xs []B }\ntable B { ys []A }\n"},
+		// AN UNBOUNDED ARRAY CLAIMS THREE NAMES against its field, and the
+		// difference from the map's eight is the key on both sides
+		{name: "a declaration under the claimed Add name is refused", want: "TabXsAdd",
+			src: "package t\ntable TabXsAdd { a int32 }\ntable Tab { xs []int32 }\n"},
+		{name: "a declaration under the claimed Each name is refused", want: "TabXsEach",
+			src: "package t\ntype TabXsEach { a int32 }\ntable Tab { xs []int32 }\n"},
+		{name: "a declaration under the claimed Erase name is refused", want: "TabXsErase",
+			src: "package t\nenum TabXsErase { A, B }\ntable Tab { xs []int32 }\n"},
+		{name: "a declaration named TableList is refused", want: "TABLE-wire runtime",
+			src: "package t\nenum TableList { A, B }\ntable Tab { x int32 }\n"},
+
 		{name: "a pointer to an undeclared table", want: "undefined type",
 			src: "package t\ntable Tab { head *Ghost }\n"},
 		{name: "by-value recursion stays refused with pointers in the language",

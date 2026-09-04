@@ -34,6 +34,16 @@ func refuseLists(u *ir.Unit, target string) error {
 	if len(fields) == 0 {
 		return nil
 	}
+	if len(listTargets) == 0 {
+		// NO TARGET CARRIES IT YET (docs/SPEC-TABLES.md §2.9, backend status).
+		// The language takes the spelling and the tool's WIRE and TEXT halves
+		// carry it, so `pack` and `unpack` read and write one; a code
+		// generator that emitted a codec for it would emit one that never met
+		// an element array, so every target refuses by name until the C++
+		// reference lands the construct and registers here.
+		return fmt.Errorf("unit declares an unbounded array in a table closure (%s) — no code generator carries `[]T` yet: the language takes the spelling and the tool's `pack` and `unpack` read and write it, and the C++ reference lands the codec first (docs/SPEC-TABLES.md §2.9). Declare the array at a bound, [..N]T, which is the same bytes, and remove the bound when the reference carries it",
+			englishList(fields))
+	}
 	carry, flags := carriers(listTargets)
 	return fmt.Errorf("unit declares an unbounded array in a table closure (%s) — `[]T` is %s only today, and the %s form is a named follow-on; generate with %s, or declare the array at a bound, [..N]T, which is the same bytes (docs/SPEC-TABLES.md §2.9, §11, §15)",
 		englishList(fields), englishList(carry), target, englishList(flags))
