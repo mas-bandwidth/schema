@@ -203,7 +203,7 @@ producing native types, and comments invisible to the wire.
   output held by one corpus in CI, is the one none of the four makes.
 - **Tools.** `buf breaking`, `flatc --proto`, `capnp convert`. Schema's
   compile-time gate is first-party (`tables.baseline`); an importer from
-  `.proto` or `.fbs` is not declined and not built (#467).
+  `.proto` or `.fbs` is not declined and not built (#477).
 
 ## Where schema is ahead
 
