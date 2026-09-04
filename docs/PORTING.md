@@ -278,8 +278,9 @@ enum answered `undefined` before the guard was made symmetric.
 ### M6 — The variable class on the wire: a flat node table and an identity map
 
 **Method.** A pointered root packs as ONE flat node table under the reserved
-id `0xFFFF`, every node numbered depth-first in pre-order at first visit, and a
-pointer on the wire is a u32 node index under kind 17. The pack walk keeps an
+id `0xFFFFFFFFFFFFFFFF`, every node numbered depth-first in pre-order at first
+visit, and a pointer on the wire is a canonical LEB128 node index under kind
+17 (M20). The pack walk keeps an
 identity map from node address to index, so a node shared by two pointers is
 written once and a cycle is refused at an OPEN entry rather than by a depth
 cap. A fixed-class reader that has no variable class still carries kind 17 in
@@ -643,14 +644,16 @@ reads it back after the nodes allocated behind it and the bytes are gone.
 a field of that type, one level down (docs/SPEC-TABLES.md §2.6): the arm's
 payload is exactly the bytes a field puts after its own framing prefix, with
 the arm's `L` standing in for the field's own length where that kind has one
-and framing the fixed width where it does not. The arm id is the only
-discriminator — no per-arm kind byte rides — so the length is the whole of
-what a reader can check: a fixed-width arm whose `L` is not its declared
-width is a KIND MISMATCH, counted, the union left `None` and the parent
-reading on past `L`; a length-shaped arm whose payload is damaged inside its
-own `L` is `malformed` with the same outcome; an arm whose payload is a body
-ends at its terminator or it is damage. An arm with NO PAYLOAD takes no
-storage: the tag alone is the value, `L = 0` on the wire, `null` in the
+and framing the fixed width where it does not. **AN ARM HEADER IS A FIELD
+HEADER** (M20): the arm id reference, the arm's own KIND byte, `L`, then the
+payload — so a retyped arm is an ordinary KIND MISMATCH, counted, the union
+left `None` and the parent reading on past `L`, exactly as a retyped field
+is. What the length then checks is framing alone: a fixed-width arm whose `L`
+is not its kind's width, and a length-shaped arm whose payload is damaged
+inside its own `L`, are each `malformed` with that same outcome, and an arm
+whose payload is a body ends at its terminator or it is damage. An arm with
+NO PAYLOAD takes no storage: the tag alone is the value, kind `32` with
+`L = 0` on the wire, `null` in the
 text. Arm storage sits at offsets from the union's own storage base with the
 tag at 0, and the descriptors carry the arm's `field` row and its `size`, so
 one generic walker reaches an arm exactly as it reaches a field. The shape to
@@ -679,8 +682,8 @@ arm's length check is removed from the emitter, and the fuzzer's arm-length
 pass (every fixed width the closed set has, and zero) turns the leg's report
 red against the engine's. `tables-wire-fuzz-arm-terminator-negative-control`
 — the arm body's consumed-equals-`L` check is removed, and the fuzzer's
-terminator pass, which writes the u16 zero ahead of a payload's last two
-bytes, decodes a body that ends inside its own length.
+terminator pass, which moves the one-byte zero reference ahead of the
+payload's last byte, decodes a body that ends inside its own length.
 
 **Targets:** wire-fuzz-arm-width-negative-control wire-fuzz-arm-terminator-negative-control
 
