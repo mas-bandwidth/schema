@@ -139,6 +139,17 @@ turned every edit to an author's prose into a coordinated redeploy, while a
 projection carries the facts the bytes depend on and a doc comment is not
 one of them (Excluded, below).
 
+**Compiler status for that sentence: NO COMMENT KIND IS READ YET.** The
+`///` block is specified ahead of its implementation, on the terms
+SPEC-TABLES.md §3.3 and §6.6 take. The scanner lexes a `///` line as the
+ordinary `//` line comment it is and discards it, no doc text reaches the IR
+or a descriptor column (SPEC-TABLES.md §8.1), and none of §4.1's
+misplacement refusals fires, so a `///` block above `package` and a `///`
+trailing a field both compile today. What this paragraph says about the
+PROJECTION holds either way, because a comment is excluded from it whether or
+not the compiler reads one. Owed as schema#523 ruling 4, and this line is
+deleted by the implementation PR that lands the behavior.
+
 **Included — each fact moves the wire, for every declaration the closure
 below carries:** the package; every type's field order; field NAMES; type
 kind, width and signedness; declared bounds; array kind and bounds;
@@ -978,6 +989,20 @@ type Quat | quat4
 - The architecture: types on one side; a layer that defines the needed
   actions for those types on the other. v1 ships the types; each schema
   declares its own, and each application's actions bind to them by claiming.
+
+**Front-end status: ONE LINE KIND CARRIES A TAG TODAY.** The rule at every
+line kind is specified ahead of its implementation, on the terms
+SPEC-TABLES.md §3.3 and §6.6 take. What the tree carries is a tag on a
+`type` DECLARATION alone, gathered into `ir.Struct.Tags` and emitted as the
+inert comment above. Every other line kind refuses one, each under a
+diagnostic written for a different rule: a field's pipe draws "unknown
+attribute ... the vocabulary is typed and closed per compiler version", a
+`table` and a `union` declaration draw "takes no qualification", a `const`
+draws "a constant takes no qualification, and | is never an operator", a
+union arm's pipe draws "expected a field type", and an enum or flags variant
+carrying one does not parse at all. Owed as schema#523 ruling 4, together
+with the descriptor columns it feeds (SPEC-TABLES.md §8.1), and this line is
+deleted by the implementation PR that lands the behavior.
 
 ### Native type mapping — `cpp_native` / `cpp_include`
 
