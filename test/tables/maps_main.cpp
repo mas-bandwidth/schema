@@ -665,6 +665,114 @@ static void test_load_measure_depth()
     free( region );
 }
 
+// ---- the TEXT form (docs/SPEC-TABLES.md §2.8, §16) ----
+
+static void test_text()
+{
+    FleetBuilder b;
+    build_fleet( b, true );
+    CHECK( b.Lock() );
+    const Fleet * locked = b.AsConst();
+
+    const int64_t need = FleetToJsonMeasure( locked );
+    CHECK( need > 0 );
+    char * text = (char *) calloc( 1, (size_t) need + 1 );
+    const int64_t written = FleetToJson( locked, text, need );
+    CHECK_EQ( written, need );
+
+    // A PLAIN JSON OBJECT KEYED BY THE KEY, in ASCENDING key order, with an
+    // integer key quoted — so `unpack` then `pack` is byte-stable and a diff of
+    // two texts is a diff of two maps.
+    CHECK( strstr( text, "\"bomber\"" ) != NULL );
+    CHECK( strstr( text, "\"fighter\"" ) != NULL );
+    CHECK( strstr( text, "\"7\"" ) != NULL );   // an integer key, quoted
+    CHECK( strstr( text, "\"12\"" ) != NULL );
+    CHECK( strstr( text, "\"-3\"" ) != NULL );  // and a SIGNED one
+    const char * bomber = strstr( text, "\"bomber\"" );
+    const char * fighter = strstr( text, "\"fighter\"" );
+    CHECK( bomber != NULL && fighter != NULL && bomber < fighter ); // ASCENDING
+
+    // and the text reads back: one instance, one text, both ways
+    FleetBuilder into;
+    TableReport report;
+    CHECK( FleetFromJson( into, text, written, &report ) );
+    CHECK_EQ( report.unknown, 0 );
+    CHECK_EQ( report.kind_mismatch, 0 );
+    CHECK_EQ( report.clamped, 0 );
+    CHECK_EQ( report.duplicate, 0 );
+    CHECK( !report.malformed );
+    CHECK_EQ( into.GetRoot()->ships.count, 3 );
+    CHECK_EQ( into.GetRoot()->by_id.count, 2 );
+    CHECK_EQ( into.GetRoot()->tiers.count, 2 );
+
+    // the ROUND TRIP is byte-stable: the same instance, the same text
+    CHECK( into.Lock() );
+    const int64_t again_bytes = FleetToJsonMeasure( into.AsConst() );
+    char * again = (char *) calloc( 1, (size_t) again_bytes + 1 );
+    CHECK_EQ( FleetToJson( into.AsConst(), again, again_bytes ), again_bytes );
+    CHECK_EQ( again_bytes, written );
+    CHECK( memcmp( again, text, (size_t) written ) == 0 );
+    // and so is the WIRE, which is what says the text carried the map whole
+    static uint8_t from_text[1u << 16];
+    CHECK_EQ( FleetSave( into.AsConst(), from_text, sizeof( from_text ) ), bytes_full );
+    CHECK( memcmp( from_text, wire_full, (size_t) bytes_full ) == 0 );
+    free( again );
+    free( text );
+
+    // A REPEATED KEY is LAST-WINS and counted duplicate, the object rule
+    // applied inside the map; an EMPTY OBJECT is an empty map; a key past the
+    // bound drops its entry and counts clamped; a key outside the key kind's
+    // range is kind_mismatch for that entry, dropped and never clamped.
+    struct Row { const char * text; int32_t count; int32_t dup; int32_t clamp; int32_t mismatch; };
+    const Row rows[] = {
+        { "{\"entries\":{},\"after\":5}", 0, 0, 0, 0 },
+        { "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{\"count\":2}},\"after\":5}", 1, 1, 0, 0 },
+        { "{\"entries\":{\"aaaaaaaaaaaa\":{\"count\":1}},\"after\":5}", 0, 0, 1, 0 },
+    };
+    for ( int i = 0; i < 3; i++ )
+    {
+        RowBuilder rb;
+        TableReport r;
+        CHECK( RowFromJson( rb, rows[i].text, (int64_t) strlen( rows[i].text ), &r ) );
+        CHECK_EQ( rb.GetRoot()->entries.count, rows[i].count );
+        CHECK_EQ( r.duplicate, rows[i].dup );
+        CHECK_EQ( r.clamped, rows[i].clamp );
+        CHECK_EQ( r.kind_mismatch, rows[i].mismatch );
+        CHECK_EQ( rb.GetRoot()->after, 5 );
+    }
+    {
+        // the duplicate's value is the LAST one, whole
+        const char * t = "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{}}}";
+        RowBuilder rb;
+        TableReport r;
+        CHECK( RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK_EQ( rb.GetRoot()->entries.count, 1 );
+        CHECK_EQ( RowEntriesFind( rb.arena, rb.GetRoot()->entries, "aa" )->count, 0 );
+    }
+    {
+        // AN INTEGER KEY IS READ BY §16.2's RULE AND BY NOTHING ELSE: "2.0" is
+        // the integer 2 and "1e3" is 1000, and a value outside the kind's
+        // range is kind_mismatch for that entry, dropped and never clamped.
+        const char * t = "{\"entries\":{\"2.0\":{\"count\":7},\"1e3\":{\"count\":8},\"99999999999\":{\"count\":9}}}";
+        WideRowBuilder rb;
+        TableReport r;
+        CHECK( WideRowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK_EQ( rb.GetRoot()->entries.count, 2 );
+        CHECK_EQ( r.kind_mismatch, 1 );
+        CHECK_EQ( r.clamped, 0 );
+        CHECK( WideRowEntriesFind( rb.arena, rb.GetRoot()->entries, (uint32_t) 2 ) != NULL );
+        CHECK( WideRowEntriesFind( rb.arena, rb.GetRoot()->entries, (uint32_t) 1000 ) != NULL );
+    }
+    {
+        // a MALFORMED key stops the read where §16.1's rule stops it
+        const char * t = "{\"entries\":{\"nope\":{\"count\":1}}}";
+        WideRowBuilder rb;
+        TableReport r;
+        CHECK( !WideRowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.malformed );
+    }
+}
+
 int main()
 {
     test_writer();
@@ -673,6 +781,7 @@ int main()
     test_reader();
     test_key_kind();
     test_load_measure_depth();
+    test_text();
 
     if ( failures != 0 )
     {

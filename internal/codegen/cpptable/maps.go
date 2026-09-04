@@ -745,6 +745,30 @@ inline bool TableWireExtentKeyed( const uint8_t * body, int64_t length, int64_t 
     return true;
 }
 
+// ---- the TEXT form's placement (docs/SPEC-TABLES.md §2.8, §16) ----
+//
+// The text is a plain JSON object keyed by the KEY, and the generic walk fills
+// it through the ENTRY'S OWN descriptor — so all it needs from here is one
+// entry at one key, handed back at its defaults. It is the builder's Insert
+// with the ENTRY returned rather than its value, because the walk writes the
+// value through a field row and not through a typed pointer.
+template <typename Entry, typename Key>
+inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key key )
+{
+    if ( worker.arena == NULL ) { return NULL; }
+    Entry * found = TableMapScan( *worker.arena, map, key );
+    if ( found != NULL )
+    {
+        TableResetMapValue( *found ); // a repeated key is LAST-WINS, whole
+        return found;
+    }
+    TableMapHead * head = TableMapReach( worker, map );
+    if ( head == NULL ) { return NULL; }
+    Entry * entry = TableMapAppend( worker, head, map );
+    if ( entry != NULL ) { TableReset( *entry ); }
+    return entry;
+}
+
 // ---- the OPTIONAL RUNTIME INDEX (§2.8) ----
 //
 // Open addressing with LINEAR PROBING over the sorted array, built AT LOAD for
@@ -1807,4 +1831,35 @@ func onlyMapFields(st *ir.Struct) bool {
 		}
 	}
 	return len(st.Fields) > 0
+}
+
+// mapColumn is the four descriptor columns a MAP field carries
+// (docs/SPEC-TABLES.md §2.8, §16): the generated entry's descriptor, and the
+// three thunks the ONE text walk cannot spell for itself. Empty in a unit that
+// declares no map, so a map-free unit's descriptors are what they always were.
+func (g *tableGen) mapColumn(f *ir.Field) string {
+	if !g.anyMap {
+		return ""
+	}
+	if !f.IsMap() {
+		return "NULL, NULL, NULL, NULL, "
+	}
+	entry := mapEntryOf(f)
+	n := entry.Name
+	hold := fmt.Sprintf("TableMap<%s>", n)
+	count := fmt.Sprintf("[]( const void * slot ) -> int32_t { return ( (const %s *) slot )->count; }", hold)
+	at := fmt.Sprintf("[]( const void * slot, int32_t index ) -> const void * { return (const void *) ( ( (const %s *) slot )->Entries() + index ); }", hold)
+	var insert string
+	if mapKeyIsString(f) {
+		insert = fmt.Sprintf("[]( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * "+
+			"{ if ( key == NULL || key_length > k%sKeyBound ) { return NULL; } "+ // KEYS NEVER CLAMP
+			"%s * placed = TableMapPlace( worker, *(%s *) slot, key ); "+
+			"if ( placed != NULL ) { TableEntrySetKey( *placed, key, key_length ); } return (void *) placed; }", n, n, hold)
+	} else {
+		typ, _ := g.cppFieldType(ir.MapKeyField(f).Type)
+		insert = fmt.Sprintf("[]( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * "+
+			"{ %s * placed = TableMapPlace( worker, *(%s *) slot, (%s) key_value ); "+
+			"if ( placed != NULL ) { TableEntrySetKey( *placed, (%s) key_value ); } return (void *) placed; }", n, hold, typ, typ)
+	}
+	return fmt.Sprintf("&%sTableInfo, %s, %s, %s, ", n, count, at, insert)
 }

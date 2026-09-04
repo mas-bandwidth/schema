@@ -2232,6 +2232,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-wire-fuzz-negative-control N=0
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-maps
+	$(MAKE) tables-json-map-walk
 	$(MAKE) tables-maps-negative-controls
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-graph-walk
@@ -2335,6 +2336,31 @@ tables-maps: build/schema_test_maps build/schema_test_maps_asan
 	./build/schema_test_maps
 	./build/schema_test_maps_asan
 
+# THE MAP-WALK GATE (docs/SPEC-TABLES.md §2.8, §16): the map's half of the text
+# form is emitted only in a unit that declares one, and it is ONE half too —
+# the same bytes in every map-bearing .cpp of the corpus, on the walk's own
+# terms — and none of it reaches a map-free unit, which is the zero-cost
+# property (§2.2) holding for the text form.
+.PHONY: tables-json-map-walk
+tables-json-map-walk: build/tables-generated/.stamp
+	@rm -rf build/json-map-walk && mkdir -p build/json-map-walk
+	@for f in build/tables-generated/maps/*Table.cpp; do \
+		out=build/json-map-walk/$$(echo $$f | tr / _); \
+		awk '/---- json map walk: begin ----/,/---- json map walk: end ----/' $$f > $$out; \
+		if [ ! -s $$out ]; then echo "MAP-WALK GATE FAILED: no map half in $$f"; exit 1; fi; \
+	done
+	@first=""; for f in build/json-map-walk/*; do \
+		if [ -z "$$first" ]; then first=$$f; else \
+			cmp -s $$first $$f || { echo "MAP-WALK GATE FAILED: the map half in $$f is not the map half in $$first"; exit 1; }; \
+		fi; \
+	done
+	@for f in build/tables-generated/examples/*Table.cpp build/tables-generated/pointers/*Table.cpp; do \
+		if grep -q "json map walk: begin" $$f; then \
+			echo "MAP-WALK GATE FAILED: the map half reached the map-free unit $$f"; exit 1; \
+		fi; \
+	done
+	@echo "tables map-walk gate: one map half, byte-identical in $$(ls build/json-map-walk | wc -l | tr -d ' ') map-bearing .cpp files, and none in a map-free one"
+
 # ---- the NEGATIVE CONTROLS §2.8 names ------------------------------------
 #
 # Each names the sabotage, patches the GENERATOR through a Go overlay,
@@ -2420,6 +2446,14 @@ tables-maps-fit-negative-control: bin/schema build/tables-generated/.stamp
 tables-maps-depth-negative-control: bin/schema build/tables-generated/.stamp
 	$(call map_negative_control,depth,'s@if ( inner == NULL ) { return true; }@return true; // SABOTAGED@',internal/codegen/cpptable/maps.go,summing the extent at one depth only left the map gate GREEN)
 
+# TOJSON WRITES ENTRIES IN ASCENDING KEY ORDER, so unpack then pack is
+# byte-stable and a diff of two texts is a diff of two maps (§2.8, §17.2). The
+# instance built out of key order meets it, and the round trip's byte compare
+# goes red if the writer walks the entries any other way.
+.PHONY: tables-maps-text-order-negative-control
+tables-maps-text-order-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,textorder,'s@const void \* entry = f->map_at( slot, i );@const void * entry = f->map_at( slot, count - 1 - i );@',internal/codegen/cpptable/json.go,writing a map text out of key order left the map gate GREEN)
+
 .PHONY: tables-maps-negative-controls
 tables-maps-negative-controls: tables-maps-sort-negative-control \
 	tables-maps-dead-entry-negative-control \
@@ -2428,7 +2462,8 @@ tables-maps-negative-controls: tables-maps-sort-negative-control \
 	tables-maps-key-kind-negative-control \
 	tables-maps-clamp-negative-control \
 	tables-maps-fit-negative-control \
-	tables-maps-depth-negative-control
+	tables-maps-depth-negative-control \
+	tables-maps-text-order-negative-control
 
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin

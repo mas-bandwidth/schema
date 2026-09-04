@@ -26,11 +26,18 @@ import (
 // with three stubs no field ever reaches, and a pointered unit answers with the
 // graph half — the builder's reader, the region's writer and the `&node` map —
 // which carries its own gate across the pointered units of the corpus.
-func tableJsonWalk(pkg string, variable bool) string {
+func tableJsonWalk(pkg string, variable bool, anyMap bool) string {
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_JSON"
 	adapters := tableJsonFixedAdapters
 	if variable {
 		adapters = tableJsonGraphSource
+	}
+	// the MAP half, on the pointer half's own terms (docs/SPEC-TABLES.md §2.8):
+	// a map makes its holder variable-length, so the real half always follows
+	// the graph half it names, and a map-free unit carries the stub.
+	mapAdapters := tableJsonNoMapAdapters
+	if anyMap {
+		mapAdapters = tableJsonMapAdapters
 	}
 	// The include guard is LOAD-BEARING in a .cpp, which is not where a reader
 	// expects to find one — hence the comment riding with it. It is what lets
@@ -49,6 +56,7 @@ func tableJsonWalk(pkg string, variable bool) string {
 		tableJsonAdapterDeclarations +
 		tableJsonWalkSource +
 		"\n" + adapters +
+		"\n" + mapAdapters +
 		"\n} // namespace " + pkg + "\n\n#endif // " + guard + "\n"
 }
 
@@ -78,6 +86,21 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
 // skips the value whole, as it skips everything else it does not place.
 inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t depth );
 
+// ---- the map adapters (docs/SPEC-TABLES.md §2.8, §16) ----
+//
+// A MAP is the other construct the walk cannot walk alone: its entries live
+// behind a TableMap<Entry> this walk has no name for, reading one needs the
+// builder's arena, and neither exists in a unit that declares no map. Same
+// shape as the pointer's three — declared here, defined after the walk by
+// whichever half the unit carries.
+
+// a map field: its descriptor carries the generated ENTRY's
+inline bool TableJsonIsMap( const TableFieldInfo * f );
+// the map as a plain JSON object keyed by the KEY, in ASCENDING key order
+inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth );
+// that object back into the slot, in whatever order the text gives it
+inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth );
+
 `
 
 // tableJsonFixedAdapters answers for a unit that declares no pointer: no field
@@ -106,6 +129,259 @@ inline bool TableJsonWritePointer( TableJsonOut &, const void *, const TableFiel
 inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t depth )
 {
     return TableJsonSkipValue( in, depth + 1 );
+}
+`
+
+// tableJsonMapAdapters is the map half (docs/SPEC-TABLES.md §2.8, §16): the
+// text is a plain JSON object keyed by the KEY, the same shape an enum-keyed
+// array already takes. It is emitted ONLY into a unit that declares a map, and
+// it is one half — the same bytes in every map-bearing .cpp — which is the
+// zero-cost property (§2.2) holding for the text form.
+const tableJsonMapAdapters = `// ---- json map walk: begin ----
+
+inline bool TableJsonIsMap( const TableFieldInfo * f ) { return f->entry != NULL; }
+
+// the entry's two rows: fields[0] IS the key and fields[1] IS the value, which
+// is what makes a user's own table of pairs the same bytes (§2.8)
+inline const TableFieldInfo * TableJsonMapKeyField( const TableFieldInfo * f ) { return &f->entry->fields[0]; }
+inline const TableFieldInfo * TableJsonMapValueField( const TableFieldInfo * f ) { return &f->entry->fields[1]; }
+
+inline bool TableJsonMapKeyIsString( const TableFieldInfo * key ) { return key->kind == 12; }
+inline bool TableJsonMapKeySigned( const TableFieldInfo * key ) { return key->kind >= 2 && key->kind <= 5; }
+
+// AN INTEGER KEY IS THE INTEGER'S DECIMAL SPELLING, QUOTED, because a JSON
+// object's keys are strings. Written digit by digit so no locale can move it.
+inline void TableJsonWriteMapIntegerKey( TableJsonOut & out, const void * storage, const TableFieldInfo * key )
+{
+    uint64_t magnitude = 0;
+    bool negative = false;
+    if ( TableJsonMapKeySigned( key ) )
+    {
+        int64_t value = 0;
+        switch ( key->kind )
+        {
+            case 2: value = (int64_t) *(const int8_t *) storage; break;
+            case 3: value = (int64_t) *(const int16_t *) storage; break;
+            case 4: value = (int64_t) *(const int32_t *) storage; break;
+            default: value = *(const int64_t *) storage; break;
+        }
+        negative = value < 0;
+        magnitude = negative ? ( ~(uint64_t) value ) + 1 : (uint64_t) value;
+    }
+    else
+    {
+        switch ( key->kind )
+        {
+            case 6: magnitude = (uint64_t) *(const uint8_t *) storage; break;
+            case 7: magnitude = (uint64_t) *(const uint16_t *) storage; break;
+            case 8: magnitude = (uint64_t) *(const uint32_t *) storage; break;
+            default: magnitude = *(const uint64_t *) storage; break;
+        }
+    }
+    char digits[24];
+    int32_t at = (int32_t) sizeof( digits );
+    do { digits[--at] = (char) ( '0' + ( magnitude % 10 ) ); magnitude /= 10; } while ( magnitude != 0 );
+    if ( negative ) { digits[--at] = '-'; }
+    TableJsonWriteString( out, digits + at, (int32_t) sizeof( digits ) - at );
+}
+
+inline void TableJsonWriteMapKey( TableJsonOut & out, const void * entry, const TableFieldInfo * key )
+{
+    const uint8_t * storage = (const uint8_t *) entry + key->offset;
+    if ( TableJsonMapKeyIsString( key ) )
+    {
+        // A STRING KEY IS THE STRING (§2.8): every JSON key of a map object is
+        // a KEY OF THE MAP and none is a field key, so the ` + "`&`" + ` prefix §16.7
+        // reserves for field keys is ordinary data here.
+        TableJsonWriteString( out, (const char *) storage, *(const int32_t *) ( (const uint8_t *) entry + key->count_offset ) );
+        return;
+    }
+    TableJsonWriteMapIntegerKey( out, (const void *) storage, key );
+}
+
+// ToJson WRITES ENTRIES IN ASCENDING KEY ORDER, so unpack then pack is
+// byte-stable and a diff of two texts is a diff of two maps (§2.8, §17.2).
+// A region holds them in that order already, so this is the array in place.
+inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth )
+{
+    const int32_t count = f->map_count( slot );
+    if ( count == 0 ) { out.raw( "{}", 2 ); return true; }
+    const TableFieldInfo * key = TableJsonMapKeyField( f );
+    const TableFieldInfo * value = TableJsonMapValueField( f );
+    out.put( '{' );
+    for ( int32_t i = 0; i < count; i++ )
+    {
+        if ( i > 0 ) { out.put( ',' ); }
+        out.line( depth + 1 );
+        const void * entry = f->map_at( slot, i );
+        TableJsonWriteMapKey( out, entry, key );
+        out.raw( ": ", 2 );
+        if ( !TableJsonWriteField( out, entry, value, depth + 1 ) ) { return false; }
+    }
+    out.line( depth );
+    out.put( '}' );
+    return true;
+}
+
+// AN INTEGER KEY IS READ BY §16.2's INTEGER RULE AND BY NOTHING ELSE, so
+// "2.0" and "1e3" are the integers 2 and 1000 and "-0" is zero. The token is
+// walked as a JSON number over its own bytes; a token that rule calls
+// malformed makes the KEY malformed, and a genuinely fractional value, or one
+// outside the key kind's range, is kind_mismatch for that entry.
+inline bool TableJsonMapKeyValue( const char * token, int32_t length, const TableFieldInfo * key,
+                                  int64_t & value, bool & fits )
+{
+    fits = false;
+    TableReport scratch;
+    TableJsonIn probe = { token, (int64_t) length, 0, &scratch, false, NULL };
+    bool integral = false;
+    if ( !TableJsonWalkNumber( probe, &integral ) ) { return false; }
+    if ( probe.pos != (int64_t) length ) { return false; } // trailing bytes: not a number
+    if ( !integral )
+    {
+        const double d = TableJsonTokenDouble( token, length, false );
+        if ( !TableJsonFinite( d ) ) { return true; }      // a value no key kind holds
+        const double whole = d < 0 ? -d : d;
+        if ( whole != (double) (int64_t) whole ) { return true; } // genuinely fractional
+    }
+    bool saturated = false;
+    const bool is_signed = TableJsonMapKeySigned( key );
+    value = integral ? TableJsonTokenInteger( token, length, is_signed, &saturated )
+                     : (int64_t) TableJsonTokenDouble( token, length, false );
+    if ( saturated ) { return true; } // outside every width: kind_mismatch, never clamped
+    switch ( key->kind )
+    {
+        case 2: fits = value >= -128 && value <= 127; break;
+        case 3: fits = value >= -32768 && value <= 32767; break;
+        case 4: fits = value >= -2147483647 - 1 && value <= 2147483647; break;
+        case 5: fits = true; break;
+        case 6: fits = value >= 0 && value <= 255; break;
+        case 7: fits = value >= 0 && value <= 65535; break;
+        case 8: fits = value >= 0 && (uint64_t) value <= 4294967295ull; break;
+        default: fits = integral; break; // uint64: the token's own magnitude
+    }
+    return true;
+}
+
+// FromJson READS KEYS IN WHATEVER ORDER THE TEXT GIVES THEM. A repeated key is
+// last-wins and counted duplicate, the object rule (§16.2) applied inside the
+// map. An empty object is an empty map, and null is kind_mismatch.
+inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth )
+{
+    TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
+    if ( graph == NULL ) { in.report->malformed = true; in.bad = true; return false; }
+    if ( TableJsonPeek( in ) != '{' ) { in.bad = true; return false; }
+    if ( depth + 1 > kTableJsonMaxDepth ) { in.bad = true; return false; }
+    in.pos++;
+    const TableFieldInfo * key = TableJsonMapKeyField( f );
+    const TableFieldInfo * value = TableJsonMapValueField( f );
+    const char shape = TableJsonShape( value );
+    for ( ;; )
+    {
+        char c = TableJsonPeek( in );
+        if ( c == '}' ) { in.pos++; break; }
+        if ( c == 0 ) { in.bad = true; return false; }
+        char token[kTableJsonMaxKey];
+        int32_t token_length = 0;
+        if ( !TableJsonScanString( in, token, kTableJsonMaxKey - 1, &token_length ) ) { return false; }
+        token[token_length] = 0;
+        if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
+        in.pos++;
+        int64_t key_value = 0;
+        bool place = true;
+        if ( !TableJsonMapKeyIsString( key ) )
+        {
+            bool fits = false;
+            if ( !TableJsonMapKeyValue( token, token_length, key, key_value, fits ) )
+            {
+                // A MALFORMED KEY STOPS THE READ where §16.1's rule stops it,
+                // with the instance holding what was placed before the stop.
+                in.report->malformed = true;
+                in.bad = true;
+                return false;
+            }
+            if ( !fits ) { in.report->kind_mismatch++; place = false; }
+        }
+        const int32_t before = f->map_count( (const void *) slot );
+        void * entry = place ? f->map_insert( *graph->worker, slot, token, token_length, key_value ) : NULL;
+        if ( place && entry == NULL )
+        {
+            // A KEY LONGER THAN N DROPS ITS ENTRY AND COUNTS clamped, the
+            // wire's rule, because a clamped key is a merged entry (§2.8).
+            in.report->clamped++;
+        }
+        else if ( entry != NULL && f->map_count( (const void *) slot ) == before )
+        {
+            in.report->duplicate++; // last-wins, the object rule inside the map
+        }
+        const char got = TableJsonValueShape( in );
+        if ( entry == NULL )
+        {
+            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+        }
+        else if ( value->kind == 17 && !value->is_array )
+        {
+            // A POINTER VALUE IS SHARED EXACTLY AS A POINTER FIELD IS (§2.8):
+            // null is a null slot, an object is the pointee in place or an
+            // &node reference to one (§16.7), anything else is the wrong shape —
+            // the same three the field-key loop gives a pointer field, because
+            // an entry's value IS a field line.
+            if ( got == 'z' )
+            {
+                if ( !TableJsonLiteral( in, "null" ) ) { return false; }
+                TableJsonSetRaw( (uint8_t *) entry + value->offset, value->elem_size, 0 );
+            }
+            else if ( got != shape )
+            {
+                in.report->kind_mismatch++;
+                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            }
+            else if ( !TableJsonReadPointer( in, (uint8_t *) entry + value->offset, value, depth + 1 ) )
+            {
+                return false;
+            }
+        }
+        else if ( got != shape )
+        {
+            in.report->kind_mismatch++;
+            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+        }
+        else if ( !TableJsonReadField( in, entry, value, depth + 1 ) )
+        {
+            return false;
+        }
+        c = TableJsonPeek( in );
+        if ( c == ',' ) { in.pos++; continue; } // a trailing comma is accepted
+        if ( c == '}' ) { in.pos++; break; }
+        in.bad = true;
+        return false;
+    }
+    return true;
+}
+
+// ---- json map walk: end ----
+`
+
+// tableJsonNoMapAdapters answers for a unit that declares no MAP: no field
+// carries an entry descriptor, so the classifier is a constant false and the
+// two halves are unreachable and say so.
+const tableJsonNoMapAdapters = `// ---- this unit declares no map ----
+//
+// No field carries a generated entry, so the classifier below is a constant
+// and the two halves are never reached (docs/SPEC-TABLES.md §2.8).
+
+inline bool TableJsonIsMap( const TableFieldInfo * ) { return false; }
+
+inline bool TableJsonWriteMap( TableJsonOut &, const void *, const TableFieldInfo *, int32_t )
+{
+    return false;
+}
+
+inline bool TableJsonReadMap( TableJsonIn & in, void *, const TableFieldInfo *, int32_t )
+{
+    in.report->malformed = true;
+    in.bad = true;
+    return false;
 }
 `
 
@@ -481,6 +757,7 @@ inline bool TableJsonIsEnum( const TableFieldInfo * f )
 
 inline char TableJsonShape( const TableFieldInfo * f )
 {
+    if ( TableJsonIsMap( f ) ) return 'o';     // a MAP: an object keyed by the KEY (§2.8)
     if ( f->kind == 12 ) return 's';           // string
     if ( TableJsonIsBytes( f ) ) return 's';   // bytes: base64
     if ( TableJsonIsKeyed( f ) ) return 'o';   // an object keyed by variant NAME
@@ -930,6 +1207,10 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
 inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const TableFieldInfo * f, int32_t depth )
 {
     const uint8_t * storage = (const uint8_t *) base + f->offset;
+    if ( TableJsonIsMap( f ) )
+    {
+        return TableJsonWriteMap( out, (const void *) storage, f, depth );
+    }
     if ( f->kind == 17 && !f->is_array )
     {
         return TableJsonWritePointer( out, storage, f, depth );
@@ -1933,6 +2214,10 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
 inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldInfo * f, int32_t depth )
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
+    if ( TableJsonIsMap( f ) )
+    {
+        return TableJsonReadMap( in, (void *) storage, f, depth );
+    }
     if ( f->kind == 12 )
     {
         int32_t length = 0;

@@ -728,18 +728,19 @@ with no allocation and no pointer chase, and a byte-stable image because a
 sorted array of records has exactly one. The wire pays twelve bytes an entry
 for the unspent kind, which is what keeps the `[..N]Pair` migration.
 
-**Negative control.** Eight, through I2's overlay sabotage, each one §2.8 names
+**Negative control.** Nine, through I2's overlay sabotage, each one §2.8 names
 and each turning `test/tables/maps_main.cpp` red on a CHECK: the writer
 emitting insertion order, `Save` emitting a dead entry, the ascending check
 dropped, the duplicate rule dropped, the key-kind rule decoding anyway, the
 reader clamping a key instead of dropping its entry, the `N`-against-`L` fit
-check dropped, and `LoadMeasure` summing the extent at one depth only.
+check dropped, `LoadMeasure` summing the extent at one depth only, and `ToJson`
+writing the entries in any order but ascending.
 
-**Targets:** maps, maps-sort-negative-control, maps-dead-entry-negative-control, maps-ascending-negative-control, maps-duplicate-negative-control, maps-key-kind-negative-control, maps-clamp-negative-control, maps-fit-negative-control, maps-depth-negative-control
+**Targets:** maps, json-map-walk, maps-sort-negative-control, maps-dead-entry-negative-control, maps-ascending-negative-control, maps-duplicate-negative-control, maps-key-kind-negative-control, maps-clamp-negative-control, maps-fit-negative-control, maps-depth-negative-control, maps-text-order-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-maps` `tables-maps-negative-controls` | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
+| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
 
 ### I1 — The independent allocation gate
 

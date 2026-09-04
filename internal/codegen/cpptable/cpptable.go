@@ -319,7 +319,7 @@ struct TableKeyed
 // same way would be a redefinition.
 func tableInlineMacro(pkg string) string { return strings.ToUpper(pkg) + "_TABLE_INLINE" }
 
-func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool) string {
+func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyMap bool) string {
 	keyedStorage := ""
 	if anyKeyed {
 		keyedStorage = tableKeyedStorage
@@ -329,6 +329,25 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool) string {
 	// the two pointer-era descriptor members exist only in a unit that HAS
 	// pointers: a unit of value-only tables emits the descriptor surface it
 	// always emitted, to the byte (docs/SPEC-TABLES.md §2, the zero-cost gate)
+	// the MAP columns (docs/SPEC-TABLES.md §2.8, §16), emitted only into a unit
+	// that declares one: the generated ENTRY's descriptor, whose two fields
+	// ARE the key and the value, and the three thunks the ONE walk cannot
+	// spell for itself because TableMap<Entry> is a type it has no name for.
+	mapFieldMember := ""
+	if anyMap {
+		mapFieldMember = "\n    // a MAP (docs/SPEC-TABLES.md §2.8): the generated ENTRY's descriptor —\n" +
+			"    // fields[0] is the key and fields[1] the value — and the three the ONE\n" +
+			"    // text walk cannot spell for itself, because TableMap<Entry> is a type\n" +
+			"    // it has no name for. NULL on every field that is not a map.\n" +
+			"    const TableTypeInfo * entry;\n" +
+			"    int32_t ( * map_count )( const void * slot );\n" +
+			"    const void * ( * map_at )( const void * slot, int32_t index );\n" +
+			"    // place one entry BY KEY and hand back the entry, at its defaults: a\n" +
+			"    // string key comes in as the bytes and the length, an integer key as\n" +
+			"    // the value, and NULL is NOT INSERTED — a key past the bound, or an\n" +
+			"    // arena that could not carve another segment.\n" +
+			"    void * ( * map_insert )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );"
+	}
 	pointerFieldMember, pointerTypeMember, pointerForward := "", "", ""
 	if anyVariable {
 		pointerForward = "// the arena's allocation front, defined with the variable-length runtime\n" +
@@ -483,7 +502,7 @@ struct TableWideRange
     // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
     // a function pointer at compile time; the arms themselves are a static
     // inside it). NULL for every other kind.
-    const TableUnionInfo * (*arms)();
+    const TableUnionInfo * (*arms)();` + mapFieldMember + `
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
 };
 
@@ -763,7 +782,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			fmt.Fprintf(&h, "#include \"%s\"\n", n)
 		}
 		h.WriteString("\n")
-		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed))
+		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyMap))
 		if anyVariable {
 			h.WriteString("\n")
 			h.WriteString(tableArenaRuntime(u.Package, anyMap))
@@ -814,7 +833,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			c.WriteString("#include <stdio.h> // the text form: number formatting\n")
 			c.WriteString("#include <stdlib.h> // the text form: exact number conversion\n")
 			c.WriteString("#include <locale.h> // the text form: the runtime's decimal point\n\n")
-			c.WriteString(tableJsonWalk(u.Package, anyVariable))
+			c.WriteString(tableJsonWalk(u.Package, anyVariable, anyMap))
 			fmt.Fprintf(&c, "\nnamespace %s {\n\n", u.Package)
 			cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets,
 				includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
