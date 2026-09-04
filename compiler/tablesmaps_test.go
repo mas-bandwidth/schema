@@ -194,3 +194,23 @@ func TestMapRefusalNamesTheCarrierOnceThereIsOne(t *testing.T) {
 	// a CARRIER never calls refuseMaps at all — it registers instead, exactly as
 	// target_cpp.go does for the optional array — so there is no third shape.
 }
+
+// TestMapTypeSpelling: a diagnostic and a descriptor name the declaration the
+// author wrote, star and bound included — map[K]T and map[K]*T are two
+// declarations (§2.8).
+func TestMapTypeSpelling(t *testing.T) {
+	u := unitFromSource(t, mapSrc)
+	byName := map[string]*ir.Field{}
+	for _, f := range u.Tables["Fleet"].Fields {
+		byName[f.Name] = f
+	}
+	for name, want := range map[string]string{
+		"ships":    "map[string(32)]ShipConfig",
+		"by_id":    "map[uint32]*ShipConfig",
+		"loadouts": "map[string(16)]map[uint8]Item",
+	} {
+		if got := ir.TableTypeSpelling(byName[name]); got != want {
+			t.Errorf("%s spells %q, want %q", name, got, want)
+		}
+	}
+}

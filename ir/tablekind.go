@@ -333,13 +333,19 @@ func TableTypeSpelling(f *Field) string {
 		return f.Type.Name
 	case TMap:
 		// a MAP spells its two halves (docs/SPEC-TABLES.md §2.8), so a
-		// descriptor and a diagnostic name the declaration a reader wrote
-		key := MapKeyField(f)
+		// descriptor and a diagnostic name the declaration a reader wrote —
+		// the key's bound and the value's own star included, because
+		// map[K]T and map[K]*T are two declarations
+		key, value := MapKeyField(f), MapValueField(f)
 		spelling := "map[" + TableTypeSpelling(key)
 		if key.Type.Kind == TString {
 			spelling += "(" + itoa(int(key.Type.Size)) + ")"
 		}
-		return spelling + "]" + TableTypeSpelling(MapValueField(f))
+		spelling += "]"
+		if value.Type.Pointer {
+			spelling += "*"
+		}
+		return spelling + TableTypeSpelling(value)
 	}
 	return "?"
 }
