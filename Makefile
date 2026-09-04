@@ -2619,12 +2619,14 @@ bench-table-check: build/schema_test_bench_table
 # verdict is a ratio inside one sitting, so it needs no pins and holds on any
 # box, which is what certification runs.
 #
-# `perf-gate-pin` re-cuts the numbers. Its output is a pull request whose diff
-# is bench/PERF-PINS and nothing else, on bench/LOCK's model.
+# `perf-gate-pin` re-cuts the numbers and fills in the sitting they came off.
 #
-# `perf-gate-pinlock` is the cheap half that rides every pull request: the pin
-# file parses and states its sitting, and a diff that moves the pins moves
-# nothing else. No measurement, no quiet box needed.
+# `perf-gate-pinlock` is the cheap half that rides every pull request, on the
+# model bench/LOCK's standing gate uses since the freeze lifted: a diff may
+# move the pins alongside the change that moved the reference, and must restate
+# the sitting when it does. It refuses pins that moved while the sitting did
+# not, and a sitting.commit the branch does not contain. No measurement, no
+# quiet box needed.
 .PHONY: perf-gate perf-gate-control perf-gate-pin perf-gate-pinlock
 perf-gate:
 	go run ./bench/tools/perfgate check

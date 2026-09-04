@@ -719,19 +719,26 @@ jobs:
           fi
           echo "no locked paths touched — clean"
 
-  # THE PERF PIN LOCK (issue #546, bench/PERF-PINS), on cpp-lock's model above.
+  # THE PERF PIN LOCK (issue #546, bench/PERF-PINS), on the model bench/LOCK's
+  # standing gate uses since the freeze lifted on 2026-09-05.
   #
   # bench/PERF-PINS holds the numbers `make perf-gate` compares a read and a
-  # write against, so the pins are the gate's whole authority. A pull request
-  # that changes the code AND the pins in one diff can make any regression
-  # green by definition, which is the one way this gate could rot silently.
+  # write against, so the pins are the gate's whole authority, and typing over
+  # them is the one way this gate could rot silently.
   #
-  # So a re-pin is its own act: a pull request whose diff is bench/PERF-PINS
-  # and nothing else, whose file states the sitting the numbers came off (the
-  # box, the date, the commit, the compiler, the load). This job refuses
-  # anything else, and it checks the same two structural things on every pull
-  # request whether or not the pins moved: the file parses, and it carries a
-  # pin for every row the gate guards.
+  # The refusal is NOT "the pins may only move alone". The lifted lock's
+  # replacement rule is that a pull request moving the packet emitters re-pins
+  # the reproduction rows IN THE SAME PR and states the sitting that produced
+  # them, and a rule against a combined diff would forbid that. What is refused
+  # is a re-pin with no sitting behind it: numbers moved while sitting.date,
+  # sitting.uptime and sitting.commit still describe the measurement they
+  # replaced, or a sitting.commit this branch does not contain.
+  #
+  # Two structural things are checked on every pull request whether or not the
+  # pins moved: the file parses and states its sitting, and it carries a pin
+  # for every row the gate guards. When the pins did move, the job also prints
+  # each row's move as a percentage, so the size of a re-pin is visible in the
+  # log rather than buried in two columns of digits.
   #
   # It costs no measurement and needs no quiet box, which is why it belongs on
   # the pull-request gate while the timed half belongs in certify.yml.

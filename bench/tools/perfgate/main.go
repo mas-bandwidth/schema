@@ -312,8 +312,14 @@ func loadPins(path string) (*pins, error) {
 		return nil, err
 	}
 	defer f.Close()
+	return parsePins(path, f)
+}
+
+// parsePins reads the file the working tree has, and, for the pin lock, the
+// one the base branch had.
+func parsePins(path string, r io.Reader) (*pins, error) {
 	p := &pins{directives: map[string]string{}, rates: map[string]float64{}, corpus: map[string]string{}}
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
 	for sc.Scan() {
 		line := sc.Text()
@@ -935,35 +941,30 @@ func cmdControl(args []string) int {
 }
 
 // ---------------------------------------------------------------------------
-// the pin lock, on bench/LOCK's model
+// the pin lock, on the model bench/LOCK's standing gate uses
 //
-// The pins are the gate's authority, so a re-pin of them is an act with its own
-// pull request and nothing else in the diff, the same shape the C/C++ lock
-// uses for a lift. This runs on every pull request, costs no measurement, and
-// makes an unstated re-pin impossible to merge quietly.
+// When the C/C++ freeze lifted on 2026-09-05 what replaced it was not nothing.
+// It was a standing gate, in the owner's terms: a pull request that moves the
+// packet emitters "re-pins the reproduction rows ... in the same PR and states
+// the sitting that produced them", with a laptop sitting admitted so long as
+// its provenance is stated. This is that rule, applied to these pins.
+//
+// So the refusal here is NOT "the pins may only move alone". A change that
+// legitimately moves the reference has to move the pins in the same diff, and
+// forbidding that would forbid the workflow the owner just blessed. What is
+// refused is a re-pin with no sitting behind it: numbers edited by hand while
+// the sitting.* header still describes the measurement they replaced. A diff
+// that moves the pins restates the sitting, and the commit it names is one
+// this branch actually contains.
+//
+// It runs on every pull request, costs no measurement, and prints the size of
+// each pin's move so a reviewer sees what was re-pinned without diffing two
+// columns of digits.
 
 func cmdPinlock(args []string) int {
 	base := "origin/main"
 	strs := map[string]*string{"base": &base}
 	parseFlags(args, strs, map[string]*int{})
-
-	out, err := exec.Command("git", "diff", "--name-only", base+"...HEAD").Output()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "perfgate pinlock: cannot diff against %s: %v\n", base, err)
-		return 1
-	}
-	var changed []string
-	for _, f := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if f != "" {
-			changed = append(changed, f)
-		}
-	}
-	touchesPins := false
-	for _, f := range changed {
-		if f == pinsPath {
-			touchesPins = true
-		}
-	}
 
 	p, err := loadPins(pinsPath)
 	if err != nil {
@@ -976,27 +977,95 @@ func cmdPinlock(args []string) int {
 	}
 	fmt.Printf("%s parses, states its sitting, and pins every gate row.\n", pinsPath)
 
+	// The sitting names a commit. A sitting cut on a commit this branch does
+	// not contain measured a tree nobody here is proposing to merge.
+	sc := p.directives["sitting.commit"]
+	if err := exec.Command("git", "merge-base", "--is-ancestor", sc, "HEAD").Run(); err != nil {
+		fmt.Printf("\nPERF PIN REFUSAL. sitting.commit is %s, which this branch does not contain.\n", sc)
+		fmt.Printf("A sitting cut on a commit outside this history measured a tree nobody is\n")
+		fmt.Printf("proposing to merge. Re-cut the pins here with `make perf-gate-pin`.\n")
+		return 1
+	}
+
+	out, err := exec.Command("git", "diff", "--name-only", base+"...HEAD").Output()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "perfgate pinlock: cannot diff against %s: %v\n", base, err)
+		return 1
+	}
+	touchesPins := false
+	for _, f := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if f == pinsPath {
+			touchesPins = true
+		}
+	}
 	if !touchesPins {
-		fmt.Println("the diff does not move the pins, nothing to refuse")
+		fmt.Printf("sitting.commit %s is in this history, and the diff does not move the pins.\n", sc)
 		return 0
 	}
-	if len(changed) == 1 {
-		fmt.Printf("the diff is %s alone, the re-pin act, allowed\n", pinsPath)
-		fmt.Printf("  sitting %s on %s, %s\n", p.directives["sitting.date"], p.directives["sitting.host"], p.directives["sitting.commit"])
+
+	// The pins moved. Read the base's copy and require the sitting to have
+	// moved with them.
+	old, err := exec.Command("git", "show", base+":"+pinsPath).Output()
+	if err != nil {
+		fmt.Printf("%s is new on this branch, so there is no earlier sitting to restate.\n", pinsPath)
+		fmt.Printf("  sitting %s on %s at %s\n", p.directives["sitting.date"], p.directives["sitting.host"], sc)
 		fmt.Printf("  uptime  %s\n", p.directives["sitting.uptime"])
 		return 0
 	}
-	fmt.Printf("\nPERF PIN REFUSAL. This pull request moves %s and %d other path(s):\n", pinsPath, len(changed)-1)
-	for _, f := range changed {
-		if f != pinsPath {
-			fmt.Println("  " + f)
+	prev, err := parsePins(pinsPath, bytes.NewReader(old))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "perfgate pinlock: cannot read the base's pin file:", err)
+		return 1
+	}
+
+	var stale []string
+	for _, k := range []string{"sitting.date", "sitting.uptime", "sitting.commit"} {
+		if prev.directives[k] == p.directives[k] {
+			stale = append(stale, k)
 		}
 	}
-	fmt.Printf("\nThe pins are what the gate compares against, so a diff that changes the code\n")
-	fmt.Printf("and the pins together can make any regression green by definition. Re-pinning\n")
-	fmt.Printf("is its own pull request, whose diff is %s and nothing else, and whose\n", pinsPath)
-	fmt.Printf("file states the sitting that produced the numbers.\n")
-	return 1
+	moved := false
+	for _, want := range gateRows {
+		k := want[0] + "/" + want[1]
+		if prev.rates[k] != p.rates[k] {
+			moved = true
+		}
+	}
+	if !moved && len(stale) == 3 {
+		fmt.Printf("the diff touches %s but moves no pin and no sitting, so there is nothing\n", pinsPath)
+		fmt.Printf("to state: prose, or a band the author is answering for by hand.\n")
+		return 0
+	}
+
+	fmt.Printf("\nthe pins moved. what changed, row by row:\n")
+	for _, want := range gateRows {
+		k := want[0] + "/" + want[1]
+		o, n := prev.rates[k], p.rates[k]
+		if o <= 0 {
+			fmt.Printf("  %-24s %14.3f M/s (no earlier pin)\n", k, n/1e6)
+			continue
+		}
+		fmt.Printf("  %-24s %14.3f -> %10.3f M/s  %+6.2f%%\n", k, o/1e6, n/1e6, (n-o)/o*100)
+	}
+
+	if len(stale) > 0 {
+		fmt.Printf("\nPERF PIN REFUSAL. The pins moved and the sitting did not: %s\n", strings.Join(stale, ", "))
+		fmt.Printf("are unchanged from %s.\n\n", base)
+		fmt.Printf("The pins are what the gate compares a read and a write against, so numbers\n")
+		fmt.Printf("edited under a sitting header that describes the measurement they replaced\n")
+		fmt.Printf("are numbers with no provenance, and a regression can be made green by typing\n")
+		fmt.Printf("over the thing that would have caught it. A re-pin restates its sitting: the\n")
+		fmt.Printf("box, the date, the commit, and the load the machine was carrying. Cut it with\n")
+		fmt.Printf("`make perf-gate-pin` on a quiet box, which fills those lines in for you.\n")
+		return 1
+	}
+	fmt.Printf("\nthe sitting is restated, which is what a re-pin owes:\n")
+	fmt.Printf("  %s on %s at %s\n", p.directives["sitting.date"], p.directives["sitting.host"], sc)
+	fmt.Printf("  %s\n", p.directives["sitting.uptime"])
+	fmt.Printf("  %s, %s, %s sittings, worst deviation %s%%\n",
+		p.directives["box.cpu"], p.directives["sitting.compiler"],
+		p.directives["sitting.repeats"], p.directives["sitting.worst.pct"])
+	return 0
 }
 
 // ---------------------------------------------------------------------------

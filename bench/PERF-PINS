@@ -82,17 +82,31 @@
 # and that is what certification runs, on hardware nobody here owns.
 #
 # ---------------------------------------------------------------------------
-# MOVING THE PINS, on bench/LOCK's model
+# RE-PINNING, on the model bench/LOCK's standing gate uses
 #
-# These numbers are the gate's whole authority, so a diff that changes the code
-# and the pins together can make any regression green by definition. A re-pin
-# is its own pull request whose diff is THIS FILE AND NOTHING ELSE, and whose
-# sitting.* lines state the machine, the date, the commit and the load the
-# numbers came off. `make perf-gate-pinlock` enforces both halves on every pull
-# request and costs no measurement. `perfgate pin` fills the sitting.* lines in
-# and refuses outright while BENCH_CXXFLAGS_PREFIX is set. It deliberately does
-# NOT touch band.pct, because widening a band is a decision and never a side
-# effect of re-measuring.
+# When the C/C++ freeze lifted on 2026-09-05 what replaced it was a standing
+# gate, in the owner's terms: a pull request that moves the packet emitters
+# "re-pins the reproduction rows ... in the same PR and states the sitting that
+# produced them", with a laptop sitting admitted so long as its provenance is
+# stated. These pins take that rule exactly.
+#
+# So a re-pin is NOT required to travel alone. A change that legitimately moves
+# the reference has to move these numbers in the same diff, and a rule against
+# that would forbid the workflow the owner just blessed. What IS refused is a
+# re-pin with no sitting behind it: numbers typed over while the sitting.*
+# header below still describes the measurement they replaced. That is how a
+# regression gets made green by editing the thing that would have caught it.
+#
+# `make perf-gate-pinlock` runs on every pull request, costs no measurement,
+# and refuses exactly two things: pins that moved while sitting.date,
+# sitting.uptime and sitting.commit did not, and a sitting.commit this branch
+# does not contain. It also prints each pin's move as a percentage, so a
+# reviewer sees the size of a re-pin without diffing two columns of digits.
+#
+# `perfgate pin` fills the sitting.* lines in for you, and refuses outright
+# while BENCH_CXXFLAGS_PREFIX is set. It deliberately does NOT touch band.pct,
+# because widening a band is a decision and never a side effect of
+# re-measuring.
 #
 # ---------------------------------------------------------------------------
 # The box these pins are facts about:
