@@ -649,10 +649,16 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	} else {
 		g.pf("            ok = %sCookBody( ctx, region, region.base, root, order );\n", n)
 	}
-	g.pf("            for ( int64_t k = 0; ok && k < numbering.count; k++ )\n            {\n")
-	g.pf("                uint8_t * at = region.base + region.offsets[k + 1];\n")
-	g.pf("                const void * node = numbering.entries[k].node;\n")
-	g.pf("                switch ( numbering.entries[k].type_id )\n                {\n")
+	// A VARIABLE ROOT WHOSE MAPS REACH NO NODE has an always-empty numbering
+	// (docs/SPEC-TABLES.md §2.8): the whole node loop is a shape with no case
+	// in it, so it is not emitted rather than emitted with nothing to switch on.
+	nodeLoop := len(reachable) > 0 || len(blobs) > 0
+	if nodeLoop {
+		g.pf("            for ( int64_t k = 0; ok && k < numbering.count; k++ )\n            {\n")
+		g.pf("                uint8_t * at = region.base + region.offsets[k + 1];\n")
+		g.pf("                const void * node = numbering.entries[k].node;\n")
+		g.pf("                switch ( numbering.entries[k].type_id )\n                {\n")
+	}
 	for _, t := range reachable {
 		if g.anyMap {
 			g.pf("                    case 0x%016xull: ok = %sCookNode( ctx, region, at, *(const %s *) node, order ); break; // %s\n", ir.TableTypeId(t.Name), t.Name, t.Name, t.Name)
@@ -673,8 +679,10 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 		g.pf("                        table_cook_bytes( at + kTableBlobHeader, (const void *) ( blob + 1 ), (int64_t) blob->length, (int64_t) blob->length );\n")
 		g.pf("                        break;\n                    }\n")
 	}
-	g.pf("                    default: ok = false; break;\n")
-	g.pf("                }\n            }\n")
+	if nodeLoop {
+		g.pf("                    default: ok = false; break;\n")
+		g.pf("                }\n            }\n")
+	}
 	g.pf("            // the ATTRIBUTION part: the node directory (§6.3), one entry per node\n")
 	g.pf("            // in index order, for `schema cook-check`\n")
 	g.pf("            uint8_t * entry = raw + data_offset + region.bytes;\n")

@@ -31,6 +31,8 @@ SCHEMAS_TABLES_MESSAGES := $(wildcard tables/messages/*.schema) $(wildcard table
 # pointed at — C++ and the tool carry it, every port refuses the unit by name
 SCHEMAS_TABLES_BLOBS := $(wildcard tables/blobs/*.schema)
 SCHEMAS_TABLES_SCALARS := $(wildcard tables/scalars/*.schema)
+# the MAP corpus (docs/SPEC-TABLES.md §2.8)
+SCHEMAS_TABLES_MAPS := $(wildcard tables/maps/*.schema)
 
 # The soak length every leg's soak takes, in seconds. The hour is the release
 # act — `make tables-<lang>-soak SOAK_SECONDS=3600` — and `make test` runs the
@@ -106,14 +108,15 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/a1 test/tables/A1.schema
 	$(1) generate --lang cpp --out $(2)/a2 test/tables/A2.schema
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
+	$(1) generate --lang cpp --out $(2)/maps tables/maps
 	$(1) generate --lang cpp --out $(2)/scalars2 test/tables/Scalars2.schema
 endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/scalars -I$(1)/scalars2 -I$(SERIALIZE)
+	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/Scalars2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/Scalars2.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -2228,6 +2231,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-wire-fuzz N=20000
 	$(MAKE) tables-wire-fuzz-negative-control N=0
 	$(MAKE) tables-zero-cost
+	$(MAKE) tables-maps
+	$(MAKE) tables-maps-negative-controls
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-graph-walk
 	$(MAKE) tables-json-negative-control
@@ -2299,6 +2304,131 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	# leg, so a red names the leg.
 	@set -e; for leg in $(TEST_LEGS); do echo "$(MAKE) $$leg"; $(MAKE) $$leg; done
 	go test ./...
+
+
+# ---------------------------------------------------------------------------
+# THE MAP GATE (docs/SPEC-TABLES.md §2.8) ----------------------------------
+#
+# One binary over the `tables/maps` corpus: the builder's five, the sort the
+# four writing walks hold, the node extent a region and a cook carry, and every
+# reader rule §2.8 states. Its wire goldens are the reference's, pinned like
+# every other table golden.
+#
+# THE SANITIZED TWIN rides beside it for the reason the tables leg's does: the
+# map machinery is an arena of segments, an entry array carved from a node's
+# own extent and a binary search over mapped bytes, which are lifetime and
+# bounds questions -Werror cannot see.
+
+MAPS_SOURCES = $$(ls build/tables-generated/maps/*Table.cpp)
+
+build/schema_test_maps: build/tables-generated/.stamp test/tables/maps_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/maps_main.cpp $(MAPS_SOURCES) -o $@
+
+build/schema_test_maps_asan: build/tables-generated/.stamp test/tables/maps_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+		$(TABLES_INCLUDES) test/tables/maps_main.cpp $(MAPS_SOURCES) -o $@
+
+.PHONY: tables-maps
+tables-maps: build/schema_test_maps build/schema_test_maps_asan
+	./build/schema_test_maps
+	./build/schema_test_maps_asan
+
+# ---- the NEGATIVE CONTROLS §2.8 names ------------------------------------
+#
+# Each names the sabotage, patches the GENERATOR through a Go overlay,
+# regenerates the corpus, rebuilds the gate and requires it to go RED. A
+# sabotage that patches nothing is itself a failure, so a control cannot rot
+# into a no-op when the emitter it names moves.
+#
+# $(1) the control's short name, $(2) the sed script, $(3) the file to patch,
+# $(4) the sentence a reader gets when the gate stayed green.
+define map_negative_control
+	@mkdir -p build
+	@sed -e $(2) $(3) > build/map-$(1).gotext
+	@cmp -s build/map-$(1).gotext $(3) && \
+		{ echo "NEGATIVE CONTROL FAILED: the $(1) sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/$(3)":"%s/build/map-$(1).gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/map-$(1)-overlay.json
+	@go build -overlay=build/map-$(1)-overlay.json -o build/schema-map-$(1) ./cmd/schema
+	@rm -rf build/tables-map-$(1) && mkdir -p build/tables-map-$(1)
+	@./build/schema-map-$(1) generate --lang cpp --out build/tables-map-$(1)/maps tables/maps
+	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-map-$(1)/maps -Itest/tables test/tables/maps_main.cpp \
+		build/tables-map-$(1)/maps/*Table.cpp -o build/schema_test_maps_$(1)
+	@if ./build/schema_test_maps_$(1) > build/map-$(1).log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: $(4)"; exit 1; \
+	fi
+	@grep -q "^FAIL test/tables/maps_main.cpp" build/map-$(1).log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-$(1).log; exit 1; }
+	@echo "negative control: $(1) turns the MAP GATE red — $$(grep -c '^FAIL' build/map-$(1).log) failures"
+endef
+
+# THE WRITER EMITS INSERTION ORDER instead of sorted. The instance built OUT OF
+# KEY ORDER meets it: the byte compare against its pinned wire goes red while
+# measure == save still holds, which says the sabotage is the sort and not the
+# arithmetic.
+.PHONY: tables-maps-sort-negative-control
+tables-maps-sort-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,sort,'s@int32_t start = count / 2 - 1@int32_t start = -1@' -e 's@int32_t end = count - 1@int32_t end = 0@',internal/codegen/cpptable/maps.go,the writer emitting insertion order left the map gate GREEN)
+
+# SAVE EMITS A DEAD ENTRY. The instance that ERASES meets it, and the byte
+# compare against its pinned wire goes red while measure == save still holds.
+.PHONY: tables-maps-dead-entry-negative-control
+tables-maps-dead-entry-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,dead,'s@segment->dead\[ i / 32 \] |= 1u << ( i % 32 );@(void) i; // SABOTAGED@',internal/codegen/cpptable/maps.go,a dead entry riding on the wire left the map gate GREEN)
+
+# THE READER'S ASCENDING CHECK IS DROPPED. The SHUFFLED report row meets it,
+# and the row's `malformed` flag goes red.
+.PHONY: tables-maps-ascending-negative-control
+tables-maps-ascending-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,ascending,'s@if ( order > 0 )@if ( order > 0 \&\& false )@',internal/codegen/cpptable/maps.go,a shuffled map left the map gate GREEN)
+
+# THE DUPLICATE RULE IS DROPPED, first wins or both kept. The row whose
+# DUPLICATE entry ELIDES a field the first occurrence set meets it, and the
+# decoded value goes red — a reader that overlays instead of resetting agrees
+# with the rule on every other body.
+.PHONY: tables-maps-duplicate-negative-control
+tables-maps-duplicate-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,duplicate,'s@slot = TableMapFillLast( fill );@slot = TableMapFillNext( fill ); // SABOTAGED@',internal/codegen/cpptable/maps.go,keeping both occurrences of a duplicate left the map gate GREEN)
+
+# THE KEY-KIND RULE DECODES ANYWAY. The row written under a CHANGED KEY KIND
+# meets it, and its five counters go red, because an entry lands under a
+# defaulted key where the row says the map is empty.
+.PHONY: tables-maps-key-kind-negative-control
+tables-maps-key-kind-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,keykind,'s@out.kind_bad = field_kind != %d;@out.kind_bad = ( field_kind != %d ) \&\& false;@',internal/codegen/cpptable/maps.go,decoding under a changed key kind left the map gate GREEN)
+
+# KEYS NEVER CLAMP. The row whose key is longer than the reader's bound meets
+# it, and the DECODED VALUE is the half that says it: a clamped key merges two
+# entries where the rule drops one, and the `clamped` count alone cannot
+# separate the two.
+.PHONY: tables-maps-clamp-negative-control
+tables-maps-clamp-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,clamp,'s@out.over = key_len > %d;@out.over = ( key_len > %d ) \&\& false;@',internal/codegen/cpptable/maps.go,clamping an over-long key left the map gate GREEN)
+
+# N = 0xFFFFFFFF UNDER A SHORT L. A row of a few dozen bytes asking for
+# gigabytes meets it, and LoadMeasure's answer goes red if the fit check is
+# dropped.
+.PHONY: tables-maps-fit-negative-control
+tables-maps-fit-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,fit,'s@if ( n > rest / kTableMapEntryFloor ) { return false; }@if ( n > rest / kTableMapEntryFloor \&\& false ) { return false; }@',internal/codegen/cpptable/maps.go,an N the map L cannot carry left the map gate GREEN)
+
+# LOADMEASURE OVER A MAP OF MAPS, summed at ONE DEPTH only. The instance whose
+# value is itself a map meets it, and the measure goes red against the region
+# Load fills.
+.PHONY: tables-maps-depth-negative-control
+tables-maps-depth-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,depth,'s@if ( inner == NULL ) { return true; }@return true; // SABOTAGED@',internal/codegen/cpptable/maps.go,summing the extent at one depth only left the map gate GREEN)
+
+.PHONY: tables-maps-negative-controls
+tables-maps-negative-controls: tables-maps-sort-negative-control \
+	tables-maps-dead-entry-negative-control \
+	tables-maps-ascending-negative-control \
+	tables-maps-duplicate-negative-control \
+	tables-maps-key-kind-negative-control \
+	tables-maps-clamp-negative-control \
+	tables-maps-fit-negative-control \
+	tables-maps-depth-negative-control
 
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin

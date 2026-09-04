@@ -1,0 +1,18 @@
+package mapdemo
+
+// The REPORT rows' roots (docs/SPEC-TABLES.md §2.8, §4): one map and one field
+// AFTER it, so a body that stops the map can still be seen to let the parent
+// read on. Two roots that differ only in the KEY'S KIND are the changed-key
+// evolution case, read one against the other.
+
+table Row
+{
+    entries map[string(8)]Item
+    after   int32
+}
+
+table WideRow
+{
+    entries map[uint32]Item
+    after   int32
+}
