@@ -1002,10 +1002,10 @@ replays it.
 
 **Proven in.** C++.
 
-**Measured effect.** 58,659 enumerated + 3,000,000 random mutants over 58
-seeds in 92 s plain (33,321 mutants/s), 558,659 under ASan/UBSan, 0
-divergences; the first full-corpus sweep caught the reference's §3.1
-walk-order deviation (#433) and two engine deviations, each ruled by the page.
+**Measured effect.** 62,179 enumerated + 3,000,000 random mutants over 63
+seeds in 89 s plain (34,490 mutants/s), 562,179 under ASan/UBSan, 0
+divergences. Its sweeps caught the reference's §3.1 walk-order deviation
+(#433) and six deviations in the engine, each ruled by the page.
 
 **Negative control.** Two, through I2's overlay sabotage: the string read's
 `has( len )` removed reds on the decoded value; the numbering resolve's range

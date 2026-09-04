@@ -2509,6 +2509,12 @@ tolerance is the versioning model:
   of the file. Array elements decode **inside their field's body
   bounds**: a count the body cannot cover yields the bounded prefix and
   the malformed flag, never values fabricated from a neighbor's bytes.
+  An element of an ARRAY OF UNIONS (§2.6) is **RESET the moment its arm id
+  is read**, before the arm length that follows is checked, so a repeat
+  under the field id leaves no arm an earlier occurrence decoded standing:
+  the last occurrence wins whole even when its own framing is damaged, and
+  the element reads `None`. An element the body cannot reach at all — no
+  two bytes left for an arm id — is not touched.
 
 Every event lands in the **read report**, whose counters are `unknown`,
 `kind_mismatch`, `clamped`, `duplicate` and the `malformed` flag.
@@ -2700,7 +2706,10 @@ has:
   one, plus two, and to `0x7FFFFFFF` and `0xFFFFFFFF`; `N` set to twice what
   the body holds, and to the two values the sign bit spells;
 - **a duplicate field**, its enclosing lengths grown to fit so that the repeat
-  is the whole event, and again with the framing left one field short;
+  is the whole event; again with the framing left one field short; and again
+  with the framing grown but a length INSIDE the copy made impossible, so the
+  repeat is entered and then fails partway and the last occurrence's claim is
+  tested against the value the first one left;
 - **a kind swap**, every kind byte to every other value, `0` and one past the
   last kind included;
 - **an id renamed** to `0`, to the reserved `0xFFFF`, to a neighbor's id and
@@ -2742,10 +2751,10 @@ that replays it:
 
 **The line it prints** is the row the register carries: the seed, the seed
 count over the root count, the enumerated and random mutant counts, the wall
-and the rate — `wire-fuzz: seed 24845619678, 58 seeds over 18 roots, 58659
-enumerated + 3000000 random = 3058659 mutants, 0 divergences, 91.8 s, 33321
-mutants/s`. `SEED` and `N` are the two knobs, on the command line and on the
-`make` line.
+and the rate — `wire-fuzz: seed 24845619678, 63 seeds over 18 roots, 62179
+enumerated + 500000 random = 562179 mutants, 0 divergences, 17.6 s, 31990
+mutants/s`, which is one leg of `make tables-cpp-release`. `SEED` and `N` are
+the two knobs, on the command line and on the `make` line.
 
 **The C++ reference runs it twice**, as `make tables-wire-fuzz`: plain, which
 is the divergence oracle at speed, and under ASan and UBSan, which turns a

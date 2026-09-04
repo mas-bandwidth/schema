@@ -214,6 +214,18 @@ func (s *frameScanner) array(off, end int) {
 			off += 4
 		case ir.TableKindTable:
 			off = s.framed(off, end, func(a, b int) { s.body(a, b, false) })
+		case ir.TableKindUnion:
+			// an ARRAY OF UNIONS (§2.6): the element is the union payload in
+			// its place, framed exactly as a union field's is
+			if off+2 > end {
+				return
+			}
+			arm := s.read(off, 2)
+			s.spot(spotArm, off, 2, end)
+			off += 2
+			if arm != 0 {
+				off = s.framed(off, end, func(a, b int) { s.body(a, b, false) })
+			}
 		case ir.TableKindString:
 			off = s.framed(off, end, nil)
 		default:
@@ -336,6 +348,31 @@ func duplicateField(seed *wireSeed, fi int, fix bool) []byte {
 	return out
 }
 
+// duplicateFieldDamaged copies one field in after itself with the framing
+// grown to fit, then makes the SECOND length inside the copy impossible — the
+// first is the field's own, so the second is one inside its body. The repeat
+// is entered and then fails partway, which is where the last occurrence's
+// claim is sharpest (§3): the reader must land on what the damaged repeat
+// decodes, never on what the first occurrence left standing. It answers false
+// for a field whose body carries no length of its own.
+func duplicateFieldDamaged(seed *wireSeed, fi int) ([]byte, bool) {
+	fld := seed.frame.fields[fi]
+	inside := 0
+	for _, sp := range seed.frame.spots {
+		if sp.kind != spotLength || sp.off < fld.start || sp.off >= fld.end {
+			continue
+		}
+		inside++
+		if inside < 2 {
+			continue
+		}
+		out := duplicateField(seed, fi, true)
+		put(out, sp.off-fld.start+fld.end, sp.width, 0xFFFFFFFF)
+		return out, true
+	}
+	return nil, false
+}
+
 // enumerated yields every deterministic mutant of one seed, in a fixed order,
 // whatever N is: these are the mutants that aim at the checks by name, and
 // they cost nothing to run.
@@ -436,6 +473,9 @@ func enumerated(seed *wireSeed, emit func(pass string, data []byte)) {
 	for fi := range f.fields {
 		emit("duplicate", duplicateField(seed, fi, true))
 		emit("duplicate-unframed", duplicateField(seed, fi, false))
+		if data, ok := duplicateFieldDamaged(seed, fi); ok {
+			emit("duplicate-damaged", data)
+		}
 	}
 }
 

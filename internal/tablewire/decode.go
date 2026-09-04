@@ -334,7 +334,18 @@ func (r *wireReader) array(fv *tabletext.Field) bool {
 func (r *wireReader) element(fv *tabletext.Field, i int) bool {
 	f := fv.Def
 	if tabletext.UnionOf(f) != nil {
-		// an element of an ARRAY OF UNIONS: the union payload in its place (§3)
+		// an element of an ARRAY OF UNIONS: the union payload in its place (§3).
+		// The element is RESET the moment its arm id is READ, before the arm
+		// length that follows is checked, so a repeat under the field id leaves
+		// no arm an earlier occurrence decoded standing — the last occurrence
+		// wins whole, even when its own framing is damaged (§3, §4). An element
+		// the body cannot even reach is not touched.
+		if !r.has(2) {
+			r.report.Malformed = true
+			return false
+		}
+		fv.Elems[i].U = 0
+		fv.Elems[i].Tab = nil
 		return r.unionCell(&fv.Elems[i], f)
 	}
 	if f.Type.Pointer {
