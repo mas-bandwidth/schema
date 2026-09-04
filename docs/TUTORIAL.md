@@ -2053,10 +2053,38 @@ value 3 would now silently mean a different ship.
 `unknown=1`: the file's `max_speed` has no home here, so it was skipped by its
 length and counted, never misdecoded.
 
-It works in the other direction too. Save a `Dart` from the 2.0 unit, and read
-it with the 1.0 one:
+It works in the other direction too. `save2.cpp`, in `starlight-2.0`:
+
+```cpp
+#include "ConfigTable.h"
+#include <cstdio>
+#include <cstring>
+#include <vector>
+
+int main()
+{
+    using namespace starlight;
+    ShipConfig ship;
+    memcpy( ship.display_name, "Dart", 4 );
+    ship.display_name_length = 4;
+    ship.ship_type = ShipType::Interceptor;   // the variant 1.0 has never heard of
+    ship.shield = 75.0f;                      // the field 1.0 does not have
+    int64_t size = ShipConfigMeasure( ship );
+    std::vector<uint8_t> buffer( size );
+    ShipConfigSave( ship, buffer.data(), size );
+    FILE * f = fopen( "dart.bin", "wb" );
+    fwrite( buffer.data(), 1, size, f );
+    fclose( f );
+    printf( "wrote dart.bin, %lld bytes\n", (long long) size );
+    return 0;
+}
+```
+
+Save a `Dart` from the 2.0 unit and read it with the 1.0 one, whose `load.cpp`
+is the same program with `max_speed` in place of `shield`:
 
 ```
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o save2 save2.cpp gen/ConfigTable.cpp
 $ ./save2
 wrote dart.bin, 58 bytes
 $ cd ../starlight && ./load ../starlight-2.0/dart.bin
@@ -2102,9 +2130,17 @@ struct TableReport
 raises it.
 
 You can see `kind_mismatch` by copying the unit again to `starlight-3.0` and
-making `armor` a `float32 = 1.0`:
+making `armor` a `float32 = 1.0`. `load3.cpp` there is `load.cpp` with one
+printf, because `armor` is a different C++ type now:
+
+```cpp
+    printf( "load: %s  armor=%g (a float now)\n", ok ? "ok" : "stopped", loaded.armor );
+    printf( "  report: unknown=%d kind_mismatch=%d clamped=%d\n",
+        report.unknown, report.kind_mismatch, report.clamped );
+```
 
 ```
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o load3 load3.cpp gen/ConfigTable.cpp
 $ ./load3 ../starlight/ship.bin
 load: ok  armor=1 (a float now)
   report: unknown=1 kind_mismatch=1 clamped=0
@@ -2449,9 +2485,46 @@ wrote config.bin
 
 **On the wire, slots ride by variant name**, like every enum value in Part 6.
 The `starlight-2.0` copy from Part 6 already has `Interceptor` inserted in the
-middle. Give it this `Config.schema` and load the 1.0 file:
+middle. Give it this `Config.schema` too, and read the 1.0 file with
+`keyed.cpp`, entire:
+
+```cpp
+#include "ConfigTable.h"
+#include <cstdio>
+#include <vector>
+
+static std::vector<uint8_t> Slurp( const char * path )
+{
+    FILE * f = fopen( path, "rb" );
+    std::vector<uint8_t> bytes;
+    uint8_t chunk[256];
+    size_t n;
+    while ( ( n = fread( chunk, 1, sizeof( chunk ), f ) ) > 0 )
+    {
+        bytes.insert( bytes.end(), chunk, chunk + n );
+    }
+    fclose( f );
+    return bytes;
+}
+
+int main( int, char ** argv )
+{
+    using namespace starlight;
+    std::vector<uint8_t> buffer = Slurp( argv[1] );
+    TableReport report;
+    GameConfig config;
+    GameConfigLoad( config, buffer.data(), (int64_t) buffer.size(), &report );
+    for ( auto [ ship_type, ship ] : config.ships )
+    {
+        printf( "slot %-12s health=%g\n", EnumName( ship_type ), ship.max_health );
+    }
+    printf( "report: unknown=%d\n", report.unknown );
+    return 0;
+}
+```
 
 ```
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o keyed keyed.cpp gen/ConfigTable.cpp
 $ ./keyed ../starlight/config.bin
 slot Fighter      health=100
 slot Interceptor  health=100
@@ -2459,8 +2532,6 @@ slot Freighter    health=100
 slot Corvette     health=400
 report: unknown=0
 ```
-
-The new slot arrives at its declared default and the tuned slot is still
 Corvette's. A slot the writer left at its default is elided, a slot this reader
 has no name for is skipped and counted `unknown`, and a `None` key never rides
 at all.
@@ -3377,7 +3448,8 @@ reads into a **builder**, because text becomes a graph and graphs are built,
 and the shared node comes back shared.
 
 If your text has to meet an existing convention, `| json = "type"` renames the
-key in text only, and no wire byte moves:
+key in text only, and no wire byte moves. A one-file unit of its own,
+`jname/Prop.schema`:
 
 ```
 package jname
@@ -3389,14 +3461,37 @@ table Prop
 }
 ```
 
+`j.cpp`, entire:
+
+```cpp
+#include "PropTable.h"
+#include <cstdio>
+#include <cstring>
+#include <vector>
+
+int main()
+{
+    using namespace jname;
+    Prop p;
+    memcpy( p.kind, "rock", 4 );
+    p.kind_length = 4;
+    int64_t n = PropToJsonMeasure( p );
+    std::vector<char> t( n + 1, 0 );
+    PropToJson( p, t.data(), n );
+    printf( "%s", t.data() );
+    return 0;
+}
 ```
+
+```
+$ schema generate --lang cpp --out gen .
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -o j j.cpp gen/PropTable.cpp
 $ ./j
 {
   "type": "rock",
   "solid": false
 }
 ```
-
 ### `schema pack` and `schema unpack`: the tree workflow
 
 One JSON file per root works. A **directory** per root works better with
