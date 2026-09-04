@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package mapdemo — protocol id 0x2bf42b1a627998db (packets only: tables version by field id, not by protocol id)
+// package mapdemo — protocol id 0xac56402cfa2310d3 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -11,6 +11,24 @@
 #include <stdint.h>
 #include <string.h> // the prefill's scalar-array fills
 #include <stddef.h> // offsetof, for the reflection descriptors
+
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// serialize's asserts writes `#define schema_assert serialize_assert` before
+// including this header and both halves land in one handler.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
+
+// schema_fatal — what stands after the assert on a path that cannot continue.
+// NDEBUG does not remove it. Supply it and <stdlib.h> is never included.
+#ifndef schema_fatal
+#include <stdlib.h> // abort
+#define schema_fatal abort
+#endif // #ifndef schema_fatal
 
 // schema_allocate / schema_release — what "no allocator handed in" means for
 // this program. schema_allocate hands back ZEROED bytes and NULL on failure:
@@ -291,6 +309,110 @@ struct TableReader
         }
         return false;
     }
+};
+
+
+// An ENUM-KEYED array's storage: E.Max slots, ONE PER NAMED VARIANT, with the
+// key k at index k-1 — the storage SHIFTS LEFT and nothing is stored for None.
+//
+// NOTHING OUTSIDE THE ARRAY NAMES ITS SIZE: the extent is derived from E::Max
+// here and nowhere else, so there is no size parameter to spell and no count a
+// consumer could put one out of step with.
+//
+// NONE IS THE NULL KEY: it names no slot, it never rides on the wire, a stored
+// key of 0 is malformed, and INDEXING BY IT IS A PROGRAM ERROR IN EVERY
+// CONFIGURATION — caught by operator[], which cannot see a runtime key any
+// earlier, and REFUSED UNCONDITIONALLY. A KEY PAST Max IS THE SAME ERROR for
+// the same reason — it names a variant this enum does not have — so the
+// accessor refuses BOTH ENDS. NDEBUG does not remove the compare:
+// there is NO UB PATH here in any build. ITERATION is still the surface a
+// consumer of the whole array wants: begin()/end() walk every stored slot and
+// yield the KEY, 1..E.Max, so a call site writes no bound, no cast, no shift
+// and no None question.
+template <typename T, typename E>
+struct TableKeyed
+{
+    // the extent is the enum's, derived here and named nowhere else
+    static constexpr int32_t kSlots = (int32_t) E::Max;
+
+    T slots[kSlots] = {};
+
+    T & operator[]( E key )
+    {
+        RefuseKey( key );
+        return slots[ (int32_t) key - 1 ];
+    }
+    const T & operator[]( E key ) const
+    {
+        RefuseKey( key );
+        return slots[ (int32_t) key - 1 ];
+    }
+
+    // THE REFUSAL, and it stands in EVERY BUILD, AT BOTH ENDS. The storage
+    // holds one slot per NAMED variant: nothing for None below it and nothing
+    // above Max, so a build that skipped this compare would index one element
+    // BEFORE the array or past its end — undefined behavior in the
+    // configuration a game ships. Either key is a program error, so the
+    // accessor ends the program rather than reading something. The assert
+    // carries the message where a debugger can read it and NDEBUG removes
+    // that; the fatal is what stands after it. BOTH GO THROUGH THE HOOKS —
+    // define schema_assert and schema_fatal and this refusal lands in your
+    // own handler.
+    //
+    // ONE UNSIGNED COMPARE COVERS BOTH ENDS: the storage index is key - 1, and
+    // None's is -1, which wraps above kSlots unsigned. The cost is one
+    // perfectly-predicted compare, on a path that reads config.
+    static void RefuseKey( E key )
+    {
+        if ( (uint32_t) ( (int32_t) key - 1 ) >= (uint32_t) kSlots )
+        {
+            schema_assert( false && "an enum-keyed array holds one slot per named variant: None keys none, and neither does a key past Max" );
+            schema_fatal();
+        }
+    }
+
+    // ---- iteration: keys 1..E.Max over storage 0..E.Max-1, key beside element ----
+    //
+    // The entry is a key and a REFERENCE, handed out BY VALUE the way any
+    // proxy is: for ( auto [ key, element ] : keyed ) binds element to the
+    // reference member, so iterating fills the array as well as reads it.
+    // auto & [ key, element ] does NOT compile, and that is by design — a
+    // non-const lvalue reference cannot bind to the proxy. Write
+    // auto [ ... ], or auto && [ ... ] if you prefer the reference form.
+    //
+    // THE ITERATORS CARRY NO iterator_traits TYPEDEFS. They bought std::distance
+    // and the forward-pass algorithms for an audience that does not call them,
+    // and the <iterator> they need is the single most expensive include the
+    // generated corpus had: 536 headers and 986 KB, in a header whose whole
+    // remaining set is 123. begin(), end() and size() need none of it.
+
+    struct Entry { E key; T & element; };
+    struct ConstEntry { E key; const T & element; };
+
+    struct Iterator
+    {
+        T * slots;
+        int32_t index; // the STORAGE index; the key it holds is index + 1
+        Entry operator*() const { return Entry{ (E) ( index + 1 ), slots[index] }; }
+        Iterator & operator++() { index++; return *this; }
+        bool operator==( const Iterator & other ) const { return index == other.index; }
+        bool operator!=( const Iterator & other ) const { return index != other.index; }
+    };
+
+    struct ConstIterator
+    {
+        const T * slots;
+        int32_t index; // the STORAGE index; the key it holds is index + 1
+        ConstEntry operator*() const { return ConstEntry{ (E) ( index + 1 ), slots[index] }; }
+        ConstIterator & operator++() { index++; return *this; }
+        bool operator==( const ConstIterator & other ) const { return index == other.index; }
+        bool operator!=( const ConstIterator & other ) const { return index != other.index; }
+    };
+
+    Iterator begin() { return Iterator{ slots, 0 }; }
+    Iterator end() { return Iterator{ slots, kSlots }; }
+    ConstIterator begin() const { return ConstIterator{ slots, 0 }; }
+    ConstIterator end() const { return ConstIterator{ slots, kSlots }; }
 };
 
 inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -2088,7 +2210,7 @@ namespace mapdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x1e693d76b387baafull;
+static const uint64_t BuildVersion = 0x61920d482a83fed2ull;
 
 } // namespace mapdemo
 

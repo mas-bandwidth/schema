@@ -1155,6 +1155,9 @@ func (g *tableGen) hasMapExtent(st *ir.Struct) bool {
 		if f.IsMap() {
 			return true
 		}
+		// A MAP REACHABLE BY VALUE IS THIS RECORD'S EXTENT (docs/SPEC-TABLES.md
+		// §2.8), whichever by-value edge reaches it: a nested table, an array
+		// of them, an enum-keyed array of them, or a union arm.
 		switch g.edgeOf(f) {
 		case edgeNested:
 			if ref, ok := f.Type.Ref.(*ir.Struct); ok && g.hasMapExtent(ref) {

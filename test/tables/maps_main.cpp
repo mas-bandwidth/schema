@@ -14,6 +14,7 @@
 
 #include "FleetTable.h"
 #include "RowsTable.h"
+#include "DepthTable.h"
 
 using namespace mapdemo;
 
@@ -781,6 +782,89 @@ static void test_text()
     }
 }
 
+// ---- WHERE ELSE A MAP RIDES IN A HOLDER'S EXTENT (§2.8) ----
+//
+// One array per map reachable BY VALUE from the record, in depth-first field
+// order — which reaches a nested table, an array of them, an enum-keyed array
+// of them and a union arm. Each is a different framing the load's extent scan
+// has to walk, and each is a place the measure can under-count.
+
+static void test_depth()
+{
+    DepthBuilder b;
+    Depth * d = b.GetRoot();
+    SquadRosterInsert( b.main, d->one.roster, (uint8_t) 3 )->count = 33;
+    d->many_count = 2;
+    SquadRosterInsert( b.main, d->many[0].roster, (uint8_t) 1 )->count = 11;
+    SquadRosterInsert( b.main, d->many[1].roster, (uint8_t) 2 )->count = 22;
+    SquadRosterInsert( b.main, d->keyed[Slot::Alpha].roster, (uint8_t) 5 )->count = 55;
+    // AN ARM IS ESTABLISHED AT SELECTION (§2.6): the tag alone is the value's
+    // identity, and the payload is the caller's to reset before it is filled
+    d->arm.type = ForceType::Squad;
+    SquadReset( d->arm.squad );
+    SquadRosterInsert( b.main, d->arm.squad.roster, (uint8_t) 7 )->count = 77;
+    d->after = 9;
+
+    const int64_t measured = DepthMeasure( b );
+    static uint8_t wire[1u << 16];
+    const int64_t n = DepthSave( b, wire, sizeof( wire ) );
+    CHECK_EQ( measured, n );
+    pin_golden( "map_depth", wire, n );
+
+    const int64_t need = DepthLoadMeasure( wire, n );
+    CHECK( need > 0 );
+    uint8_t * region = (uint8_t *) calloc( 1, (size_t) need );
+    TableReport report;
+    const Depth * loaded = DepthLoad( region, need, wire, n, &report );
+    CHECK( loaded != NULL );
+    CHECK( !report.malformed );
+    if ( loaded != NULL )
+    {
+        const Item * one = loaded->one.roster.Find( (uint8_t) 3 );
+        CHECK( one != NULL && one->count == 33 );
+        CHECK_EQ( loaded->many_count, 2 );
+        if ( loaded->many_count == 2 )
+        {
+            const Item * first = loaded->many[0].roster.Find( (uint8_t) 1 );
+            const Item * second = loaded->many[1].roster.Find( (uint8_t) 2 );
+            CHECK( first != NULL && first->count == 11 );
+            CHECK( second != NULL && second->count == 22 );
+        }
+        const Item * slot = loaded->keyed[Slot::Alpha].roster.Find( (uint8_t) 5 );
+        CHECK( slot != NULL && slot->count == 55 );
+        CHECK_EQ( loaded->keyed[Slot::Beta].roster.size(), 0 );
+        CHECK( loaded->arm.type == ForceType::Squad );
+        if ( loaded->arm.type == ForceType::Squad )
+        {
+            const Item * armed = loaded->arm.squad.roster.Find( (uint8_t) 7 );
+            CHECK( armed != NULL && armed->count == 77 );
+        }
+        CHECK_EQ( loaded->after, 9 ); // and the parent read past all of them
+
+        // the region is EXACT: one byte short is refused, so the extent scan
+        // counted every one of those four reaches and not one twice
+        static uint8_t again[1u << 16];
+        CHECK_EQ( DepthSave( loaded, again, sizeof( again ) ), n );
+        CHECK( memcmp( again, wire, (size_t) n ) == 0 );
+        TableReport short_report;
+        CHECK( DepthLoad( region, need - 1, wire, n, &short_report ) == NULL );
+    }
+    free( region );
+
+    // and the TOOL's path reads the same four reaches into a builder
+    DepthBuilder into;
+    TableReport tool;
+    CHECK( DepthLoadBuilder( into, wire, n, &tool ) );
+    CHECK_EQ( (int) tool.malformed, (int) report.malformed );
+    CHECK_EQ( into.GetRoot()->one.roster.count, 1 );
+    CHECK_EQ( into.GetRoot()->many_count, 2 );
+    CHECK_EQ( into.GetRoot()->keyed[Slot::Alpha].roster.count, 1 );
+    CHECK_EQ( into.GetRoot()->arm.squad.roster.count, 1 );
+    static uint8_t relocked[1u << 16];
+    CHECK_EQ( DepthSave( into, relocked, sizeof( relocked ) ), n );
+    CHECK( memcmp( relocked, wire, (size_t) n ) == 0 );
+}
+
 int main()
 {
     test_writer();
@@ -790,6 +874,7 @@ int main()
     test_key_kind();
     test_load_measure_depth();
     test_text();
+    test_depth();
 
     if ( failures != 0 )
     {
