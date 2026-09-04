@@ -1133,6 +1133,16 @@ its bytes are the packet wire's, and every fact of it projects (SPEC.md
 §3.1). The refusal is the TABLE body's alone, and it is what §2.2's mode
 derivation already made a per-body question.
 
+**CHECKER STATUS: NOT REFUSED YET.** The refusal is specified ahead of its
+implementation, on the terms §3.3 and §6.6 take. `schema check` accepts
+`[E.Max]T` in a table body today, with no diagnostic and exit 0, so a unit
+that spells the array positionally compiles and carries the positional class
+this rule exists to close. Two sections rest on the refusal being made,
+§4.1's count of the silent class and SPEC.md §3.1's one exception to
+reachability, and each is written from this rule rather than from the tree.
+Owed as schema#540, and this line is deleted by the implementation PR that
+lands the behavior.
+
 **A KEY ENUM IS IN THE TABLE CLOSURE'S VOCABULARY**, and the closure's
 rules reach it through the keying field. An enum that a table closure
 reaches ONLY as an array key — never as a field type — still rides by
@@ -4627,6 +4637,16 @@ games decide their own policy over it. Nothing crashes on data from a
 different schema version, in either direction, and that property is held by
 a both-directions evolution test in the corpus.
 
+**BACKEND STATUS for `widened`: OWED, not counted.** The counter and the two
+ladders above are specified ahead of their implementation, on the terms §3.3
+and §6.6 take. No report struct carries a `widened` member in any target or
+in the tool, and every pair the ladders accept is a `kind_mismatch` today,
+the payload skipped by its framing and the field left at its declared
+default. What a caller sees is the five that remain, `unknown`,
+`kind_mismatch`, `clamped`, `duplicate` and the `malformed` flag. Owed as
+schema#523, and this line is deleted by the implementation PR that lands the
+behavior.
+
 **TWO MORE COUNTERS RIDE ON THE SAME STRUCT AND STAY ZERO UNTIL A CALLER ASKS
 FOR THEM**: `retained` and `retain_lost`, the retain-unknown pair (§6.6). They
 report on RETENTION rather than on the read, and they change no counter above.
@@ -5567,6 +5587,14 @@ The builder is designed to go wide, lock-free by ownership:
   to report, and the reason is where the answer lives. **This shares a surface
   with the accelerators' refusal and lands with it**, so a build that has one
   has the other.
+
+  **BACKEND STATUS: OWED, not emitted.** The enum is specified ahead of its
+  implementation, on the terms §3.3 and §6.6 take. `TableRefuseReason` is
+  spelled in no target, in no runtime and in no tool, a bare `-1` is the whole
+  of a measure's answer today, and the name is not claimed either, so a unit
+  declaring a table or a type called `TableRefuseReason` compiles.
+  Owed as schema#523, with §7's check order and §19.2's block clauses, and
+  this line is deleted by the implementation PR that lands the behavior.
 - **Into a builder** — the tool's path. The same tolerant decode into a
   fresh builder, so loaded data can be edited and locked again. **Its own
   refusal is a NULL** rather than a `-1`, and the report it leaves behind is
@@ -6253,6 +6281,15 @@ the wire, and keeps the flexibility that comes with it.
   word, its base being 64-byte aligned by construction, so `bad_alignment` has
   nothing to validate. One order, one enum, and the two accelerators differ
   only in which clauses they have.
+
+  **BACKEND STATUS: OWED, not emitted.** The out-parameter and its enum are
+  specified ahead of their implementation, on the terms §3.3 and §6.6 take.
+  The C++ reference emits `const Scene * SceneOpen( const void * bytes,
+  uint64_t length )` and nothing more, every other backend's `Open` is that
+  same shape in its own spelling, and the null alone is the whole of a
+  refusal's answer. Owed as schema#523, with §6.5's measure values and
+  §19.2's block clauses, and this line is deleted by the implementation PR
+  that lands the behavior.
 
 - **`Open` is the RUNTIME's only entry point.** There is no second one: a
   build either wrote a file or it did not, and the build version is what says
@@ -7424,6 +7461,16 @@ doc comment is not a value. **The pack tree does not see them either**
 tree is ever spelled by a doc or a tag. Documenting and tagging a shipped
 schema is a free edit, and that is the property the open namespace rests on.
 
+**BACKEND STATUS: OWED, not emitted.** The `doc`, `num_tags` and `tags`
+columns are specified ahead of their implementation, on the terms §3.3 and
+§6.6 take. No target emits any of the three on `TableFieldInfo` or on
+`TableTypeInfo` today, no registry row (§8.3) carries them, and nothing
+upstream of the columns exists to fill one: the compiler reads no `///`
+block (SPEC.md §4.1) and carries a tag on a `type` declaration alone
+(SPEC.md §4.2). Owed as schema#523 ruling 4, which lands the front end and
+the columns together, and this line is deleted by the implementation PR that
+lands the behavior.
+
 **A field carries WHERE IT LIVES, and the spelling is the language's.** C++
 carries an offset and a width, because its storage is one flat struct; a
 language whose fields have no address carries the pair that reads and writes
@@ -8308,6 +8355,9 @@ in build version (§20.5).
   table closure, `| max = K` headroom and variant id collisions, each
   diagnostic naming the keying field that pulled the enum in. A slot value no variant names is a SAVE failure, not a silent `None`
   (§3.2).
+  **CHECKER STATUS: the positional spelling is NOT REFUSED YET**, accepted in
+  a table body today with no diagnostic, owed as schema#540 (§2.4), and this
+  sentence is deleted by the implementation PR that lands it.
 - **Maps** (§2.8): a map in a `type` body; a key that is an enum (the
   diagnostic names `[E]T`), a `bool`, a float, a `flags`, a `bits(N)`, a
   `bytes(N)`, a `wstring(N)` (the diagnostic names `string(N)`, because
@@ -11776,6 +11826,11 @@ schema name, as everywhere else in that backend.
   for the reason above. One enum serves both
   accelerators because a consumer that falls back from either falls back the
   same way, and two vocabularies would have said the same things twice.
+
+  **BACKEND STATUS: OWED, not emitted**, on the terms §3.3 and §6.6 take.
+  `<Name>BlockOpen` returns a bare `bool` today and names no reason, exactly
+  as a cook's `Open` returns a bare null (§7). Owed as schema#523, and this
+  line is deleted by the implementation PR that lands the behavior.
 - **An array is ITERATED, not indexed by hand.** The accessor yields a
   reference to each row where it lies, at the pitch the instance gives, for
   `count` rows — a range-for in C++, an enumerator in C#, the equivalent per
