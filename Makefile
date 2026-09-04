@@ -20,6 +20,9 @@ CXXFLAGS  += -I$(SERIALIZE)
 GO_SOURCES   := $(shell find cmd internal ir compiler -name '*.go') go.mod
 SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
+# the WIDE TEXT unit (examples-wide/) — wstring(N) and the string(N) read-side
+# UTF-8 rule, both driven from serialize's shared corpus (SPEC §4.12, §4.7)
+SCHEMAS_WIDE := $(wildcard examples-wide/*.schema)
 SCHEMAS_BENCH := $(wildcard bench/corpus/*.schema)
 SCHEMAS_TABLES := $(wildcard tables/examples/*.schema)
 SCHEMAS_TABLES_POINTERS := $(wildcard tables/pointers/*.schema)
@@ -68,6 +71,19 @@ generated/cpp/.stamp: bin/schema $(SCHEMAS)
 generated/cpp/ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang cpp --out generated/cpp/ludicrous examples128
 	@touch $@
+
+# The WIDE TEXT corpus (examples-wide/): the wstring(N) proving ground and the
+# string(N) read-side UTF-8 goldens, generated at build time into build/ — its
+# own unit because examples/ pins gate 1 for all nine targets and eight of them
+# refuse wide text today (SPEC §4.12).
+build/wide-generated/.stamp: bin/schema $(SCHEMAS_WIDE)
+	@mkdir -p build/wide-generated
+	./bin/schema generate --lang cpp --out build/wide-generated examples-wide
+	@touch $@
+
+build/schema_test_wide: build/wide-generated/.stamp test/wide/main.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Ibuild/wide-generated test/wide/main.cpp -o $@
 
 build/schema_test: generated/cpp/.stamp test/main.cpp test/second.cpp
 	@mkdir -p build
@@ -2274,9 +2290,10 @@ build/schema_test_bench_table: generated/bench/tables/cpp/.stamp test/bench/tabl
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/bench/tables/cpp test/bench/table_main.cpp -o $@
 
-test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/conformance-harness
+test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/conformance-harness build/schema_test_wide
 	./build/schema_test
 	./build/schema_test_guard
+	./build/schema_test_wide
 	$(MAKE) check-zero-range-negative-control
 	$(MAKE) projection-variant-order-negative-control
 	$(MAKE) projection-wire-law-negative-control
@@ -2623,6 +2640,7 @@ generated-current: test
 check: bin/schema
 	./bin/schema check examples
 	./bin/schema check examples128
+	./bin/schema check examples-wide
 	./bin/schema check tables/examples
 	./bin/schema check tables/pointers
 	./bin/schema check tables/block
