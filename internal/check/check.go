@@ -76,6 +76,13 @@ type checker struct {
 	// variant count, which is NOT what the author wrote, so .Max references
 	// to them must fail rather than propagate a fabricated bound
 	failedEnum map[string]bool
+
+	// union name -> the declarations whose BODY named it in a field, arms
+	// excluded. Recorded when the field's type resolves, so a field refused
+	// afterwards still counts: checkTableArmsReached asks whether a table
+	// closure reaches the union, and a refused field is still the author
+	// holding it where they held it (docs/SPEC-TABLES.md §2.6).
+	unionNamedBy map[string][]string
 }
 
 type constEntry struct {
@@ -1186,6 +1193,20 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 				c.errf(f.Type.Pos, "%s has the arm %s, and a union in a `type` body takes `type` payloads only — types are value semantics, and an arm that is not a declared type has no packet wire yet; hold the union in a table body, or make the arm a type (docs/SPEC-TABLES.md §2.6, §11, §15)",
 					f.Type.Name, un.GeneralArm())
 				return nil
+			}
+			// THE FIELD NAMED THE UNION, whatever becomes of the field.
+			// checkTableArmsReached reads this rather than the surviving IR:
+			// a field refused for any other reason — `?U` is the one a reader
+			// meets — used to vanish from the reachability walk, so one
+			// refusable mistake drew a SECOND error saying no table reaches
+			// the union and telling the author to hold it in a table body,
+			// which is what the line under the first error already did
+			// (#521 G-09).
+			if c.arm == "" {
+				if c.unionNamedBy == nil {
+					c.unionNamedBy = map[string][]string{}
+				}
+				c.unionNamedBy[f.Type.Name] = append(c.unionNamedBy[f.Type.Name], owner)
 			}
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: un}
 		default:
@@ -3567,6 +3588,17 @@ func (c *checker) checkTableArmsReached(closure map[string]bool) {
 		for _, f := range st.Fields {
 			if un, ok := f.Type.Ref.(*ir.Union); ok && f.Type.Kind == ir.TNamed {
 				reached[un.Name] = true
+			}
+		}
+	}
+	// and every union a closure member's body NAMED, including in a field
+	// that some other rule then refused: the author held it where the
+	// refusal here would tell them to hold it, so restating that would be a
+	// second error prescribing what the source already does (#521 G-09).
+	for union, owners := range c.unionNamedBy {
+		for _, owner := range owners {
+			if closure[owner] {
+				reached[union] = true
 			}
 		}
 	}

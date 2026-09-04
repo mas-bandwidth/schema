@@ -739,3 +739,46 @@ func TestCollidingEnumVariantKeepsItsPerTargetDiagnostics(t *testing.T) {
 		t.Errorf("the C-form collision does not name both sides: %s", cForm)
 	}
 }
+
+// `?` ON A UNION IS ONE MISTAKE (#521 G-09). Marking a union field optional
+// used to draw a second error saying no table reaches the union and telling
+// the author to "hold the union in a table body" — which is what the very
+// line the first error is about already does. The `?` refusal dropped the
+// field, and the reachability walk read the surviving fields alone.
+//
+// Reverting the unionNamedBy record turns this red at two diagnostics.
+func TestOptionalUnionDrawsOneDiagnostic(t *testing.T) {
+	errs := runUnit(t, map[string]string{
+		"Bad.schema": "package t\ntable A { x int32 }\ntable B { y int32 }\nunion U { a A\n b B }\ntable T { u ?U }\n",
+	})
+	if len(errs) != 1 {
+		t.Errorf("want 1 diagnostic, got %d:", len(errs))
+		for _, e := range errs {
+			t.Errorf("  %v", e)
+		}
+		return
+	}
+	if !strings.Contains(errs[0].Error(), "marks a union optional") {
+		t.Errorf("the one diagnostic is not the `?` refusal: %v", errs[0])
+	}
+}
+
+// The reachability refusal itself stays live where it is TRUE: a union with a
+// table arm that no closure names at all, and one held by a `type` body.
+func TestUnreachedTableArmUnionIsStillRefused(t *testing.T) {
+	for _, tc := range []struct{ name, src string }{
+		{"named by nothing", "package t\ntable A { x int32 }\ntable B { y int32 }\nunion U { a A\n b B }\ntable C { z int32 }\n"},
+		{"held by a type body", "package t\ntable A { x int32 }\ntable B { y int32 }\nunion U { a A\n b B }\ntype T { u U }\n"},
+	} {
+		errs := runUnit(t, map[string]string{"Bad.schema": tc.src})
+		var found bool
+		for _, e := range errs {
+			if strings.Contains(e.Error(), "no table reaches U") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: the reachability refusal went missing: %v", tc.name, errs)
+		}
+	}
+}
