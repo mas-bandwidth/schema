@@ -687,6 +687,60 @@ bytes, decodes a body that ends inside its own length.
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
 | ✅ `internal/codegen/cpptable/arms.go` `tables-wire-fuzz-arm-width-negative-control` `tables-wire-fuzz-arm-terminator-negative-control` | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
+
+### M19 — A map is a sorted entry array in the holder's node extent
+
+**Method.** A map (docs/SPEC-TABLES.md §2.8) is a LOOKUP the runtime provides
+over an array of one generated `{ key, value }` ENTRY table held in ascending
+key order — no new wire kind, no new framing, no new skip rule. The holder's
+record carries SIXTEEN BYTES: a self-relative reference to the entry array and
+an `int32` count. The ENTRIES are by-value records inside the HOLDER'S NODE
+EXTENT, laid after the record's own storage, PRE-ORDER: a map's whole entry
+array first, then, entry by entry in key order, the arrays of any map an
+entry's value holds by value. `LoadMeasure`'s term is `N x sizeof( Entry )` at
+`alignof( Entry )` AT EVERY DEPTH, summed from the FRAMING alone, because `N`
+is framing and not a value. The WRITER holds the sort — `Measure`, `Save`,
+`Lock` and `Cook` each derive the ascending order from the builder's entries
+and nothing passes between them, so `measure == save` over a map is a real
+check on two sorts agreeing. The READER trusts nothing and spends one compare
+per entry: the key is read by a SCAN of the entry's field headers before the
+slot is chosen, ascending against the key of the last entry that LANDED, a
+duplicate resets the slot it took so last wins WHOLE, a descending key stops
+the map and lets the PARENT read on, a key past the bound is skipped by its `L`
+and counted `clamped`, and a key kind the reader does not declare empties the
+map for ONE `kind_mismatch`. The shape to refuse is closed addressing: a node
+per entry is an allocation per entry on the authoring side, a directory entry
+per entry in every cook and a pointer chase per probe on the read side.
+
+**Reference.** `internal/codegen/cpptable/maps.go` — the runtime at
+`tableMapRuntime` (the sixteen-byte `TableMap` and its binary search,
+`TableKeyOrder`, the builder's head and segments, the ordered cursor the four
+writing walks read, the load-side fill), the extent's two walks at
+`emitMapExtent` and `emitMapPack`, the framing scan at `emitMapWireExtent`, and
+the reader at `emitMapReadField`. The walk's map edge is
+`internal/codegen/cpptable/pointers.go`'s `edgeMap`.
+
+**Proven in.** C++ (#380).
+
+**Measured effect.** Zero bytes past the entries themselves in a region and a
+cook, `Open` still O(1), `Find` in place at `floor( log2 n ) + 1` key compares
+with no allocation and no pointer chase, and a byte-stable image because a
+sorted array of records has exactly one. The wire pays twelve bytes an entry
+for the unspent kind, which is what keeps the `[..N]Pair` migration.
+
+**Negative control.** Eight, through I2's overlay sabotage, each one §2.8 names
+and each turning `test/tables/maps_main.cpp` red on a CHECK: the writer
+emitting insertion order, `Save` emitting a dead entry, the ascending check
+dropped, the duplicate rule dropped, the key-kind rule decoding anyway, the
+reader clamping a key instead of dropping its entry, the `N`-against-`L` fit
+check dropped, and `LoadMeasure` summing the extent at one depth only.
+
+**Targets:** maps, maps-sort-negative-control, maps-dead-entry-negative-control, maps-ascending-negative-control, maps-duplicate-negative-control, maps-key-kind-negative-control, maps-clamp-negative-control, maps-fit-negative-control, maps-depth-negative-control
+
+| cpp | c | rust | go | cs | java | js | dart | elixir |
+|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-maps` `tables-maps-negative-controls` | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
+
 ### I1 — The independent allocation gate
 
 **Method.** The read path's "allocates nothing" is MEASURED, with an
