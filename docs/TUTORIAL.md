@@ -1841,8 +1841,7 @@ $ echo $?
 It is a **notice**, not an error: the exit status is 0 and nothing stops. The
 tool has spotted that you now have a format that outlives builds and no record
 of what shipped. Part 10 writes that record, and until then this line rides
-along with every `check` and every `generate`. It is the one thing that prints
-on success anywhere in the tool.
+along with every `check`. It is the one thing `check` prints on success.
 
 ### What generation adds
 
@@ -4826,7 +4825,7 @@ schema version                                        which build of the tool
 
 Success is silent, with one exception, and Part 6 met it: a unit that declares
 a table and has no `tables.baseline` beside it draws a **notice** from every
-`check` and every `generate`.
+`check`.
 
 ```
 notice: starlight declares 1 table and . holds no tables.baseline — save-game evolution is unguarded (docs/SPEC-TABLES.md §18); commit one with: schema tables-baseline --update --reason "first baseline" .
