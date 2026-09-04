@@ -1054,7 +1054,7 @@ check removed reds on the report.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #391 | ❌ #391 | ❌ #391 | ❌ #391 | ❌ #391 | ❌ #391 | ❌ #391 | ❌ #391 |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
 
 ### J1 — Accessor and descriptor agreement
 
