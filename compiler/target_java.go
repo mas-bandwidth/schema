@@ -16,10 +16,7 @@ type javaTarget struct{}
 func (javaTarget) Names() []string { return []string{"java"} }
 
 func (javaTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := refuseTableArms(u, "java"); err != nil {
-		return nil, err
-	}
-	if err := refuseUnionArrays(u, "java"); err != nil {
+	if err := refuseUnported(u, "java"); err != nil {
 		return nil, err
 	}
 	if err := refuseOptionalArrays(u, "java"); err != nil {
@@ -46,4 +43,4 @@ func (javaTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(javaTarget{}, true, false, false) }
+func init() { registerBuiltin(javaTarget{}, true, false, false, false) }

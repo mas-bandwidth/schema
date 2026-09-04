@@ -622,8 +622,14 @@ func fpScalar(t ast.ScalarType) string {
 	case ast.ScalarBits:
 		return fmt.Sprintf("bits(%s)", fpExpr(t.Arg))
 	case ast.ScalarString:
+		if t.Pointer {
+			return "*string" // a byte buffer at its used size (docs/SPEC-TABLES.md §2.5)
+		}
 		return fmt.Sprintf("string(%s)", fpExpr(t.Arg))
 	case ast.ScalarBytes:
+		if t.Pointer {
+			return "*bytes"
+		}
 		return fmt.Sprintf("bytes(%s)", fpExpr(t.Arg))
 	case ast.ScalarFixed:
 		if t.Signed {

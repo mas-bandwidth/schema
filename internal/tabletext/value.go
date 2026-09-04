@@ -73,6 +73,21 @@ type Cell struct {
 	// which is what makes measure and save agree without passing anything
 	// between them.
 	Node *Instance
+
+	// Blob is a `*bytes` or `*string` BYTE BUFFER field's referent
+	// (docs/SPEC-TABLES.md §2.5): a blob node at exactly its bytes, nil for null.
+	// It is a NODE like Node is — identity by pointer, written once however
+	// many slots name it — and a zero-length blob is a non-nil Blob whose Data
+	// is empty, because null and empty are two values.
+	Blob *Blob
+}
+
+// Blob is a BYTE BUFFER's node (docs/SPEC-TABLES.md §2.5): the bytes, at exactly
+// their length. Whether it is a `*bytes` blob or a `*string` blob is the
+// FIELD's fact, not the node's — the two reserved type ids come from the slot
+// that names it (§3.1).
+type Blob struct {
+	Data []byte
 }
 
 // Field is one field's storage in an [Instance] — the value, the companions

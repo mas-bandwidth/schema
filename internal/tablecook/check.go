@@ -57,8 +57,15 @@ func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 
 	s := &scan{m: m, h: h, ord: h.Order(), buf: h.Data(file), dir: dir}
 	for i, e := range dir {
-		if err := s.node(e.Offset, byTypeId[e.TypeId]); err != nil {
-			return res, fmt.Errorf("node %d (%s at offset %d): %w", i+1, byTypeId[e.TypeId].Name, e.Offset, err)
+		// a node's extent runs to the next entry's offset, or to data_length
+		// for the last (§6.3): the bound a BYTE BUFFER's length is checked
+		// against
+		extent := h.DataLength - e.Offset
+		if i+1 < len(dir) {
+			extent = dir[i+1].Offset - e.Offset
+		}
+		if err := s.node(e.Offset, extent, e.TypeId, byTypeId[e.TypeId]); err != nil {
+			return res, fmt.Errorf("node %d (%s at offset %d): %w", i+1, nameOf(byTypeId, e.TypeId), e.Offset, err)
 		}
 	}
 
@@ -93,26 +100,34 @@ func checkDirectory(m *tabletext.Model, h Header, dir []DirectoryEntry) error {
 			return fmt.Errorf("directory entry %d is the not-materialized sentinel: a cook cannot carry a hole", i+1)
 		}
 		st := byTypeId[e.TypeId]
-		if st == nil {
+		name, size, align := "", int64(0), int64(0)
+		switch {
+		case st != nil:
+			ml := ir.RecordLayout(m.Unit, st)
+			name, size, align = st.Name, ml.Size, ml.Align
+		case e.TypeId == ir.BytesTypeId || e.TypeId == ir.StringTypeId:
+			// a BYTE BUFFER's node (§6.3): pass one bounds its HEADER, at
+			// eight; its length is a field of the region and pass two's
+			name, size, align = nameOf(byTypeId, e.TypeId), BlobHeader, BlobAlign
+		default:
 			return fmt.Errorf("directory entry %d names type id 0x%016x, which is no table this unit has", i+1, e.TypeId)
 		}
-		ml := ir.RecordLayout(m.Unit, st)
-		if i == 0 && e.Offset != 0 {
-			return fmt.Errorf("the first directory entry is the ROOT and its offset is %d, not 0", e.Offset)
+		if i == 0 && (e.Offset != 0 || st == nil) {
+			return fmt.Errorf("the first directory entry is the ROOT — a table at offset 0 — and this one is %s at %d", name, e.Offset)
 		}
 		if e.Offset < prevEnd {
-			return fmt.Errorf("directory entry %d (%s) starts at %d, which is inside the node before it (which ends at %d): the offsets ascend and no node overlaps the next", i+1, st.Name, e.Offset, prevEnd)
+			return fmt.Errorf("directory entry %d (%s) starts at %d, which is inside the node before it (which ends at %d): the offsets ascend and no node overlaps the next", i+1, name, e.Offset, prevEnd)
 		}
-		if e.Offset%ml.Align != 0 {
+		if e.Offset%align != 0 {
 			// "is a directory entry" and "is aligned" are ONE check, because
 			// every node starts at its own type's alignment and the directory's
 			// offsets are those padded starts (§6.3)
-			return fmt.Errorf("directory entry %d (%s) starts at %d, which is not aligned to %d", i+1, st.Name, e.Offset, ml.Align)
+			return fmt.Errorf("directory entry %d (%s) starts at %d, which is not aligned to %d", i+1, name, e.Offset, align)
 		}
-		if e.Offset+ml.Size > h.DataLength {
-			return fmt.Errorf("directory entry %d (%s) needs %d bytes at %d and the data part is %d: the node leaves the region", i+1, st.Name, ml.Size, e.Offset, h.DataLength)
+		if e.Offset+size > h.DataLength {
+			return fmt.Errorf("directory entry %d (%s) needs %d bytes at %d and the data part is %d: the node leaves the region", i+1, name, size, e.Offset, h.DataLength)
 		}
-		prevEnd = e.Offset + ml.Size
+		prevEnd = e.Offset + size
 	}
 	return nil
 }
@@ -129,7 +144,24 @@ type scan struct {
 	pointers int
 }
 
-func (s *scan) node(base int64, st *ir.Struct) error { return s.record(base, st) }
+// node walks one directory entry. A BYTE BUFFER's node has no fields to walk
+// and one COUNT COMPANION — its length — which must fit, with the header and a
+// string's terminator, inside the node's own extent (§7.4): a length past the
+// extent would hand a walker the node after it as this node's bytes.
+func (s *scan) node(base, extent int64, typeId uint64, st *ir.Struct) error {
+	if st == nil {
+		length := int64(s.ord.Uint32(s.buf[base:]))
+		need := BlobHeader + length
+		if typeId == ir.StringTypeId {
+			need++
+		}
+		if need > extent {
+			return fmt.Errorf("the byte buffer's length is %d and its node's extent is %d: the bytes leave the node", length, extent)
+		}
+		return nil
+	}
+	return s.record(base, st)
+}
 
 // record walks one record's declaration. It descends through every BY-VALUE
 // edge — a nested table, a fixed table or plain type nested by value, an array
@@ -243,9 +275,17 @@ func (s *scan) ref(at int64, f *ir.Field) error {
 		}
 		return fmt.Errorf("the reference resolves to offset %d, which the directory does not name", target)
 	}
-	want := ir.TableTypeId(f.Type.Name)
+	want, wantName := ir.TableTypeId(f.Type.Name), f.Type.Name
+	if f.Type.Blob() {
+		// a byte buffer's slot names a blob node under its reserved id (§2.5)
+		want = ir.BlobTypeId(f)
+		wantName = "*bytes"
+		if f.Type.Kind == ir.TString {
+			wantName = "*string"
+		}
+	}
 	if s.dir[slot].TypeId != want {
-		return fmt.Errorf("the reference resolves to a node the directory names as type id 0x%016x, and the declaration requires %s", s.dir[slot].TypeId, f.Type.Name)
+		return fmt.Errorf("the reference resolves to a node the directory names as type id 0x%016x, and the declaration requires %s", s.dir[slot].TypeId, wantName)
 	}
 	return nil
 }

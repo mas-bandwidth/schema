@@ -163,6 +163,16 @@ func cookFieldLine(fl FieldLayout, enums map[string]*Enum, unions map[string]*Un
 	// A kind number says a record is nested and not WHICH one, so two
 	// same-shaped records would be interchangeable to a digest that stopped at
 	// the kind — and the nested body would then decode under different ids.
+	// A BYTE BUFFER's referent is the blob node's own shape, `bytes` or
+	// `string` (docs/SPEC-TABLES.md §2.5, §20.2), so a slot moved between
+	// the two, or between a blob and a table, moves the id.
+	if f.Type.Blob() {
+		if f.Type.Kind == TString {
+			b.WriteString(" type=string")
+		} else {
+			b.WriteString(" type=bytes")
+		}
+	}
 	if f.Type.Kind == TNamed {
 		switch ref := f.Type.Ref.(type) {
 		case *Struct:
@@ -189,6 +199,8 @@ func cookFieldLine(fl FieldLayout, enums map[string]*Enum, unions map[string]*Un
 		fmt.Fprintf(&b, " elem=%d array=fixed bound=%d", cookElemSize(fl), f.ArrayBound)
 	case f.Array == ArrayCounted:
 		fmt.Fprintf(&b, " elem=%d array=bounded bound=%d", cookElemSize(fl), f.ArrayBound)
+	case f.Type.Blob():
+		// a byte buffer has no capacity: its blob node is exactly its size
 	case f.Type.Kind == TString, f.Type.Kind == TBytes:
 		// a string's and a bytes' CAPACITY, which §20.1 files beside an
 		// array's bound for the same reason: it is the extent the storage took

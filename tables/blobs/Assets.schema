@@ -1,0 +1,27 @@
+// Assets.schema — the BYTE BUFFER corpus (docs/SPEC-TABLES.md §2.5): a blob at
+// its used size, pointed at. An asset carries its bytes and a caption at
+// exactly their length beside a format tag schema never reads; a catalog holds
+// a chain of them, a thumbnail of its own, and a second slot that may name the
+// same blob, so sharing is seen doing for a blob what it does for every node.
+//
+// Kept in its OWN unit, apart from tables/pointers: the pointered corpus
+// stays what it was, and the blob node is seen paying for itself here.
+package blobdemo
+
+table Asset
+{
+    name    string(32)
+    kind    uint32 // the user's own format tag: schema does not interpret the blob
+    data    *bytes // the asset, at exactly its size; null when absent
+    caption *string // a string at its used length, the same node with a terminator
+    next    *Asset
+}
+
+table Catalog
+{
+    name  string(32)
+    head  *Asset
+    thumb *bytes
+    note  *string
+    alias *bytes // may name the blob thumb names: one node, written once
+}

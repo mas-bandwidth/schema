@@ -1746,14 +1746,62 @@ What is still not the dialect in a POINTERED unit's header — `<atomic>` and
 `<new>` — and the builder's destructor are named follow-ons in
 SPEC-TABLES §15.
 
-### Byte buffers: `bytes(N)`
+### Byte buffers: `bytes(N)`, `*bytes` and `*string`
 
-A blob is `bytes(N)` — N bytes of inline storage in every instance, at a
-bound you declare. `*bytes` and `*string` are NOT language: a pointer takes a
-declared table's name, and `bytes` and `string` are keywords, so the spelling
-does not parse. An unbounded buffer at its used size is a named follow-on
-(SPEC-TABLES.md §15, schema#259); until it lands, a blob whose size varies
-per node is a table of its own with a `bytes(N)` field, pointed at.
+A bounded blob is `bytes(N)` — N bytes of inline storage in every instance,
+at a bound you declare, with its used length beside it. When the size varies
+wildly per node, the bound costs you: a `bytes(65536)` field is 64 KB in
+every instance whether it is used or not.
+
+**A buffer at exactly its used size is `*bytes`, and `*string` is the same
+node with a terminator** (SPEC-TABLES.md §2.5). Each is a POINTER to a BLOB
+NODE of exactly its bytes, and every pointer rule applies: table body only,
+no default, no `?`, no array, no bound — and the field makes its holder
+variable, so the builder is where the bytes are put:
+
+```
+table Asset
+{
+    name    string(32)
+    data    *bytes  // the asset, at exactly its size; null when absent
+    caption *string // a string at its used length
+}
+```
+
+```cpp
+AssetBuilder builder;
+TableBytesSlot data = builder.AllocBytes( size );   // the node, and the bytes to write through
+memcpy( data.data, bytes, size );
+builder.GetRoot()->data = data;                     // the slot stores the reference
+TableStringEmplace( builder.main, builder.GetRoot()->caption, text, length );
+```
+
+Reading is a VIEW — one add from the slot, no copy, off a loaded region, a
+locked builder or an opened cook alike:
+
+```cpp
+TableBytesView data = TableBytesAt( asset->data );       // NULL/0 for a null reference
+TableStringView caption = TableStringAt( asset->caption ); // .data is zero-terminated
+```
+
+**Null and empty are two values**: a null reference elides from the wire and
+reads back as `NULL`/0, while `AllocBytes( 0 )` is a present blob of length
+zero — non-NULL data, zero length. A blob is a node like any other: two
+slots that store one reference name ONE node, written once on the wire and
+laid out once in a region. In JSON a `*bytes` is inline base64 and a
+`*string` is a string — `null` for a null reference, `""` for a present
+empty blob — and a blob named from two slots has no text spelling (a string
+has no first key to carry `&node`), so `ToJson` refuses that graph
+(SPEC-TABLES.md §16.7).
+
+Because schema never reads a blob, a `*bytes` is also where you put a LAZY
+SUB-DOCUMENT — another document's wire bytes, carried opaquely and handed to
+its own `Load` only when something asks for it. That is a pattern, not a
+construct: `*bytes` plus a second call (SPEC-TABLES.md §2.5).
+
+C++ and the tool carry the construct today; every other backend refuses a
+unit that declares one, by name, and the ports are a named follow-on
+(SPEC-TABLES.md §15).
 
 ### The block form: rows another language points at
 

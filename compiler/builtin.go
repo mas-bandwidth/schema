@@ -31,14 +31,20 @@ var tableArmTargets []string
 // refuseUnionArrays names them.
 var unionArrayTargets []string
 
+// blobTargets is the canonical name of every built-in target whose table
+// backend carries a BYTE BUFFER — `*bytes` and `*string` (docs/SPEC-TABLES.md
+// §2.5); refuseBlobs names them.
+var blobTargets []string
+
 // registerBuiltin is what a target's file calls from its init. tables says
 // whether the target emits table sources; one that does not refuses a unit
 // declaring tables through refuseTables, and is named there as a follow-on.
 // arms says whether those sources carry a union with table arms; one that
 // does not refuses a unit declaring one through refuseTableArms, the same way.
 // unionArrays says whether they carry an array of unions in a table closure;
-// one that does not refuses through refuseUnionArrays.
-func registerBuiltin(g Generator, tables, arms, unionArrays bool) {
+// one that does not refuses through refuseUnionArrays. blobs says whether
+// they carry a byte buffer; one that does not refuses through refuseBlobs.
+func registerBuiltin(g Generator, tables, arms, unionArrays, blobs bool) {
 	builtinTargets = append(builtinTargets, g)
 	if tables {
 		tableTargets = append(tableTargets, g.Names()[0])
@@ -48,6 +54,9 @@ func registerBuiltin(g Generator, tables, arms, unionArrays bool) {
 	}
 	if unionArrays {
 		unionArrayTargets = append(unionArrayTargets, g.Names()[0])
+	}
+	if blobs {
+		blobTargets = append(blobTargets, g.Names()[0])
 	}
 }
 
@@ -107,6 +116,34 @@ func refuseUnionArrays(u *ir.Unit, target string) error {
 	carry, flags := carriers(unionArrayTargets)
 	return fmt.Errorf("unit declares an array of unions in a table closure (%s) — an array of unions is %s only today, and the %s form is a named follow-on; generate with %s, or wrap the union in a table and declare an array of that (docs/SPEC-TABLES.md §2.6, §11)",
 		englishList(fields), englishList(carry), target, englishList(flags))
+}
+
+// refuseBlobs is the named refusal every target without the construct gives a
+// unit whose closure holds a BYTE BUFFER field (docs/SPEC-TABLES.md §2.5, §11):
+// the targets that carry the blob node are named, and each remaining port's is
+// a named follow-on — refused loudly here rather than emitted as a pointer
+// naming a table the unit never declares.
+func refuseBlobs(u *ir.Unit, target string) error {
+	names := ir.BlobFields(u)
+	if len(names) == 0 {
+		return nil
+	}
+	carry, flags := carriers(blobTargets)
+	return fmt.Errorf("unit declares a byte buffer field (%s) — *bytes and *string are %s only today, and the %s form is a named follow-on; generate with %s, or move the table to its own unit (docs/SPEC-TABLES.md §2.5, §11)",
+		englishList(names), englishList(carry), target, englishList(flags))
+}
+
+// refuseUnported bundles the refusals a port gives a unit that declares a
+// table-closure construct it does not carry: a union with table arms, an
+// array of unions, a byte buffer.
+func refuseUnported(u *ir.Unit, target string) error {
+	if err := refuseTableArms(u, target); err != nil {
+		return err
+	}
+	if err := refuseUnionArrays(u, target); err != nil {
+		return err
+	}
+	return refuseBlobs(u, target)
 }
 
 // carriers is the registered targets that carry a form, sorted, beside the

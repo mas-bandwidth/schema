@@ -273,6 +273,10 @@ func (g *tableGen) emitCookWriteField(st *ir.Struct, f *ir.Field, offset int64) 
 		g.pf("    table_cook_put( at + %d, (uint64_t) ( %s_present ? 1 : 0 ), 1, order ); // ?T's presence companion\n", p.Offset, name)
 	}
 	switch {
+	case f.Type.Blob():
+		// a byte buffer's slot is the same delta, to the blob node the
+		// numbering reached under its reserved type id (§2.5)
+		g.pf("    if ( !table_cook_ref( region, at + %d, (const void *) TableBlobAt( ctx, %s ), order ) ) { return false; } // %s\n", value.Offset, name, f.Name)
 	case f.Type.Pointer:
 		// the self-relative delta of §6.3, or a refusal for a node the numbering
 		// did not reach; the pointee is resolved through the same context the
@@ -476,6 +480,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	n := st.Name
 	ml := ir.RecordLayout(g.unit, st)
 	reachable := g.pointerReachable(st)
+	blobs := g.reachableBlobs(st)
 
 	g.pf("// %sCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one\n", n)
 	g.pf("// numbering — the root at zero, then every node in index order at\n")
@@ -497,6 +502,14 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	for _, t := range reachable {
 		tl := ir.RecordLayout(g.unit, t)
 		g.pf("            case 0x%016xull: size = %d; node_align = %d; break; // %s\n", ir.TableTypeId(t.Name), tl.Size, tl.Align, t.Name)
+	}
+	for _, b := range blobs {
+		// a byte buffer's node is its header and its bytes, at eight (§7.2)
+		extra := 0
+		if b.terminated {
+			extra = 1
+		}
+		g.pf("            case %s: size = kTableBlobHeader + (int64_t) ( (const TableBlob *) numbering.entries[k].node )->length + %d; node_align = 8; break; // *%s\n", b.constant, extra, b.word)
 	}
 	g.pf("            default: return false;\n")
 	g.pf("        }\n")
@@ -570,6 +583,15 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 		} else {
 			g.pf("                    case 0x%016xull: %sCookBody( at, *(const %s *) node, order ); break; // %s\n", ir.TableTypeId(t.Name), t.Name, t.Name, t.Name)
 		}
+	}
+	for _, b := range blobs {
+		// the header's length in the target's order, then the bytes verbatim;
+		// the memset's zeros are the pad word, a string's terminator and the tail
+		g.pf("                    case %s:\n                    {\n", b.constant)
+		g.pf("                        const TableBlob * blob = (const TableBlob *) node; // *%s\n", b.word)
+		g.pf("                        table_cook_put( at, (uint64_t) blob->length, 4, order );\n")
+		g.pf("                        table_cook_bytes( at + kTableBlobHeader, (const void *) ( blob + 1 ), (int64_t) blob->length, (int64_t) blob->length );\n")
+		g.pf("                        break;\n                    }\n")
 	}
 	g.pf("                    default: ok = false; break;\n")
 	g.pf("                }\n            }\n")

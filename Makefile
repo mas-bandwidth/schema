@@ -27,6 +27,9 @@ SCHEMAS_TABLES_BLOCK := $(wildcard tables/block/*.schema) $(wildcard tables/bloc
 # the MESSAGE corpora (docs/SPEC-TABLES.md §2.6): a union whose arms are tables,
 # fixed in tables/messages and with a variable arm in tables/stream
 SCHEMAS_TABLES_MESSAGES := $(wildcard tables/messages/*.schema) $(wildcard tables/stream/*.schema)
+# the BYTE BUFFER corpus (docs/SPEC-TABLES.md §2.5): a blob at its used size,
+# pointed at — C++ and the tool carry it, every port refuses the unit by name
+SCHEMAS_TABLES_BLOBS := $(wildcard tables/blobs/*.schema)
 SCHEMAS_TABLES_SCALARS := $(wildcard tables/scalars/*.schema)
 
 # The soak length every leg's soak takes, in seconds. The hour is the release
@@ -91,6 +94,7 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/blockhome tables/blockhome
 	$(1) generate --lang cpp --out $(2)/messages tables/messages
 	$(1) generate --lang cpp --out $(2)/stream tables/stream
+	$(1) generate --lang cpp --out $(2)/blobs tables/blobs
 	$(1) generate --lang cpp --out $(2)/v1 test/tables/V1.schema
 	$(1) generate --lang cpp --out $(2)/v2 test/tables/V2.schema
 	$(1) generate --lang cpp --out $(2)/p1 test/tables/P1.schema
@@ -105,9 +109,9 @@ endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/m1 -I$(1)/m2 -I$(1)/scalars -I$(1)/scalars2 -I$(SERIALIZE)
+	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/scalars -I$(1)/scalars2 -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/Scalars2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/Scalars2.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -125,7 +129,7 @@ tables-zero-cost: build/tables-generated/.stamp
 	          build/tables-generated/p3/*Table.h \
 	          build/tables-generated/messages/*Table.h build/tables-generated/m1/*Table.h \
 	          build/tables-generated/m2/*Table.h build/tables-generated/scalars/*Table.h; do \
-		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|TablePack|TableNode|is_pointer|Builder|PackMeasure|LoadMeasure" $$f; then \
+		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|TablePack|TableNode|is_pointer|Builder|PackMeasure|LoadMeasure|TableBlob|TableBytesView|TableStringView|AllocBytes|AllocString|BytesEmplace|StringEmplace" $$f; then \
 			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
 		fi; \
 	done
@@ -154,7 +158,7 @@ tables-json-walk: build/tables-generated/.stamp
 .PHONY: tables-json-graph-walk
 tables-json-graph-walk: build/tables-generated/.stamp
 	@rm -rf build/json-graph-walk && mkdir -p build/json-graph-walk
-	@for f in build/tables-generated/pointers/*Table.cpp build/tables-generated/p2/*Table.cpp; do \
+	@for f in build/tables-generated/pointers/*Table.cpp build/tables-generated/p2/*Table.cpp build/tables-generated/blobs/*Table.cpp; do \
 		out=build/json-graph-walk/$$(echo $$f | tr / _); \
 		awk '/---- json graph walk: begin ----/,/---- json graph walk: end ----/' $$f > $$out; \
 		if [ ! -s $$out ]; then echo "GRAPH-WALK GATE FAILED: no graph half in $$f"; exit 1; fi; \
@@ -677,8 +681,9 @@ tables-cook-write-hooks-negative-control: bin/schema test/tables/hooks_main.cpp
 		"$(CURDIR)" "$(CURDIR)" > $(COOK_WRITE_HOOKS_SABOTAGE)/overlay.json
 	@go build -overlay=$(COOK_WRITE_HOOKS_SABOTAGE)/overlay.json -o $(COOK_WRITE_HOOKS_SABOTAGE)/schema ./cmd/schema
 	@$(COOK_WRITE_HOOKS_SABOTAGE)/schema generate --lang cpp --out $(COOK_WRITE_HOOKS_SABOTAGE)/pointers tables/pointers > /dev/null
-	@$(CXX) $(TABLES_CXXFLAGS) -I$(COOK_WRITE_HOOKS_SABOTAGE)/pointers -Itest/tables test/tables/hooks_main.cpp \
-		$$(ls $(COOK_WRITE_HOOKS_SABOTAGE)/pointers/*Table.cpp) -o $(COOK_WRITE_HOOKS_SABOTAGE)/hooks
+	@$(COOK_WRITE_HOOKS_SABOTAGE)/schema generate --lang cpp --out $(COOK_WRITE_HOOKS_SABOTAGE)/blobs tables/blobs > /dev/null
+	@$(CXX) $(TABLES_CXXFLAGS) -I$(COOK_WRITE_HOOKS_SABOTAGE)/pointers -I$(COOK_WRITE_HOOKS_SABOTAGE)/blobs -Itest/tables test/tables/hooks_main.cpp \
+		$$(ls $(COOK_WRITE_HOOKS_SABOTAGE)/pointers/*Table.cpp $(COOK_WRITE_HOOKS_SABOTAGE)/blobs/*Table.cpp) -o $(COOK_WRITE_HOOKS_SABOTAGE)/hooks
 	@if $(COOK_WRITE_HOOKS_SABOTAGE)/hooks > $(COOK_WRITE_HOOKS_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a cook through the default pair left the hooks test GREEN"; exit 1; \
 	fi
@@ -686,6 +691,77 @@ tables-cook-write-hooks-negative-control: bin/schema test/tables/hooks_main.cpp
 		{ echo "NEGATIVE CONTROL FAILED: the hooks test went red, but not on the default pair's count"; \
 		  cat $(COOK_WRITE_HOOKS_SABOTAGE)/log; exit 1; }
 	@echo "negative control: a pointered cook that ignores the builder's pair turns the hooks test red"
+
+# The BLOB READ PATH's NEGATIVE CONTROL: plant one allocation into the view —
+# the read path's only new code — through the same overlay mechanism, and the
+# hooks test's frozen counters must go red. The claim "the read path allocates
+# nothing" is held by a RUN, so its control must be a run that fails.
+BLOB_READ_SABOTAGE := build/blob-read-control
+.PHONY: tables-blob-read-hooks-negative-control
+tables-blob-read-hooks-negative-control: bin/schema test/tables/hooks_main.cpp
+	@rm -rf $(BLOB_READ_SABOTAGE) && mkdir -p $(BLOB_READ_SABOTAGE)
+	@sed -e 's|TableBytesView view = { NULL, 0 };|TableBytesView view = { NULL, 0 }; schema_release( schema_allocate( 1 ) ); /* SABOTAGED: an allocation on the read path */|' \
+		internal/codegen/cpptable/arena.go > $(BLOB_READ_SABOTAGE)/arena.go.txt
+	@cmp -s internal/codegen/cpptable/arena.go $(BLOB_READ_SABOTAGE)/arena.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the read-path sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/arena.go":"%s/$(BLOB_READ_SABOTAGE)/arena.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(BLOB_READ_SABOTAGE)/overlay.json
+	@go build -overlay=$(BLOB_READ_SABOTAGE)/overlay.json -o $(BLOB_READ_SABOTAGE)/schema ./cmd/schema
+	@$(BLOB_READ_SABOTAGE)/schema generate --lang cpp --out $(BLOB_READ_SABOTAGE)/pointers tables/pointers > /dev/null
+	@$(BLOB_READ_SABOTAGE)/schema generate --lang cpp --out $(BLOB_READ_SABOTAGE)/blobs tables/blobs > /dev/null
+	@$(CXX) $(TABLES_CXXFLAGS) -I$(BLOB_READ_SABOTAGE)/pointers -I$(BLOB_READ_SABOTAGE)/blobs -Itest/tables test/tables/hooks_main.cpp \
+		$$(ls $(BLOB_READ_SABOTAGE)/pointers/*Table.cpp $(BLOB_READ_SABOTAGE)/blobs/*Table.cpp) -o $(BLOB_READ_SABOTAGE)/hooks
+	@if $(BLOB_READ_SABOTAGE)/hooks > $(BLOB_READ_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: an allocating view left the hooks test GREEN"; exit 1; \
+	fi
+	@grep -q "fallback_before" $(BLOB_READ_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the hooks test went red, but not on the frozen read-path counter"; \
+		  cat $(BLOB_READ_SABOTAGE)/log; exit 1; }
+	@echo "negative control: one allocation inside a blob view turns the hooks test red"
+
+# THE SPAN's NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.5, §6.5). A byte buffer
+# larger than one 64 KiB slab cannot be bump-allocated in a slab: it takes a
+# SPAN of the arena's address space. The sabotage removes exactly that choice —
+# the size test that sends a large blob to TableArenaGrabSpan is made never to
+# fire, and every other line of the allocator is the tree's — so the blob is
+# bump-allocated in a 64 KiB slab and runs off the end of it, over memory the
+# arena goes on to hand to the nodes allocated after it. The driver reads the
+# blob back after those allocations and the pattern does not survive. It builds
+# under the sanitizers, so an overrun that lands outside the slab's own block
+# is named at the byte rather than read back as a wrong value.
+#
+# Both halves run: the tree's own emitter through the same driver must be
+# GREEN, so a red below is the sabotage and not the driver.
+BLOB_SPAN_SABOTAGE := build/blob-span-control
+BLOB_SPAN_SANITIZE := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
+.PHONY: tables-blob-span-negative-control
+tables-blob-span-negative-control: bin/schema test/tables/blob_span_main.cpp
+	@rm -rf $(BLOB_SPAN_SABOTAGE) && mkdir -p $(BLOB_SPAN_SABOTAGE)
+	@sed -e 's|if ( bytes > (int64_t) kTableSlabBytes )|if ( false ) /* SABOTAGED: no blob takes a span */|' \
+		internal/codegen/cpptable/arena.go > $(BLOB_SPAN_SABOTAGE)/arena.go.txt
+	@cmp -s internal/codegen/cpptable/arena.go $(BLOB_SPAN_SABOTAGE)/arena.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the span sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/arena.go":"%s/$(BLOB_SPAN_SABOTAGE)/arena.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(BLOB_SPAN_SABOTAGE)/overlay.json
+	@go build -overlay=$(BLOB_SPAN_SABOTAGE)/overlay.json -o $(BLOB_SPAN_SABOTAGE)/schema ./cmd/schema
+	@$(BLOB_SPAN_SABOTAGE)/schema generate --lang cpp --out $(BLOB_SPAN_SABOTAGE)/blobs tables/blobs > /dev/null
+	@./bin/schema generate --lang cpp --out $(BLOB_SPAN_SABOTAGE)/blobs-good tables/blobs > /dev/null
+	$(CXX) $(TABLES_CXXFLAGS) $(BLOB_SPAN_SANITIZE) -I$(BLOB_SPAN_SABOTAGE)/blobs-good -Itest/tables \
+		test/tables/blob_span_main.cpp $$(ls $(BLOB_SPAN_SABOTAGE)/blobs-good/*Table.cpp) -o $(BLOB_SPAN_SABOTAGE)/span-good
+	@$(BLOB_SPAN_SABOTAGE)/span-good > $(BLOB_SPAN_SABOTAGE)/good.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the driver is red on the tree's own emitter"; \
+		  cat $(BLOB_SPAN_SABOTAGE)/good.log; exit 1; }
+	$(CXX) $(TABLES_CXXFLAGS) $(BLOB_SPAN_SANITIZE) -I$(BLOB_SPAN_SABOTAGE)/blobs -Itest/tables \
+		test/tables/blob_span_main.cpp $$(ls $(BLOB_SPAN_SABOTAGE)/blobs/*Table.cpp) -o $(BLOB_SPAN_SABOTAGE)/span
+	@if $(BLOB_SPAN_SABOTAGE)/span > $(BLOB_SPAN_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a blob bump-allocated in a slab it does not fit left the driver GREEN"; \
+		cat $(BLOB_SPAN_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "heap-buffer-overflow\|blob past the slab" $(BLOB_SPAN_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the driver went red, but not on the blob"; \
+		  cat $(BLOB_SPAN_SABOTAGE)/log; exit 1; }
+	@grep -m1 "heap-buffer-overflow\|blob past the slab" $(BLOB_SPAN_SABOTAGE)/log
+	@echo "negative control: a blob larger than a slab, denied its span, overruns the slab"
 
 # THE VALUED FIXTURE, cross-checked by the ENGINE's own uncook (§7.5, §7.4).
 #
@@ -832,7 +908,8 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 	@n=0; d=0; \
 	for f in testdata/golden/tables/examples/*Table.* testdata/golden/tables/pointers/*Table.* \
 	         testdata/golden/tables/block/*Table.* testdata/golden/tables/blockhome/*Table.* \
-	         testdata/golden/tables/messages/*Table.* testdata/golden/tables/stream/*Table.* testdata/golden/tables/scalars/*Table.* ; do \
+	         testdata/golden/tables/messages/*Table.* testdata/golden/tables/stream/*Table.* \
+	         testdata/golden/tables/blobs/*Table.* testdata/golden/tables/scalars/*Table.* ; do \
 		dir=$$(basename $$(dirname $$f)); \
 		n=$$(( n + 1 )); \
 		cmp -s $$f build/tables-generated/$$dir/$$(basename $$f) || \
@@ -1389,7 +1466,7 @@ tables-keyed-none-refusal-ndebug: build/tables-generated/.stamp test/tables/keye
 tables-hooks: build/tables-generated/.stamp test/tables/hooks_main.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/hooks_main.cpp \
-		$$(ls build/tables-generated/pointers/*Table.cpp) -o build/schema_test_hooks
+		$$(ls build/tables-generated/pointers/*Table.cpp build/tables-generated/blobs/*Table.cpp) -o build/schema_test_hooks
 	./build/schema_test_hooks
 
 # and its NEGATIVE CONTROL: put the refusal back to a bare assert — the shape
@@ -1534,7 +1611,7 @@ tables-clamp-limits: build/tables-generated/.stamp
 .PHONY: tables-clamp-limits-negative-control
 tables-clamp-limits-negative-control: bin/schema
 	@mkdir -p build
-	@sed 's|return f.IntMin.Cmp(lo) > 0, f.IntMax.Cmp(hi) < 0|return f.IntMin.Cmp(lo) >= 0, f.IntMax.Cmp(hi) <= 0 // SABOTAGED: both ends always written|' \
+	@sed 's|return rlo.Cmp(lo) > 0, rhi.Cmp(hi) < 0|return rlo.Cmp(lo) >= 0, rhi.Cmp(hi) <= 0 // SABOTAGED: both ends always written|' \
 		internal/codegen/cpptable/codecs.go > build/cpptable-always-clamp.gotext
 	@grep -q SABOTAGED build/cpptable-always-clamp.gotext || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
@@ -1788,10 +1865,10 @@ build/tables-pack-root.bin: bin/schema $(PACK_TREE)
 
 # PACK_INCLUDES is shared with the sanitized twins below, so a build and its
 # twin can never drift into covering different code (#278's rule).
-PACK_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generated/pointers -Ibuild/tables-generated/scalars -Itest/tables -I$(SERIALIZE)
+PACK_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generated/pointers -Ibuild/tables-generated/scalars -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream -Ibuild/tables-generated/blobs -Itest/tables -I$(SERIALIZE)
 # these drivers CALL the text form, so they compile the generated translation
 # unit that holds it (docs/SPEC-TABLES.md §16.1) — the same rule any consumer follows
-PACK_JSON_SOURCES = $$(ls build/tables-generated/examples/*Table.cpp build/tables-generated/pointers/*Table.cpp build/tables-generated/scalars/*Table.cpp)
+PACK_JSON_SOURCES = $$(ls build/tables-generated/examples/*Table.cpp build/tables-generated/pointers/*Table.cpp build/tables-generated/scalars/*Table.cpp build/tables-generated/messages/*Table.cpp build/tables-generated/stream/*Table.cpp build/tables-generated/blobs/*Table.cpp)
 PACK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off
 PACK_SANITIZE := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
 
@@ -2019,6 +2096,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-cook-write
 	$(MAKE) tables-cook-write-negative-control
 	$(MAKE) tables-cook-write-hooks-negative-control
+	$(MAKE) tables-blob-read-hooks-negative-control
+	$(MAKE) tables-blob-span-negative-control
 	$(MAKE) tables-cook-valued
 	$(MAKE) tables-cook-open-lengths-negative-control
 	$(MAKE) tables-cook-open-root-negative-control
@@ -2060,7 +2139,7 @@ update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
-	@for d in examples pointers block blockhome messages stream scalars; do \
+	@for d in examples pointers block blockhome messages stream blobs scalars; do \
 		mkdir -p testdata/golden/tables/$$d; \
 		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
 	done
@@ -2138,6 +2217,8 @@ check: bin/schema
 	./bin/schema check tables/blockhome
 	./bin/schema check tables/messages
 	./bin/schema check tables/stream
+	./bin/schema check tables/blobs
+	./bin/schema check tables/scalars
 	./bin/schema check test/tables/V1.schema
 	./bin/schema check test/tables/V2.schema
 	./bin/schema check test/tables/P1.schema
@@ -2164,6 +2245,8 @@ fmt: bin/schema
 	./bin/schema fmt tables/blockhome
 	./bin/schema fmt tables/messages
 	./bin/schema fmt tables/stream
+	./bin/schema fmt tables/blobs
+	./bin/schema fmt tables/scalars
 	./bin/schema fmt test/tables/V1.schema
 	./bin/schema fmt test/tables/V2.schema
 	./bin/schema fmt test/tables/P1.schema
@@ -2216,7 +2299,7 @@ CONFORMANCE_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generat
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
-	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -I$(SERIALIZE)
+	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -I$(SERIALIZE)
 CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/scalars/ScalarsTable.cpp build/tables-generated/scalars2/Scalars2Table.cpp \
 	build/tables-generated/examples/WideTable.cpp build/tables-generated/examples/NestedTable.cpp \
@@ -2226,6 +2309,7 @@ CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/block/PaddedBlock.cpp build/tables-generated/pointers/GraphTable.cpp \
 	build/tables-generated/pointers/MarksTable.cpp build/tables-generated/pointers/PartsTable.cpp \
 	build/tables-generated/messages/MessagesTable.cpp build/tables-generated/stream/StreamTable.cpp \
+	build/tables-generated/blobs/AssetsTable.cpp \
 	build/tables-generated/m1/M1Table.cpp build/tables-generated/m2/M2Table.cpp
 
 # the harness LINKS the compiler's own engine — internal/tablewire and

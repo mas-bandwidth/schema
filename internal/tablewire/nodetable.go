@@ -58,12 +58,20 @@ func (e *encoder) appendNodeTable(body []byte, g *NodeGraph) ([]byte, error) {
 		field = &buf{}
 	}
 	for _, node := range records {
-		rec, err := encodeBody(e, node)
-		if err != nil {
-			return nil, err
+		// a BYTE BUFFER's record is the bytes themselves under a reserved
+		// type id — no fields, no terminator (docs/SPEC-TABLES.md §2.5, §3.1)
+		var rec []byte
+		if node.Blob != nil {
+			rec = node.Blob.Data
+		} else {
+			body, err := encodeBody(e, node.Inst)
+			if err != nil {
+				return nil, err
+			}
+			rec = body
 		}
 		if len(rec) > NodeBodyMax {
-			return nil, fmt.Errorf("node %s: its body is %d bytes and a record's length is a u32 — save refuses it rather than truncating, and the repair is more nodes (docs/SPEC-TABLES.md §3.1)", node.Def.Name, len(rec))
+			return nil, fmt.Errorf("node %s: its body is %d bytes and a record's length is a u32 — save refuses it rather than truncating, and the repair is more nodes (docs/SPEC-TABLES.md §3.1)", node.Name(), len(rec))
 		}
 		// A RECORD NEVER STRADDLES A FIELD: the next field opens when the
 		// record about to be written would not fit in this one, so every
@@ -72,7 +80,7 @@ func (e *encoder) appendNodeTable(body []byte, g *NodeGraph) ([]byte, error) {
 		if len(field.b) > 0 && len(field.b)+nodeRecordHeader+len(rec) > nodeFieldMax {
 			flush()
 		}
-		field.u64(ir.TableTypeId(node.Def.Name))
+		field.u64(node.TypeId())
 		field.u32(uint32(len(rec)))
 		field.raw(rec)
 	}

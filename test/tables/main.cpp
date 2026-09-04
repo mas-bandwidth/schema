@@ -33,6 +33,7 @@
 #include "JsonKeysTable.h"
 #include "MessagesTable.h"
 #include "StreamTable.h"
+#include "AssetsTable.h"
 #include "M1Table.h"
 #include "M2Table.h"
 #include "ScalarsTable.h"
@@ -7073,6 +7074,636 @@ static void test_optional_arrays_json_hostile()
     CHECK( value.trace_present && value.trace_count == 1 && value.trace[0].path_length == 0 );
 }
 
+// ---- the BYTE BUFFER corpus (docs/SPEC-TABLES.md §2.5): tables/blobs ----------
+//
+// A `*bytes` or `*string` field is a pointer to a BLOB NODE of exactly its
+// bytes: every pointer rule applies, null and empty are two values, and a blob
+// has identity — two slots naming one blob name one node. The tests below hold
+// the C++ reference to that across the builder, the wire, the region, the cook
+// and the text.
+
+static const uint8_t kBlobThumb[5] = { 0xde, 0xad, 0xbe, 0xef, 0x7f };
+
+// the TEXTABLE instance: every blob named once, a chain beside it
+static void build_blob_catalog( blobdemo::CatalogBuilder & builder )
+{
+    blobdemo::Catalog * root = builder.GetRoot();
+    set_string( root->name, root->name_length, "art" );
+    blobdemo::TableBytesSlot thumb = builder.AllocBytes( 5 );
+    CHECK( !thumb.null() && thumb.length == 5 );
+    memcpy( thumb.data, kBlobThumb, 5 );
+    root->thumb = thumb;
+    blobdemo::TableStringSlot note = builder.AllocString( 11 );
+    CHECK( !note.null() );
+    memcpy( note.data, "hello blobs", 11 );
+    root->note = note;
+    blobdemo::TableSlot<blobdemo::Asset> first = builder.Alloc<blobdemo::Asset>();
+    set_string( first->name, first->name_length, "brick" );
+    first->kind = 7;
+    uint8_t * data = blobdemo::TableBytesEmplace( builder.main, first->data, 3 );
+    CHECK( data != NULL );
+    data[0] = 1; data[1] = 2; data[2] = 3;
+    CHECK( blobdemo::TableStringEmplace( builder.main, first->caption, "cap", 3 ) != NULL );
+    blobdemo::TableSlot<blobdemo::Asset> tail = builder.Alloc<blobdemo::Asset>();
+    set_string( tail->name, tail->name_length, "tail" ); // data, caption, next stay null
+    first->next = tail;
+    root->head = first;
+}
+
+static void check_blob_catalog( const blobdemo::Catalog * root )
+{
+    CHECK( root != NULL );
+    if ( root == NULL ) return;
+    CHECK( strcmp( root->name, "art" ) == 0 );
+    blobdemo::TableBytesView thumb = blobdemo::TableBytesAt( root->thumb );
+    CHECK( thumb.data != NULL && thumb.length == 5 && memcmp( thumb.data, kBlobThumb, 5 ) == 0 );
+    blobdemo::TableStringView note = blobdemo::TableStringAt( root->note );
+    CHECK( note.data != NULL && note.length == 11 && strcmp( note.data, "hello blobs" ) == 0 );
+    CHECK( blobdemo::TableBytesAt( root->alias ).data == NULL ); // null reads NULL/0
+    const blobdemo::Asset * first = blobdemo::AssetAt( blobdemo::TableRegionCtx{}, root->head );
+    CHECK( first != NULL );
+    if ( first == NULL ) return;
+    CHECK( strcmp( first->name, "brick" ) == 0 && first->kind == 7 );
+    blobdemo::TableBytesView data = blobdemo::TableBytesAt( first->data );
+    CHECK( data.data != NULL && data.length == 3 && data.data[0] == 1 && data.data[2] == 3 );
+    blobdemo::TableStringView caption = blobdemo::TableStringAt( first->caption );
+    CHECK( caption.data != NULL && caption.length == 3 && strcmp( caption.data, "cap" ) == 0 );
+    const blobdemo::Asset * tail = blobdemo::AssetAt( blobdemo::TableRegionCtx{}, first->next );
+    CHECK( tail != NULL );
+    if ( tail == NULL ) return;
+    CHECK( strcmp( tail->name, "tail" ) == 0 );
+    CHECK( blobdemo::TableBytesAt( tail->data ).data == NULL );
+    CHECK( blobdemo::TableStringAt( tail->caption ).data == NULL );
+}
+
+// the check against an ARENA (mutable builder) rather than a region: the same
+// values through the arena-resolving views
+static void check_blob_catalog_arena( blobdemo::CatalogBuilder & builder )
+{
+    blobdemo::TableArenaCtx ctx = { &builder.arena };
+    blobdemo::Catalog * root = builder.GetRoot();
+    CHECK( root != NULL );
+    if ( root == NULL ) return;
+    blobdemo::TableBytesView thumb = blobdemo::TableBytesAt( ctx, root->thumb );
+    CHECK( thumb.data != NULL && thumb.length == 5 && memcmp( thumb.data, kBlobThumb, 5 ) == 0 );
+    blobdemo::TableStringView note = blobdemo::TableStringAt( ctx, root->note );
+    CHECK( note.data != NULL && strcmp( note.data, "hello blobs" ) == 0 );
+}
+
+static void test_blob_lifecycle()
+{
+    blobdemo::CatalogBuilder builder;
+    build_blob_catalog( builder );
+    check_blob_catalog_arena( builder );
+
+    // measure/save straight out of the MUTABLE arena, and the exact-capacity
+    // guarantee holds across a graph that carries blobs
+    int64_t need = blobdemo::CatalogMeasure( builder );
+    CHECK( need > 0 );
+    static uint8_t wire[8192];
+    int64_t wrote = blobdemo::CatalogSave( builder, wire, sizeof( wire ) );
+    CHECK( wrote == need );
+    static uint8_t exact[8192];
+    CHECK( blobdemo::CatalogSave( builder, exact, need ) == need );
+    CHECK( memcmp( wire, exact, (size_t) need ) == 0 );
+    CHECK( blobdemo::CatalogSave( builder, exact, need - 1 ) == -1 );
+
+    // Lock, and the locked region answers the same values; saving from it
+    // gives byte-identical wire
+    CHECK( builder.Lock() );
+    CHECK( builder.AllocBytes( 4 ).null() ); // the mutable life is over for blobs too
+    check_blob_catalog( builder.AsConst() );
+    static uint8_t after_lock[8192];
+    CHECK( blobdemo::CatalogSave( builder.AsConst(), after_lock, sizeof( after_lock ) ) == wrote );
+    CHECK( memcmp( wire, after_lock, (size_t) wrote ) == 0 );
+
+    // the region relocates by pure memcpy: a blob view is one add from the slot
+    uint8_t * moved = (uint8_t *) malloc( (size_t) builder.RegionBytes() );
+    memcpy( moved, builder.Region(), (size_t) builder.RegionBytes() );
+    check_blob_catalog( (const blobdemo::Catalog *) moved );
+    free( moved );
+
+    // wire -> const region, sized exactly by the pre-pass
+    int64_t region_need = blobdemo::CatalogLoadMeasure( wire, wrote );
+    CHECK( region_need > 0 );
+    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    blobdemo::TableReport report;
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region, region_need, wire, wrote, &report );
+    CHECK( loaded != NULL );
+    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
+    check_blob_catalog( loaded );
+
+    // a loaded region re-saves to the same bytes
+    static uint8_t again[8192];
+    CHECK( blobdemo::CatalogSave( loaded, again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    // a region short of what LoadMeasure asked for refuses
+    blobdemo::TableReport short_report;
+    CHECK( blobdemo::CatalogLoad( region, region_need - 8, wire, wrote, &short_report ) == NULL );
+    CHECK( short_report.malformed );
+    free( region );
+}
+
+// a SHARED blob is one node: packed once, written once, identity kept across
+// the wire — the region byte count is the measurement, as it is for tables
+static void test_blob_shared_node()
+{
+    blobdemo::CatalogBuilder shared;
+    set_string( shared.GetRoot()->name, shared.GetRoot()->name_length, "twin" );
+    blobdemo::TableBytesSlot one = shared.AllocBytes( 4 );
+    memcpy( one.data, "\x10\x20\x30\x40", 4 );
+    shared.GetRoot()->thumb = one;
+    shared.GetRoot()->alias = one;
+
+    blobdemo::CatalogBuilder twice;
+    set_string( twice.GetRoot()->name, twice.GetRoot()->name_length, "twin" );
+    blobdemo::TableBytesSlot a = twice.AllocBytes( 4 );
+    memcpy( a.data, "\x10\x20\x30\x40", 4 );
+    blobdemo::TableBytesSlot b = twice.AllocBytes( 4 );
+    memcpy( b.data, "\x10\x20\x30\x40", 4 );
+    twice.GetRoot()->thumb = a;
+    twice.GetRoot()->alias = b;
+
+    CHECK( shared.Lock() && twice.Lock() );
+    const int64_t blob_bytes = blobdemo::TableBlobStorage( 4, false );
+    CHECK( twice.RegionBytes() - shared.RegionBytes() == blob_bytes );
+
+    // the views answer ONE address for the shared pair, two for the copies
+    const blobdemo::Catalog * one_node = shared.AsConst();
+    CHECK( blobdemo::TableBytesAt( one_node->thumb ).data == blobdemo::TableBytesAt( one_node->alias ).data );
+    const blobdemo::Catalog * two_nodes = twice.AsConst();
+    CHECK( blobdemo::TableBytesAt( two_nodes->thumb ).data != blobdemo::TableBytesAt( two_nodes->alias ).data );
+
+    // and identity SURVIVES the wire: the record rides once, and a load
+    // resolves both slots to one node
+    static uint8_t wire[512];
+    int64_t wrote = blobdemo::CatalogSave( one_node, wire, sizeof( wire ) );
+    CHECK( wrote > 0 );
+    int64_t region_need = blobdemo::CatalogLoadMeasure( wire, wrote );
+    std::vector<uint8_t> region( (size_t) region_need );
+    blobdemo::TableReport report;
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.malformed );
+    if ( loaded != NULL )
+    {
+        blobdemo::TableBytesView thumb = blobdemo::TableBytesAt( loaded->thumb );
+        blobdemo::TableBytesView alias = blobdemo::TableBytesAt( loaded->alias );
+        CHECK( thumb.data != NULL && thumb.data == alias.data && thumb.length == 4 );
+    }
+}
+
+// null and empty are TWO VALUES (§2.5): a null reference elides, a present
+// blob of length zero rides, and the views tell them apart
+static void test_blob_null_and_empty()
+{
+    blobdemo::CatalogBuilder null_builder;
+    set_string( null_builder.GetRoot()->name, null_builder.GetRoot()->name_length, "bare" );
+    static uint8_t null_wire[256];
+    int64_t null_wrote = blobdemo::CatalogSave( null_builder, null_wire, sizeof( null_wire ) );
+    CHECK( null_wrote > 0 );
+
+    blobdemo::CatalogBuilder empty_builder;
+    set_string( empty_builder.GetRoot()->name, empty_builder.GetRoot()->name_length, "bare" );
+    blobdemo::TableBytesSlot thumb = empty_builder.AllocBytes( 0 );
+    CHECK( !thumb.null() && thumb.length == 0 ); // present, zero long
+    empty_builder.GetRoot()->thumb = thumb;
+    blobdemo::TableStringSlot note = empty_builder.AllocString( 0 );
+    CHECK( !note.null() );
+    empty_builder.GetRoot()->note = note;
+    static uint8_t empty_wire[256];
+    int64_t empty_wrote = blobdemo::CatalogSave( empty_builder, empty_wire, sizeof( empty_wire ) );
+    CHECK( empty_wrote > null_wrote ); // the empty blobs RIDE; null elides
+
+    int64_t region_need = blobdemo::CatalogLoadMeasure( empty_wire, empty_wrote );
+    std::vector<uint8_t> region( (size_t) region_need );
+    blobdemo::TableReport report;
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, empty_wire, empty_wrote, &report );
+    CHECK( loaded != NULL && !report.malformed && report.kind_mismatch == 0 );
+    if ( loaded != NULL )
+    {
+        blobdemo::TableBytesView tv = blobdemo::TableBytesAt( loaded->thumb );
+        CHECK( tv.data != NULL && tv.length == 0 );  // present and empty
+        blobdemo::TableStringView nv = blobdemo::TableStringAt( loaded->note );
+        CHECK( nv.data != NULL && nv.length == 0 && nv.data[0] == 0 ); // "" with its terminator
+        CHECK( blobdemo::TableBytesAt( loaded->alias ).data == NULL ); // null stays null
+    }
+}
+
+// a blob past one 64 KiB slab takes a span of the arena's own (§6.5's
+// authoring path), and the bytes survive the wire and the cook intact
+static void test_blob_past_slab()
+{
+    const int64_t big = 66000; // past kTableSlabBytes = 64 KiB
+    blobdemo::CatalogBuilder builder;
+    set_string( builder.GetRoot()->name, builder.GetRoot()->name_length, "big" );
+    blobdemo::TableBytesSlot slot = builder.AllocBytes( big );
+    CHECK( !slot.null() && slot.length == big );
+    for ( int64_t i = 0; i < big; i++ ) { slot.data[i] = (uint8_t) ( ( i * 31 + 7 ) & 0xff ); }
+    builder.GetRoot()->thumb = slot;
+
+    static uint8_t wire[1 << 17];
+    int64_t wrote = blobdemo::CatalogSave( builder, wire, sizeof( wire ) );
+    CHECK( wrote > big );
+    int64_t region_need = blobdemo::CatalogLoadMeasure( wire, wrote );
+    std::vector<uint8_t> region( (size_t) region_need );
+    blobdemo::TableReport report;
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.malformed );
+    if ( loaded != NULL )
+    {
+        blobdemo::TableBytesView tv = blobdemo::TableBytesAt( loaded->thumb );
+        CHECK( tv.data != NULL && tv.length == big );
+        bool intact = tv.data != NULL;
+        for ( int64_t i = 0; intact && i < big; i++ )
+        {
+            if ( tv.data[i] != (uint8_t) ( ( i * 31 + 7 ) & 0xff ) ) { intact = false; }
+        }
+        CHECK( intact );
+    }
+
+    // and through the COOK: the blob's bytes in the cooked region are
+    // byte-identical to the source's — one memcmp against the pattern
+    CHECK( builder.Lock() );
+    int64_t cook_bytes = blobdemo::CatalogCookMeasure( builder.AsConst() );
+    CHECK( cook_bytes > big );
+    void * cook = malloc( (size_t) cook_bytes );
+    CHECK( blobdemo::CatalogCook( builder.AsConst(), cook, (uint64_t) cook_bytes, host_byte_order( blobdemo::TableByteOrder::Little, blobdemo::TableByteOrder::Big ) ) );
+    const blobdemo::Catalog * opened = blobdemo::CatalogOpen( cook, (uint64_t) cook_bytes );
+    CHECK( opened != NULL );
+    if ( opened != NULL )
+    {
+        blobdemo::TableBytesView cooked = blobdemo::TableBytesAt( opened->thumb );
+        blobdemo::TableBytesView source = blobdemo::TableBytesAt( builder.AsConst()->thumb );
+        CHECK( cooked.data != NULL && cooked.length == big );
+        CHECK( source.data != NULL && cooked.data != NULL &&
+               memcmp( cooked.data, source.data, (size_t) big ) == 0 );
+    }
+    free( cook );
+}
+
+// a blob record whose length runs ONE BYTE past its field is §3.1's
+// node-table damage: malformed, every pointer null, the root's own
+// fields surviving
+static void test_blob_record_length_off_by_one()
+{
+    blobdemo::CatalogBuilder builder;
+    set_string( builder.GetRoot()->name, builder.GetRoot()->name_length, "art" );
+    blobdemo::TableBytesSlot thumb = builder.AllocBytes( 5 );
+    memcpy( thumb.data, kBlobThumb, 5 );
+    builder.GetRoot()->thumb = thumb;
+    static uint8_t wire[512];
+    int64_t wrote = blobdemo::CatalogSave( builder, wire, sizeof( wire ) );
+    CHECK( wrote > 0 );
+
+    // find the one blob record: its u64 type id, little-endian, then its length
+    uint8_t id_bytes[8];
+    for ( int i = 0; i < 8; i++ ) { id_bytes[i] = (uint8_t) ( blobdemo::kTableBytesTypeId >> ( 8 * i ) ); }
+    int64_t at = -1;
+    for ( int64_t i = 0; i + 12 <= wrote; i++ )
+    {
+        if ( memcmp( wire + i, id_bytes, 8 ) == 0 ) { CHECK( at == -1 ); at = i; }
+    }
+    CHECK( at >= 0 );
+    if ( at < 0 ) return;
+    le32( wire + at + 8, 6 ); // the record claims six bytes; five follow
+
+    int64_t region_need = blobdemo::CatalogLoadMeasure( wire, wrote );
+    blobdemo::TableReport report;
+    if ( region_need > 0 )
+    {
+        std::vector<uint8_t> region( (size_t) region_need );
+        const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, wire, wrote, &report );
+        CHECK( report.malformed );
+        if ( loaded != NULL )
+        {
+            CHECK( strcmp( loaded->name, "art" ) == 0 );                 // the root's own values survive
+            CHECK( blobdemo::TableBytesAt( loaded->thumb ).data == NULL ); // every pointer reads null
+        }
+    }
+    // a pre-pass that refuses outright is the same verdict one step earlier
+}
+
+// the type-id check both ways (§2.5, §3.1): a *string blob under a *bytes
+// slot is a kind mismatch, and a `bytes(N)` array under a `*bytes` slot is
+// kind 14 against kind 17 — mismatch in both directions, nothing misdecodes
+static void test_blob_kind_mismatch()
+{
+    // a Catalog whose note (a *string blob) is named by thumb (*bytes):
+    // hand-built wire — thumb rides index 2, the node table holds ONE record
+    // under the STRING id
+    uint8_t wire[128];
+    size_t n = 0;
+    le16( wire + n, field_id( "thumb" ) ); n += 2;
+    wire[n++] = 17;                        // kind: node index
+    le32( wire + n, 2 ); n += 4;           // index 2: the first record
+    le16( wire + n, 0xFFFF ); n += 2;      // the node table
+    wire[n++] = 12;
+    le32( wire + n, 8 + 8 + 4 + 4 ); n += 4; // L: the count's eight bytes, one record's id+len+body
+    le32( wire + n, 1 ); n += 4;           // node_count = 1
+    le32( wire + n, 0 ); n += 4;           // the count's four reserved zero bytes
+    for ( int i = 0; i < 8; i++ ) { wire[n++] = (uint8_t) ( blobdemo::kTableStringTypeId >> ( 8 * i ) ); }
+    le32( wire + n, 4 ); n += 4;           // a four-byte string blob
+    memcpy( wire + n, "oops", 4 ); n += 4;
+    le16( wire + n, 0 ); n += 2;           // terminator
+
+    int64_t region_need = blobdemo::CatalogLoadMeasure( wire, (int64_t) n );
+    CHECK( region_need > 0 );
+    std::vector<uint8_t> region( (size_t) region_need );
+    blobdemo::TableReport report;
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, wire, (int64_t) n, &report );
+    CHECK( loaded != NULL && !report.malformed );
+    CHECK( report.kind_mismatch == 1 );
+    if ( loaded != NULL ) { CHECK( blobdemo::TableBytesAt( loaded->thumb ).data == NULL ); }
+
+    // `bytes(N)` bytes arriving under the *bytes field id: kind 14 against 17
+    size_t m = 0;
+    le16( wire + m, field_id( "thumb" ) ); m += 2;
+    wire[m++] = 14;                        // kind: array, as bytes(N) rides
+    le32( wire + m, 5 + 3 ); m += 4;       // element kind, N, three bytes
+    wire[m++] = 6;                         // element kind: u8
+    le32( wire + m, 3 ); m += 4;
+    wire[m++] = 9; wire[m++] = 9; wire[m++] = 9;
+    le16( wire + m, 0 ); m += 2;
+    int64_t need2 = blobdemo::CatalogLoadMeasure( wire, (int64_t) m );
+    CHECK( need2 > 0 );
+    std::vector<uint8_t> region2( (size_t) need2 );
+    blobdemo::TableReport report2;
+    const blobdemo::Catalog * mixed = blobdemo::CatalogLoad( region2.data(), need2, wire, (int64_t) m, &report2 );
+    CHECK( mixed != NULL && !report2.malformed );
+    CHECK( report2.kind_mismatch == 1 );
+    if ( mixed != NULL ) { CHECK( blobdemo::TableBytesAt( mixed->thumb ).data == NULL ); }
+}
+
+// the cook (§7): every blob laid out header-plus-bytes in the region, views
+// one add from the slot, and the round trip back to the wire byte-identical
+static void test_blob_cook()
+{
+    blobdemo::CatalogBuilder builder;
+    build_blob_catalog( builder );
+    static uint8_t wire[8192];
+    int64_t wrote = blobdemo::CatalogSave( builder, wire, sizeof( wire ) );
+    CHECK( wrote > 0 );
+    CHECK( builder.Lock() );
+
+    int64_t cook_bytes = blobdemo::CatalogCookMeasure( builder.AsConst() );
+    CHECK( cook_bytes > 0 );
+    void * cook = malloc( (size_t) cook_bytes );
+    CHECK( blobdemo::CatalogCook( builder.AsConst(), cook, (uint64_t) cook_bytes, host_byte_order( blobdemo::TableByteOrder::Little, blobdemo::TableByteOrder::Big ) ) );
+    const blobdemo::Catalog * opened = blobdemo::CatalogOpen( cook, (uint64_t) cook_bytes );
+    CHECK( opened != NULL );
+    if ( opened != NULL )
+    {
+        check_blob_catalog( opened );
+        static uint8_t again[8192];
+        CHECK( blobdemo::CatalogSave( opened, again, sizeof( again ) ) == wrote );
+        CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+    }
+    free( cook );
+}
+
+// the text form (§16.2, §2.5): a *bytes is inline base64, a *string is a
+// string, null and "" are two texts, and a SHARED blob has no spelling —
+// the writer refuses the graph
+static void test_blob_json()
+{
+    blobdemo::CatalogBuilder builder;
+    build_blob_catalog( builder );
+    static uint8_t wire[8192];
+    int64_t wrote = blobdemo::CatalogSave( builder, wire, sizeof( wire ) );
+    CHECK( builder.Lock() );
+
+    int64_t size = blobdemo::CatalogToJsonMeasure( builder.AsConst() );
+    CHECK( size > 0 );
+    std::vector<char> text( (size_t) size + 1 );
+    CHECK( blobdemo::CatalogToJson( builder.AsConst(), text.data(), size ) == size );
+    text[(size_t) size] = 0;
+    CHECK( strstr( text.data(), "\"3q2+738=\"" ) != NULL );      // the thumb, base64, padded
+    CHECK( strstr( text.data(), "\"hello blobs\"" ) != NULL );   // the note, a plain string
+    CHECK( strstr( text.data(), "\"&node\"" ) == NULL );         // nothing here is shared
+
+    // one text, one wire: back through FromJson to the same bytes
+    blobdemo::CatalogBuilder from_text;
+    blobdemo::TableReport report;
+    CHECK( blobdemo::CatalogFromJson( from_text, text.data(), size, &report ) );
+    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
+    static uint8_t again[8192];
+    CHECK( blobdemo::CatalogSave( from_text, again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    // null and "" read back as the two values they are
+    {
+        const char * two = "{ \"thumb\": \"\", \"note\": \"\", \"head\": null }";
+        blobdemo::CatalogBuilder b;
+        blobdemo::TableReport r;
+        CHECK( blobdemo::CatalogFromJson( b, two, (int64_t) strlen( two ), &r ) );
+        CHECK( r.kind_mismatch == 0 && !r.malformed );
+        blobdemo::TableArenaCtx ctx = { &b.arena };
+        blobdemo::TableBytesView tv = blobdemo::TableBytesAt( ctx, b.GetRoot()->thumb );
+        CHECK( tv.data != NULL && tv.length == 0 );                       // "" is PRESENT and empty
+        CHECK( blobdemo::TableStringAt( ctx, b.GetRoot()->note ).data != NULL );
+        CHECK( blobdemo::TableBytesAt( ctx, b.GetRoot()->alias ).data == NULL ); // absent stays null
+    }
+
+    // a shared blob has no `&node` spelling: the writer refuses the graph
+    {
+        blobdemo::CatalogBuilder shared;
+        blobdemo::TableBytesSlot one = shared.AllocBytes( 4 );
+        memcpy( one.data, "\x10\x20\x30\x40", 4 );
+        shared.GetRoot()->thumb = one;
+        shared.GetRoot()->alias = one;
+        CHECK( shared.Lock() );
+        CHECK( blobdemo::CatalogToJsonMeasure( shared.AsConst() ) == -1 );
+    }
+}
+
+// reflection: a blob field is kind 17 with NO target table — the pair of
+// facts a generic walk tells a byte buffer from a pointer to a table by
+static void test_blob_reflection()
+{
+    const blobdemo::TableTypeInfo * type = blobdemo::CatalogTableType();
+    int checked_fields = 0;
+    for ( int32_t i = 0; i < type->num_fields; i++ )
+    {
+        const blobdemo::TableFieldInfo * f = &type->fields[i];
+        if ( strcmp( f->name, "thumb" ) == 0 || strcmp( f->name, "alias" ) == 0 || strcmp( f->name, "note" ) == 0 )
+        {
+            CHECK( f->kind == 17 && f->table == NULL );
+            checked_fields++;
+        }
+        if ( strcmp( f->name, "head" ) == 0 )
+        {
+            CHECK( f->kind == 17 && f->table == blobdemo::AssetTableType() );
+            checked_fields++;
+        }
+    }
+    CHECK( checked_fields == 4 );
+}
+
+// THE TERMINATOR IS THE NODE'S OWN (§6.3), at the two lengths that can see it.
+// A *string node carries one zero byte after its data and its extent is
+// rounded to the arena's alignment like every node's, so at a length that is
+// NOT a multiple of eight the rounding absorbs that byte and a node laid out
+// without it reads the same. At 8 and at 16 it does not: the byte at
+// `data[length]` is then the first byte of whatever the walk laid out next.
+// `alias` is declared after `note` and is given a short blob, so that next
+// byte is a length header whose low byte is NOT zero — which is what makes the
+// missing terminator readable instead of a zero that happened to be there.
+static void build_blob_terminated( blobdemo::CatalogBuilder & builder, int64_t length )
+{
+    blobdemo::Catalog * root = builder.GetRoot();
+    set_string( root->name, root->name_length, length == 8 ? "term8" : "term16" );
+    blobdemo::TableStringSlot note = builder.AllocString( length );
+    CHECK( !note.null() && note.length == length );
+    if ( note.null() ) { return; }
+    for ( int64_t i = 0; i < length; i++ ) { note.data[i] = (char) ( 'a' + ( i % 26 ) ); }
+    root->note = note;
+    blobdemo::TableBytesSlot alias = builder.AllocBytes( 5 ); // its header's low byte is 5
+    CHECK( !alias.null() );
+    if ( alias.null() ) { return; }
+    for ( int64_t i = 0; i < 5; i++ ) { alias.data[i] = (uint8_t) ( 0xa0 + i ); }
+    root->alias = alias;
+}
+
+static void check_blob_terminated( const blobdemo::Catalog * root, int64_t length, const char * where )
+{
+    if ( root == NULL ) { printf( "FAIL blob terminator %s: no root\n", where ); failures++; return; }
+    blobdemo::TableStringView note = blobdemo::TableStringAt( root->note );
+    if ( note.data == NULL || note.length != length || note.data[length] != 0 ||
+         (int64_t) strlen( note.data ) != length )
+    {
+        printf( "FAIL blob terminator %s at length %lld: data[%lld] is %d, strlen is %lld\n",
+                where, (long long) length, (long long) length,
+                note.data == NULL ? -1 : (int) (unsigned char) note.data[length],
+                note.data == NULL ? -1LL : (long long) strlen( note.data ) );
+        failures++;
+    }
+    blobdemo::TableBytesView alias = blobdemo::TableBytesAt( root->alias );
+    CHECK( alias.data != NULL && alias.length == 5 && alias.data[0] == 0xa0 );
+}
+
+// the same string at 8 and at 16, read back off the LOCKED region and off a
+// region a wire load sized and filled: the node pays for its own terminator on
+// both paths, or the byte after the data belongs to the next node
+static void test_blob_string_terminator()
+{
+    const int64_t lengths[2] = { 8, 16 };
+    for ( int k = 0; k < 2; k++ )
+    {
+        const int64_t length = lengths[k];
+        blobdemo::CatalogBuilder builder;
+        build_blob_terminated( builder, length );
+        CHECK( builder.Lock() );
+        check_blob_terminated( builder.AsConst(), length, "locked region" );
+
+        static uint8_t wire[1 << 12];
+        int64_t wrote = blobdemo::CatalogSave( builder.AsConst(), wire, sizeof( wire ) );
+        CHECK( wrote > 0 );
+        if ( wrote <= 0 ) { continue; }
+        int64_t need = blobdemo::CatalogLoadMeasure( wire, wrote );
+        std::vector<uint8_t> region( (size_t) need );
+        blobdemo::TableReport report;
+        const blobdemo::Catalog * loaded =
+            blobdemo::CatalogLoad( region.data(), need, wire, wrote, &report );
+        CHECK( loaded != NULL && !report.malformed );
+        check_blob_terminated( loaded, length, "loaded region" );
+    }
+}
+
+// the pinned wires the conformance harness reads (testdata/wire/tables)
+static void test_blob_golden_wire()
+{
+    static uint8_t buffer[1 << 17];
+    {
+        blobdemo::CatalogBuilder builder;
+        build_blob_catalog( builder );
+        int64_t wrote = blobdemo::CatalogSave( builder, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == blobdemo::CatalogMeasure( builder ) );
+        pin_table_golden( "blob_small", buffer, wrote );
+    }
+    {
+        blobdemo::CatalogBuilder builder;
+        set_string( builder.GetRoot()->name, builder.GetRoot()->name_length, "bare" );
+        builder.GetRoot()->thumb = builder.AllocBytes( 0 );
+        builder.GetRoot()->note = builder.AllocString( 0 );
+        int64_t wrote = blobdemo::CatalogSave( builder, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 );
+        pin_table_golden( "blob_empty", buffer, wrote );
+    }
+    {
+        blobdemo::CatalogBuilder builder;
+        set_string( builder.GetRoot()->name, builder.GetRoot()->name_length, "twin" );
+        blobdemo::TableBytesSlot one = builder.AllocBytes( 4 );
+        memcpy( one.data, "\x10\x20\x30\x40", 4 );
+        builder.GetRoot()->thumb = one;
+        builder.GetRoot()->alias = one; // one node, two names: no-text in the manifest
+        int64_t wrote = blobdemo::CatalogSave( builder, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 );
+        pin_table_golden( "blob_shared", buffer, wrote );
+    }
+    {
+        blobdemo::CatalogBuilder builder;
+        set_string( builder.GetRoot()->name, builder.GetRoot()->name_length, "big" );
+        blobdemo::TableBytesSlot slot = builder.AllocBytes( 66000 ); // past one slab
+        CHECK( !slot.null() );
+        for ( int64_t i = 0; i < 66000; i++ ) { slot.data[i] = (uint8_t) ( ( i * 31 + 7 ) & 0xff ); }
+        builder.GetRoot()->thumb = slot;
+        int64_t wrote = blobdemo::CatalogSave( builder, buffer, sizeof( buffer ) );
+        CHECK( wrote > 66000 );
+        pin_table_golden( "blob_large", buffer, wrote );
+    }
+    // THE TERMINATOR, at the two lengths that can see it (§6.3) — see
+    // build_blob_terminated for why the alias blob rides beside the string.
+    {
+        blobdemo::CatalogBuilder builder;
+        build_blob_terminated( builder, 8 );
+        int64_t wrote = blobdemo::CatalogSave( builder, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 );
+        pin_table_golden( "blob_str8", buffer, wrote );
+    }
+    {
+        blobdemo::CatalogBuilder builder;
+        build_blob_terminated( builder, 16 );
+        int64_t wrote = blobdemo::CatalogSave( builder, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 );
+        pin_table_golden( "blob_str16", buffer, wrote );
+    }
+}
+
+static void reload_blob_golden( const char * name )
+{
+    const int64_t pinned = read_table_golden( name );
+    if ( pinned < 0 ) return;
+    const int64_t need = blobdemo::CatalogLoadMeasure( golden_pinned, pinned );
+    std::vector<uint8_t> region( (size_t) need );
+    blobdemo::TableReport report;
+    const blobdemo::Catalog * root = blobdemo::CatalogLoad( region.data(), need, golden_pinned, pinned, &report );
+    if ( root == NULL || report.malformed )
+    {
+        printf( "FAIL table wire golden %s does not load\n", name );
+        failures++;
+        return;
+    }
+    CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
+    const int64_t wrote = blobdemo::CatalogSave( root, golden_again, sizeof( golden_again ) );
+    if ( wrote != pinned || memcmp( golden_again, golden_pinned, (size_t) pinned ) != 0 )
+    {
+        printf( "FAIL table wire golden %s re-saves differently: %lld bytes out, %lld pinned\n",
+                name, (long long) wrote, (long long) pinned );
+        failures++;
+    }
+}
+
+static void test_blob_golden_reload()
+{
+    reload_blob_golden( "blob_small" );
+    reload_blob_golden( "blob_empty" );
+    reload_blob_golden( "blob_shared" );
+    reload_blob_golden( "blob_large" );
+    reload_blob_golden( "blob_str8" );
+    reload_blob_golden( "blob_str16" );
+}
+
 int main()
 {
     test_golden_wire();
@@ -7180,6 +7811,18 @@ int main()
     test_optional_arrays_enum_unknown_variant();
     test_optional_arrays_enum_element_unnameable();
     test_optional_arrays_json_hostile();
+    test_blob_golden_wire();
+    test_blob_golden_reload();
+    test_blob_lifecycle();
+    test_blob_shared_node();
+    test_blob_null_and_empty();
+    test_blob_past_slab();
+    test_blob_string_terminator();
+    test_blob_record_length_off_by_one();
+    test_blob_kind_mismatch();
+    test_blob_cook();
+    test_blob_json();
+    test_blob_reflection();
     test_json_fuzz_tokenizer();
 
     if ( failures > 0 )
