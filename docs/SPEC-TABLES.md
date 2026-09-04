@@ -3235,6 +3235,14 @@ games decide their own policy over it. Nothing crashes on data from a
 different schema version, in either direction, and that property is held by
 a both-directions evolution test in the corpus.
 
+**TWO MORE COUNTERS RIDE ON THE SAME STRUCT AND STAY ZERO UNTIL A CALLER ASKS
+FOR THEM**: `retained` and `retain_lost`, the retain-unknown pair (§6.6). They
+report on RETENTION rather than on the read, and they change no counter above.
+A retained field still counts `unknown`, because `unknown` says what a reader
+could not name and that stays true whether or not its bytes were kept. Every
+existing caller sees the same five values it saw before, and every `report` row
+of the conformance manifest pins the same five.
+
 **THE ARM EVOLUTION ROWS, each red for one reason** (§2.6, §3). Each is a
 `report` row of the conformance manifest, one wire written under one
 declaration and read under another, pinning the five counters and the value:
@@ -3412,7 +3420,7 @@ only.
 | a union ARM's declared TYPE changed | `kind_mismatch` where the arm's kind moved, `malformed` where its `L` no longer frames its kind | **refuses** | **moves** |
 | a declared RANGE tightened — a maximum lowered, a minimum raised, or a range declared where the field had none | `clamped` | **warns** — the `min=`/`max=` tokens are extents like a capacity (§18.1) | **moves** |
 | a fixed field's `F` moved under the same storage width | silent — the kind carries the width and the signedness, and `F` is a declaration-side fact like a resolution (§3) | **refuses** — the `frac=` token is a fixed fact (§18.1) | **moves** |
-| an `enum`'s or a `union`'s variant order or names moved | `unknown` for a name this reader lacks; a reorder is silent and safe | warns on a removal or a vanished name | **moves**, and so does the protocol id: both vocabularies project their ordered names (SPEC.md §3.1) |
+| an `enum`'s or a `union`'s variant order or names moved | `unknown` for a name this reader lacks; a reorder is silent and safe | warns on a removal or a vanished name | **moves**, and the protocol id with it where a `type` reaches the declaration: both vocabularies project their ordered names, and only within the closure over the unit's types (SPEC.md §3.1) |
 | a field added, removed or reordered | `unknown` for an id this reader lacks; an absent field defaults | passes; a removal AND an addition in one table in one edit **warn** as the pair a bare rename leaves (§18.2) | **moves** |
 | a field renamed under `was` | silent, and nothing is lost | passes; the edit that ADDS the `was` hints the `json =` pairing, because the wire id survives the rename and the text key does not (§16.4) | no — `was` holds the wire id fixed |
 | a field renamed a SECOND time, the new `was` naming the INTERMEDIATE spelling instead of the first | `unknown` on every old file; the new id was never written to | **refuses** — `was` names the first wire name, forever (§5) | **moves** |
@@ -4080,6 +4088,247 @@ stated here once and inherited by every port rather than rediscovered as a
 per-backend accident, and it does not widen: the type wire allocates
 nowhere, in any language, and a fixed-size table with no union allocates
 nowhere either.
+
+### 6.6 Retain-unknown: an opt-in that keeps what this build cannot name
+
+**By default a rewrite drops what the reader could not name**, and the
+never-clobber rule (VERSIONING.md) is the consequence a studio writes into its
+own code. This subsection is the opt-in that answers the case the rule exists
+for: a player on a newer build rolls back, through a beta opt-out, a
+certification lag or a store rollout paused, saves, and every field the newer
+build added is gone from that file forever.
+
+**The wire already carries what it takes, so nothing about it moves.** Every
+field is `id reference, kind, payload` and every kind is skippable by its kind
+byte alone (§3), so the bytes a reader skips are a self-framed unit it can copy
+out and copy back without knowing what they mean. **No byte of §3 moves, no
+kind is spent, no form byte changes, and a file written with retention on is a
+file every reader of this form reads**, because it is a file of ordinary
+fields. Retention is a runtime feature of the READER and the WRITER, and that
+is the whole of the change.
+
+**THE SURFACE: the caller's buffer, threaded through three calls.**
+
+```cpp
+uint8_t storage[ 64 * 1024 ];              // the caller owns it and sizes it
+
+TableRetain retain;
+retain.bytes = storage;
+retain.capacity = sizeof( storage );
+
+SceneLoadRetain( scene, wire, wire_size, &retain, &report );
+// ... the game edits values ...
+int64_t size = SceneMeasureRetain( scene, &retain );
+SceneSaveRetain( scene, &retain, buffer, size, &report );
+```
+
+- **`TableRetain` is a byte buffer, a capacity, and what has been used.** It
+  allocates nothing, it never grows, and it is the whole of the memory this
+  feature can command. A retention buffer belongs to one loaded value, and the
+  next `LoadRetain` into it resets it.
+- **The three names are ADDITIVE.** `Load`, `Measure` and `Save` are unchanged
+  and retain nothing, so every existing caller, every conformance leg and every
+  generated golden stands byte for byte. Retention is a thing a caller asks
+  for, in both directions: a value loaded with retention may be saved without
+  it, which drops the retained fields and counts them.
+- **Both load paths take it** (§6.5), a region root and a builder alike, since
+  a retained record names a body and not a storage form.
+- **`LoadMeasure` is untouched.** It sizes the region from the framing and says
+  nothing about retention, and a caller sizes the retention buffer from its own
+  policy rather than from the wire.
+- **The three spellings are OWED to §11's claimed suffix set.**
+  `LoadRetain`, `MeasureRetain` and `SaveRetain` join that list and
+  `tableGeneratedVerbs` in the change that lands them, and not before, because
+  a claim this page makes and the checker does not is a name a user may still
+  take (§11).
+
+**WHAT IS RETAINED: a FIELD whose id this reader cannot name**, at any depth,
+in the root body and in every node record (§3.1). That is the whole of the
+class, and the four exclusions share one reason. They are not fields, so
+putting one back is a splice into a body the reader rewrites whole rather than
+a field appended to one.
+
+| the unknown | retained | why not |
+|---|---|---|
+| a FIELD id this reader cannot name | **yes** | a self-framed unit, and no id this reader writes can collide with it |
+| an unknown ENUM variant reference (§3) | no | the FIELD is the reader's, and the reader writes its own value under that id, so a retained copy would be a second occurrence of an id the reader already wrote |
+| an unknown UNION arm id (§3) | no | the same, one level in: the union field is the reader's |
+| an unknown KEYED-ARRAY slot (§3.2) | no | a slot is not a field, the reader rewrites the array body whole, and a slot has nowhere to append to |
+| a NODE RECORD whose type id this reader cannot name (§3.1) | no | a whole node, and putting one back means renumbering a graph the writer numbers from its own edges (§3.1) |
+
+**The collision argument, stated because retention rests on it.** A retained
+field's id is by definition one this reader cannot name in the body it came
+from, and a writer writes only ids it CAN name, so no retained field can land
+in a body under an id the reader also wrote. A body carrying one id twice is
+legal input whose last occurrence wins (§3), which is exactly the shape a
+retained field must never take, and the definition of the class is what rules
+it out. The four rows above are excluded so that it stays ruled out.
+
+**RETENTION FORM: the wire's own bytes with the references resolved.** A
+reference names a slot of the FILE's id table (§3), so a verbatim copy
+re-emitted into a file whose table is ordered differently would point at other
+names in silence. A retained record therefore holds the field in **retention
+form: the wire form with every reference replaced by the eight-byte id it
+names, little-endian, and every `L` that frames a rewritten reference
+recomputed for the new width.** It is one generic rewrite driven by §3's skip
+rules and nothing else, the same walk a skipper already performs, and it runs
+in the other direction at save. **A record is then SELF-CONTAINED**: it carries
+its own identity and every identity inside it, survives without the file it
+came from, and can be written beside a file, diffed against another, or handed
+to a different build.
+
+The rewrite touches only the kinds that carry a reference: the field header's
+own id, and inside the payload kinds `13` (a body's fields), `14` and `16`
+(where the element kind is `13`, `15` or `30`), `15` (an arm id, and the arm's
+payload under the same rule) and `30` (a variant id). **Every other payload is
+copied verbatim**, which is every scalar, every fixed-point and 128-bit kind,
+and kinds `12`, `17`, `31` and `32`, so the ordinary unknown field costs a
+copy, an eight-byte id and nothing else.
+
+**A RECORD, in full.** Records sit back to back in the buffer, in the order
+they were retained:
+
+```
+path length     one byte: the number of steps, at least 1
+path steps      that many unsigned LEB128 values (§3)
+byte length     one unsigned LEB128: the retention-form bytes that follow
+bytes           the field in retention form: id (8 bytes), kind (u8), payload
+```
+
+**THE PATH NAMES THE BODY, and it is the READER's own address, never the
+writer's.**
+
+- **Step one is the NODE INDEX of §3.1's numbering**, `1` for the root body
+  and `k` for the node a pointer resolves to. Index `0` names no node, so no
+  path carries it and a zero first step is a record no walk can place.
+- **Every further step names a CHILD BODY of the body before it, in the
+  reader's own declaration order**: fields in declaration order, and within a
+  field, elements in index order, which is a present `?T`, a nested `T`, an
+  element of a fixed, bounded or enum-keyed array, a map entry's value in
+  ascending key order, and a union's set arm. **A pointer field is not a
+  step**, because its target is a node and takes a first step of its own.
+- **The path has no data-driven depth.** By-value nesting is refused a cycle
+  (§2), so the number of steps is bounded by the schema's own nesting depth, a
+  compile-time constant, and a pointer chain is flat on this wire (§3.1). A
+  hostile file cannot make a path long.
+- **A step is computed LOCALLY, at the moment the walk descends**, which is
+  what makes one address available on both sides. `Load` knows the
+  declaration-side field and the element index it is descending through,
+  because it descends only through fields it can name, and `Save` walks that
+  same order by construction. Neither side numbers a whole tree.
+
+**WHERE THEY GO BACK: at the END of their own body, in the order retained.**
+Position carries nothing on this wire (§3), since a body is a set of fields
+terminated by a zero reference and a field is found by its id, so an "original
+position" is not a fact the wire holds and reproducing one would buy nothing.
+Appending is chosen for three properties: it is a write with no splice, the
+retained order among the retained fields is preserved, and the result is
+IDEMPOTENT after the first save. A file loaded and saved once has its unknown
+fields moved to the end of each body. Loaded and saved again they are unknown
+again, retained in that same order and written back in it, so
+`save(load(save(load(W))))` equals `save(load(W))` byte for byte. The first
+round trip is the only one that moves a byte, and that is a property a test can
+pin.
+
+Two consequences follow, and each is a rule:
+
+- **A body that carries a retained field does not ELIDE.** A by-value `T` at
+  its defaults writes nothing (§3). One whose body holds a retained field
+  writes its body, that field and its terminator. Elision is about what a body
+  CONTAINS, and a retained field is content.
+- **A retained id enters the file's ID TABLE in first-use order** (§3), at the
+  point the walk reaches it, which is after its body's own fields. An id
+  already in the table takes that entry and is never appended twice, exactly as
+  any repeat is.
+
+**THE REPORT: two counters, and one of them is the whole check** (§4).
+
+- **`retained`** counts the fields whose bytes were kept.
+- **`retain_lost`** counts every unknown this load or save could not keep: a
+  record the remaining capacity had no room for, an unknown of one of the four
+  excluded classes above, and, at save, a retained record whose path no longer
+  names a body.
+
+Both are zero in every read that did not opt in, and they ride the same report
+struct for the reason `duplicate` does, which is that a caller has one report
+type and not two (§4). Retention moves no existing counter: a retained field
+still counts `unknown`, because `unknown` says what a READER could not name and
+that stays true. **`retain_lost == 0` is the whole of the safety check**, and
+it is what the never-clobber rule becomes for a caller that opted in. A rewrite
+is safe when the last load's report was silent, OR when retention was on and
+`retain_lost` is zero after the save.
+
+**REFUSAL IS PER RECORD AND NEVER PARTIAL.** A record the remaining capacity
+cannot hold whole is not written at all: `retain_lost` counts one, the read
+continues, and the buffer never holds a truncated field. Nothing else about the
+read changes, because the field is skipped by its framing and counted `unknown`
+exactly as it always was, so a full buffer degrades to the default behavior one
+field at a time, and a caller that treats `retain_lost` as fatal and refuses
+its own rewrite is back at the never-clobber rule with no code path of its own.
+
+**THE SECURITY BOUND.** A table read is untrusted input (§4.2) and retention
+copies attacker-chosen bytes, so the bound is stated rather than assumed:
+
+- **The caller's capacity is the only ceiling, and the wire cannot raise it.**
+  Retention allocates nothing, in any port, on either path. A caller that will
+  accept 64 KiB of fields it cannot name declares 64 KiB, and a file asking for
+  more loses the surplus and says so.
+- **The retained bytes are never INTERPRETED.** The reader reads exactly what
+  it read in order to SKIP the field, which is the kind bytes and the lengths
+  §3's skip rules need, and the references it rewrites. No value is decoded, no
+  bound is checked, no branch is taken on a payload byte, and nothing inside a
+  retained record can reach a decision the reader makes about its own data.
+- **The expansion is bounded, and a port states the constant.** A record costs
+  its wire bytes, plus seven for each reference widened to eight, plus the path
+  and the two lengths that frame it. The path is at most `1 + D` steps where
+  `D` is the schema's own by-value nesting depth, a compile-time constant of
+  the unit. The smallest unknown field on the wire is three bytes, so a file of
+  nothing but tiny unknown fields is the worst ratio, and the caller's capacity
+  is what answers it rather than any rule of the wire's.
+- **`retain_lost` is the whole of the denial-of-service surface, and it is a
+  counter rather than a failure.** A file engineered to fill the buffer
+  degrades one field at a time. It cannot make a read fail, allocate, or take a
+  path it would not otherwise take.
+- **A path is the READER's own**, computed from the reader's declaration and
+  the reader's own numbering, and never read from the wire. A hostile file
+  cannot write a path, name a body or reach a node.
+
+**WHAT INVALIDATES A PATH, said once.** A retained record addresses the value
+as `Load` left it. A caller that changes the SHAPE between load and save, by
+removing an array element, a map entry or a node, or by clearing an optional,
+may leave a record naming a body that is gone. That record is dropped at save
+and counted `retain_lost`. Changing a VALUE invalidates nothing. It is the rule
+a caller already lives under for anything else it holds beside a loaded
+instance, and it is why the safety check is read after `Save` and not only
+after `Load`.
+
+**HELD BY TEST, when it lands.** The rows the conformance manifest owes, each
+red for one reason:
+
+- a wire whose unknown fields sit at three depths, retained and re-emitted,
+  byte-compared against the original modulo the move to each body's end. Red if
+  a field is lost, duplicated, or placed in another body.
+- the same wire loaded and saved TWICE, the two saves byte-identical. Red on
+  any drift, which is the idempotence claim.
+- a buffer sized one byte short of the last record, pinning `retained` and
+  `retain_lost` and the read's own five counters unmoved. Red if a counter
+  above moves, or if the truncated record is written.
+- a retained field of kind `13` whose inner body names four ids, re-emitted
+  into a file whose id table is in a different order. Red if a reference points
+  at the wrong name, which is exactly what a verbatim copy does and what the
+  retention form exists to prevent.
+- each of the four excluded classes, pinning `retain_lost` at one and
+  `retained` unmoved. Red if any of them is retained.
+
+**The wire fuzzer runs with retention OFF** (§4.2), which leaves its round-trip
+requirement the requirement it is today, and it gains one leg that runs with it
+ON: the same five counters, and a save that differs from the oracle's only by
+the retained tails.
+
+**Backend status: NOT BUILT, in any language.** No port carries `TableRetain`
+or the three calls, no generated file mentions them, and this subsection is the
+specification a port is written from rather than a description of the tree.
+Owed as schema#525.
 
 ## 7. The cooked form
 
