@@ -195,7 +195,7 @@ func TestListTextReadsEveryElement(t *testing.T) {
 	m := listModel(t, listUnit)
 	var b bytes.Buffer
 	b.WriteString(`{ "scores": [`)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		if i > 0 {
 			b.WriteString(",")
 		}
