@@ -161,6 +161,13 @@ static void test_writer()
         // nothing passes between the two walks (§2.8)
         CHECK_EQ( measured, bytes_full );
         pin_golden( "map_full", wire_full, bytes_full );
+        // MEASURE EQUALS SAVE AT EXACT CAPACITY: the buffer is the measure and
+        // not a byte more, so a write that ran over would refuse rather than
+        // fit by accident, and one short of it refuses
+        static uint8_t exact[1u << 16];
+        CHECK_EQ( FleetSave( b, exact, measured ), measured );
+        CHECK( memcmp( exact, wire_full, (size_t) measured ) == 0 );
+        CHECK_EQ( FleetSave( b, exact, measured - 1 ), -1 );
     }
     {
         // CONTROL: the writer emits INSERTION order instead of sorted. This
