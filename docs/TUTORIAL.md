@@ -3843,3 +3843,235 @@ first ships to anyone, which is what the notice has been saying.
 **You now have** the full evolution discipline: rename with `was`, append
 flags, and a committed baseline that turns the silent hazards into compile
 errors with recorded reasons.
+
+---
+
+## Part 11: The cook: point at a file instead of parsing it
+
+### The problem
+
+`GameConfigLoad` walks the wire, matches ids, and applies defaults. It is
+tolerant, and priced accordingly. Starlight's shipped build loads the **same**
+config off its **own** disk ten thousand times a day, and the data never
+surprises it, because the build that reads the file is the build whose pipeline
+wrote it. Paying the tolerant parse there buys nothing. You want the load to be:
+check it is yours, then point at it.
+
+### Cook it
+
+A cook is the locked, laid-out-for-reading region written verbatim behind a
+small header. Your pipeline produces it with the tool, from the designer tree
+of Part 9 or from a wire file, one command either way:
+
+```
+$ schema cook --root GameConfig --in tree --out Game.cook --verbose .
+report: silent — the data matched the schema exactly
+report: silent — the data matched the schema exactly
+cooked Game.cook: 464 bytes, build version 0x4186cdc67f83f559, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
+```
+
+And the game opens it. `cook.cpp`, entire:
+
+```cpp
+#include "ConfigTable.h"
+#include <cstdio>
+#include <vector>
+
+static std::vector<uint8_t> Slurp( const char * path )
+{
+    FILE * f = fopen( path, "rb" );
+    std::vector<uint8_t> bytes;
+    uint8_t chunk[512];
+    size_t n;
+    while ( ( n = fread( chunk, 1, sizeof( chunk ), f ) ) > 0 )
+    {
+        bytes.insert( bytes.end(), chunk, chunk + n );
+    }
+    fclose( f );
+    return bytes;
+}
+
+int main( int, char ** argv )
+{
+    using namespace starlight;
+
+    std::vector<uint8_t> bytes = Slurp( argv[1] );
+    const GameConfig * config = GameConfigOpen( bytes.data(), (int64_t) bytes.size() );
+    if ( config == NULL )
+    {
+        // wrong build, corrupt, truncated, or a foreign byte order:
+        // fall back to a wire load, the path that carries every version
+        printf( "not this build's cook\n" );
+        return 0;
+    }
+    printf( "opened: level=%.*s corvette health=%g\n",
+        config->level_name_length, config->level_name,
+        config->ships[ShipType::Corvette].max_health );
+
+    // the same bytes, from code instead of the tool
+    GameConfig value;
+    TableReport report;
+    std::vector<uint8_t> wire = Slurp( "packed.bin" );
+    GameConfigLoad( value, wire.data(), (int64_t) wire.size(), &report );
+    int64_t size = GameConfigCookMeasure( value );
+    std::vector<uint8_t> mine( size );
+    GameConfigCook( value, mine.data(), size, TableByteOrder::Little );
+    FILE * f = fopen( "Mine.cook", "wb" );
+    fwrite( mine.data(), 1, size, f );
+    fclose( f );
+    printf( "wrote Mine.cook, %lld bytes\n", (long long) size );
+    return 0;
+}
+```
+
+```
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o cook cook.cpp gen/ConfigTable.cpp
+$ ./cook Game.cook
+opened: level=Kuiper Run corvette health=500
+wrote Mine.cook, 464 bytes
+```
+
+`Open` verifies the header, which is the magic, the byte order, the **build
+version**, the region alignment and the part lengths, and returns a pointer
+**into your bytes**. Nothing is parsed, nothing is allocated, and nothing is
+walked, so a one-megabyte cook and a one-gigabyte cook open in the same time,
+and a mapped file's pages are touched only as you use them.
+
+Every table gets an `Open`, fixed and variable alike. A variable root, Part 8's
+`Route`, opens the same way and you chase pointers through `WaypointAt` exactly
+as you did on the locked region, because the cook's data part **is** a locked
+region.
+
+### Cooking from code
+
+The second half of that program is the write side, and its bytes are pinned to
+the tool's, so the two producers are interchangeable:
+
+```
+$ cmp Game.cook Mine.cook && echo "Game.cook and Mine.cook are identical"
+Game.cook and Mine.cook are identical
+```
+
+A variable root cooks straight from its builder, with `RouteCook( builder, ... )`,
+and `RouteOpen` walks it in place.
+
+### It is an accelerator, not an archive
+
+The header check is an **identity** check and not a trust boundary. A cook is
+data your own pipeline produced for exactly one build. Add one field to
+`GameConfig`:
+
+```
+table GameConfig
+{
+    friendly_fire bool
+    weapons       [..MaxWeapons]WeaponConfig
+    ships         [ShipType]ShipConfig
+    level_name    string(64)
+    par_time      float32 = 0.0
+}
+```
+
+```
+$ schema check .
+$ echo $?
+0
+$ schema id .
+0xb786cca203ebb6ea
+$ schema build-version .
+0x7d56db7dd7e25376
+$ ./cook Game.cook
+not this build's cook
+```
+
+Three facts in four commands. Adding a field to a table **passes** the
+baseline, because the wire absorbs it. The **protocol id does not move**, because
+a table is not on the packet wire. The **build version does**, so the new build
+refuses the old cook and falls back to the wire, which still loads it fine and
+absorbs the new field as a default while your pipeline recooks.
+
+Take `par_time` back out before you go on, and `./cook Game.cook` opens again.
+
+A big-endian cook refuses on a little-endian build the same way:
+
+```
+$ schema cook --root GameConfig --in tree --out GameBig.cook --byte-order big --verbose .
+cooked GameBig.cook: 464 bytes, build version 0x4186cdc67f83f559, big-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
+$ ./cook GameBig.cook
+not this build's cook
+```
+
+The tolerant wire remains the format of record, and the cook is the fast lane
+your build key can always regenerate.
+
+### Checking one you did not write
+
+If you hold a cooked file whose provenance you doubt, because it crossed a
+machine boundary or because you are diagnosing one, the **tool** validates it
+offline, once, on purpose:
+
+```
+$ schema cook-check --root GameConfig --verbose Game.cook .
+ok: build version 0x4186cdc67f83f559, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes, 0 reference slots
+```
+
+`cook-check` verifies every reference and count against the attribution, a
+small directory the cook carries beside its data and which `--attribution
+<file>` can separate out for builds that ship none. That is a person's
+decision, not a flag on the hot path.
+
+`schema uncook` turns a cook back into wire bytes, which is also the proof the
+cook lost nothing:
+
+```
+$ schema uncook --root GameConfig --in Game.cook --out back.bin .
+$ cmp back.bin packed.bin && echo "identical to packed.bin"
+identical to packed.bin
+```
+
+### The build version, precisely
+
+Two ids now exist in your project, and there is no third.
+
+The **protocol id** is the packet wire's identity, and it gates connections.
+
+The **build version** is everything a cook's or a block's bytes depend on that
+is target neutral: the protocol id, every record's layout as the compiler's C
+ABI model computes it, and the meaning facts, which are the defaults, ranges,
+variant order and arm order. It keys cooked assets and gates no connection.
+
+`schema build-version --facts` prints the entire digest input, which is the
+file to diff when you want to know **why** the version moved:
+
+```
+$ schema build-version --facts .
+schema-build-version 3
+protocol b786cca203ebb6ea
+byteorder little
+block prologue=magic:8,build_version:8,byte_order:8
+record GameConfig sizeof=384 alignof=8
+    field 79cee25d9004059f kind=1 offset=0 size=1
+    field 41cbd901b87fabb6 kind=13 offset=4 size=68 type=WeaponConfig elem=8 array=bounded bound=8
+    field 294a5c4913e1ad44 kind=13 offset=72 size=240 type=ShipConfig elem=80 array=keyed bound=3 key=ShipType
+    field 38b921b4ce4e20c5 kind=12 offset=312 size=72 bound=64
+block GameConfig sizeof=360 alignof=8
+    slot 79cee25d9004059f offset=24 size=1
+```
+
+and it continues through every record and block in the unit. The same number is
+exported as `BuildVersion` in the generated code and stamped into every cook
+header and block prologue.
+
+The store contract is one line: your pipeline stores assets under the triple
+**(asset hash, build version, byte order)**. The asset hash is the hash of the
+wire file you cooked from. The build version is target neutral, which the
+big-endian cook above shows by stamping the same `0x4186cdc67f83f559`, and
+`byteorder little` appearing in the facts is a generation input that never
+varies. Byte order is the third coordinate, carried in the header and refused
+by `Open` on a mismatch. Your game asks for exactly that triple, anything that
+would change the bytes moves the key, and you never reason about which edits
+invalidate what.
+
+**You now have** an asset pipeline: designer tree, then wire, then cook, opened
+by pointer in constant time, keyed so staleness is impossible, with the
+tolerant wire as the fallback that never breaks.
