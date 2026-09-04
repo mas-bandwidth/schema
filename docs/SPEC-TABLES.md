@@ -4294,6 +4294,12 @@ without re-reading its own error handling.
   element of a fixed, bounded or enum-keyed array, a map entry's value in
   ascending key order, and a union's set arm. **A pointer field is not a
   step**, because its target is a node and takes a first step of its own.
+- **A UNION's step is the ARM's OWN ORDINAL**, and not "whichever arm is
+  set". A caller that switches the arm between load and save therefore leaves
+  a step no child body answers, so the record is DROPPED and counted
+  `retain_lost`. It is never placed in the other arm's body, which is the one
+  outcome an arm-agnostic step would have produced and the reason the step
+  names the arm.
 - **The path has no data-driven depth.** By-value nesting is refused a cycle
   (§2), so the number of steps is bounded by the schema's own nesting depth, a
   compile-time constant, and a pointer chain is flat on this wire (§3.1). A
@@ -4405,13 +4411,26 @@ copies attacker-chosen bytes, so the bound is stated rather than assumed:
   the region's own directory, and never read from the wire. A hostile file
   cannot write a path, name a body or reach a node.
 
-**WHAT INVALIDATES A PATH, said once.** A retained record addresses the region
-as `Load` left it. A caller that changes the SHAPE between load and save, by
-removing an array element, a map entry or a node, or by clearing an optional,
-may leave a record naming a body that is gone. That record is dropped at save
-and counted `retain_lost`. Changing a VALUE invalidates nothing. It is the rule
-a caller already lives under for anything else it holds beside a loaded
-instance, and it is why the safety check is read after `Save`.
+**WHAT INVALIDATES A PATH, said once, and it is the CALLER's own hazard.** A
+retained record addresses the region as `Load` left it, and every step after
+the first is an ORDINAL. So a caller that changes the SHAPE between load and
+save can do worse than lose a record. **Removing an array element or a map
+entry from the MIDDLE renumbers every sibling after it**, so the record held
+for old entry 2 lands in old entry 3's body, and only the record held for the
+LAST entry is dropped for want of a body to name. Clearing an optional or
+switching a union arm drops the records beneath it, because the step then
+names a child body that does not exist. A node is not on this list, because a
+node cannot be removed from a region. Changing a VALUE invalidates nothing,
+and neither does editing an element in place.
+
+**And `retain_lost` cannot see a misplacement.** It counts the record that
+lost its body, never the ones that moved into a sibling's, because the counter
+answers what retention could not keep and not what a caller's own edit
+re-addressed. That is why this is framed as the caller's hazard: it is the
+rule a caller already lives under for anything else it holds beside a loaded
+instance, and the discipline is to retain, edit values, and save, or to reload
+after a shape edit. The safety check is still read after `Save`, and it
+catches the drop.
 
 **HELD BY TEST, when it lands.** The rows the conformance manifest owes, each
 red for one reason:
