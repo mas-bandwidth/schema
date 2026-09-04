@@ -649,7 +649,8 @@ compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
 - **A table may hold a BYTE BUFFER at its used size** (§2.5). `data *bytes`
   and `caption *string` point at a blob node of exactly the bytes it holds —
   an image inside a table at its own size, null when absent — and, like every
-  pointer, they make their holder variable-length.
+  pointer, they make their holder variable-length. `label *wstring` is the
+  third spelling and does the same in UTF-16 code units.
 - **`was` — the rename attribute** (§5).
 
 And one addition that is not a field spelling at all: **every fixed table has
@@ -1573,7 +1574,7 @@ default and has no `?map`: a fresh map is empty, and an empty map is elided
 under §3's by-value elision rule, the rule that elides an empty array.
 
 **A VALUE is anything a table field can hold**: a scalar, an enum, a `flags`
-mask, `string(N)`, `bytes(N)`, a declared `type`, a table by value, `*T`,
+mask, `string(N)`, `wstring(N)`, `bytes(N)`, a declared `type`, a table by value, `*T`, `*wstring`,
 `*bytes`, `*string` (§2.5), `?T`, `?[N]T`, `?[..N]T` (§2.3), a union, `[N]T`,
 `[..N]T`, `[E]T`, a map, and an unbounded `[]T` (§2.9). So
 `map[string(16)]map[uint8]Item` is one
