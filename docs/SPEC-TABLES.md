@@ -3948,7 +3948,7 @@ ids one message happens to use:
 - **every enum variant name** and **every union arm name** in the closure.
 - **the reserved node-table id**, **the three BLOB type ids**
   `fnv1a64( "bytes" )`, `fnv1a64( "string" )` and `fnv1a64( "wstring" )`
-  (§3.1, and schema#532 for the third), and **the NAME id of EVERY table in the
+  (§3.1, all three), and **the NAME id of EVERY table in the
   closure**, whether or not a pointer names it today.
 
 **THREE PROPERTIES FOLLOW, and they are why the vocabulary is the unit's rather
@@ -4915,8 +4915,11 @@ has:
   ONE `malformed`, leave the field at its declared default and let the parent
   read on past `L` (§3, §4). **A leg that stores any of them fails the value
   requirement below**, which is what makes this a gate and not a wish;
-- **the FORM BYTE** set to `0`, to `2`, and to `0xFF`, which must be a named
-  refusal and never damage (§3);
+- **the FORM BYTE** set to `0`, to `3`, and to `0xFF`, which must be a named
+  refusal and never damage (§3). It is `3` and not `2` because `2` is a KNOWN
+  form with rules of its own (§3.3), so planting it would pin the message
+  form's behavior rather than the unknown-form refusal this strategy exists
+  for;
 - **the REFERENCE class** (§3), which is this form's own attack surface:
   every reference in the wire set to `0`, to the entry count, to the count
   plus one, and to the two values the sign bit spells; every reference,
@@ -6188,9 +6191,20 @@ the wire, and keeps the flexibility that comes with it.
   comparisons below it would be arithmetic over a forgery. `unaligned_base` is
   last because it is the only clause that reads nothing out of the file.
   Every clause has a value, and the one clause that shares a value says so in
-  its row, so nothing hides behind anything. **The names are the same in every target**, each spelled in that
+  its row, so nothing hides behind anything.
+
+  **The names are the same in every target**, each spelled in that
   language's own convention for an enumerator the way §11 leaves every claimed
   verb its own shape, and `TableOpenReason` joins §11's claimed names.
+
+  **It is not the message form's vocabulary, and the two are worth telling
+  apart.** §3.3's `no_vocabulary`, `second_announcement`,
+  `vocabulary_too_large` and `message_form_as_file`, and the form byte's own
+  `newer_form`, are the TOLERANT WIRE's refusals: a load that never began.
+  `TableOpenReason` is the ACCELERATOR's: a header match that did not match.
+  They are different enums on different paths, no call returns both, and a
+  caller meeting a `TableOpenReason` falls back to the wire while a caller
+  meeting one of the others has already failed there.
 
   **No existing call site moves.** In C++ the parameter is last and defaults to
   null, `const Scene * SceneOpen( const void * bytes, uint64_t length,
