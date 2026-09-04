@@ -3,10 +3,15 @@
 // and the passes that turn one seed into its mutants.
 //
 // The scanner here is a LOCATOR, not a reader. It walks §3's framing to find
-// where every id, kind, length, count, key, arm id and node index sits, and
-// which lengths enclose each field. It decodes no value and mirrors no
+// where every reference, kind, length, count, index and id-table entry sits,
+// and which lengths enclose each field. It decodes no value and mirrors no
 // reader's decisions — the oracle is internal/tablewire, and this file never
 // says what a mutant means.
+//
+// EVERY NUMBER ON THIS WIRE IS A VARIABLE-WIDTH LEB128 (§3), so a mutation is
+// a SPLICE rather than a patch: the spot's bytes are replaced and every length
+// framing it grows or shrinks by the same delta, innermost first, so the one
+// thing wrong with a mutant is the thing the mutator aimed at.
 package main
 
 import (
@@ -19,15 +24,19 @@ import (
 type wireSpotKind int
 
 const (
-	spotID         wireSpotKind = iota // a field's u16 id
+	spotRef        wireSpotKind = iota // a field's id reference
 	spotKind                           // a field's kind byte, or an array's element kind
-	spotLength                         // a u32 L; limit is the end of the enclosing body
-	spotCount                          // a u32 N
-	spotIndex                          // a u32 node index under kind 17
-	spotKey                            // an enum-keyed pair's u16 variant id
-	spotArm                            // a union's u16 arm id
-	spotNodeCount                      // the node table's u64 node_count
-	spotRecordType                     // a node record's u64 type id
+	spotLength                         // an L; limit is the end of the enclosing body
+	spotCount                          // an N
+	spotIndex                          // a node index under kind 17
+	spotKey                            // an enum-keyed triple's key reference
+	spotArm                            // a union's arm id reference
+	spotVariant                        // an enum's variant id reference, under kind 30
+	spotNodeCount                      // the node table's node_count
+	spotRecordType                     // a node record's type id reference
+	spotEntry                          // one id-table entry: a fixed little-endian u64
+	spotEntryCount                     // the id table's entry count: the one fixed-width number
+	spotForm                           // the FORM BYTE, and it is the whole header
 )
 
 type wireSpot struct {
@@ -36,14 +45,20 @@ type wireSpot struct {
 	width int
 	limit int // the end of the body the number is read inside
 	value uint64
-	// arm marks a length that frames a UNION ARM payload: kind 15 is the one
-	// payload whose framing a skipper has to know, and an arm carries no kind
-	// byte, so its L is the whole of what a reader can check (§3, §2.6)
+	// leb marks a number written as a canonical LEB128, which is every one of
+	// them but the id table's entry count and the form byte (§3)
+	leb bool
+	// arm marks a length that frames a UNION ARM payload. An arm header
+	// carries the arm's KIND now (§3), so the L is checked against that kind's
+	// width — and a mutant that moves it is that arm's own framing damage.
 	arm bool
 	// body marks a length that frames a TABLE BODY — a kind 13 field, or an
 	// arm whose payload is a body. A body's terminator is the end of its
 	// payload (§3), and the mutator writes one earlier.
 	body bool
+	// enclosing is every length spot framing this one, outermost first, so a
+	// splice can keep the framing consistent
+	enclosing []int
 }
 
 // remaining is how many bytes a length spot may claim without leaving its
@@ -51,7 +66,7 @@ type wireSpot struct {
 func (s wireSpot) remaining() int { return s.limit - (s.off + s.width) }
 
 type wireField struct {
-	start, end int   // id, kind and payload
+	start, end int   // the reference, the kind and the payload
 	enclosing  []int // every length spot framing this field, outermost first
 }
 
@@ -59,130 +74,159 @@ type wireFrame struct {
 	spots   []wireSpot
 	fields  []wireField
 	records int // node records the root body carries
+
+	// the three parts of a saved table (§3): the form byte, the root body, and
+	// the id table located from the END
+	bodyStart int
+	bodyEnd   int
+	entries   []uint64
+	entriesAt int
+	countAt   int
+}
+
+// entryOf is the id one reference names, and false when the reference names no
+// entry — `0`, which names no id, or one past the table.
+func (f *wireFrame) entryOf(ref uint64) (uint64, bool) {
+	if ref == 0 || ref > uint64(len(f.entries)) {
+		return 0, false
+	}
+	return f.entries[ref-1], true
 }
 
 type frameScanner struct {
 	data  []byte
 	f     *wireFrame
 	chain []int
-	first bool // the next node-table field opens with node_count
 }
 
-// frameWire locates every number in one root body. It stops at the first byte
-// it cannot frame, because it is only ever pointed at a pinned, valid wire.
-func frameWire(data []byte) *wireFrame {
-	s := &frameScanner{data: data, f: &wireFrame{}, first: true}
-	s.body(0, len(data), true)
-	return s.f
-}
-
-func (s *frameScanner) read(off, width int) uint64 {
-	switch width {
-	case 1:
-		return uint64(s.data[off])
-	case 2:
-		return uint64(binary.LittleEndian.Uint16(s.data[off:]))
-	case 4:
-		return uint64(binary.LittleEndian.Uint32(s.data[off:]))
+// leb reads one canonical LEB128 at off, and answers its width. A width of 0
+// means the number runs off the end, and the scanner stops there — it is only
+// ever pointed at a pinned, valid wire.
+func readLeb(data []byte, off, end int) (value uint64, width int) {
+	shift := uint(0)
+	for i := 0; off+i < end && i < 10; i++ {
+		b := data[off+i]
+		value |= uint64(b&0x7F) << shift
+		if b&0x80 == 0 {
+			return value, i + 1
+		}
+		shift += 7
 	}
-	return binary.LittleEndian.Uint64(s.data[off:])
+	return 0, 0
 }
 
-func (s *frameScanner) spot(kind wireSpotKind, off, width, limit int) int {
-	s.f.spots = append(s.f.spots, wireSpot{kind: kind, off: off, width: width, limit: limit, value: s.read(off, width)})
-	return len(s.f.spots) - 1
+// appendLeb is one value in its one legal spelling.
+func appendLeb(out []byte, v uint64) []byte {
+	for v >= 0x80 {
+		out = append(out, uint8(v)|0x80)
+		v >>= 7
+	}
+	return append(out, uint8(v))
 }
 
-// framed opens one L-framed payload: the length spot is recorded and pushed
-// onto the enclosing chain, `inner` walks the body, and the chain is popped.
-// It answers the offset after the body, or -1 when the length runs past `end`.
-func (s *frameScanner) framed(off, end int, inner func(start, stop int)) int {
-	return s.framedAs(off, end, false, false, inner)
+func lebBytes(v uint64) []byte { return appendLeb(nil, v) }
+
+// frameWire locates every number in one saved table: the form byte, the id
+// table it ends with, and every spot of the root body between them.
+func frameWire(data []byte) *wireFrame {
+	f := &wireFrame{}
+	if len(data) < 9 {
+		return f
+	}
+	f.spots = append(f.spots, wireSpot{kind: spotForm, off: 0, width: 1, limit: len(data), value: uint64(data[0])})
+	count := binary.LittleEndian.Uint64(data[len(data)-8:])
+	span := int(count)*8 + 8
+	if count > uint64(len(data)/8) || span+1 > len(data) {
+		return f
+	}
+	f.entriesAt = len(data) - span
+	f.countAt = len(data) - 8
+	f.entries = make([]uint64, count)
+	for i := range f.entries {
+		f.entries[i] = binary.LittleEndian.Uint64(data[f.entriesAt+i*8:])
+	}
+	f.bodyStart = 1
+	f.bodyEnd = f.entriesAt
+	s := &frameScanner{data: data, f: f}
+	s.body(f.bodyStart, f.bodyEnd, true)
+	for i := range f.entries {
+		f.spots = append(f.spots, wireSpot{kind: spotEntry, off: f.entriesAt + i*8, width: 8, limit: len(data), value: f.entries[i]})
+	}
+	f.spots = append(f.spots, wireSpot{kind: spotEntryCount, off: f.countAt, width: 8, limit: len(data), value: count})
+	return f
 }
 
-// framedAs is `framed` with the payload's SHAPE recorded on the length spot:
-// whether it frames a union arm, and whether it frames a table body.
-func (s *frameScanner) framedAs(off, end int, arm, body bool, inner func(start, stop int)) int {
-	if off+4 > end {
+// spotLeb records one canonical LEB128 number and answers the offset after it,
+// or -1 where it runs off the end.
+func (s *frameScanner) spotLeb(kind wireSpotKind, off, end int) int {
+	v, w := readLeb(s.data, off, end)
+	if w == 0 {
 		return -1
 	}
-	n := int(s.read(off, 4))
-	ls := s.spot(spotLength, off, 4, end)
+	s.f.spots = append(s.f.spots, wireSpot{
+		kind: kind, off: off, width: w, limit: end, value: v, leb: true,
+		enclosing: append([]int(nil), s.chain...),
+	})
+	return off + w
+}
+
+func (s *frameScanner) spotByte(kind wireSpotKind, off, end int) {
+	s.f.spots = append(s.f.spots, wireSpot{
+		kind: kind, off: off, width: 1, limit: end, value: uint64(s.data[off]),
+		enclosing: append([]int(nil), s.chain...),
+	})
+}
+
+func (s *frameScanner) lastSpot() int { return len(s.f.spots) - 1 }
+
+// framedAs opens one L-framed payload: the length spot is recorded and pushed
+// onto the enclosing chain, `inner` walks the body, and the chain is popped.
+// It answers the offset after the body, or -1 when the length runs past `end`.
+func (s *frameScanner) framedAs(off, end int, arm, body bool, inner func(start, stop int)) int {
+	after := s.spotLeb(spotLength, off, end)
+	if after < 0 {
+		return -1
+	}
+	ls := s.lastSpot()
 	s.f.spots[ls].arm = arm
 	s.f.spots[ls].body = body
-	off += 4
-	if n < 0 || off+n > end {
+	n := int(s.f.spots[ls].value)
+	if n < 0 || after+n > end {
 		return -1
 	}
 	s.chain = append(s.chain, ls)
 	if inner != nil {
-		inner(off, off+n)
+		inner(after, after+n)
 	}
 	s.chain = s.chain[:len(s.chain)-1]
-	return off + n
+	return after + n
+}
+
+func (s *frameScanner) framed(off, end int, inner func(start, stop int)) int {
+	return s.framedAs(off, end, false, false, inner)
 }
 
 func (s *frameScanner) body(start, end int, root bool) {
 	off := start
-	for off+2 <= end {
+	for off < end {
 		fieldStart := off
-		id := uint16(s.read(off, 2))
-		s.spot(spotID, off, 2, end)
-		off += 2
-		if id == 0 {
+		after := s.spotLeb(spotRef, off, end)
+		if after < 0 {
 			return
 		}
+		ref := s.f.spots[s.lastSpot()].value
+		off = after
+		if ref == 0 {
+			return // the body ENDS AT ITS OWN ZERO REFERENCE
+		}
+		id, named := s.f.entryOf(ref)
 		if off+1 > end {
 			return
 		}
 		kind := s.data[off]
-		s.spot(spotKind, off, 1, end)
+		s.spotByte(spotKind, off, end)
 		off++
-		switch kind {
-		case ir.TableKindBool, ir.TableKindI8, ir.TableKindU8, ir.TableKindI16, ir.TableKindU16,
-			ir.TableKindI32, ir.TableKindU32, ir.TableKindF32, ir.TableKindI64, ir.TableKindU64, ir.TableKindF64,
-			ir.TableKindI128, ir.TableKindU128,
-			ir.TableKindFixed8, ir.TableKindFixed16, ir.TableKindFixed32, ir.TableKindFixed64, ir.TableKindFixed128,
-			ir.TableKindUFixed8, ir.TableKindUFixed16, ir.TableKindUFixed32, ir.TableKindUFixed64, ir.TableKindUFixed128:
-			w := kindWidth(int(kind))
-			if off+w > end {
-				return
-			}
-			off += w
-		case ir.TableKindPointer:
-			if off+4 > end {
-				return
-			}
-			s.spot(spotIndex, off, 4, end)
-			off += 4
-		case ir.TableKindString:
-			var inner func(int, int)
-			if root && id == ir.NodeTableFieldId {
-				inner = s.nodeTable
-			}
-			off = s.framed(off, end, inner)
-		case ir.TableKindTable:
-			off = s.framedAs(off, end, false, true, func(a, b int) { s.body(a, b, false) })
-		case ir.TableKindArray:
-			off = s.framed(off, end, s.array)
-		case ir.TableKindKeyed:
-			off = s.framed(off, end, s.keyed)
-		case ir.TableKindUnion:
-			if off+2 > end {
-				return
-			}
-			arm := s.read(off, 2)
-			s.spot(spotArm, off, 2, end)
-			off += 2
-			if arm != 0 {
-				// the payload is walked as a body: a general arm's is not one,
-				// and the scanner is a LOCATOR — a spot it cannot frame is a
-				// spot it does not record (§2.6)
-				off = s.framedAs(off, end, true, true, func(a, b int) { s.body(a, b, false) })
-			}
-		default:
-			return
-		}
+		off = s.payload(off, end, kind, root && named && id == ir.TableNodeWireId)
 		if off < 0 {
 			return
 		}
@@ -190,20 +234,84 @@ func (s *frameScanner) body(start, end int, root bool) {
 	}
 }
 
-// nodeTable walks one node-table field's payload (§3.1): node_count in the
-// first, then whole records — type id, length, body — in every one.
+// payload walks one field's payload by its kind, and answers the offset after
+// it. `nodeTable` marks the one field the numbering rides in (§3.1).
+func (s *frameScanner) payload(off, end int, kind uint8, nodeTable bool) int {
+	switch kind {
+	case ir.TableKindBool, ir.TableKindI8, ir.TableKindU8, ir.TableKindI16, ir.TableKindU16,
+		ir.TableKindI32, ir.TableKindU32, ir.TableKindF32, ir.TableKindI64, ir.TableKindU64, ir.TableKindF64,
+		ir.TableKindI128, ir.TableKindU128,
+		ir.TableKindFixed8, ir.TableKindFixed16, ir.TableKindFixed32, ir.TableKindFixed64, ir.TableKindFixed128,
+		ir.TableKindUFixed8, ir.TableKindUFixed16, ir.TableKindUFixed32, ir.TableKindUFixed64, ir.TableKindUFixed128:
+		w := kindWidth(int(kind))
+		if off+w > end {
+			return -1
+		}
+		return off + w
+	case ir.TableKindPointer:
+		return s.spotLeb(spotIndex, off, end)
+	case ir.TableKindEnum:
+		return s.spotLeb(spotVariant, off, end)
+	case ir.TableKindString:
+		var inner func(int, int)
+		if nodeTable {
+			inner = s.nodeTable
+		}
+		return s.framed(off, end, inner)
+	case ir.TableKindTable:
+		return s.framedAs(off, end, false, true, func(a, b int) { s.body(a, b, false) })
+	case ir.TableKindArray:
+		return s.framed(off, end, s.array)
+	case ir.TableKindKeyed:
+		return s.framed(off, end, s.keyed)
+	case ir.TableKindEscape, ir.TableKindNoPayload:
+		return s.framed(off, end, nil)
+	case ir.TableKindUnion:
+		return s.arm(off, end)
+	}
+	return -1
+}
+
+// arm walks a union payload in its place (§3): the arm id reference, and when
+// it is not 0 the arm's KIND byte, its L and its payload.
+func (s *frameScanner) arm(off, end int) int {
+	after := s.spotLeb(spotArm, off, end)
+	if after < 0 {
+		return -1
+	}
+	ref := s.f.spots[s.lastSpot()].value
+	off = after
+	if ref == 0 {
+		return off // the zero reference is the empty union, and carries nothing
+	}
+	if off+1 > end {
+		return -1
+	}
+	kind := s.data[off]
+	s.spotByte(spotKind, off, end)
+	off++
+	// AN ARM HEADER IS A FIELD HEADER (§3), so the payload under its L is what
+	// a FIELD of the arm's type puts after its own prefix — but the scanner is
+	// a LOCATOR, and a body is the only arm payload it can walk further into.
+	return s.framedAs(off, end, true, kind == ir.TableKindTable, func(a, b int) {
+		if kind == ir.TableKindTable {
+			s.body(a, b, false)
+		}
+	})
+}
+
+// nodeTable walks the node table's payload (§3.1): node_count, then whole
+// records — a type id reference, a length and a body.
 func (s *frameScanner) nodeTable(off, end int) {
-	if s.first {
-		if off+8 > end {
+	off = s.spotLeb(spotNodeCount, off, end)
+	if off < 0 {
+		return
+	}
+	for off < end {
+		off = s.spotLeb(spotRecordType, off, end)
+		if off < 0 {
 			return
 		}
-		s.spot(spotNodeCount, off, 8, end)
-		off += 8
-		s.first = false
-	}
-	for off+12 <= end {
-		s.spot(spotRecordType, off, 8, end)
-		off += 8
 		s.f.records++
 		off = s.framed(off, end, func(a, b int) { s.body(a, b, false) })
 		if off < 0 {
@@ -212,42 +320,33 @@ func (s *frameScanner) nodeTable(off, end int) {
 	}
 }
 
-// array walks an array body: element kind, N, then the elements at the
-// element kind's framing.
+// array walks an array body: the element kind byte, N, then the elements at
+// the element kind's own framing.
 func (s *frameScanner) array(off, end int) {
-	if off+5 > end {
+	if off+1 > end {
 		return
 	}
 	ek := int(s.data[off])
-	s.spot(spotKind, off, 1, end)
-	count := int(s.read(off+1, 4))
-	s.spot(spotCount, off+1, 4, end)
-	off += 5
+	s.spotByte(spotKind, off, end)
+	off++
+	after := s.spotLeb(spotCount, off, end)
+	if after < 0 {
+		return
+	}
+	count := int(s.f.spots[s.lastSpot()].value)
+	off = after
 	for i := 0; i < count && off < end; i++ {
 		switch ek {
 		case ir.TableKindPointer:
-			if off+4 > end {
-				return
-			}
-			s.spot(spotIndex, off, 4, end)
-			off += 4
+			off = s.spotLeb(spotIndex, off, end)
+		case ir.TableKindEnum:
+			off = s.spotLeb(spotVariant, off, end)
 		case ir.TableKindTable:
 			off = s.framedAs(off, end, false, true, func(a, b int) { s.body(a, b, false) })
 		case ir.TableKindUnion:
-			// an ARRAY OF UNIONS (§2.6): the element is the union payload in
-			// its place, framed exactly as a union field's is
-			if off+2 > end {
-				return
-			}
-			arm := s.read(off, 2)
-			s.spot(spotArm, off, 2, end)
-			off += 2
-			if arm != 0 {
-				// the payload is walked as a body: a general arm's is not one,
-				// and the scanner is a LOCATOR — a spot it cannot frame is a
-				// spot it does not record (§2.6)
-				off = s.framedAs(off, end, true, true, func(a, b int) { s.body(a, b, false) })
-			}
+			// AN ELEMENT OF AN ARRAY OF UNIONS IS AN ARM HEADER (§3), framed
+			// exactly as a union field's payload is
+			off = s.arm(off, end)
 		case ir.TableKindString:
 			off = s.framed(off, end, nil)
 		default:
@@ -263,20 +362,26 @@ func (s *frameScanner) array(off, end int) {
 	}
 }
 
-// keyed walks an enum-keyed body (§3.2): element kind, N, then N pairs of
-// variant id, L, element.
+// keyed walks an enum-keyed body (§3.2): the element kind byte, N, then N
+// triples of a key reference, L and the element.
 func (s *frameScanner) keyed(off, end int) {
-	if off+5 > end {
+	if off+1 > end {
 		return
 	}
 	ek := int(s.data[off])
-	s.spot(spotKind, off, 1, end)
-	count := int(s.read(off+1, 4))
-	s.spot(spotCount, off+1, 4, end)
-	off += 5
-	for i := 0; i < count && off+2 <= end; i++ {
-		s.spot(spotKey, off, 2, end)
-		off += 2
+	s.spotByte(spotKind, off, end)
+	off++
+	after := s.spotLeb(spotCount, off, end)
+	if after < 0 {
+		return
+	}
+	count := int(s.f.spots[s.lastSpot()].value)
+	off = after
+	for i := 0; i < count && off < end; i++ {
+		off = s.spotLeb(spotKey, off, end)
+		if off < 0 {
+			return
+		}
 		var inner func(int, int)
 		if ek == ir.TableKindTable {
 			inner = func(a, b int) { s.body(a, b, false) }
@@ -344,39 +449,111 @@ func put(data []byte, off, width int, value uint64) {
 	}
 }
 
-func patched(seed *wireSeed, sp wireSpot, value uint64) []byte {
-	out := append([]byte(nil), seed.wire...)
-	put(out, sp.off, sp.width, value)
-	return out
+// spliceSpot replaces one spot's bytes and grows or shrinks every length
+// framing it by the same delta, INNERMOST FIRST — so the framing stays
+// consistent and the one thing wrong with the mutant is the thing the mutator
+// aimed at (§4.2). A canonical LEB128 cannot be patched in place, which is why
+// every mutation of a number on this wire is a splice.
+func spliceSpot(seed *wireSeed, si int, newBytes []byte) []byte {
+	f := seed.frame
+	sp := f.spots[si]
+	type edit struct {
+		off, width int
+		bytes      []byte
+	}
+	edits := []edit{{sp.off, sp.width, newBytes}}
+	d := len(newBytes) - sp.width
+	for j := len(sp.enclosing) - 1; j >= 0; j-- {
+		e := f.spots[sp.enclosing[j]]
+		grown := int64(e.value) + int64(d)
+		if grown < 0 {
+			grown = 0
+		}
+		nb := lebBytes(uint64(grown))
+		d += len(nb) - e.width
+		edits = append(edits, edit{e.off, e.width, nb})
+	}
+	sort.Slice(edits, func(a, b int) bool { return edits[a].off < edits[b].off })
+	out := make([]byte, 0, len(seed.wire)+d)
+	at := 0
+	for _, e := range edits {
+		out = append(out, seed.wire[at:e.off]...)
+		out = append(out, e.bytes...)
+		at = e.off + e.width
+	}
+	return append(out, seed.wire[at:]...)
+}
+
+// patched writes one value at one spot: a splice for the LEB128 numbers, and
+// an in-place put for the three fixed-width things on the wire — the form
+// byte, an id-table entry and the entry count.
+func patched(seed *wireSeed, si int, value uint64) []byte {
+	sp := seed.frame.spots[si]
+	if !sp.leb {
+		out := append([]byte(nil), seed.wire...)
+		put(out, sp.off, sp.width, value)
+		return out
+	}
+	return spliceSpot(seed, si, lebBytes(value))
+}
+
+// nonCanonical is one value in a spelling that is NOT its own: the minimal
+// bytes with `extra` redundant continuation bytes after them, which §3 calls
+// malformed because one value has one spelling.
+func nonCanonical(v uint64, extra int) []byte {
+	out := lebBytes(v)
+	out[len(out)-1] |= 0x80
+	for i := 1; i < extra; i++ {
+		out = append(out, 0x80)
+	}
+	return append(out, 0)
 }
 
 // duplicateField copies one field's bytes in right after itself. With `fix`
 // every length framing the field grows by the copy, so the framing stays
-// valid and only the repeated id is the event; without it the enclosing
+// valid and only the repeated reference is the event; without it the enclosing
 // lengths are one field short, which is framing damage.
 func duplicateField(seed *wireSeed, fi int, fix bool) []byte {
 	fld := seed.frame.fields[fi]
 	n := fld.end - fld.start
-	out := make([]byte, 0, len(seed.wire)+n)
-	out = append(out, seed.wire[:fld.end]...)
-	out = append(out, seed.wire[fld.start:fld.end]...)
-	out = append(out, seed.wire[fld.end:]...)
-	if fix {
-		for _, si := range fld.enclosing {
-			sp := seed.frame.spots[si]
-			put(out, sp.off, sp.width, sp.value+uint64(n))
-		}
+	out := make([]byte, 0, len(seed.wire)+n+8)
+	if !fix {
+		out = append(out, seed.wire[:fld.end]...)
+		out = append(out, seed.wire[fld.start:fld.end]...)
+		return append(out, seed.wire[fld.end:]...)
 	}
-	return out
+	// the enclosing lengths grow by the copy, innermost first, exactly as a
+	// splice does
+	type edit struct {
+		off, width int
+		bytes      []byte
+	}
+	var edits []edit
+	d := n
+	for j := len(fld.enclosing) - 1; j >= 0; j-- {
+		e := seed.frame.spots[fld.enclosing[j]]
+		nb := lebBytes(e.value + uint64(d))
+		d += len(nb) - e.width
+		edits = append(edits, edit{e.off, e.width, nb})
+	}
+	sort.Slice(edits, func(a, b int) bool { return edits[a].off < edits[b].off })
+	at := 0
+	for _, e := range edits {
+		out = append(out, seed.wire[at:e.off]...)
+		out = append(out, e.bytes...)
+		at = e.off + e.width
+	}
+	out = append(out, seed.wire[at:fld.end]...)
+	out = append(out, seed.wire[fld.start:fld.end]...)
+	return append(out, seed.wire[fld.end:]...)
 }
 
 // duplicateFieldDamaged copies one field in after itself with the framing
-// grown to fit, then makes the SECOND length inside the copy impossible — the
-// first is the field's own, so the second is one inside its body. The repeat
-// is entered and then fails partway, which is where the last occurrence's
-// claim is sharpest (§3): the reader must land on what the damaged repeat
-// decodes, never on what the first occurrence left standing. It answers false
-// for a field whose body carries no length of its own.
+// grown to fit, then makes a length INSIDE the copy impossible. The repeat is
+// entered and then fails partway, which is where the last occurrence's claim
+// is sharpest (§3): the reader must land on what the damaged repeat decodes,
+// never on what the first occurrence left standing. It answers false for a
+// field whose body carries no length of its own.
 func duplicateFieldDamaged(seed *wireSeed, fi int) ([]byte, bool) {
 	fld := seed.frame.fields[fi]
 	inside := 0
@@ -389,10 +566,41 @@ func duplicateFieldDamaged(seed *wireSeed, fi int) ([]byte, bool) {
 			continue
 		}
 		out := duplicateField(seed, fi, true)
-		put(out, sp.off-fld.start+fld.end, sp.width, 0xFFFFFFFF)
+		// the copy sits at the very end of the grown field, so the length's
+		// place inside it is found from the tail rather than from an offset
+		// the growth moved
+		copyStart := len(out) - (len(seed.wire) - fld.end) - (fld.end - fld.start)
+		at := copyStart + (sp.off - fld.start)
+		if at < 0 || at+sp.width > len(out) {
+			return nil, false
+		}
+		// THE LENGTH IS MADE IMPOSSIBLE AT ITS OWN WIDTH: the largest value
+		// that spells in the bytes it already occupies, so the ONE thing wrong
+		// with the mutant is the length and not a second shift of the framing
+		for k := 0; k < sp.width-1; k++ {
+			out[at+k] = 0xFF
+		}
+		out[at+sp.width-1] = 0x7F
 		return out, true
 	}
 	return nil, false
+}
+
+// earlyTerminator writes the ZERO REFERENCE ahead of a body's last byte, so
+// the body ends early and the bytes after it are claimed by no field (§3).
+func earlyTerminator(seed *wireSeed, sp wireSpot) ([]byte, bool) {
+	start := sp.off + sp.width
+	end := start + int(sp.value)
+	if int(sp.value) < 3 || end > len(seed.wire) {
+		return nil, false
+	}
+	at := end - 2 // one byte ahead of the payload's last
+	if seed.wire[at] == 0 {
+		return nil, false
+	}
+	out := append([]byte(nil), seed.wire...)
+	out[at] = 0
+	return out, true
 }
 
 // enumerated yields every deterministic mutant of one seed, in a fixed order,
@@ -409,105 +617,130 @@ func enumerated(seed *wireSeed, emit func(pass string, data []byte)) {
 	}
 
 	records := uint64(f.records)
-	// the ids the seed carries, in wire order, so a rename-to-neighbor mutant
-	// is the same one every run
-	var ids []uint64
-	for _, sp := range f.spots {
-		if sp.kind == spotID && sp.value != 0 {
-			ids = append(ids, sp.value)
-		}
-	}
-	for _, sp := range f.spots {
+	entries := uint64(len(f.entries))
+
+	// THE FOUR VALUES A 64-BIT LEB CAN SPELL THAT A LENGTH NEVER LEGALLY IS
+	// (§4.2), which is what a variable-width number opened up
+	extremes := []uint64{0x7FFFFFFF, 0x80000000, 0xFFFFFFFF, 0xFFFFFFFFFFFFFFFF}
+
+	for si := range f.spots {
+		sp := f.spots[si]
 		switch sp.kind {
+		case spotForm:
+			// THE FORM BYTE set to 0, to 2 and to 0xFF, which must be a named
+			// refusal and never damage (§3)
+			for _, v := range []uint64{0, 2, 0xFF} {
+				emit("form", patched(seed, si, v))
+			}
 		case spotKind:
 			// every kind byte swapped to every other value, the two outside
-			// the closed set included: 0 and one past the last are not skippable
+			// the closed set included: 0 and one past the last are not
+			// skippable, and 31 and 32 are the escape and the payload-free kind
 			for k := uint64(0); k <= uint64(wireKindLast)+1; k++ {
 				if k != sp.value {
-					emit("kind", patched(seed, sp, k))
+					emit("kind", patched(seed, si, k))
 				}
 			}
 		case spotLength:
 			rem := uint64(sp.remaining())
-			for _, v := range []uint64{0, 1, sp.value - 1, sp.value + 1, rem, rem + 1, rem + 2, 0x7FFFFFFF, 0xFFFFFFFF} {
-				if v != sp.value && v <= 0xFFFFFFFF {
-					emit("length", patched(seed, sp, v))
+			values := append([]uint64{0, 1, sp.value - 1, sp.value + 1, rem, rem + 1, rem + 2}, extremes...)
+			for _, v := range values {
+				if v != sp.value {
+					emit("length", patched(seed, si, v))
 				}
 			}
 			if sp.arm {
-				// AN ARM'S L MOVED OFF ITS DECLARED WIDTH (§3, §4.2): kind 15
-				// is the one payload whose framing a skipper has to know, and
-				// an arm carries no kind byte — so every fixed width the closed
-				// set has, and zero, is an attack on the one check a reader has
+				// AN ARM'S L MOVED OFF ITS KIND'S WIDTH (§3, §4.2): every
+				// fixed width the closed set has, and zero
 				for _, v := range []uint64{0, 1, 2, 4, 8, 16} {
 					if v != sp.value {
-						emit("arm-length", patched(seed, sp, v))
+						emit("arm-length", patched(seed, si, v))
 					}
 				}
 			}
 			if sp.body {
-				// A BODY'S TERMINATOR MOVED INSIDE ITS OWN LENGTH (§3): the u16
-				// zero written ahead of the payload's last two bytes, so the
-				// body ends early and the bytes after it are claimed by no field
 				if data, ok := earlyTerminator(seed, sp); ok {
 					emit("terminator", data)
 				}
 			}
 		case spotCount:
 			rem := uint64(sp.remaining())
-			for _, v := range []uint64{0, sp.value + 1, sp.value*2 + 1, rem, rem + 1, 0x80000000, 0xFFFFFFFF} {
+			values := append([]uint64{0, sp.value + 1, sp.value*2 + 1, rem, rem + 1}, extremes...)
+			for _, v := range values {
 				if v != sp.value {
-					emit("count", patched(seed, sp, v))
+					emit("count", patched(seed, si, v))
 				}
 			}
 		case spotIndex:
-			// null, the root, the first record, `node_count` read as an
-			// index, the last record, the two past it, and the three the
-			// sign bit and the width can spell
-			for _, v := range []uint64{0, 1, 2, records, records + 1, records + 2, records + 3, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF} {
+			// null, the root, the first record, the last, the two past it,
+			// and the extremes the encoding can spell
+			values := append([]uint64{0, 1, 2, records, records + 1, records + 2, records + 3}, extremes...)
+			for _, v := range values {
 				if v != sp.value {
-					emit("index", patched(seed, sp, v))
+					emit("index", patched(seed, si, v))
 				}
 			}
-		case spotID:
-			if sp.value == 0 {
-				continue
+		case spotRef, spotArm, spotKey, spotVariant, spotRecordType:
+			// THE REFERENCE CLASS (§3, §4.2), which is this form's own attack
+			// surface: `0`, the entry count — the LAST LEGAL SLOT, which must
+			// RESOLVE — the count plus one, and the extremes
+			pass := "reference"
+			switch sp.kind {
+			case spotKey:
+				pass = "key"
+			case spotArm:
+				pass = "arm"
+			case spotRecordType:
+				pass = "record-type"
 			}
-			candidates := []uint64{0, uint64(ir.NodeTableFieldId), sp.value ^ 1}
-			for _, other := range ids {
-				if other != sp.value {
-					candidates = append(candidates, other)
-					break
-				}
-			}
-			for _, v := range candidates {
+			values := append([]uint64{0, entries, entries + 1}, extremes...)
+			for _, v := range values {
 				if v != sp.value {
-					emit("id", patched(seed, sp, v))
-				}
-			}
-		case spotKey:
-			for _, v := range []uint64{0, sp.value ^ 1, 0xFFFF} {
-				if v != sp.value {
-					emit("key", patched(seed, sp, v))
-				}
-			}
-		case spotArm:
-			for _, v := range []uint64{0, sp.value ^ 1, 0xFFFF} {
-				if v != sp.value {
-					emit("arm", patched(seed, sp, v))
+					emit(pass, patched(seed, si, v))
 				}
 			}
 		case spotNodeCount:
-			for _, v := range []uint64{0, sp.value + 1, sp.value - 1, 0xFFFFFFFF, 0xFFFFFFFFFFFFFFFF} {
+			values := append([]uint64{0, sp.value + 1, sp.value - 1}, extremes...)
+			for _, v := range values {
 				if v != sp.value {
-					emit("node-count", patched(seed, sp, v))
+					emit("node-count", patched(seed, si, v))
 				}
 			}
-		case spotRecordType:
-			for _, v := range []uint64{0, sp.value ^ 1, 0xFFFFFFFFFFFFFFFF} {
+		case spotEntry:
+			// AN ENTRY'S OWN EIGHT BYTES FLIPPED, which must read as an
+			// ordinary `unknown` and never as damage (§4.2) — and the RESERVED
+			// node-table id planted in one, which a nested body cannot claim
+			for _, v := range []uint64{sp.value ^ 1, 0, ir.TableNodeWireId} {
 				if v != sp.value {
-					emit("record-type", patched(seed, sp, v))
+					emit("entry", patched(seed, si, v))
 				}
+			}
+			// THE SAME ID IN TWO ENTRIES is malformed for the whole wire (§3)
+			if len(f.entries) > 1 {
+				other := f.entries[0]
+				if other == sp.value {
+					other = f.entries[len(f.entries)-1]
+				}
+				if other != sp.value {
+					emit("entry-repeat", patched(seed, si, other))
+				}
+			}
+		case spotEntryCount:
+			// THE TABLE TRAILER (§3, §4.2): the entry count off by one each
+			// way, at both extremes, and set so the entries overrun the front
+			values := []uint64{sp.value + 1, sp.value - 1, 0, uint64(len(wire)), 0xFFFFFFFFFFFFFFFF}
+			for _, v := range values {
+				if v != sp.value {
+					emit("entry-count", patched(seed, si, v))
+				}
+			}
+		}
+		// EVERY NUMBER IN ITS NON-MINIMAL SPELLINGS (§3, §4.2): one redundant
+		// continuation byte, then nine, and an eleven-byte form. The framing
+		// around it grows to fit, so the spelling is the whole of the event.
+		if sp.leb {
+			for _, extra := range []int{1, 9, 11} {
+				emit("canonical", spliceSpot(seed, si, nonCanonical(sp.value, extra)))
 			}
 		}
 	}
@@ -679,17 +912,3 @@ func randomStep(r *splitmix64, s *wireSeed, seeds []*wireSeed, data []byte) []by
 // so the body ends inside its own `L` and the bytes after it are claimed by no
 // field (docs/SPEC-TABLES.md §3). It answers false where the payload is too
 // short to carry the move, or where the bytes it would write are already zero.
-func earlyTerminator(seed *wireSeed, sp wireSpot) ([]byte, bool) {
-	start := sp.off + sp.width
-	end := start + int(sp.value)
-	if int(sp.value) < 4 || end > len(seed.wire) {
-		return nil, false
-	}
-	at := end - 4 // two bytes ahead of the payload's last two
-	if seed.wire[at] == 0 && seed.wire[at+1] == 0 {
-		return nil, false
-	}
-	out := append([]byte(nil), seed.wire...)
-	out[at], out[at+1] = 0, 0
-	return out, true
-}

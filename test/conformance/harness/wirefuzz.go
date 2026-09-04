@@ -24,6 +24,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -130,6 +131,23 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	inst := r.model.New(r.def)
 	var rep tabletext.Report
 	ok, derr := tablewire.Decode(r.model, inst, data, &rep)
+	var refusal *tablewire.FormRefusal
+	if errors.As(derr, &refusal) {
+		// A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL, and the refusal
+		// is the answer: nothing was decoded, no counter moved, and no damage
+		// is reported (docs/SPEC-TABLES.md §3). A leg must say the same.
+		ans.report = Counts{Refused: true}
+		// nothing was decoded, so what a leg saves is what it read into: the
+		// value at its declared defaults, which is what the fresh instance
+		// encodes here. Both must answer the same bytes, as they must on
+		// every other mutant (§4.2).
+		if encoded, eerr := tablewire.Encode(r.model, inst); eerr != nil {
+			ans.encFail = true
+		} else {
+			ans.encoded = encoded
+		}
+		return ans, nil
+	}
 	if derr != nil {
 		return ans, fmt.Errorf("the oracle refused the root itself: %w", derr)
 	}
@@ -224,7 +242,9 @@ func (l *wireLeg) send(rootIndex int, data []byte) error {
 
 func (l *wireLeg) receive() (legReply, error) {
 	var rep legReply
-	var head [1 + 4*4 + 1 + 8 + 8]byte
+	// loaded, the four counters, malformed, the REFUSAL VERDICT (§3), the
+	// measure and the saved length
+	var head [1 + 4*4 + 1 + 1 + 8 + 8]byte
 	if _, err := io.ReadFull(l.stdout, head[:]); err != nil {
 		return rep, err
 	}
@@ -234,8 +254,9 @@ func (l *wireLeg) receive() (legReply, error) {
 	rep.report.Clamped = int(int32(binary.LittleEndian.Uint32(head[9:])))
 	rep.report.Duplicate = int(int32(binary.LittleEndian.Uint32(head[13:])))
 	rep.report.Malformed = head[17] != 0
-	rep.measure = int64(binary.LittleEndian.Uint64(head[18:]))
-	n := int64(binary.LittleEndian.Uint64(head[26:]))
+	rep.report.Refused = head[18] != 0
+	rep.measure = int64(binary.LittleEndian.Uint64(head[19:]))
+	n := int64(binary.LittleEndian.Uint64(head[27:]))
 	if n < 0 {
 		rep.saveFail = true
 		return rep, nil
@@ -269,6 +290,21 @@ func (l *wireLeg) kill() {
 // first disagreement, or "" when there is none.
 func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
 	if !reply.loaded {
+		if root.variable && reply.measure < 0 {
+			// LOADMEASURE REFUSED THE FRAMING, so there was no region to load
+			// into and no value to compare: a wire that cannot be OPENED at
+			// all — fewer than nine bytes, a table that cannot be read whole,
+			// a form this reader does not carry — has no body and no numbering
+			// (docs/SPEC-TABLES.md §3). The oracle has to agree there was
+			// nothing to read.
+			if !ans.report.Malformed && !ans.report.Refused {
+				return "the leg's LoadMeasure refused the framing; the oracle read the same bytes cleanly"
+			}
+			if reply.report != ans.report {
+				return fmt.Sprintf("the report differs: the leg says %s, the oracle says %s", reply.report, ans.report)
+			}
+			return ""
+		}
 		return "the leg returned no root — its LoadMeasure sized a region its Load then refused"
 	}
 	if reply.report != ans.report {
@@ -434,6 +470,13 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		}
 		if verdict := wireVerdict(root, reply, ans); verdict != "" {
 			leg.kill()
+			// THE TWO ANSWERS BESIDE THE MUTANT: a divergence in the decoded
+			// VALUE is a diff, and a diff needs both sides on disk
+			if dir := filepath.Dir(opts.failed); dir != "" {
+				_ = os.MkdirAll(dir, 0o755)
+				_ = os.WriteFile(filepath.Join(dir, "leg.bin"), reply.saved, 0o644)
+				_ = os.WriteFile(filepath.Join(dir, "oracle.bin"), ans.encoded, 0o644)
+			}
 			detail := fmt.Sprintf("  leg:    loaded=%t report=%s measure=%d saved=%s\n  oracle: report=%s encoded=%s",
 				reply.loaded, reply.report, reply.measure, describeBytes(reply.saved, reply.saveFail),
 				ans.report, describeBytes(ans.encoded, ans.encFail))

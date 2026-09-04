@@ -725,7 +725,6 @@ inline char * TableStringEmplace( TableWorker & worker, TableRef & slot, const c
 // numbering of any size, so the whole numbering is one contiguous payload and a
 // save's node bodies have no aggregate ceiling.
 
-static const uint64_t kTableNodeTableFieldId = 0xFFFFFFFFFFFFFFFFull; // the RESERVED id it rides under
 static const uint64_t kTableNodeIndexNull = 0;         // absence and null are one value
 static const uint64_t kTableNodeIndexRoot = 1;         // the body that hosts the table
 
@@ -993,7 +992,10 @@ inline TableNodeScan TableNodeScanBegin( const uint8_t * body, int64_t size, Tab
     return s;
 }
 
-// find the ONE node-table field, or answer false when the root body has none
+// find the node-table field, or answer false when the root body has none. A
+// body carrying an id more than once is legal input and THE LAST OCCURRENCE
+// WINS (docs/SPEC-TABLES.md §3), so the walk runs to the terminator and keeps
+// the last rather than stopping at the first.
 inline bool TableNodeScanOpen( TableNodeScan & s )
 {
     if ( s.opened ) { return false; }
@@ -1001,28 +1003,30 @@ inline bool TableNodeScanOpen( TableNodeScan & s )
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !s.fields.getleb( ref ) ) { return false; }
-        if ( ref == 0 ) { return false; } // the terminator
-        if ( s.ids == NULL || ref > (uint64_t) s.ids->count ) { return false; }
+        if ( !s.fields.getleb( ref ) ) { break; }
+        if ( ref == 0 ) { break; } // the terminator
+        if ( s.ids == NULL || ref > (uint64_t) s.ids->count ) { break; }
         const uint64_t id = s.ids->at( ref );
-        if ( !s.fields.has( 1 ) ) { return false; }
+        if ( !s.fields.has( 1 ) ) { break; }
         const uint8_t kind = s.fields.get8();
         if ( id == kTableNodeTableFieldId )
         {
             s.present = true;
             if ( kind != 12 ) { s.malformed = true; return false; }
             uint64_t length = 0;
-            if ( !s.fields.getleb( length ) || !s.fields.has( (int64_t) length ) ) { s.malformed = true; return false; }
+            if ( !s.fields.getleb( length ) || !s.fields.room( length ) ) { s.malformed = true; return false; }
             s.payload = s.fields.buffer + s.fields.offset;
             s.payload_size = (int64_t) length;
             s.fields.offset += (int64_t) length;
-            TableReader head( s.payload, s.payload_size, s.fields.report, s.ids );
-            if ( !head.getleb( s.declared ) ) { s.malformed = true; return false; }
-            s.payload_offset = head.offset;
-            return true;
+            continue;
         }
-        if ( !s.fields.skip( kind ) ) { return false; }
+        if ( !s.fields.skip( kind ) ) { break; }
     }
+    if ( s.payload == NULL ) { return false; }
+    TableReader head( s.payload, s.payload_size, s.fields.report, s.ids );
+    if ( !head.getleb( s.declared ) ) { s.malformed = true; return false; }
+    s.payload_offset = head.offset;
+    return true;
 }
 
 // the next record, or false at the end of the table — s.malformed says whether

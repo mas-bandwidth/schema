@@ -702,7 +702,7 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
     for ( uint64_t i = 0; i < n; i++ )
     {
         uint64_t elem = 0;
-        if ( !r.getleb( elem ) || !r.has( (int64_t) elem ) ) { return true; } // framing damage: the load reports it
+        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; } // framing damage: the load reports it
         if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids ) ) { return false; }
         r.offset += (int64_t) elem;
     }
@@ -722,7 +722,7 @@ inline bool TableWireExtentElements( const uint8_t * body, int64_t length, int64
     for ( uint64_t i = 0; i < n; i++ )
     {
         uint64_t elem = 0;
-        if ( !r.getleb( elem ) || !r.has( (int64_t) elem ) ) { return true; }
+        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
         if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids ) ) { return false; }
         r.offset += (int64_t) elem;
     }
@@ -744,7 +744,7 @@ inline bool TableWireExtentKeyed( const uint8_t * body, int64_t length, int64_t 
         uint64_t key = 0;
         if ( !r.getleb( key ) ) { return true; }
         uint64_t elem = 0;
-        if ( !r.getleb( elem ) || !r.has( (int64_t) elem ) ) { return true; }
+        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
         if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids ) ) { return false; }
         r.offset += (int64_t) elem;
     }
@@ -1039,7 +1039,7 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 	g.pf("            if ( !out.kind_bad )\n            {\n")
 	if mapKeyIsString(f) {
 		g.pf("                uint64_t key_len = 0;\n")
-		g.pf("                if ( !r.getleb( key_len ) || !r.has( (int64_t) key_len ) ) { out.malformed = true; return out; }\n")
+		g.pf("                if ( !r.getleb( key_len ) || !r.room( key_len ) ) { out.malformed = true; return out; }\n")
 		g.pf("                out.key = (const char *) ( r.buffer + r.offset );\n")
 		g.pf("                out.length = (int32_t) key_len;\n")
 		g.pf("                out.over = key_len > %d; // KEYS NEVER CLAMP: the entry is dropped whole\n", key.Type.Size)
@@ -1069,7 +1069,7 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	n := entry.Name
 	ind := "                "
 	g.pf("%suint64_t body_len = 0;\n", ind)
-	g.pf("%sif ( !r.getleb( body_len ) || !r.has( (int64_t) body_len ) ) { r.report->malformed = true; return false; }\n", ind)
+	g.pf("%sif ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
 	g.pf("%sint64_t body_end = r.offset + (int64_t) body_len;\n", ind)
 	g.pf("%sif ( body_len >= 2 )\n%s{\n", ind, ind)
 	g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
@@ -1090,7 +1090,7 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	g.pf("%s    bool landed = false;\n", ind)
 	g.pf("%s    for ( uint64_t i = 0; i < count; i++ )\n%s    {\n", ind, ind)
 	g.pf("%s        uint64_t elem_len = 0;\n", ind)
-	g.pf("%s        if ( !sub.getleb( elem_len ) || !sub.has( (int64_t) elem_len ) ) { r.report->malformed = true; break; }\n", ind)
+	g.pf("%s        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->malformed = true; break; }\n", ind)
 	g.pf("%s        const uint8_t * elem_body = sub.buffer + sub.offset;\n", ind)
 	g.pf("%s        sub.offset += (int64_t) elem_len;\n", ind)
 	g.pf("%s        %sKeyRead read = %sReadKey( elem_body, (int64_t) elem_len, r.ids );\n", ind, n, n)
@@ -1468,7 +1468,7 @@ func (g *tableGen) emitMapExtentWireCases(st *ir.Struct) {
 			}
 			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s\n        {\n", ir.TableFieldWireId(f), tkArray, f.Name)
 			g.pf("            uint64_t map_len = 0;\n")
-			g.pf("            if ( !r.getleb( map_len ) || !r.has( (int64_t) map_len ) ) { return true; }\n")
+			g.pf("            if ( !r.getleb( map_len ) || !r.room( map_len ) ) { return true; }\n")
 			g.pf("            const uint8_t * map_body = r.buffer + r.offset;\n")
 			g.pf("            r.offset += (int64_t) map_len;\n")
 			g.pf("            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( %s ), (int64_t) alignof( %s ), %s, ids ) ) { return false; }\n",
@@ -1493,7 +1493,7 @@ func (g *tableGen) emitMapExtentWireCases(st *ir.Struct) {
 			}
 			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: a nesting that holds a map\n        {\n", ir.TableFieldWireId(f), kind, f.Name)
 			g.pf("            uint64_t nested_len = 0;\n")
-			g.pf("            if ( !r.getleb( nested_len ) || !r.has( (int64_t) nested_len ) ) { return true; }\n")
+			g.pf("            if ( !r.getleb( nested_len ) || !r.room( nested_len ) ) { return true; }\n")
 			g.pf("            const uint8_t * nested_body = r.buffer + r.offset;\n")
 			g.pf("            r.offset += (int64_t) nested_len;\n")
 			if walk == "" {
@@ -1522,7 +1522,7 @@ func (g *tableGen) emitMapExtentWireCases(st *ir.Struct) {
 			g.pf("            if ( !r.has( 1 ) ) { return true; }\n")
 			g.pf("            r.offset += 1; // the arm's kind byte\n")
 			g.pf("            uint64_t arm_len = 0;\n")
-			g.pf("            if ( !r.getleb( arm_len ) || !r.has( (int64_t) arm_len ) ) { return true; }\n")
+			g.pf("            if ( !r.getleb( arm_len ) || !r.room( arm_len ) ) { return true; }\n")
 			g.pf("            const uint8_t * arm_body = r.buffer + r.offset;\n")
 			g.pf("            r.offset += (int64_t) arm_len;\n")
 			g.pf("            switch ( arm_id )\n            {\n")

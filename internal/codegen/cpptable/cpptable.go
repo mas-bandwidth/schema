@@ -700,6 +700,11 @@ struct TableReader
     int64_t offset = 0;
     TableReport * report;
     const TableIdTable * ids = NULL;
+    // ONLY THE ROOT BODY CARRIES THE NODE TABLE (docs/SPEC-TABLES.md §3.1), so
+    // a body has to know which it is: the reserved id inside a NESTED body is
+    // malformed, because a second numbering cannot exist. Every reader made
+    // for a payload is nested; the two the wire surfaces make for a root say so.
+    bool nested = true;
 
     TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report )
         : buffer( from_buffer ), size( from_size ), report( to_report ) {}
@@ -708,6 +713,12 @@ struct TableReader
         : buffer( from_buffer ), size( from_size ), report( to_report ), ids( to_ids ) {}
 
     ` + forceInline + ` bool has( int64_t bytes ) const { return offset + bytes <= size; }
+    // A LENGTH IS A 64-BIT NUMBER AND A BUFFER IS NOT (docs/SPEC-TABLES.md
+    // §3): every length, count and index on this wire has sixty-four bits of
+    // capability, so one past what remains must be compared UNSIGNED. Casting
+    // it to int64 first turns 0xFFFFFFFFFFFFFFFF into -1, and a negative
+    // length looks like room.
+    ` + forceInline + ` bool room( uint64_t bytes ) const { return bytes <= (uint64_t) ( size - offset ); }
     ` + forceInline + ` uint8_t get8()   { return buffer[offset++]; }
     ` + forceInline + ` uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
     ` + forceInline + ` uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
@@ -721,17 +732,27 @@ struct TableReader
     // rule. false = framing damage on the body carrying it.
     bool getleb( uint64_t & value )
     {
+        // A NUMBER THIS READER REFUSES LEAVES THE CURSOR WHERE IT WAS. The
+        // caller's next question is often "did this body end exactly at its
+        // L", and a rejected number that had moved the cursor would answer
+        // that question with the damage already stepped over.
+        const int64_t at = offset;
         value = 0;
         uint32_t shift = 0;
         for ( int32_t i = 0; i < 10; i++ )
         {
-            if ( !has( 1 ) ) { return false; }
+            if ( !has( 1 ) ) { offset = at; return false; }
             const uint8_t b = get8();
-            if ( i == 9 && b > 1 ) { return false; }
+            if ( i == 9 && b > 1 ) { offset = at; return false; }
             value |= uint64_t( b & 0x7F ) << shift;
-            if ( ( b & 0x80 ) == 0 ) { return i > 0 && b == 0 ? false : true; }
+            if ( ( b & 0x80 ) == 0 )
+            {
+                if ( i > 0 && b == 0 ) { offset = at; return false; } // a redundant continuation
+                return true;
+            }
             shift += 7;
         }
+        offset = at;
         return false;
     }
 
@@ -770,7 +791,7 @@ struct TableReader
             {
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
-                return has( (int64_t) n ) ? ( offset += (int64_t) n, true ) : false;
+                return room( n ) ? ( offset += (int64_t) n, true ) : false;
             }
             case 15: // union: the arm id reference, then its kind, its L and its payload (reference 0 = empty)
             {
@@ -781,12 +802,17 @@ struct TableReader
                 offset += 1; // the arm's kind byte
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
-                return has( (int64_t) n ) ? ( offset += (int64_t) n, true ) : false;
+                return room( n ) ? ( offset += (int64_t) n, true ) : false;
             }
         }
         return false;
     }
 };
+
+// The RESERVED node-table id, the one id the language holds back
+// (docs/SPEC-TABLES.md §3.1, §5). It rides in every unit, pointered or not,
+// because every body has to know that a NESTED body claiming one is damaged.
+static const uint64_t kTableNodeTableFieldId = 0xFFFFFFFFFFFFFFFFull;
 
 // TableWireForm is the FORM BYTE, and it is the whole header
 // (docs/SPEC-TABLES.md §3). A reader that meets a byte it does not know

@@ -311,7 +311,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s    uint64_t %s = %s;\n", ind, keep, n)
 		g.pf("%s    if ( %s > %d ) { %s = %d; r.report->clamped++; }\n", ind, keep, bound, keep, bound)
 		if f.Type.Kind == ir.TBytes {
-			g.pf("%s    if ( !%s.has( (int64_t) %s ) ) { %s = uint64_t( %s.size - %s.offset ); r.report->malformed = true; }\n", ind, rdr, keep, keep, rdr, rdr)
+			g.pf("%s    if ( !%s.room( %s ) ) { %s = uint64_t( %s.size - %s.offset ); r.report->malformed = true; }\n", ind, rdr, keep, keep, rdr, rdr)
 			g.pf("%s    memcpy( %s, %s.buffer + %s.offset, (size_t) %s );\n", ind, value, rdr, rdr, keep)
 			g.pf("%s    %s = (int32_t) %s;\n", ind, count, keep)
 		} else {
@@ -356,7 +356,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s        if ( !%s.has( 1 ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, tag, none)
 		g.pf("%s        const uint8_t %s = %s.get8();\n", ind, innerKind, rdr)
 		g.pf("%s        uint64_t %s = 0;\n", ind, length)
-		g.pf("%s        if ( !%s.getleb( %s ) || !%s.has( (int64_t) %s ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, length, rdr, length, tag, none)
+		g.pf("%s        if ( !%s.getleb( %s ) || !%s.room( %s ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, length, rdr, length, tag, none)
 		g.pf("%s        TableReader %s( %s.buffer + %s.offset, (int64_t) %s, r.report, r.ids );\n", ind, inner, rdr, rdr, length)
 		g.pf("%s        switch ( %s ) // the arm's NAME hash (§5)\n%s        {\n", ind, id, ind)
 		for _, in := range un.Variants {

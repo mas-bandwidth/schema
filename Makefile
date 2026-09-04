@@ -2759,27 +2759,32 @@ tables-cpp-release:
 .PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control
 tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control
 
-# the string read's `has( len )`: a length past the body is then copied, so the
-# sabotaged leg decodes a value out of a neighbor's bytes where the oracle stops
+# the string read's `room( len )`: a length past the body is then read anyway,
+# so the sabotaged leg takes a string out of a neighbour's bytes and CLAMPS it
+# to its capacity where the oracle stops at the body — the clamp it counts is
+# a fact about bytes the field never owned. A LENGTH IS A 64-BIT NUMBER (§3),
+# so the check is unsigned: cast to int64 first, 0xFFFFFFFFFFFFFFFF reads as
+# -1 and a negative length looks like room.
 tables-wire-fuzz-length-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,length,internal/codegen/cpptable/codecs.go,s|if ( !r.has( len ) ) { r.report->malformed = true; return false; }|// NEGATIVE CONTROL: the length check is gone|,the decoded value differs)
+	$(call wire_fuzz_control,length,internal/codegen/cpptable/codecs.go,s|if ( !r.getleb( len ) \|\| !r.room( len ) ) { r.report->malformed = true; return false; }|if ( !r.getleb( len ) ) { r.report->malformed = true; return false; } // NEGATIVE CONTROL: the fit check is gone|,the report differs)
 
 # the numbering's `index - 1 >= map.count`: an index past the node table then
 # reads a directory entry the region does not hold
 tables-wire-fuzz-index-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,index,internal/codegen/cpptable/arena.go,s|if ( (int64_t) ( index - 1 ) >= map.count )|if ( false ) // NEGATIVE CONTROL: the range check is gone|,the report differs)
+	$(call wire_fuzz_control,index,internal/codegen/cpptable/arena.go,s|if ( index - 1 >= (uint64_t) map.count )|if ( false ) // NEGATIVE CONTROL: the range check is gone|,the report differs)
 
-# AN ARM CARRIES NO KIND BYTE (docs/SPEC-TABLES.md §2.6): the arm's `L` is the
-# whole of what a reader can check, so the fuzzer moves a fixed-width arm's `L`
-# to every width the closed set has and to zero. Without the check the arm
-# decodes a value out of a payload that is not its own.
+# AN ARM'S `L` IS CHECKED AGAINST ITS KIND'S WIDTH (docs/SPEC-TABLES.md §3):
+# the arm header carries the kind, and an `L` that is not that kind's width is
+# the arm's own framing damage. The fuzzer moves a fixed-width arm's `L` to
+# every width the closed set has and to zero; without the check the arm decodes
+# a value out of a payload that is not its own.
 tables-wire-fuzz-arm-width-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,arm-width,internal/codegen/cpptable/arms.go,s|if ( %s.size != %d ) { %s = %s; r.report->kind_mismatch++|if ( false \&\& %s.size != %d ) { %s = %s; r.report->kind_mismatch++|,the report differs)
+	$(call wire_fuzz_control,arm-width,internal/codegen/cpptable/arms.go,s|if ( %s.size != %d ) { %s = %s; r.report->malformed = true|if ( false \&\& %s.size != %d ) { %s = %s; r.report->malformed = true|,differs)
 
 # A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3), for an arm whose payload
-# is a body as much as for a kind `13` field: the fuzzer writes the u16 zero
-# ahead of the payload's last two bytes, so the body ends inside its own `L`
-# and the bytes after it are claimed by no field.
+# is a body as much as for a kind `13` field: the fuzzer writes the ZERO
+# REFERENCE ahead of the payload's last byte, so the body ends inside its own
+# `L` and the bytes after it are claimed by no field.
 tables-wire-fuzz-arm-terminator-negative-control: build/conformance-harness
 	$(call wire_fuzz_control,arm-terminator,internal/codegen/cpptable/arms.go,s|if ( %s.offset != %s.size ) { %s = %s; r.report->malformed = true|if ( false \&\& %s.offset != %s.size ) { %s = %s; r.report->malformed = true|,the decoded value differs)
 
