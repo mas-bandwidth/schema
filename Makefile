@@ -2490,12 +2490,13 @@ tables-maps-negative-controls: tables-maps-sort-negative-control \
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
-update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block
+update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps
 	@mkdir -p testdata/golden testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_maps
 	@for d in examples pointers block blockhome messages stream blobs scalars maps; do \
 		mkdir -p testdata/golden/tables/$$d; \
 		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
