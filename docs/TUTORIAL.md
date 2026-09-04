@@ -2657,7 +2657,7 @@ or from a wire file, one command either way:
 ```
 $ schema cook --root GameConfig --in tree --out Game.cook --verbose .
 report: silent — the data matched the schema exactly
-cooked Game.cook: 408 bytes, build version 0x2a9be0e9cc087f60, little-endian, root GameConfig, 1 nodes, 328 data bytes, 16 attribution bytes
+cooked Game.cook: 408 bytes, build version 0xd02150f8b1a6a320, little-endian, root GameConfig, 1 nodes, 328 data bytes, 16 attribution bytes
 ```
 
 And the game opens it:
@@ -2700,7 +2700,7 @@ data your own pipeline produced for exactly one build. Add one field to
 
 ```
 $ schema build-version .
-0xa83400462ba5e852
+0xcb3e439c062a63c0
 $ ./open Game.cook
 not this build's cook
 ```
@@ -2712,7 +2712,7 @@ little-endian build the same way:
 
 ```
 $ schema cook --root GameConfig --in tree --out GameBig.cook --byte-order big --verbose .
-cooked GameBig.cook: 408 bytes, build version 0x2a9be0e9cc087f60, big-endian, root GameConfig, 1 nodes, 328 data bytes, 16 attribution bytes
+cooked GameBig.cook: 408 bytes, build version 0xd02150f8b1a6a320, big-endian, root GameConfig, 1 nodes, 328 data bytes, 16 attribution bytes
 $ ./open GameBig.cook
 not this build's cook
 ```
@@ -2726,7 +2726,7 @@ offline, once, on purpose:
 
 ```
 $ schema cook-check --root GameConfig --verbose Game.cook .
-ok: build version 0x2a9be0e9cc087f60, little-endian, root GameConfig, 1 nodes, 328 data bytes, 16 attribution bytes, 0 reference slots
+ok: build version 0xd02150f8b1a6a320, little-endian, root GameConfig, 1 nodes, 328 data bytes, 16 attribution bytes, 0 reference slots
 ```
 
 `cook-check` verifies every reference and count against the attribution, a
@@ -2778,7 +2778,7 @@ variant order and arm order. It keys cooked assets and gates no connection.
 
 ```
 $ schema build-version .
-0x2a9be0e9cc087f60
+0xd02150f8b1a6a320
 ```
 
 `schema build-version --facts` prints the entire digest input, which is the
@@ -2786,15 +2786,15 @@ file to diff when you want to know **why** the version moved:
 
 ```
 $ schema build-version --facts .
-schema-build-version 2
+schema-build-version 3
 protocol 47a0d7e5d5c67c4c
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record GameConfig sizeof=324 alignof=4
-    field cb1b kind=1 offset=0 size=1
-    field 91cd kind=13 offset=4 size=68 type=WeaponConfig elem=8 array=bounded bound=8
-    field 2d39 kind=13 offset=72 size=180 type=ShipConfig elem=60 array=keyed bound=3 key=ShipType
-    field 1c74 kind=12 offset=252 size=72 bound=64
+    field 79cee25d9004059f kind=1 offset=0 size=1
+    field 41cbd901b87fabb6 kind=13 offset=4 size=68 type=WeaponConfig elem=8 array=bounded bound=8
+    field 294a5c4913e1ad44 kind=13 offset=72 size=180 type=ShipConfig elem=60 array=keyed bound=3 key=ShipType
+    field 38b921b4ce4e20c5 kind=12 offset=252 size=72 bound=64
 ```
 
 The same number is exported as `BuildVersion` in the generated code and stamped
@@ -2803,7 +2803,7 @@ into every cook header and block prologue.
 The store contract is one line: your pipeline stores assets under the triple
 **(asset hash, build version, byte order)**. The asset hash is the hash of the
 wire file you cooked from. The build version is target neutral, which the
-big-endian cook above shows by stamping the same `0x2a9be0e9cc087f60`, and
+big-endian cook above shows by stamping the same `0xd02150f8b1a6a320`, and
 `byteorder little` appearing in the facts is a generation input that never
 varies. Byte order is the third coordinate, carried in the header and refused
 by `Open` on a mismatch. Your game asks for exactly that triple, anything that
@@ -2817,8 +2817,8 @@ $ schema id .                  # before and after the new field
 0x47a0d7e5d5c67c4c
 0x47a0d7e5d5c67c4c
 $ schema build-version .       # before and after
-0x2a9be0e9cc087f60
-0xa83400462ba5e852
+0xd02150f8b1a6a320
+0xcb3e439c062a63c0
 ```
 
 Edit a `type` and both move. That is the packet and table independence from
