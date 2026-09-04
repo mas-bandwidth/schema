@@ -929,6 +929,12 @@ All compile errors with positions:
   `None = 0`, so its wire range is the degenerate `[0, 0]` and it costs zero
   bits — the value is recovered from the range alone, under the same rule as
   any degenerate range.
+- **A derived size past the cap:** an array bound, a `string(N)` and a
+  `bytes(N)` are capped at int32 one at a time (§4.3), and what they multiply
+  to is capped too. A field's wire width, an array's whole storage, a record's
+  storage and a `MaxBytes` buffer bound are each refused past 2^40 bytes
+  (2^43 bits), with a diagnostic naming the field and the product, so no
+  generated file can carry a size the arithmetic does not represent.
 - **One flat namespace, and the compiler's claimed names:** all declaration
   kinds share one unit-level namespace (`const Foo` and `type Foo` collide),
   and no unit declares `ProtocolId`. The checker likewise refuses user names

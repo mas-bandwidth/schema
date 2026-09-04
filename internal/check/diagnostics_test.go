@@ -142,6 +142,11 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { a [0]uint8 }\n"},
 		{name: "count range backwards", want: "0 <= Min < N",
 			src: "package t\ntype T { a [5..3]uint8 }\n"},
+		// bounds are capped one at a time (SPEC §4.3) and their PRODUCT is
+		// capped too (SPEC §4.6, docs/SPEC-TABLES.md §11): three nested arrays
+		// of legal bounds are a wire width no arithmetic represents
+		{name: "nested array bounds whose product passes the cap", want: "past the cap of 8796093022208 bits",
+			src: "package t\ntype L { v uint64 }\ntype I { a [2147483647]L }\ntype M { a [2147483647]I }\n"},
 		// ---- the qualification section (SPEC §4.2) ----
 		{name: "the retired field attribute block names its replacement", want: "qualifiers follow | to the end of the line",
 			src: "package t\ntype T { h int16 " + "[min = 0, max = 5] }\n"},

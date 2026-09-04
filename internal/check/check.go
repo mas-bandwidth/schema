@@ -123,6 +123,7 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.checkClaimedNames()
 	c.checkTargetNames()
 	c.assemble()
+	c.checkSizes()
 	if len(c.errs) > 0 {
 		return nil, c.errs
 	}
@@ -3210,6 +3211,29 @@ func (c *checker) assemble() {
 		u.Files = append(u.Files, irf)
 	}
 	maps.Copy(u.DeclFile, c.declFile)
+}
+
+// checkSizes refuses a unit whose derived sizes pass the caps [ir.CheckSizes]
+// holds: a wire width, a record's storage, an array's whole storage, a block
+// form's extent. Individual bounds are capped at int32 (SPEC §4.3) and their
+// PRODUCT was not, so a schema of legal bounds could reach a backend carrying
+// arithmetic that no longer fit, and a generated file could carry a negative
+// stride or a wrapped buffer bound (SPEC §4.6, docs/SPEC-TABLES.md §11).
+//
+// It runs over the ASSEMBLED unit, because the sizes are derived from resolved
+// bounds, and only when the unit is otherwise clean: a size computed from a
+// field the checker already refused describes nothing.
+func (c *checker) checkSizes() {
+	if len(c.errs) > 0 {
+		return
+	}
+	for _, e := range ir.CheckSizes(c.unit) {
+		pos := ast.Pos{}
+		if d, ok := c.astDecls[e.Owner]; ok {
+			pos = d.DeclPos()
+		}
+		c.errf(pos, "%s", e.Error())
+	}
 }
 
 // ---- the protocol id (SPEC §3.1) ----

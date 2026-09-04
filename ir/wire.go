@@ -23,8 +23,7 @@ func BitsRequired(min, max *big.Int) int64 {
 // directly usable as one, and conservative is correct for a buffer bound
 // (SPEC §6.1 item 4).
 func MaxBytes(bits int64) int64 {
-	bytes := (bits + 7) / 8
-	return (bytes + 7) / 8 * 8
+	return alignUp(alignUp(bits, 8)/8, 8)
 }
 
 // CompressedFloatParams replicates serialize_compressed_float's parameter
@@ -51,21 +50,37 @@ func CompressedFloatBits(fmin, fmax, res float64) int64 {
 	return wireBits
 }
 
+// PointerWireBits is what a pointer field costs on the wire: a `u32` index
+// into the flat node table under kind 17 (docs/SPEC-TABLES.md §3.1). It is the
+// width of the REFERENCE; the referent is a node of its own, counted once
+// wherever it is reached from.
+const PointerWireBits = 32
+
 // MaxBitsField is one field's worst-case wire bits, alignment points counted
 // at the worst 7.
 func MaxBitsField(f *Field) int64 {
 	elem := maxBitsScalar(f)
 	switch f.Array {
 	case ArrayFixed:
-		return f.ArrayBound * elem
+		return mulSize(f.ArrayBound, elem)
 	case ArrayCounted:
-		return BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)) + f.ArrayBound*elem
+		return addSize(BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)), mulSize(f.ArrayBound, elem))
 	default:
 		return elem
 	}
 }
 
 func maxBitsScalar(f *Field) int64 {
+	if f.Type.Pointer {
+		// A POINTER IS ITS REFERENCE, NEVER ITS REFERENT
+		// (docs/SPEC-TABLES.md §3.1): a `*T` and a `*bytes`/`*string` ride as
+		// a u32 node index into the flat node table, and no pointer edge is a
+		// nesting level, so a width computation stops here exactly as the
+		// numbering walk and the storage layout do. Descending instead read a
+		// legal `table Node { next *Node }` as an infinite by-value nesting
+		// and overflowed the stack.
+		return PointerWireBits
+	}
 	switch f.Type.Kind {
 	case TInt:
 		if f.HasIntRange {
@@ -96,7 +111,7 @@ func maxBitsScalar(f *Field) int64 {
 		return 64
 	case TString, TBytes:
 		// length prefix + worst-case align pad + the bytes
-		return BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)) + 7 + f.Type.Size*8
+		return addSize(addSize(BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), 7), mulSize(f.Type.Size, 8))
 	case TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *Enum:
@@ -122,11 +137,14 @@ func MaxBitsUnion(u *Union) int64 {
 			largest = b
 		}
 	}
-	return bits + largest
+	return addSize(bits, largest)
 }
 
 // MaxBitsStruct is the longest wire path through a struct: branches take the
-// larger side (composition cycles are compile errors, so recursion ends).
+// larger side. The walk descends BY-VALUE EDGES ONLY, so it terminates on
+// every legal declaration: a by-value composition cycle is a compile error,
+// and a pointer edge is a reference whose width is [PointerWireBits]
+// (docs/SPEC-TABLES.md §3.1), so a pointer-recursive table is finite here.
 func MaxBitsStruct(st *Struct) int64 {
 	var walk func(items []Item) int64
 	walk = func(items []Item) int64 {
@@ -134,20 +152,20 @@ func MaxBitsStruct(st *Struct) int64 {
 		for _, item := range items {
 			switch item := item.(type) {
 			case *FieldItem:
-				total += MaxBitsField(item.F)
+				total = addSize(total, MaxBitsField(item.F))
 			case *Branch:
 				then, els := walk(item.Then), walk(item.Else)
 				if then > els {
-					total += then
+					total = addSize(total, then)
 				} else {
-					total += els
+					total = addSize(total, els)
 				}
 			case *ConstItem:
-				total += item.Bits
+				total = addSize(total, item.Bits)
 			case *ReservedItem:
-				total += item.Bits
+				total = addSize(total, item.Bits)
 			case *AlignItem:
-				total += 7
+				total = addSize(total, 7)
 			}
 		}
 		return total
@@ -245,8 +263,11 @@ func isFixedByteArray(f *Field) bool {
 
 // afterField advances the position across one field's wire.
 func afterField(f *Field, pos wirePos) wirePos {
+	// a POINTER is never a nesting: it rides as its reference's fixed width
+	// (docs/SPEC-TABLES.md §3.1), so the position advances by that and the
+	// walk does not descend into the referent
 	isStruct := false
-	if f.Type.Kind == TNamed {
+	if f.Type.Kind == TNamed && !f.Type.Pointer {
 		_, isStruct = f.Type.Ref.(*Struct)
 	}
 	switch f.Array {
@@ -263,7 +284,7 @@ func afterField(f *Field, pos wirePos) wirePos {
 			}
 			return wireUnknown
 		}
-		return pos.add(f.ArrayBound * maxBitsScalar(f))
+		return pos.add(mulSize(f.ArrayBound, maxBitsScalar(f)))
 	case ArrayCounted:
 		// count prefix, then count elements: the exit is static only when
 		// each element is a whole number of bytes
