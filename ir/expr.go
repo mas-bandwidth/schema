@@ -105,10 +105,10 @@ func ExprConsts(e Expr) []string {
 	return names
 }
 
-// ExprHasEnumMax reports whether e contains an enum max reference. E.Max has
-// no twin in any generated target, so a backend folds any expression
-// containing one to the resolved value and keeps the schema form in a
-// comment ([RenderExpr]).
+// ExprHasEnumMax reports whether e contains a set reference — `E.Max` or
+// `E.Count` (SPEC §4.2). Neither has a twin in any generated target, so a
+// backend folds any expression containing one to the resolved value and
+// keeps the schema form in a comment ([RenderExpr]).
 func ExprHasEnumMax(e Expr) bool {
 	switch e := e.(type) {
 	case *ast.MaxExpr:

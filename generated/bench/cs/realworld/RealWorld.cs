@@ -26,6 +26,7 @@ namespace Realworld
         Combat = 3,
         Docked = 4,
         Warping = 5,
+        Count = 5, // the declared variant count (SPEC §4.2)
         Max = 5, // the exported extent (SPEC §4.2)
     }
 

@@ -14,10 +14,11 @@ import (
 type Team uint8
 
 const (
-	TeamNone Team = 0
-	TeamRed  Team = 1
-	TeamBlue Team = 2
-	TeamMax  Team = 2 // the exported extent (SPEC §4.2)
+	TeamNone  Team = 0
+	TeamRed   Team = 1
+	TeamBlue  Team = 2
+	TeamCount Team = 2 // the declared variant count (SPEC §4.2)
+	TeamMax   Team = 2 // the exported extent (SPEC §4.2)
 )
 
 // EnumNameTeam: debug/log/tooling name for any Team wire value —
@@ -44,6 +45,7 @@ const (
 	ShipTypeBomber    ShipType = 3
 	ShipTypeDestroyer ShipType = 4
 	ShipTypeCarrier   ShipType = 5
+	ShipTypeCount     ShipType = 5 // the declared variant count (SPEC §4.2)
 	ShipTypeMax       ShipType = 5 // the exported extent (SPEC §4.2)
 )
 
@@ -75,6 +77,7 @@ const (
 	MissileTypeHeatseeker MissileType = 1
 	MissileTypeTorpedo    MissileType = 2
 	MissileTypeNuke       MissileType = 3
+	MissileTypeCount      MissileType = 3 // the declared variant count (SPEC §4.2)
 	MissileTypeMax        MissileType = 3 // the exported extent (SPEC §4.2)
 )
 
@@ -105,6 +108,7 @@ const (
 	PropTypeSphere     PropType = 4
 	PropTypeBlackHole  PropType = 5
 	PropTypeDysonPanel PropType = 6
+	PropTypeCount      PropType = 6 // the declared variant count (SPEC §4.2)
 	PropTypeMax        PropType = 6 // the exported extent (SPEC §4.2)
 )
 
@@ -134,8 +138,9 @@ func EnumNamePropType(value uint64) string {
 type Pending uint8
 
 const (
-	PendingNone Pending = 0
-	PendingMax  Pending = 0 // the exported extent (SPEC §4.2)
+	PendingNone  Pending = 0
+	PendingCount Pending = 0 // the declared variant count (SPEC §4.2)
+	PendingMax   Pending = 0 // the exported extent (SPEC §4.2)
 )
 
 // EnumNamePending: debug/log/tooling name for any Pending wire value —

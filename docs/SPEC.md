@@ -452,13 +452,20 @@ FloatExpr   = float expression over float literals, int literals and const names
   the reserved values above the last variant are wire-legal and name no slot.
   It works on the generated tag set
   too (a union's `<Union>Type.Max` — §4.8); generated sets resolve in
-  constant expressions and nowhere else. **Flags
+  constant expressions and nowhere else.
+- **Declared-count references:** **`.Count`** in any integer expression names
+  the DECLARED variant count of an enum or a flags declaration — one word
+  meaning one thing in both. `E.Count` excludes an enum's implicit `None`;
+  `F.Count` counts the named bits. Under `| max = K` headroom the count and
+  the extent part — an enum's `Max` is the widened extent and a flags
+  declaration's wire width is K, while `Count` stays the count — and without
+  headroom `E.Count` equals `E.Max`. `[..E.Count]T` is therefore a counted
+  array over the declared variants, where `[E.Max]T` is the keyed array with
+  one slot per admitted ordinal. **Flags
   have `F.Count`, not `F.Max`** — a flags declaration is a set of
   independent bits, not a range with a top, so max-of-what is exactly the
   confusion `.Max` would invite and the compiler refuses it naming the
-  split. `F.Count` is the DECLARED variant count; under `| max = K` headroom
-  the wire width is K while `Count` stays the count — the one case the two
-  numbers diverge. `Max` and `Count` after `.` are contextual, like
+  split. `Max` and `Count` after `.` are contextual, like
   attribute keys; the lexer keeps maximal munch, so `..` still wins over
   `.`.
 - **Constants are platform-uniform.** A schema has no platform conditionals.
@@ -711,7 +718,8 @@ a language rule — the language does not enforce entry 0's meaning.
 enum and the generated `<Union>Type` tag enums — carries its
 extent as a member named `Max` in the target's own convention: `E::Max`
 (C++), `E.Max` (C#), `EMax` (Go), `E::MAX` (Rust), `E.Max` (JS), `E_MAX`
-(C). Its value is the enum's max — the same number `E.Max` names in schema
+(C), `E.max` (Dart and Java), `E.max/0` (Elixir). Its value is the enum's
+max — the same number `E.Max` names in schema
 expressions (§4.2): the highest wire-legal value, which under the
 sentinel-zero convention is the count of real variants when no `max`
 headroom widens it. Application code states ranges and asserts directly
@@ -720,6 +728,20 @@ variants `[1, ShipType.Max]`) instead of exporting a hand-declared count
 constant that re-derives it. `Max` is therefore a reserved variant name —
 declaring a variant named `Max` is refused at check time, exactly as `None`
 is.
+
+**The declared count is exported too.** Every declared enum carries its
+**`Count`** beside its `Max`: the number of DECLARED variants, excluding the
+implicit `None`. It is the same number `E.Count` names in schema expressions
+(§4.2), it equals `Max` when no `| max = K` headroom widens the enum, and it
+is below `Max` when one does — which is the whole reason it is exported. All
+nine targets spell it their own way, the spelling each already uses for a
+flags declaration's `Count`: `E::Count` (C++), `E.Count` (C#), `ECount`
+(Go), `E::COUNT` (Rust), `E.Count` (JS), `E_COUNT` (C), `E.count` (Dart and
+Java), `E.count/0` (Elixir). `Count` is a reserved variant name for the same
+reason `Max` is, and it is a claimed name under §4.6 — a declaration whose
+generated symbol would collide with an enum's `Count` is refused, naming the
+enum. The generated `<Union>Type` tag enums carry `Max` alone: a tag set
+takes no headroom, so its count and its extent are one number.
 
 ### 4.3 Field types and their wire encodings
 
@@ -912,7 +934,8 @@ All compile errors with positions:
   and no unit declares `ProtocolId`. The checker likewise refuses user names
   that collide with per-declaration generated symbols
   (`Write*`/`Read*`/`New*`, `*MaxBits`/`*MaxBytes`, companion length/count
-  names, a union's generated tag surface). Diagnostics name the generated
+  names, an enum's `Max` and `Count`, a flags declaration's `Count`, a
+  union's generated tag surface). Diagnostics name the generated
   artifact that claims the name.
 - Enum `| max = K` below the variant count.
 - **Duplicate field names anywhere in one type — including across branch

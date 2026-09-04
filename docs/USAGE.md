@@ -112,11 +112,14 @@ zero-initialized enum field is therefore the null, in band, and you never
 need a separate has-flag beside it:
 
 ```cpp
-enum class ShipType : uint8_t { None = 0, Fighter = 1, Corvette = 2, Bomber = 3, Max = 3 };
+enum class ShipType : uint8_t { None = 0, Fighter = 1, Corvette = 2, Bomber = 3, Count = 3, Max = 3 };
 ```
 
 On the wire it costs `bitsRequired(variant count)` — 2 bits here, for four
-values. Declaring `enum E | max = 15` (its variant list on the next line) reserves
+values. `None` is one of those values, so an enum whose declared variant
+count is a power of two pays one bit for it: four declared variants are five
+wire values and cost 3 bits, not 2. Declaring `enum E | max = 15` (its variant
+list on the next line) reserves
 headroom so you can
 add variants later without moving the field width.
 
@@ -130,6 +133,22 @@ spell it their own way — `ShipType::Max` (C++), `ShipType.Max` (C#),
 carries it too, so ranges and asserts reference the enum directly instead of
 a hand-declared count constant. `Max` is consequently reserved as a variant
 name, like `None`.
+
+The `Count` member beside it is the **declared variant count**, `None`
+excluded — `ShipType::Count` (C++), `ShipType.Count` (C#), `ShipTypeCount`
+(Go), `ShipType::COUNT` (Rust), `ShipType.Count` (JS), `SHIP_TYPE_COUNT` (C),
+`ShipType.count` (Dart and Java), `ShipType.count/0` (Elixir), and
+`E.Count` in schema expressions. Without headroom `Count` and `Max` are the
+same number; under `| max = 15` they are 3 and 15, and that difference is
+what the two words are for. `Count` is a reserved variant name too.
+
+**Two loop rules, and they are the whole story:**
+
+- A loop over the **declared variants** runs from `1` to `Count` inclusive.
+- A loop over **every ordinal**, `None` included, runs from `0` to `Max`
+  inclusive.
+- **Size storage and keyed arrays by `Max`** — the extent is what has to fit,
+  headroom and all.
 
 Every target also generates a **debug/log name function**, and the spelling is
 each target's own: `EnumName(value)` in C++ (overloaded per enum),
@@ -156,7 +175,8 @@ inline constexpr int64_t CapabilitiesCount = 3;
 ```
 
 The declared variant count is exported as `Count` and usable in schema
-expressions as `Capabilities.Count`. Flags have no `.Max` — the variants are
+expressions as `Capabilities.Count` — the same word an enum carries, meaning
+the same thing. Flags have no `.Max` — the variants are
 independent bits, not a range with a top; the compiler refuses `.Max` on a
 flags type and names `.Count` instead.
 

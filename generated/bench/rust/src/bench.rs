@@ -459,6 +459,7 @@ impl MixedWeapon {
     pub const TURRET: MixedWeapon = MixedWeapon(13);
     pub const DRONE: MixedWeapon = MixedWeapon(14);
     pub const REPAIR: MixedWeapon = MixedWeapon(15);
+    pub const COUNT: MixedWeapon = MixedWeapon(15); // the declared variant count (SPEC §4.2)
     pub const MAX: MixedWeapon = MixedWeapon(15); // the exported extent (SPEC §4.2)
 }
 

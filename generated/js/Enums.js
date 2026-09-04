@@ -11,6 +11,7 @@ export const Team = Object.freeze({
   None: 0,
   Red: 1,
   Blue: 2,
+  Count: 2, // the declared variant count (SPEC §4.2)
   Max: 2, // the exported extent (SPEC §4.2)
 });
 
@@ -39,6 +40,7 @@ export const ShipType = Object.freeze({
   Bomber: 3,
   Destroyer: 4,
   Carrier: 5,
+  Count: 5, // the declared variant count (SPEC §4.2)
   Max: 5, // the exported extent (SPEC §4.2)
 });
 
@@ -71,6 +73,7 @@ export const MissileType = Object.freeze({
   Heatseeker: 1,
   Torpedo: 2,
   Nuke: 3,
+  Count: 3, // the declared variant count (SPEC §4.2)
   Max: 3, // the exported extent (SPEC §4.2)
 });
 
@@ -102,6 +105,7 @@ export const PropType = Object.freeze({
   Sphere: 4,
   BlackHole: 5,
   DysonPanel: 6,
+  Count: 6, // the declared variant count (SPEC §4.2)
   Max: 6, // the exported extent (SPEC §4.2)
 });
 
@@ -133,6 +137,7 @@ export function EnumNamePropType(value) {
 // integer-backed enums; | max = ... headroom values are plain Numbers
 export const Pending = Object.freeze({
   None: 0,
+  Count: 0, // the declared variant count (SPEC §4.2)
   Max: 0, // the exported extent (SPEC §4.2)
 });
 

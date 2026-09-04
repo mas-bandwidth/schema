@@ -13,6 +13,8 @@ defmodule Example.Weapon do
   def laser, do: 1
   def missile, do: 2
   def railgun, do: 3
+  # the declared variant count (SPEC §4.2)
+  def count, do: 3
   # the exported extent (SPEC §4.2)
   def max, do: 15
 end

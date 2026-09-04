@@ -56,6 +56,7 @@ abstract final class TableWeapon {
   static const int turret = 13;
   static const int drone = 14;
   static const int repair = 15;
+  static const int count = 15; // the declared variant count (SPEC §4.2)
   static const int max = 15; // the exported extent (SPEC §4.2)
 }
 

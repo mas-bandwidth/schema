@@ -32,6 +32,7 @@ const (
 	PacketModeCombat  PacketMode = 3
 	PacketModeDocked  PacketMode = 4
 	PacketModeWarping PacketMode = 5
+	PacketModeCount   PacketMode = 5 // the declared variant count (SPEC §4.2)
 	PacketModeMax     PacketMode = 5 // the exported extent (SPEC §4.2)
 )
 

@@ -47,6 +47,7 @@ impl DriveMode {
     pub const CRUISE: DriveMode = DriveMode(1);
     pub const WARP: DriveMode = DriveMode(2);
     pub const LUDICROUS: DriveMode = DriveMode(3);
+    pub const COUNT: DriveMode = DriveMode(3); // the declared variant count (SPEC §4.2)
     pub const MAX: DriveMode = DriveMode(3); // the exported extent (SPEC §4.2)
 }
 

@@ -54,6 +54,8 @@ public final class RealWorld {
         public static final byte combat = 3;
         public static final byte docked = 4;
         public static final byte warping = 5;
+        // the declared variant count (SPEC §4.2)
+        public static final byte count = 5;
         // the exported extent (SPEC §4.2)
         public static final byte max = 5;
     }

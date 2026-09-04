@@ -41,6 +41,7 @@ const (
 	TableWeaponTurret  TableWeapon = 13
 	TableWeaponDrone   TableWeapon = 14
 	TableWeaponRepair  TableWeapon = 15
+	TableWeaponCount   TableWeapon = 15 // the declared variant count (SPEC §4.2)
 	TableWeaponMax     TableWeapon = 15 // the exported extent (SPEC §4.2)
 )
 

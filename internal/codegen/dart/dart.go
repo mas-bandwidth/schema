@@ -541,6 +541,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	for i, v := range d.Variants {
 		g.bpf("  static const int %s = %d;\n", dartName(v), i+1)
 	}
+	g.bpf("  static const int count = %d; // the declared variant count (SPEC §4.2)\n", len(d.Variants))
 	g.bpf("  static const int max = %d; // the exported extent (SPEC §4.2)\n", d.Max)
 	g.bpf("}\n\n")
 

@@ -30,6 +30,7 @@ typedef uint8_t Team;
 #define TEAM_NONE 0
 #define TEAM_RED 1
 #define TEAM_BLUE 2
+#define TEAM_COUNT 2
 #define TEAM_MAX 2
 
 /* Debug/log name for any Team value, out-of-set included. */
@@ -56,6 +57,7 @@ typedef uint8_t ShipType;
 #define SHIP_TYPE_BOMBER 3
 #define SHIP_TYPE_DESTROYER 4
 #define SHIP_TYPE_CARRIER 5
+#define SHIP_TYPE_COUNT 5
 #define SHIP_TYPE_MAX 5
 
 /* Debug/log name for any ShipType value, out-of-set included. */
@@ -83,6 +85,7 @@ typedef uint8_t MissileType;
 #define MISSILE_TYPE_HEATSEEKER 1
 #define MISSILE_TYPE_TORPEDO 2
 #define MISSILE_TYPE_NUKE 3
+#define MISSILE_TYPE_COUNT 3
 #define MISSILE_TYPE_MAX 3
 
 /* Debug/log name for any MissileType value, out-of-set included. */
@@ -111,6 +114,7 @@ typedef uint8_t PropType;
 #define PROP_TYPE_SPHERE 4
 #define PROP_TYPE_BLACK_HOLE 5
 #define PROP_TYPE_DYSON_PANEL 6
+#define PROP_TYPE_COUNT 6
 #define PROP_TYPE_MAX 6
 
 /* Debug/log name for any PropType value, out-of-set included. */
@@ -136,6 +140,7 @@ static SCHEMA_UNUSED const char * enum_name_prop_type( PropType value )
    values wire-legal, which a C enum cannot hold honestly. */
 typedef uint8_t Pending;
 #define PENDING_NONE 0
+#define PENDING_COUNT 0
 #define PENDING_MAX 0
 
 /* Debug/log name for any Pending value, out-of-set included. */

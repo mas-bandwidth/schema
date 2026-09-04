@@ -95,6 +95,7 @@ abstract final class Weapon {
   static const int laser = 1;
   static const int missile = 2;
   static const int railgun = 3;
+  static const int count = 3; // the declared variant count (SPEC §4.2)
   static const int max = 15; // the exported extent (SPEC §4.2)
 }
 

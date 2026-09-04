@@ -30,6 +30,7 @@ const (
 	DriveModeCruise    DriveMode = 1
 	DriveModeWarp      DriveMode = 2
 	DriveModeLudicrous DriveMode = 3
+	DriveModeCount     DriveMode = 3 // the declared variant count (SPEC §4.2)
 	DriveModeMax       DriveMode = 3 // the exported extent (SPEC §4.2)
 )
 

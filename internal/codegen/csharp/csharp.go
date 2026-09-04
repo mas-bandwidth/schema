@@ -279,6 +279,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	for i, v := range d.Variants {
 		g.tf("    %s = %d,\n", v, i+1)
 	}
+	g.tf("    Count = %d, // the declared variant count (SPEC §4.2)\n", len(d.Variants))
 	g.tf("    Max = %d, // the exported extent (SPEC §4.2)\n", d.Max)
 	g.tf("}\n\n")
 	// the ulong parameter (not the enum type) keeps out-of-set values exact:

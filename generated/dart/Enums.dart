@@ -19,6 +19,7 @@ abstract final class Team {
   static const int none = 0;
   static const int red = 1;
   static const int blue = 2;
+  static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
 }
 
@@ -48,6 +49,7 @@ abstract final class ShipType {
   static const int bomber = 3;
   static const int destroyer = 4;
   static const int carrier = 5;
+  static const int count = 5; // the declared variant count (SPEC §4.2)
   static const int max = 5; // the exported extent (SPEC §4.2)
 }
 
@@ -81,6 +83,7 @@ abstract final class MissileType {
   static const int heatseeker = 1;
   static const int torpedo = 2;
   static const int nuke = 3;
+  static const int count = 3; // the declared variant count (SPEC §4.2)
   static const int max = 3; // the exported extent (SPEC §4.2)
 }
 
@@ -113,6 +116,7 @@ abstract final class PropType {
   static const int sphere = 4;
   static const int blackHole = 5;
   static const int dysonPanel = 6;
+  static const int count = 6; // the declared variant count (SPEC §4.2)
   static const int max = 6; // the exported extent (SPEC §4.2)
 }
 
@@ -145,6 +149,7 @@ String enumNamePropType(int value) {
 // headroom values have no Dart enum member to be
 abstract final class Pending {
   static const int none = 0;
+  static const int count = 0; // the declared variant count (SPEC §4.2)
   static const int max = 0; // the exported extent (SPEC §4.2)
 }
 

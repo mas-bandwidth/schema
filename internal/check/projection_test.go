@@ -250,6 +250,75 @@ const WideN  = Wide.Count
 	}
 }
 
+// E.Count is the DECLARED variant count of an enum, excluding the implicit
+// None (SPEC §4.2). It equals E.Max when nothing widens the enum and stays
+// the count under | max = K headroom, where Max is the extent — so the two
+// words mean one thing each, in enums and flags alike, and a bound written
+// over either folds to the number the author asked for.
+func TestEnumCountValue(t *testing.T) {
+	u := build(t, `package probe
+
+enum Plain { Laser, Missile }
+
+enum Wide | max = 15
+{
+    Laser,
+    Missile,
+    Railgun,
+}
+
+const PlainN = Plain.Count
+const PlainM = Plain.Max
+const WideN  = Wide.Count
+const WideM  = Wide.Max
+
+type Loadout {
+    slots [..Wide.Count]uint8
+    keyed [Wide.Max]uint8
+}
+`)
+	for _, tc := range []struct {
+		name string
+		want int64
+	}{{"PlainN", 2}, {"PlainM", 2}, {"WideN", 3}, {"WideM", 15}} {
+		c := u.Consts[tc.name]
+		if c == nil || c.Int == nil || c.Int.Int64() != tc.want {
+			t.Errorf("const %s: want %d, got %v — Count is the declared count and Max the extent (SPEC §4.2)", tc.name, tc.want, c)
+		}
+	}
+	fields := u.Structs["Loadout"].Fields
+	if got := fields[0].ArrayBound; got != 3 {
+		t.Errorf("[..Wide.Count]uint8 bound = %d, want 3 — E.Count must fold in an array bound", got)
+	}
+	if got := fields[1].ArrayBound; got != 15 {
+		t.Errorf("[Wide.Max]uint8 bound = %d, want 15 — E.Max stays the extent beside E.Count", got)
+	}
+}
+
+// The generated Count is a CLAIMED name (SPEC §11): a user symbol that would
+// collide with it is refused, and the diagnostic names the enum it belongs to
+// — the same claim E.Max's generated twin has carried since it existed.
+func TestEnumCountIsClaimed(t *testing.T) {
+	source := "package probe\n\nenum Weapon { Laser, Missile }\n\nconst WeaponCount = 3\n"
+	f, perrs := parser.Parse("Probe.schema", []byte(source))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs)
+	}
+	_, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(source), AST: f,
+	}})
+	if len(cerrs) == 0 {
+		t.Fatal("const WeaponCount compiled beside enum Weapon — the generated Count would be silently overwritten")
+	}
+	for _, e := range cerrs {
+		text := e.Error()
+		if strings.Contains(text, "generated Count constant") && strings.Contains(text, "Weapon") {
+			return
+		}
+	}
+	t.Fatalf("no diagnostic names enum Weapon's generated Count constant; got: %v", cerrs)
+}
+
 // [..N] is pure sugar for [0..N] (SPEC §4.3): same IR, same wire, same
 // protocol id — the respelling of the retired [..N] must be spelling only.
 func TestUpToBoundIsSugar(t *testing.T) {

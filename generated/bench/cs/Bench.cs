@@ -83,6 +83,7 @@ namespace Bench
         Turret = 13,
         Drone = 14,
         Repair = 15,
+        Count = 15, // the declared variant count (SPEC §4.2)
         Max = 15, // the exported extent (SPEC §4.2)
     }
 

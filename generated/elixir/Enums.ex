@@ -12,6 +12,8 @@ defmodule Example.Team do
   def none, do: 0
   def red, do: 1
   def blue, do: 2
+  # the declared variant count (SPEC §4.2)
+  def count, do: 2
   # the exported extent (SPEC §4.2)
   def max, do: 2
 end
@@ -27,6 +29,8 @@ defmodule Example.ShipType do
   def bomber, do: 3
   def destroyer, do: 4
   def carrier, do: 5
+  # the declared variant count (SPEC §4.2)
+  def count, do: 5
   # the exported extent (SPEC §4.2)
   def max, do: 5
 end
@@ -40,6 +44,8 @@ defmodule Example.MissileType do
   def heatseeker, do: 1
   def torpedo, do: 2
   def nuke, do: 3
+  # the declared variant count (SPEC §4.2)
+  def count, do: 3
   # the exported extent (SPEC §4.2)
   def max, do: 3
 end
@@ -56,6 +62,8 @@ defmodule Example.PropType do
   def sphere, do: 4
   def black_hole, do: 5
   def dyson_panel, do: 6
+  # the declared variant count (SPEC §4.2)
+  def count, do: 6
   # the exported extent (SPEC §4.2)
   def max, do: 6
 end
@@ -66,6 +74,8 @@ end
 # | max = ... headroom values have no richer Elixir value to be
 defmodule Example.Pending do
   def none, do: 0
+  # the declared variant count (SPEC §4.2)
+  def count, do: 0
   # the exported extent (SPEC §4.2)
   def max, do: 0
 end

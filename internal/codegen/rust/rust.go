@@ -333,6 +333,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	for i, v := range d.Variants {
 		g.pf("    pub const %s: %s = %s(%d);\n", ir.RustConstName(v), d.Name, d.Name, i+1)
 	}
+	g.pf("    pub const COUNT: %s = %s(%d); // the declared variant count (SPEC §4.2)\n", d.Name, d.Name, len(d.Variants))
 	g.pf("    pub const MAX: %s = %s(%d); // the exported extent (SPEC §4.2)\n", d.Name, d.Name, d.Max)
 	g.pf("}\n\n")
 
