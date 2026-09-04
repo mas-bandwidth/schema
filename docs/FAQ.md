@@ -36,9 +36,14 @@ reads but cannot validate.
 
 For a 60 Hz gameplay packet where you decode the whole thing anyway, that trade
 runs strongly one way. For a memory-mapped asset you want to touch three fields
-of, it runs the other — and that case is deliberately not schema's job. schema
-serves the realtime wire; generated storage is relocatable and memcpy-able
-(see [USAGE.md](USAGE.md#the-wire)), but the wire is one encoding with one purpose.
+of, it runs the other — and schema answers that case on its **other wire**:
+declare a `table`, and `schema cook` produces a build-locked region whose
+`Open` is a header match and a pointer, with no per-node validation and no
+fix-up at load, so you mmap the file and read the three fields at their
+offsets (SPEC-TABLES.md §7). The tolerant table wire stays the format of
+record beneath it, and the type wire above serves the realtime packet;
+generated storage on both is relocatable and memcpy-able
+(see [USAGE.md](USAGE.md#the-wire)).
 
 ## Isn't this just Protobuf?
 
@@ -49,7 +54,7 @@ carries a tag, so old readers skip fields they do not know and missing fields
 fall back to defaults. That is why Protobuf is the right answer for service
 APIs that version independently over years.
 
-**The schema wire has no field numbers, no tags and no evolution
+**The schema TYPE wire has no field numbers, no tags and no evolution
 machinery at all.** Versioning is a **protocol id** — a hash of the schema
 itself, checked once at connect time. Two peers on the same id speak identical
 bits; two peers on different ids should not talk. That is an intentionally
@@ -57,16 +62,20 @@ harsher contract, and it buys the thing Protobuf cannot give you: nothing on
 the wire identifies a field, so nothing on the wire is spent identifying one.
 
 If your client and server ship independently and must interoperate across
-versions, **use Protobuf** — schema's wire will fight you. If they ship
+versions over one connection, **use Protobuf** — the type wire will fight
+you. If they ship
 together, which is the normal case for a game client and its dedicated server,
 the tags were pure overhead and the protocol id is the honest statement of what
 was always true.
 
-That narrowness is the design, stated plainly: **schema is deliberately not
-an evolution system.** Hardcoded structs, one protocol id, same-or-refuse.
-Data that genuinely outlives builds and must survive schema drift wants an
-evolution-tolerant format, and Protobuf is a fine one — schema does not
-compete for that job.
+That narrowness is one of TWO wires, and the other one is the evolution
+answer: declare a `table` and its fields ride under the hash of their NAMES,
+so a reader takes any data a writer ever wrote — unknown fields skipped and
+counted, absent fields defaulted, changed kinds skipped rather than
+misdecoded, out-of-range values clamped, every event in a read report and
+only structural damage fatal (SPEC-TABLES.md). Save games, config, asset
+archives and tool output belong there; packets belong on the type wire. What
+schema does not offer is Protobuf's model of one wire that does both.
 
 ## Isn't this just Cap'n Proto?
 
@@ -166,9 +175,13 @@ The protocol id changes, and peers on the old id will refuse the new one. That
 is the design: the id is a hash of the schema, so a changed format is a changed
 identity.
 
-Practically this means **client and server deploy together** for wire
-changes. If that is unacceptable for your deployment model, schema is the
-wrong tool and you want an evolution system like Protobuf.
+Practically this means **client and server deploy together** for type-wire
+changes. Data that cannot deploy together goes in a `table` instead: editing
+a table moves the build version and never the protocol id, so a save game or
+an asset written by an older build still loads, with the differences counted
+in a read report (SPEC-TABLES.md). If your PACKETS have to interoperate
+across independently deployed versions, that is the case this design does not
+serve, and Protobuf does.
 
 The id hashes a **wire shape projection**, not the source text, so an edit
 that moves no bytes does not move the id: a comment, a blank line, a renamed
@@ -271,33 +284,51 @@ than incidental.
 
 Worth knowing before you adopt rather than after:
 
-- **No maps.** Use a counted array of key/value pairs.
+- **No maps on the packet wire.** Use a counted array of key/value pairs.
+  Tables have them — `map[K]V` (SPEC-TABLES.md §2.8), landing in the C++
+  reference first ([#380](https://github.com/mas-bandwidth/schema/issues/380)).
 - **No recursive types.** `type Node { children [..4]Node }` is rejected as a
   composition cycle — generated storage is by value, with no pointers, which is
-  what makes it relocatable and memcpy-able.
-- **No optional / nullable**, except the honest version: a bool and a branch,
-  or a `union` whose first variant is the absence.
-- **No schema evolution.** No field numbers, no unknown-field skipping, no
-  cross-version bridging — one protocol id, same-or-refuse, on purpose.
-- **No zero-copy access.** Reads decode into your struct.
+  what makes it relocatable and memcpy-able. A table may point at a table,
+  itself included, which is what a scene graph or a linked list wants
+  (SPEC-TABLES.md §2.1).
+- **No optional / nullable on the packet wire**, except the honest version: a
+  bool and a branch, or a `union` whose first variant is the absence. In a
+  TABLE body it is spelled `?T` — the value plus a generated presence bool,
+  fixed size, no allocation — and a `type` body refuses one by name.
+- **No schema evolution on the packet wire.** No field numbers, no
+  unknown-field skipping, no cross-version bridging — one protocol id,
+  same-or-refuse, on purpose. Evolution is the table wire's whole subject.
+- **No zero-copy access on the packet wire.** Reads decode into your struct.
+  A cooked table is the zero-copy form: `Open` matches a header and points
+  (SPEC-TABLES.md §7).
 
-Some of these are scope (a game's packet does not need maps), some are
-consequences of relocatable storage (recursion), and one is the design's
-spine (evolution). The list is here so you can tell which of your
+Most of these are the PACKET wire's scope — a 60 Hz packet needs none of it,
+and the table wire is where the same questions get a yes. Recursion in a
+`type` is the one that is a consequence of relocatable storage rather than a
+choice. The list is here so you can tell which of your
 requirements are unmet before you find out the hard way.
 
 ## Do I need the serialize runtimes?
 
-Yes — generated code targets a small runtime per language
+In six of the nine languages, yes; in three, no.
+
+C, C++, C#, Go, JavaScript and Rust target a small runtime per language
 ([serialize](https://github.com/mas-bandwidth/serialize),
 [serialize.c](https://github.com/mas-bandwidth/serialize.c),
 [serialize.cs](https://github.com/mas-bandwidth/serialize.cs),
 [serialize.go](https://github.com/mas-bandwidth/serialize.go),
 [serialize.js](https://github.com/mas-bandwidth/serialize.js),
 [serialize.rs](https://github.com/mas-bandwidth/serialize.rs)). They are small,
-open source, and doing the bit-level stream work the generated code calls into
-(generated JavaScript never imports its runtime — every wire call is a method
-on the stream you pass in, and the stream comes from serialize.js).
+open source, and doing the bit-level stream work the generated code calls
+into. **Dart, Elixir and Java need nothing but their own toolchain** — those
+three carry the bit reader and writer in the generated code itself, and are
+held to the same goldens as the other six.
+
+JavaScript is the one that goes both ways: generated JS never IMPORTS a
+runtime — every wire call in the runtime tier is a method on the stream you
+pass in, and that stream comes from serialize.js — while the flat tier beside
+it (`<Base>Flat.js`) inlines the bitpacker and needs nothing at all.
 
 ## How do I get out if I regret it?
 

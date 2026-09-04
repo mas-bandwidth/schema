@@ -118,7 +118,7 @@ the other format for this one thing.
 | 2 | **A service or SDK that only speaks Protobuf.** | certain, for that one edge | Never removable. A foreign endpoint's format is what you use at that endpoint. Tables inside, the foreign format only at the boundary. |
 | 3 | **Maps with string or integer keys.** Protobuf has `map<K,V>`; FlatBuffers has the sorted-vector idiom. | likely for a team raised on Protobuf | After 3.0.0, in tables only, never in types, and a map makes the table variable: it rides with the pointers, never in a fixed record ([#380](https://github.com/mas-bandwidth/schema/issues/380)). Enum keys are already better served by `[E]T` (§2.4). |
 | 4 | **Unbounded strings and bytes at used size.** | closed | Landed as `*bytes` and `*string`, the byte-buffer primitive (§2.5, [#259](https://github.com/mas-bandwidth/schema/issues/259)): an image lives inside a table at its own size and a mapped cook points at it with no copy. C++ and the tool carry it; the ports follow as a row on [#366](https://github.com/mas-bandwidth/schema/issues/366). |
-| 5 | **A verifier for untrusted bytes.** FlatBuffers ships a separate `Verifier` pass, in C++ and Swift, with a basic one in C, of its thirteen languages. | possible | Table reads are untrusted: they arrive over the network and carry the type wire's security posture; only the cook open is trusted. So the tolerant read IS the verifier, in every language, and [#391](https://github.com/mas-bandwidth/schema/issues/391) is the fuzzer with an independent oracle that proves it in CI. Before 3.0.0, since the release makes the claim. |
+| 5 | **A verifier for untrusted bytes.** FlatBuffers ships a separate `Verifier` pass, in C++, C and Swift of its thirteen languages (FB-support). | possible | Table reads are untrusted: they arrive over the network and carry the type wire's security posture; only the cook open is trusted. So the tolerant read IS the verifier, in every language, and [#391](https://github.com/mas-bandwidth/schema/issues/391) is the fuzzer with an independent oracle that proves it in CI. Before 3.0.0, since the release makes the claim. |
 | 6 | **Every type in tables.** Nothing here is ahead of schema: `fixed`, `ufixed` and the 128-bit integers ride in a table under kinds of their own (§3), which is what a deterministic simulation's save holds. | closed | Landed in the C++ reference and the tool ([#390](https://github.com/mas-bandwidth/schema/issues/390)); the ports follow as a row on [#366](https://github.com/mas-bandwidth/schema/issues/366). |
 | 7 | **Sorted lookup inside a buffer.** FlatBuffers' `key` attribute and `LookupByKey`. | possible, for a large catalog opened by id | Library-side, after 3.0.0: a sort the cook writer holds and a generated `Find` over the cooked rows. Never stored semantics. |
 | 8 | **Reflection in more languages.** | possible, for an editor in Python or C# | Descriptors are built into every table's generated code with no schema files and no RTTI (§8). They reach every language with the parity matrix on [#366](https://github.com/mas-bandwidth/schema/issues/366). |
@@ -160,8 +160,8 @@ Each with the section that defines it and the reason a game cares.
 | **Enum-keyed arrays that ride by name** and refuse a bad key in every build. | §2.4, §3.2 | Per-ship-type config survives inserting a ship type in the middle. |
 | **Evolution by name.** Fields, enum variants and union arms are identified by their name's hash. Add anywhere, remove, reorder. `was` renames; a collision is refused at compile time. | §5 | No append-only rule and no numbers to assign by hand. |
 | **A read report instead of pass or fail.** `unknown`, `kind_mismatch`, `clamped`, `duplicate`, `malformed`; never fatal on data from another build; a damaged level stops only itself. | §4 | Tools surface it, games set policy, and a corrupt sub-table does not kill the file. |
-| **The silent-edit class enumerated: exactly three**, with a compile-time baseline that refuses them and keeps a reasoned history. | §4.1, §18 | Saves from years ago read right, and when one does not the history says why. |
-| **A build version computed by the compiler.** Every fact a cook's bytes depend on, digested; `(asset hash, build version)` is a build-cache key. Split from the protocol id, so a table edit never forces a lockstep redeploy. | §10, §20 | Distributed cooking with no version numbers by hand; ship tools and game on different days. |
+| **The silent-edit class enumerated: exactly four**, with a compile-time baseline that refuses them and keeps a reasoned history. | §4.1, §18 | Saves from years ago read right, and when one does not the history says why. |
+| **A build version computed by the compiler.** Every fact a cook's bytes depend on, digested; `(asset hash, build version, byte order)` is a build-cache key. Split from the protocol id, so a table edit never forces a lockstep redeploy. | §10, §20 | Distributed cooking with no version numbers by hand; ship tools and game on different days. |
 | **The cook.** `Open` is a header match and a pointer: O(1), mmap-friendly, byte order settled offline, attribution separable. In every port, not only C++. | §7 | "Don't parse, just point" at a gigabyte catalog. |
 | **The block form.** A third projection of a fixed table: rows at a pitch the compiler computes and both languages' generated code asserts, filled wide by many threads by obligation. | §19, §12.1 | Render data C++ writes and C# reads at 60 Hz with no marshalling. This is the render-data case FlatBuffers was tried on first and replaced (§12.1). |
 | **Optional by value.** `?T` costs a bool and changes nothing else; `T` and `?T` share one framing. | §2.3 | An optional settings block is not a pointer. |
@@ -182,7 +182,7 @@ Each with the section that defines it and the reason a game cares.
 | Extensions and custom options | both | The attribute vocabulary is closed on purpose (SPEC §4.2); type tags are the claiming mechanism when one is wanted. |
 | Schema-less values (FlexBuffers, `Struct`) | both | A schema language's users have schemas; a JSON text in a `bytes` field is the escape. |
 | Well-known types | Protobuf | A `type Timestamp` is three lines and the language pre-defines nothing. |
-| Required fields | FlatBuffers | Both competitors' own guidance says not to; every field optional with a declared default is the rule. |
+| Required fields | FlatBuffers | Protobuf's own guidance says not to — "Never add a required field" (PB-dos) — while FlatBuffers describes `required` neutrally and verifies it. Here every field is optional with a declared default, which is the rule. |
 | Explicit or sparse enum values | both | On the table wire a variant rides by name, so its number is invisible (SPEC §9). |
 | Varint compaction | Protobuf | The type wire is the compact wire; tables trade bytes for tolerance by design, and the ladder states the price. |
 | Deprecation markers | both | Removal is free and reported, which is what deprecation exists to fake elsewhere. |
@@ -262,7 +262,7 @@ the source list at the end.
 | Rename | `was` (§5) | free (FB-evolution) | free on binary; reserve for JSON (PB-proto3) |
 | Change a type | `kind_mismatch`: skipped, counted, never misdecoded (§4); same-kind respellings are the silent class the baseline refuses (§4.1) | only at identical width, "with careful handling" (FB-evolution) | a fixed list of compatible pairs; anything else misdecodes silently (PB-proto3) |
 | Change a default | silent on the wire; the baseline refuses it until moved with a reason (§18) | "don't" (FB-evolution) | proto3 has none; proto2 reader-side (PB-proto2) |
-| Enum evolution | add anywhere, remove, reorder; unknown reads as `None` and counts (§5) | append or explicit values; code handles unknowns itself (FB-schema) | add values; open enums keep the int, closed enums move it to unknown fields (PB-enum) |
+| Enum evolution | add anywhere, remove, reorder; unknown reads as `None` and counts (§5) | append or explicit values; code handles unknowns itself (FB-schema) | add values; open enums keep the int, closed enums move it to unknown fields — and protobuf.dev's own nonconformance list says C#, Go, JSPB and Ruby treat every enum as open while Dart treats every enum as closed, so the answer depends on the language you generate (PB-enum) |
 | Union evolution | arms by name; add anywhere, remove, reorder (§2.6, §5) | append or explicit discriminant (FB-evolution) | adding is fine; moving an existing field into a oneof is unsafe (PB-editions) |
 | Flags evolution | append only, retire in place; the baseline refuses the rest (§4.1) | explicit values, any order (FB-schema) | — |
 | Array bound change | prefix kept, `clamped` counted; a short array fills with defaults (§4) | unbounded | unbounded |
@@ -270,8 +270,8 @@ the source list at the end.
 | Unknown fields on read | skipped by length, counted (§3, §4) | ignored (FB-evolution) | retained in the unknown set (PB-proto3) |
 | Unknown fields on rewrite | dropped and counted, by design; the writer has a schema | the buffer keeps them if forwarded whole (FB-evolution) | preserved and re-serialized (PB-proto3) |
 | Read report | `unknown`, `kind_mismatch`, `clamped`, `duplicate`, `malformed`; nothing fatal from another build (§4) | verifier pass or fail (FB-cpp) | success or failure, plus the unknown set (PB-message) |
-| Silent edits enumerated | exactly three, each with its answer (§4.1) | scattered warnings (FB-evolution) | scattered (PB-dos) |
-| Compile-time guard | `tables.baseline`: refuses the silent three plus kind, spelling and key changes; `--update --reason` keeps a dated history (§18) | `flatc --conform` (FB-flatc) | `buf breaking`, third party (buf) |
+| Silent edits enumerated | exactly four, each with its answer (§4.1) | scattered warnings (FB-evolution) | scattered (PB-dos) |
+| Compile-time guard | `tables.baseline`: refuses the silent four plus kind, spelling and key changes; `--update --reason` keeps a dated history (§18) | `flatc --conform` (FB-flatc) | `buf breaking`, third party (buf) |
 | Same-build fast forms | cook and block are same-build by construction: build version match or refuse (§7, §19.4, §20) | the buffer is always the evolvable form | — |
 | Version identity | protocol id and build version, both computed by the compiler; a table edit moves only the latter (§10, §20) | `file_identifier`, by hand (FB-schema) | none; editions version the language (PB-ed-overview) |
 
@@ -288,7 +288,7 @@ the source list at the end.
 | Multi-threaded build | thread-local arenas; block fill by N workers is an obligation checked under TSan (§6.4, §19.5) | one builder per thread | — |
 | Relocatable | a fixed struct is memcpy-able; a locked region relocates by memcpy with self-relative references (§6.3, §9) | position-independent (FB-internals) | bytes |
 | Cross-language rows at a pitch | the block form: layout computed by the compiler, asserted by generated code on both sides, refused at open on mismatch (§19, §19.3) | a vector of structs is inline, but the schema does not assert both sides' native layout (FB-internals) | — |
-| Offline cook for a build | `schema cook` and generated `Cook`; `(asset hash, build version)` is the cache tuple; attribution separable (§7, §7.6, §20.6) | the buffer is the cooked form, little-endian, build-independent (FB-internals) | — |
+| Offline cook for a build | `schema cook` and generated `Cook`; `(asset hash, build version, byte order)` is the cache tuple; attribution separable (§7, §7.6, §20.6) | the buffer is the cooked form, little-endian, build-independent (FB-internals) | — |
 | Classes | fixed and variable derived from the declaration, held by a gate (§2.2) | struct and table declared; a table is always by offset (FB-schema) | one |
 | Performance obligations | the ladder: a fixed table beside its type on the ledger; the block matches hand-written scatter both sides; unexplained slowness is a defect (§12.1) | a benchmarks page | "fast parsing" (PB-overview) |
 | Big-endian targets | C++ proves wire, cook and block on an emulated target; Go, Rust, Java checked | accessors swap (FB-cpp) | neutral by varints (PB-encoding) |
@@ -298,7 +298,7 @@ the source list at the end.
 
 | feature | schema tables | FlatBuffers | Protocol Buffers |
 |---|---|---|---|
-| Untrusted bytes on the tolerant wire | the read is the validator: every length bounds-checked against its body, counts against the body, ranges clamped, a bad level stops itself; `LoadMeasure` lets the caller refuse a region size before allocating (§4, §6.5). The independent-oracle fuzzer that proves it in every language is #391 | a separate `Verifier`, required before access, in C++ and Swift with a basic one in C (FB-support); `max_depth` 64, `max_tables` 1M (FB-cpp) | the parser validates structure; recursion limit 100; UTF-8 verify (PB-features) |
+| Untrusted bytes on the tolerant wire | the read is the validator: every length bounds-checked against its body, counts against the body, ranges clamped, a bad level stops itself; `LoadMeasure` lets the caller refuse a region size before allocating (§4, §6.5). The independent-oracle fuzzer that proves it in every language is #391 | a separate `Verifier`, required before access, in C++, C and Swift (FB-support); `max_depth` 64, `max_tables` 1M (FB-cpp) | the parser validates structure; recursion limit 100; UTF-8 verify (PB-features) |
 | Trusted fast path | cook and block are trusted by design; `Open` checks identity, not hostility; a signature over the file is the integrity answer (§7, §13.4) | skip the verifier for trusted buffers (FB-cpp) | — |
 | Value-range enforcement | clamp and count on the table wire; reject on the type wire (§4, SPEC §5) | — | — |
 | Depth and DoS bounds | by-value depth is fixed by the schema; a pointer graph is flat, so a chain is not a depth (§3.1) | verifier caps (FB-cpp) | recursion depth 100 (PB-limits) |
@@ -350,7 +350,7 @@ pages on 2026-09-03.
 | PB-wkt | https://protobuf.dev/reference/protobuf/google.protobuf/ |
 | PB-enum | https://protobuf.dev/programming-guides/enum/ |
 | PB-limits | https://protobuf.dev/programming-guides/proto-limits/ |
-| PB-dos | https://protobuf.dev/programming-guides/dos-donts/ |
+| PB-dos | https://protobuf.dev/best-practices/dos-donts/ |
 | PB-message | https://protobuf.dev/reference/cpp/api-docs/google.protobuf.message/ |
 | PB-overview | https://protobuf.dev/overview/ |
 | PB-3p | https://github.com/protocolbuffers/protobuf/blob/main/docs/third_party.md |

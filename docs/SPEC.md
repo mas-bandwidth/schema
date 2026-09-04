@@ -65,10 +65,13 @@ conventions. Delta serialization is out of scope for v1.
 
 ### Non-goals (v1)
 
-- **No wire-format versioning, anywhere.** Versioning is by protocol id,
-  deliberately (§3): hardcoded structs, one id, same-or-refuse. schema is
-  not an evolution system, and data that must outlive builds is out of its
-  scope entirely.
+- **No wire-format versioning on the TYPE wire.** Versioning here is by
+  protocol id, deliberately (§3): hardcoded structs, one id, same-or-refuse.
+  Data that must outlive the build that wrote it belongs to the other wire —
+  `table` declarations, versioned in-wire by field id, where any reader reads
+  any data and the differences are reported rather than fatal
+  (SPEC-TABLES.md). This document specifies the type wire; the two share one
+  language, one unit and one compiler, and nothing else.
 - **No unbounded collections.** Everything on the wire has a declared bound,
   as everywhere in the serialize family.
 - **No annotation of existing hand-written types.** schema owns the types it
@@ -227,8 +230,10 @@ from this projection rather than carried in it.
   literals** (decimal, with optional fraction and exponent) appear in float
   constants and as float attribute values (`min`/`max`/`resolution` on
   `float32`).
-- **Punctuation and operators:** `{ } ( ) [ ] , : = ! . .. | + - * / %`
-  (maximal munch: `..` wins over `.`). `|` opens a line's qualification
+- **Punctuation and operators:** `{ } ( ) [ ] , : = ! ? . .. | + - * / %`
+  (maximal munch: `..` wins over `.`). `?` is the OPTIONAL type prefix
+  (§4.2's grammar), and it is accepted in a table body only — a `type` body
+  refuses one by name (SPEC-TABLES.md §2.3). `|` opens a line's qualification
   section (§4.2, Attributes) and claims the rest of the line — the newline
   or a `//` comment terminates it, and no newline suppression applies after
   `|` or after a `,` inside a qualification. `<=` is not in the language: a count
@@ -1212,16 +1217,27 @@ defined behaviors: the spec owes a conforming writer exact bytes and owes a
 misbehaving writer nothing. The read side is untouched by this doctrine —
 readers face untrusted data and keep every mandated check above.
 
-Within that doctrine, misuse surfaces by each target's own convention, and the
-list is exhaustive at all nine: C, C++, Dart and Java debug-assert (unchecked
-in release — C and C++ through `serialize_assert`, Dart and Java through the
-language's own `assert`, live under `--enable-asserts` and `-ea`); Go and Rust
-panic, C# throws and Elixir raises `ArgumentError`, on misuse in all build
-modes; generated JavaScript carries no write-side check of its own, so misuse
-reaches the runtime's stream methods. The generated write code's job is to
+Within that doctrine, misuse surfaces by each target's own convention — a
+language verifies correctness the way that language verifies correctness —
+and the list is exhaustive at all nine. **Three debug-assert**, unchecked in
+release: C++ through `serialize_assert`, Dart and Java through the language's
+own `assert`, live under `--enable-asserts` and `-ea` (Java's contracts ride
+one `check<Name>` predicate call, so a dormant assert costs the JIT one
+inlining slot rather than a body). **One raises in every build**: Elixir's
+`ArgumentError`, the BEAM having no dormant assert to compile out.
+**Five return failure from the write** rather than invent an assert their
+language does not have: C `0`, C# and JavaScript `false`, Go
+`serialize.ErrValueOutOfRange`, Rust `Err(serialize::Error::ValueOutOfRange)`
+— and JavaScript's flat tier, which forks checked/production at module load
+(§6.1), refuses with `-1` on the checked side and trusts the caller on the
+production one. **No target panics and none throws**: Elixir's raise is the
+only unwinding path in the nine, and it is the BEAM's own. The generated
+write code's job is to
 make misuse impossible by construction — bounds come from the schema. Costlier contracts
-assert in DEBUG ONLY everywhere (§4.7's UTF-8 well-formedness contract is the
-type case: an O(n) check no release path should carry). Ranges are trusted
+assert in DEBUG ONLY, and only where a target carries one at all (§4.7's
+UTF-8 well-formedness contract is the type case: an O(n) check no release
+path should carry, asserted by C, C++ and Rust and absent from the other
+six). Ranges are trusted
 inputs everywhere: generated code never feeds attacker-influenced values as
 min/max.
 
@@ -1353,7 +1369,10 @@ gates it is held to, are SPEC-TABLES.md §8.
 
 **Output layout.** Each target emits one generated file per schema file —
 `examples/Constants.schema` → `generated/cpp/Constants.h` — so the generated
-tree mirrors the schema tree a person navigates.
+tree mirrors the schema tree a person navigates. What a target adds to that
+one file is its own, and the bullets below state it in full: a wire header
+beside a data header, a table-side file per surface, a runtime home per unit,
+or a file per declaration where the language demands one.
 
 - **C++: the header splits into a data/wire pair.** `<Base>.h` is the DATA
   header (constants, enums, flags, structs and MaxBits/MaxBytes bounds)
@@ -1372,10 +1391,17 @@ tree mirrors the schema tree a person navigates.
   stays so by ruling ("I think it's OK for types to remain header only"): a
   type is a struct and its codec, both of which a compiler folds into the
   caller, so there is nothing to compile once and link. A unit that declares
-  TABLES emits one further pair — `<Base>Table.h` and `<Base>Table.cpp` —
-  because the table wire carries a RUNTIME the type wire has no equivalent
-  of (SPEC-TABLES.md §6.1, §13.5); it is a table-side file and adds nothing
-  to a table-free unit. **Every unit emits one further pair per UNIT** —
+  TABLES emits two further pairs per schema file. `<Base>Table.h` /
+  `<Base>Table.cpp` carries the table wire's codecs, its reflection
+  descriptors, its TEXT FORM and the cooked form's `<Name>Open`
+  (SPEC-TABLES.md §7) — a pair rather than a header because the table wire
+  has a RUNTIME the type wire has no equivalent of (SPEC-TABLES.md §6.1,
+  §13.5). Beside it, `<Base>Block.h` /
+  `<Base>Block.cpp` carries the block form, which nothing declares and every
+  fixed table has (SPEC-TABLES.md §19): include the header and compile the
+  source beside it only if you use the form, and `<Base>Table.h` carries not
+  one symbol of it. They are table-side files and add nothing to a table-free
+  unit. **Every unit emits one further pair per UNIT** —
   `<Package>View.h` and `<Package>View.cpp` — carrying the unit registry and
   the reflection descriptors of every declaration (SPEC-TABLES.md §8.3,
   §8.5). It is per unit rather than per schema file because the registry is
@@ -1417,14 +1443,23 @@ tree mirrors the schema tree a person navigates.
   spelling is one of the macros the generated sources define.
 - **Go:** one `.go` file per schema file, all in `package <package>` — Go
   packages are order-free across files, so there is no topo sort and no
-  include graph to refuse.
+  include graph to refuse. A unit that declares TABLES grows three further
+  files per schema file — `<Base>Table.go` with the table wire's codecs and
+  its reflection descriptors, `<Base>Block.go` (SPEC-TABLES.md §19) and
+  `<Base>Cook.go` (SPEC-TABLES.md §7) for the two accelerators — plus one
+  `<Home>TableJson.go` per unit carrying the TEXT FORM's single generic walk
+  over those descriptors (SPEC-TABLES.md §16). A Go package compiles whole,
+  so the separate file does not let a consumer leave the walk out of the
+  build; the LINKER drops what nothing calls, and the file is what keeps that
+  legible. A table-free unit grows none of it.
 - **Rust:** one module per schema file (lowercased basename) plus a generated
   `lib.rs` declaring and glob re-exporting them. A unit that declares TABLES
   grows three per-file modules and three per-UNIT runtimes, all declared by
   that same crate root: `<base>_table.rs` with the table wire's codecs, its
   reflection descriptors and its TEXT FORM (SPEC-TABLES.md §16);
-  `<base>_cook.rs` with the cooked form's blittable `<Name>Row` records and
-  their layout contract as const asserts (§7, §20.3); `<base>_block.rs` with
+  `<base>_cook.rs` with the cooked form's `<Name>Cook` handles, their open
+  paths and the layout const asserts those rest on (§7, §20.3);
+  `<base>_block.rs` with
   the block form's projection and open path (§19); and beside them
   `table_runtime.rs`, `cook_runtime.rs` and `block_runtime.rs`, which carry
   each surface's shared runtime and the text form's one generic walk. **The
@@ -1444,14 +1479,18 @@ tree mirrors the schema tree a person navigates.
   are byte-identical either way.
 - **C#:** one `.cs` file per schema file, types at namespace level and every
   function and constant on `public static partial class Schema`, in
-  `namespace <Package>`. A unit that declares TABLES emits one further file
-  per schema file, `<Base>Table.cs`, carrying the table wire's codecs, its
-  reflection descriptors and its TEXT FORM (SPEC-TABLES.md §16) — the C++
-  pair's single-file twin, and single because a unit's C# files compile into
-  one assembly, so the shared runtime and the text form's generic walk are
-  emitted once per unit rather than once per translation unit behind a
-  guard. Every unit emits one further file per unit, `<Package>View.cs`, on
-  the same terms as the C++ pair above.
+  `namespace <Package>`. A unit that declares TABLES emits three further
+  files per schema file — `<Base>Table.cs` carrying the table wire's codecs,
+  its reflection descriptors and its TEXT FORM (SPEC-TABLES.md §16), and
+  `<Base>Block.cs` and `<Base>Cook.cs` for the two accelerators (§19, §7) —
+  plus one RUNTIME HOME per unit and per surface, `<Package>Table.cs`,
+  `<Package>Block.cs` and `<Package>Cook.cs`, where everything shared lands.
+  Each of the three is one file rather than the C++ header/source pair
+  because a unit's C# files compile into one assembly, so the shared runtime
+  and the text form's generic walk are emitted once per unit rather than once
+  per translation unit behind a guard; the home is named for the PACKAGE on
+  §19.2's rule for every port. Every unit emits one further file per unit,
+  `<Package>View.cs`, on the same terms as the C++ pair above.
 - **Dart:** one library per schema file, cross-file `import`s derived from
   actual references, with `show` clauses naming exactly the symbols used. A
   unit that declares TABLES grows three further libraries per schema file —
@@ -1468,6 +1507,21 @@ tree mirrors the schema tree a person navigates.
   generated `_foo` at top level would be a collision no registry covers
   (SPEC-TABLES.md §11). A table-free unit grows none of it, and its packet
   libraries are byte-identical either way.
+- **Java:** one `.java` file per schema file for the packet half, in
+  `package <package>`. A unit that declares TABLES emits `<Base>Table.java`
+  per schema file with the table wire's codecs and its reflection
+  descriptors, and then FANS OUT: **a public Java type lives in a file of its
+  own name**, so the two accelerators are one file per declaration rather
+  than one per schema file — `<Name>Block.java` (SPEC-TABLES.md §19) and
+  `<Name>Cook.java` (§7) per table, and `<Name>Row.java` for every blittable
+  record in the closure, plain `type` members included (§20.3). The shared
+  runtime fans out the same way, one file per runtime type
+  (`TableReader.java`, `TableReport.java`, `TableJson.java` and the rest),
+  which is file-order independent by construction rather than by a rule and
+  is why this port needs no named home; each of those spellings is claimed
+  for every backend (SPEC-TABLES.md §11). `BuildVersion.java` is always
+  emitted beside them and belongs to neither accelerator (§20). A table-free
+  unit grows none of it.
 - **Elixir:** one `.ex` file per schema file, carrying one `defmodule` per
   declaration under the unit's own namespace plus the file-scope module
   `<Ns>.<Base>` for constants, flags masks and the file's codecs. A unit that
@@ -1492,9 +1546,17 @@ tree mirrors the schema tree a person navigates.
   in declaration order (specified defaults live in construction; `ZeroX` is
   the §5 zero form). **Generated JS never imports the serialize runtime** —
   every wire call is a method on the stream parameter, so no wiring file
-  exists and the checked/production fork stays where it lives, in the
-  runtime's own load-time mode selection (generated code never reads
-  `NODE_ENV`). A unit that declares TABLES emits three further modules per
+  exists and this tier's checked/production fork stays where it lives, in the
+  runtime's own load-time mode selection: the runtime-tier module reads no
+  `NODE_ENV` of its own. Beside it, **every schema file that declares types
+  also emits `<Base>Flat.js`** — the FLAT tier, a single-word bitpacker
+  inlined at every field with no runtime import at all, held byte-identical
+  to the runtime tier by a standing gate. That tier owns the fork itself:
+  `NODE_ENV` is read ONCE at module load, exactly as `serialize.js`'s own
+  `src/mode.js` does, and whole write variants are selected at export, so a
+  bundler that statically replaces `NODE_ENV` tree-shakes the checked writers
+  out. The READ side is never configurable in either tier. A unit that
+  declares TABLES emits three further modules per
   schema file — `<Base>Table.js` for the table wire's codecs, its reflection
   descriptors and its TEXT FORM (SPEC-TABLES.md §16), and `<Base>Block.js`
   and `<Base>Cook.js` for the two accelerators' READ side (SPEC-TABLES.md
@@ -1580,20 +1642,43 @@ Go, zero third-party dependencies, one static binary: `schema`.
 schema check      [--verbose] [dir|files...]   // parse + typecheck; exit code for CI
 schema generate   [--lang c|cpp|cs|dart|elixir|go|java|js|rust]
                   [--out <dir>] [--verbose] [dir|files...]
-schema id | dir|files... // print the protocol id
-schema projection | dir|files... // print the wire shape projection (§3.1)
+schema id         [dir|files...]               // print the protocol id
+schema projection [dir|files...]               // print the wire shape projection (§3.1)
+schema build-version [--facts] [dir|files...]  // the cook/block id, and the text it digests (SPEC-TABLES.md §20)
+schema tables-baseline [--update --reason "..."] [--verbose] [dir|files...]
+                                               // the table wire's evolution gate (SPEC-TABLES.md §18)
 schema fmt        [--verbose] [dir|files...]   // the canonical formatter, standalone (editors, hooks)
+schema pack       --root <Table> --out <file> [--tolerate] [--verbose] <tree-dir> [dir|files...]
+schema unpack     --root <Table> --in  <file> [--one-file] [--tolerate] [--verbose] <tree-dir> [dir|files...]
+                                               // a text tree to a table-wire file, and back (SPEC-TABLES.md §17)
+schema cook       --root <Table> --in  <file|tree-dir> --out <file>
+                  [--byte-order little|big] [--attribution <file>] [--tolerate] [--verbose] [dir|files...]
+schema cook-check [--root <Table>] [--attribution <file>] [--verbose] <file.cook> [dir|files...]
+schema uncook     --root <Table> --in  <file.cook> --out <file> [--attribution <file>] [--verbose] [dir|files...]
+                                               // the cooked form: produce, validate, and back to the wire (SPEC-TABLES.md §7)
 schema version
+schema help
 ```
 
+**Thirteen commands, plus `help`, which prints exactly the thirteen.** Six
+serve the type wire this document specifies; the other seven belong to the
+table wire and are specified in SPEC-TABLES.md, because one binary reads one
+set of declarations and both wires are declared in it.
+
 Success is silent. Commands whose printed output is their answer (`id`,
-`projection`, `version`) print it; everything else prints nothing unless
-`--verbose` asks for the per-file report — the files `generate`
-wrote, the files the formatter rewrote, `check`'s ok line. Errors and
+`projection`, `build-version`, `version`) print it; everything else prints
+nothing unless `--verbose` asks for the per-file report — the files
+`generate` wrote, the files the formatter rewrote, `check`'s ok line, the
+header facts a cook was written with. Errors and
 diagnostics always reach stderr, and exit codes do not depend on verbosity.
+`pack` and `unpack` exit nonzero when their read report is not silent, and
+`--tolerate` accepts it.
 
 **Every command formats the unit's schema files in place before processing
-them.** One style, no options, no separate binary; a file already in format
+them**, `pack` and `unpack` excepted: those two are pointed at a config tree
+and only READ the declarations, and a verb that assembles a wire file
+rewriting the schema sources beside it is a surprise nobody asked for. One
+style, no options, no separate binary; a file already in format
 is never touched. The formatter carries two built-in refusers: it re-parses
 its own output and structurally compares the AST against the input's,
 refusing to write on any difference — a formatter must never change
@@ -1733,8 +1818,12 @@ Rules:
    dividers (`// ---- name ----`), and doc comments stay attached to what
    they precede.
 9. **schemafmt never reorders declarations** — a formatter formats; it does
-   not move code. (Tags are sorted by name (§4.8), so ordering carries no
-   meaning — the aspect layout (§2) stays a convention.)
+   not move code. (Declaration order at file scope carries no wire meaning
+   (§3.1), so the aspect layout (§2) stays a convention. The order of
+   variants INSIDE an enum, a `flags` or a union is the opposite — declared
+   order is the wire, an enum's ordinal and a `flags` bit position and a
+   union's tag alike (§4.2, §4.8) — and that is the second reason a
+   formatter never sorts.)
 
 ## 8. Repository layout
 
@@ -1755,10 +1844,10 @@ internal/check/        resolver, constant folding, shape checks, dominance rule,
 internal/format/       schemafmt
 internal/codegen/      c/  cpp/  csharp/  dart/  elixir/  golang/  java/  js/
                        rust/ — registered on the driver through the public
-                       generator interface; cpptable/, cstable/, gotable/,
-                       jstable/, rusttable/ and elixirtable/ are the table
-                       emitters six of those backends carry
-                       (SPEC-TABLES.md)
+                       generator interface; ctable/, cpptable/, cstable/,
+                       darttable/, elixirtable/, gotable/, javatable/,
+                       jstable/ and rusttable/ are the table emitters, one
+                       per backend, all nine (SPEC-TABLES.md)
 internal/fuzz/         compiler fuzzing (gate 6)
 internal/publicapi/    the acceptance gate: an external module, public API only
 examples/              the corpus — always compiles under this spec as written
