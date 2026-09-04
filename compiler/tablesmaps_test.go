@@ -269,3 +269,47 @@ func TestMapEntryIsNotARoot(t *testing.T) {
 		}
 	}
 }
+
+// TestToolRefusesMapsByName: the tool's engines do not carry the construct
+// yet, and every table surface it has refuses a map-bearing unit BY NAME
+// (docs/SPEC-TABLES.md §2.8, §15). Without the refusal the engine meets a kind
+// 14 field over element kind 13, decodes nothing into a slot it has no shape
+// for, and reports FRAMING DAMAGE — which sends its reader looking for a
+// corrupt file when the file is fine and the reader is the one that is short.
+func TestToolRefusesMapsByName(t *testing.T) {
+	u := unitFromSource(t, mapSrc)
+	c := New()
+	surfaces := map[string]func() error{
+		"Pack":          func() error { _, _, _, err := c.Pack(u, "Fleet", t.TempDir()); return err },
+		"Unpack":        func() error { _, err := c.Unpack(u, "Fleet", nil, t.TempDir()); return err },
+		"UnpackOneFile": func() error { _, err := c.UnpackOneFile(u, "Fleet", nil, t.TempDir()); return err },
+		"ReadReport":    func() error { _, err := c.ReadReport(u, "Fleet", nil); return err },
+		"Cook":          func() error { _, _, _, err := c.Cook(u, "Fleet", nil, CookOptions{}); return err },
+		"Uncook":        func() error { _, err := c.Uncook(u, "Fleet", nil); return err },
+	}
+	for name, call := range surfaces {
+		t.Run(name, func(t *testing.T) {
+			err := call()
+			if err == nil {
+				t.Fatalf("%s accepted a map-bearing unit — it must refuse by name", name)
+			}
+			for _, want := range []string{"Fleet.ships", "schema#380", "cpp"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("%s's refusal does not name %q: %v", name, want, err)
+				}
+			}
+			if strings.Contains(err.Error(), "framing") && !strings.Contains(err.Error(), "framing damage rather than") {
+				t.Errorf("%s blamed the framing: %v", name, err)
+			}
+		})
+	}
+}
+
+// TestToolTakesAMapFreeUnit: the refusal above is the CONSTRUCT's and not a
+// tax on every unit — a map-free one reaches the engines exactly as it did.
+func TestToolTakesAMapFreeUnit(t *testing.T) {
+	u := unitFromSource(t, optionalArraySrc)
+	if err := refuseToolMaps(u); err != nil {
+		t.Fatalf("the tool refused a map-free unit: %v", err)
+	}
+}

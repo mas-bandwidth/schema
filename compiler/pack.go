@@ -68,6 +68,9 @@ func publicReport(r tabletext.Report) TableReport {
 // refused `.DS_Store` would be a tool nobody could run on a checkout. Surface
 // them where a caller can see them.
 func (c *Compiler) Pack(u *ir.Unit, root, dir string) ([]byte, []string, TableReport, error) {
+	if err := refuseToolMaps(u); err != nil {
+		return nil, nil, TableReport{}, err
+	}
 	bytes, skipped, report, err := tablepack.Pack(tabletext.NewModel(u), root, dir)
 	return bytes, skipped, publicReport(report), err
 }
@@ -83,6 +86,9 @@ func (c *Compiler) Pack(u *ir.Unit, root, dir string) ([]byte, []string, TableRe
 // refusal — a root this engine does not decode, or bytes it cannot walk — and
 // nothing is written when one comes back.
 func (c *Compiler) Unpack(u *ir.Unit, root string, wire []byte, dir string) (TableReport, error) {
+	if err := refuseToolMaps(u); err != nil {
+		return TableReport{}, err
+	}
 	report, err := tablepack.Unpack(tabletext.NewModel(u), root, wire, dir)
 	return publicReport(report), err
 }
@@ -94,6 +100,9 @@ func (c *Compiler) Unpack(u *ir.Unit, root string, wire []byte, dir string) (Tab
 // and only the counters: a report is a fact about the DECODE, so the harness
 // asks for the decode rather than for a text it would throw away.
 func (c *Compiler) ReadReport(u *ir.Unit, root string, wire []byte) (TableReport, error) {
+	if err := refuseToolMaps(u); err != nil {
+		return TableReport{}, err
+	}
 	report, err := tablepack.ReadReport(tabletext.NewModel(u), root, wire)
 	return publicReport(report), err
 }
@@ -104,6 +113,9 @@ func (c *Compiler) ReadReport(u *ir.Unit, root string, wire []byte) (TableReport
 // text of the whole root is what a backend's `ToJson` produces, and comparing
 // the two is §17.1's third golden.
 func (c *Compiler) UnpackOneFile(u *ir.Unit, root string, wire []byte, dir string) (TableReport, error) {
+	if err := refuseToolMaps(u); err != nil {
+		return TableReport{}, err
+	}
 	report, err := tablepack.UnpackOneFile(tabletext.NewModel(u), root, wire, dir)
 	return publicReport(report), err
 }

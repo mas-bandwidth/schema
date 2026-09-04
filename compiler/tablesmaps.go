@@ -37,3 +37,23 @@ func refuseMaps(u *ir.Unit, target string) error {
 	return fmt.Errorf("unit declares a map in a table closure (%s) — a map is %s only today, and the %s form is a named follow-on; generate with %s, or spell the lookup as a bounded array of a `{ key, value }` table and search it yourself (docs/SPEC-TABLES.md §2.8, §11, §15)",
 		englishList(fields), englishList(carry), target, englishList(flags))
 }
+
+// refuseToolMaps is the TOOL's refusal (docs/SPEC-TABLES.md §2.8, §15): a unit
+// whose table closure declares a map is refused by name at every table surface
+// the tool has — pack, unpack, cook, cook-check and uncook — because
+// internal/tablewire does not carry the construct yet.
+//
+// It is here, at the surface, rather than in the engine, and it is NAMED rather
+// than left to the decoder. Without it the engine meets a kind 14 field whose
+// element kind is 13, decodes nothing into a slot it has no shape for, and
+// reports FRAMING DAMAGE — an answer that sends its reader looking for a
+// corrupt file when the file is fine and the reader is the one that is short.
+// A refusal that says which is which is the whole difference.
+func refuseToolMaps(u *ir.Unit) error {
+	fields := ir.MapFields(u)
+	if len(fields) == 0 {
+		return nil
+	}
+	return fmt.Errorf("unit declares a map in a table closure (%s) — the tool's engines do not carry the construct yet, so this command would read the map's bytes as framing damage rather than as the array of entries they are; the C++ reference carries it (--lang cpp), and the tool's half is schema#380's next PR (docs/SPEC-TABLES.md §2.8, §15)",
+		englishList(fields))
+}
