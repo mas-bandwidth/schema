@@ -829,7 +829,12 @@ whose cook and block accelerators read a pointered unit today.
 every id it used once each in a trailer at the end, so a field header spends
 one byte on the reference where the eight-byte id itself would have spent
 eight. The file opens with a one-byte FORM version — `1` for a file — which a
-reader that does not know it refuses by name. Field identity is a hash of the
+reader that does not know it refuses by name. *That form is written by the C++
+reference and by the tool; the eight other backends still write its previous
+form, and each is a named follow-on
+([#511](https://github.com/mas-bandwidth/schema/issues/511) to
+[#518](https://github.com/mas-bandwidth/schema/issues/518), PORTING.md M20).*
+Field identity is a hash of the
 field NAME, so any reader takes any data, both directions: unknown fields are
 skipped by their kind, absent fields take their declared defaults, a field
 whose kind changed is skipped rather than misdecoded, a field whose kind

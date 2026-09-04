@@ -121,6 +121,16 @@ they become part of the count as schema#349 and the per-construct follow-ons
 land them, one language at a time, with nothing in this data or this contract
 moving as they do.
 
+**AND ONE ABSENCE IS WIDER THAN A CLASS: the WIRE FORM ITSELF.** The id-table
+wire (docs/SPEC-TABLES.md §3) — the form byte, the reference-and-kind field
+header, the canonical LEB128 numbers and the trailing id table — is written by
+the C++ reference and by the tool, and the eight ports still write its
+previous form, so each port's negative control prints `dormant` rather than
+running: the surface it turns red is absent until that port carries the form.
+The eight are schema#511 (go), #512 (c), #513 (cs), #514 (dart), #515
+(elixir), #516 (js), #517 (java) and #518 (rust), and PORTING.md M20 is the
+register cell for each.
+
 **Absent is not failure, and the distinction is the whole reason the matrix
 exists.** A backend with no text form is missing a FEATURE; a backend whose text
 form writes the wrong bytes is failing a TEST. A harness that printed both the

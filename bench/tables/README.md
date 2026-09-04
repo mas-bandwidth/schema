@@ -45,7 +45,14 @@ table wire, so the ratio between them is the price of tolerance and nothing
 else.
 
 Pinned wire: **2391 bytes**, against BenchMixed's 438 — the ids, kinds and
-lengths, made visible.
+lengths, made visible. **1487 of those 2391 — 62% — are framing**: field id
+references, kind bytes, lengths, element counts and body terminators, not
+values. That count is the price of tolerance, stated as a number so the ratio
+is a measurement rather than an impression, and it is the figure
+docs/SPEC-TABLES.md's performance ladder cites from this page. What it does
+not license is a codec slower than those bytes require: the per-BYTE cost is
+this leg's own obligation, so a per-byte gap is a defect to explain or close
+and never the wire's price.
 
 ## The data, and why no runner builds an instance
 
