@@ -358,7 +358,7 @@ func (p *pins) num(key string) (float64, error) {
 // gate's whole authority, so a pin whose sitting is unstated is a number with
 // no provenance, and the gate refuses to read one.
 var requiredDirectives = []string{
-	"box.arch", "box.cpu", "box.os",
+	"box.arch", "box.cpu", "box.os", "box.host",
 	"band.pct", "spread.max.pct",
 	"sitting.date", "sitting.host", "sitting.uptime", "sitting.commit",
 	"sitting.compiler", "sitting.opt", "sitting.repeats", "sitting.worst.pct",
@@ -398,10 +398,17 @@ func (p *pins) validate() error {
 	return nil
 }
 
+// onThisBox: the identity is the MACHINE, not the machine model. Two laptops
+// carrying the same chip differ in thermal headroom, memory and whatever else
+// is running on them, and a shared certification runner can report the same
+// brand string as the box these pins came off. Naming the host as well makes
+// an accidental match impossible, which is what keeps the advisory path
+// advisory.
 func (p *pins) onThisBox() bool {
 	return p.directives["box.arch"] == boxArch() &&
 		p.directives["box.os"] == boxOS() &&
-		p.directives["box.cpu"] == boxCPU()
+		p.directives["box.cpu"] == boxCPU() &&
+		p.directives["box.host"] == boxHost()
 }
 
 // ---------------------------------------------------------------------------
@@ -562,8 +569,8 @@ func cmdCheck(args []string) int {
 
 	if !p.onThisBox() {
 		fmt.Printf("NOT THE PINNED BOX.\n")
-		fmt.Printf("  pinned   %s / %s / %s\n", p.directives["box.arch"], p.directives["box.os"], p.directives["box.cpu"])
-		fmt.Printf("  this box %s / %s / %s\n", boxArch(), boxOS(), boxCPU())
+		fmt.Printf("  pinned   %s / %s / %s / %s\n", p.directives["box.arch"], p.directives["box.os"], p.directives["box.cpu"], p.directives["box.host"])
+		fmt.Printf("  this box %s / %s / %s / %s\n", boxArch(), boxOS(), boxCPU(), boxHost())
 		fmt.Printf("A rate in messages per second is a fact about one machine, and the gate\n")
 		fmt.Printf("will not divide one box's number by another's. Re-pin from this box with a\n")
 		fmt.Printf("pull request that states its sitting, or run the gate where the pins were cut.\n")
@@ -654,6 +661,7 @@ func cmdPin(args []string) int {
 		"box.arch":          last.arch,
 		"box.cpu":           last.cpu,
 		"box.os":            last.os,
+		"box.host":          last.host,
 		"sitting.date":      last.date,
 		"sitting.host":      last.host,
 		"sitting.uptime":    last.uptime,

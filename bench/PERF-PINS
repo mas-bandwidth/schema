@@ -17,7 +17,7 @@
 #
 #   make perf-gate           measure and compare
 #   make perf-gate-control   plant a read cost, watch the gate go red
-#   make perf-gate-pin       re-measure these numbers (this file, alone, in a PR)
+#   make perf-gate-pin       re-cut these numbers and the sitting they came off
 #
 # ---------------------------------------------------------------------------
 # WHAT IS PINNED, AND WHY THE READ ROW IS CALLED round_trip
@@ -54,9 +54,9 @@
 # which runs seven complete sittings, takes the median of each row across them,
 # and reports the largest departure of any single sitting from its row's
 # median. sitting.worst.pct below records what that measurement said on the day
-# these pins were cut, and band.pct is that number doubled. Doubling is the honest
-# margin for a box that was quiet then and may be merely quietish now, and it
-# is stated here rather than folded silently into a rounder-looking figure.
+# these pins were cut, and band.pct is that number doubled. Doubling is the
+# honest margin for a box that was quiet then and may be merely quietish now,
+# and it is stated here rather than folded silently into a rounder figure.
 #
 # WHAT THE BAND COSTS. A regression smaller than band.pct is invisible to this
 # instrument. That is a real limit and this file says so instead of implying
@@ -85,9 +85,18 @@
 #
 # A rate in messages per second is a fact about one machine. Off the box named
 # below the gate REFUSES to render a verdict rather than divide one box's
-# number by another's silicon. What still runs anywhere is the negative
-# control, whose verdict is a ratio inside one sitting and needs no pin at all,
-# and that is what certification runs, on hardware nobody here owns.
+# number by another's silicon.
+#
+# The identity is the MACHINE and not the machine model, which is why box.host
+# is part of it. Two laptops carrying the same chip differ in thermal headroom,
+# in memory, and in whatever else is running on them, and a shared
+# certification runner can report the same brand string as the box these came
+# off. Naming the host makes an accidental match impossible, which is what
+# keeps certification's advisory path advisory.
+#
+# What still runs anywhere is the negative control, whose verdict is a ratio
+# inside one sitting and needs no pin at all, and that is what certification
+# runs, on hardware nobody here owns.
 #
 # ---------------------------------------------------------------------------
 # RE-PINNING, on the model bench/LOCK's standing gate uses
@@ -107,8 +116,8 @@
 #
 # `make perf-gate-pinlock` runs on every pull request, costs no measurement,
 # and refuses exactly two things: pins that moved while sitting.date,
-# sitting.uptime and sitting.commit did not, and a sitting.commit this branch
-# does not contain. It also prints each pin's move as a percentage, so a
+# sitting.uptime and sitting.commit did not, and a sitting.commit that this
+# branch does not contain. It prints each pin's move as a percentage, so a
 # reviewer sees the size of a re-pin without diffing two columns of digits.
 #
 # `perfgate pin` fills the sitting.* lines in for you, and refuses outright
@@ -122,6 +131,7 @@
 box.arch            unpinned
 box.cpu             unpinned
 box.os              unpinned
+box.host            unpinned
 
 # The gate's two widths, both in percent:
 
