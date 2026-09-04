@@ -4075,3 +4075,259 @@ invalidate what.
 **You now have** an asset pipeline: designer tree, then wire, then cook, opened
 by pointer in constant time, keyed so staleness is impossible, with the
 tolerant wire as the fallback that never breaks.
+
+---
+
+## Part 12: The block form: a frame another language reads in place
+
+### The problem
+
+Starlight's simulation is C++ and its tools overlay is C. Sixty times a second
+the sim produces "what to draw", thousands of ships and lasers, and the other
+side wants to **point at** that memory and iterate rather than deserialize it.
+Serializing 60 Hz bulk data that never leaves the machine is paying a tolerance
+tax on a same-build handoff.
+
+### You already declared it
+
+Two constants join `Game.schema`, `const MaxShips = 4096` and
+`const MaxLasers = 8192`, and `Render.schema` is a new file in the same unit:
+
+```
+package starlight
+
+table RenderShip
+{
+    x     float32
+    y     float32
+    angle float32
+    hull  float32 = 1.0
+}
+
+table RenderLaser
+{
+    x0 float32
+    y0 float32
+    x1 float32
+    y1 float32
+}
+
+table RenderFrame
+{
+    frame  uint64
+    ships  [..MaxShips]RenderShip
+    lasers [..MaxLasers]RenderLaser
+}
+```
+
+Nothing there is new: ordinary bounded arrays of ordinary fixed tables, and
+`RenderFrame` still has `Measure`, `Save`, `Load` and a cook like any table.
+Adding three tables passes the baseline, and the unit still generates for all
+nine:
+
+```
+$ schema check .
+$ echo $?
+0
+$ for l in c cpp cs dart elixir go java js rust; do printf "%-8s " $l; schema generate --lang $l --out /tmp/g-$l . && echo ok; done
+c        ok
+cpp      ok
+cs       ok
+dart     ok
+elixir   ok
+go       ok
+java     ok
+js       ok
+rust     ok
+```
+
+But every fixed table also gets a third form of the same declaration, the
+**block**. The instance at the front carries, per array, where its rows start,
+how many there are, and how far apart they sit. The rows follow out of line at
+a fixed pitch. The other side reads three numbers and points.
+
+You reach for it by including it. `RenderBlock.h` and `RenderBlock.cpp` sit
+beside `RenderTable.h`, and a project that never blocks a table compiles none
+of it. Which arrays move out of line is one rule: the table's own bounded
+arrays of structs, and nothing else. A row's pitch is its `sizeof`. A
+variable-length table has no block form, because a pointer means no fixed
+pitch, so `Route` from Part 8 has none and `RenderFrame` does.
+
+### Produce it, wide and allocation free
+
+`produce.cpp`, entire:
+
+```cpp
+#include "RenderBlock.h"
+#include <cstdio>
+
+int main()
+{
+    using namespace starlight;
+
+    // one extent sized from the declared maxima, allocated ONCE
+    // through YOUR alloc and free pair
+    RenderFrameBlockStorage storage;
+    if ( !storage.Create( TableBlockDefaultAllocator() ) ) { return 1; }
+
+    RenderFrameCounts counts = {};
+    counts.ships = 3000;                          // this frame's counts
+    counts.lasers = 500;
+
+    RenderFrameBlock block;
+    if ( !RenderFrameBlockBegin( block, storage, counts ) ) { return 1; }
+    block.projection->frame = 1207;
+
+    RenderShip * ships = RenderFrameShips( block );   // the array's typed base
+    for ( int32_t i = 0; i < counts.ships; i++ )      // worker t fills [begin, end)
+    {
+        ships[i].x = (float) i;
+        ships[i].y = (float) -i;
+    }
+
+    int64_t bytes = RenderFrameBlockBytes( block );   // the used extent, for the handoff
+    printf( "block: %lld bytes of %lld max (frame %llu, %d ships)\n",
+        (long long) bytes, (long long) RenderFrameBlockMaxBytes,
+        (unsigned long long) block.projection->frame, counts.ships );
+    printf( "build version 0x%016llx\n", (unsigned long long) BuildVersion );
+
+    FILE * f = fopen( "frame.block", "wb" );
+    fwrite( storage.base, 1, bytes, f );
+    fclose( f );
+    printf( "wrote frame.block\n" );
+
+    RenderFrameCounts too_many = counts;
+    too_many.ships = 5000;
+    TableBlockRefusal refusal;
+    if ( !RenderFrameBlockBegin( block, storage, too_many, &refusal ) )
+    {
+        printf( "refused: array %s count %lld max %lld\n", refusal.array,
+            (long long) refusal.count, (long long) refusal.maximum );
+    }
+    return 0;
+}
+```
+
+```
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o produce produce.cpp gen/RenderBlock.cpp gen/RenderTable.cpp
+$ ./produce
+block: 56064 bytes of 196672 max (frame 1207, 3000 ships)
+build version 0x1b087f2fcefc4628
+wrote frame.block
+refused: array ships count 5000 max 4096
+```
+
+`Begin` lays the block out for **this frame's** counts, so the handoff is 56 KB
+and not the 196 KB maximum, which `RenderFrameBlockMaxBytes` names and which is
+the once-ever allocation. Fill from four threads over disjoint ranges, because
+nothing in the fill path locks or allocates. That is an obligation on the
+generated code and not a hope.
+
+Ask for more than you declared and the refusal names everything, through a
+three-field struct:
+
+```cpp
+struct TableBlockRefusal
+{
+    const char * array = NULL;
+    int64_t count = 0;
+    int64_t maximum = 0;
+};
+```
+
+A block stays valid until the next `Begin` on that storage, so double-buffer
+with two storages if the consumer reads while you fill.
+
+### Consume it, from another language, with one check
+
+The same declaration generates the read half everywhere. Here is **C reading
+the block C++ just wrote**. The bytes went through a file for the demo, and a
+pointer handoff is the production path. `consume.c`, entire:
+
+```c
+#include "RenderBlock.h"
+#include <stdio.h>
+#include <stdlib.h>
+
+int main( void )
+{
+    FILE * f = fopen( "frame.block", "rb" );
+    fseek( f, 0, SEEK_END );
+    long bytes = ftell( f );
+    fseek( f, 0, SEEK_SET );
+
+    /* the base must be 64-byte aligned, whatever the transport was */
+    void * aligned = NULL;
+    if ( posix_memalign( &aligned, 64, (size_t) bytes ) != 0 ) { return 1; }
+    if ( fread( aligned, 1, (size_t) bytes, f ) != (size_t) bytes ) { return 1; }
+    fclose( f );
+
+    RenderFrameBlock block;
+    if ( !render_frame_block_open( &block, aligned, (int64_t) bytes ) )
+    {
+        printf( "not this build's block\n" );
+        return 0;
+    }
+
+    RenderShip * ships = RenderFrameships_span( &block );
+    TableBlockRows rows = RenderFrameShips( &block );
+    printf( "c read: frame=%llu ships=%d ships[2999]=(%g, %g)\n",
+        (unsigned long long) block.projection->frame, rows.count,
+        ships[2999].x, ships[2999].y );
+    printf( "c build version 0x%016llx\n", (unsigned long long) SCHEMA_STARLIGHT_BUILD_VERSION_VALUE );
+    free( aligned );
+    return 0;
+}
+```
+
+```
+$ schema generate --lang c --out genc .
+$ cc -std=c99 -Wall -Wextra -Werror -I genc -o consume consume.c genc/RenderBlock.c genc/RenderTable.c
+$ ./consume
+c read: frame=1207 ships=3000 ships[2999]=(2999, -2999)
+c build version 0x1b087f2fcefc4628
+```
+
+The two builds carry the same build version, `0x1b087f2fcefc4628` in the C++
+header and the C source alike. `BlockOpen` checks the prologue, which is the
+magic, the byte order, the **build version**, the base's 64-byte alignment,
+every count against its declared maximum, and every extent, and then you index.
+Both sides assert every row size and field offset against the compiler's shared
+layout model at compile time, so a toolchain that disagrees stops and names the
+record and the field rather than garbling a frame.
+
+Two consumer obligations that the first integration always trips on.
+
+**Alignment binds the consumer.** The producer's storage is 64-byte aligned, so
+a consumer that got the bytes from a file or a socket must hand `Open` 64-byte
+aligned memory too. The C program above uses `posix_memalign`, and a C#
+consumer uses native memory because a pinned `byte[]` guarantees nothing.
+
+**It is a same-build contract.** Give `RenderShip` one more field, rebuild only
+the C side, and:
+
+```
+table RenderShip
+{
+    x      float32
+    y      float32
+    angle  float32
+    hull   float32 = 1.0
+    shield float32 = 0.0
+}
+```
+
+```
+$ schema generate --lang c --out genc .
+$ cc -std=c99 -Wall -Wextra -Werror -I genc -o consume consume.c genc/RenderBlock.c genc/RenderTable.c
+$ ./consume
+not this build's block
+```
+
+Every schema edit is a regenerate on both sides. That is the trade for zero
+version machinery in a 60 Hz path: nothing to absorb, nothing to ask for by
+name. Data that outlives builds rides the wire, which this same table still
+has. Take `shield` back out and `./consume` reads the frame again.
+
+**You now have** the simulation to renderer handoff: filled in parallel at
+frame rate, read in place from another language, guarded by one comparison.
