@@ -549,7 +549,7 @@ index. There is no mode: no implicit table, no width byte, no magic, no build
 version in the header. The measurements that chose this layout are on #435,
 and SPEC-TABLES.md §3 is the encoding.
 
-## The message form, and an id table announced once a connection
+## The message form: a batch of bitpacked bodies under one announced vocabulary
 
 A table file carries its own id table, and that is the right trade for the
 shape the wire was designed against: a config bin or a save naming forty
@@ -560,96 +560,172 @@ nothing to amortize it against. Measured on #523, three ordinary backend
 messages ran 106, 273 and 104 bytes against proto3's 49, 189 and 40, and the
 id table alone was 48 of the first and 56 of the third.
 
-**The message form is form byte `2`, and it moves the id table off the message
-and onto the connection.** A form-`2` wire is the form byte and the root body,
-with no trailer. The three messages become 58, 225 and 48, which turns a loss
-of 2.2x, 1.4x and 2.6x against proto3 into one of about 1.2x, and a message
-whose fields sit at their declared defaults goes from 43 bytes to 27 against
-proto3's 40, which is an outright win. SPEC-TABLES.md §3.3 is the encoding.
+**The message form is form byte `2`, and it does two things.** It moves the id
+table off the message and onto the connection, announced once. And it BITPACKS
+what is left, so a body is a bit stream of references at the width the
+vocabulary needs and values at the widths their declarations state, with no
+kind byte, no length and no alignment inside a body or between bodies.
+SPEC-TABLES.md §3.3 is the encoding.
 
-**The table is the UNIT's whole vocabulary, announced once and never again.** A
-peer sends an ID TABLE MESSAGE before its first form-`2` message: an ordinary
-form-`1` file whose one required field is the build version under a reserved id,
-and whose trailer is every id the peer's unit closure can put on this wire, in a
-compiler-settled order. Each direction has its own. There is no
-re-announcement and no state machine: a second announcement on a connection is
-refused by name, and a refused announcement sets no table at all, so every
-message on that connection is then refused for want of one. A build change is a
-new binary, a new process and a new connection.
+**The design statement is the owner's.** The message form is the table wire
+optimized for BANDWIDTH, versioned by name like every table, as close to the
+PACKET wire as tolerance allows. The residual over the packet wire is the price
+of evolution: a reference per field so a reader can name it or step over it,
+and a terminator per body. On a sparse message elision puts the form UNDER the
+packet wire, because the packet wire is positional and pays for every field
+whether or not it holds anything.
+
+**The scope is the ANNOUNCEMENT, not the transport.** The requirement moved one
+level in the second round. What the form needs is that the announcement arrive
+ONCE, RELIABLY, BEFORE THE FIRST BODY, which a connect handshake gives it or a
+reliable channel does, and that it never arrive again for the life of the
+connection. The BODIES then ride ANY channel, reliable or not, ordered or not,
+one self-delimiting batch per datagram on an unreliable one. A body from a peer
+that never announced is refused by name. A second announcement is refused by
+name and closes the connection, and a refused announcement sets no vocabulary at
+all. A stateless request-response transport stays out of scope by name, because
+an announcement would ride every request and cost more than the id table it
+replaced, and the file form rides there. yojimbo's connect handshake is the
+carrier the form was shaped against (yojimbo#344): reliable by retry, ahead of
+every channel, and needing no knowledge of what it carries.
+
+**The primitive is a BATCH.** The owner's ruling: *"Make sure that the primitive
+is that we are sending a number of messages, not a single message. eg. data
+oriented principles."* `SaveMessages` takes an array of bodies of one root and
+writes one buffer, `LoadMessages` reads one buffer into the caller's storage,
+and a single message is the batch of one. On the wire that is one form byte, one
+count, and the bodies as one continuous bit stream with no per-message
+alignment, each ending at its own zero reference and the batch adding none of
+its own. There is no singular verb. The batch is stated as the unit so that
+three later passes have somewhere to stand, none of them in this version: a
+value repeated across a batch written once, a delta between consecutive bodies
+of one table, and a batch-level dictionary the bodies index.
+
+**The vocabulary is the UNIT's whole closure, announced once and never again.**
+A peer sends an announcement before its first body: an ordinary form-`1` file
+whose two required fields are the build version under a reserved id and the
+VOCABULARY under a second, and whose vocabulary is every entry the peer's unit
+closure can put on this wire, in a compiler-settled order. **An entry is a
+TRIPLE, an id, a wire kind and a SHAPE**, the shape being the width and range
+facts a reader needs to skip a field it cannot name and to decode one whose
+declaration has moved. That is what pays for there being no kind byte and no
+length on the wire, and it is what keeps every row of the evolution table above
+standing: a range, a capacity and an array bound are WIDTH facts under
+bitpacking, and a receiver that meets a width it did not expect reads the
+sender's, reconstructs the value from the sender's own base, and applies its own
+bound, counting `clamped`, rather than losing the field.
 
 **Three properties follow from announcing the unit rather than the message.**
-The table is a pure function of the build version, so two peers at one build
-derive one table and the key is literally a key. The whole announcement is
-therefore a compile-time constant of the unit, and the writer's slot numbers are
-compile-time constants baked into the generated field headers, so there is no
-runtime lookup on the send path. And the receiver resolves once, at the
-announcement, and dispatches every message after it through one array index.
+The vocabulary is a pure function of the build version, so two peers at one
+build derive one vocabulary and the key is literally a key. The whole
+announcement is therefore a compile-time constant of the unit, and the writer's
+slot numbers are compile-time constants baked into the generated field headers,
+so there is no runtime lookup on the send path. And the receiver resolves once,
+at the announcement, and dispatches every body after it through one array index.
 The price is that a unit pays for its whole vocabulary rather than the part a
 connection uses, and for a tail that carries the node-table id, the blob type
 ids and every table's name id whether the unit has a pointer or not, so that a
 slot number never drifts under an edit that has nothing to do with it: a unit of
-500 ids announces about 4 KB once.
+500 entries announces about 5 KB once.
 
-**The build version KEYS the table and does not gate the connection.** Promise
-8 stands exactly as written: peers connect on the protocol id and may differ in
-build version, and a receiver never refuses a message because the announced
-build version is not its own. What the key buys is that a build's table is
-derivable from that build alone, that a refusal can name the build version it
-could not resolve, and that a vocabulary is traceable to one compilation of one
-unit in a log.
+**The build version KEYS the vocabulary and does not gate the connection.**
+Promise 8 stands exactly as written: peers connect on the protocol id and may
+differ in build version, and a receiver never refuses a body because the
+announced build version is not its own. What the key buys is that a build's
+vocabulary is derivable from that build alone, that a refusal can name the build
+version it could not resolve, and that a vocabulary is traceable to one
+compilation of one unit in a log.
 
-**A peer with no table for the connection refuses the message by name.** It is
-the same refusal the form byte already carries: nothing is decoded, no counter
-moves, and `malformed` does not fire. The recovery is the sender's, and both
-shapes of it are already in the design. The sender opens a new connection and
-announces first, through whatever its own application declares for the purpose.
-Or the sender writes the file form, which carries its own table and needs no
-connection.
+**Form byte `2` keeps its number, and the byte-framed body it carried is
+replaced rather than versioned around.** That body landed in the tree and was
+never released: no tagged version carries it, no port ever grew a message verb,
+and the only readers that ever existed are the reference and the tool in the
+same repository. A form byte with no reader outside the tree that defines it is
+a number and not a wire. Taking `3` would have left `2` as a form no writer
+writes, which every reader in nine languages would carry forever or refuse by
+name and explain in every page. The form byte is exactly what made that safe: a
+reader meets a byte it does not know, refuses by name, and never reports damage.
 
-**A connection here is a transport connection.** One TCP or WebSocket
-connection, or one reliable ordered stream or channel of QUIC or a
-reliable-UDP transport, counted per channel. A restart is a new connection with
-empty tables, and a receiver caches nothing across connections. A stateless
-request-response transport is out of scope for this form, because an
-announcement would ride every request and cost more than the trailer it
-replaced. The file form rides there.
+**The cost rule is this form's own, and it is not the diagnostics law.** The
+owner: *"It's OK if bit reading is slightly slower than a byte read (it probably
+will be). We just need to get it less bytes than protobufs, and not be massively
+slower."* So the form is accepted on fewer bytes than proto3, on the three
+measured messages and on the general shape, and on read and write within a
+stated, measured factor of the byte body, measured later at any time. #546's law
+prices something different: a DIAGNOSTIC must cost nothing on the read or write
+path, because it buys the reader information and never buys the wire a byte. A
+wire is allowed to spend CPU to buy bandwidth. The two coexist and neither is an
+exception to the other.
 
-**Nothing else moves.** No kind is spent, no payload changes, no skip rule
-changes. The protocol id does not move, the build version does not move, the
-baseline does not move, the text form does not move, the cook and the block do
-not move, and no row of the evolution table above moves, because a reader sees
-every edit exactly as it saw it before. The read report keeps its counters and
-their meanings. The packet wire is untouched and out of scope, for the reason
-this form exists at all: the packet wire is same-or-refuse on the protocol id,
-so both peers must ship together, and a deployed game client and a backend do
-not.
+**What the arithmetic says.** Bytes, hand-sized from each wire's own model over
+the same instances, with the packet wire in the table so the residual is a
+number:
+
+  | instance | packet wire | file form | byte body | bitpacked body | proto3 |
+  |---|---:|---:|---:|---:|---:|
+  | `LoginRequest`, full | 46 | 106 | 58 | 51 | 49 |
+  | `MatchResult`, full | 115 | 273 | 225 | 142 | 189 |
+  | `StorePurchase`, full | 36 | 104 | 48 | 41 | 40 |
+  | `LoginRequest`, defaults | 14 | 10 | 2 | 3 | 0 |
+  | `MatchResult`, defaults | 115 | 43 | 27 | 10 | 40 |
+  | `StorePurchase`, defaults | 15 | 10 | 2 | 3 | 2 |
+  | the three full, one batch | 196 | 483 | 331 | 230 | 278 |
+
+Against the byte body it is 12%, 37% and 15% off, and 63% off `MatchResult` at
+its defaults. Against proto3 the batch is 17% under and `MatchResult` is 25%
+under, and the two blob-shaped messages are one and two bytes OVER, which the
+page states rather than averages away: `player_id`, `client_build` and
+`price_minor` are declared BARE, so this wire writes 64, 32 and 32 raw bits
+where proto3 writes a varint whose value happens to be small. Declaring the
+ranges those fields actually hold closes it and costs nothing new. Against the
+packet wire the residual is 5, 27 and 5 bytes, and on `MatchResult` 25 of the 27
+are ten rows of three references and a terminator, which is the price of naming
+a field inside an array of tables.
+
+**Damage is terminal for a batch, and that is the one thing tolerance gives up.**
+A byte-framed body has a place to resume, because its length says where the next
+field begins. A bit stream does not. So a reference above the entry count, a
+length running past the batch, and exhaustion each stop the batch: the fields
+decoded before the damage stand, one `malformed` counts, and nothing after is
+read, which is the packet wire's own answer reached for the same reason. What
+does NOT stop is EVOLUTION: an unknown field is stepped over exactly, by the
+width its announced shape gives it, and counted, which is the case that actually
+happens between two builds.
+
+**Nothing else moves.** No kind is spent, no payload of the file form changes,
+no skip rule of the file form changes. The protocol id does not move, the build
+version does not move, the baseline does not move, the text form does not move,
+the cook and the block do not move, and no row of the evolution table above
+moves. The read report keeps its counters and their meanings. The packet wire is
+untouched apart from one token reserved by name, `column`, which no line emits
+and which holds the door for a later column layout (SPEC.md §4.11, schema#554).
 
 **Retention crosses the forms in one direction, and refuses in the other.** A
-message body loads with retention exactly as a file does, since it is framed
-the same way under the same skip rules. A `SaveRetain` writing form `2` refuses
-by name and returns `-1`, because a form-`2` writer names ids through slots of a
-compiler-settled vocabulary and a retained id is by definition one that
-vocabulary does not contain. It is a misuse refusal on §6.6's own precedent and
-never a silent drop. A caller that must carry unknowns across a rewrite writes
-the file form. A relay that must forward them forwards the sending peer's
-announcement and its message bytes verbatim, which loses nothing and costs
-nothing.
+body loads with retention exactly as a file does. A `SaveRetain` writing form `2`
+refuses by name and returns `-1`, because a form-`2` writer names entries through
+slots of a compiler-settled vocabulary and a retained id has neither a slot nor
+an announced shape. It is a misuse refusal on §6.6's own precedent and never a
+silent drop. A caller that must carry unknowns across a rewrite writes the file
+form. A relay that must forward them forwards the sending peer's announcement
+and its batch bytes verbatim, which loses nothing and costs nothing.
 
 Two sharp edges come with it, and both are the same fact seen twice.
 
-- **A message is not readable on its own.** A capture without the connection's
+- **A batch is not readable on its own.** A capture without the connection's
   announcement cannot be decoded, and a form-`2` wire stored as a file is
   refused by name rather than read. proto3 makes the same trade, since a
   `.proto` is required out of band, and the build version is what makes this
-  one nameable: a receiver says which build's table it lacks. `schema pack`
+  one nameable: a receiver says which build's vocabulary it lacks. `schema pack`
   and `schema unpack` write and read the FILE form, and reach the message form
-  only when asked: `pack --message` writes one and `--announce` writes the
-  unit's announcement beside it, and `unpack --announce` reads a message back
-  against that announcement, because the table is the other half of the wire.
-- **The form needs an ordered, reliable channel, and the announcement has to
-  arrive first.** On an unordered or lossy transport, or a stateless one, the
-  answer is the file form, which is self-contained, or the packet wire, which
-  is positional and carries no identity at all.
+  only when asked: `pack --message` writes a batch and `--announce` writes the
+  unit's announcement beside it, and `unpack --announce` reads a batch back
+  against that announcement, because the vocabulary is the other half of the
+  wire.
+- **The announcement has to arrive first, and it has to arrive.** That is the
+  form's whole requirement and it is a requirement on ONE message, not on the
+  channel the bodies ride. Where nothing can carry it once and reliably, the
+  answer is the file form, which is self-contained, or the packet wire, which is
+  positional and carries no identity at all.
 
 ## The text form
 
@@ -919,7 +995,8 @@ still open.
   each distinct id once at eight bytes, so a three-field message is about 45
   bytes and an empty table is ten. A stream whose peers ship together is a
   `type` stream; one whose peers do not is the message form above, which sheds
-  the trailer and takes that empty table to two bytes.
+  the trailer, bitpacks what is left, and takes that empty table to three bytes,
+  a form byte, a batch count and a terminator.
 - **Deep pointered saves have no text form** past the text reader's depth
   cap of 128 levels; the "debug an old file" pattern hits that wall on the
   largest saves.
@@ -947,9 +1024,12 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 
 - #435: the uniform 64-bit wire, the form byte, the id table, the enum kind,
   flags bit positions in the build version, the reserved-id refusals.
-- #523: the message form, form byte `2`, the id table message and its reserved
-  build-version id, the announced unit vocabulary and its compiler-settled
-  order, the connection table's bound, and the names §11 owes it.
+- #523: the message form, form byte `2`, the batch primitive and the bitpacked
+  body, the announcement and its two reserved ids, the announced unit vocabulary
+  of id, kind and shape triples in its compiler-settled order, the two
+  announcement bounds, and the names §11 owes it.
+- #554: the `column` projection token, reserved by name on the packet wire and
+  emitted nowhere.
 - #434: the reserved escape kind.
 - #463: the previous-release differential gate — the corpus generated by the
   previous release and the new one, byte-compared under an equal id.

@@ -167,7 +167,8 @@ no payload contributes that it has none. The
 projection also carries FROZEN tokens — `table=false message=false` on
 every type line and `round=nearest` on every compressed-float field line —
 kept so the refusals of §4.11 moved no id; dropping one is a
-`ProjectionVersion` bump.
+`ProjectionVersion` bump. **`column` is a token RESERVED BY NAME and emitted
+nowhere** (§4.11), so no id moves for it either.
 
 **Why the names, when the ordinal is the wire.** An enum value rides as its
 declaration ordinal, a flags variant as its bit position, a union arm as its
@@ -1158,7 +1159,12 @@ classic twin, which is the wire oracle for the stated model.
 
 Arrays: the element may be any scalar or named type; arrays of arrays are not
 in v1 (wrap the inner array in a type). Runtime-count arrays carry their own
-count on the wire — there is no separately-declared count field in v1.
+count on the wire — there is no separately-declared count field in v1. **An
+array of a type is written INSTANCE BY INSTANCE and the alternative is reserved
+rather than declined**: a COLUMN layout, all of field 1 then all of field 2,
+costs the identical bits bitpacked and pays only behind a compression stage, so
+the door is held open by the reserved `column` token (§4.11, schema#554) and no
+byte moves today.
 
 **Wire fidelity.** For every legal write, the bits are identical to the named
 classic twins. **Classic `serialize_wstring` is the normative twin for
@@ -1712,6 +1718,19 @@ construct; changing a token is a `ProjectionVersion` bump, taken
 deliberately or not at all. `table` declarations (SPEC-TABLES.md) never
 enter the projection at all — a `type` line's token is `table=false`
 forever, and packets and tables version independently.
+
+**`column` IS RESERVED AS A PROJECTION TOKEN, AND THE RESERVATION IS OF THE
+NAME AND NOTHING ELSE** (schema#554). No line emits it, no `ProjectionVersion`
+carries it and no byte of any wire moves for it. It is held so that the token a
+LATER WIRE LAW spends on a COLUMN LAYOUT for an array of one type is the one
+every page already names: N instances written all of field 1, then all of field
+2, which costs the same bits bitpacked and pays only once a compression stage
+sits behind it, because runs of like values are what delta and entropy coding
+consume. Reserving the name costs nothing today, on kind `34`'s own precedent
+(SPEC-TABLES.md §3), and it keeps the token table and the declined-construct
+list one document rather than two. The message form's batch (SPEC-TABLES.md
+§3.3) is the first place a batch exists on a wire at all, and this is the door
+the same idea walks through for types.
 
 ### 4.12 Wide strings: `wstring(N)`
 

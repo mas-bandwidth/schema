@@ -3345,9 +3345,11 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 var tableGeneratedVerbs = []string{
 	"Measure", "MeasureBody", "Save", "SaveInto", "SaveBody", "SaveBodyFields", "Load", "LoadBody",
 	// the MESSAGE FORM's three suffixes (docs/SPEC-TABLES.md §3.3), beside the
-	// file form's own: a message is measured, saved and loaded exactly as a
-	// file is, and only where its id table lives differs
-	"MeasureMessage", "SaveMessage", "LoadMessage",
+	// file form's own. They are PLURAL because the form's primitive is a BATCH
+	// of bodies of one root and a single message is the batch of one, and the
+	// singular verbs are not claimed beside them: a surface with both would let
+	// a caller write one message a call and never learn where the bandwidth is
+	"MeasureMessages", "SaveMessages", "LoadMessages",
 	"Reset", "LoadMeasure", "LoadBuilder", "TableType", "Builder",
 	"At", "Emplace", "Pack", "PackMeasure",
 	// the FLAT NODE TABLE's own spellings (docs/SPEC-TABLES.md §3.1): the
