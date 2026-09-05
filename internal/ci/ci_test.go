@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -229,4 +230,106 @@ func TestEveryProjectTargetsThePinnedSDK(t *testing.T) {
 			}
 		}
 	}
+}
+
+// makeSources is every file the build itself is written in, relative to the
+// repo root: the root Makefile and the per-language includes it pulls in.
+var makeSources = []string{"Makefile", "make"}
+
+// goPackageArg matches a repo-relative Go package path as it appears on a
+// `go run` / `go build` / `go test` command line: a leading ./ and no wildcard.
+var goPackageArg = regexp.MustCompile(`(?:^|\s)(\./[A-Za-z0-9_./-]+)`)
+
+// goInvocation matches one go subcommand invocation, after line continuations
+// have been joined.
+var goInvocation = regexp.MustCompile(`\bgo\s+(?:run|build|test|vet)\b[^\n]*`)
+
+// TestEveryPackageTheBuildRunsIsCommitted requires every repo-relative Go
+// package the Makefile invokes to be TRACKED BY GIT, not merely present on the
+// author's disk.
+//
+// The class it closes: .gitignore hid a source tree, `git add` skipped it
+// without a word, the author's `make test` stayed green because the file was
+// right there in the working copy, and the first fresh checkout to run the
+// chain was main's own certification. tools/sabotage, which four wide-text
+// negative controls run, landed that way in #556 and reddened every certify
+// leg at `make test`. A working tree cannot see the difference between a file
+// it owns and a file the repository owns. Git can, so the gate asks git.
+func TestEveryPackageTheBuildRunsIsCommitted(t *testing.T) {
+	root := repoRoot(t)
+
+	var text strings.Builder
+	for _, src := range makeSources {
+		path := filepath.Join(root, src)
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", src, err)
+		}
+		files := []string{path}
+		if info.IsDir() {
+			files, err = filepath.Glob(filepath.Join(path, "*.mk"))
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, file := range files {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("read %s: %v", file, err)
+			}
+			// a recipe wraps across lines with a trailing backslash, and the
+			// package path is often on the wrapped half
+			text.WriteString(strings.ReplaceAll(string(data), "\\\n", " "))
+			text.WriteString("\n")
+		}
+	}
+
+	packages := map[string]bool{}
+	for _, invocation := range goInvocation.FindAllString(text.String(), -1) {
+		for _, match := range goPackageArg.FindAllStringSubmatch(invocation, -1) {
+			pkg := match[1]
+			if strings.Contains(pkg, "...") {
+				continue
+			}
+			packages[strings.TrimSuffix(pkg, "/")] = true
+		}
+	}
+	if len(packages) == 0 {
+		t.Fatal("no repo-relative go packages found in the make sources: this gate is looking at the wrong text")
+	}
+
+	names := make([]string, 0, len(packages))
+	for pkg := range packages {
+		names = append(names, pkg)
+	}
+	sort.Strings(names)
+	t.Logf("packages the make sources run: %s", strings.Join(names, " "))
+
+	for _, pkg := range names {
+		dir := strings.TrimPrefix(pkg, "./")
+		tracked := gitLsFiles(t, root, dir)
+		if len(tracked) == 0 {
+			t.Errorf("the build runs `go ... %s` but git tracks no file under %s/. "+
+				"The package exists on the author's disk and in no checkout. "+
+				"Commit it, and check .gitignore is not swallowing the path.", pkg, dir)
+		}
+	}
+}
+
+// gitLsFiles returns the tracked paths under dir, relative to root.
+func gitLsFiles(t *testing.T, root, dir string) []string {
+	t.Helper()
+	cmd := exec.Command("git", "ls-files", "--", dir)
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git ls-files %s: %v", dir, err)
+	}
+	var paths []string
+	for _, line := range strings.Split(string(out), "\n") {
+		if line != "" {
+			paths = append(paths, line)
+		}
+	}
+	return paths
 }

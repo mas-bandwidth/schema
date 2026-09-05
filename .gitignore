@@ -51,7 +51,15 @@ tending/
 
 # CI clones the five serialize runtimes here (see .github/workflows/ci.yml)
 /runtimes/
+
+# a `go build ./bench/tools/...` run from the repository root drops its binary
+# at ./tools, and one reached main once already (#32). The ignore is for THAT
+# FILE. The negation re-includes the DIRECTORY of the same name, which carries
+# tracked tool sources the build runs (tools/sabotage, the wide-text negative
+# controls): a trailing slash matches only a directory, so the stray binary
+# stays ignored and the sources stay committable.
 /tools
+!/tools/
 
 # test-leg build artifact
 /test/go/schematest
