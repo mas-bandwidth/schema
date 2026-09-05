@@ -2,8 +2,10 @@
 // under R2. Built against the shipped R2 every renamed name lands: the enum
 // value, the union arm, the keyed slot and the nested type's field. Built
 // against an R2 whose four `was` attributes were stripped, each is a name
-// this reader cannot find: `unknown` counts four, the value and the union
-// read None, the slot is dropped, and the field holds its declared default.
+// this reader cannot find: `unknown` counts five (the value, the array element
+// holding the same value, the slot, the arm and the field), the value and the
+// union read None, the slot is dropped, and the field holds its declared
+// default.
 // The Makefile compiles this file twice and requires the two answers to
 // differ exactly that way.
 #include "R2Table.h"

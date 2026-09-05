@@ -3682,7 +3682,9 @@ tables-was-negative-control: build/tables-generated/.stamp test/tables/was_contr
 # build copy, regenerates that unit with the SHIPPED compiler, and reads the
 # same golden through the same program: the value reads None, the union
 # reads None, the slot is dropped, the field holds its default, and `unknown`
-# counts each. The positive half runs first, against the shipped R2.
+# counts five: the value, the array element that carries the same value, the
+# slot, the arm and the field. The positive half runs first, against the
+# shipped R2.
 .PHONY: tables-wasrows-negative-control
 tables-wasrows-negative-control: build/tables-generated/.stamp test/tables/wasrows_control_main.cpp
 	@mkdir -p build/tables-wasrows-nc
@@ -3692,7 +3694,7 @@ tables-wasrows-negative-control: build/tables-generated/.stamp test/tables/wasro
 	@cat build/tables-wasrows-nc/with-was.log
 	@grep -q '^unknown=0 kind_mismatch=0 malformed=0 grade=Argent effect=shield charge=2.5 mult=1.5 tally_argent=7$$' build/tables-wasrows-nc/with-was.log || \
 		{ echo "CONTROL FAILED: with was, the R1 config did not read in silence under R2"; exit 1; }
-	@sed -e 's/ | was = "[a-z]*"$$//; s/ | was = "[A-Za-z]*"$$//' test/tables/R2.schema > build/tables-wasrows-nc/R2.schema
+	@sed -e 's/^\(    [A-Z][A-Za-z]*\) | was = "[A-Za-z]*"$$/\1,/' -e 's/ *| was = "[A-Za-z]*"$$//' test/tables/R2.schema > build/tables-wasrows-nc/R2.schema
 	@test $$(grep -c 'was' build/tables-wasrows-nc/R2.schema) -eq $$(grep -c 'was' test/tables/R2.schema | awk '{print $$1 - 4}') || \
 		{ echo "NEGATIVE CONTROL: the was sabotage did not strip exactly four attributes"; exit 1; }
 	@rm -rf build/tables-wasrows-nc/r2 && ./bin/schema generate --lang cpp --out build/tables-wasrows-nc/r2 build/tables-wasrows-nc/R2.schema
@@ -3700,6 +3702,6 @@ tables-wasrows-negative-control: build/tables-generated/.stamp test/tables/wasro
 		build/tables-wasrows-nc/r2/R2Table.cpp -o build/tables-wasrows-nc/without-was
 	@./build/tables-wasrows-nc/without-was > build/tables-wasrows-nc/without-was.log
 	@cat build/tables-wasrows-nc/without-was.log
-	@grep -q '^unknown=4 kind_mismatch=0 malformed=0 grade=None effect=None charge=0 mult=1 tally_argent=0$$' build/tables-wasrows-nc/without-was.log || \
+	@grep -q '^unknown=5 kind_mismatch=0 malformed=0 grade=None effect=None charge=0 mult=1 tally_argent=0$$' build/tables-wasrows-nc/without-was.log || \
 		{ echo "NEGATIVE CONTROL FAILED: without was, the R1 config did not read as unknown names under R2"; exit 1; }
 	@echo "negative control: stripping was from the variant, the arms and the type's field turns the cross read RED (unknown counted, the value at its default)"
