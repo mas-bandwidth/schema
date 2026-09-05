@@ -4843,8 +4843,10 @@ encoding spec over the same values.
   batch, is what tips them. **Three things close it and none is built here.**
   Declaring the range a field actually holds is the schema's own answer and
   costs nothing new: `client_build uint32 | max = 65535` alone puts
-  `LoginRequest` level with proto3 at 49 bytes, and a bounded `price_minor` puts
-  `StorePurchase` under 40. The BATCH closes the rest, because the form byte and
+  `LoginRequest` LEVEL WITH proto3 at 49 bytes, sixteen bits down from
+  thirty-two, and `price_minor uint32 | max = 9999`, a price cap of 99.99 in
+  minor units, puts `StorePurchase` at 39 bytes and UNDER proto3's 40, fourteen
+  bits down from thirty-two. The BATCH closes the rest, because the form byte and
   the count are paid once for however many bodies ride. And a variable-width
   encoding for BARE integer kinds on this form is the third, a divergence from
   the packet wire that wants a measurement before it wants a page (§15).
@@ -10623,15 +10625,40 @@ inspects everything in the schema built:
   DICTIONARY the bodies index. Each is a wire change and each waits on a
   measurement over a real batch, on the compression law's order, which is every
   bitpacking win first.
+- **THE ENUM ORDINAL BESIDE THE VARIANT NAME on the message form** (§3.3). An
+  enum value rides as a REFERENCE naming the variant, which is what keeps a
+  variant inserted mid-enum from reading as a different variant on the two
+  builds. The alternative that keeps the safety and spends less is to announce
+  each enum's VARIANT NAME IDS IN DECLARATION ORDER inside the enum's own shape,
+  and ride the ORDINAL against that announced list: the sender's ordinal `k`
+  names the sender's `k`th announced variant name, which the receiver resolves
+  by name exactly as it resolves a reference today, so an insert still cannot
+  alias. **The residual it removes is TWO BITS on a four-variant enum**, five
+  down to three, which is the packet wire's own cost and the whole of this
+  form's enum residual. What it costs is a second resolution path, a per-enum
+  list in every announcement whether a body carries that enum or not, and a
+  shape for kind `30` where there is none. It is not taken here on
+  land-and-expand, and it is the first thing to reach for if an enum-heavy unit
+  measures badly.
 - **A VARIABLE-WIDTH ENCODING for BARE integer kinds on the message form**
   (§3.3). The arithmetic there is the case for it: a declaration that says
   `uint64` and carries a small value pays 64 bits where proto3 pays a varint,
   which is what puts two of the three measured messages a byte or two over
-  proto3 rather than under it. The schema's own answer is to declare the range,
-  which costs nothing and is already on the wire, so what this follow-on owes
-  first is a measurement over a corpus of real declarations rather than an
-  encoding. It is also a DIVERGENCE from the packet wire, which the design
-  statement prices as something to spend deliberately and not by default.
+  proto3 rather than under it. **THE NEGATIVE CASE IS THE OWNER'S AND IT IS THE
+  SAME FIELD**: a `player_id` that is a RANDOM 64-bit number is TEN VARINT BYTES
+  against EIGHT RAW, so a varint loses two bytes a field on exactly the id-shaped
+  values a backend message is full of, and proto3's win on `player_id` in the
+  arithmetic is a win over a small TEST value rather than over the field. A
+  varint is a bet that a wide declaration carries a narrow value, and a schema
+  that knows its values are narrow can say so. **The shape to measure if this is
+  ever taken is a 2-BIT WIDTH CLASS**, two bits ahead of the value selecting one
+  of four widths, which costs a random id two bits rather than sixteen and costs
+  a small value nothing like a varint's per-byte tax. The schema's own answer is
+  still to declare the range, which costs nothing and is already on the wire, so
+  what this follow-on owes first is a measurement over a corpus of real
+  declarations rather than an encoding. It is also a DIVERGENCE from the packet
+  wire, which the design statement prices as something to spend deliberately and
+  not by default.
 - **A REFERENCE DELTA inside one body** (§3.3). A body's fields are written in
   declaration order and the vocabulary is in projection order, so a body's
   references usually ascend and the gap between two is small. Encoding the gap

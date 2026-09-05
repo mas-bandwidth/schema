@@ -786,17 +786,24 @@ instances agree byte for byte between the two, and the wire fuzzer runs 103,286
 enumerated mutants over 112 seeds with no divergence, plain and sanitized.
 
 **THE MESSAGE FORM IS THIS MILESTONE's FOLLOW-ON** (docs/SPEC-TABLES.md §3.3).
-Form byte `2` is the same body with its id table moved one level up, to the
-CONNECTION: a peer announces its unit's whole vocabulary once a direction as an
-ordinary form-`1` file, and every message after it is the form byte and the
-root body alone. What a port owes is `LoadMessage`, `MeasureMessage` and
-`SaveMessage` beside the file form's three, `TableVocabulary` and the three
-unit-scope entry points `Announce`, `AnnounceMeasure` and `AnnounceRead`, each
-in that language's own naming convention. C++ and the tool carry it today and
+Form byte `2` moves the id table one level up, to the CONNECTION, and BITPACKS
+what is left: a peer announces its unit's whole vocabulary once a direction as
+an ordinary form-`1` file, and every BATCH after it is a form byte, a body count
+and the bodies as one continuous bit stream. What a port owes is
+`LoadMessages`, `MeasureMessages` and `SaveMessages` beside the file form's
+three, the message overload of `LoadMeasure` for a pointered batch's one region,
+`TableVocabulary` and the three unit-scope entry points `Announce`,
+`AnnounceMeasure` and `AnnounceRead`, each in that language's own naming
+convention. **The verbs are PLURAL** because the form's primitive is a batch of
+bodies of one root and a single message is the batch of one. C++ and the tool
+carry a form-`2` path today, byte framed until the codec change lands §3.3, and
 the harness's `message` surface prints ABSENT for every port, so the cell is
-where the work is counted. The form adds no rule to the body: the references
-resolve against the announced table instead of a trailer, and every framing,
-tolerance and malformed rule above is unchanged.
+where the work is counted. The BODY's rules are the ones a port already has,
+read off a bit stream instead of a byte one: references resolve against the
+announced vocabulary instead of a trailer, elision and every tolerance rule
+above are unchanged, and the two rules that DO move are named on the page,
+damage being terminal for a batch and a `flags` mask riding at its declared
+width.
 
 **Measured effect.** 0.98x the corpus's bytes without its 210 KB blob and 0.99x
 over the whole of it, against 1.80x over the tiny class: an empty table is ten

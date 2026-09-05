@@ -1609,13 +1609,33 @@ if ( !backenddemo::AnnounceRead( vocabulary, first.data(), (int64_t) first.size(
 }
 
 backenddemo::LoginRequest received[3];
-int64_t received_count = 3;
+int64_t received_count = 3;   // in: what you have room for. out: what you got.
 if ( !backenddemo::LoginRequestLoadMessages( received, &received_count, vocabulary, wire, wire_bytes, &report ) )
 {
     // report.refused with reason no_vocabulary is a batch that arrived
     // before the announcement. Nothing was decoded, no counter moved, and
     // report.malformed did NOT fire: it is a refusal, not damage.
+    //
+    // report.refused with reason batch_too_large is a batch of more bodies
+    // than you had room for, refused before a body was touched. Read the
+    // count, allocate, and read the same bytes again.
+    //
+    // report.malformed is DAMAGE, and it is terminal for the batch. The
+    // bodies before the damaged one stand and received_count is how many:
+    // read the count and never the slot after it.
 }
+```
+
+**A POINTERED root takes ONE region for the whole batch**, sized by the same
+`LoadMeasure` the file form uses, and the roots come back in an array you own:
+
+```cpp
+int64_t region_bytes = graphdemo::SceneLoadMeasure( vocabulary, wire, wire_bytes );
+std::vector<uint8_t> region( region_bytes );
+const graphdemo::Scene * roots[3];
+int64_t root_count = 3;
+graphdemo::SceneLoadMessages( roots, &root_count, region.data(), region_bytes,
+                              vocabulary, wire, wire_bytes, &report );
 ```
 
 **What you get.** The three backend messages measured on schema#523 go from
@@ -1624,13 +1644,15 @@ when every field sits at its declared default. Sent as ONE batch the three are
 230 bytes against proto3's 278. The announcement costs 316 bytes for that unit
 and pays for itself in the seventh round against proto3.
 
-**Where it does not win, and what to do about it.** `LoginRequest` and
-`StorePurchase` come out one and two bytes OVER proto3, because their
-`player_id`, `client_build` and `price_minor` are declared BARE and this wire
-writes 64, 32 and 32 raw bits where proto3 writes a varint whose value happens
-to be small. Declare the range a field actually holds and the wire pays for the
-range: `client_build uint32 | max = 65535` alone puts `LoginRequest` under
-proto3. That is the same habit the packet wire already asks for.
+**Where it does not win, and what to do about it.** `LoginRequest` comes out two
+bytes OVER proto3 and `StorePurchase` one, because their `player_id`,
+`client_build` and `price_minor` are declared BARE and this wire writes 64, 32
+and 32 raw bits where proto3 writes a varint whose value happens to be small.
+Declare the range a field actually holds and the wire pays for the range:
+`client_build uint32 | max = 65535` alone puts `LoginRequest` LEVEL WITH proto3
+at 49 bytes, and `price_minor uint32 | max = 9999`, which is a price cap of
+99.99 in minor units, puts `StorePurchase` at 39 bytes, under proto3's 40. That
+is the same habit the packet wire already asks for.
 
 **What it asks of you.** ONE thing: the announcement arrives once, reliably,
 before the first body, and never again for the life of the connection. A
@@ -1638,16 +1660,30 @@ connect handshake carries it, or a reliable channel does. The BODIES then ride
 any channel, reliable or not, ordered or not, one whole batch per datagram on an
 unreliable one, and a batch is never split across two. A restart is a new
 connection with an empty vocabulary, and nothing is cached across connections. A
-second announcement is refused by name and the connection closes, and a receiver
-holds a vocabulary for the direction it reads and another for the one it writes.
-WHICH root a batch carries is yours: put a discriminator in front of the bytes,
-or wrap the message set in one union root (§2.6).
+second announcement is refused by name, and CLOSING THE CONNECTION IS YOURS: the
+library owns no socket and returns a refusal, and a refused announcement sets no
+vocabulary, so every body after it is refused anyway. A receiver holds a
+vocabulary for the direction it reads and another for the one it writes. WHICH
+root a batch carries is yours too: put a discriminator in front of the bytes, or
+wrap the message set in one union root (§2.6).
+
+**A batch is 1 to 256 bodies**, which is a wire constant and not a policy. Pass
+more than 256 to `SaveMessages` and it refuses by name and writes nothing, so
+call it again with the rest.
 
 **Damage stops the batch.** A bit stream has no place to resume, so a reference
 past the vocabulary, a length past the buffer or exhaustion stops the batch
 there: the fields decoded before it stand, one `malformed` counts, and nothing
 after is read. An UNKNOWN field does not stop anything, because the announcement
 gave the reader its width.
+
+**One thing behaves differently here than in a file, and it is `flags`.** A file
+carries a mask as a raw `uint64`, so an old build loads bits a newer build
+appended, holds them, and writes them back unharmed. A message carries a mask at
+its DECLARED width, which is what makes a three-variant mask cost three bits
+instead of eight bytes, and appended bits do not fit in a width that does not
+know about them. If you ferry masks from files onto messages across a mixed
+fleet, keep the bits inside your own variant count, or carry that mask in a file.
 
 A stateless request-response transport is out of scope. An HTTP request that
 shares no state with the last one has nowhere to put an announcement, so the
@@ -1663,6 +1699,15 @@ $ schema pack   --root LoginRequest --message --announce backend_conn.bin \
                 --out login.bin login/ tables/backend
 $ schema unpack --root LoginRequest --announce backend_conn.bin \
                 --in login.bin login/ tables/backend
+```
+
+**And `schema unpack` handed the announcement ITSELF prints the vocabulary
+decoded**, one line an entry with its slot, its id, the name your closure gives
+it, its kind and its shape, which is what you read when a peer and a build
+disagree about a field:
+
+```
+$ schema unpack --in backend_conn.bin tables/backend
 ```
 
 **The bitpacked body is specified ahead of its implementation**, on the terms

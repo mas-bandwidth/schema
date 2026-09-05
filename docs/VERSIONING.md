@@ -581,9 +581,10 @@ ONCE, RELIABLY, BEFORE THE FIRST BODY, which a connect handshake gives it or a
 reliable channel does, and that it never arrive again for the life of the
 connection. The BODIES then ride ANY channel, reliable or not, ordered or not,
 one self-delimiting batch per datagram on an unreliable one. A body from a peer
-that never announced is refused by name. A second announcement is refused by
-name and closes the connection, and a refused announcement sets no vocabulary at
-all. A stateless request-response transport stays out of scope by name, because
+that never announced is refused by name. A second announcement RETURNS A
+REFUSAL, closing the connection being the application's act and not this
+library's, and a refused announcement sets no vocabulary at all, so every body
+after it is refused for want of one. A stateless request-response transport stays out of scope by name, because
 an announcement would ride every request and cost more than the id table it
 replaced, and the file form rides there. yojimbo's connect handshake is the
 carrier the form was shaped against (yojimbo#344): reliable by retry, ahead of
@@ -650,8 +651,11 @@ reader meets a byte it does not know, refuses by name, and never reports damage.
 owner: *"It's OK if bit reading is slightly slower than a byte read (it probably
 will be). We just need to get it less bytes than protobufs, and not be massively
 slower."* So the form is accepted on fewer bytes than proto3, on the three
-measured messages and on the general shape, and on read and write within a
-stated, measured factor of the byte body, measured later at any time. #546's law
+measured messages and on the general shape, and on read and write within A
+FACTOR OF TWO of the byte body over the same values, measured later at a named
+sitting and recorded on the page. **Above two on either path the bitpacked body
+REOPENS**, because the byte body is a wire that works and doubling the CPU to
+save a third of the bytes is not a trade that has been made. #546's law
 prices something different: a DIAGNOSTIC must cost nothing on the read or write
 path, because it buys the reader information and never buys the wire a byte. A
 wire is allowed to spend CPU to buy bandwidth. The two coexist and neither is an
@@ -696,9 +700,16 @@ happens between two builds.
 spent, no payload of the file form changes, no skip rule of the file form
 changes. The protocol id does not move, the build version does not move, the
 baseline does not move, the text form does not move, the cook and the block do
-not move, and no EVOLUTION row of the table above moves. The FRAMING DAMAGE row
-does, in this form only: a damaged level cannot cost only itself where there is
-no length to read on past. The read report keeps its counters and their meanings. The packet wire is
+not move, and no EVOLUTION row of the table above moves. TWO rows do, in this
+form only, and they are the whole list. The FRAMING DAMAGE row: a damaged level
+cannot cost only itself where there is no length to read on past. And the MASK
+ROUND-TRIP row: a `flags` mask rides at its declared W bits here rather than as
+a raw `uint64`, which is the packet wire's rule taken for the packet wire's
+reason, so a bit a newer build appended survives a file round trip and not a
+message one. Sixty-four bits for a three-bit mask is the largest fixed overspend
+a small message has, and a mask is the one payload whose file width comes from
+its storage rather than from anything the schema declares. The read report keeps
+its counters and their meanings. The packet wire is
 untouched apart from one token reserved by name, `column`, which no line emits
 and which holds the door for a later column layout (SPEC.md §4.11, schema#554).
 
@@ -1029,7 +1040,8 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #523: the message form, form byte `2`, the batch primitive and the bitpacked
   body, the announcement and its two reserved ids, the announced unit vocabulary
   of id, kind and shape triples in its compiler-settled order, the two
-  announcement bounds, and the names §11 owes it.
+  announcement bounds, the batch bound, the mask's declared width and the
+  wstring's sixteen bits a unit, and the names §11 owes it.
 - #554: the `column` projection token, reserved by name on the packet wire and
   emitted nowhere.
 - #434: the reserved escape kind.
