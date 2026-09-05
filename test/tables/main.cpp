@@ -43,6 +43,8 @@
 #include "G1Table.h"
 #include "W1Table.h"
 #include "W2Table.h"
+#include "R1Table.h"
+#include "R2Table.h"
 #include "ScalarsTable.h"
 #include "wirebuilder.h"
 
@@ -8763,6 +8765,97 @@ static void test_was_rows()
     }
 }
 
+// ---- the `was` rows, second half: a variant, an arm and a type's field renamed under was ----
+//
+// docs/SPEC-TABLES.md §5. An enum value, a union arm and a field of a type a
+// table reaches by value ride under the hash of their name, so a rename would
+// orphan every stored value, body and field. R2 renames Silver, ward, ping and
+// Buff.multiplier under `was`, and R1's bytes and R2's are one wire.
+
+template <typename NS>
+static int64_t save_wasrows_cfg( uint8_t * buffer, int64_t capacity, bool ping )
+{
+    typename NS::Cfg cfg;
+    cfg.grade = NS::silver;
+    if ( ping )
+    {
+        cfg.effect.type = NS::ping;
+    }
+    else
+    {
+        cfg.effect.type = NS::ward;
+        NS::ward_charge( cfg ) = 2.5f;
+    }
+    NS::buff_multiplier( cfg ) = 1.5f;
+    cfg.grades[0] = NS::silver;
+    cfg.grades[1] = NS::gold;
+    cfg.grades_count = 2;
+    cfg.tally[NS::silver] = 7;
+    return NS::CfgSave( cfg, buffer, capacity );
+}
+
+// each unit spells the renamed names its own way, and the ids are one
+struct wasrows_r1 { using Cfg = tblr1::Cfg;
+    static constexpr tblr1::Grade silver = tblr1::Grade::Silver, gold = tblr1::Grade::Gold;
+    static constexpr tblr1::EffectType ward = tblr1::EffectType::Ward, ping = tblr1::EffectType::Ping;
+    static float & ward_charge( Cfg & c ) { return c.effect.ward.charge; }
+    static float & buff_multiplier( Cfg & c ) { return c.buff.multiplier; }
+    static int64_t CfgSave( const Cfg & c, uint8_t * buf, int64_t n ) { return tblr1::CfgSave( c, buf, n ); } };
+struct wasrows_r2 { using Cfg = tblr2::Cfg;
+    static constexpr tblr2::Grade silver = tblr2::Grade::Argent, gold = tblr2::Grade::Gold;
+    static constexpr tblr2::EffectType ward = tblr2::EffectType::Shield, ping = tblr2::EffectType::Pong;
+    static float & ward_charge( Cfg & c ) { return c.effect.shield.charge; }
+    static float & buff_multiplier( Cfg & c ) { return c.buff.mult; }
+    static int64_t CfgSave( const Cfg & c, uint8_t * buf, int64_t n ) { return tblr2::CfgSave( c, buf, n ); } };
+
+static void test_wasrows_vocabulary()
+{
+    static uint8_t r1[1024], r2[1024], r1_ping[1024];
+    const int64_t n1 = save_wasrows_cfg<wasrows_r1>( r1, sizeof( r1 ), false );
+    const int64_t n2 = save_wasrows_cfg<wasrows_r2>( r2, sizeof( r2 ), false );
+    const int64_t np = save_wasrows_cfg<wasrows_r1>( r1_ping, sizeof( r1_ping ), true );
+    CHECK( n1 > 0 && n2 > 0 && np > 0 );
+
+    // A `was` MOVES NOTHING (docs/SPEC-TABLES.md §5): the renamed unit writes
+    // the old unit's bytes, the variant id, the arm id, the keyed slot's id
+    // and the nested field's id included
+    CHECK( n1 == n2 && memcmp( r1, r2, (size_t) n1 ) == 0 );
+    pin_table_golden( "r1_cfg", r1, n1 );
+    pin_table_golden( "r2_cfg", r2, n2 );
+    pin_table_golden( "r1_ping", r1_ping, np );
+
+    // THE CROSS READ, both directions, in silence: every renamed name lands
+    {
+        tblr2::Cfg out;
+        tblr2::TableReport report;
+        CHECK( tblr2::CfgLoad( out, r1, n1, &report ) );
+        CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.malformed == 0 );
+        CHECK( out.grade == tblr2::Grade::Argent );
+        CHECK( out.effect.type == tblr2::EffectType::Shield && out.effect.shield.charge == 2.5f );
+        CHECK( out.buff.mult == 1.5f );
+        CHECK( out.grades_count == 2 && out.grades[0] == tblr2::Grade::Argent && out.grades[1] == tblr2::Grade::Gold );
+        CHECK( out.tally[tblr2::Grade::Argent] == 7 && out.tally[tblr2::Grade::Gold] == 0 );
+        static uint8_t again[1024];
+        const int64_t re = tblr2::CfgSave( out, again, sizeof( again ) );
+        CHECK( re == n1 && memcmp( again, r1, (size_t) n1 ) == 0 );
+    }
+    {
+        tblr1::Cfg out;
+        tblr1::TableReport report;
+        CHECK( tblr1::CfgLoad( out, r2, n2, &report ) );
+        CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.malformed == 0 );
+        CHECK( out.grade == tblr1::Grade::Silver && out.effect.type == tblr1::EffectType::Ward );
+        CHECK( out.effect.ward.charge == 2.5f && out.buff.multiplier == 1.5f && out.tally[tblr1::Grade::Silver] == 7 );
+    }
+    // the PAYLOAD-FREE arm renamed: ping's id is what pong reads
+    {
+        tblr2::Cfg out;
+        tblr2::TableReport report;
+        CHECK( tblr2::CfgLoad( out, r1_ping, np, &report ) );
+        CHECK( report.unknown == 0 && out.effect.type == tblr2::EffectType::Pong );
+    }
+}
+
 int main()
 {
     test_golden_wire();
@@ -8819,6 +8912,7 @@ int main()
     test_pointer_null_and_empty();
     test_pointer_reflection();
     test_was_rows();
+    test_wasrows_vocabulary();
 
     test_lock_deterministic_on_dirty_heap();
     test_depth_agrees_through_by_value_nesting();

@@ -527,7 +527,12 @@ func splitField(s string) (name, typ, tail string, ok bool) {
 	// run (SPEC §7.4 rule 2)
 	typ = rest
 	tail = ""
-	if k := strings.Index(rest, " |"); k >= 0 {
+	if strings.HasPrefix(rest, "|") {
+		// a PAYLOAD-FREE ARM with a qualification section (SPEC §4.8): the
+		// name is the whole definition, and the section is the tail, so the
+		// pipes of a run line up
+		typ, tail = "", rest
+	} else if k := strings.Index(rest, " |"); k >= 0 {
 		typ, tail = rest[:k], strings.TrimLeft(rest[k:], " ")
 	}
 	if strings.HasSuffix(typ, "{") {
@@ -583,7 +588,7 @@ func fpDecl(b *strings.Builder, d ast.Decl) {
 		// or the formatter could move one and the safety net would not see it
 		fmt.Fprintf(b, "union %s\n{\n", d.Name)
 		for _, v := range d.Variants {
-			b.WriteString("variant ")
+			b.WriteString("variant " + v.Name + fpAttrs(v.Attrs) + " ")
 			fpField(b, v.Arm)
 		}
 		b.WriteString("}\n")
@@ -740,7 +745,7 @@ func fpAttrs(attrs []ast.Attr) string {
 func fpNames(names []ast.Name) string {
 	var out []string
 	for _, n := range names {
-		out = append(out, n.Text)
+		out = append(out, n.Text+fpAttrs(n.Attrs))
 	}
 	return strings.Join(out, ",")
 }

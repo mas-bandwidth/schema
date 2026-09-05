@@ -360,7 +360,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s        TableReader %s( %s.buffer + %s.offset, (int64_t) %s, r.report, r.ids );\n", ind, inner, rdr, rdr, length)
 		g.pf("%s        switch ( %s ) // the arm's NAME hash (§5)\n%s        {\n", ind, id, ind)
 		for _, in := range un.Variants {
-			g.pf("%s            case 0x%016xull: // %s\n%s            {\n", ind, ir.TableWireId(in.Name), in.Name, ind)
+			g.pf("%s            case 0x%016xull: // %s\n%s            {\n", ind, ir.TableWireId(in.WireName()), in.Name, ind)
 			g.pf("%s                if ( %s != %d ) { %s.type = %sType::None; r.report->kind_mismatch++; break; }\n", ind, innerKind, armWireKind(in), value, un.Name)
 			g.pf("%s                %s.type = %sType::%s;\n", ind, value, un.Name, ir.GoExportName(in.Name))
 			g.emitArmLoad(in, value, ind+"                ", inner, value+".type", un.Name+"Type::None", sfx+"a")

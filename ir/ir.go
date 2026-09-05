@@ -87,10 +87,15 @@ type Const struct {
 // Enum is an `enum` declaration: None = 0 implicit, variants dense from 1
 // (SPEC §4.2).
 type Enum struct {
-	Name        string
-	Variants    []string // implicit None = 0 is not listed; variants pack from 1
-	Max         int64    // top wire value: variant count, or the | max = K widening
-	StorageBits int      // 8 / 16 / 32 / 64 — smallest unsigned fitting Max
+	Name     string
+	Variants []string // implicit None = 0 is not listed; variants pack from 1
+	// Was is each variant's `was = "OldName"` rename alias, parallel to
+	// Variants and "" where none is declared (docs/SPEC-TABLES.md §5): the
+	// variant's table-wire id derives from it instead of the name. See
+	// [Enum.VariantWireName].
+	Was         []string
+	Max         int64 // top wire value: variant count, or the | max = K widening
+	StorageBits int   // 8 / 16 / 32 / 64, the smallest unsigned fitting Max
 }
 
 // Flags is a `flags` declaration: one bit per variant, consumed as masks
@@ -109,17 +114,21 @@ type Union struct {
 	Name        string
 	Variants    []UnionVariant // declared order — the tag order
 	Max         int64          // = len(Variants); the tag wire range is [0, Max]
-	StorageBits int            // 8 / 16 / 32 / 64 — smallest unsigned fitting Max
+	StorageBits int            // 8 / 16 / 32 / 64, the smallest unsigned fitting Max
 }
 
 // UnionVariant is one arm of a [Union]. AN ARM IS A FIELD LINE (SPEC §4.8,
 // docs/SPEC-TABLES.md §2.6): F carries the whole of it — the resolved type,
 // the array shape, the bounds — and is never nil on a checked union.
 type UnionVariant struct {
-	Name string  // declared, field-style lower_snake
-	Type string  // the payload type's name; "" when the arm names no declaration
-	Ref  *Struct // the payload: a `type`, or inside a table closure a `table`; nil otherwise
-	F    *Field  // the arm as a field line
+	Name string // declared, field-style lower_snake
+	// WasName is the arm's `was = "old_name"` rename alias, "" when none is
+	// declared (docs/SPEC-TABLES.md §5): the arm's table-wire id derives from
+	// it instead of Name. On an arm with a payload it is F.WasName too.
+	WasName string
+	Type    string  // the payload type's name; "" when the arm names no declaration
+	Ref     *Struct // the payload: a `type`, or inside a table closure a `table`; nil otherwise
+	F       *Field  // the arm as a field line
 }
 
 // Body reports whether the arm's payload is a TABLE BODY on the wire — a
@@ -543,4 +552,81 @@ func PointeeWireName(f *Field) string {
 		return st.WireName()
 	}
 	return f.Type.Name
+}
+
+// VariantWireName is the name variant i's table-wire id is the hash of
+// (docs/SPEC-TABLES.md §5): its `was` alias after a rename, and its declared
+// name otherwise.
+func (e *Enum) VariantWireName(i int) string {
+	if i < len(e.Was) && e.Was[i] != "" {
+		return e.Was[i]
+	}
+	return e.Variants[i]
+}
+
+// VariantWireNameOf is [Enum.VariantWireName] by declared name, and the name
+// itself when the enum declares no such variant.
+func (e *Enum) VariantWireNameOf(name string) string {
+	for i, v := range e.Variants {
+		if v == name {
+			return e.VariantWireName(i)
+		}
+	}
+	return name
+}
+
+// WireName is the name the arm's table-wire id is the hash of
+// (docs/SPEC-TABLES.md §5): its `was` alias after a rename, and its declared
+// name otherwise.
+func (v UnionVariant) WireName() string {
+	if v.WasName != "" {
+		return v.WasName
+	}
+	return v.Name
+}
+
+// TableFieldWireName is the name a field's table-wire id is the hash of
+// (docs/SPEC-TABLES.md §5): the `was` alias after a rename, else the name.
+func TableFieldWireName(f *Field) string {
+	if f.WasName != "" {
+		return f.WasName
+	}
+	return f.Name
+}
+
+// WasRows names every `was` a unit declares on an enum variant, a union arm,
+// or a field of a `type` (docs/SPEC-TABLES.md §5), as `Decl.name`, sorted. A
+// table's own fields and a table declaration are not listed: those two rows
+// every target carries. It is what a target without the form refuses by name.
+func WasRows(u *Unit) []string {
+	var out []string
+	for name, e := range u.Enums {
+		for i, w := range e.Was {
+			if w != "" {
+				out = append(out, name+"."+e.Variants[i])
+			}
+		}
+	}
+	note := func(name string, un *Union) {
+		for _, v := range un.Variants {
+			if v.WasName != "" {
+				out = append(out, name+"."+v.Name)
+			}
+		}
+	}
+	for name, un := range u.Unions {
+		note(name, un)
+	}
+	for name, un := range u.TableUnions {
+		note(name, un)
+	}
+	for name, st := range u.Structs {
+		for _, f := range st.Fields {
+			if f.WasName != "" {
+				out = append(out, name+"."+f.Name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }

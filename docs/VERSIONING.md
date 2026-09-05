@@ -33,9 +33,9 @@ what proves them across releases, #463, named in its section below.
    table are identified on the table wire by the hash of their name. Add
    anywhere, remove, reorder. A rename that must keep its data declares the
    old name with `was`, and a `was` moves nothing anywhere. `was` is an
-   attribute of a table's own fields and of a table declaration today.
-   Variants and arms (#442), and the fields of a `type` that a table reaches
-   (#478), get it before 3.0.0.
+   attribute of a table's own fields, of a table declaration, of an enum
+   variant and a union arm, and of the fields of a `type` that a table
+   reaches. Every name the table wire carries can be renamed under it.
 4. **Two ids and no third.** The *protocol id* versions the packet wire and
    is the only thing two peers compare before they talk. The *build version*
    versions the cooked and blocked forms and addresses every cooked asset. An
@@ -283,7 +283,11 @@ does today.
 | a field renamed under `was` | nothing | passes; the edit that adds the `was` hints the `json =` pairing | **nothing**: keyed by wire id, not source name |
 | a field renamed a second time, the new `was` naming the INTERMEDIATE spelling instead of the first | `unknown` on every old file; the new id was never written to | **refuses** | moves |
 | a field renamed bare | `unknown` on every old file; the new field reads its default | warns: a removal and an addition in one table in one edit is the shape of a rename | moves |
-| a field of a `type` that a table reaches, renamed | `unknown` on every old file; `was` is refused there today (#478) | passes, in silence | moves, and so does the protocol id |
+| a field of a `type` that a table reaches, renamed under `was` | nothing: the field id is the old name's hash (SPEC-TABLES.md §5) | passes; the edit that adds the `was` hints the `json =` pairing | **nothing**, and the protocol id does not move either |
+| a field of a `type` that a table reaches, renamed bare | `unknown` on every old file, and the field reads its default | warns: a removal and an addition in one body in one edit is the shape of a rename | moves, and so does the protocol id |
+| an enum variant or a union arm renamed under `was` | nothing: the id is the old name's hash (SPEC-TABLES.md §5) | passes, and the file records the alias beside the id | **nothing**, and the protocol id does not move either |
+| an enum variant or a union arm renamed bare | `unknown` on every old file: the value or the union reads `None` | warns that the old name was removed | moves |
+| a variant or an arm renamed a second time, the new `was` naming the intermediate spelling | `unknown` on every old file, and the new id was never written to | **refuses** | moves |
 | a scalar's default changed | **silent**: the same bytes mean something else | **refuses** | moves (a meaning fact) |
 | a string, bytes or flags default changed | **silent**: an absent field reads as the new default | **refuses**, as a scalar's default change does (SPEC-TABLES.md §18.2) | moves (a meaning fact) |
 | a bound raised or lowered, a capacity or array bound grown | `clamped` where a stored value exceeds it | passes; warns on a shrink | moves |
@@ -959,9 +963,10 @@ still open.
   table could have had is gone rather than excepted. The residue is that a
   table-only enum or union is guarded by the tables baseline and the build
   version and no longer by the connect gate.
-- **A field of a `type` that a table reaches cannot be renamed safely
-  today** (#478): `was` is refused there, and a bare rename orphans every
-  stored value.
+- **A field of a `type` that a table reaches renames under `was`** exactly
+  as a table's own field does (SPEC-TABLES.md §5): the nested body's field
+  ids are name hashes, the alias keeps the id, and a bare rename orphans
+  every stored value and warns in the baseline.
 - **`bits(N)` grows freely, and across a storage width it now costs a
   counter rather than the values**: `bits(9)` to `bits(16)` is one kind and is
   silent, and `bits(8)` to `bits(9)` moves kind `6` to kind `7`, which the
@@ -1052,8 +1057,6 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
   previous release and the new one, byte-compared under an equal id.
 - #432: the cook triple, and the byte-order sentences in five places.
 - #441: the retired-names ledger.
-- #442: `was` for variants and arms; #478: `was` for the fields of a `type`
-  that a table reaches.
 - #446: the evolution table's fixtures.
 - #540: the `[E.Max]T` refusal in a table body, which SPEC-TABLES.md §2.4 and
   §11 state and the checker does not make, so the positional spelling still
