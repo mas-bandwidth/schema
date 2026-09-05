@@ -1,6 +1,9 @@
 package format
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // The second `was` row through schemafmt: a qualified variant ends its line,
 // a payload-free arm's section follows its name, and both come back as they
@@ -12,7 +15,7 @@ func TestFormatsVariantAndArmWas(t *testing.T) {
 		t.Fatalf("format: %v", err)
 	}
 	for _, want := range []string{"    Argent | was = \"Silver\"\n    Gold\n", "shield Ward | was = \"ward\"\n", "pong        | was = \"ping\"\n"} {
-		if !contains(string(out), want) {
+		if !strings.Contains(string(out), want) {
 			t.Errorf("formatted output lacks %q:\n%s", want, out)
 		}
 	}
@@ -23,17 +26,4 @@ func TestFormatsVariantAndArmWas(t *testing.T) {
 	if string(again) != string(out) {
 		t.Errorf("not idempotent:\n%s", again)
 	}
-}
-
-func contains(s, sub string) bool {
-	return len(sub) == 0 || (len(s) >= len(sub) && indexOf(s, sub) >= 0)
-}
-
-func indexOf(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-	return -1
 }

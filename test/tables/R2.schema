@@ -1,4 +1,4 @@
-// R2.schema — the NEW side of the vocabulary rename pair: Silver is Argent,
+// R2.schema: the NEW side of the vocabulary rename pair: Silver is Argent,
 // the ward arm is shield, the ping arm is pong, and Buff.multiplier is mult,
 // each declared with `was`, so every id is the old name's hash and an R1
 // config reads in silence (docs/SPEC-TABLES.md §5). The negative control

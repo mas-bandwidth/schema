@@ -899,7 +899,7 @@ enum Grade { Bronze, Silver, Gold }  // v2 — every stored Gold still loads Gol
 ```
 
 A variant a reader has no name for loads as `None` (enum) or empty (union)
-and counts as `unknown` — never as its neighbour. A rename declares the old
+and counts as `unknown`, never as its neighbor. A rename declares the old
 name with `was` on the variant's own line, `Argent | was = "Silver"`, and
 the stored values keep reading (see renaming below). Renaming one bare is a
 new variant, and old data reads as unknown.
@@ -1991,7 +1991,7 @@ union Value
 `ping` selects and carries nothing, which is not the union's `None`: `None`
 says no arm was selected. What an arm may NOT take is a specified default, a
 `?`, a `json`, an enum-keyed `[E]T`, an `if` guard, a `map` or an
-unbounded `[]T` — each refused by name (SPEC-TABLES.md §2.6). `was` it takes,
+unbounded `[]T`, each refused by name (SPEC-TABLES.md §2.6). `was` it takes,
 `pong | was = "ping"`: the arm's rename (see renaming below).
 
 ### Pointers: `next *Node`

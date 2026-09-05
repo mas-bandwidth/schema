@@ -1,4 +1,4 @@
-// R1.schema — the OLD side of the vocabulary rename pair (docs/SPEC-TABLES.md
+// R1.schema: the OLD side of the vocabulary rename pair (docs/SPEC-TABLES.md
 // §5): an enum variant, two union arms and a field of a `type` a table reaches
 // by value, each renamed in R2 under `was`. Every one of them rides the table
 // wire under the hash of its name, so a bare rename would leave every stored

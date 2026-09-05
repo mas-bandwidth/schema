@@ -3884,15 +3884,16 @@ type T
 
 ```
 $ schema check .
-Bad.schema:5:5: field a: was is a table-wire concept — it aliases a renamed field's wire id, and only table fields have wire ids; a `type`'s wire is positional, so a rename there moves no bit (docs/SPEC-TABLES.md)
+Bad.schema:3:1: type T: field a carries was = "b", but no table reaches T — was is a table-wire concept, and a field of a type outside a table closure has no wire id for it to keep; the packet wire is positional, so a rename there orphans nothing (docs/SPEC-TABLES.md §5)
 schema: 1 error(s)
 ```
 
 Any two fields of one table whose effective ids collide are refused too.
 
-There is no `was` for enum variants or union arms. Renaming a variant makes a
-new variant, and old data reads as `unknown`. Rename fields freely, and treat
-variant names as permanent.
+An enum variant and a union arm take `was` on the same terms, `Argent | was =
+"Silver"` and `pong | was = "ping"`, and so does a field of a `type` a table
+reaches. Renaming any of them bare makes a new name, and old data reads as
+`unknown` (the renaming section below walks through it).
 
 Put `max_speed` back before you go on, because the rest of the tutorial uses
 that name.
