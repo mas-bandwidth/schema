@@ -1341,3 +1341,134 @@ func TestListQualificationBoundsTheElement(t *testing.T) {
 		t.Fatalf("the qualification did not bound the element: has=%v min=%v max=%v", f.HasIntRange, f.IntMin, f.IntMax)
 	}
 }
+
+// TestWideTextRefusalCoversTheClosure is the wstring refusal over a table's
+// WHOLE closure (docs/SPEC-TABLES.md §11, schema#522): a `type` body a table
+// reaches through any wrapper carries no wstring(N) until the table wire's
+// kind lands, and the refusal names the field and the edge that reached it.
+// Each wrapper is its own case, and the two controls hold the other edge of
+// the rule: a `type` no table reaches keeps its wide text.
+func TestWideTextRefusalCoversTheClosure(t *testing.T) {
+	const text = "type Text { name wstring(4) }\n"
+	const want = "not carried on the TABLE wire yet"
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{name: "a type held by value", src: "package t\n" + text + "table Root { t Text }\n"},
+		{name: "a type held through a nested type", src: "package t\n" + text + "type Outer { t Text }\ntable Root { o Outer }\n"},
+		{name: "a type held through a union arm", src: "package t\n" + text + "union U\n{\n    t Text\n}\ntable Root { u U }\n"},
+		{name: "a type held through a union inside a union", src: "package t\n" + text + "union Inner\n{\n    t Text\n}\nunion Outer\n{\n    i Inner\n}\ntable Root { u Outer }\n"},
+		{name: "a type held as a fixed array's element", src: "package t\n" + text + "table Root { ts [4]Text }\n"},
+		{name: "a type held as a bounded array's element", src: "package t\n" + text + "table Root { ts [..4]Text }\n"},
+		{name: "a type held as an unbounded array's element", src: "package t\n" + text + "table Root { ts []Text }\n"},
+		{name: "a type held as an optional", src: "package t\n" + text + "table Root { t ?Text }\n"},
+		{name: "a type held through a pointer to a table", src: "package t\n" + text + "table Node { t Text }\ntable Root { n *Node }\n"},
+		{name: "a type held through a pointer array", src: "package t\n" + text + "table Node { t Text }\ntable Root { ns [..4]*Node }\n"},
+		{name: "a type held as a map's value", src: "package t\n" + text + "table Root { m map[uint32]Text }\n"},
+		{name: "a type held through an enum-keyed array", src: "package t\nenum E { A, B }\n" + text + "table Root { ts [E]Text }\n"},
+		{name: "a union arm carrying wstring directly", src: "package t\nunion U\n{\n    s wstring(4)\n}\ntable Root { u U }\n"},
+		{name: "a table field carrying wstring directly", src: "package t\ntable Root { s wstring(4) }\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := runUnit(t, map[string]string{"T.schema": tc.src})
+			if len(errs) == 0 {
+				t.Fatalf("compiled clean — a wstring(N) reached a table closure (want %q)", want)
+			}
+			for _, e := range errs {
+				if strings.Contains(e.Error(), want) {
+					return
+				}
+			}
+			t.Fatalf("no diagnostic contains %q; got: %v", want, errs)
+		})
+	}
+	// the CONTROLS: the refusal is the closure's, so a `type` outside one
+	// keeps its wide text, whether or not the unit declares a table
+	controls := []struct {
+		name string
+		src  string
+	}{
+		{name: "a packet-wire unit", src: "package t\n" + text + "type P { t Text }\n"},
+		{name: "a table that does not reach the type", src: "package t\n" + text + "type P { t Text }\ntable Root { x int32 }\n"},
+		{name: "a union no table reaches", src: "package t\n" + text + "union U\n{\n    t Text\n}\ntype P { u U }\ntable Root { x int32 }\n"},
+	}
+	for _, tc := range controls {
+		t.Run("control: "+tc.name, func(t *testing.T) {
+			u := buildUnit(t, tc.src)
+			if u.Structs["Text"].Fields[0].Type.Kind != ir.TWString {
+				t.Fatalf("Text.name is not wstring: %v", u.Structs["Text"].Fields[0].Type.Kind)
+			}
+		})
+	}
+}
+
+// TestWideTextRefusalLandsOnTheField pins WHERE the closure refusal reports:
+// the wstring field's own line, not the line of the `type` that holds it,
+// including a field an `if` block nests. Two fields of one type each get
+// their own line, so a reader can tell them apart.
+func TestWideTextRefusalLandsOnTheField(t *testing.T) {
+	const src = "package t\n" +
+		"type Text\n" +
+		"{\n" +
+		"    name wstring(4)\n" +
+		"    flag bool\n" +
+		"    title wstring(4)\n" +
+		"    if flag { note wstring(4) }\n" +
+		"}\n" +
+		"table Root { t Text }\n"
+	errs := runUnit(t, map[string]string{"T.schema": src})
+	want := map[string]string{
+		"field name:":  "T.schema:4:",
+		"field title:": "T.schema:6:",
+		"field note:":  "T.schema:7:",
+	}
+	for field, prefix := range want {
+		found := false
+		for _, e := range errs {
+			if !strings.Contains(e.Error(), field) {
+				continue
+			}
+			found = true
+			if !strings.HasPrefix(e.Error(), prefix) {
+				t.Errorf("%s reported at the wrong position, want prefix %q: %v", field, prefix, e)
+			}
+		}
+		if !found {
+			t.Errorf("no diagnostic names %q; got: %v", field, errs)
+		}
+	}
+}
+
+// TestWideTextRefusalNamesTheMapField pins the edge a map makes: the map's
+// value reaches the `type` through a generated entry table the author never
+// wrote, so the refusal names the map field as the author spelled it, and a
+// map of maps climbs to that field.
+func TestWideTextRefusalNamesTheMapField(t *testing.T) {
+	const text = "type Text { name wstring(4) }\n"
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{name: "a map's value", src: "package t\n" + text + "table Root { m map[uint32]Text }\n",
+			want: "table Root's field m, through its map value, reaches Text"},
+		{name: "a map of maps' value", src: "package t\n" + text + "table Root { m map[uint32]map[uint32]Text }\n",
+			want: "table Root's field m, through its map value's map value, reaches Text"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := runUnit(t, map[string]string{"T.schema": tc.src})
+			for _, e := range errs {
+				if strings.Contains(e.Error(), tc.want) {
+					if strings.Contains(e.Error(), "Entry") {
+						t.Fatalf("the diagnostic names a generated entry table: %v", e)
+					}
+					return
+				}
+			}
+			t.Fatalf("no diagnostic contains %q; got: %v", tc.want, errs)
+		})
+	}
+}
