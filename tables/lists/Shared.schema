@@ -1,0 +1,19 @@
+package listdemo
+
+// SHARING AND THE WALK ORDER (docs/SPEC-TABLES.md §2.9, §3.1): a []*T's
+// elements are pointer slots, so two slots may name one node beside a null
+// one, and a []*T DECLARED BEFORE a pointer field reaches a shared node first
+// and numbers it first. A walk that grouped lists after the pointer fields
+// would number the two the other way round and the pinned wire says so.
+
+table Photo
+{
+    width  uint32
+    height uint32
+}
+
+table Album
+{
+    photos []*Photo // BEFORE cover: the walk-order pin
+    cover  *Photo   // the same node, through a pointer field
+}

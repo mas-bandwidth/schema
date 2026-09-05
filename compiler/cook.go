@@ -120,9 +120,6 @@ func (c *Compiler) CookCheck(u *ir.Unit, root string, file []byte) (CookReport, 
 	if err := refuseToolMaps(u); err != nil {
 		return CookReport{}, err
 	}
-	if err := refuseToolLists(u); err != nil {
-		return CookReport{}, err
-	}
 	m := tabletext.NewModel(u)
 	res, err := tablecook.Check(m, file)
 	if err != nil {

@@ -25,29 +25,20 @@ import (
 
 // tableArenaRuntime is the variable-length runtime, guarded per package like
 // tablePrimitives so one definition survives any include order.
-func tableArenaRuntime(pkg string, anyMap bool) string {
+func tableArenaRuntime(pkg string, anyExtent bool) string {
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_ARENA"
-	// A MAP-FREE UNIT CARRIES NOT ONE SYMBOL OF THE MAP MACHINERY
-	// (docs/SPEC-TABLES.md §2.2, §2.8), the node map's extent cursor included:
-	// a pointered unit with no map emits exactly the arena runtime it always
-	// emitted, to the byte.
-	// AllocRaw is a MAP symbol (docs/SPEC-TABLES.md §2.8) and stays out of a
-	// map-free unit's header with the rest of them: nothing else allocates
+	// A UNIT WITH NEITHER A MAP NOR A LIST CARRIES NOT ONE SYMBOL OF THE EXTENT
+	// MACHINERY (docs/SPEC-TABLES.md §2.2, §2.8, §2.9), the node map's extent
+	// cursor included: a pointered unit with neither emits exactly the arena
+	// runtime it always emitted, to the byte.
+	// AllocRaw is an EXTENT symbol (docs/SPEC-TABLES.md §2.8, §2.9) and stays
+	// out of such a unit's header with the rest of them: nothing else allocates
 	// storage that is not a node.
-	// and the refusal a node's storage answers when the FRAMING ITSELF is bad
-	// rather than merely unnameable — a map whose N its L cannot carry.
-	refusedConstant := ""
-	if anyMap {
-		refusedConstant = "\n\n// What a node's storage answers when the FRAMING ITSELF is refused rather than\n" +
-			"// merely unnameable: a map whose N cannot fit in its L (docs/SPEC-TABLES.md\n" +
-			"// §2.8). An unnameable type id commands no storage and keeps its index; this\n" +
-			"// one makes the whole measure answer -1 (§7.6).\nstatic const int64_t kTableNodeRefused = -2;"
-	}
 	allocRaw := ""
 	carveDecl, carveMember := "\n", ""
-	if anyMap {
-		allocRaw = `    // RAW, ZEROED storage of the bytes asked for, at the alignment asked for — a MAP's builder head and its
-    // entry segments (docs/SPEC-TABLES.md §2.8). It is not a node: it carries
+	if anyExtent {
+		allocRaw = `    // RAW, ZEROED storage of the bytes asked for, at the alignment asked for: a MAP's or a LIST's builder
+    // head and its segments (docs/SPEC-TABLES.md §2.8, §2.9). It is not a node: it carries
     // no type id, takes no index and has no Reset, so it goes through the same
     // slab and span the blob path uses rather than through Alloc.
     uint8_t * AllocRaw( int64_t bytes, int64_t align, uint32_t & at )
@@ -75,18 +66,23 @@ func tableArenaRuntime(pkg string, anyMap bool) string {
         return TableArenaAt( *arena, at ); // the segment came back zeroed
     }
 `
-		carveDecl = "\n\n// a map's extent cursor, defined with the map runtime (docs/SPEC-TABLES.md\n// §2.8); the node map names it only through a pointer.\nstruct TableMapCarve;\n"
-		carveMember = "\n    // WHERE A MAP'S ENTRIES LAND while this node's body decodes\n" +
-			"    // (docs/SPEC-TABLES.md §2.8): the node's own extent on the region path\n" +
-			"    // and the builder's arena on the tool's. It is MUTABLE because the\n" +
-			"    // cursor belongs to ONE node's decode and the dispatch that owns that\n" +
-			"    // node holds the map by const reference, exactly as it did before maps\n" +
-			"    // existed — the decoder's signature does not move for a construct it\n" +
-			"    // may not carry.\n    mutable TableMapCarve * carve = NULL;\n" +
-			"    // and the TOOL's path's allocation front, set once: there a map's\n" +
-			"    // entries are the builder's arena's rather than a node's extent.\n" +
-			"    TableWorker * worker = NULL;"
+		carveDecl = "\n\n// the node's extent cursor, defined with the extent runtime (docs/SPEC-TABLES.md\n// §2.8, §2.9); the node map names it only through a pointer.\nstruct TableExtentCarve;\n"
+		carveMember = "\n    // WHERE A MAP'S ENTRIES AND A LIST'S ELEMENTS LAND while this node's body\n" +
+			"    // decodes (docs/SPEC-TABLES.md §2.8, §2.9): the node's own extent on the\n" +
+			"    // region path and the builder's arena on the tool's. It is MUTABLE\n" +
+			"    // because the cursor belongs to ONE node's decode and the dispatch that\n" +
+			"    // owns that node holds the map by const reference, exactly as it did\n" +
+			"    // before either construct existed. The decoder's signature does not\n" +
+			"    // move for a construct it may not carry.\n    mutable TableExtentCarve * carve = NULL;\n" +
+			"    // and the TOOL's path's allocation front, set once: there the arrays\n" +
+			"    // are the builder's arena's rather than a node's extent.\n" +
+			"    TableWorker * worker = NULL;\n" +
+			"    // THE TOOL PATH'S REFUSAL (docs/SPEC-TABLES.md §2.9): a count above the\n" +
+			"    // int32 cap met while a body decoded. LoadBuilder answers NULL for it\n" +
+			"    // and moves no counter; mutable for the reason the cursor is.\n" +
+			"    mutable bool refused = false;"
 	}
+
 	return `#ifndef ` + guard + `
 #define ` + guard + `
 
@@ -731,7 +727,7 @@ static const uint64_t kTableNodeIndexRoot = 1;         // the body that hosts th
 // The not-materialized sentinel (§6.3): a record whose type id this build could
 // not name. Distinct from every real offset including the root's 0, so an index
 // resolving through it yields NULL and can never fabricate the root.
-static const uint64_t kTableNodeAbsent = 0xFFFFFFFFFFFFFFFFull;` + refusedConstant + `
+static const uint64_t kTableNodeAbsent = 0xFFFFFFFFFFFFFFFFull;
 
 // ---- the numbering, on the SAVE side ----
 //

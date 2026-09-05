@@ -142,6 +142,19 @@ type scan struct {
 	buf      []byte
 	dir      []DirectoryEntry
 	pointers int
+	// THE NODE UNDER THE SCAN, for §7.4's element-array clause: an unbounded
+	// array's slot must point inside its holder's own extent, so the walk
+	// carries where that node begins and ends, and the arrays it has already
+	// placed there, so no two overlap. Both are reset per node.
+	base   int64
+	extent int64
+	arrays []arrayRange
+}
+
+// arrayRange is one element array a list slot placed inside the node under
+// the scan, in region offsets.
+type arrayRange struct {
+	start, end int64
 }
 
 // node walks one directory entry. A BYTE BUFFER's node has no fields to walk
@@ -160,6 +173,7 @@ func (s *scan) node(base, extent int64, typeId uint64, st *ir.Struct) error {
 		}
 		return nil
 	}
+	s.base, s.extent, s.arrays = base, base+extent, s.arrays[:0]
 	return s.record(base, st)
 }
 
@@ -198,9 +212,54 @@ func (s *scan) field(at int64, f *ir.Field) error {
 			return err
 		}
 		return s.companion(pieces[1].Offset, f.ArrayBound, "used count")
+	case f.Array == ir.ArrayList:
+		return s.list(value.Offset, f)
 	}
 	return s.element(value.Offset, f)
 }
+
+// list is §7.4's ELEMENT-ARRAY clause (docs/SPEC-TABLES.md §2.9, §7.4): an
+// unbounded array's sixteen-byte slot holds an int64 self-relative delta to
+// its element array and an int32 count, and the array must sit INSIDE THE
+// HOLDER'S OWN EXTENT, meaning containment, alignment, fit, and no overlap with any
+// other array already placed in that node, before the elements' own slots,
+// companions and tags are walked as a bounded array's are. There is no fifth
+// clause, because there are no keys and no order. The check reads those four
+// facts and not the offset the layout rule computes, so the layout rule stays
+// independent of the check exactly as the pack order does.
+func (s *scan) list(at int64, f *ir.Field) error {
+	delta := int64(s.ord.Uint64(s.buf[at:]))
+	count := int64(int32(s.ord.Uint32(s.buf[at+8:])))
+	if count < 0 {
+		return fmt.Errorf("the count is %d, and an extent is never negative", count)
+	}
+	if delta == RefNull {
+		if count != 0 {
+			return fmt.Errorf("the reference is null and the count is %d: an empty list is the only list a null names", count)
+		}
+		return nil
+	}
+	if count == 0 {
+		return fmt.Errorf("the count is 0 and the reference is not null: an empty list's reference is null in every encoding")
+	}
+	size, align := ir.ListElementLayout(s.m.Unit, f)
+	start := at + delta
+	end := start + count*size
+	if start < s.base || end > s.extent {
+		return fmt.Errorf("the element array runs [%d, %d) and its holder's extent is [%d, %d): the array leaves the node", start, end, s.base, s.extent)
+	}
+	if start%align != 0 {
+		return fmt.Errorf("the element array starts at %d, which is not aligned to %d", start, align)
+	}
+	for _, other := range s.arrays {
+		if start < other.end && other.start < end {
+			return fmt.Errorf("the element array [%d, %d) overlaps another array [%d, %d) in the same node", start, end, other.start, other.end)
+		}
+	}
+	s.arrays = append(s.arrays, arrayRange{start, end})
+	return s.slots(start, f, count)
+}
+
 
 // companion checks one count companion against its DECLARED bound. A negative
 // one is refused too: a count is an extent and an extent is never negative, and

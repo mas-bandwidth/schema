@@ -1,0 +1,48 @@
+package listdemo
+
+// The UNBOUNDED ARRAY corpus (docs/SPEC-TABLES.md §2.9): §2.9's own example,
+// the five element classes, and the report rows' roots. A list is a counted
+// array whose count the DATA decides, and every instance the harness pins over
+// these crosses the wire, the text and the cook.
+
+table Placement
+{
+    x     float32
+    y     float32
+    model uint32
+}
+
+table LogEntry { tick uint32 }
+
+table Save
+{
+    placements []Placement // as many as the world has
+    log        []*LogEntry // pointer elements, two slots may name one node
+    scores     []int32     // a scalar element is an element like any other
+}
+
+enum Grade { A, B, C }
+
+flags Perm { Read, Write, Own }
+
+table Point
+{
+    x int32
+    y int32
+}
+
+union Hit
+{
+    point  Point
+    damage int32
+}
+
+// the element set is [..N]T's exactly: an enum, a flags mask and a union are
+// elements as they are in a bounded array
+table Mixed
+{
+    grades []Grade
+    perms  []Perm
+    hits   []Hit
+    bounds []int32 | min = 0, max = 100 // a bar attribute qualifies the ELEMENT, as on a [..N]T
+}

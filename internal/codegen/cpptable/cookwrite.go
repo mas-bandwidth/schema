@@ -220,7 +220,8 @@ func (g *tableGen) emitCookWriteSurface(members []*ir.Struct) {
 	for _, st := range bodies {
 		g.emitCookWriteBody(st)
 	}
-	g.emitCookMapSurface(members)
+	g.emitCookExtentSurface(members)
+
 	for _, st := range bodies {
 		if !st.IsTable || st.IsMapEntry() {
 			// a `type` is no root, and a map's generated ENTRY is §2.8's one
@@ -250,18 +251,16 @@ func (g *tableGen) emitCookWriteBody(st *ir.Struct) {
 			g.pf("    (void) at; (void) value; (void) order; // a record with no field writes nothing\n")
 		}
 	}
-	if variable && len(ml.Fields) > 0 && g.noVariableEdges(st) {
-		g.pf("    (void) ctx; (void) region; // no reference below this node: the class was decided by a pointer elsewhere in its closure\n")
+	if variable && len(ml.Fields) > 0 && g.noCookRefs(st) {
+		g.pf("    (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure\n")
 	}
-	if len(ml.Fields) > 0 && onlyMapFields(st) {
-		// every field is a MAP, whose slot the extent writer fills: this body
-		// writes the empty sixteen bytes and reads nothing off the value, and
-		// no reference of its own resolves here
+	if len(ml.Fields) > 0 && onlyExtentFields(st) {
+		// every field is a LIST or a MAP, whose slot the extent writer fills:
+		// this body writes the empty sixteen bytes and reads nothing off the
+		// value
 		g.pf("    (void) value;\n")
-		if variable && !g.noVariableEdges(st) {
-			g.pf("    (void) ctx; (void) region;\n")
-		}
 	}
+
 	for i := range ml.Fields {
 		fl := &ml.Fields[i]
 		g.emitCookWriteField(st, fl.Field, fl.Offset)
@@ -281,13 +280,14 @@ func (g *tableGen) emitCookWriteField(st *ir.Struct, f *ir.Field, offset int64) 
 // in a member of the record (docs/SPEC-TABLES.md §2.6), and its pieces sit at
 // the arms' shared offset.
 func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64, name, base, sfx string) {
-	if f.IsMap() {
-		// THE SLOT IS THE EXTENT WRITER'S (docs/SPEC-TABLES.md §2.8): the
+	if f.IsMap() || f.IsList() {
+		// THE SLOT IS THE EXTENT WRITER'S (docs/SPEC-TABLES.md §2.8, §2.9): the
 		// reference is a delta to an array this record's own extent holds, and
-		// only <T>CookMaps knows where that landed. The record's sixteen bytes
+		// only <T>CookExtent knows where that landed. The record's sixteen bytes
 		// are written EMPTY here, which is what a node the walk never reaches
-		// keeps — and is why an unreached non-empty map is refused (§7.6).
-		g.pf("    table_cook_put( %s + %d, 0, 8, order ); // %s: the entry array's delta, filled by the extent writer\n", base, offset, f.Name)
+		// keeps, and is why an unreached non-empty list or map is refused
+		// (§7.6).
+		g.pf("    table_cook_put( %s + %d, 0, 8, order ); // %s: the array's delta, filled by the extent writer\n", base, offset, f.Name)
 		g.pf("    table_cook_put( %s + %d, 0, 4, order ); // and its count\n", base, offset+8)
 		return
 	}
@@ -531,22 +531,22 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("// eight. The offsets go into the region's table when it has one, and are only\n")
 	g.pf("// summed when it does not (a measure). A type id the numbering carries that\n")
 	g.pf("// this root cannot name is the two walks disagreeing, and it is refused.\n")
-	if g.anyMap {
-		g.pf("// A NODE'S SIZE DEPENDS ON ITS VALUE where a map rides in its extent\n")
+	if g.anyExtent {
+		g.pf("// A NODE'S SIZE DEPENDS ON ITS VALUE where a list or a map rides in its extent\n")
 		g.pf("// (docs/SPEC-TABLES.md §2.8), so the layout takes the resolution context\n")
-		g.pf("// the numbering walked and reads the same maps that walk read.\n")
+		g.pf("// the numbering walked and reads the same arrays that walk read.\n")
 		g.pf("template <typename Ctx>\ninline bool %sCookLayout( const Ctx & ctx, const %s & root, const TableNumbering & numbering, TableCookRegion & region )\n{\n", n, n)
 	} else {
 		g.pf("inline bool %sCookLayout( const TableNumbering & numbering, TableCookRegion & region )\n{\n", n)
 	}
 	g.pf("    region.numbering = &numbering;\n")
 	g.pf("    region.count = numbering.count + 1;\n")
-	if g.anyMap && g.hasMapExtent(st) {
-		g.pf("    const int64_t root_extent = %sMapExtent( ctx, root );\n", n)
+	if g.anyExtent && g.hasExtent(st) {
+		g.pf("    const int64_t root_extent = %sExtent( ctx, root );\n", n)
 		g.pf("    if ( root_extent < 0 ) { return false; }\n")
 		g.pf("    int64_t offset = %d + root_extent; // the root at zero, its extent behind it\n", cookAlignUp(ml.Size, ir.RegionAlignFloor))
 	} else {
-		if g.anyMap {
+		if g.anyExtent {
 			g.pf("    (void) root;\n")
 		}
 		g.pf("    int64_t offset = %d; // the root, at zero\n", ml.Size)
@@ -559,7 +559,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("        switch ( numbering.entries[k].type_id )\n        {\n")
 	for _, t := range reachable {
 		tl := ir.RecordLayout(g.unit, t)
-		if g.anyMap && g.hasMapExtent(t) {
+		if g.anyExtent && g.hasExtent(t) {
 			g.pf("            case 0x%016xull: // %s\n", ir.TableWireId(t.Name), t.Name)
 			g.emitCookNodeBytes(t, "                ", fmt.Sprintf("*(const %s *) numbering.entries[k].node", t.Name), "return false;")
 			g.pf("                break;\n")
@@ -596,7 +596,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("    TableNumberingInit( numbering, allocator );\n")
 	g.pf("    TableCookRegion region;\n")
 	g.pf("    int64_t bytes = -1;\n")
-	if g.anyMap {
+	if g.anyExtent {
 		g.pf("    if ( %sNumberFrom( ctx, numbering, root ) && %sCookLayout( ctx, root, numbering, region ) )\n    {\n", n, n)
 	} else {
 		g.pf("    if ( %sNumberFrom( ctx, numbering, root ) && %sCookLayout( numbering, region ) )\n    {\n", n, n)
@@ -627,7 +627,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("    bool ok = %sNumberFrom( ctx, numbering, root );\n", n)
 	g.pf("    if ( ok )\n    {\n")
 	g.pf("        region.offsets = (int64_t *) allocator.alloc( allocator.context, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );\n")
-	if g.anyMap {
+	if g.anyExtent {
 		g.pf("        ok = region.offsets != NULL && %sCookLayout( ctx, root, numbering, region );\n", n)
 	} else {
 		g.pf("        ok = region.offsets != NULL && %sCookLayout( numbering, region );\n", n)
@@ -644,7 +644,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("            region.base = raw + data_offset;\n")
 	g.pf("            // the DATA part: the root at the region's base, then every numbered\n")
 	g.pf("            // node at the offset the layout gave it, each through its own writer\n")
-	if g.anyMap {
+	if g.anyExtent {
 		g.pf("            ok = %sCookNode( ctx, region, region.base, root, order );\n", n)
 	} else {
 		g.pf("            ok = %sCookBody( ctx, region, region.base, root, order );\n", n)
@@ -660,7 +660,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 		g.pf("                switch ( numbering.entries[k].type_id )\n                {\n")
 	}
 	for _, t := range reachable {
-		if g.anyMap {
+		if g.anyExtent {
 			g.pf("                    case 0x%016xull: ok = %sCookNode( ctx, region, at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.Name), t.Name, t.Name, t.Name)
 			continue
 		}
@@ -736,4 +736,21 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("    if ( builder.root_ref.null() ) { return false; } // the root allocation failed\n")
 	g.pf("    TableArenaCtx ctx = { &builder.arena };\n")
 	g.pf("    return %sCookFrom( ctx, *(const %s *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), out, capacity, order, builder.arena.allocator );\n}\n\n", n, n)
+}
+
+// noCookRefs reports a record whose cook body resolves no reference through
+// the context: no pointer or byte buffer slot, no by-value nesting or union arm
+// that holds one. A list's and a map's slots are not references here, the
+// extent writer fills them (§2.8, §2.9), so a record whose only edges are
+// those has nothing to resolve, and its ctx and region are named unused.
+func (g *tableGen) noCookRefs(st *ir.Struct) bool {
+	for _, f := range st.Fields {
+		if f.IsMap() || f.IsList() {
+			continue
+		}
+		if g.edgeOf(f) != edgeNone {
+			return false
+		}
+	}
+	return true
 }

@@ -2268,12 +2268,15 @@ table that holds `[]*Self` is the ordinary legal recursion through a pointer. A
 hold one node, one index on the wire (§3.1), one body in a region (§6.3), one
 `&node` in the text (§16.7).
 
-**THE COUNT IS THE DATA'S, and what bounds it is stated.** There is no `| max`
-on a `[]T` and there is no `?[]T`, for the reasons §2.8 gives a map: a bound
-would buy only a CLAMP, which drops a tail, and a fresh list is empty and an
-empty list is elided under §3's by-value elision rule, the rule that elides an
-empty counted array. What bounds it is three things and each belongs to one
-side:
+**THE COUNT IS THE DATA'S, and what bounds it is stated.** There is no
+attribute that bounds a `[]T`'s COUNT and there is no `?[]T`, for the reasons
+§2.8 gives a map: a bound would buy only a CLAMP, which drops a tail, and a
+fresh list is empty and an empty list is elided under §3's by-value elision
+rule, the rule that elides an empty counted array. **A bar attribute on a
+`[]T` qualifies the ELEMENT, exactly as it does on a `[..N]T`**: `scores
+[]int32 | min = 0, max = 100` bounds each score, `was` renames the field and
+`json` keys its text, and none of them is a count. What bounds the count is
+three things and each belongs to one side:
 
 - **On the AUTHORING side, the ARENA.** Elements are carved from the builder's
   arena in bulk segments (below), so an `Add` that cannot carve one answers
@@ -2754,20 +2757,25 @@ each:
 | byte-stable output | `measure == save`, index order, one image from one value (§9) | field order is the writer's | the builder's order |
 | a fixed-table user pays nothing | a list-free unit carries no list machinery, held by the zero-cost gate's header scan (§2.2) | every runtime carries the repeated codec | every runtime carries the vector |
 
-**BACKEND STATUS: OWED, not emitted.** This section is specified ahead of its
-implementation, on the same terms §3.3 and §6.6 take: **the FRONT END takes the
-spelling and holds every refusal above, and the TOOL's WIRE and TEXT halves
-carry the construct**, so `pack` and `unpack` read and write a `[]T` and the
-projections render it. **No CODE GENERATOR carries it**, every one of them
-refuses a unit that declares one by name (§11), and the corpus holds no
-`tables/lists`. The C++ REFERENCE lands the codec next and every other backend
-keeps refusing, with the ports a named follow-on (§15). The corpus the implementation owes is `tables/lists`:
-`list_empty` (an empty list beside a full one), `list_scalars`, `list_tables`,
-`list_shared` (two slots naming one node beside a null slot),
-`list_before_pointer` (the walk-order control above), `list_erased` (an erase
-from the middle with an add after it), `list_of_maps` and `list_nested` (a list
-of tables that hold lists), each crossing the wire, the text and the cook in
-the harness, with the report rows the negative controls above name and
+**WHERE IT IS CARRIED.** The FRONT END takes the spelling and holds every
+refusal above. The C++ REFERENCE carries the codec: the `TableList` runtime,
+the builder's three, the five element classes on the wire, the node extent, the
+cook's write side, the text form and the descriptors, held by the corpus below.
+The TOOL's WIRE and TEXT halves carry the construct, so `pack` and `unpack`
+read and write a `[]T` and the projections render it, and `schema cook-check`
+reads one (§7.4); the tool's COOK and UNCOOK halves do not lay out the element
+arrays yet and refuse a unit that declares one by name, beside the map's own
+refusal there (§15). **Every PORT refuses a unit that declares one by name**
+(§11), naming the reference as the carrier, with the ports a named follow-on
+(§15). The corpus is `tables/lists`: `list_empty` (an empty list beside a full
+one), `list_scalars`, `list_tables`, `list_mixed` (an enum, a flags mask, a
+union and a bounded scalar as elements), `list_shared` (two slots naming one
+node beside a null slot), `list_before_pointer` (the walk-order control above),
+`list_erased` (an erase from the middle with an add after it), `list_of_maps`
+and `list_nested` (a list of tables that hold lists, and a pointed-at holder
+with a list of its own), each crossing the wire, the text and the cook in
+`test/tables/lists_main.cpp`, with the report rows the negative controls above
+name, the two cooks pinned beside the wires, and
 `make tables-list-measure-refusals` beside them.
 
 **AND ONE GOLDEN IS THE MIGRATION ITSELF**, `list_migrates`, because "the same
@@ -6241,13 +6249,15 @@ The builder is designed to go wide, lock-free by ownership:
   with the accelerators' refusal and lands with it**, so a build that has one
   has the other.
 
-  **BACKEND STATUS: OWED, not emitted.** The enum is specified ahead of its
-  implementation, on the terms §3.3 and §6.6 take. `TableRefuseReason` is
-  spelled in no target, in no runtime and in no tool, a bare `-1` is the whole
-  of a measure's answer today, and the name is not claimed either, so a unit
-  declaring a table or a type called `TableRefuseReason` compiles.
-  Owed as schema#523, with §7's check order and §19.2's block clauses, and
-  this line is deleted by the implementation PR that lands the behavior.
+  **WHERE IT IS CARRIED.** The C++ reference spells `TableRefuseReason` with
+  the two values a map's and an unbounded array's framing can raise,
+  `count_over_length` and `count_over_extent_cap`, as a native enum a unit
+  that declares either construct emits, and `LoadMeasure` there takes it as a
+  trailing out-parameter, `TableRefuseReason * reason_out = NULL`, so a caller
+  that does not ask keeps the signature it had. A unit with neither construct
+  carries neither the enum nor the parameter (§2.2). The other three values,
+  §7's check order and §19.2's block clauses are owed as schema#523, and no
+  port spells the enum yet.
 - **Into a builder** — the tool's path. The same tolerant decode into a
   fresh builder, so loaded data can be edited and locked again. **Its own
   refusal is a NULL** rather than a `-1`, and the report it leaves behind is
@@ -8172,8 +8182,12 @@ leaves all three NULL.
 INLINE, and `array_bound = 0` is what says so.** Neither had a written rule
 before this section, so the rule is here, one shape for both:
 
-- **`kind` is `14`** and the ELEMENT kind is `13` for a map, the element's own
-  kind for a list, exactly as the wire carries them (§2.8, §2.9).
+- **`kind` is the ELEMENT kind, as on every array line**: `13` for a map, the
+  generated entry being a table; the element's own kind for a list, and `17`
+  for a `[]*T`, whose elements are node indices. The wire's kind `14` is what
+  `is_array` says, exactly as it says it for a `[..N]T`, and the `type_name`
+  says which of the two constructs it is, `map[...]` or the element's own,
+  the way `bytes` separates a byte buffer from an array of `u8` (below).
 - **`element_size` is the pitch**: `sizeof( Entry )` for a map, `sizeof( T )`
   for a list. It is the stride a walker steps, as on every array line.
 - **`counted` is set and `count_offset` names the `int32` count**, which sits
@@ -8194,21 +8208,17 @@ before this section, so the rule is here, one shape for both:
   map's key is a field of the entry and a walker meets it there, and a list has
   no key at all.
 
-**BACKEND STATUS, because the reference does not carry this yet.** The C++
-map descriptor emitted today leaves `kind` at `0` and `is_array` false and
-describes the map through the ENTRY's own `TableTypeInfo` beside three
-map-specific FUNCTION columns, `map_count`, `map_at` and `map_insert`, which
-is what let the text walk reach a `TableMap<Entry>` it has no name for. **It
-moves to the columns above when the list lands**, and the two land together
-for one reason: a second out-of-line shape would otherwise need a second set
-of function columns, and three per construct is how a descriptor becomes a
-per-construct API instead of a vocabulary. **The function columns do not all
-go**: what the walk cannot spell for itself it still cannot spell, so a
-resolver stays where a resolver is needed, and what changes is that the SHAPE
-is read from `kind`, `is_array`, `counted`, `element_size` and
-`array_bound = 0` like every other array's rather than inferred from a
-non-NULL `entry`. A port that has neither construct carries neither column
-set, which is §2.2's gate doing its job.
+**ONE FUNCTION COLUMN SERVES BOTH, and it is `place`.** What the ONE text walk
+cannot spell for itself it still cannot spell: placing an entry by key in a
+`TableMap<Entry>` or appending an element to a `TableList<T>` needs the type
+the walk has no name for, so a resolver stays where a resolver is needed, and
+it is one column, `place( worker, slot, key, key_length, key_value )`, which a
+map reads as an insert by key and a list reads as an append. The SHAPE is read
+from `kind`, `is_array`, `counted`, `element_size` and `array_bound = 0` like
+every other array's, the count from `count_offset`, and the array from the
+reference at `offset`, so nothing about the two constructs is inferred from a
+column of their own. A unit that has neither construct carries no `place`
+column, which is §2.2's gate doing its job.
 
 **The public currency is the KEY; the storage index is private** (§2.4).
 `array_bound` on a keyed field is the STORAGE EXTENT, `E.Max` — derived
@@ -9049,8 +9059,10 @@ in build version (§20.5).
   diagnostic naming the table wrapper that serves, which is the refusal a
   `map` takes there on the same ground; the near-miss spellings
   `[..]T` and `[0..]T`, each naming `[]T` as the fix, because a count bound is
-  a range literal and never a truncated one (SPEC.md §4.2); `?[]T`, a specified
-  default on one, and `| max` on one; the bounded spellings of the construct
+  a range literal and never a truncated one (SPEC.md §4.2); `?[]T` and a
+  specified default on one, while the bar attributes qualify the ELEMENT
+  exactly as they do on a `[..N]T` and no attribute names a count bound
+  (§2.9); the bounded spellings of the construct
   itself, `[..N][]T` and `[N][]T`, which are arrays of arrays and refused as
   those are (SPEC.md §4.3); a table
   that holds a `[]` of ITSELF by value, directly or through any chain (the
@@ -10556,13 +10568,14 @@ inspects everything in the schema built:
   own call, because it is never stored and no golden names it (§2.8's memory
   layout): what is deferred is the BENCH NUMBER that says the size above which
   a caller should reach for it, not the surface.
-- **UNBOUNDED ARRAYS IN EVERY BACKEND** (§2.9). The LANGUAGE carries the
-  construct, which is the parser's `[]T`, the checker's refusals and its two
-  claimed names, and the record's reference-and-count slot, and every backend
-  refuses a unit that declares one, by name (§11), until its codec lands. The C++
-  reference and the tool are first: the builder's segments and `Add`, the four
-  walks in index order, the region load, the const `TableList` surface, the
-  text form's array and `schema cook-check`'s element-array clause. What a port
+- **UNBOUNDED ARRAYS IN EVERY PORT** (§2.9). The LANGUAGE carries the
+  construct, which is the parser's `[]T`, the checker's refusals and its three
+  claimed names, and the record's reference-and-count slot, and every port
+  refuses a unit that declares one, by name (§11), until its codec lands. The
+  C++ reference carries it: the builder's segments and `Add`, the four walks
+  in index order, the region load, the const `TableList` surface, the text
+  form's array, and `schema cook-check`'s element-array clause in the tool;
+  the tool's COOK and UNCOOK halves are owed beside the map's. What a port
   needs is SMALLER than what a map needed, and by exactly the key: the element
   is an ordinary array element its measure, save and load already carry, there
   is no sort, no key compare and neither of the map's two reader events, and
@@ -13123,7 +13136,12 @@ of declaration it names"*:
   carries a `bound=`**, because neither declares an extent and both take their
   count from the wire. An unbounded array generates no second record, because
   it generates no entry (§2.9), so its element's own `record` line is the only
-  one it needs and that line is already there under the element's name.
+  one it needs and that line is already there under the element's name. **A
+  list's line carries `kind=14`**, the array's own kind, as a map's does,
+  where a fixed or bounded array's line carries its ELEMENT's kind: the two
+  spellings are one wire (§2.9) and two storages, and this projection digests
+  storage.
+
 - **A MAP's generated ENTRY takes a `record` line of its own, and it is
   ANONYMOUS.** The line carries the HOLDER's wire id and the MAP FIELD's wire
   id, joined by a dot, in place of a name, and it sorts with the named records

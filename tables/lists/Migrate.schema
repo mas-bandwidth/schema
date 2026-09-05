@@ -1,0 +1,21 @@
+package listdemo
+
+// THE MIGRATION ITSELF (docs/SPEC-TABLES.md §2.9): "the same bytes" is a claim
+// about two schemas, so ONE content is declared twice, once at a bound and
+// once unbounded, and one pinned wire is what both write byte for byte and
+// both read into equal values. The bound is ABOVE the instance's count, so the
+// row proves the framing and not the clamp.
+
+table Unit { v int32 }
+
+table Bounded
+{
+    items [..8]Unit
+    tag   int32
+}
+
+table Unbounded
+{
+    items []Unit
+    tag   int32
+}

@@ -1,0 +1,107 @@
+schema-tables-baseline 7
+package listdemo
+
+table Album
+    field photos id=0x40b1d94aff3ab130 kind=14 elem=17 type=Photo array=unbounded
+    field cover id=0xaa19a78e404dea20 kind=17 type=Photo
+
+table Army
+    field squads id=0x7848019b0c02a926 kind=14 elem=13 type=Squad array=unbounded
+    field after id=0xbf82010f6f71eae9 kind=4
+
+table Bounded
+    field items id=0x3e7884bf4f412c6f kind=14 elem=13 type=Unit array=bounded bound=8
+    field tag id=0x56d7ab194448a4f3 kind=4
+
+table Bytes
+    field data id=0x855b556730a34a05 kind=14 elem=6 array=unbounded
+    field after id=0xbf82010f6f71eae9 kind=4
+
+table Deck
+    field hands id=0x81b46a69304ee2c9 kind=14 elem=13 type=Row array=bounded bound=3
+    field after id=0xbf82010f6f71eae9 kind=4
+
+table Floats
+    field values id=0x21277bcf1a4d67fb kind=14 elem=10 array=unbounded
+    field after id=0xbf82010f6f71eae9 kind=4
+
+table Ints
+    field values id=0x21277bcf1a4d67fb kind=14 elem=4 array=unbounded
+    field after id=0xbf82010f6f71eae9 kind=4
+
+table Item
+    field count id=0xb1e5e28e4479a274 kind=4
+
+table LogEntry
+    field tick id=0x1e7683ef2ebc7684 kind=8
+
+table Mixed
+    field grades id=0xd90a4e7682f799c5 kind=14 elem=7 enum=Grade array=unbounded
+    field perms id=0x4af2ed8470862ea8 kind=14 elem=9 flags=Perm array=unbounded
+    field hits id=0x732dfbcc9b0cf0bb kind=14 elem=15 union=Hit array=unbounded
+    field bounds id=0x52f60c4caef0b768 kind=14 elem=4 array=unbounded min=0 max=100
+
+table Photo
+    field width id=0xdbdacd932fd1e9bf kind=8
+    field height id=0x17720bf67d347222 kind=8
+
+table Placement
+    field x id=0xaf63f54c86021707 kind=10
+    field y id=0xaf63f44c86021554 kind=10
+    field model id=0x9de543933e6e703a kind=8
+
+table Point
+    field x id=0xaf63f54c86021707 kind=4
+    field y id=0xaf63f44c86021554 kind=4
+
+table Row
+    field items id=0x3e7884bf4f412c6f kind=14 elem=13 type=Sample array=unbounded
+    field label id=0x39f7fcec8fcb623d kind=4
+
+table Sample
+    field v id=0xaf63eb4c86020609 kind=4
+
+table Save
+    field placements id=0xd24733aa574d4b09 kind=14 elem=13 type=Placement array=unbounded
+    field log id=0x125073191daf5431 kind=14 elem=17 type=LogEntry array=unbounded
+    field scores id=0x01986b0b27400fb2 kind=14 elem=4 array=unbounded
+
+table Sheet
+    field rows id=0xa3a7061ff10a8138 kind=14 elem=13 type=Row array=unbounded
+    field pinned id=0x5f82477707ad620f kind=17 type=Row
+
+table Squad
+    field roster id=0x1c84390d304f4f42 kind=14 elem=13 array=map keykind=6
+    field name id=0xc4bcadba8e631b86 kind=4
+
+table Unbounded
+    field items id=0x3e7884bf4f412c6f kind=14 elem=13 type=Unit array=unbounded
+    field tag id=0x56d7ab194448a4f3 kind=4
+
+table Unit
+    field v id=0xaf63eb4c86020609 kind=4
+
+table ec07a2f760550a91.1c84390d304f4f42
+    field key id=0x3dc94a19365b10ec kind=6
+    field value id=0x7ce4fd9430e80cea kind=13 type=Item
+
+enum Grade
+    variant A id=0xaf63fc4c860222ec
+    variant B id=0xaf63ff4c86022805
+    variant C id=0xaf63fe4c86022652
+
+flags Perm
+    variant Read bit=0
+    variant Write bit=1
+    variant Own bit=2
+
+union Hit
+    arm point id=0x73feab3544c345b1 payload=Point
+    arm damage id=0x7f6308be8ab37fc0 kind=4
+
+## history
+### 2026-09-05 (UTC) — first baseline: the unbounded array corpus
+- baseline created over 20 tables — data written BEFORE this point is not covered by it
+
+### 2026-09-05 (UTC) — Deck: the unreached-slot control
+- no compatibility-affecting edits; the wire absorbs the rest
