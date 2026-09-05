@@ -917,7 +917,7 @@ sequence    uint16
   word named, so `| table` draws "table is a reserved word" rather than
   becoming a tag. **A repeated tag on one line is refused by name** too, and
   so is a tag that repeats a valued key already on the line.
-- **`was = "old_name"` — the rename attribute, table closures only**
+- **`was = "old_name"`, the rename attribute, table closures only**
   (SPEC-TABLES.md §5). A table field's wire id is the hash of its name, so a
   bare rename would orphan every byte ever written under the old one; `was`
   keeps the old identity through the rename: `speed float32 | was =
@@ -928,7 +928,7 @@ sequence    uint16
   table field's does, and `was` keeps the id. On a field of a type NO table
   reaches it is refused naming the type: the packet wire is positional, so
   a rename there orphans no stored value and there is no identity for `was`
-  to carry. A bare rename is not a free edit on either wire — field NAMES
+  to carry. A bare rename is not a free edit on either wire: field NAMES
   ride in the projection (§3.1), so renaming a `type` field bare moves the
   protocol id and both sides redeploy together, where a rename under `was`
   projects the wire name and moves nothing. **An enum variant and a union
@@ -1029,17 +1029,19 @@ type Quat | quat4
   actions for those types on the other. v1 ships the types; each schema
   declares its own, and each application's actions bind to them by claiming.
 
-**Front-end status: ONE LINE KIND CARRIES A TAG TODAY.** The rule at every
+**Front-end status: TWO LINE KINDS CARRY A TAG TODAY.** The rule at every
 line kind is specified ahead of its implementation, on the terms
 SPEC-TABLES.md §3.3 and §6.6 take. What the tree carries is a tag on a
-`type` DECLARATION alone, gathered into `ir.Struct.Tags` and emitted as the
-inert comment above. Every other line kind refuses one, each under a
-diagnostic written for a different rule: a field's pipe draws "unknown
-attribute ... the vocabulary is typed and closed per compiler version", a
-`union` declaration draws "takes no qualification", a `const`
-draws "a constant takes no qualification, and | is never an operator", a
-union arm's pipe draws "expected a field type", and an enum or flags variant
-carrying one does not parse at all. Owed as schema#523 ruling 4, together
+`type` declaration, gathered into `ir.Struct.Tags` and emitted as the inert
+comment above, and on a `table` declaration, gathered the same way and
+emitted nowhere yet. A field's pipe refuses one under "unknown
+attribute ... the vocabulary is typed and closed per compiler version", and
+an arm with a payload is a field line and refuses it the same way. A `union`
+declaration draws "takes no qualification", and a `const` draws "a constant
+takes no qualification, and | is never an operator". An enum variant, a
+flags variant and a payload-free arm parse a qualification section for `was`
+(a flags variant refuses `was` by ruling) and accept a bare tag in silence,
+carrying it nowhere. Owed as schema#523 ruling 4, together
 with the descriptor columns it feeds (SPEC-TABLES.md §8.1), and this line is
 deleted by the implementation PR that lands the behavior.
 

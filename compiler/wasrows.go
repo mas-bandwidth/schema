@@ -25,6 +25,6 @@ func refuseWasRows(u *ir.Unit, target string) error {
 		return nil
 	}
 	carry, flags := carriers(wasRowTargets)
-	return fmt.Errorf("unit declares was on an enum variant, a union arm or a type's field (%s) — the three are %s only today, and the %s form is a named follow-on; generate with %s (docs/SPEC-TABLES.md §5)",
+	return fmt.Errorf("unit declares was on an enum variant, a union arm or a type's field (%s): the three are %s only today, and the %s form is a named follow-on; generate with %s (docs/SPEC-TABLES.md §5)",
 		englishList(names), englishList(carry), target, englishList(flags))
 }

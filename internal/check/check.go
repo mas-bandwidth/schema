@@ -1394,7 +1394,6 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 	// where the closure is known: a `type` a table reaches has table-wire
 	// field ids and a text form and may carry both, and only membership
 	// decides it (docs/SPEC-TABLES.md §5, §16.4).
-	_ = inTable
 
 	// the fixed and 128-bit families mirror serialize's own surface exactly
 	// (SPEC §4.3, runtime-first): fixed(I, F) and int128 are RANGED — the

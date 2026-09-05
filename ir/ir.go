@@ -95,7 +95,7 @@ type Enum struct {
 	// [Enum.VariantWireName].
 	Was         []string
 	Max         int64 // top wire value: variant count, or the | max = K widening
-	StorageBits int   // 8 / 16 / 32 / 64 — smallest unsigned fitting Max
+	StorageBits int   // 8 / 16 / 32 / 64, the smallest unsigned fitting Max
 }
 
 // Flags is a `flags` declaration: one bit per variant, consumed as masks
@@ -114,7 +114,7 @@ type Union struct {
 	Name        string
 	Variants    []UnionVariant // declared order — the tag order
 	Max         int64          // = len(Variants); the tag wire range is [0, Max]
-	StorageBits int            // 8 / 16 / 32 / 64 — smallest unsigned fitting Max
+	StorageBits int            // 8 / 16 / 32 / 64, the smallest unsigned fitting Max
 }
 
 // UnionVariant is one arm of a [Union]. AN ARM IS A FIELD LINE (SPEC §4.8,
