@@ -198,10 +198,12 @@ struct FixedMessage
     static void run( const uint8_t * wire, int64_t bytes, Reply & reply )
     {
         const Vocabulary * vocabulary = announced_to_itself<Vocabulary, Report>( announce_measure, announce, announce_read );
-        static T * value = new T();
-        new ( value ) T();
+        // THE WIRE MAY CARRY UP TO 256 BODIES, and a caller refused for capacity
+        // calls again with room for the wire's M (§3.3): the leg holds that room
+        static T * value = new T[256];
+        for ( int i = 0; i < 256; i++ ) { new ( value + i ) T(); }
         Report report;
-        int64_t count = 1;
+        int64_t count = 256;
         bool ok = load( value, &count, *vocabulary, wire, bytes, &report );
         copy_report( report, reply );
         reply.malformed = reply.malformed || ( !ok && !reply.refused );
@@ -236,8 +238,9 @@ struct VariableMessage
         reply.measure = need;
         uint8_t * region = (uint8_t *) malloc( need > 0 ? (size_t) need : 1 );
         Report report;
-        const T * roots[1] = { NULL };
-        int64_t count = 1;
+        static const T * roots[256];
+        for ( int i = 0; i < 256; i++ ) { roots[i] = NULL; }
+        int64_t count = 256; // room for the wire's M: a batch is never refused for capacity here
         load( roots, &count, region, need, *vocabulary, wire, bytes, &report );
         copy_report( report, reply );
         reply.loaded = roots[0] != NULL;

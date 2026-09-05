@@ -33,10 +33,7 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 		g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, %s & value )\n{\n", st.Name, st.Name)
 		g.pf("    (void) nodes; (void) index_bits;\n")
 	} else {
-		g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, %s & value )\n{\n", st.Name, st.Name)
-		// A FIXED body numbers no node, so it has no index width: an unknown
-		// entry of kind 17 inside one cannot be stepped over and is damage
-		g.pf("    const int64_t index_bits = 0;\n")
+		g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, %s & value )\n{\n", st.Name, st.Name)
 	}
 	g.pf("    %sReset( value );\n", st.Name)
 	g.pf("    for ( ;; )\n    {\n")
@@ -634,7 +631,7 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("    if ( bodies < 0 ) { return false; }\n")
 	g.pf("    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }\n")
 	g.pf("    for ( int64_t i = 0; i < bodies; i++ )\n    {\n")
-	g.pf("        if ( !%sLoadMessageBody( br.r, vocabulary, to, values[i] ) ) { *count = i; return false; }\n", n)
+	g.pf("        if ( !%sLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width\n", n)
 	g.pf("        br.remaining--;\n    }\n")
 	g.pf("    *count = bodies;\n")
 	g.pf("    return TableMessageBatchClose( br );\n}\n\n")

@@ -104,8 +104,8 @@ var messageSabotages = map[string][]edit{
 	// A RANGED OFFSET ABOVE THE SENDER'S MAX RECONSTRUCTS AND CLAMPS, and is
 	// not damage.
 	"message-offset-past-max-is-damage": {{
-		old: "\t\t\t} else if value > hi {\n\t\t\t\tvalue = hi\n\t\t\t\td.report.Clamped++\n\t\t\t}\n\t\t} else {\n\t\t\tu := uint64(value)\n",
-		new: "\t\t\t} else if value > hi {\n\t\t\t\td.report.Malformed = true // SABOTAGED: a value past the bound is damage\n\t\t\t\treturn false\n\t\t\t}\n\t\t} else {\n\t\t\tu := uint64(value)\n",
+		old: "\t\t\t} else if value > hi {\n\t\t\t\tvalue = hi\n\t\t\t\td.report.Clamped++\n\t\t\t}\n\t\t} else {\n\t\t\t// the bounds are read whole: an unsigned range reaches 2^64 - 1\n",
+		new: "\t\t\t} else if value > hi {\n\t\t\t\td.report.Malformed = true // SABOTAGED: a value past the bound is damage\n\t\t\t\treturn false\n\t\t\t}\n\t\t} else {\n\t\t\t// the bounds are read whole: an unsigned range reaches 2^64 - 1\n",
 	}},
 
 	// AN OVER-LONG ARRAY CLAMPS BY WALKING THE SURPLUS: stop at the bound
@@ -148,7 +148,7 @@ var messageSabotages = map[string][]edit{
 
 	// A SECOND ANNOUNCEMENT IS REFUSED BY NAME and sets nothing.
 	"message-second-announcement-accepted": {{
-		old: "\tif v.announced {\n",
+		old: "\tif v.announced || v.refused {\n",
 		new: "\tif false { // SABOTAGED: a second announcement is accepted\n",
 	}},
 
@@ -191,7 +191,7 @@ var messageSabotages = map[string][]edit{
 
 	// A HOSTILE SHAPE IS A HOSTILE WIDTH: bits above 128 are refused.
 	"message-bits-unbounded": {{
-		old: "\t\t\tif !ok || v > 128 {\n",
+		old: "\t\t\tif !ok || v > uint64(TableMessageKindBits(kind)) {\n",
 		new: "\t\t\tif !ok { // SABOTAGED: any width\n",
 	}},
 
@@ -235,11 +235,11 @@ var messageRoundTwoSabotages = map[string][]edit{
 		new: "\t\t\t\tout = appendLebBytes(out, tableMessageZigzag(s.Base)) // SABOTAGED: every base zigzags\n",
 	}},
 
-	// THE WRITER'S RULE IS IN FLOAT32: normalize in float64 and the rounding
-	// tie at 0.005 falls to 0 where the packet wire writes 1.
-	"message-quantize-float64": {{
-		old: "\tnormalized := float32((value - s.QMin) / delta)\n",
-		new: "\tnormalized := float32((float64(value) - float64(s.QMin)) / float64(delta)) // SABOTAGED: the writer normalizes in float64\n",
+	// THE WRITER ROUNDS TO NEAREST, twice in float32: truncate instead and the
+	// rounding tie at 0.005 falls to 0 where the packet wire writes 1.
+	"message-quantize-truncates": {{
+		old: "\tindex := uint32(math.Floor(float64(float32(scaled + 0.5))))\n",
+		new: "\tindex := uint32(scaled) // SABOTAGED: truncated, never rounded\n",
 	}},
 
 	// THE READER ROUNDS TWICE: fold the product and the add into one
@@ -273,8 +273,8 @@ var messageRoundTwoSabotages = map[string][]edit{
 	// A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION (M1): land
 	// it on element zero instead.
 	"message-surplus-lands-on-zero": {{
-		old: "\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n",
-		new: "\t\tcell := &fv.Elems[0] // SABOTAGED: a surplus element overwrites element zero\n",
+		old: "\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tif f.Array == ir.ArrayList {\n",
+		new: "\t\tcell := &fv.Elems[0] // SABOTAGED: a surplus element overwrites element zero\n\t\tif f.Array == ir.ArrayList {\n",
 	}},
 
 	// A RANGED 128-BIT VALUE READS AT ITS ANNOUNCED WIDTH (M2): read the raw

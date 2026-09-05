@@ -57,7 +57,7 @@ func (g *tableGen) msgLoadCall(name, reader, expr string) string {
 	if g.isVar(name) {
 		return fmt.Sprintf("%sLoadMessageBody( %s, vocabulary, report, nodes, index_bits, %s )", name, reader, expr)
 	}
-	return fmt.Sprintf("%sLoadMessageBody( %s, vocabulary, report, %s )", name, reader, expr)
+	return fmt.Sprintf("%sLoadMessageBody( %s, vocabulary, report, index_bits, %s )", name, reader, expr)
 }
 
 // msgEnter opens one nesting level of the message codec's emission and answers
@@ -105,7 +105,7 @@ func (g *tableGen) emitMessageBodyDeclarations(members []*ir.Struct) {
 		}
 		g.pf("inline int64_t %sMeasureMessageBody( int64_t at, const %s & value );\n", st.Name, st.Name)
 		g.pf("inline bool %sSaveMessageBody( TableBitWriter & w, const %s & value );\n", st.Name, st.Name)
-		g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, %s & value );\n", st.Name, st.Name)
+		g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, %s & value );\n", st.Name, st.Name)
 	}
 	if len(members) > 0 {
 		g.pf("\n")

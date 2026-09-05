@@ -103,7 +103,11 @@ func MessageNodeRecords(data []byte, v *Vocabulary) (bodies [][]MessageRecord, w
 			r.off = at
 		}
 		if !d.skipBody() {
-			return nil, false
+			// THE ROOT BODY'S OWN FRAMING GAVE OUT: the numbering was whole, so
+			// the batch is sized through this body and no further, which is
+			// the body the load meets damage inside after delivering the ones
+			// before it (§3.3)
+			return append(bodies, records), true
 		}
 		bodies = append(bodies, records)
 	}

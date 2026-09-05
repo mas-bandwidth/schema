@@ -153,6 +153,9 @@ func (d *bitDecoder) reference() (uint64, bool) {
 // index reads one node index at the body's width, recording it.
 func (d *bitDecoder) index() (uint64, bool) {
 	at := d.r.off
+	if d.indexBits <= 0 {
+		return 0, false // no numbering: no width to read an index at
+	}
 	v, ok := d.r.get(d.indexBits)
 	if ok && d.spots != nil {
 		*d.spots = append(*d.spots, BitSpot{Off: at, Width: d.indexBits, Value: v, Index: true})
@@ -210,6 +213,10 @@ func (d *bitDecoder) arm(ref uint64) (ir.TableVocabularyEntry, bool) {
 // settled by the node count it carries.
 func (d *bitDecoder) root(inst *tabletext.Instance) bool {
 	if !ir.VariableTables(d.m.Unit)[inst.Def.Name] {
+		// A FIXED ROOT NUMBERS NO NODE, so its batch has no index width: an
+		// unknown entry of kind 17 inside one cannot be stepped over and is
+		// damage (§3.1, §3.3)
+		d.indexBits = 0
 		return d.body(inst, false)
 	}
 	st := &decodeState{root: inst}

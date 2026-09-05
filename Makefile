@@ -3362,7 +3362,7 @@ MESSAGE_FORM_CONTROLS := \
 	message-bits-unbounded:ir/tablemessage.go:TestAHostileShape \
 	message-reference-eight-bits:ir/tablemessage.go:TestAWideVocabulary \
 	message-base-zigzag-unsigned:ir/tablemessage.go:TestTheBasesTwoEncodings \
-	message-quantize-float64:ir/tablemessage.go:TestTheQuantizedIndexAcrossTheForms \
+	message-quantize-truncates:ir/tablemessage.go:TestTheQuantizedIndexAcrossTheForms \
 	message-dequantize-round-once:ir/tablemessage.go:TestTheQuantizedIndexAcrossTheForms \
 	message-refusal-not-terminal:internal/tablewire/message.go:TestARefusedFirstAnnouncement \
 	message-width-above-kind:ir/tablemessage.go:TestTheSixFindings \

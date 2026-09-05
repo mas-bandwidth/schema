@@ -160,7 +160,21 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	decode := func() (bool, error) { return tablewire.Decode(r.model, inst, data, &rep) }
 	encode := func() ([]byte, error) { return tablewire.Encode(r.model, inst) }
 	if r.message {
-		decode = func() (bool, error) { return tablewire.DecodeMessage(r.model, inst, data, r.vocabulary, &rep) }
+		// THE WIRE MAY CARRY UP TO 256 BODIES, and the leg holds room for the
+		// wire's M, so the oracle reads the batch whole and answers body one
+		bodies, _ := tablewire.MessageCount(data, r.vocabulary)
+		if bodies < 1 {
+			bodies = 1
+		}
+		batch := make([]*tabletext.Instance, bodies)
+		batch[0] = inst
+		for i := 1; i < len(batch); i++ {
+			batch[i] = r.model.New(r.def)
+		}
+		decode = func() (bool, error) {
+			_, ok, err := tablewire.DecodeMessages(r.model, batch, data, r.vocabulary, &rep)
+			return ok, err
+		}
 		encode = func() ([]byte, error) { return tablewire.EncodeMessage(r.model, inst) }
 	}
 	ok, derr := decode()
@@ -192,25 +206,7 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	}
 	if r.variable {
 		if r.message {
-			// THE BATCH'S ONE REGION (§3.3): one directory a body, the root's
-			// storage, and each record's — a blob's is its header and its
-			// bytes, a string's terminator included, rounded as every node is
-			bodies, whole := tablewire.MessageNodeRecords(data, r.vocabulary)
-			ans.exact = whole
-			for _, records := range bodies {
-				ans.bytes += r.rootStorage + (int64(len(records))+1)*nodeDirEntryBytes
-				for _, rec := range records {
-					if rec.Blob {
-						terminator := int64(0)
-						if rec.TypeId == ir.StringWireTypeId {
-							terminator = 1
-						}
-						ans.bytes += alignUp8(8 + rec.Length + terminator)
-						continue
-					}
-					ans.bytes += r.storage[rec.TypeId] // a type id this build cannot name commands none
-				}
-			}
+			r.sizeBatch(&ans, data)
 			return ans, nil
 		}
 		types, whole := tablewire.NodeRecordTypes(data)
@@ -741,4 +737,27 @@ func readWireVectors(path string) ([]wireVector, error) {
 		out = append(out, wireVector{name: f[0], unit: f[1], root: f[2], file: f[3], message: message})
 	}
 	return out, nil
+}
+
+// sizeBatch is the oracle's answer for a MESSAGE batch's one region (§3.3):
+// one directory a body, the root's storage, and each record's, a blob's being
+// its header and its bytes, a string's terminator included, rounded as every
+// node is. `exact` is whether the numbering was whole.
+func (r *wireRoot) sizeBatch(ans *oracleAnswer, data []byte) {
+	bodies, whole := tablewire.MessageNodeRecords(data, r.vocabulary)
+	ans.exact = whole
+	for _, records := range bodies {
+		ans.bytes += r.rootStorage + (int64(len(records))+1)*nodeDirEntryBytes
+		for _, rec := range records {
+			if rec.Blob {
+				terminator := int64(0)
+				if rec.TypeId == ir.StringWireTypeId {
+					terminator = 1
+				}
+				ans.bytes += alignUp8(8 + rec.Length + terminator)
+				continue
+			}
+			ans.bytes += r.storage[rec.TypeId] // a type id this build cannot name commands none
+		}
+	}
 }
