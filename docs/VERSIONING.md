@@ -666,22 +666,25 @@ number:
 
   | instance | packet wire | file form | byte body | bitpacked body | proto3 |
   |---|---:|---:|---:|---:|---:|
-  | `LoginRequest`, full | 46 | 106 | 58 | 51 | 49 |
-  | `MatchResult`, full | 115 | 273 | 225 | 142 | 189 |
-  | `StorePurchase`, full | 36 | 104 | 48 | 41 | 40 |
+  | `LoginRequest`, full | 46 | 106 | 58 | 52 | 49 |
+  | `MatchResult`, full | 115 | 273 | 225 | 148 | 189 |
+  | `StorePurchase`, full | 36 | 104 | 48 | 43 | 40 |
   | `LoginRequest`, defaults | 14 | 10 | 2 | 3 | 0 |
-  | `MatchResult`, defaults | 115 | 43 | 27 | 10 | 40 |
+  | `MatchResult`, defaults | 115 | 43 | 27 | 11 | 40 |
   | `StorePurchase`, defaults | 15 | 10 | 2 | 3 | 2 |
-  | the three full, one batch | 196 | 483 | 331 | 230 | 278 |
+  | the three full, one batch under an envelope | 196 | 550 | 350 | 244 | 285 |
 
-Against the byte body it is 12%, 37% and 15% off, and 63% off `MatchResult` at
-its defaults. Against proto3 the batch is 17% under and `MatchResult` is 25%
-under, and the two blob-shaped messages are one and two bytes OVER, which the
+The batch row is three envelopes in every column, one root holding a union of
+the three messages, because a batch is of one root. Against the byte body it
+is 10%, 34% and 10% off, and 59% off `MatchResult` at
+its defaults. Against proto3 the batch is 14% under and `MatchResult` is 22%
+under, and the two blob-shaped messages are three bytes OVER each, which the
 page states rather than averages away: `player_id`, `client_build` and
 `price_minor` are declared BARE, so this wire writes 64, 32 and 32 raw bits
 where proto3 writes a varint whose value happens to be small. Declaring the
-ranges those fields actually hold closes it and costs nothing new. Against the
-packet wire the residual is 5, 27 and 5 bytes, and on `MatchResult` 25 of the 27
+ranges those fields actually hold takes each to within a byte and costs nothing
+new, and the batch closes the rest. Against the
+packet wire the residual is 6, 33 and 7 bytes, and on `MatchResult` 30 of the 33
 are ten rows of three references and a terminator, which is the price of naming
 a field inside an array of tables.
 

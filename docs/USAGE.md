@@ -1647,20 +1647,22 @@ graphdemo::SceneLoadMessages( roots, &root_count, region.data(), region_bytes,
 ```
 
 **What you get.** The three backend messages measured on schema#523 go from
-106, 273 and 104 bytes to 51, 142 and 41, and from 10, 43 and 10 to 3, 10 and 3
-when every field sits at its declared default. Sent as ONE batch the three are
-230 bytes against proto3's 278. The announcement costs 316 bytes for that unit
-and pays for itself in the seventh round against proto3.
+106, 273 and 104 bytes to 52, 148 and 43, and from 10, 43 and 10 to 3, 11 and 3
+when every field sits at its declared default. Sent as ONE batch under an
+envelope, one root holding a union of the three, they are 244 bytes against
+proto3's 285 for the same envelope. The announcement costs 361 bytes for that
+unit and pays for itself in the ninth round against proto3.
 
-**Where it does not win, and what to do about it.** `LoginRequest` comes out two
-bytes OVER proto3 and `StorePurchase` one, because their `player_id`,
-`client_build` and `price_minor` are declared BARE and this wire writes 64, 32
-and 32 raw bits where proto3 writes a varint whose value happens to be small.
-Declare the range a field actually holds and the wire pays for the range:
-`client_build uint32 | max = 65535` alone puts `LoginRequest` LEVEL WITH proto3
-at 49 bytes, and `price_minor uint32 | max = 9999`, which is a price cap of
-99.99 in minor units, puts `StorePurchase` at 39 bytes, under proto3's 40. That
-is the same habit the packet wire already asks for.
+**Where it does not win, and what to do about it.** `LoginRequest` and
+`StorePurchase` come out three bytes OVER proto3 each, because their
+`player_id`, `client_build` and `price_minor` are declared BARE and this wire
+writes 64, 32 and 32 raw bits where proto3 writes a varint whose value happens
+to be small. Declare the range a field actually holds and the wire pays for the
+range: `client_build uint32 | max = 65535` alone takes `LoginRequest` from 52
+to 50 bytes, one over proto3's 49, and `price_minor uint32 | max = 9999`, which
+is a price cap of 99.99 in minor units, takes `StorePurchase` from 43 to 41,
+one over proto3's 40, and the batch closes the rest. That is the same habit the
+packet wire already asks for.
 
 **What it asks of you.** ONE thing: the announcement arrives once, reliably,
 before the first body, and never again for the life of the connection. A
