@@ -1,7 +1,7 @@
 // THE UNION-ARM TRAVERSAL GATE (docs/SPEC-TABLES.md §2.6, §2.9, §3.1, §6.3,
 // §7.6). One binary over the `tables/arms` unit: five shapes where a union arm
-// hides a pointer or a collection extent, each crossed by every walk the
-// reference has. Measure and Save, LoadMeasure and Load into an exact region,
+// hides a pointer or a collection extent, and the cross of two of them, each
+// crossed by every walk the reference has. Measure and Save, LoadMeasure and Load into an exact region,
 // the tool's path into a builder, Lock and a dereference after it, a plain
 // memcpy relocation of the locked region, and a cook from the arena and from
 // the region, opened and walked. Every reference a const form holds is shown
@@ -215,6 +215,7 @@ ROOT_SURFACE( Ring );
 ROOT_SURFACE( Holder );
 ROOT_SURFACE( Nest );
 ROOT_SURFACE( Hand );
+ROOT_SURFACE( Chain );
 ROOT_SURFACE( Gate );
 
 // a const form is checked against the block it lies in, so every reference it
@@ -507,6 +508,53 @@ static void check_hand( const Hand * h, const uint8_t * base, int64_t bytes, con
     CHECK_EQ( h->after, 2 );
 }
 
+// C1 crossed with C2: a LIST OF UNIONS whose set arm is a table holding a
+// list, beside a plain arm, a None element and a leaf with an empty list. The
+// elements' arms are visited after the whole element array, in index order.
+static void build_chain( ChainBuilder & b )
+{
+    Chain * chain = b.GetRoot();
+    Carry * first = ChainLinksAdd( b.main, chain->links );
+    first->type = CarryType::Leaf;
+    LeafReset( first->leaf );
+    *LeafItemsAdd( b.main, first->leaf.items ) = 1;
+    *LeafItemsAdd( b.main, first->leaf.items ) = 2;
+    Carry * second = ChainLinksAdd( b.main, chain->links );
+    second->type = CarryType::Plain;
+    second->plain = 3;
+    ChainLinksAdd( b.main, chain->links ); // a None element in its place
+    Carry * fourth = ChainLinksAdd( b.main, chain->links );
+    fourth->type = CarryType::Leaf;
+    LeafReset( fourth->leaf ); // a selected leaf whose list is empty
+    chain->after = 9;
+}
+
+static void check_chain( const Chain * c, const uint8_t * base, int64_t bytes, const char * where )
+{
+    (void) where;
+    CHECK_EQ( c->links.size(), 4 );
+    if ( c->links.size() != 4 ) { return; }
+    CHECK( ref_inside( base, bytes, c->links.elements, (int64_t) sizeof( Carry ) * c->links.size() ) );
+    if ( !ref_inside( base, bytes, c->links.elements, (int64_t) sizeof( Carry ) * c->links.size() ) ) { return; }
+    const Carry & first = c->links[0];
+    CHECK( first.type == CarryType::Leaf );
+    if ( first.type == CarryType::Leaf )
+    {
+        CHECK_EQ( first.leaf.items.size(), 2 );
+        CHECK( ref_inside( base, bytes, first.leaf.items.elements, (int64_t) sizeof( int32_t ) * first.leaf.items.size() ) );
+        if ( first.leaf.items.size() == 2 && ref_inside( base, bytes, first.leaf.items.elements, 2 * (int64_t) sizeof( int32_t ) ) )
+        {
+            CHECK_EQ( first.leaf.items[0], 1 );
+            CHECK_EQ( first.leaf.items[1], 2 );
+        }
+    }
+    CHECK( c->links[1].type == CarryType::Plain && c->links[1].plain == 3 );
+    CHECK( c->links[2].type == CarryType::None );
+    CHECK( c->links[3].type == CarryType::Leaf );
+    if ( c->links[3].type == CarryType::Leaf ) { CHECK_EQ( c->links[3].leaf.items.size(), 0 ); }
+    CHECK_EQ( c->after, 9 );
+}
+
 // C10: a NODE REACHABLE ONLY THROUGH A UNION ARM, and a string blob likewise.
 // No pointer field names Only or a *string anywhere in the closure, so the arm
 // alone puts them in the set a load places and a cook lays out.
@@ -563,6 +611,7 @@ int main()
     exercise<HolderSurface>( "arms_holder", build_holder, check_holder );
     exercise<NestSurface>( "arms_nest", build_nest, check_nest );
     exercise<HandSurface>( "arms_hand", build_hand, check_hand );
+    exercise<ChainSurface>( "arms_chain", build_chain, check_chain );
     exercise<GateSurface>( "arms_gate", build_gate, check_gate );
     exercise<GateSurface>( "arms_gate_text", build_gate_text, check_gate_text );
 

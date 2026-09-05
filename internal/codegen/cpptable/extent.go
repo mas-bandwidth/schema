@@ -138,15 +138,36 @@ func (g *tableGen) hasExtent(st *ir.Struct) bool {
 				return true
 			}
 		case edgeArm:
-			for _, v := range f.Type.Ref.(*ir.Union).Variants {
-				if ref := memberOf(g.unit, v.Type); ref != nil && g.hasExtent(ref) {
-					return true
-				}
+			if g.unionHasExtent(f.Type.Ref.(*ir.Union), map[*ir.Union]bool{}) {
+				return true
 			}
 		}
 		// a nested table this walk does not call an edge can still hold a
 		// container, because a container makes its holder VARIABLE and every
 		// variable nesting is an edge, so there is nothing else to look at
+	}
+	return false
+}
+
+// unionHasExtent reports a union with a container below an arm (§2.6): a
+// TABLE ARM held by value that holds a list or a map, or an arm that is
+// another union with one, asked one level in. A pointer arm's pointee is its
+// own node with its own extent, so it is not this holder's.
+func (g *tableGen) unionHasExtent(un *ir.Union, seen map[*ir.Union]bool) bool {
+	if seen[un] {
+		return false
+	}
+	seen[un] = true
+	for _, v := range un.Variants {
+		if v.F == nil {
+			continue
+		}
+		if v.Body() && g.hasExtent(v.Ref) {
+			return true
+		}
+		if inner, ok := v.F.Type.Ref.(*ir.Union); ok && g.unionHasExtent(inner, seen) {
+			return true
+		}
 	}
 	return false
 }
@@ -170,27 +191,33 @@ func alignOfEntry(u *ir.Unit, entry *ir.Struct) int64 {
 }
 
 // extentVisitor is what one extent emitter does at the two containers and at
-// a by-value nesting that holds one.
+// a by-value nesting that holds one. Each takes the storage as the walk
+// spells it under the emitter's subjects: the value's path, the pack's twin,
+// and the cook's byte address.
 type extentVisitor struct {
-	mapField  func(f *ir.Field, expr, ind string)
-	listField func(f *ir.Field, expr, ind string)
-	descend   func(table, expr, ind string)
+	mapField  func(f *ir.Field, expr edgeExpr, ind string)
+	listField func(f *ir.Field, expr edgeExpr, ind string)
+	descend   func(table string, expr edgeExpr, ind string)
 }
 
 // emitExtentWalk is the ONE walk every extent emitter takes: the record's
 // fields in declaration order, every container at its own position,
-// descending each by-value edge in place. A pointer is NOT an edge here, a
+// descending each by-value edge in place, a nested table, an array element, a
+// union's set arm, and an arm of an arm. A pointer is NOT an edge here, a
 // pointee is its own node with its own extent, and neither is a union arm
-// that is one, for the same reason.
-func (g *tableGen) emitExtentWalk(st *ir.Struct, subject string, v extentVisitor) {
-	ev := edgeVisitor{read: subject}
+// that is one, for the same reason. `base` names the subjects the storage is
+// spelled under.
+func (g *tableGen) emitExtentWalk(st *ir.Struct, base edgeVisitor, v extentVisitor) {
+	g.owner = st
+	ev := base
+	ev.owner = st
 	for _, f := range st.Fields {
 		if f.IsMap() {
-			v.mapField(f, subject+"."+f.Name, "    ")
+			v.mapField(f, g.fieldExpr(ev, f), "    ")
 			continue
 		}
 		if f.IsList() {
-			v.listField(f, subject+"."+f.Name, "    ")
+			v.listField(f, g.fieldExpr(ev, f), "    ")
 			continue
 		}
 		switch g.edgeOf(f) {
@@ -199,33 +226,49 @@ func (g *tableGen) emitExtentWalk(st *ir.Struct, subject string, v extentVisitor
 			if ref == nil || !g.hasExtent(ref) {
 				continue
 			}
-			g.emitVariableByValueWalk(f, ev, func(expr edgeExpr) { v.descend(f.Type.Name, expr.Src, "        ") })
-			g.emitUnreachedExtentRefusal(f, ref, subject)
+			g.emitVariableByValueWalk(f, ev, func(expr edgeExpr) { v.descend(f.Type.Name, expr, "        ") })
+			g.emitUnreachedExtentRefusal(f, ref, ev.read)
 		case edgeArm:
-			un := f.Type.Ref.(*ir.Union)
-			any := false
-			for _, arm := range un.Variants {
-				if ref := memberOf(g.unit, arm.Type); ref != nil && g.hasExtent(ref) {
-					any = true
-				}
-			}
-			if !any {
+			if !g.unionHasExtent(f.Type.Ref.(*ir.Union), map[*ir.Union]bool{}) {
 				continue
 			}
-			// only the ARMS that hold a container are descended: a pointer arm
-			// and a byte buffer arm reach nodes, not this node's extent
-			armed := edgeVisitor{read: subject,
-				pointer: func(*ir.Field, edgeExpr) {},
-				blob:    func(*ir.Field, edgeExpr) {},
-				descend: func(table string, expr edgeExpr, indent string) {
-					if ref := memberOf(g.unit, table); ref != nil && g.hasExtent(ref) {
-						v.descend(table, expr.Src, indent)
-					}
-				},
-			}
-			g.emitVariableUnionWalk(f, armed)
+			g.emitVariableUnionWalk(f, g.extentArmVisitor(ev, v))
 		}
 	}
+}
+
+// extentArmVisitor is the edge visitor the extent walk takes through a union's
+// arms: only the ARMS that hold a container are descended, because a pointer
+// arm and a byte buffer arm reach nodes, not this node's extent.
+func (g *tableGen) extentArmVisitor(ev edgeVisitor, v extentVisitor) edgeVisitor {
+	armed := ev
+	armed.pointer = func(*ir.Field, edgeExpr) {}
+	armed.blob = func(*ir.Field, edgeExpr) {}
+	armed.descend = func(table string, expr edgeExpr, indent string) {
+		if ref := memberOf(g.unit, table); ref != nil && g.hasExtent(ref) {
+			v.descend(table, expr, indent)
+		}
+	}
+	return armed
+}
+
+// emitListElementExtents emits the walk over a list's elements for the
+// containers each holds by value, element by element in index order after the
+// whole array (§2.9): a table element through its own extent walk, and a union
+// element through its set arm (§2.6). `element` spells element i under the
+// emitter's subjects, and `note` is the loop's comment.
+func (g *tableGen) emitListElementExtents(f *ir.Field, element edgeExpr, ev edgeVisitor, v extentVisitor, ind, note string) {
+	ref, un := listElementStruct(f), listElementUnion(f)
+	if (ref == nil || !g.hasExtent(ref)) && (un == nil || !g.unionHasExtent(un, map[*ir.Union]bool{})) {
+		return
+	}
+	g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ )%s\n%s    {\n", ind, note, ind)
+	if ref != nil {
+		v.descend(ref.Name, element, ind+"        ")
+	} else {
+		g.emitUnionArmWalk(un, element, g.extentArmVisitor(ev, v), f.Name, ind+"        ")
+	}
+	g.pf("%s    }\n", ind)
 }
 
 // emitExtent emits `<T>ExtentAt`: the running offset every array reachable by
@@ -245,11 +288,13 @@ func (g *tableGen) emitExtent(st *ir.Struct) {
 		g.pf("    return 0;\n}\n\n")
 		return
 	}
-	g.emitExtentWalk(st, "value", extentVisitor{
-		mapField: func(f *ir.Field, expr, ind string) {
+	ev := edgeVisitor{read: "value"}
+	var v extentVisitor
+	v = extentVisitor{
+		mapField: func(f *ir.Field, expr edgeExpr, ind string) {
 			entry := mapEntryOf(f)
 			g.pf("%s{\n", ind)
-			g.pf("%s    TableMapCursor<%s> cursor = TableMapOrder( ctx, %s );\n", ind, entry.Name, expr)
+			g.pf("%s    TableMapCursor<%s> cursor = TableMapOrder( ctx, %s );\n", ind, entry.Name, expr.Src)
 			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
 			g.pf("%s    at = ( at + %d ) & ~(int64_t) %d; // at alignof( %s )\n", ind, alignOfEntry(g.unit, entry)-1, alignOfEntry(g.unit, entry)-1, entry.Name)
 			g.pf("%s    at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // the whole array FIRST\n", ind, entry.Name)
@@ -261,24 +306,21 @@ func (g *tableGen) emitExtent(st *ir.Struct) {
 			g.pf("%s    TableMapRelease( cursor );\n", ind)
 			g.pf("%s}\n", ind)
 		},
-		listField: func(f *ir.Field, expr, ind string) {
+		listField: func(f *ir.Field, expr edgeExpr, ind string) {
 			elem := g.listElementType(f)
 			g.pf("%s{\n", ind)
-			g.pf("%s    TableListCursor<%s> cursor = TableListElements( ctx, %s );\n", ind, elem, expr)
+			g.pf("%s    TableListCursor<%s> cursor = TableListElements( ctx, %s );\n", ind, elem, expr.Src)
 			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
 			g.pf("%s    at = ( at + (int64_t) alignof( %s ) - 1 ) & ~( (int64_t) alignof( %s ) - 1 );\n", ind, elem, elem)
 			g.pf("%s    at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // the whole array FIRST\n", ind, elem)
-			if ref := listElementStruct(f); ref != nil && g.hasExtent(ref) {
-				g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ ) // then, element by element in index order\n%s    {\n", ind, ind)
-				g.pf("%s        if ( !%sExtentAt( ctx, cursor[i], at ) ) { return false; }\n", ind, ref.Name)
-				g.pf("%s    }\n", ind)
-			}
+			g.emitListElementExtents(f, edgeExpr{Src: "cursor[i]"}, ev, v, ind, " // then, element by element in index order")
 			g.pf("%s}\n", ind)
 		},
-		descend: func(table, expr, ind string) {
-			g.pf("%sif ( !%sExtentAt( ctx, %s, at ) ) { return false; }\n", ind, table, expr)
+		descend: func(table string, expr edgeExpr, ind string) {
+			g.pf("%sif ( !%sExtentAt( ctx, %s, at ) ) { return false; }\n", ind, table, expr.Src)
 		},
-	})
+	}
+	g.emitExtentWalk(st, ev, v)
 	g.pf("    return true;\n}\n\n")
 	g.pf("// the whole extent of one node, from a fresh offset: what a pack reserves\n")
 	g.pf("// for it beside the record's own storage.\n")
@@ -301,13 +343,14 @@ func (g *tableGen) emitExtentPack(st *ir.Struct) {
 		g.pf("    return true;\n}\n\n")
 		return
 	}
-	dstOf := func(expr string) string { return "dst" + expr[len("src"):] }
-	g.emitExtentWalk(st, "src", extentVisitor{
-		mapField: func(f *ir.Field, expr, ind string) {
+	ev := edgeVisitor{read: "src", write: "dst"}
+	var v extentVisitor
+	v = extentVisitor{
+		mapField: func(f *ir.Field, expr edgeExpr, ind string) {
 			entry := mapEntryOf(f)
-			slot := dstOf(expr)
+			slot := expr.Dst
 			g.pf("%s{\n", ind)
-			g.pf("%s    TableMapCursor<%s> cursor = TableMapOrder( ctx, %s );\n", ind, entry.Name, expr)
+			g.pf("%s    TableMapCursor<%s> cursor = TableMapOrder( ctx, %s );\n", ind, entry.Name, expr.Src)
 			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
 			g.pf("%s    at = ( at + %d ) & ~(int64_t) %d;\n", ind, alignOfEntry(g.unit, entry)-1, alignOfEntry(g.unit, entry)-1)
 			g.pf("%s    const int64_t bytes = (int64_t) cursor.count * (int64_t) sizeof( %s );\n", ind, entry.Name)
@@ -328,11 +371,11 @@ func (g *tableGen) emitExtentPack(st *ir.Struct) {
 			g.pf("%s    TableMapRelease( cursor );\n", ind)
 			g.pf("%s}\n", ind)
 		},
-		listField: func(f *ir.Field, expr, ind string) {
+		listField: func(f *ir.Field, expr edgeExpr, ind string) {
 			elem := g.listElementType(f)
-			slot := dstOf(expr)
+			slot := expr.Dst
 			g.pf("%s{\n", ind)
-			g.pf("%s    TableListCursor<%s> cursor = TableListElements( ctx, %s );\n", ind, elem, expr)
+			g.pf("%s    TableListCursor<%s> cursor = TableListElements( ctx, %s );\n", ind, elem, expr.Src)
 			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
 			g.pf("%s    at = ( at + (int64_t) alignof( %s ) - 1 ) & ~( (int64_t) alignof( %s ) - 1 );\n", ind, elem, elem)
 			g.pf("%s    const int64_t bytes = (int64_t) cursor.count * (int64_t) sizeof( %s );\n", ind, elem)
@@ -345,17 +388,14 @@ func (g *tableGen) emitExtentPack(st *ir.Struct) {
 			g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ ) // INDEX order, live elements only\n%s    {\n", ind, ind)
 			g.pf("%s        memcpy( (void *) ( placed + i ), (const void *) &cursor[i], sizeof( %s ) ); // trivially copyable, by construction\n", ind, elem)
 			g.pf("%s    }\n", ind)
-			if ref := listElementStruct(f); ref != nil && g.hasExtent(ref) {
-				g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ )\n%s    {\n", ind, ind)
-				g.pf("%s        if ( !%sExtentPack( ctx, cursor[i], placed[i], extent, at, capacity ) ) { return false; }\n", ind, ref.Name)
-				g.pf("%s    }\n", ind)
-			}
+			g.emitListElementExtents(f, edgeExpr{Src: "cursor[i]", Dst: "placed[i]"}, ev, v, ind, "")
 			g.pf("%s}\n", ind)
 		},
-		descend: func(table, expr, ind string) {
-			g.pf("%sif ( !%sExtentPack( ctx, %s, %s, extent, at, capacity ) ) { return false; }\n", ind, table, expr, dstOf(expr))
+		descend: func(table string, expr edgeExpr, ind string) {
+			g.pf("%sif ( !%sExtentPack( ctx, %s, %s, extent, at, capacity ) ) { return false; }\n", ind, table, expr.Src, expr.Dst)
 		},
-	})
+	}
+	g.emitExtentWalk(st, ev, v)
 	g.pf("    return true;\n}\n\n")
 }
 
@@ -367,11 +407,100 @@ func (g *tableGen) emitExtentWalkSurface(members []*ir.Struct) {
 	if !g.anyExtent {
 		return
 	}
+	// A UNION WITH A CONTAINER BELOW AN ARM has a framing walk of its own
+	// (§2.6): one arm header read where a union value sits, on a field, an
+	// element of a bounded array and an element of a list alike. It is
+	// declared before the members' walks, which call it, and defined after
+	// them, because it calls the arm tables' walks, which this file's order
+	// puts before their holders.
+	unions := g.extentUnionsOf()
+	for _, un := range unions {
+		g.pf("inline bool %sWireArmExtent( TableReader & r, int64_t & at, TableRefuseReason & reason );\n", un.Name)
+		g.pf("inline bool %sWireArmsExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason );\n", un.Name)
+	}
+	if len(unions) > 0 {
+		g.pf("\n")
+	}
 	for _, st := range g.varMembers(members) {
 		g.emitWireExtent(st)
 		g.emitExtent(st)
 		g.emitExtentPack(st)
 	}
+	for _, un := range unions {
+		g.emitUnionWireExtent(un)
+	}
+}
+
+// extentUnionsOf lists the unions this file declares that hold a container
+// below an arm, in declaration order.
+func (g *tableGen) extentUnionsOf() []*ir.Union {
+	var out []*ir.Union
+	for _, un := range tableUnionsOf(g.file) {
+		if g.unionHasExtent(un, map[*ir.Union]bool{}) {
+			out = append(out, un)
+		}
+	}
+	return out
+}
+
+// emitUnionWireExtent emits `<U>WireArmExtent`, the framing walk over ONE ARM
+// HEADER of a union: the arm id, its kind byte and its L, then the set arm's
+// own walk over the payload, a table arm's or a nested union's
+// (docs/SPEC-TABLES.md §2.6, §6.5). Framing damage EXHAUSTS THE READER, so
+// the scan holding it ends there and the load reports the damage. Beside it,
+// `<U>WireArmsExtent` is that walk over an ARRAY of the union's values, whose
+// body is the element kind, the count and one arm header per element in its
+// place, a None element the zero reference alone (§3).
+func (g *tableGen) emitUnionWireExtent(un *ir.Union) {
+	g.pf("// %sWireArmExtent: the extent one %s value's set arm commands, from the FRAMING alone (§2.6, §6.5).\n", un.Name, un.Name)
+	g.pf("inline bool %sWireArmExtent( TableReader & r, int64_t & at, TableRefuseReason & reason )\n{\n", un.Name)
+	g.pf("    uint64_t arm_ref = 0;\n")
+	g.pf("    if ( !r.getleb( arm_ref ) ) { r.offset = r.size; return true; }\n")
+	g.pf("    if ( arm_ref == 0 ) { return true; } // None: the reference is the whole payload\n")
+	g.pf("    if ( r.ids == NULL || arm_ref > (uint64_t) r.ids->count ) { r.offset = r.size; return true; }\n")
+	g.pf("    const uint64_t arm_id = r.ids->at( arm_ref );\n")
+	g.pf("    if ( !r.has( 1 ) ) { r.offset = r.size; return true; }\n")
+	g.pf("    r.offset += 1; // the arm's kind byte\n")
+	g.pf("    uint64_t arm_len = 0;\n")
+	g.pf("    if ( !r.getleb( arm_len ) || !r.room( arm_len ) ) { r.offset = r.size; return true; }\n")
+	g.pf("    const uint8_t * arm_body = r.buffer + r.offset;\n")
+	g.pf("    r.offset += (int64_t) arm_len;\n")
+	g.pf("    switch ( arm_id )\n    {\n")
+	for _, v := range un.Variants {
+		if v.F == nil {
+			continue
+		}
+		switch {
+		case v.Body() && g.hasExtent(v.Ref):
+			g.pf("        case 0x%016xull: if ( !%sWireExtent( arm_body, (int64_t) arm_len, at, r.ids, reason ) ) { return false; } break; // %s\n",
+				ir.TableWireId(v.WireName()), v.Type, v.Name)
+		default:
+			inner, isUnion := v.F.Type.Ref.(*ir.Union)
+			if !isUnion || !g.unionHasExtent(inner, map[*ir.Union]bool{}) {
+				continue
+			}
+			g.pf("        case 0x%016xull: // %s: an arm that is another union\n        {\n", ir.TableWireId(v.WireName()), v.Name)
+			g.pf("            TableReader arm( arm_body, (int64_t) arm_len, r.report, r.ids );\n")
+			g.pf("            if ( !%sWireArmExtent( arm, at, reason ) ) { return false; }\n", inner.Name)
+			g.pf("            break;\n        }\n")
+		}
+	}
+	g.pf("        default: break; // an arm this reader cannot name reads None\n")
+	g.pf("    }\n")
+	g.pf("    return true;\n}\n\n")
+
+	g.pf("// %sWireArmsExtent: that walk over an ARRAY of %s values, one arm header per element in its place (§2.6, §3).\n", un.Name, un.Name)
+	g.pf("inline bool %sWireArmsExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason )\n{\n", un.Name)
+	g.pf("    TableReport scratch;\n")
+	g.pf("    TableReader r( body, length, &scratch, ids );\n")
+	g.pf("    if ( length < 2 ) { return true; }\n")
+	g.pf("    if ( r.get8() != %d ) { return true; } // another element kind: the field reads empty\n", tkUnion)
+	g.pf("    uint64_t n = 0;\n")
+	g.pf("    if ( !r.getleb( n ) ) { return true; }\n")
+	g.pf("    for ( uint64_t i = 0; i < n && r.offset < r.size; i++ )\n    {\n")
+	g.pf("        if ( !%sWireArmExtent( r, at, reason ) ) { return false; }\n", un.Name)
+	g.pf("    }\n")
+	g.pf("    return true;\n}\n\n")
 }
 
 // emitNodeBytes emits the bytes ONE NODE takes in a packed region: the
@@ -457,6 +586,11 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 			g.pf("            r.offset += (int64_t) list_len;\n")
 			g.pf("            if ( !TableListWireExtent( list_body, (int64_t) list_len, at, (int64_t) sizeof( %s ), (int64_t) alignof( %s ), %d, %d, %s, ids, reason ) ) { return false; }\n",
 				elem, elem, listElementWireKind(f), listElementFloor(f), inner)
+			if un := listElementUnion(f); un != nil && g.unionHasExtent(un, map[*ir.Union]bool{}) {
+				// the elements' arms, after the whole array: one arm header
+				// per element, read over the same body (§2.6, §2.9)
+				g.pf("            if ( !%sWireArmsExtent( list_body, (int64_t) list_len, at, ids, reason ) ) { return false; }\n", un.Name)
+			}
 			g.pf("            continue;\n        }\n")
 			continue
 		}
@@ -488,38 +622,23 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 			g.pf("            continue;\n        }\n")
 		case edgeArm:
 			un := f.Type.Ref.(*ir.Union)
-			any := false
-			for _, v := range un.Variants {
-				if ref := memberOf(g.unit, v.Type); ref != nil && g.hasExtent(ref) {
-					any = true
-				}
-			}
-			if !any {
+			if !g.unionHasExtent(un, map[*ir.Union]bool{}) {
 				continue
 			}
-			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: a union arm that holds a list or a map\n        {\n", ir.TableFieldWireId(f), tkUnion, f.Name)
-			g.pf("            uint64_t arm_ref = 0;\n")
-			g.pf("            if ( !r.getleb( arm_ref ) ) { return true; }\n")
-			g.pf("            if ( arm_ref == 0 ) { continue; } // None: the reference is the whole payload\n")
-			g.pf("            if ( arm_ref > (uint64_t) ids->count ) { return true; }\n")
-			g.pf("            const uint64_t arm_id = ids->at( arm_ref );\n")
-			g.pf("            if ( !r.has( 1 ) ) { return true; }\n")
-			g.pf("            r.offset += 1; // the arm's kind byte\n")
-			g.pf("            uint64_t arm_len = 0;\n")
-			g.pf("            if ( !r.getleb( arm_len ) || !r.room( arm_len ) ) { return true; }\n")
-			g.pf("            const uint8_t * arm_body = r.buffer + r.offset;\n")
-			g.pf("            r.offset += (int64_t) arm_len;\n")
-			g.pf("            switch ( arm_id )\n            {\n")
-			for _, v := range un.Variants {
-				ref := memberOf(g.unit, v.Type)
-				if ref == nil || !g.hasExtent(ref) {
-					continue
-				}
-				g.pf("                case 0x%016xull: if ( !%sWireExtent( arm_body, (int64_t) arm_len, at, ids, reason ) ) { return false; } break; // %s\n",
-					ir.TableWireId(v.WireName()), v.Type, v.Name)
+			// THE FIELD'S ACTUAL SHAPE decides the framing: a union field is one
+			// arm header, and an array of unions is a kind 14 body of them
+			if f.Array == ir.ArrayNone {
+				g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: a union arm that holds a list or a map\n        {\n", ir.TableFieldWireId(f), tkUnion, f.Name)
+				g.pf("            if ( !%sWireArmExtent( r, at, reason ) ) { return false; }\n", un.Name)
+				g.pf("            continue;\n        }\n")
+				continue
 			}
-			g.pf("                default: break; // an arm this reader cannot name reads None\n")
-			g.pf("            }\n")
+			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: an array of unions whose arms hold a list or a map\n        {\n", ir.TableFieldWireId(f), tkArray, f.Name)
+			g.pf("            uint64_t arms_len = 0;\n")
+			g.pf("            if ( !r.getleb( arms_len ) || !r.room( arms_len ) ) { return true; }\n")
+			g.pf("            const uint8_t * arms_body = r.buffer + r.offset;\n")
+			g.pf("            r.offset += (int64_t) arms_len;\n")
+			g.pf("            if ( !%sWireArmsExtent( arms_body, (int64_t) arms_len, at, ids, reason ) ) { return false; }\n", un.Name)
 			g.pf("            continue;\n        }\n")
 		}
 	}
@@ -566,15 +685,6 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 		g.pf("    return true; // no list or map below this record\n}\n\n")
 		return
 	}
-	ml := ir.RecordLayout(g.unit, st)
-	offsetOf := func(name string) int64 {
-		for i := range ml.Fields {
-			if ml.Fields[i].Field.Name == name {
-				return ml.Fields[i].Offset
-			}
-		}
-		return 0
-	}
 	usesRegion := false
 	for _, f := range st.Fields {
 		if f.IsList() && listElementIsPointer(f) {
@@ -584,95 +694,75 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 	if !usesRegion {
 		g.pf("    (void) region; // a table element's and an entry's references resolve through their own bodies\n")
 	}
-	for _, f := range st.Fields {
-		if f.IsMap() {
+	// THE SAME WALK THE PACK TAKES, with the record's byte address beside the
+	// value: a container's slot is written at the field's offset, and a
+	// nested record, an element or a set arm is written at its own bytes
+	ev := edgeVisitor{read: "value", bytes: "record"}
+	var v extentVisitor
+	v = extentVisitor{
+		mapField: func(f *ir.Field, expr edgeExpr, ind string) {
 			entry := mapEntryOf(f)
 			el := ir.RecordLayout(g.unit, entry)
-			slot := offsetOf(f.Name)
-			g.pf("    { // %s\n", f.Name)
-			g.pf("        TableMapCursor<%s> cursor = TableMapOrder( ctx, value.%s );\n", entry.Name, f.Name)
-			g.pf("        if ( !cursor.ok ) { return false; }\n")
-			g.pf("        at = ( at + %d ) & ~(int64_t) %d; // at alignof( %s )\n", el.Align-1, el.Align-1, entry.Name)
-			g.pf("        uint8_t * array = extent + at;\n")
-			g.pf("        at += (int64_t) cursor.count * %d; // the whole array FIRST\n", el.Size)
-			g.pf("        // the SIXTEEN BYTES of the slot: the self-relative delta, then the count\n")
-			g.pf("        table_cook_put( record + %d, cursor.count > 0 ? (uint64_t) (int64_t) ( array - ( record + %d ) ) : 0, 8, order );\n", slot, slot)
-			g.pf("        table_cook_put( record + %d, (uint64_t) (uint32_t) cursor.count, 4, order );\n", slot+8)
-			g.pf("        for ( int32_t i = 0; i < cursor.count; i++ )\n        {\n")
-			g.pf("            %s\n", g.cookBodyCall(entry, fmt.Sprintf("array + i * %d", el.Size), "*cursor[i]"))
-			g.pf("        }\n")
+			g.pf("%s{ // %s\n", ind, f.Name)
+			g.pf("%s    TableMapCursor<%s> cursor = TableMapOrder( ctx, %s );\n", ind, entry.Name, expr.Src)
+			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
+			g.pf("%s    at = ( at + %d ) & ~(int64_t) %d; // at alignof( %s )\n", ind, el.Align-1, el.Align-1, entry.Name)
+			g.pf("%s    uint8_t * array = extent + at;\n", ind)
+			g.pf("%s    at += (int64_t) cursor.count * %d; // the whole array FIRST\n", ind, el.Size)
+			g.pf("%s    // the SIXTEEN BYTES of the slot: the self-relative delta, then the count\n", ind)
+			g.pf("%s    table_cook_put( %s, cursor.count > 0 ? (uint64_t) (int64_t) ( array - ( %s ) ) : 0, 8, order );\n", ind, expr.addr(0), expr.addr(0))
+			g.pf("%s    table_cook_put( %s, (uint64_t) (uint32_t) cursor.count, 4, order );\n", ind, expr.addr(8))
+			g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ )\n%s    {\n", ind, ind)
+			g.pf("%s        %s\n", ind, g.cookBodyCall(entry, fmt.Sprintf("array + i * %d", el.Size), "*cursor[i]"))
+			g.pf("%s    }\n", ind)
 			if g.hasExtent(entry) {
-				g.pf("        for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order\n        {\n")
-				g.pf("            if ( !%sCookExtent( ctx, region, extent, at, array + i * %d, *cursor[i], order ) ) { TableMapRelease( cursor ); return false; }\n", entry.Name, el.Size)
-				g.pf("        }\n")
+				g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order\n%s    {\n", ind, ind)
+				g.pf("%s        if ( !%sCookExtent( ctx, region, extent, at, array + i * %d, *cursor[i], order ) ) { TableMapRelease( cursor ); return false; }\n", ind, entry.Name, el.Size)
+				g.pf("%s    }\n", ind)
 			}
-			g.pf("        TableMapRelease( cursor );\n    }\n")
-			continue
-		}
-		if f.IsList() {
+			g.pf("%s    TableMapRelease( cursor );\n%s}\n", ind, ind)
+		},
+		listField: func(f *ir.Field, expr edgeExpr, ind string) {
 			elem := g.listElementType(f)
 			size, align := ir.ListElementLayout(g.unit, f)
-			slot := offsetOf(f.Name)
-			g.pf("    { // %s: an unbounded array\n", f.Name)
-			g.pf("        TableListCursor<%s> cursor = TableListElements( ctx, value.%s );\n", elem, f.Name)
-			g.pf("        if ( !cursor.ok ) { return false; }\n")
-			g.pf("        at = ( at + %d ) & ~(int64_t) %d; // at alignof( %s )\n", align-1, align-1, elem)
-			g.pf("        uint8_t * array = extent + at;\n")
-			g.pf("        at += (int64_t) cursor.count * %d; // the whole array FIRST\n", size)
-			g.pf("        // the SIXTEEN BYTES of the slot: the self-relative delta, then the count\n")
-			g.pf("        table_cook_put( record + %d, cursor.count > 0 ? (uint64_t) (int64_t) ( array - ( record + %d ) ) : 0, 8, order );\n", slot, slot)
-			g.pf("        table_cook_put( record + %d, (uint64_t) (uint32_t) cursor.count, 4, order );\n", slot+8)
-			g.pf("        for ( int32_t i = 0; i < cursor.count; i++ ) // INDEX order, live elements only\n        {\n")
+			g.pf("%s{ // %s: an unbounded array\n", ind, f.Name)
+			g.pf("%s    TableListCursor<%s> cursor = TableListElements( ctx, %s );\n", ind, elem, expr.Src)
+			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
+			g.pf("%s    at = ( at + %d ) & ~(int64_t) %d; // at alignof( %s )\n", ind, align-1, align-1, elem)
+			g.pf("%s    uint8_t * array = extent + at;\n", ind)
+			g.pf("%s    at += (int64_t) cursor.count * %d; // the whole array FIRST\n", ind, size)
+			g.pf("%s    // the SIXTEEN BYTES of the slot: the self-relative delta, then the count\n", ind)
+			g.pf("%s    table_cook_put( %s, cursor.count > 0 ? (uint64_t) (int64_t) ( array - ( %s ) ) : 0, 8, order );\n", ind, expr.addr(0), expr.addr(0))
+			g.pf("%s    table_cook_put( %s, (uint64_t) (uint32_t) cursor.count, 4, order );\n", ind, expr.addr(8))
+			g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ ) // INDEX order, live elements only\n%s    {\n", ind, ind)
 			if listElementIsPointer(f) {
 				// the self-relative delta of §6.3 to the node the numbering reached,
 				// or a refusal for one it did not, exactly as a pointer field's slot
-				g.pf("            if ( !table_cook_ref( region, array + i * %d, (const void *) %sAt( ctx, cursor[i] ), order ) ) { return false; }\n", size, f.Type.Name)
+				g.pf("%s        if ( !table_cook_ref( region, array + i * %d, (const void *) %sAt( ctx, cursor[i] ), order ) ) { return false; }\n", ind, size, f.Type.Name)
 			} else {
-				g.emitCookWriteElement(f, fmt.Sprintf("array + i * %d", size), "cursor[i]", "            ", "_"+f.Name)
+				g.emitCookWriteElement(f, fmt.Sprintf("array + i * %d", size), "cursor[i]", ind+"        ", "_"+f.Name)
 			}
-			g.pf("        }\n")
-			if ref := listElementStruct(f); ref != nil && g.hasExtent(ref) {
-				g.pf("        for ( int32_t i = 0; i < cursor.count; i++ ) // then, element by element in index order\n        {\n")
-				g.pf("            if ( !%sCookExtent( ctx, region, extent, at, array + i * %d, cursor[i], order ) ) { return false; }\n", ref.Name, size)
-				g.pf("        }\n")
-			}
-			g.pf("    }\n")
-			continue
-		}
-		if g.edgeOf(f) != edgeNested {
-			continue
-		}
-		ref, _ := f.Type.Ref.(*ir.Struct)
-		if ref == nil || !g.hasExtent(ref) {
-			continue
-		}
-		nested := offsetOf(f.Name)
-		if f.Array == ir.ArrayNone {
-			g.pf("    if ( !%sCookExtent( ctx, region, extent, at, record + %d, value.%s, order ) ) { return false; } // %s\n", ref.Name, nested, f.Name, f.Name)
-			continue
-		}
-		stride := cookElementBytes(g.unit, f)
-		base := "value." + f.Name
-		bound := fmt.Sprintf("%d", f.ArrayBound)
-		if f.KeyEnum != "" && st.IsTable {
-			base += ".slots"
-		}
-		if f.Array == ir.ArrayCounted {
-			// THE LIVE COUNT, as the extent walk counts it: a slot past the
-			// count is storage the walk does not reach, and a non-empty
-			// container in one was already refused there (§7.6)
-			bound = fmt.Sprintf("( value.%s_count < %d ? value.%s_count : %d )", f.Name, f.ArrayBound, f.Name, f.ArrayBound)
-		}
-		g.pf("    for ( int32_t i = 0; i < %s; i++ ) // %s\n    {\n", bound, f.Name)
-		g.pf("        if ( !%sCookExtent( ctx, region, extent, at, record + %d + i * %d, %s[i], order ) ) { return false; }\n", ref.Name, nested, stride, base)
-		g.pf("    }\n")
+			g.pf("%s    }\n", ind)
+			element := edgeExpr{Src: "cursor[i]", At: fmt.Sprintf("array + i * %d", size)}
+			g.emitListElementExtents(f, element, ev, v, ind, " // then, element by element in index order")
+			g.pf("%s}\n", ind)
+		},
+		descend: func(table string, expr edgeExpr, ind string) {
+			g.pf("%sif ( !%sCookExtent( ctx, region, extent, at, %s, %s, order ) ) { return false; }\n", ind, table, expr.addr(0), expr.Src)
+		},
 	}
+	g.emitExtentWalk(st, ev, v)
 	g.pf("    return true;\n}\n\n")
 }
 
 // emitCookNode emits `<T>CookNode`: one NODE's record and then its own extent.
 // A nested record's writer is the body alone, because a nesting's arrays are
 // part of the HOLDER's extent and this walk already reached them.
+//
+// THE EXTENT WRITTEN IS THE EXTENT MEASURED: the layout sized the node from
+// <T>Extent, and the writer's running offset is held to that same number
+// before any header is written, so a walk that laid one array short refuses
+// rather than reporting a cook (§7.6).
 func (g *tableGen) emitCookNode(st *ir.Struct) {
 	ml := ir.RecordLayout(g.unit, st)
 	record := cookAlignUp(ml.Size, ir.RegionAlignFloor)
@@ -684,7 +774,12 @@ func (g *tableGen) emitCookNode(st *ir.Struct) {
 		g.pf("    %sCookBody( at, value, order );\n", st.Name)
 	}
 	g.pf("    int64_t extent_at = 0;\n")
-	g.pf("    return %sCookExtent( ctx, region, at + %d, extent_at, at, value, order );\n}\n\n", st.Name, record)
+	if !g.hasExtent(st) {
+		g.pf("    return %sCookExtent( ctx, region, at + %d, extent_at, at, value, order );\n}\n\n", st.Name, record)
+		return
+	}
+	g.pf("    if ( !%sCookExtent( ctx, region, at + %d, extent_at, at, value, order ) ) { return false; }\n", st.Name, record)
+	g.pf("    return extent_at == %sExtent( ctx, value ); // the extent written is the extent measured, or no header is written\n}\n\n", st.Name)
 }
 
 // emitCookExtentSurface emits the extent writer and the node writer for every
@@ -827,7 +922,7 @@ func (g *tableGen) rootHasExtent(root *ir.Struct) bool {
 	if !g.anyExtent {
 		return false
 	}
-	return slices.ContainsFunc(g.pointerReachable(root), g.hasExtent)
+	return slices.ContainsFunc(ir.PointerReachable(root), g.hasExtent)
 }
 
 // emitUnreachedExtentRefusal refuses an UNREACHED NON-EMPTY SLOT, the same

@@ -113,8 +113,8 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 	// announces every table's name id whether or not a pointer names it
 	// (§3.3). The two reserved blob ids sit beside them (§2.5).
 	byTypeId := map[uint64]*ir.Struct{}
-	for name := range ir.PointerReachable(m.Unit, inst.Def) {
-		if sd := m.Lookup(name); sd != nil {
+	for _, st := range ir.PointerReachable(inst.Def) {
+		if sd := m.Lookup(st.Name); sd != nil {
 			byTypeId[ir.TableWireId(sd.WireName())] = sd
 		}
 	}
@@ -125,7 +125,7 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 	// missing from this map falls through to the table lookup, which never
 	// holds it, and is counted unknown there.
 	blobKind := map[uint64]ir.FieldTypeKind{}
-	bytesEdge, stringEdge := ir.PointerReachableBlobs(m.Unit, inst.Def)
+	bytesEdge, stringEdge := ir.PointerReachableBlobs(inst.Def)
 	if bytesEdge {
 		blobKind[ir.BytesWireTypeId] = ir.TBytes
 	}

@@ -28,3 +28,12 @@ table Hand
     entries [..2]Carry
     after   int32
 }
+
+// the same arm, one element of a LIST of unions: the elements' arms are
+// visited after the whole element array, element by element in index order,
+// on every walk and in the framing scan
+table Chain
+{
+    links []Carry
+    after int32
+}

@@ -2982,7 +2982,7 @@ build/schema_test_arms_asan: build/tables-generated/.stamp test/tables/arms_main
 		$(TABLES_INCLUDES) test/tables/arms_main.cpp $(ARMS_SOURCES) -o $@
 
 # root table per pinned wire, for the tool's round trip
-ARMS_WIRE_ROOTS := arms_ring:Ring arms_holder:Holder arms_nest:Nest arms_hand:Hand arms_gate:Gate arms_gate_text:Gate
+ARMS_WIRE_ROOTS := arms_ring:Ring arms_holder:Holder arms_nest:Nest arms_hand:Hand arms_chain:Chain arms_gate:Gate arms_gate_text:Gate
 
 .PHONY: tables-arms
 tables-arms: build/schema_test_arms build/schema_test_arms_asan
@@ -2998,6 +2998,94 @@ tables-arms: build/schema_test_arms build/schema_test_arms_asan
 			{ echo "ARMS GATE FAILED: the tool numbered $$name's nodes differently from the reference"; exit 1; }; \
 	done
 	@echo "arms gate: the tool reads every pinned wire silently and writes it back byte for byte, so the two walks number the arms' nodes alike"
+
+# ---- THE NEGATIVE CONTROLS the arms gate names (schema#565) --------------
+#
+# One per shape, and one on the cook's extent check. Each names its sabotage
+# in tools/sabotage, patches the GENERATOR through a Go overlay, regenerates
+# the arms corpus, rebuilds the gate and requires it to go RED on a CHECK the
+# clean tree passes, the one that names the shape.
+#
+# $(1) the sabotage's name, $(2) the compiler source it patches, $(3) the
+# sentence a reader gets when the gate stayed green.
+define arms_negative_control
+	@mkdir -p build
+	@go run ./tools/sabotage -name $(1) -out build/$(1).gotext $(2)
+	@printf '{"Replace":{"%s/$(2)":"%s/build/$(1).gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/$(1)-overlay.json
+	@go build -overlay=build/$(1)-overlay.json -o build/schema-$(1) ./cmd/schema
+	@rm -rf build/tables-$(1) && mkdir -p build/tables-$(1)
+	@./build/schema-$(1) generate --lang cpp --out build/tables-$(1)/arms tables/arms
+	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-$(1)/arms -Itest/tables test/tables/arms_main.cpp \
+		build/tables-$(1)/arms/*Table.cpp -o build/schema_test_$(1)
+	@if ./build/schema_test_$(1) > build/$(1).log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: $(3)"; exit 1; \
+	fi
+	@grep -q "^FAIL" build/$(1).log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/$(1).log; exit 1; }
+	@echo "negative control: $(1) turns the ARMS GATE red: $$(grep -c '^FAIL' build/$(1).log) failures"
+endef
+
+# a red line the control must carry: $(1) the control, $(2) the pattern
+define arms_control_red_on
+	@grep -q "$(2)" build/$(1).log || \
+		{ echo "NEGATIVE CONTROL FAILED: $(1) went red, but not on $(2)"; cat build/$(1).log; exit 1; }
+endef
+
+# A LIST OF UNIONS IS NOT AN EDGE (C1): the walk skips `Ring.items`, so the
+# node its elements point at is never numbered, and Measure refuses.
+.PHONY: tables-arms-list-edge-negative-control
+tables-arms-list-edge-negative-control: bin/schema build/tables-generated/.stamp
+	$(call arms_negative_control,arms-list-union-edge,internal/codegen/cpptable/pointers.go,a list of unions left out of the walk left the arms gate GREEN)
+	$(call arms_control_red_on,arms-list-union-edge,\[arms_ring\] measured > 0)
+
+# THE COOK SKIPS A TABLE ARM'S CONTAINERS (C2): the layout measured the leaf's
+# list and the writer laid nothing for it, so the extent check refuses the
+# cook before a header is written, on `Holder`.
+.PHONY: tables-arms-cook-arm-negative-control
+tables-arms-cook-arm-negative-control: bin/schema build/tables-generated/.stamp
+	$(call arms_negative_control,arms-cook-skips-arm,internal/codegen/cpptable/extent.go,the cook skipping a table arm's list left the arms gate GREEN)
+	$(call arms_control_red_on,arms-cook-skips-arm,\[arms_holder\] S::Cook)
+
+# THE COOK'S EXTENT CHECK IS DROPPED, with the same skip: the cook loses the
+# leaf's list and REPORTS SUCCESS, which is what the check exists to refuse,
+# and the pinned cook's byte compare is what catches it instead.
+.PHONY: tables-arms-cook-check-negative-control
+tables-arms-cook-check-negative-control: bin/schema build/tables-generated/.stamp
+	$(call arms_negative_control,arms-cook-check-dropped,internal/codegen/cpptable/extent.go,dropping the cook's extent check left the arms gate GREEN)
+	$(call arms_control_red_on,arms-cook-check-dropped,table wire golden arms_holder_cook)
+	@if grep -q "\[arms_holder\] S::Cook" build/arms-cook-check-dropped.log; then \
+		echo "NEGATIVE CONTROL FAILED: the cook still refused with its extent check dropped"; exit 1; \
+	fi
+
+# A NESTED UNION HIDES ITS EXTENT (C8): the question "does this arm reach a
+# container" stops one level up, so `Nest`'s leaf list stays an arena
+# reference after Lock.
+.PHONY: tables-arms-nested-union-negative-control
+tables-arms-nested-union-negative-control: bin/schema build/tables-generated/.stamp
+	$(call arms_negative_control,arms-nested-union-extent,internal/codegen/cpptable/extent.go,a nested union arm's list left out of the extent left the arms gate GREEN)
+	$(call arms_control_red_on,arms-nested-union-extent,\[arms_nest\] ref_inside)
+
+# AN ARRAY OF UNIONS IS FRAMED AS ONE ARM HEADER (C9): LoadMeasure omits
+# `Hand`'s leaf list, and Load's carve fails on valid wire.
+.PHONY: tables-arms-array-framing-negative-control
+tables-arms-array-framing-negative-control: bin/schema build/tables-generated/.stamp
+	$(call arms_negative_control,arms-array-of-unions-framing,internal/codegen/cpptable/extent.go,framing an array of unions as one arm header left the arms gate GREEN)
+	$(call arms_control_red_on,arms-array-of-unions-framing,\[arms_hand\] a loaded region: the report is not silent)
+
+# A POINTER ARM NAMES NO NODE (C10): `Gate`'s Only leaves the reachable set,
+# the load reads its own writer's record as unknown, and the arm resolves null.
+.PHONY: tables-arms-reachable-negative-control
+tables-arms-reachable-negative-control: bin/schema build/tables-generated/.stamp
+	$(call arms_negative_control,arms-reachable-arm,ir/table.go,a pointer arm left out of the reachable set left the arms gate GREEN)
+	$(call arms_control_red_on,arms-reachable-arm,\[arms_gate\] ref_inside)
+
+.PHONY: tables-arms-negative-controls
+tables-arms-negative-controls: tables-arms-list-edge-negative-control \
+	tables-arms-cook-arm-negative-control \
+	tables-arms-cook-check-negative-control \
+	tables-arms-nested-union-negative-control \
+	tables-arms-array-framing-negative-control \
+	tables-arms-reachable-negative-control
 
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin

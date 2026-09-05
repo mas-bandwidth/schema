@@ -1,6 +1,10 @@
 schema-tables-baseline 7
 package armdemo
 
+table Chain
+    field links id=0x5cc201a9f1b8274e kind=14 elem=15 union=Carry array=unbounded
+    field after id=0xbf82010f6f71eae9 kind=4
+
 table Gate
     field reach id=0x891da1f305deb858 kind=15 union=Reach
     field after id=0xbf82010f6f71eae9 kind=4
@@ -57,3 +61,6 @@ union Slot
 ## history
 ### 2026-09-05 (UTC) — first baseline: the union-arm traversal corpus (schema#565)
 - baseline created over 9 tables — data written BEFORE this point is not covered by it
+
+### 2026-09-05 (UTC) — the list-of-unions shape Chain joins the union-arm corpus (schema#565)
+- no compatibility-affecting edits; the wire absorbs the rest

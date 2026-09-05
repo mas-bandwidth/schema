@@ -1337,20 +1337,23 @@ already spends what it would buy**, and each is refused by name (§11):
   `[E]*T` and `[E]Body` do (§15);
 - **an `if` guard** — a guard is a body construct, and a union body has no
   fields to guard;
-- **a MAP (§2.8) and an UNBOUNDED ARRAY, `[]T` or `[]*T` (§2.9)**, on one
-  ground, because an arm's storage is OVERLAID and neither construct's elements
-  are in the arm at all. Both are a reference and a count in the record, with
-  the entries or elements laid in the HOLDER'S NODE EXTENT by a placement walk
+- **a MAP (§2.8) and an UNBOUNDED ARRAY, `[]T` or `[]*T` (§2.9)**, as a
+  SURFACE RULE. Both are a reference and a count in the record, with the
+  entries or elements laid in the HOLDER'S NODE EXTENT by a placement walk
   that visits every map and every list the record reaches BY VALUE, pre-order,
-  in declaration order (§2.8, §2.9). An arm is reached by value only when its
-  TAG SAYS SO, so an arm's array would make the extent's contents, and every
-  offset after it, depend on a discriminant. That is a layout no cook can be
-  byte-stable under and no `cook-check` clause can bound, since §7.4 checks
-  containment and no-overlap against arrays the declaration says are there.
-  **AN ARM HOLDING EITHER IS A TABLE ARM'S JOB**: name a `table` that declares
-  the map or the list, which costs the arm's own `L` and terminator and puts
-  the construct where the placement walk already reaches it, in a node whose
-  extent does not depend on anybody's tag.
+  in declaration order (§2.8, §2.9). A union's set arm is one of those
+  by-value edges, reached when its TAG SAYS SO: a table arm that declares a
+  map or a list already has its arrays placed in the holder's extent by the
+  selected tag, by the one walk that numbers, packs, cooks and measures the
+  record (§3.1), and the cook holds the extent it wrote to the extent it
+  measured before a header is written (§7.6). So a container directly in an
+  arm would add no dependence on a tag that a table arm's containers do not
+  already have. What the restriction keeps is ONE GRAMMAR for where a
+  container lives, a field of a record, which is the name every walk and the
+  text form (§16) reach it by. **AN ARM HOLDING EITHER IS A TABLE ARM'S JOB**:
+  name a `table` that declares the map or the list, which costs the arm's own
+  `L` and terminator and puts the construct where the placement walk already
+  reaches it.
 
 **Selection is presence, so a set arm ALWAYS rides, whatever it holds**
 (§3). A union FIELD holding `None` elides; a union holding a selected arm
