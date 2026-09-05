@@ -2837,7 +2837,7 @@ tables-lists-clamp-negative-control: bin/schema build/tables-generated/.stamp
 # and the decoded values go red.
 .PHONY: tables-lists-element-kind-negative-control
 tables-lists-element-kind-negative-control: bin/schema build/tables-generated/.stamp
-	$(call list_negative_control,elemkind,'s@else if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }\\n", ind, elemKind)@else if ( elem_kind != %d \&\& false ) { r.report->kind_mismatch++; r.offset = body_end; break; }\\n", ind, elemKind)@',internal/codegen/cpptable/lists.go,decoding under a changed element kind left the list gate GREEN)
+	$(call list_negative_control,elemkind,'s@else if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }@else if ( elem_kind != %d \&\& false ) { r.report->kind_mismatch++; r.offset = body_end; break; }@',internal/codegen/cpptable/lists.go,decoding under a changed element kind left the list gate GREEN)
 
 # LoadMeasure OVER A LIST OF TABLES HOLDING LISTS, summed at ONE DEPTH only:
 # `list_nested` meets it, and the measure goes red against the region Load
@@ -2886,7 +2886,6 @@ tables-lists-allocation-negative-control: bin/schema build/tables-generated/.sta
 .PHONY: tables-lists-negative-controls
 tables-lists-negative-controls: tables-lists-allocation-negative-control \
 	tables-lists-order-negative-control \
-
 	tables-lists-dead-element-negative-control \
 	tables-lists-preorder-negative-control \
 	tables-lists-walk-order-negative-control \
