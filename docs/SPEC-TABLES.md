@@ -4935,11 +4935,11 @@ entries announces about 5 KB once.
 - **The batch's five answers.** A `SaveMessages` and a `MeasureMessages` of 257
   bodies, each refusing by name and writing nothing. A `LoadMessages` of a
   256-body batch into storage for eight, refusing by name with no counter moved
-  and nothing decoded. A three-body batch damaged inside the second, whose
+  and nothing decoded, its returned count reading 256. A three-body batch damaged inside the second, whose
   returned count must be one. And a pointered batch measured once and loaded
   into ONE region. Red if a leg writes consecutive batches, decodes a body before
-  refusing on capacity, returns two or three for the damaged batch, or asks for a
-  region a body.
+  refusing on capacity, leaves the returned count at the caller's capacity,
+  returns two or three for the damaged batch, or asks for a region a body.
 - **The mask's width.** A `flags` field of three variants in a message and in a
   file, whose message payload is three bits and whose file payload is eight
   bytes, and a file load carrying a bit above the reader's W saved into a
