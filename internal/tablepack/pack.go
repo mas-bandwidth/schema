@@ -70,26 +70,46 @@ func Pack(m *tabletext.Model, root, dir string) ([]byte, []string, tabletext.Rep
 }
 
 // PackMessage is Pack over the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the
-// same tree, the same instance and the same walk, and the form byte and root
-// body alone come out — the ids live in the connection's announced table
-// rather than in a trailer of this wire's.
+// same tree, the same instance and the same walk, and a BATCH OF ONE comes out
+// — the form byte, the count, and one bitpacked body, whose ids live in the
+// announced table rather than in a trailer of this wire's.
 //
 // The tree is unchanged, which is the text form's own claim: a message's text
 // is its file form's text, byte for byte.
 func PackMessage(m *tabletext.Model, root, dir string) ([]byte, []string, tabletext.Report, error) {
-	st := m.Unit.Tables[root]
-	if st == nil {
-		return nil, nil, tabletext.Report{}, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", root, strings.Join(m.Roots(), ", "))
-	}
-	inst := m.New(st)
+	return PackMessages(m, []MessageTree{{Root: root, Dir: dir}})
+}
+
+// MessageTree is one message of a batch: the root it is and the tree that
+// holds it.
+type MessageTree struct {
+	Root string
+	Dir  string
+}
+
+// PackMessages is the BATCH, which is the message form's primitive
+// (docs/SPEC-TABLES.md §3.3): every tree is read into its own instance and the
+// whole batch is written as ONE buffer, one count and one continuous bit
+// stream. Which root each message is, is the caller's, exactly as it is the
+// application's on the wire.
+func PackMessages(m *tabletext.Model, trees []MessageTree) ([]byte, []string, tabletext.Report, error) {
 	p := &packer{m: m, report: &tabletext.Report{}}
-	if err := p.rootTree(inst, root, dir); err != nil {
-		return nil, p.skipped, *p.report, err
+	insts := make([]*tabletext.Instance, 0, len(trees))
+	for _, tree := range trees {
+		st := m.Unit.Tables[tree.Root]
+		if st == nil {
+			return nil, nil, tabletext.Report{}, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", tree.Root, strings.Join(m.Roots(), ", "))
+		}
+		inst := m.New(st)
+		if err := p.rootTree(inst, tree.Root, tree.Dir); err != nil {
+			return nil, p.skipped, *p.report, err
+		}
+		insts = append(insts, inst)
 	}
 	if len(p.refusals) > 0 {
 		return nil, p.skipped, *p.report, p.refusals
 	}
-	bytes, err := tablewire.EncodeMessage(m, inst)
+	bytes, err := tablewire.EncodeMessages(m, insts)
 	if err != nil {
 		return nil, p.skipped, *p.report, err
 	}

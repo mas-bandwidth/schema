@@ -80,11 +80,19 @@ func ReadReport(m *tabletext.Model, root string, wire []byte) (tabletext.Report,
 }
 
 // UnpackMessage is Unpack over the MESSAGE FORM (docs/SPEC-TABLES.md §3.3),
-// resolving every reference against the CONNECTION's announced table. The
-// announcement is an ordinary form 1 file and is read first, tolerantly, with
-// its one strict check; a refused announcement sets no table, so the message
-// is refused for want of one and nothing is written.
+// resolving every reference against the announced table: the BATCH OF ONE.
 func UnpackMessage(m *tabletext.Model, root string, announcement, message []byte, dir string, oneFile bool) (tabletext.Report, error) {
+	return UnpackMessages(m, []MessageTree{{Root: root, Dir: dir}}, announcement, message, oneFile)
+}
+
+// UnpackMessages reads a BATCH against the announcement that carried it. The
+// announcement is an ordinary form 1 file and is read first, tolerantly, with
+// its two strict checks; a refused announcement sets no table, so the batch is
+// refused for want of one and nothing is written.
+//
+// The caller names one root and one output tree per message, in the batch's own
+// order, because which root a message is, is not on this wire.
+func UnpackMessages(m *tabletext.Model, trees []MessageTree, announcement, message []byte, oneFile bool) (tabletext.Report, error) {
 	var report tabletext.Report
 	var vocabulary tablewire.Vocabulary
 	if err := vocabulary.AnnounceRead(announcement, &report); err != nil {
@@ -93,7 +101,36 @@ func UnpackMessage(m *tabletext.Model, root string, announcement, message []byte
 	if !vocabulary.Announced() {
 		return report, fmt.Errorf("the announcement is malformed and set no table (docs/SPEC-TABLES.md §3, §3.3)")
 	}
-	return unpackWith(m, root, message, dir, oneFile, &vocabulary)
+	count, err := tablewire.MessageCount(message, &vocabulary)
+	if err != nil {
+		return report, err
+	}
+	if count != len(trees) {
+		return report, fmt.Errorf("the batch carries %d messages and %d root were named: which root each message is, is the application's and not this wire's (docs/SPEC-TABLES.md §3.3)", count, len(trees))
+	}
+	insts := make([]*tabletext.Instance, 0, len(trees))
+	for _, tree := range trees {
+		st := m.Unit.Tables[tree.Root]
+		if st == nil {
+			return report, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", tree.Root, strings.Join(m.Roots(), ", "))
+		}
+		insts = append(insts, m.New(st))
+	}
+	// the refusal comes back BEFORE anything is written: a batch this engine
+	// does not decode is not a tree half-written to disk
+	ok, err := tablewire.DecodeMessages(m, insts, message, &vocabulary, &report)
+	if err != nil {
+		return report, err
+	}
+	if !ok {
+		return report, fmt.Errorf("the bytes are not a batch of these roots — the framing is damaged past the point the walk could continue (docs/SPEC-TABLES.md §4)")
+	}
+	for i, tree := range trees {
+		if err := writeTree(m, insts[i], tree.Root, tree.Dir, oneFile || m.IsVariable(tree.Root)); err != nil {
+			return report, err
+		}
+	}
+	return report, nil
 }
 
 func unpack(m *tabletext.Model, root string, wire []byte, dir string, oneFile bool) (tabletext.Report, error) {
@@ -125,9 +162,16 @@ func unpackWith(m *tabletext.Model, root string, wire []byte, dir string, oneFil
 	if !ok {
 		return report, fmt.Errorf("the bytes are not a %s body — the framing is damaged past the point the walk could continue (docs/SPEC-TABLES.md §4)", root)
 	}
+	return report, writeTree(m, inst, root, dir, oneFile)
+}
 
+// writeTree is the half after the decode: one instance onto disk, in the shape
+// §17.2 asks for. Both forms and both shapes land here, because the tree a
+// message writes is the tree a file writes.
+func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, oneFile bool) error {
+	st := inst.Def
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return report, err
+		return err
 	}
 	// what the ROOT's shape owns at this level, whichever shape is written:
 	// every field key, and the root's own name
@@ -138,13 +182,13 @@ func unpackWith(m *tabletext.Model, root string, wire []byte, dir string, oneFil
 	if oneFile {
 		text, err := m.Write(inst)
 		if err != nil {
-			return report, err
+			return err
 		}
 		name := root + ".json"
 		if err := os.WriteFile(filepath.Join(dir, name), append(text, '\n'), 0o644); err != nil {
-			return report, err
+			return err
 		}
-		return report, prune(dir, owned, map[string]bool{name: true})
+		return prune(dir, owned, map[string]bool{name: true})
 	}
 	guards := tabletext.Guards(st)
 	written := map[string]bool{}
@@ -160,21 +204,21 @@ func unpackWith(m *tabletext.Model, root string, wire []byte, dir string, oneFil
 		}
 		if f.KeyEnum != "" {
 			if err := unpackKeyed(m, fv, filepath.Join(dir, key)); err != nil {
-				return report, err
+				return err
 			}
 			written[key] = true
 			continue
 		}
 		text, err := m.WriteValue(fv)
 		if err != nil {
-			return report, err
+			return err
 		}
 		if err := os.WriteFile(filepath.Join(dir, key+".json"), append(text, '\n'), 0o644); err != nil {
-			return report, err
+			return err
 		}
 		written[key+".json"] = true
 	}
-	return report, prune(dir, owned, written)
+	return prune(dir, owned, written)
 }
 
 func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, dir string) error {
