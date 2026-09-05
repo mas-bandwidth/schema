@@ -326,7 +326,7 @@ func gitLsFiles(t *testing.T, root, dir string) []string {
 		t.Fatalf("git ls-files %s: %v", dir, err)
 	}
 	var paths []string
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		if line != "" {
 			paths = append(paths, line)
 		}
