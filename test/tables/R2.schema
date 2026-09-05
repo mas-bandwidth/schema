@@ -32,6 +32,7 @@ union Effect
     boost  Boost
     shield Ward  | was = "ward"
     pong         | was = "ping"
+    count  int32
 }
 
 table Cfg

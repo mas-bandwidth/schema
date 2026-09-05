@@ -48,6 +48,9 @@ p3_empty_as_p1     0,0,0,0,false,read
 parts_count_past_bound 0,0,1,0,false,read
 parts_elem_kind    0,1,0,0,false,read
 parts_index_out_of_range 0,0,0,0,true,read
+r1_cfg_as_r2       0,0,0,0,false,read
+r1_ping_as_r2      0,0,0,0,false,read
+r2_cfg_as_r1       0,0,0,0,false,read
 scalars_edges_as_2 1,2,2,0,false,read
 scalars_full_as_2  2,2,2,0,false,read
 trace_count_past_bound 0,0,1,0,false,read
