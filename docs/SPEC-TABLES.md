@@ -3959,10 +3959,13 @@ unchanged. Nothing in this subsection touches a file.
 **The requirement is on the ANNOUNCEMENT and nothing else. It is delivered
 ONCE, RELIABLY, BEFORE THE FIRST BODY, and never again for the life of the
 connection.** A connect handshake carries it, or a reliable channel does. What
-matters is those three words and no more: once, reliably, first. Everything the
-previous round said about ordered reliable byte streams was a statement about
-the wrong layer, because it is the ANNOUNCEMENT that needs order and reliability
-and the BODIES that do not.
+matters is those three words and no more: once, reliably, first. **THE
+ANNOUNCEMENT IS WHAT NEEDS ORDER AND RELIABILITY, AND THE BODIES DO NOT**, so
+the requirement sits on the announcement and not on the channel underneath it. A
+form that asked for an ordered reliable byte stream would be asking for a
+guarantee it never uses, and would shut itself out of the unreliable traffic
+that needs it most: a message form larger than proto3's will not be used over
+UDP either.
 
 - **The BODIES then ride ANY CHANNEL.** Reliable or unreliable, ordered or not.
   A body is self-delimiting to a reader holding the vocabulary, so nothing about
@@ -4077,8 +4080,8 @@ A reference above `E` is damage (below). For the `backenddemo` unit below,
 `E` is 28 and a reference is 5 bits.
 
 **A PAYLOAD IS WHAT THE PACKET WIRE WRITES FOR THAT DECLARATION** (SPEC.md
-§4.3), with four differences, each of which buys something this wire needs and
-each of which is stated rather than derived:
+§4.3), and every row below that departs from it says so, because each departure
+buys something this wire needs and none of them is derivable:
 
 | the payload | the bits |
 |---|---|
@@ -4101,8 +4104,9 @@ would leave every stored ordinal meaning a different variant on the two builds,
 read in silence, which is the one class this wire exists to make impossible. So
 a variant and an arm ride by NAME, at a reference's width, and a name this
 reader cannot place is §4's ordinary `unknown`. **That is a residual over the
-packet wire and it is named as one**: three bits become five on the `backenddemo`
-unit, and it is the price of evolution paid where evolution actually happens.
+packet wire and it is named as one**: a four-variant enum costs two bits on the
+packet wire and five here, and that is the price of evolution paid where
+evolution actually happens.
 
 **THE NODE TABLE, WHEN A MESSAGE HAS ONE, IS THE FIRST FIELD OF THE ROOT BODY.**
 A pointer index is `bits_required(0, node count)` bits wide and the node count
@@ -4176,7 +4180,7 @@ and that is its integer.
 
   | kind | shape | what it means |
   |---|---|---|
-  | `0` | nothing | A NAME THE WIRE REFERENCES BUT NEVER PUTS A PAYLOAD UNDER: a table's name id, one of the three blob type ids, an enum VARIANT name, the reserved node-table id |
+  | `0` | nothing | A NAME WHOSE FRAMING IS NOT AN ENTRY'S TO GIVE: a table's name id, one of the three blob type ids and an enum VARIANT name, which are referenced as values and carry no payload at all, and the reserved node-table id, whose field's framing is §3.1's and is known to every reader by the id itself |
   | `1` bool | nothing | one bit |
   | `2`–`9`, `18`, `19` integers | `packing (u8)`, then its facts | `0` RAW, nothing more, the kind's storage width in raw bits, two's complement for the signed kinds. `1` RANGED, then `bits`, then `base` (zigzag LEB128 for `2`–`9`, sixteen bytes little-endian for `18` and `19`): the value is `base` plus the offset those `bits` spell. A `flags` mask is RANGED with `base` `0` and `bits` the mask width |
   | `10` f32 | `packing (u8)`, then its facts | `0` RAW, thirty-two bits. `2` QUANTIZED, then `bits`, then `min` and `step`, four bytes each, IEEE-754: the value is `min + index * step` |
@@ -4202,6 +4206,11 @@ exactly as §4 says. **That is what keeps every row of §4's evolution table
 standing under a bitpacked body**, and it costs a few bytes in an announcement
 paid once against a rule that would otherwise have made every range edit a
 dropped field.
+
+**THE TWO RESERVED IDS OF THE ANNOUNCEMENT ITSELF ARE NOT IN THE VOCABULARY.**
+The build version and the vocabulary are the announcement's own transport, they
+appear in its trailer and never in a message body, so they take no slot and no
+reference names them. Slot `1` is the first entry of the closure.
 
 **THE VOCABULARY IS THE UNIT'S WHOLE CLOSURE, IN THE COOK PROJECTION'S ORDER.**
 A peer announces every entry its unit's table closure CAN put on this wire, not
@@ -4389,13 +4398,11 @@ peer's messages forwards that peer's announcement and its batch bytes verbatim,
 which is exact, allocates nothing and loses nothing.
 
 **THE TWO FORMS ARE TWO ENCODINGS OF ONE VALUE, and the pin is a ROUND TRIP.**
-The previous round claimed the two bodies were equal under RESOLUTION, every
-reference replaced by the id it names. That claim does not survive bitpacking and
-is withdrawn: one body is bytes and the other is bits, and no substitution turns
-either into the other. What is pinned instead is stronger to test and weaker to
-state: **loading either form and saving the other reproduces the other's pinned
-bytes**, for every vector below, in both directions. Each vector's own byte
-length is a pinned golden.
+One body is bytes and the other is bits, so there is no substitution that turns
+either into the other and no byte equality to claim between them. What is
+claimed is the VALUE, and what pins it is **loading either form and saving the
+other, which reproduces the other's pinned bytes**, for every vector below, in
+both directions. Each vector's own byte length is a pinned golden.
 
 **FORM `2` IS A STREAM FORM AND NEVER A FILE FORM.** `schema pack` writes form
 `1`, `schema unpack` reads form `1`, and a reader handed a form-`2` wire where a
@@ -4412,11 +4419,16 @@ nothing a line emits). The TABLES BASELINE does not (§18 records ids, kinds and
 meanings, and no file's bytes move). The TEXT FORM does not (§16 is JSON keyed
 by names and carries no framing at all, so a message's text is its file form's
 text, byte for byte). The COOK and the BLOCK do not (§7, §19 are compiler-settled
-layout and this is framing). **No row of §4's evolution table moves**, and the
-shapes in the announcement are what pay for that: a range, a capacity and an
-array bound are WIDTH facts on this wire, and a reader that meets a width it did
-not expect reads the sender's and applies its own bound rather than losing the
-field.
+layout and this is framing). **NO EVOLUTION ROW OF §4 MOVES, and the FRAMING
+DAMAGE row does**, which is the whole of the difference. The shapes in the
+announcement are what keep the evolution rows standing: a range, a capacity and
+an array bound are WIDTH facts on this wire, and a reader that meets a width it
+did not expect reads the sender's and applies its own bound rather than losing
+the field, so unknown, absent, `kind_mismatch`, `widened`, `clamped`,
+`duplicate` and every guard and bound row read exactly as they read on a file.
+§4's framing-damage row says a damaged level stops only itself and the parent
+reads on past its length, and a bitpacked body has no length to read on past,
+so damage is terminal for the batch (above).
 
 **WHERE THE FORM IS CARRIED TODAY, and this section is ahead of it.** The
 BITPACKED body is specified ahead of its implementation, on the terms §6.6
@@ -4442,15 +4454,14 @@ precedent.
   announcement's bytes rather than copying them, so the announcement has to
   outlive it.
 - **`Announce`, `AnnounceMeasure` and `AnnounceRead`** in the unit scope beside
-  `UnitView`, unchanged in name from the previous round. The announcement is a
-  COMPILE-TIME CONSTANT of the unit, so a backend emits the first two as a
-  constant byte array and its length rather than as a walk.
+  `UnitView`. The announcement is a COMPILE-TIME CONSTANT of the unit, so a
+  backend emits the first two as a constant byte array and its length rather
+  than as a walk.
 - **The three suffixes `MeasureMessages`, `SaveMessages` and `LoadMessages`** in
-  `tableGeneratedVerbs`, replacing the singular three of the previous round.
-  They are PLURAL because the primitive is a batch and a single message is the
-  batch of one, and the singular verbs are not carried beside them: a surface
-  with both would let a caller write one message a call and never learn that the
-  batch is where the bandwidth is.
+  `tableGeneratedVerbs`. They are PLURAL because the primitive is a batch and a
+  single message is the batch of one, and no singular verb is carried beside
+  them: a surface with both would let a caller write one message a call and
+  never learn that the batch is where the bandwidth is.
 - **The refusal reason values `no_vocabulary`, `second_announcement`,
   `vocabulary_too_large` and `message_form_as_file`** beside the form byte's own
   `newer_form`. `vocabulary_too_large` covers both bounds, the entry count and
@@ -4478,13 +4489,15 @@ caller's storage and reports how many bodies it read, and neither allocates.
   field. **So a hostile peer announcing a build version it does not have gains
   nothing.** The worst a lie achieves is a wrong build version beside a real
   vocabulary in a log.
-- **A HOSTILE SHAPE IS A HOSTILE WIDTH, and every width is bounded before it is
+- **A HOSTILE SHAPE IS A HOSTILE WIDTH, and every width is checked before it is
   used.** A `bits` above 128, a `max` above what the kind can hold, an array
   whose `min` exceeds its `max`, an element kind outside the closed set, and a
-  shape that runs past the vocabulary field's own length are each a REFUSED
-  announcement by name, checked once at `AnnounceRead` and never again. A width
-  a reader accepted is a width bounded by the kind it came under, so no field on
-  any body can ask a reader to move more bits than a `u128` holds.
+  shape running past the vocabulary field's own length are each MALFORMED on the
+  announcement, which is a form-`1` file and takes §3's rule that a wire it
+  cannot read whole is malformed whole. The announcement is refused, no
+  vocabulary is set, and the check runs once at `AnnounceRead` and never again.
+  A width a reader accepted is a width bounded by the kind it came under, so no
+  field on any body can ask a reader to move more bits than a `u128` holds.
 - **A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS ALLOCATED.** A
   file's table is bounded by the file's own length and a connection's vocabulary
   is bounded by nothing the wire carries, so **a receiver declares a maximum and
@@ -4961,7 +4974,9 @@ tolerance is the versioning model:
   wire's idiom: a packet reader stops because it has nowhere to continue, and
   a table reader defaults and counts because `L` says where the next field
   begins. **Neither reader accepts it**, which is what lets nine targets owe
-  each other one verdict on one payload.
+  each other one verdict on one payload. A form-`2` body has no `L` either, so
+  it takes the packet reader's answer and stops the batch (§3.3), and the
+  verdict the nine owe each other does not move with the recovery.
 - **A GUARD added or removed around an existing field**: the READ is
   faithful in both directions — a field is found by its id whatever branch
   now encloses it, so a reader whose build added `if g { x }` still loads
@@ -4974,7 +4989,11 @@ tolerance is the versioning model:
 - **Framing damage**: decode stops the damaged nesting level, keeps what
   it decoded there, flags malformed, and the parent continues past the
   field's declared length — one bad subtable never takes down the rest
-  of the file. Array elements decode **inside their field's body
+  of the file. **THIS ROW IS THE FILE FORM's, and the MESSAGE FORM is the one
+  place it reads differently** (§3.3): a bitpacked body carries no length, so a
+  reader that lost its position has lost it for the rest of the buffer, and
+  damage stops the batch with what it decoded standing and one `malformed`
+  counted. Every other row here reads the same under both forms. Array elements decode **inside their field's body
   bounds**: a count the body cannot cover yields the bounded prefix and
   the malformed flag, never values fabricated from a neighbor's bytes.
   An element of an ARRAY OF UNIONS (§2.6) is **RESET the moment its arm id

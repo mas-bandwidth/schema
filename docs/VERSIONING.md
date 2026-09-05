@@ -692,11 +692,13 @@ does NOT stop is EVOLUTION: an unknown field is stepped over exactly, by the
 width its announced shape gives it, and counted, which is the case that actually
 happens between two builds.
 
-**Nothing else moves.** No kind is spent, no payload of the file form changes,
-no skip rule of the file form changes. The protocol id does not move, the build
-version does not move, the baseline does not move, the text form does not move,
-the cook and the block do not move, and no row of the evolution table above
-moves. The read report keeps its counters and their meanings. The packet wire is
+**Nothing else moves, and the one thing that does is named above.** No kind is
+spent, no payload of the file form changes, no skip rule of the file form
+changes. The protocol id does not move, the build version does not move, the
+baseline does not move, the text form does not move, the cook and the block do
+not move, and no EVOLUTION row of the table above moves. The FRAMING DAMAGE row
+does, in this form only: a damaged level cannot cost only itself where there is
+no length to read on past. The read report keeps its counters and their meanings. The packet wire is
 untouched apart from one token reserved by name, `column`, which no line emits
 and which holds the door for a later column layout (SPEC.md §4.11, schema#554).
 
