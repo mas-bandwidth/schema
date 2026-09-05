@@ -7545,7 +7545,10 @@ no reference:
    the check exactly as the pack order does. The entries' own slots,
    companions and tags are then walked as a bounded array's elements are. The
    KEYS are read too, ascending with no repeat, because a cook `Find` cannot
-   search is a forgery.
+   search is a forgery. Until schema#380 lands this clause in the tool, `schema
+   cook-check` refuses a map slot by name where its scan meets one, so a
+   cook that holds one is refused rather than walked past, and the C++
+   reference reads it.
 5. **Every UNBOUNDED-ARRAY SLOT** (§2.9). The same four clauses as a map's:
    CONTAINMENT, ALIGNMENT, FIT and NO OVERLAP, against the holder's own extent
    and against every other element or entry array in that node, and then the
@@ -10559,7 +10562,9 @@ inspects everything in the schema built:
   C++ reference and the tool are first: the builder surface (insert, erase,
   find, iterate), the sort in the four walks, the region load's ascending check
   with its `duplicate` and `malformed` events, the const `Find`, the text
-  form's object and `schema cook-check`'s order check. What a port needs is the entry as an ordinary array-of-tables element in its
+  form's object and `schema cook-check`'s map-slot clause with its order
+  check, which is the one piece still owed: the tool refuses a map slot by
+  name until it lands (§7.4). What a port needs is the entry as an ordinary array-of-tables element in its
   measure, save and load, the writer's sort, the reader's one compare with its
   two events, the const `Find` as a binary search that allocates nothing,
   ascending iteration, and the text form's keyed object; each holds the same

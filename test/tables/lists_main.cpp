@@ -7,7 +7,7 @@
 // Compiled WITHOUT the serialize include path: the Table headers stand alone.
 //
 //   schema_test_lists                    every battery
-//   schema_test_lists measure-refusals   the four LoadMeasure refusals alone
+//   schema_test_lists measure-refusals   the six LoadMeasure refusals alone
 //                                        (make tables-list-measure-refusals)
 
 #include <cstdio>
@@ -777,14 +777,15 @@ static void test_clamp_control()
     free( wire );
 }
 
-// ---- THE FOUR LoadMeasure REFUSALS (docs/SPEC-TABLES.md §2.9, §6.5) ----
+// ---- THE SIX LoadMeasure REFUSALS (docs/SPEC-TABLES.md §2.8, §2.9, §6.5) ----
 //
 // A unit test and not a `report` row, because a refusal produces no counters.
 // Each wire is built in memory with a SYNTHETIC count rather than a golden:
 // a count above the int32 cap, which no golden could carry because the file
 // would be two gigabytes, a count whose elements cannot fit the field's L, the
-// same two at DEPTH, inside an element's own list, and a clean wire beside
-// them, which must measure. Red if any of the four answers something other
+// same two at DEPTH, inside an element's own list, the same two inside an
+// element's MAP, which answers by the one rule a list does, and a clean wire beside
+// them, which must measure. Red if any of the six answers something other
 // than -1 with its own reason, if the clean one refuses, or if any of them
 // moves one of the report's counters.
 
@@ -816,6 +817,51 @@ static Wire build_sheet( uint64_t rows, uint64_t items, int32_t real_items )
         b.close_len( row );
     }
     b.close_len( body );
+    b.end();
+    Wire w;
+    w.size = b.finish( w.bytes );
+    return w;
+}
+
+// an `Army` body written FROM THE GRAMMAR: a kind 14 array of kind 13 `Squad`
+// elements, each holding its `roster` MAP as a kind 14 array of kind 13
+// entries (§2.8), with the map's declared count a knob of its own
+static Wire build_army( uint64_t squads, uint64_t entries, int32_t real_entries )
+{
+    WireBuilder b;
+    b.field( "squads", 14 );
+    const int64_t body = b.open_len();
+    b.u8( 13 );
+    b.leb( squads );
+    {
+        const int64_t squad = b.open_len();
+        b.field( "roster", 14 );
+        const int64_t inner = b.open_len();
+        b.u8( 13 );
+        b.leb( entries );
+        for ( int32_t i = 0; i < real_entries; i++ )
+        {
+            const int64_t entry = b.open_len();
+            b.field( "key", 6 );
+            b.u8( (uint8_t) ( 2 + i ) );
+            b.field( "value", 13 );
+            const int64_t item = b.open_len();
+            b.field( "count", 4 );
+            b.u32( (uint32_t) ( 20 + i ) );
+            b.end();
+            b.close_len( item );
+            b.end();
+            b.close_len( entry );
+        }
+        b.close_len( inner );
+        b.field( "name", 4 );
+        b.u32( 50 );
+        b.end();
+        b.close_len( squad );
+    }
+    b.close_len( body );
+    b.field( "after", 4 );
+    b.u32( 8 );
     b.end();
     Wire w;
     w.size = b.finish( w.bytes );
@@ -864,6 +910,41 @@ static void test_measure_refusals()
         TableRefuseReason reason = count_over_extent_cap;
         CHECK_EQ( SheetLoadMeasure( w.bytes, w.size, NULL, &reason ), -1 );
         CHECK( reason == count_over_length );
+    }
+    // the same two at DEPTH, inside an element's MAP (§2.8): a map's term
+    // answers the reasons a list's does, the int32 cap first, one rule for
+    // both constructs (§6.5)
+    {
+        Wire w = build_army( 1, 0x80000000ull, 1 );
+        TableRefuseReason reason = count_over_length;
+        CHECK_EQ( ArmyLoadMeasure( w.bytes, w.size, NULL, &reason ), -1 );
+        CHECK( reason == count_over_extent_cap );
+    }
+    {
+        Wire w = build_army( 1, 100000, 1 );
+        TableRefuseReason reason = count_over_extent_cap;
+        CHECK_EQ( ArmyLoadMeasure( w.bytes, w.size, NULL, &reason ), -1 );
+        CHECK( reason == count_over_length );
+    }
+    // and a clean map-holding wire beside them, which must measure and load silently
+    {
+        Wire w = build_army( 1, 2, 2 );
+        TableRefuseReason reason = count_over_length;
+        const int64_t need = ArmyLoadMeasure( w.bytes, w.size, NULL, &reason );
+        CHECK( need > 0 );
+        uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+        if ( region == NULL ) { return; }
+        TableReport r;
+        const Army * army = ArmyLoad( region, need, w.bytes, w.size, &r );
+        CHECK( army != NULL );
+        report_silent( r, "the clean map-holding wire beside the refusals" );
+        if ( army != NULL && army->squads.size() == 1 )
+        {
+            CHECK_EQ( army->squads[0].roster.size(), 2 );
+            const Item * item = army->squads[0].roster.Find( (uint8_t) 3 );
+            CHECK( item != NULL && item->count == 21 );
+        }
+        free( region );
     }
     // and a clean wire beside them, which must measure and load silently
     {
@@ -1378,7 +1459,7 @@ int main( int argc, char ** argv )
             printf( "\n%d measure refusal check(s) failed\n", failures );
             return 1;
         }
-        printf( "list measure refusals: four -1s with their reasons, one clean measure, no counter moved (docs/SPEC-TABLES.md §2.9, §6.5)\n" );
+        printf( "list measure refusals: six -1s with their reasons, two clean measures, no counter moved (docs/SPEC-TABLES.md §2.8, §2.9, §6.5)\n" );
         return 0;
     }
     test_writer();

@@ -2725,9 +2725,10 @@ tables-lists: build/schema_test_lists build/schema_test_lists_asan
 	@grep -q "leaves\|extent" build/lists-cooks/forged.log || { echo "LIST GATE FAILED: the forgery was refused, but not on the element-array clause"; cat build/lists-cooks/forged.log; exit 1; }
 	@echo "list gate: cook-check reads two cooks the runtime wrote, refuses the forged list slot, and refuses the map-holding cook by name"
 
-# THE FOUR LoadMeasure REFUSALS are a unit test and not a `report` row (§2.9,
-# §6.5): each wire is built in memory with a SYNTHETIC count, and the answer
-# and the REASON are asserted, with a clean wire beside them that must measure.
+# THE SIX LoadMeasure REFUSALS are a unit test and not a `report` row (§2.8,
+# §2.9, §6.5): each wire is built in memory with a SYNTHETIC count, a list's
+# and a map's, and the answer and the REASON are asserted, with a clean wire
+# beside them that must measure.
 .PHONY: tables-list-measure-refusals
 tables-list-measure-refusals: build/schema_test_lists
 	./build/schema_test_lists measure-refusals
@@ -2801,14 +2802,31 @@ tables-lists-dead-element-negative-control: bin/schema build/tables-generated/.s
 	$(call list_negative_control,dead,'s@if ( !TableListSegmentDead( segment->dead, within ) ) { break; }@break; // SABOTAGED@',internal/codegen/cpptable/lists.go,a dead element riding on the wire left the list gate GREEN)
 
 # THE ELEMENT ARRAY IS LAID OUT AFTER A NESTED CONTAINER'S, breaking the
-# pre-order rule: the cook's extent writer no longer steps past the element
-# array before it lays each element's map, so the maps land where the elements
-# are. `list_of_maps` meets it: the pinned cook's byte compare goes red, and
-# `schema cook-check`'s no-overlap clause refuses the file the gate wrote.
+# pre-order rule in BOTH writers of a list whose element holds a map: the
+# pack's extent walk stops reserving the element array ahead of the elements'
+# maps, and the cook's extent writer stops stepping past it, so the maps are
+# laid where the elements are and the node's extent is short of the array.
+# `list_of_maps` meets it, and the two instruments §2.9 names go red
+# together: the pinned cook's byte compare, and `schema cook-check`'s
+# containment clause on the cook the sabotaged gate wrote, which must be that
+# clause and not the map slot's refusal by name.
 .PHONY: tables-lists-preorder-negative-control
 tables-lists-preorder-negative-control: bin/schema build/tables-generated/.stamp
-	$(call list_negative_control,preorder,'s@g.pf("        at += (int64_t) cursor.count \* %d; // the whole array FIRST\\n", size)@g.pf("        // SABOTAGED: %d\\n", size)@',internal/codegen/cpptable/extent.go,laying the element array after a nested container left the list gate GREEN)
-
+	@mkdir -p build
+	@printf 'func listElementHoldsMap(f *ir.Field) bool {\n\tref := listElementStruct(f)\n\tif ref == nil {\n\t\treturn false\n\t}\n\tfor i := range ref.Fields {\n\t\tif ref.Fields[i].IsMap() {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}\n' > build/list-preorder-helper.txt
+	$(call list_negative_control,preorder,'s@g.pf("        at += (int64_t) cursor.count \* %d; // the whole array FIRST\\n", size)@if !listElementHoldsMap(f) { g.pf("        at += (int64_t) cursor.count * %d; // the whole array FIRST\\n", size) } // SABOTAGED@' -e 's@g.pf("%s    at += (int64_t) cursor.count \* (int64_t) sizeof( %s ); // the whole array FIRST\\n", ind, elem)@if !listElementHoldsMap(f) { g.pf("%s    at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // the whole array FIRST\\n", ind, elem) } // SABOTAGED@' -e '$$r build/list-preorder-helper.txt',internal/codegen/cpptable/extent.go,laying the element array after a nested container left the list gate GREEN)
+	@grep -c "SABOTAGED" build/list-preorder.gotext | grep -qx 2 || \
+		{ echo "NEGATIVE CONTROL FAILED: the preorder sabotage did not reach both the pack's and the cook's list branch"; exit 1; }
+	@grep -q "^FAIL.*list_of_maps_cook" build/list-preorder.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the pinned list_of_maps_cook byte compare stayed GREEN"; cat build/list-preorder.log; exit 1; }
+	@rm -rf build/tables-list-preorder/cooks && mkdir -p build/tables-list-preorder/cooks
+	@SCHEMA_LIST_COOK_DIR=build/tables-list-preorder/cooks ./build/schema_test_lists_preorder > /dev/null 2>&1 || true
+	@if ./bin/schema cook-check --root Army build/tables-list-preorder/cooks/army.cook tables/lists > build/list-preorder-check.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: cook-check accepted the cook the sabotaged writer laid"; exit 1; \
+	fi
+	@grep -q "the array leaves the node\|overlaps another array" build/list-preorder-check.log || \
+		{ echo "NEGATIVE CONTROL FAILED: cook-check refused the sabotaged cook, but not on the containment clause"; cat build/list-preorder-check.log; exit 1; }
+	@echo "negative control: preorder turns the pinned list_of_maps_cook compare and cook-check's containment clause red: $$(grep -o 'the array leaves the node\|overlaps another array' build/list-preorder-check.log | head -1)"
 
 # THE WALK VISITS LISTS OUT OF DECLARATION ORDER, grouped after the pointer
 # fields: the edge walk is made to take every list field last, so
@@ -2909,7 +2927,6 @@ update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_maps
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_lists
 	@for d in examples pointers block blockhome messages stream blobs scalars maps lists; do \
-
 		mkdir -p testdata/golden/tables/$$d; \
 		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
 	done

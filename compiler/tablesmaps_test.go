@@ -271,7 +271,7 @@ func TestMapEntryIsNotARoot(t *testing.T) {
 }
 
 // TestToolRefusesMapsByName: the tool's WIRE and TEXT halves carry maps now
-// (docs/SPEC-TABLES.md §2.8), and its COOK half does not — so the cook and
+// (docs/SPEC-TABLES.md §2.8), and its COOK half does not. So the cook and
 // uncook surfaces refuse a map-bearing unit BY NAME rather than laying out an
 // entry array they have no placement for. Without the refusal a caller gets a
 // cook whose region is short of the entries, which is worse than a diagnostic.

@@ -2604,8 +2604,10 @@ inline Entry * TableMapLive( const TableArena & arena, const TableMap<Entry> & m
 // alignof( Entry ), AT EVERY DEPTH. N is framing and not a value, so this
 // reads no field: it walks the map's own header and, where an entry's value
 // holds a map or a list of its own, the entries' headers under it. The caller
-// owns the allocation precisely so it can refuse a number it did not expect,
-// and a refusal carries its reason (§6.5).
+// owns the allocation precisely so it can refuse a number it did not expect.
+// Every -1 carries its REASON (§6.5): the int32 cap first, because a count
+// past it cannot fit any body, and then the body's own L, the one rule a
+// list's term answers by.
 // A MAP ENTRY'S SMALLEST WIRE FOOTPRINT that commands one storage unit is its
 // own L and the body's terminator, and under this form's variable lengths that
 // footprint is TWO BYTES (docs/SPEC-TABLES.md §4.2). It is what bounds the N a
@@ -2622,6 +2624,7 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
     if ( r.get8() != 13 ) { return true; } // not an array of tables: §4's ordinary kind mismatch
     uint64_t n = 0;
     if ( !r.getleb( n ) ) { return true; }
+    if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }
     const int64_t rest = length - r.offset;
     if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { reason = count_over_length; return false; } // an N the map's L cannot carry
     at = ( at + entry_align - 1 ) & ~( entry_align - 1 );
