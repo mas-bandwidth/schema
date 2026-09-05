@@ -82,10 +82,7 @@ fields are dropped on rewrite unless a caller opts into retention, which is
 specified and unbuilt
 ([#525](https://github.com/mas-bandwidth/schema/issues/525)); a retired name can
 be re-added and decode old bytes under a new meaning
-([#441](https://github.com/mas-bandwidth/schema/issues/441)); `was` covers a
-table's own fields and a table declaration, so a renamed variant or arm
-orphans its data
-([#442](https://github.com/mas-bandwidth/schema/issues/442)); and the id-table
+([#441](https://github.com/mas-bandwidth/schema/issues/441)); and the id-table
 wire is the C++ reference's and the tool's, with the eight ports still writing
 the previous form
 ([#511](https://github.com/mas-bandwidth/schema/issues/511) to
@@ -262,7 +259,7 @@ sourced across five columns.
 | feature | schema | Protocol Buffers | FlatBuffers | Cap'n Proto | Avro |
 |---|---|---|---|---|---|
 | Add, remove or reorder a field freely | ✅ [s19] | ✅ [83] | 🔶 [84] | 🔶 [85] | 🔶 [86] |
-| Rename a field without orphaning stored data | 🔶 [s20] | ✅ [88] | ✅ [89] | ✅ [90] | 🔶 [91] |
+| Rename a field without orphaning stored data | ✅ [s20] | ✅ [88] | ✅ [89] | ✅ [90] | 🔶 [91] |
 | Change a field's type with no silent misdecode | 🔶 [s21] | ❌ [92] | ❌ [93] | ❌ [94] | ✅ [95] |
 | Change a declared default without reinterpreting stored bytes | 🔶 [s22] | 🔶 [97] | ❌ [98] | ❌ [94] | ✅ [99] |
 | Unknown fields preserved through a read-and-rewrite | ❌ [s23] | ✅ [101] | 🔶 [102] | 🔶 [100] | ❌ [103] |
@@ -304,7 +301,7 @@ sourced across five columns.
 
 | feature | schema | Protocol Buffers | FlatBuffers | Cap'n Proto | Avro |
 |---|---|---|---|---|---|
-| Rename an enum variant, union arm or named type without orphaning stored data | 🔶 [s40] | ✅ [88] | ✅ [89] | 🔶 [163] | 🔶 [91] |
+| Rename an enum variant, union arm or named type without orphaning stored data | ✅ [s40] | ✅ [88] | ✅ [89] | 🔶 [163] | 🔶 [91] |
 | A retired name or number cannot be silently reused | ❌ [s41] | ✅ [165] | 🔶 [166] | 🔶 [167] | ❌ [168] |
 | Defined widening or promotion of a field's type on read | ❌ [s42] | 🔶 [170] | 🔶 [93] | 🔶 [171] | ✅ [172] |
 | The writer's schema is recoverable at read time | ❌ [s43] | 🔶 [174] | 🔶 [175] | ❌ [61] | ✅ [176] |
@@ -316,9 +313,9 @@ sourced across five columns.
 
 - **Renames beyond fields.** Protocol Buffers and FlatBuffers rename a variant
   or a named type freely because their wires carry numbers instead of names,
-  and Cap'n Proto does where the type pins an explicit id; schema's `was` is
-  a field's and a table declaration's today, not yet a variant's or an
-  arm's [s40].
+  and Cap'n Proto does where the type pins an explicit id; schema keeps the
+  data through every one of those renames, but asks the author for one
+  attribute, `was`, because its wire carries the name's hash [s40].
 - **Retired names.** Protocol Buffers' `reserved` is the right mechanism and
   schema lacks it, so a removed name can be re-added years later and decode
   old bytes under a new meaning [s41].
@@ -422,7 +419,7 @@ list at the end, with the section that establishes the claim.
 - s17. Table wire. Eight-byte region references and 64-bit cook part lengths, with no aggregate ceiling in the format (SPEC-TABLES §6.3, §7.1). 🔶 for two reasons, one in the format and one in the implementations. The tolerant wire's own lengths, counts, indices and references are canonical LEB128 with 64 bits of capability, so no body, count or index has a ceiling below `2^64 − 1` (§3) — but that wire is the reference's and the tool's, and the eight ports still write the previous form ([#511](https://github.com/mas-bandwidth/schema/issues/511) to [#518](https://github.com/mas-bandwidth/schema/issues/518)). And the two accelerators are read out of a `byte[]` in the managed ports, which stops at 2 GiB: SPEC-TABLES' ladder states it as the one Java divergence that costs a stated requirement, C# meets the same `int` ceiling on its span overload and answers it with the pointer form beside it, and the foreign-memory overload is a named follow-on (§15).
 - s18. One standard, one corpus, and byte identity is proven where nine backends produce bytes. The packet wire is bit-for-bit compatible across all nine runtimes, pinned in CI with shared golden bytes, and a compiler change that breaks a wire golden is stop-the-line (SPEC §1, §3.2, §7.2). On the table wire the `wire` surface byte-compares every registered leg's `Save` against one golden over the FIXED class, and `measure == save at exact capacity` is a hard invariant held by a mandatory battery (SPEC-TABLES §9). 🔶 because the variable, message, wide and blob classes have one writer: the eight ports produce no bytes for those cases and answer ABSENT per case, so no cell claims agreement it did not test.
 - s19. Table wire. Name identity: add anywhere, remove, reorder, each reported by the read instead of refused (SPEC-TABLES §4, §5). Carried by all nine, on the `wire` and `report` surfaces over the fixed class. Whether a retired name can be silently reused is [s41], not this row.
-- s20. `| was = "old"` keeps the wire id, and a bare rename is a removal and an addition the compiler cannot see. The committed baseline warns on that pair: `internal/baseline/diff.go`'s `renamePair` reports a wire id removed and a wire id added in one edit and names the `was` and `json =` spellings that keep the data ([#444](https://github.com/mas-bandwidth/schema/issues/444), SPEC-TABLES §5, §18.2). It warns and never refuses, because two independent edits in one commit are legitimate. 🔶 because `was` covers a table's own fields and a table declaration today: variants and arms are [#442](https://github.com/mas-bandwidth/schema/issues/442) and the fields of a `type` a table reaches are [#478](https://github.com/mas-bandwidth/schema/issues/478).
+- s20. `| was = "old"` keeps the wire id, and a bare rename is a removal and an addition the compiler cannot see. The committed baseline warns on that pair: `internal/baseline/diff.go`'s `renamePair` reports a wire id removed and a wire id added in one edit and names the `was` and `json =` spellings that keep the data ([#444](https://github.com/mas-bandwidth/schema/issues/444), SPEC-TABLES §5, §18.2). It warns and never refuses, because two independent edits in one commit are legitimate. `was` covers every name the table wire carries: a table's own fields, a table declaration, enum variants, union arms and the fields of a `type` a table reaches (SPEC-TABLES §5).
 - s21. A changed kind reads as the default and is counted `kind_mismatch` (SPEC-TABLES §4), in all nine over the fixed class. The respellings a shared kind once left open are closed: an enum has kind `30` and a pointer index kind `17`, so an enum-typed field respelled as its raw `uint16`, and a `*T` respelled as a `uint32`, are ordinary counted mismatches in both directions (§3, §3.1, §4.1). It is still not the whole story, and SPEC-TABLES §4.1 says so: a field's REFERENT dropped or swapped for a twin that cannot stand in for it, and a `fixed` field's `F` moved under the same storage width, each keep the kind and change what the bytes mean with no counter to fire. Both are guarded only by the committed baseline (§18).
 - s22. Silent on the wire, refused at compile time by the committed baseline (SPEC-TABLES §4.1, §18.2). 🔶 because the baseline is opt-in by design, "no file, no check" (§18.1). A unit that declares a table and holds no baseline draws a one-line stderr notice from `schema check` naming what is unguarded and the command that commits one ([#445](https://github.com/mas-bandwidth/schema/issues/445), §18.1). The notice never touches the exit code, so the limitation stands.
 - s23. Decided and not built. The DEFAULT is a drop, by decision, with the read report counting what a rewrite would lose under the never-clobber rule ([VERSIONING.md](VERSIONING.md)). Retain-unknown is the opt-in beside it, a REGION round trip whose buffer the caller sizes and owns, covering unknown FIELDS and no other class and no other counter, with `retained` and `retain_lost` on the same report struct (SPEC-TABLES §6.6). No port carries it ([#525](https://github.com/mas-bandwidth/schema/issues/525)).
@@ -443,7 +440,7 @@ list at the end, with the section that establishes the claim.
 - s37. JSON in and out by one generic walk over the descriptors, `| json = "key"`, the read report on the way in, `&node` for a shared node (SPEC-TABLES §16). The walk itself is carried by all nine (PORTING M9), and each backend's is compared unit by unit. 🔶 because the text surfaces are where the eight ports answer ABSENT, on `json-read` and `json-write` alike: the message, wide, blob and variable classes have no port text form ([the conformance contract](../test/conformance/README.md), SPEC-TABLES §15).
 - s38. Decided and not built. The design is the OPT-IN `///` block: a contiguous run of `///` lines binding to the declaration, field, variant or arm below it, carried verbatim into the `doc` descriptor column beside a `tags` column and into ordinary line comments in the generated code, with `| doc = "..."` refused by name so one text has one spelling (SPEC §4.1, §4.11, SPEC-TABLES §8.1). A plain `//` above the same item stays a comment and reaches nothing, which is what keeps a tree of working notes out of every game's binary. No backend emits either column ([#523](https://github.com/mas-bandwidth/schema/issues/523)).
 - s39. Nine languages byte-identical on the packet wire in CI (SPEC §1). Tables are carried under [#366](https://github.com/mas-bandwidth/schema/issues/366).
-- s40. A table declaration takes `was` ([#396](https://github.com/mas-bandwidth/schema/issues/396)): the node type id every stored record carries is the hash of the first name, so a renamed pointer target still reads, and the rename moves neither id (SPEC-TABLES §5). 🔶 because a variant and an arm are [#442](https://github.com/mas-bandwidth/schema/issues/442), before 3.0.0: a renamed variant is a new variant today.
+- s40. A table declaration takes `was` ([#396](https://github.com/mas-bandwidth/schema/issues/396)): the node type id every stored record carries is the hash of the first name, so a renamed pointer target still reads, and the rename moves neither id (SPEC-TABLES §5). An enum variant and a union arm take it on their own line ([#442](https://github.com/mas-bandwidth/schema/issues/442)), and so does a field of a `type` a table reaches ([#478](https://github.com/mas-bandwidth/schema/issues/478)): the id is the old name's hash in every case, and a `flags` variant, whose identity is its bit, needs none.
 - s41. Decided and not built. The retired-names ledger in the baseline is [#441](https://github.com/mas-bandwidth/schema/issues/441), before 3.0.0; nothing today marks a removed name retired, so it can be re-added and decode old bytes under a new meaning.
 - s42. Decided and not built. An integer kind read into a WIDER integer kind of the same signedness, and `f32` read into `f64`, decode EXACTLY and count `widened`; the signed ladder is kinds `2`, `3`, `4`, `5`, `18` and the unsigned one `6`, `7`, `8`, `9`, `19`, and every other pair stays `kind_mismatch` because each is a value the wider kind would accept and the schema does not mean (SPEC-TABLES §4). The path runs FORWARD only — an old build meeting the wider kind narrows and reads its default — so the baseline refuses the edit like any kind change. Nothing counts `widened` in any language yet ([#523](https://github.com/mas-bandwidth/schema/issues/523)).
 - s43. Declined, with the reason in the table above.
