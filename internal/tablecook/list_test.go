@@ -34,7 +34,7 @@ func intsCook(u *ir.Unit, delta int64, count int32) []byte {
 	le.PutUint64(record[0:], uint64(delta))
 	le.PutUint32(record[8:], uint32(count))
 	le.PutUint32(record[16:], 5) // after
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		le.PutUint32(record[24+i*4:], uint32(10*(i+1)))
 	}
 	dir := out[header+data:]
