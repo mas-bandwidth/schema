@@ -3609,12 +3609,17 @@ the payload opens with the count and then carries the records:
 - **A blob is numbered as every node is**: first visit, depth-first, in the
   slot's declaration order, and it has no descent — a blob reaches nothing.
   Two slots that name one blob name one index, and the record is written once.
-- **A reader that has no blobs skips it by its length and counts it
-  `unknown`**, as it does any record whose type id it cannot name, and the
-  record keeps its index. A reader that names the id and meets a length past
-  the field it rides in refuses the whole table as **malformed**, as it
-  refuses any record that does; nothing reads a blob's bytes from outside its
-  record. A blob record under a `*T` slot, or a table record under a `*bytes`
+- **A ROOT that reaches no blob of that shape skips it by its length and
+  counts it `unknown`**, as it does any record whose type id it cannot name,
+  and the record keeps its index. The reserved ids are named on the same terms
+  a table's name id is (§3.1): a blob node is a pointer's pointee, so a
+  `*string` record under a root that no `*string` edge sits below is a node
+  this reader cannot place, and it commands no storage. A file never carries
+  one, because a writer writes only the ids its own body used; a MESSAGE can,
+  because §3.3's tail announces every reserved id whether or not the root
+  names it. A reader that names the id and meets a length past the field it
+  rides in refuses the whole table as **malformed**, as it refuses any record
+  that does; nothing reads a blob's bytes from outside its record. A blob record under a `*T` slot, or a table record under a `*bytes`
   slot, is the type-id check below: **kind mismatch**, pointer null. A
   `*bytes` slot, a `*string` slot and a `*wstring` slot are three ids for the
   same reason `string(N)`, `bytes(N)` and `wstring(N)` are three kinds on this

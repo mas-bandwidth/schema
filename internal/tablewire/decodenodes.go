@@ -119,18 +119,28 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 		}
 	}
 
+	// AND THE TWO RESERVED BLOB IDS ARE ON THE SAME FOOTING (§2.5): a blob
+	// node is a pointer's pointee too, so a `*bytes` record under a root no
+	// `*bytes` edge sits below is a node this reader cannot name either. An id
+	// missing from this map falls through to the table lookup, which never
+	// holds it, and is counted unknown there.
+	blobKind := map[uint64]ir.FieldTypeKind{}
+	bytesEdge, stringEdge := ir.PointerReachableBlobs(m.Unit, inst.Def)
+	if bytesEdge {
+		blobKind[ir.BytesWireTypeId] = ir.TBytes
+	}
+	if stringEdge {
+		blobKind[ir.StringWireTypeId] = ir.TString
+	}
+
 	// PASS ONE: fill the numbering from the FRAMING, so that an index resolves
 	// whichever way it points. It reads no body — a blob's record IS its
 	// bytes, so its node is complete here, and the tolerant wire load copies
 	// them as it copies every node (§2.5).
 	st.nodes = make([]Node, len(records))
 	for i, rec := range records {
-		switch rec.TypeId {
-		case ir.BytesWireTypeId:
-			st.nodes[i] = Node{Blob: &tabletext.Blob{Data: append([]byte(nil), rec.Body...)}, Kind: ir.TBytes}
-			continue
-		case ir.StringWireTypeId:
-			st.nodes[i] = Node{Blob: &tabletext.Blob{Data: append([]byte(nil), rec.Body...)}, Kind: ir.TString}
+		if kind, ok := blobKind[rec.TypeId]; ok {
+			st.nodes[i] = Node{Blob: &tabletext.Blob{Data: append([]byte(nil), rec.Body...)}, Kind: kind}
 			continue
 		}
 		sd := byTypeId[rec.TypeId]
