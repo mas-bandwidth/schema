@@ -260,6 +260,15 @@ var WstringWireTypeId = TableWireId("wstring")
 // id in any body but the one whose transport it is, is malformed (§3.1).
 const TableBuildVersionWireId = uint64(0xFFFFFFFFFFFFFFFE)
 
+// TableMessageRecordsWireId is the RESERVED id the ANNOUNCEMENT's second
+// required field rides under (docs/SPEC-TABLES.md §3.3), and the third id the
+// language holds back (§5, §11), beside the node table's and the build
+// version's. Its payload is the VOCABULARY RECORDS: one fixed-width record a
+// slot, carrying the kind, the widths and the range base a field header under
+// that id spells, which is what lets a reader skip an id it cannot name on a
+// body that has no kind byte.
+const TableMessageRecordsWireId = uint64(0xFFFFFFFFFFFFFFFD)
+
 // TableWireMessageForm is the MESSAGE FORM's form byte (docs/SPEC-TABLES.md
 // §3.3). A form-2 wire is TWO PARTS, the form byte and the root body, and its
 // id table is the CONNECTION's rather than the wire's.
@@ -301,6 +310,7 @@ func TableVocabulary(u *Unit) []uint64 {
 		ids = append(ids, id)
 	}
 	place(TableBuildVersionWireId)
+	place(TableMessageRecordsWireId)
 
 	closure := TableClosure(u)
 	names := make([]string, 0, len(closure))
@@ -376,14 +386,35 @@ func TableVocabulary(u *Unit) []uint64 {
 // it as a constant byte array and its length rather than as a walk.
 func TableAnnouncement(u *Unit) []byte {
 	ids := TableVocabulary(u)
-	out := make([]byte, 0, 1+11+8*len(ids)+8)
+	records := TableVocabularyRecords(u)
+	payload := make([]byte, 0, TableMessageRecordBytes*len(records))
+	for _, d := range records {
+		payload = d.Encode(payload)
+	}
+	out := make([]byte, 0, 1+16+len(payload)+8*len(ids)+8)
 	out = append(out, TableWireForm)
 	out = append(out, 1)                   // reference 1: the reserved build-version id, first-use
 	out = append(out, uint8(TableKindU64)) // kind 9
 	out = binary.LittleEndian.AppendUint64(out, BuildVersion(u))
+	// reference 2: the VOCABULARY RECORDS, one a slot, under kind 12 — §3's
+	// opaque byte payload, which is what a fixed-stride array of records is
+	out = append(out, 2, uint8(TableKindString))
+	out = appendLebBytes(out, uint64(len(payload)))
+	out = append(out, payload...)
 	out = append(out, 0) // the zero reference that ends the body
 	for _, id := range ids {
 		out = binary.LittleEndian.AppendUint64(out, id)
 	}
 	return binary.LittleEndian.AppendUint64(out, uint64(len(ids)))
+}
+
+// appendLebBytes writes one length in the canonical LEB128 every length,
+// count and reference of a FILE takes (docs/SPEC-TABLES.md §3). The
+// announcement is a file, so it spells its lengths the file's way.
+func appendLebBytes(out []byte, v uint64) []byte {
+	for v >= 0x80 {
+		out = append(out, uint8(v)|0x80)
+		v >>= 7
+	}
+	return append(out, uint8(v))
 }

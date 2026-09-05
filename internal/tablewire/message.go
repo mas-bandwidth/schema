@@ -84,14 +84,18 @@ func (e *MessageRefusal) Error() string {
 	return fmt.Sprintf("the message was refused: %s (docs/SPEC-TABLES.md §3.3)", e.Reason)
 }
 
-// Vocabulary is ONE DIRECTION of ONE CONNECTION's id table
-// (docs/SPEC-TABLES.md §3.3): the entries an announcement carried, whole, with
-// slot `1` the reserved build-version id and slots `2` and up the peer's
-// vocabulary, under one numbering.
+// Vocabulary is ONE ANNOUNCEMENT's id table (docs/SPEC-TABLES.md §3.3): the
+// entries it carried, whole, with slot `1` the reserved build-version id, slot
+// `2` the reserved records id, and slots `3` and up the peer's vocabulary,
+// under one numbering — beside the per-entry RECORDS that say what a field
+// header under each id spells.
 //
-// A peer holds two of these for a connection, the one it writes with and the
-// one it reads with, and neither is the other's. A restart is a new connection
-// with empty tables, and nothing is cached across connections.
+// THE SCOPE IS THE ANNOUNCEMENT'S, and nothing here assumes a transport. The
+// announcement is delivered ONCE, reliably, before the first body, and is
+// never re-announced; the bodies then ride any channel, one self-delimiting
+// batch to a datagram on an unreliable one. A peer holds one of these per
+// direction, the one it writes with and the one it reads with, and neither is
+// the other's. A body from a peer that never announced is refused by name.
 type Vocabulary struct {
 	// MaxEntries is the receiver's declared bound, and an announcement above
 	// it is refused by name before an entry is touched. Zero means the
@@ -99,9 +103,19 @@ type Vocabulary struct {
 	MaxEntries int
 
 	ids          []uint64
+	records      []ir.TableMessageDescriptor
 	buildVersion uint64
 	announced    bool
 }
+
+// Records is the per-entry array in slot order: slot `k`'s record is
+// `Records()[k-1]`. It is what a reader skips an id it cannot name by, on a
+// body that carries no kind byte.
+func (v *Vocabulary) Records() []ir.TableMessageDescriptor { return v.records }
+
+// RefBits is the width of a reference on this table's bodies:
+// `bits_required(entries)`.
+func (v *Vocabulary) RefBits() int { return ir.TableMessageRefBits(len(v.ids)) }
 
 // Announced reports whether this direction's table is set. Only the FIRST
 // announcement sets it, and a refused announcement sets none.
@@ -136,11 +150,12 @@ func Announce(u *ir.Unit) []byte { return ir.TableAnnouncement(u) }
 // fixed little-endian u64 at the end, so it is read, compared and refused
 // without touching an entry. Everything after that is §3's ordinary FILE read
 // — every malformed rule already covers the announcement, because it IS a file
-// — with EXACTLY ONE STRICT CHECK over the body: the reserved build-version
-// field present, exactly once, under kind `9`, eight bytes wide. Every other
-// field is an ordinary field under §4's tolerance, so an unknown one is
-// skipped and counted and the announcement can GAIN a field in a later minor
-// without a lockstep redeploy.
+// — with TWO STRICT CHECKS over the body: the reserved build-version field
+// present, exactly once, under kind `9`, eight bytes wide, and the reserved
+// RECORDS field present, exactly once, under kind `12`, carrying exactly one
+// fixed-width record per entry. Every other field is an ordinary field under
+// §4's tolerance, so an unknown one is skipped and counted and the
+// announcement can GAIN a field in a later minor without a lockstep redeploy.
 //
 // A refused announcement sets NO TABLE, and a malformed one sets none either.
 func (v *Vocabulary) AnnounceRead(data []byte, report *tabletext.Report) error {
@@ -182,142 +197,77 @@ func (v *Vocabulary) AnnounceRead(data []byte, report *tabletext.Report) error {
 		report.Malformed = true
 		return nil
 	}
-	version, read := announcementBuildVersion(body, ids, report)
+	version, records, read := announcementFields(body, ids, report)
 	if !read {
 		report.Refused = true
 		return &MessageRefusal{Reason: ReasonNoVocabulary}
 	}
 	v.ids = ids
+	v.records = records
 	v.buildVersion = version
 	v.announced = true
 	return nil
 }
 
-// announcementBuildVersion walks the announcement's body under §4's ordinary
-// tolerance and applies the one strict check: the reserved build-version field
-// present, EXACTLY ONCE, under kind `9`, eight bytes wide. An unknown field
-// beside it is skipped and counted like any other, which is what makes the
-// announcement a table body rather than a fixed header.
-func announcementBuildVersion(body []byte, ids []uint64, report *tabletext.Report) (uint64, bool) {
+// announcementFields walks the announcement's body under §4's ordinary
+// tolerance and applies the two strict checks: the reserved build-version
+// field present EXACTLY ONCE under kind `9` at eight bytes, and the reserved
+// RECORDS field present EXACTLY ONCE under kind `12` at exactly one record an
+// entry. An unknown field beside them is skipped and counted like any other,
+// which is what makes the announcement a table body rather than a fixed
+// header.
+func announcementFields(body []byte, ids []uint64, report *tabletext.Report) (uint64, []ir.TableMessageDescriptor, bool) {
 	r := &wireReader{buf: body, report: report, ids: ids}
-	version, seen := uint64(0), 0
+	version, seenVersion, seenRecords := uint64(0), 0, 0
+	var records []ir.TableMessageDescriptor
 	for {
 		ref, ok := r.leb()
 		if !ok {
 			report.Malformed = true
-			return 0, false
+			return 0, nil, false
 		}
 		if ref == 0 {
-			return version, seen == 1
+			return version, records, seenVersion == 1 && seenRecords == 1
 		}
 		id, named := r.id(ref)
 		if !named || !r.has(1) {
 			report.Malformed = true
-			return 0, false
+			return 0, nil, false
 		}
 		kind := r.u8()
-		if id != ir.TableBuildVersionWireId {
+		switch id {
+		case ir.TableBuildVersionWireId:
+			if kind != ir.TableKindU64 || !r.has(8) {
+				return 0, nil, false
+			}
+			version = r.u64()
+			seenVersion++
+		case ir.TableMessageRecordsWireId:
+			if kind != ir.TableKindString {
+				return 0, nil, false
+			}
+			n, ok := r.leb()
+			if !ok || n != uint64(ir.TableMessageRecordBytes*len(ids)) || !r.has(int(n)) {
+				return 0, nil, false
+			}
+			at := r.off
+			r.off += int(n)
+			records = make([]ir.TableMessageDescriptor, len(ids))
+			for i := range records {
+				records[i] = ir.TableMessageDecodeDescriptor(body[at+ir.TableMessageRecordBytes*i:])
+			}
+			seenRecords++
+		default:
 			report.Unknown++
 			if !r.skip(kind) {
 				report.Malformed = true
-				return 0, false
+				return 0, nil, false
 			}
-			continue
-		}
-		if kind != ir.TableKindU64 || !r.has(8) {
-			return 0, false
-		}
-		version = r.u64()
-		seen++
-	}
-}
-
-// EncodeMessage is one instance's FORM-`2` wire: the form byte and the root
-// body, and nothing else (docs/SPEC-TABLES.md §3.3). The body ends at its own
-// zero reference, as it does in a file, and there is no trailer — the
-// message's last byte is the body's terminator.
-//
-// Every reference is a SLOT of the unit's vocabulary, which is a compile-time
-// fact, so nothing is interned and no id is written.
-func EncodeMessage(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
-	g, err := Number(m, inst)
-	if err != nil {
-		return nil, err
-	}
-	e := &encoder{m: m, g: g, ids: vocabularyIdTable(m.Unit)}
-	fields, err := encodeBodyFields(e, inst)
-	if err != nil {
-		return nil, err
-	}
-	if len(g.Records()) > 0 {
-		fields, err = e.appendNodeTable(fields, g)
-		if err != nil {
-			return nil, err
 		}
 	}
-	if e.ids.missing != 0 {
-		// an id the walk reached that the unit's own vocabulary does not
-		// spell is a compiler defect, never a wire one: the vocabulary is the
-		// closure's whole id set by construction (§3.3)
-		return nil, fmt.Errorf("the unit's vocabulary names no slot for id %016x — the message form's table is the closure's whole id set (docs/SPEC-TABLES.md §3.3)", e.ids.missing)
-	}
-	out := make([]byte, 0, 1+len(fields)+1)
-	out = append(out, ir.TableWireMessageForm)
-	out = append(out, fields...)
-	return append(out, 0), nil
 }
 
-// vocabularyIdTable is the writer's half under the MESSAGE form: the slot an
-// id takes is settled by the compiler, so `ref` is a lookup that answers a
-// constant and `mark`/`rollback` have nothing to undo — an elided field costs
-// no entry because there are no entries to cost.
-func vocabularyIdTable(u *ir.Unit) *idTable {
-	slots := map[uint64]uint64{}
-	for i, id := range ir.TableVocabulary(u) {
-		slots[id] = uint64(i + 1)
-	}
-	return &idTable{fixed: slots}
-}
-
-// DecodeMessage fills one instance from a FORM-`2` message, resolving every
-// reference against the CONNECTION's table (docs/SPEC-TABLES.md §3.3).
-//
-// The error is a REFUSAL — a wire this reader will not decode at all — and is
-// returned rather than folded into the report; false with a nil error is
-// framing damage past the point the walk could continue, and the instance
-// keeps what it decoded.
-func DecodeMessage(m *tabletext.Model, inst *tabletext.Instance, data []byte, v *Vocabulary, report *tabletext.Report) (bool, error) {
-	// THE FORM BYTE IS READ FIRST, before anything else, so a message that is
-	// both a form this reader does not carry and damaged is a refusal and
-	// never damage (§3).
-	if len(data) < 1 {
-		report.Malformed = true
-		return false, nil
-	}
-	if data[0] != ir.TableWireMessageForm {
-		report.Refused = true
-		return false, &MessageRefusal{Reason: ReasonNewerForm}
-	}
-	// WHAT A PEER DOES WHEN IT HAS NO TABLE FOR THE CONNECTION: IT REFUSES THE
-	// MESSAGE BY NAME. Nothing is decoded, no counter moves and `malformed`
-	// does not fire.
-	if v == nil || !v.announced {
-		report.Refused = true
-		return false, &MessageRefusal{Reason: ReasonNoVocabulary}
-	}
-	// A form-`2` wire has NO TRAILER, so the body runs to the last byte and
-	// there is no stray-byte rule between a terminator and a first entry: the
-	// message's last byte IS the body's terminator, and anything else is
-	// §3's ordinary framing damage on the root body.
-	body := data[1:]
-	if !ir.VariableTables(m.Unit)[inst.Def.Name] {
-		r := &wireReader{buf: body, report: report, m: m, ids: v.ids}
-		return r.body(inst), nil
-	}
-	return decodeVariable(m, inst, body, v.ids, report)
-}
-
-// Refused reports whether an error from [Decode], [DecodeMessage] or
+// Refused reports whether an error from [Decode], [DecodeMessages] or
 // [Vocabulary.AnnounceRead] is a REFUSAL VERDICT rather than a failure to
 // produce an answer: nothing was decoded, no counter moved, and no damage is
 // reported (docs/SPEC-TABLES.md §3, §3.3). The refusal is the answer, so a
