@@ -65,3 +65,18 @@ pointer_self_cycle graphdemo Scene    testdata/wire/tables/fuzz-vectors/pointer_
 # own landing (#530). The fix is ir.PointerReachable, in the engine's node
 # table and in the fuzzer's own region arithmetic.
 message_node_type_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/message_node_type_unpointed.bin message
+
+# A BLOB NODE UNDER A ROOT NO BLOB POINTER SITS BELOW (§2.5, §3.1, §6.5, §3.3),
+# which is the node-type rule above at the two RESERVED ids. §3.3's tail
+# announces `bytes` and `string` unconditionally, so a mutated record can claim
+# `*string` in graphdemo, where no `*bytes` and no `*string` edge exists at all.
+# A blob node is a pointer's pointee like any other, so the reference gives it
+# no region storage, skips its body and counts one unknown — <Root>NodeStorage
+# names a reserved id only when reachableBlobs found the edge. The engine named
+# both ids at every root, placed a blob, and the `*TreeNode` slot that reached
+# it then counted a kind_mismatch: two unknown against the reference's one, and
+# one kind_mismatch against none. Found by the random pass at mutant 434519 of
+# seed 24845619678, on Certify run 33925154771. The fix is
+# ir.PointerReachableBlobs, gating the engine's two reserved ids on the same
+# walk the emitter already gated its own on.
+message_blob_node_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/message_blob_node_unpointed.bin message

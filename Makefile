@@ -2813,8 +2813,8 @@ tables-cpp-release:
 	$(MAKE) tables-wire-fuzz N=500000
 	$(MAKE) tables-wire-fuzz SEED=2 N=500000
 
-.PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control
-tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control
+.PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
+tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
 
 # the string read's `room( len )`: a length past the body is then read anyway,
 # so the sabotaged leg takes a string out of a neighbour's bytes and CLAMPS it
@@ -3038,6 +3038,36 @@ tables-wire-fuzz-node-type-negative-control: build/conformance-harness build/wir
 		  cat $(NODE_TYPE_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(NODE_TYPE_NC)/log
 	@echo "negative control: placing a node no pointer names turns the pinned vector RED"
+
+# THE SAME RULE AT THE TWO RESERVED BLOB IDS (docs/SPEC-TABLES.md §2.5, §3.1,
+# §3.3), and the vector message_blob_node_unpointed is the red it closed. §3.3's
+# tail announces `bytes` and `string` whether or not the root names them, so a
+# mutated record can claim a blob under a root that has no blob edge at all. The
+# reference's <Root>NodeStorage answers -1 for one; the engine named both ids at
+# every root, placed a blob, and turned the pointer that reached it into a
+# kind_mismatch. The sabotage is that revert, and the run must go red ON THE
+# VECTOR.
+BLOB_NODE_NC := build/wire-fuzz-nc-blob-node
+.PHONY: tables-wire-fuzz-blob-node-negative-control
+tables-wire-fuzz-blob-node-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	@rm -rf $(BLOB_NODE_NC) && mkdir -p $(BLOB_NODE_NC)
+	@sed -e 's|ir.PointerReachableBlobs(m.Unit, inst.Def)|true, true // NEGATIVE CONTROL: both reserved ids are nameable at every root|' \
+		internal/tablewire/decodenodes.go > $(BLOB_NODE_NC)/decodenodes.go.txt
+	@cmp -s internal/tablewire/decodenodes.go $(BLOB_NODE_NC)/decodenodes.go.txt && \
+		{ echo "NEGATIVE CONTROL: the blob-node sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(BLOB_NODE_NC)/decodenodes.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(BLOB_NODE_NC)/overlay.json
+	go build -overlay $(BLOB_NODE_NC)/overlay.json -o $(BLOB_NODE_NC)/harness ./test/conformance/harness
+	@if $(BLOB_NODE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n 0 \
+			--failed $(BLOB_NODE_NC)/failed.bin > $(BLOB_NODE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: both reserved ids are nameable again and the wire fuzzer stayed green"; \
+		cat $(BLOB_NODE_NC)/log; exit 1; \
+	fi
+	@grep -q "message_blob_node_unpointed" $(BLOB_NODE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the pinned vector"; \
+		  cat $(BLOB_NODE_NC)/log; exit 1; }
+	@grep -m1 "FAILED" $(BLOB_NODE_NC)/log
+	@echo "negative control: naming a blob node no pointer reaches turns the pinned vector RED"
 
 # The GENERATED half of the data: the JSON text of every instance and the read
 # report of every evolution case, both from the compiler's own engine.

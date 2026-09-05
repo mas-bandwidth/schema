@@ -321,6 +321,57 @@ func PointerReachable(u *Unit, root *Struct) map[string]bool {
 	return named
 }
 
+// PointerReachableBlobs is [PointerReachable]'s answer for the two RESERVED
+// node type ids (docs/SPEC-TABLES.md §2.5): whether a `*bytes` edge and
+// whether a `*string` edge sits anywhere below this root, over the same walk.
+//
+// A blob node is a pointer's pointee exactly as a table's node is, so the same
+// rule decides it: a `*bytes` record under a root no `*bytes` pointer sits
+// below is a node this reader cannot place, and it commands no region storage,
+// its body is skipped and one `unknown` is counted (§3.1, §6.5). A file never
+// carries one; the MESSAGE form can, because §3.3's unconditional tail
+// announces both reserved ids whether or not the root names them.
+func PointerReachableBlobs(u *Unit, root *Struct) (bytes bool, str bool) {
+	visited := map[string]bool{}
+	var descend func(st *Struct)
+	descend = func(st *Struct) {
+		if st == nil || visited[st.Name] {
+			return
+		}
+		visited[st.Name] = true
+		for _, f := range st.Fields {
+			if f.IsMap() {
+				descend(f.MapEntry)
+				continue
+			}
+			if f.Type.Blob() {
+				if f.Type.Kind == TString {
+					str = true
+				} else {
+					bytes = true
+				}
+				continue
+			}
+			if f.Type.Kind != TNamed {
+				continue
+			}
+			if un, isUnion := f.Type.Ref.(*Union); isUnion {
+				for _, v := range un.Variants {
+					if v.Ref != nil {
+						descend(v.Ref)
+					}
+				}
+				continue
+			}
+			if ref, ok := f.Type.Ref.(*Struct); ok {
+				descend(ref)
+			}
+		}
+	}
+	descend(root)
+	return bytes, str
+}
+
 // unionPointerTargets adds every table a POINTER ARM of un targets, through
 // nested union arms too (docs/SPEC-TABLES.md §2.6).
 func unionPointerTargets(un *Union, targets map[string]bool, seen map[*Union]bool) {
