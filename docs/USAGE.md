@@ -1589,15 +1589,21 @@ send( announcement );
 // and every batch after it
 backenddemo::LoginRequest logins[3];
 logins[0].player_id = 0x5c0ffee5;
-int64_t size = backenddemo::LoginRequestMeasureMessages( logins, 3 );
+backenddemo::TableRefuseReason reason;
+int64_t size = backenddemo::LoginRequestMeasureMessages( logins, 3, &reason );
+if ( size < 0 )
+{
+    // reason is batch_too_large: more than 256 bodies. Nothing is written.
+    // Call again with 256 of them, then again with the rest.
+}
 std::vector<uint8_t> buffer( size );
-backenddemo::LoginRequestSaveMessages( logins, 3, buffer.data(), size );
+backenddemo::LoginRequestSaveMessages( logins, 3, buffer.data(), size, &reason );
 send( buffer );
 ```
 
 ```cpp
-// the RECEIVER holds ONE table a direction for the life of the connection.
-// The table BORROWS the announcement's bytes rather than copying them, so
+// the RECEIVER holds ONE vocabulary a direction for the life of the connection.
+// The vocabulary BORROWS the announcement's bytes rather than copying them, so
 // `first` has to outlive it: keep the announcement beside the connection.
 backenddemo::TableVocabulary vocabulary;
 backenddemo::TableReport report;
@@ -1605,7 +1611,7 @@ if ( !backenddemo::AnnounceRead( vocabulary, first.data(), (int64_t) first.size(
 {
     // report.reason names it: second_announcement, vocabulary_too_large,
     // message_form_as_file or newer_form. A refused announcement sets NO
-    // table, and every message on that connection is refused after it.
+    // vocabulary, and every message on that connection is refused after it.
 }
 
 backenddemo::LoginRequest received[3];
@@ -1617,8 +1623,9 @@ if ( !backenddemo::LoginRequestLoadMessages( received, &received_count, vocabula
     // report.malformed did NOT fire: it is a refusal, not damage.
     //
     // report.refused with reason batch_too_large is a batch of more bodies
-    // than you had room for, refused before a body was touched. Read the
-    // count, allocate, and read the same bytes again.
+    // than you had room for, refused before a body was touched, and
+    // received_count now holds the wire's count. Call again with a capacity
+    // at or above it. You never parse the bytes yourself.
     //
     // report.malformed is DAMAGE, and it is terminal for the batch. The
     // bodies before the damaged one stand and received_count is how many:

@@ -4027,8 +4027,12 @@ with one message passes one and pays a count of eight bits for it.
 
 - **`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME.** `MeasureMessages`
   and `SaveMessages` both refuse and return `-1`, and neither writes consecutive
-  batches into one buffer. The refusal is learned at MEASURE time, before a
-  buffer is allocated, which is the point of measuring first. Concatenating
+  batches into one buffer. **The `-1` carries its reason on the carrier
+  `LoadMeasure` already uses**: the `TableRefuseReason` enum out-parameter
+  (§7, §11), never an exception, so the write side and the read side answer a
+  refusal one way and neither is a special case. The refusal is learned at
+  MEASURE time, before a buffer is allocated, which is the point of measuring
+  first. Concatenating
   batches was declined because it invents a second framing level the wire does
   not describe, and because it would break the one-batch-per-datagram rule
   silently for a caller who passed three hundred bodies to an unreliable
@@ -4041,7 +4045,10 @@ with one message passes one and pays a count of eight bits for it.
   own precedent. **The refusal reason is `batch_too_large` on both sides**,
   covering the wire's 256 and the caller's capacity for the reason
   `vocabulary_too_large` covers two bounds: a caller reads a reason and then
-  reads the two numbers itself.
+  reads the two numbers itself. **The reader sets the returned count to the
+  wire's `M` before it returns the refusal**, so the caller holds the number it
+  was short by without parsing a byte of the wire itself, and its recovery is
+  one call again with a capacity at or above that count.
 - **DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`.** The returned count
   states `k - 1`, ONE `malformed` counts, and nothing at or after body `k` is
   read. The caller's storage for body `k` holds whatever the decode had put in
@@ -4177,13 +4184,19 @@ follows, so a UNION's reference naming a kind-`0` entry leaves the reader with
 nothing to frame. Neither is an `unknown`, because the reader RESOLVED the entry
 and the entry contradicts the position it was used in, and neither is
 recoverable, because the very next bit's meaning is what is in doubt. It is
-damage, terminal for the batch like all damage here.
+damage, terminal for the batch like all damage here. **The reserved-id rule
+outranks this one**: a reserved id anywhere but its own transport is malformed
+(below, §3.1), so an ENUM's reference naming the node-table id refuses on that
+rule and never reaches the kind-`0` test, even though the node-table id is
+announced at kind `0`.
 
 **THREE THINGS COUNT AT THIRTY-TWO RAW BITS, and none of them is a special
 case**: an UNBOUNDED ARRAY's count, a MAP's count, and a BLOB NODE's byte length
 (§2.8, §2.9, §3.1). Each is a number the DATA decides rather than a declaration,
-so there is no bound to size a width from, and the announced shape says so by
-carrying `min` `0` and `max` `2^32 - 1`, whose `bits_required` is thirty-two.
+so there is no bound to size a width from. For the two counts the announced
+shape says so by carrying `min` `0` and `max` `2^32 - 1`, whose `bits_required`
+is thirty-two. A blob node's length is fixed by the node table's own framing
+(below), because a blob type id is announced at kind `0` and carries no shape.
 **They are NOT refused on this form**, because a message form that could not
 carry the constructs the language carries would be a second language, and the
 mission is one type system rather than a wire's subset of one. What it costs is
@@ -4569,21 +4582,25 @@ One body is bytes and the other is bits, so there is no substitution that turns
 either into the other and no byte equality to claim between them. What is
 claimed is the VALUE, and what pins it is **loading either form and saving the
 other, which reproduces the other's pinned bytes**, for every vector below, in
-both directions. Each vector's own byte length is a pinned golden.
+both directions, with ONE exception the mask paragraph above states: a file
+carrying a `flags` mask's bits above the writer's W, saved as a message, drops
+them by width, so file to message to file does not reproduce that file. Each
+vector's own byte length is a pinned golden.
 
 **FORM `2` IS A STREAM FORM AND NEVER A FILE FORM.** `schema pack` writes form
 `1`, `schema unpack` reads form `1`, and a reader handed a form-`2` wire where a
 file was expected refuses by name: a batch stored on its own is not readable,
-because its vocabulary is somewhere else. **`schema unpack` HANDED AN
-ANNOUNCEMENT PRINTS THE VOCABULARY DECODED**, one line an entry carrying the
-slot, the id, the name where this unit's own closure names it, the kind and the
-shape, because an announcement is an ordinary form-`1` file and a tool that
-could print its two fields as opaque bytes and stop would be hiding the only
-part anyone reads. It is OWED BY THE CODEC PR, with the rest of the form-`2`
-path. That cost is the form's one real one
+because its vocabulary is somewhere else. That cost is the form's one real one
 and it is stated rather than hidden. proto3 makes the same trade, since a
 `.proto` is required out of band, and the build version is what makes this one
 nameable: a receiver says which build's vocabulary it lacks.
+
+**`schema unpack` HANDED AN ANNOUNCEMENT PRINTS THE VOCABULARY DECODED**, one
+line an entry carrying the slot, the id, the name where this unit's own closure
+names it, the kind and the shape, because an announcement is an ordinary
+form-`1` file and a tool that could print its two fields as opaque bytes and
+stop would be hiding the only part anyone reads. It is OWED BY THE CODEC PR,
+with the rest of the form-`2` path.
 
 **WHAT DOES NOT MOVE.** The BUILD VERSION does not (§20.2 digests wire ids and
 kinds, and none move). The PROTOCOL ID does not (no type-wire fact is touched,
@@ -4672,8 +4689,10 @@ caller's storage and reports how many bodies it read, and neither allocates.
   vocabulary in a log.
 - **A HOSTILE SHAPE IS A HOSTILE WIDTH, and every width is checked before it is
   used.** A `bits` above 128, a `max` above what the kind can hold, an array
-  whose `min` exceeds its `max`, an element kind outside the closed set, and a
-  shape running past the vocabulary field's own length are each MALFORMED on the
+  whose `min` exceeds its `max`, an element kind outside the closed set, a
+  shape running past the vocabulary field's own length, and a vocabulary
+  carrying `0xFFFFFFFFFFFFFFFE`, `0xFFFFFFFFFFFFFFFD` or a second
+  `0xFFFFFFFFFFFFFFFF` as an entry's id are each MALFORMED on the
   announcement, which is a form-`1` file and takes §3's rule that a wire it
   cannot read whole is malformed whole. The announcement is refused, no
   vocabulary is set, and the check runs once at `AnnounceRead` and never again.
@@ -4981,9 +5000,14 @@ entries announces about 5 KB once.
 - **The two bounds.** An announcement one entry above the entry bound, and one a
   byte above the byte bound with a legal entry count. Red if a leg touches an
   entry before refusing either.
-- **The three reserved ids in a body.** A row planting each of
-  `0xFFFFFFFFFFFFFFFF`, `0xFFFFFFFFFFFFFFFE` and `0xFFFFFFFFFFFFFFFD` in a
-  message body and in a nested body. Red if any counts anything but `malformed`.
+- **The three reserved ids where they do not belong.** A row planting each of
+  `0xFFFFFFFFFFFFFFFF`, `0xFFFFFFFFFFFFFFFE` and `0xFFFFFFFFFFFFFFFD` as a
+  field's id in a FILE body and in a nested file body, which must count
+  `malformed` and nothing else. A row planting `0xFFFFFFFFFFFFFFFE`,
+  `0xFFFFFFFFFFFFFFFD` and a second `0xFFFFFFFFFFFFFFFF` as an entry's id in an
+  ANNOUNCEMENT's vocabulary, which must refuse the announcement as malformed and
+  set no vocabulary. A message body carries references and never an id, so it
+  has no row here. Red if any counts or sets anything else.
   The compiler's collision hook is pointed at all three (§5, §11). Red if the
   checker accepts a planted name, or accepts it as a `was`.
 - **Retention across the forms.** A body loaded with retention and saved in form

@@ -575,8 +575,8 @@ and a terminator per body. On a sparse message elision puts the form UNDER the
 packet wire, because the packet wire is positional and pays for every field
 whether or not it holds anything.
 
-**The scope is the ANNOUNCEMENT, not the transport.** The requirement moved one
-level in the second round. What the form needs is that the announcement arrive
+**The scope is the ANNOUNCEMENT, not the transport.** What the form needs is
+that the announcement arrive
 ONCE, RELIABLY, BEFORE THE FIRST BODY, which a connect handshake gives it or a
 reliable channel does, and that it never arrive again for the life of the
 connection. The BODIES then ride ANY channel, reliable or not, ordered or not,
