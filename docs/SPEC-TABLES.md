@@ -11983,8 +11983,15 @@ and each vocabulary's standard is its own (§3):
   meaning of every stored body, and that is the flagship class this file
   exists to refuse. The facts are judged by the same rules a field's own
   facts are, so the two paths cannot disagree.
-- An **enum** value is its variant NAME hash and a **union** body opens
-  with its arm NAME hash, so those stand in when the names survive.
+- An **enum** value is its variant NAME hash, so it stands in when every
+  variant name survives.
+- A **union** body opens with its arm NAME hash, and each arm is a field
+  line (§2.6), so it stands in when every arm name survives AND THE FACTS
+  UNDER THOSE ARMS ARE UNCHANGED. The facts are judged by the same rules a
+  field's own facts are, the arm's payload included, which is the table
+  rule above applied one level in: a union whose arm names all survive
+  under a twin payload rewrites the meaning of every stored body that
+  selects the arm, and is refused naming the arm and the fact that moved.
 - A **flags** mask carries no names at all, so it stands in only when the
   old variants sit at the same bits.
 
@@ -11998,8 +12005,9 @@ still an edit a save game may not survive.
 **AN ARM'S REFERENT IS JUDGED BY THE SAME THREE STANDARDS**, selected by the
 same token, because an arm's line is a field's line (§18.1, §2.6): an arm
 naming a table or a `type` stands in when the ids and the facts under them
-survive, an arm naming an enum or a union when the names do, an arm naming
-a `flags` when the bits do. An arm that names NO declaration — a scalar, a
+survive, an arm naming an enum when the names do, an arm naming a union
+when the arm names and the facts under them do, an arm naming a `flags`
+when the bits do. An arm that names NO declaration — a scalar, a
 string, an array of scalars — has its kind and its shape tokens instead.
 Those admit no substitute at all, so any change to one refuses: there is
 nothing to stand in for, and the change is the silent edit itself.
@@ -12051,6 +12059,10 @@ arm against an `int64` arm, on `kind=`; a `[..8]float32` arm against a
 arm, on `payload=`; a `Chunk` arm against a `*Chunk` arm, on the token SET,
 which moves from `payload=` to the field tokens; and a payload-free arm
 against the same arm given an `int32`, on `kind=none` against `kind=4`.
+A field REPOINTED at another union carries a pair too (§18.3): a
+replacement whose shared arm holds a twin payload refuses on `default=`, one
+whose shared arm holds a scalar refuses on `payload=`, and a union carrying
+every arm of the old one under the same facts stands in.
 The projection over the corpus regenerates byte-identical. The warn class
 warns and does not refuse. A tightened range
 warns from either end and a loosened one is silent, over a ranged integer, a
