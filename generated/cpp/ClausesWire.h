@@ -54,10 +54,10 @@ namespace example {
 
 #ifndef SCHEMA_EXAMPLE_UTF8_VALID_DEFINED
 #define SCHEMA_EXAMPLE_UTF8_VALID_DEFINED
-// string(N) payloads are well-formed UTF-8 BY CONTRACT (SPEC §4.7): the
-// write path debug-asserts with this validator and the release path costs
-// nothing. Rejects truncated sequences, bare continuations, overlongs,
-// surrogates and code points past U+10FFFF.
+// string(N) payloads are well-formed UTF-8 and the READER enforces it
+// (SPEC §4.7): a malformed payload fails the read, in every build mode,
+// and the refusal is terminal. Rejects truncated sequences, bare
+// continuations, overlongs, surrogates and code points past U+10FFFF.
 inline bool schema_utf8_valid( const uint8_t * bytes, int32_t length )
 {
     int32_t i = 0;
@@ -500,7 +500,6 @@ SCHEMA_WRITE_INLINE bool WriteStrs( serialize::WriteStream & stream, const Strs 
     {
         serialize_assert( value.s[i] != 0 );
     }
-    serialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( value.s ), value.s_length ) );
     serialize_assert( int32_t( value.s_length ) >= int32_t( 0 ) && int32_t( value.s_length ) <= int32_t( 8 ) );
     write_bits( stream, uint32_t( value.s_length ), 4 );
     write_bytes( stream, value.s, value.s_length );
@@ -519,6 +518,10 @@ SCHEMA_READ_INLINE bool ReadStrs( serialize::ReadStream & stream, Strs & value )
     if ( schema_interior_null( reinterpret_cast<const uint8_t *>( value.s ), value.s_length ) )
     {
         return false; // an interior null is content the read refuses (SPEC §4.7)
+    }
+    if ( !schema_utf8_valid( reinterpret_cast<const uint8_t *>( value.s ), value.s_length ) )
+    {
+        return false; // malformed UTF-8 is content the read refuses (SPEC §4.7)
     }
     value.s[value.s_length] = 0;
     read_int( stream, value.b_length, 0, 8 );

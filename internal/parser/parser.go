@@ -696,7 +696,7 @@ func (p *parser) parseScalar() ast.ScalarType {
 	case scanner.KwFloat64:
 		p.advance()
 		return ast.ScalarType{Kind: ast.ScalarFloat64, Pos: t.Pos}
-	case scanner.KwBits, scanner.KwString, scanner.KwBytes:
+	case scanner.KwBits, scanner.KwString, scanner.KwWString, scanner.KwBytes:
 		p.advance()
 		p.expect(scanner.LParen, "(")
 		arg := p.parseExpr()
@@ -705,6 +705,8 @@ func (p *parser) parseScalar() ast.ScalarType {
 		switch t.Kind {
 		case scanner.KwString:
 			kind = ast.ScalarString
+		case scanner.KwWString:
+			kind = ast.ScalarWString
 		case scanner.KwBytes:
 			kind = ast.ScalarBytes
 		}
@@ -723,15 +725,18 @@ func (p *parser) parseScalar() ast.ScalarType {
 		// body); the grammar accepts any name so the diagnostic names the real
 		// problem instead of "expected a field type".
 		p.advance()
-		if k := p.kind(); k == scanner.KwBytes || k == scanner.KwString {
+		if k := p.kind(); k == scanner.KwBytes || k == scanner.KwString || k == scanner.KwWString {
 			// `data *bytes`, `caption *string` — a BYTE BUFFER at its used
 			// size (docs/SPEC-TABLES.md §2.5): a pointer to a blob node. It
 			// takes no bound, because a buffer at its used size has none to
 			// declare, so `*bytes(N)` is refused where the paren stands.
 			word := p.advance()
 			kind := ast.ScalarBytes
-			if k == scanner.KwString {
+			switch k {
+			case scanner.KwString:
 				kind = ast.ScalarString
+			case scanner.KwWString:
+				kind = ast.ScalarWString
 			}
 			if p.kind() == scanner.LParen {
 				p.errf(p.tok().Pos, "*%s takes no bound — a byte buffer is exactly the size it was given, and null when absent; write *%s, or bytes(N) for inline storage at a declared bound (docs/SPEC-TABLES.md §2.5)", word.Text, word.Text)

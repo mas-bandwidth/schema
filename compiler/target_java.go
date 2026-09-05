@@ -28,6 +28,12 @@ func (javaTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseLists(u, "java"); err != nil {
 		return nil, err
 	}
+	// WIDE TEXT is the C++ reference's today (SPEC §4.12): this target
+	// refuses a unit that declares one by name rather than emitting a
+	// field it never laid out.
+	if err := refuseWideText(u, "java"); err != nil {
+		return nil, err
+	}
 	files, err := java.Generate(u)
 	if err != nil {
 		return nil, err

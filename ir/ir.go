@@ -370,6 +370,12 @@ const (
 	// switch which has no case for a map falls through to its default rather
 	// than reading a map as a named type.
 	TMap
+	// TWString is a `wstring(N)` field: wide text, N counted in UTF-16 CODE
+	// UNITS (SPEC §4.12). The ordinal is APPENDED rather than inserted
+	// because the kind rides the wire-shape projection as its own number
+	// (ir.WireProjection): a kind renumbered below this line would move every
+	// existing protocol id, and appending moves none.
+	TWString
 )
 
 type FieldType struct {
@@ -378,8 +384,8 @@ type FieldType struct {
 	Width    int    // TInt: 8/16/32/64/128; TBits: N; TFixed: I+F (the storage width)
 	IntBits  int    // TFixed: I — integer bits; the sign bit counts when Signed (SPEC §4.3)
 	FracBits int    // TFixed: F — fractional bits
-	Size     int64  // TString/TBytes: N (max length)
-	SizeExpr Expr   // TString/TBytes: the declared N expression
+	Size     int64  // TString/TWString/TBytes: N (max length; TWString counts UTF-16 code units)
+	SizeExpr Expr   // TString/TWString/TBytes: the declared N expression
 	Name     string // TNamed
 	Ref      Decl   // TNamed: *Struct, *Enum, *Flags or *Union
 

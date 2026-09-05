@@ -235,7 +235,7 @@ func (g *gen) emitZeroItems(items []ir.Item, ind string) {
 func (g *gen) emitZeroField(f *ir.Field, ind string) {
 	name := "value." + f.Name
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		g.needsCstring = true
 		g.pf("%smemset( %s, 0, sizeof( %s ) );\n%s%s_length = 0;\n", ind, name, name, ind, name)
 	case f.Array != ir.ArrayNone:
@@ -512,13 +512,27 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			// side rejects them as validation — §4.7)
 			g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
 			g.pf("%s    serialize_assert( %s[i] != 0 );\n%s}\n", ind, name, ind)
-			// well-formed UTF-8 by contract, writer-trusted: debug-only
-			// assert, no read-path validation (SPEC §4.7)
-			g.pf("%sserialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( %s ), %s_length ) );\n", ind, name, name)
 		}
 		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
 			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, ind)
 		g.pf("%swrite_bytes( stream, %s, %s_length );\n", ind, name, name)
+	case ir.TWString:
+		// length in [0, N], then one 32-BIT GROUP per code unit and NO ALIGN
+		// anywhere — the classic serialize_wstring framing over a buffer of
+		// N + 1 (SPEC §4.12)
+		//
+		// Two things are checked on write, both writer misuse rather than
+		// content (SPEC §4.12, §5): the used length guards the copy, and a
+		// zero code unit among the used units is refused, §4.7's interior-null
+		// rule in code-unit terms. Surrogate pairing is NOT checked here — it
+		// is a writer obligation the READER enforces, and the reader refuses
+		// an unpaired surrogate under §4.12's rules.
+		g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
+		g.pf("%s    serialize_assert( %s[i] != 0 );\n%s}\n", ind, name, ind)
+		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
+			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, ind)
+		g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
+		g.pf("%s    write_bits( stream, uint32_t( %s[i] ), 32 );\n%s}\n", ind, name, ind)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -676,8 +690,41 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			// the word-wise scan lives in schema_interior_null (nullscan.go)
 			g.pf("%sif ( schema_interior_null( reinterpret_cast<const uint8_t *>( %s ), %s_length ) )\n%s{\n", ind, name, name, ind)
 			g.pf("%s    return false; // an interior null is content the read refuses (SPEC §4.7)\n%s}\n", ind, ind)
+			// a payload that is not well-formed UTF-8 fails the READ, in every
+			// build mode (SPEC §4.7). The refusal is terminal: nothing after it
+			// has a defined position.
+			g.pf("%sif ( !schema_utf8_valid( reinterpret_cast<const uint8_t *>( %s ), %s_length ) )\n%s{\n", ind, name, name, ind)
+			g.pf("%s    return false; // malformed UTF-8 is content the read refuses (SPEC §4.7)\n%s}\n", ind, ind)
 			g.pf("%s%s[%s_length] = 0;\n", ind, name, name)
 		}
+	case ir.TWString:
+		// length in [0, N], then one 32-bit group per code unit, no align
+		// (SPEC §4.12). read_int refuses a length outside the range BEFORE the
+		// loop, so the length never drives a copy it has not been bounded for.
+		g.pf("%sread_int( stream, %s_length, 0, %s );\n", ind, name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)))
+		// The group loop carries every content refusal §4.12 states, in one
+		// pass: a group above 0xFFFF is not a code unit, a zero group is the
+		// interior null in code-unit terms, and expect_low carries the
+		// surrogate pairing — it is set by a high surrogate and cleared by the
+		// low one that must immediately follow, so a low without a high, a
+		// high not followed by a low, and a high as the FINAL group are all one
+		// comparison. Exhaustion at any group is read_bits's own refusal.
+		g.pf("%s{\n%s    bool expect_low_surrogate = false;\n", ind, ind)
+		g.pf("%s    for ( int32_t i = 0; i < %s_length; i++ )\n%s    {\n", ind, name, ind)
+		g.pf("%s        uint32_t group = 0;\n", ind)
+		g.pf("%s        read_bits( stream, group, 32 );\n", ind)
+		g.pf("%s        if ( group == 0 || group > 0xFFFF )\n%s        {\n", ind, ind)
+		g.pf("%s            return false; // a zero group and a group above 0xFFFF are content the read refuses (SPEC §4.12)\n%s        }\n", ind, ind)
+		g.pf("%s        const bool high_surrogate = group >= 0xD800 && group <= 0xDBFF;\n", ind)
+		g.pf("%s        const bool low_surrogate = group >= 0xDC00 && group <= 0xDFFF;\n", ind)
+		g.pf("%s        if ( low_surrogate != expect_low_surrogate )\n%s        {\n", ind, ind)
+		g.pf("%s            return false; // an unpaired surrogate is content the read refuses (SPEC §4.12)\n%s        }\n", ind, ind)
+		g.pf("%s        expect_low_surrogate = high_surrogate;\n", ind)
+		g.pf("%s        %s[i] = char16_t( group );\n%s    }\n", ind, name, ind)
+		g.pf("%s    if ( expect_low_surrogate )\n%s    {\n", ind, ind)
+		g.pf("%s        return false; // a high surrogate as the final group is unpaired (SPEC §4.12)\n%s    }\n%s}\n", ind, ind, ind)
+		// the terminating zero UNIT, always — §5's one stated tail exception
+		g.pf("%s%s[%s_length] = 0;\n", ind, name, name)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:

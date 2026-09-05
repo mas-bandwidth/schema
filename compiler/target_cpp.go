@@ -51,6 +51,7 @@ func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 
 func init() {
 	registerBuiltin(cppTarget{}, true, true, true, true)
+	registerWideTextCarrier("cpp") // the C++ reference carries wstring(N) on the packet wire (SPEC §4.12)
 	registerOptionalArrayCarrier("cpp")
 	registerMapCarrier("cpp") // the C++ reference carries the map codecs (docs/SPEC-TABLES.md §2.8)
 }

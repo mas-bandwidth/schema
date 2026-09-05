@@ -29,7 +29,12 @@ const (
 	// the fixed-point + 128-bit unit: all nine targets, pinned like the main
 	// corpus (the serialize ports all carry the phase-1 surface).
 	corpus128Dir = "../../examples128"
-	goldenDir    = "../../testdata/golden"
+	// the WIDE TEXT unit: wstring(N) and the string(N) read-side UTF-8 rule
+	// (SPEC §4.12, §4.7). Its own unit rather than a field in examples/,
+	// because examples/ pins gate 1 for all nine targets and eight of them
+	// refuse wide text today — so this one pins the target that carries it.
+	corpusWideDir = "../../examples-wide"
+	goldenDir     = "../../testdata/golden"
 )
 
 // schema is the driver every test here runs on — the public API, with the
@@ -258,6 +263,57 @@ func TestGoldenLudicrousSource(t *testing.T) {
 	}
 }
 
+// TestGoldenWideId pins the wide-text unit's protocol id (SPEC §7.2 gate 2).
+func TestGoldenWideId(t *testing.T) {
+	u := loadCorpusDir(t, corpusWideDir)
+	got := fmt.Sprintf("0x%016x\n", u.ProtocolId)
+	path := filepath.Join(goldenDir, "wide", "id.txt")
+	if *update {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("missing golden id (run: make update-goldens): %v", err)
+	}
+	if got != string(want) {
+		t.Errorf("wide protocol id moved: got %s want %s — if the schema files changed this is expected once (re-pin deliberately); if they did not, the §3.1 hash procedure changed and that is stop-the-line", got, string(want))
+	}
+}
+
+// TestGoldenWideSource pins the wide-text unit's generated C++ byte-for-byte
+// (SPEC §7.2 gate 1). ONE target, deliberately: wide text is the C++
+// reference's today and every other backend refuses the unit by name, which
+// TestWideTextIsRefusedByEveryOtherTarget holds.
+func TestGoldenWideSource(t *testing.T) {
+	u := loadCorpusDir(t, corpusWideDir)
+	pinDir(t, filepath.Join(goldenDir, "wide", "cpp"), generate(t, u, "cpp", nil))
+}
+
+// TestWideTextIsRefusedByEveryOtherTarget is the other half of the pin above:
+// a target that has not landed the wstring codec must refuse the unit BY NAME
+// rather than emit a field it never laid out (SPEC §4.12). A backend that
+// silently dropped the field would leave this test green only by starting to
+// carry the construct, which is the whole point.
+func TestWideTextIsRefusedByEveryOtherTarget(t *testing.T) {
+	u := loadCorpusDir(t, corpusWideDir)
+	for _, target := range compiler.New().Targets() {
+		if target == "cpp" {
+			continue
+		}
+		if _, err := schema.Generate(u, target, nil); err == nil {
+			t.Errorf("%s generated the wide-text unit — a target that has not landed the wstring(N) codec must refuse it by name (SPEC §4.12)", target)
+		} else if !strings.Contains(err.Error(), "wstring(N)") {
+			t.Errorf("%s refused the wide-text unit without naming the construct: %v", target, err)
+		}
+	}
+}
+
 // pinDir compares (or, under -update, rewrites) one directory of goldens.
 func pinDir(t *testing.T, dir string, files map[string][]byte) {
 	t.Helper()
@@ -297,6 +353,7 @@ var pinnedUnits = []struct {
 }{
 	{"examples", corpusDir},
 	{"examples128", corpus128Dir},
+	{"examples-wide", corpusWideDir},
 	{"tables-examples", "../../tables/examples"},
 	{"tables-pointers", "../../tables/pointers"},
 	{"tables-block", "../../tables/block"},

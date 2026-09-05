@@ -1,0 +1,44 @@
+// Wide.schema — the wstring(N) proving ground (SPEC §4.12, §7.3).
+//
+// Its own compilation unit rather than a field inside examples/, because
+// examples/ pins gate 1 for all nine targets and eight of them refuse wide
+// text today (SPEC §4.12, the backend status there). The declaration joins
+// examples/ with the ninth backend.
+//
+// Every type here holds ONE text field and nothing else, so the type's whole
+// wire IS that field's wire and serialize's shared corpus reproduces here
+// vector for vector.
+
+package wide
+
+// wstring(7) is the corpus's buffer_size 8: the length field is
+// bits_required( 0, 7 ) = 3 bits and the first code unit's 32-bit group begins
+// at bit 3, which is where the no-alignment rule shows (SPEC §4.12).
+type WideSeven
+{
+    text wstring(7)
+}
+
+// wstring(4) is the corpus's buffer_size 5: a 3-bit length field over [0, 4],
+// which is what makes lengths 5, 6 and 7 expressible and refusable.
+type WideFour
+{
+    text wstring(4)
+}
+
+// string(15) is conformance/string.txt's buffer_size 16: a 4-bit length field,
+// four bits of alignment padding, and the payload from byte 1. The read-side
+// UTF-8 rule's own goldens ride here (SPEC §4.7).
+type NarrowFifteen
+{
+    text string(15)
+}
+
+// The field the cross-language matrix is owed (SPEC §4.12): a wstring(7)
+// holding serialize.js's six interop cases — empty, three basic-plane code
+// units, 0xE000, 0xFFFF, an astral pair between two basic-plane units, and
+// seven code units, the most the bound carries.
+type WideInterop
+{
+    caption wstring(7)
+}

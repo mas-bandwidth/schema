@@ -310,7 +310,7 @@ func needSpace(prev, cur scanner.Token, tokens []scanner.Token, i int) bool {
 		// tight after a callee (bits(, string(, const(, reserved() and after
 		// unary minus; spaced after operators and separators
 		switch prev.Kind {
-		case scanner.Ident, scanner.KwBits, scanner.KwString, scanner.KwBytes,
+		case scanner.Ident, scanner.KwBits, scanner.KwString, scanner.KwWString, scanner.KwBytes,
 			scanner.KwFixed, scanner.KwUfixed, scanner.KwConst, scanner.KwReserved:
 			return false
 		case scanner.Minus:
@@ -690,6 +690,11 @@ func fpScalar(t ast.ScalarType) string {
 			return "*string" // a byte buffer at its used size (docs/SPEC-TABLES.md §2.5)
 		}
 		return fmt.Sprintf("string(%s)", fpExpr(t.Arg))
+	case ast.ScalarWString:
+		if t.Pointer {
+			return "*wstring" // the same node in UTF-16 code units (docs/SPEC-TABLES.md §2.5)
+		}
+		return fmt.Sprintf("wstring(%s)", fpExpr(t.Arg))
 	case ast.ScalarBytes:
 		if t.Pointer {
 			return "*bytes"

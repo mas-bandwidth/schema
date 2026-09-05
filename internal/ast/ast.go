@@ -174,6 +174,7 @@ const (
 	ScalarFloat32
 	ScalarFloat64
 	ScalarString
+	ScalarWString // wstring(N) — UTF-16 code units (SPEC §4.12)
 	ScalarBytes
 	ScalarFixed // fixed(I, F) / ufixed(I, F) — fixed point, Signed flag (SPEC §4.3)
 	ScalarNamed
@@ -183,7 +184,7 @@ type ScalarType struct {
 	Kind   ScalarKind
 	Signed bool // ScalarInt; ScalarFixed (fixed = true, ufixed = false)
 	Width  int  // ScalarInt: 8/16/32/64/128
-	Arg    Expr // ScalarBits/ScalarString/ScalarBytes: the (N); ScalarFixed: I
+	Arg    Expr // ScalarBits/ScalarString/ScalarWString/ScalarBytes: the (N); ScalarFixed: I
 	Arg2   Expr // ScalarFixed: F
 	// Pointer marks the `*T` spelling (ScalarNamed only): a POINTER to a
 	// table rather than a by-value nesting (docs/SPEC-TABLES.md). Types remain

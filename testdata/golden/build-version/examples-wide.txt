@@ -1,0 +1,5 @@
+0xd415fff4f3c80ed7
+schema-build-version 3
+protocol 43b02a917a9d346e
+byteorder little
+block prologue=magic:8,build_version:8,byte_order:8
