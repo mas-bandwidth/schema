@@ -552,10 +552,11 @@ UnionVariant = ident [ ArmType ] [ AttrSection ] NL .              // AN ARM IS 
                                                                    // that type takes. A BARE NAME is an
                                                                    // arm with NO PAYLOAD, and it takes a
                                                                    // qualification of its own — tags
-                                                                   // only, since it shapes no value.
-                                                                   // No "= Default", no "?", no
-                                                                   // was/json: each is refused at the
-                                                                   // arm (§4.8, SPEC-TABLES.md §2.6)
+                                                                   // and `was`, since it shapes no
+                                                                   // value. No "= Default", no "?", no
+                                                                   // json: each is refused at the arm
+                                                                   // (§4.8, SPEC-TABLES.md §2.6). `was`
+                                                                   // is the arm's rename (§4.2)
 ArmType     = [ "[" Bound "]" ] Scalar .                           // the field Type without its "?".
                                                                    // An arm that names neither a
                                                                    // declared `type` nor nothing at all
@@ -568,8 +569,10 @@ ConstExpr   = IntExpr | FloatExpr .
 Enum        = "enum" ident ( VariantList
             | AttrSection NL VariantList ) NL .
 VariantList = "{" [ Variant { VariantSep Variant } [ VariantSep ] ] "}" .
-Variant     = ident [ AttrSection ] .                              // the qualification carries TAGS
-                                                                   // and nothing else (§4.2)
+Variant     = ident [ AttrSection ] .                              // the qualification carries TAGS,
+                                                                   // and on an enum variant `was`,
+                                                                   // the rename (§4.2); a flags
+                                                                   // variant takes tags alone
 VariantSep  = "," | NL .                                           // a comma, or the newline that
                                                                    // ends a qualified variant's line;
                                                                    // a trailing separator is OK
@@ -895,9 +898,10 @@ sequence    uint16
   (required — §4.3); enum and flags declarations take `max`; type
   declarations take the `cpp_native`/`cpp_include` pair (below); a field of a
   **table** body takes `was` (below) and `json` (SPEC-TABLES.md §16.4), a
-  **table** declaration takes `was` (below), and a **union** declaration, a
-  **constant**, an enum or flags **variant** and a union **arm** take no
-  valued key at all. **The
+  field of a **type** that a table closure reaches takes `was` and `json`
+  on the same terms, a **table** declaration, an **enum variant** and a
+  union **arm** take `was` (below), and a **union** declaration, a
+  **constant** and a **flags variant** take no valued key at all. **The
   VALUELESS half is open at every one of them** — that is the tag, below.
 - **A bare identifier that spells a known valued key is refused by name**,
   never taken as a tag: `| min` draws "min takes a value: write min = 0". The
@@ -913,15 +917,27 @@ sequence    uint16
   word named, so `| table` draws "table is a reserved word" rather than
   becoming a tag. **A repeated tag on one line is refused by name** too, and
   so is a tag that repeats a valued key already on the line.
-- **`was = "old_name"` — the rename attribute, table bodies only**
+- **`was = "old_name"` — the rename attribute, table closures only**
   (SPEC-TABLES.md §5). A table field's wire id is the hash of its name, so a
   bare rename would orphan every byte ever written under the old one; `was`
   keeps the old identity through the rename: `speed float32 | was =
-  "velocity"`. It takes the old name as a QUOTED STRING. On a `type` field it
-  is refused by name: the packet wire is positional, so a rename orphans no
-  stored value and there is no identity for `was` to carry. It is not a free
-  edit — field NAMES ride in the projection (§3.1), so renaming a `type`
-  field moves the protocol id and both sides redeploy together. **A `table`
+  "velocity"`. It takes the old name as a QUOTED STRING. **A field of a
+  `type` that a table closure reaches takes it on the same terms**: such a
+  type rides the table wire as a nested body whose fields carry ids
+  (SPEC-TABLES.md §2), so a rename there orphans stored data exactly as a
+  table field's does, and `was` keeps the id. On a field of a type NO table
+  reaches it is refused naming the type: the packet wire is positional, so
+  a rename there orphans no stored value and there is no identity for `was`
+  to carry. A bare rename is not a free edit on either wire — field NAMES
+  ride in the projection (§3.1), so renaming a `type` field bare moves the
+  protocol id and both sides redeploy together, where a rename under `was`
+  projects the wire name and moves nothing. **An enum variant and a union
+  arm take the same attribute**, `Argent | was = "Silver"` and `shield Ward
+  | was = "ward"`, a payload-free arm included, `pong | was = "ping"`: a
+  variant and an arm ride the table wire under the hash of their name
+  (SPEC-TABLES.md §3), and the alias keeps that id. A `flags` variant
+  refuses it by name: a mask is positional, a variant's identity is its
+  bit, and a rename there keeps every stored bit. **A `table`
   declaration takes the same attribute**, `table Ship | was = "Vessel"`: a
   table's name is its node type id on the table wire (SPEC-TABLES.md §3.1),
   and the alias keeps that id through the rename, so every stored record of
@@ -1497,8 +1513,9 @@ union Value
   lower_snake, unique within the union), then the arm's type, then the
   value-shaping attributes that type takes: `| min`, `| max`, a compressed
   float's range and resolution — plus TAGS, which every declared item takes
-  (§4.2), including a bare-name arm, whose qualification section can hold
-  nothing else. **A row that is a BARE NAME is an arm with no payload**
+  (§4.2), and `was`, the arm's rename (§4.2), including a bare-name arm,
+  whose qualification section can hold nothing else. **A row that is a BARE
+  NAME is an arm with no payload**
   (below). **What a row may not take is SPEC-TABLES.md §2.6's list**, each
   refused by name. A union FIELD likewise takes no valued
   attribute and no `= default` (it zero-initializes to None, joining

@@ -899,8 +899,10 @@ enum Grade { Bronze, Silver, Gold }  // v2 — every stored Gold still loads Gol
 ```
 
 A variant a reader has no name for loads as `None` (enum) or empty (union)
-and counts as `unknown` — never as its neighbour. There is no `was` for a
-variant: renaming one is a new variant, and old data reads as unknown.
+and counts as `unknown` — never as its neighbour. A rename declares the old
+name with `was` on the variant's own line, `Argent | was = "Silver"`, and
+the stored values keep reading (see renaming below). Renaming one bare is a
+new variant, and old data reads as unknown.
 
 **`flags` is the exception: append at the END.** A mask rides as its raw
 bits, so a variant's identity is its BIT POSITION. Inserting or reordering
@@ -1990,8 +1992,9 @@ union Value
 
 `ping` selects and carries nothing, which is not the union's `None`: `None`
 says no arm was selected. What an arm may NOT take is a specified default, a
-`?`, a `was`, a `json`, an enum-keyed `[E]T`, an `if` guard, a `map` or an
-unbounded `[]T` — each refused by name (SPEC-TABLES.md §2.6).
+`?`, a `json`, an enum-keyed `[E]T`, an `if` guard, a `map` or an
+unbounded `[]T` — each refused by name (SPEC-TABLES.md §2.6). `was` it takes,
+`pong | was = "ping"`: the arm's rename (see renaming below).
 
 ### Pointers: `next *Node`
 
@@ -3035,6 +3038,38 @@ Old fleets whose records say `Vessel` load as `Ship`, new fleets keep
 writing the old id, and neither the protocol id nor the build version
 moves. `was` on a `type` declaration is refused: a type rides by value and
 has no node type id to keep.
+
+Every other name the table wire carries renames the same way. An enum
+variant and a union arm ride under the hash of their name, and so does each
+field of a `type` a table holds by value, so each takes `was` on its own
+line:
+
+```
+enum Grade
+{
+    Bronze,
+    Argent | was = "Silver"
+    Gold
+}
+
+union Effect
+{
+    shield Ward | was = "ward"
+    pong        | was = "ping"
+}
+
+type Buff
+{
+    mult float32 = 1.0 | was = "multiplier"
+}
+```
+
+A qualified variant ends its line, so the newline is its separator. Stored
+values naming `Silver` load as `Argent`, stored `ward` bodies load into
+`shield`, an enum-keyed `[Grade]int32` keeps its `Silver` slot, and neither
+id moves. A `flags` variant refuses `was`: a mask is positional, so a rename
+there keeps every stored bit already. So does a variant, an arm or a type
+field that no table reaches: there is no wire identity for it to keep.
 
 ### The tables baseline: catching the edits the wire cannot report
 
