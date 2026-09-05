@@ -2742,12 +2742,14 @@ check: bin/schema
 id: bin/schema
 	./bin/schema id examples
 	./bin/schema id examples128
+	./bin/schema id examples-wide
 	./bin/schema id bench/corpus/Bench.schema
 	./bin/schema id bench/corpus/RealWorld.schema
 
 fmt: bin/schema
 	./bin/schema fmt examples
 	./bin/schema fmt examples128
+	./bin/schema fmt examples-wide
 	./bin/schema fmt tables/examples
 	./bin/schema fmt tables/pointers
 	./bin/schema fmt tables/block
