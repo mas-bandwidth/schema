@@ -1556,7 +1556,7 @@ every stored file, and `was` does not cover it: `was` preserves an identity,
 not a value. Change a default the way you would change data, or add a new
 field and leave the old one alone.
 
-### The message form: one id table a connection
+### The message form: one vocabulary a connection, and a bitpacked batch
 
 A saved table carries its own id table at the end, and that is right for a
 file: a config bin naming forty ids across ten thousand fields pays eight bytes
@@ -1564,12 +1564,18 @@ an id once and spends one byte a field header. A four-field login is the
 opposite shape. Its vocabulary is close to its field count, and the table costs
 48 bytes of a 106-byte message.
 
-**Form byte `2` moves the table one level up, to the connection.** A peer
-announces its unit's whole vocabulary once, as an ordinary file, and every
-message after it is the form byte and the root body alone (SPEC-TABLES.md
-§3.3). Nothing else about the wire moves: the body is framed the same way,
-elision, defaults, the read report and every tolerance rule are what they were,
-and only where the ids live is different.
+**Form byte `2` moves the table one level up, to the connection, and bitpacks
+what is left.** A peer announces its unit's whole vocabulary once, as an
+ordinary file, and every batch after it is a form byte, a body count, and the
+bodies as one continuous bit stream: references at the width the vocabulary
+needs, values at the widths your declarations state, no kind byte and no length
+(SPEC-TABLES.md §3.3). Elision, defaults, the read report and every tolerance
+rule are what they were, because the announcement carries each entry's kind and
+width and a reader steps over what it cannot name exactly.
+
+**The primitive is a BATCH of bodies of one root, and a single message is the
+batch of one.** There is no singular verb, because the bandwidth is in the
+batch.
 
 ```cpp
 #include "BackendTable.h"
@@ -1580,18 +1586,25 @@ std::vector<uint8_t> announcement( backenddemo::AnnounceMeasure() );
 backenddemo::Announce( announcement.data(), (int64_t) announcement.size() );
 send( announcement );
 
-// and every message after it
-backenddemo::LoginRequest login;
-login.player_id = 0x5c0ffee5;
-int64_t size = backenddemo::LoginRequestMeasureMessage( login );
+// and every batch after it
+backenddemo::LoginRequest logins[3];
+logins[0].player_id = 0x5c0ffee5;
+backenddemo::TableReport report;
+int64_t size = backenddemo::LoginRequestMeasureMessages( logins, 3, &report );
+if ( size < 0 )
+{
+    // report.refused with reason batch_too_large: more than 256 bodies.
+    // Nothing is written. Call again with 256 of them, then again with
+    // the rest.
+}
 std::vector<uint8_t> buffer( size );
-backenddemo::LoginRequestSaveMessage( login, buffer.data(), size );
+backenddemo::LoginRequestSaveMessages( logins, 3, buffer.data(), size, &report );
 send( buffer );
 ```
 
 ```cpp
-// the RECEIVER holds ONE table a direction for the life of the connection.
-// The table BORROWS the announcement's bytes rather than copying them, so
+// the RECEIVER holds ONE vocabulary a direction for the life of the connection.
+// The vocabulary BORROWS the announcement's bytes rather than copying them, so
 // `first` has to outlive it: keep the announcement beside the connection.
 backenddemo::TableVocabulary vocabulary;
 backenddemo::TableReport report;
@@ -1599,33 +1612,86 @@ if ( !backenddemo::AnnounceRead( vocabulary, first.data(), (int64_t) first.size(
 {
     // report.reason names it: second_announcement, vocabulary_too_large,
     // message_form_as_file or newer_form. A refused announcement sets NO
-    // table, and every message on that connection is refused after it.
+    // vocabulary, and every message on that connection is refused after it.
 }
 
-backenddemo::LoginRequest received;
-if ( !backenddemo::LoginRequestLoadMessage( received, vocabulary, wire, wire_bytes, &report ) )
+backenddemo::LoginRequest received[3];
+int64_t received_count = 3;   // in: what you have room for. out: what you got.
+if ( !backenddemo::LoginRequestLoadMessages( received, &received_count, vocabulary, wire, wire_bytes, &report ) )
 {
-    // report.refused with reason no_vocabulary is a message that arrived
+    // report.refused with reason no_vocabulary is a batch that arrived
     // before the announcement. Nothing was decoded, no counter moved, and
     // report.malformed did NOT fire: it is a refusal, not damage.
+    //
+    // report.refused with reason batch_too_large is a batch of more bodies
+    // than you had room for, refused before a body was touched, and
+    // received_count now holds the wire's count. Call again with a capacity
+    // at or above it. You never parse the bytes yourself.
+    //
+    // report.malformed is DAMAGE, and it is terminal for the batch. The
+    // bodies before the damaged one stand and received_count is how many:
+    // read the count and never the slot after it.
 }
 ```
 
-**What you get.** The three backend messages measured on schema#523 go from
-106, 273 and 104 bytes to 58, 225 and 48, which is 45%, 18% and 54% off, and
-from 10, 43 and 10 to 2, 27 and 2 when every field sits at its declared
-default. The announcement costs 252 bytes for that unit, so one round of the
-three messages pays for it partway into the second round.
+**A POINTERED root takes ONE region for the whole batch**, sized by the same
+`LoadMeasure` the file form uses, and the roots come back in an array you own:
 
-**What it asks of you.** A connection is one ordered, reliable byte stream in
-each direction: a TCP or WebSocket connection, or one stream of QUIC, counted
-per channel. A restart is a new connection with empty tables, and nothing is
-cached across connections. The announcement rides FIRST and exactly once. A
-second one on a connection is refused by name and the connection closes, and a
-receiver holds a table for the direction it reads and another for the one it
-writes. WHICH root a message is, and WHERE it ends, are yours: put a
-discriminator or a length in front of the bytes, or wrap the message set in one
-union root (§2.6).
+```cpp
+int64_t region_bytes = graphdemo::SceneLoadMeasure( vocabulary, wire, wire_bytes );
+std::vector<uint8_t> region( region_bytes );
+const graphdemo::Scene * roots[3];
+int64_t root_count = 3;
+graphdemo::SceneLoadMessages( roots, &root_count, region.data(), region_bytes,
+                              vocabulary, wire, wire_bytes, &report );
+```
+
+**What you get.** The three backend messages measured on schema#523 go from
+106, 273 and 104 bytes to 51, 142 and 41, and from 10, 43 and 10 to 3, 10 and 3
+when every field sits at its declared default. Sent as ONE batch the three are
+230 bytes against proto3's 278. The announcement costs 316 bytes for that unit
+and pays for itself in the seventh round against proto3.
+
+**Where it does not win, and what to do about it.** `LoginRequest` comes out two
+bytes OVER proto3 and `StorePurchase` one, because their `player_id`,
+`client_build` and `price_minor` are declared BARE and this wire writes 64, 32
+and 32 raw bits where proto3 writes a varint whose value happens to be small.
+Declare the range a field actually holds and the wire pays for the range:
+`client_build uint32 | max = 65535` alone puts `LoginRequest` LEVEL WITH proto3
+at 49 bytes, and `price_minor uint32 | max = 9999`, which is a price cap of
+99.99 in minor units, puts `StorePurchase` at 39 bytes, under proto3's 40. That
+is the same habit the packet wire already asks for.
+
+**What it asks of you.** ONE thing: the announcement arrives once, reliably,
+before the first body, and never again for the life of the connection. A
+connect handshake carries it, or a reliable channel does. The BODIES then ride
+any channel, reliable or not, ordered or not, one whole batch per datagram on an
+unreliable one, and a batch is never split across two. A restart is a new
+connection with an empty vocabulary, and nothing is cached across connections. A
+second announcement is refused by name, and CLOSING THE CONNECTION IS YOURS: the
+library owns no socket and returns a refusal, and a refused announcement sets no
+vocabulary, so every body after it is refused anyway. A receiver holds a
+vocabulary for the direction it reads and another for the one it writes. WHICH
+root a batch carries is yours too: put a discriminator in front of the bytes, or
+wrap the message set in one union root (§2.6).
+
+**A batch is 1 to 256 bodies**, which is a wire constant and not a policy. Pass
+more than 256 to `SaveMessages` and it refuses by name and writes nothing, so
+call it again with the rest.
+
+**Damage stops the batch.** A bit stream has no place to resume, so a reference
+past the vocabulary, a length past the buffer or exhaustion stops the batch
+there: the fields decoded before it stand, one `malformed` counts, and nothing
+after is read. An UNKNOWN field does not stop anything, because the announcement
+gave the reader its width.
+
+**One thing behaves differently here than in a file, and it is `flags`.** A file
+carries a mask as a raw `uint64`, so an old build loads bits a newer build
+appended, holds them, and writes them back unharmed. A message carries a mask at
+its DECLARED width, which is what makes a three-variant mask cost three bits
+instead of eight bytes, and appended bits do not fit in a width that does not
+know about them. If you ferry masks from files onto messages across a mixed
+fleet, keep the bits inside your own variant count, or carry that mask in a file.
 
 A stateless request-response transport is out of scope. An HTTP request that
 shares no state with the last one has nowhere to put an announcement, so the
@@ -1633,7 +1699,7 @@ announcement would ride every request and cost more than the table it replaced.
 Write the file form there, which carries its own table and needs no connection.
 
 **The tool speaks both forms.** `schema pack --message --announce Conn.bin`
-writes the message and the unit's announcement beside it, and `schema unpack
+writes the batch and the unit's announcement beside it, and `schema unpack
 --announce Conn.bin` reads one back:
 
 ```
@@ -1643,8 +1709,20 @@ $ schema unpack --root LoginRequest --announce backend_conn.bin \
                 --in login.bin login/ tables/backend
 ```
 
-Today the C++ backend and the tool carry form `2`, and the other eight targets
-carry the file form alone.
+**And `schema unpack` handed the announcement ITSELF prints the vocabulary
+decoded**, one line an entry with its slot, its id, the name your closure gives
+it, its kind and its shape, which is what you read when a peer and a build
+disagree about a field:
+
+```
+$ schema unpack --in backend_conn.bin tables/backend
+```
+
+**The bitpacked body is specified ahead of its implementation**, on the terms
+SPEC-TABLES.md §3.3 and §6.6 take. The C++ backend and the tool carry a form-`2`
+path today and its body is byte framed, which the codec change that lands §3.3
+replaces in place, re-pinning the corpus with it. The other eight targets carry
+the file form alone.
 
 ### Nesting: a root table IS a format
 

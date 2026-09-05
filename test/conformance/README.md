@@ -154,7 +154,7 @@ One process per surface, so a runtime starts once rather than once per case.
 | surface | for each | the driver writes | the harness compares against |
 |---|---|---|---|
 | `wire` | `instance` | Load the wire file, Save, the bytes | the wire golden |
-| `message` | `message` | AnnounceRead the connection's announcement, LoadMessage the message-form wire against it, SaveMessage, the bytes | the message-form golden |
+| `message` | `message` | AnnounceRead the connection's announcement, LoadMessages the message-form batch against it, SaveMessages, the bytes | the message-form golden |
 | `report` | `report` | Load the wire file, the report as `u,k,c,d,m\n` | `reports.txt` |
 | `json-read` | `instance` | FromJson `json/<name>.json`, Save, the bytes | the wire golden |
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
@@ -174,13 +174,16 @@ One process per surface, so a runtime starts once rather than once per case.
 **`message` IS THE ONE SURFACE THAT READS TWO FILES**, because a message's id
 table is somewhere else (docs/SPEC-TABLES.md §3.3): the CONNECTION's
 announcement carries it, the driver reads that first into one direction's
-table, and the message resolves against it. The manifest's `connection` line
+VOCABULARY, and the batch resolves against it. The manifest's `connection` line
 names the announcement and the `message` line names the pair of wires, so the
-driver joins the two by key and never derives a table of its own. The C++
-reference answers it and the eight ports print ABSENT, which is the wire form's
-own absence one grain up: a port carries the FILE form alone, and its
-`LoadMessage`, `MeasureMessage` and `SaveMessage` are the follow-on PORTING.md
-M20 already registers.
+driver joins the two by key and never derives a vocabulary of its own. **The
+verbs are PLURAL**, because the form's primitive is a BATCH of bodies of one
+root and a single message is the batch of one, so a `message` case whose batch
+wire holds one body still drives `LoadMessages` and `SaveMessages` with a count
+of one. The C++ reference answers the surface and the eight ports print ABSENT,
+which is the wire form's own absence one grain up: a port carries the FILE form
+alone, and its `LoadMessages`, `MeasureMessages` and `SaveMessages` are the
+follow-on PORTING.md M20 already registers.
 
 **`cook-write` IS THE ONE SURFACE WHERE A LANGUAGE WRITES AN ACCELERATOR RATHER
 THAN READING ONE, and the expectation is the TOOL's file.** Every other cook
@@ -343,14 +346,17 @@ driver is.
   because `malloc(0)` may answer null and null is how a leg reports an
   allocation that failed.
 - **The FORM is the wire's own byte** (docs/SPEC-TABLES.md §3, §3.3): `1` is a
-  file and `2` is a message, and the two are separate roster entries over one
+  file and `2` is a BATCH, and the two are separate roster entries over one
   root, because they are two readers. A MESSAGE mutant resolves against the
-  CONNECTION's announced table, and the leg derives that table from its OWN
-  unit's announcement, the compile-time constant its backend emits, read
+  CONNECTION's announced VOCABULARY, and the leg derives that vocabulary from
+  its OWN unit's announcement, the compile-time constant its backend emits, read
   through the same `AnnounceRead` a receiver uses. The vocabulary is a pure
-  function of the build version, so both sides derive the same table and the
-  roster carries no announcement. A leg with no message codec answers `0`
-  for that entry, exactly as it does for a root it cannot name.
+  function of the build version, so both sides derive the same one and the
+  roster carries no announcement. **A form-`2` mutant is driven through
+  `LoadMessages` and `SaveMessages`**, the plural verbs, because a batch is the
+  form's primitive and a mutant of one body is a batch of one. A leg with no
+  message codec answers `0` for that entry, exactly as it does for a root it
+  cannot name.
 - **A root the leg cannot name is a `0` in the roster and nothing more**: the
   harness never sends it a mutant, and the line it prints says how many seeds
   were absent. A port with no variable class registers its fixed roots and is
