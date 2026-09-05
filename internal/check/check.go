@@ -672,7 +672,7 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 	defer delete(c.resolvingEnum, d.Name)
 
 	seen := map[string]bool{}
-	var variants []string
+	var variants, was []string
 	for _, v := range d.Variants {
 		// the three names below are reservedEnumVariant's set, and
 		// checkClaimedNames reads the same predicate: a variant that IS the
@@ -696,6 +696,7 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 		}
 		seen[v.Text] = true
 		variants = append(variants, v.Text)
+		was = append(was, c.variantWas("enum", d.Name, v))
 	}
 	// An enum with no variants is LEGAL: it holds only the implicit None = 0,
 	// so its wire range is the degenerate [0, 0] and it costs zero bits. That
@@ -740,7 +741,7 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 		}
 		max = v.Int64()
 	}
-	en := &ir.Enum{Name: d.Name, Variants: variants, Max: max, StorageBits: ir.StorageBitsFor(max)}
+	en := &ir.Enum{Name: d.Name, Variants: variants, Was: was, Max: max, StorageBits: ir.StorageBitsFor(max)}
 	c.enums[d.Name] = en
 	return en
 }
@@ -758,6 +759,17 @@ func (c *checker) resolveFlags(d *ast.FlagsDecl) *ir.Flags {
 		}
 		seen[v.Text] = true
 		variants = append(variants, v.Text)
+		for _, a := range v.Attrs {
+			switch {
+			case a.Key == "was":
+				// a mask is POSITIONAL (docs/SPEC-TABLES.md §5): a flags
+				// variant's identity is its bit, no name rides, and a
+				// rename in place is the baseline's to judge (§18.2)
+				c.errf(a.Pos, "flags %s: variant %s takes no was — a mask is positional, a variant's identity is its bit and no name rides the wire, so a rename keeps every stored bit; the baseline judges a rename in place (docs/SPEC-TABLES.md §5, §18.2)", d.Name, v.Text)
+			case a.Value != nil:
+				c.errf(a.Pos, "flags %s: variant %s takes no valued key; a tag is a bare identifier (SPEC §4.2)", d.Name, v.Text)
+			}
+		}
 	}
 	if len(variants) == 0 {
 		c.errf(d.Pos, "flags %s has no variants", d.Name)
@@ -947,6 +959,14 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 		// `type` or, inside a table closure, a `table` (docs/SPEC-TABLES.md
 		// §2.6). Every other arm carries its field line and nothing else.
 		out := ir.UnionVariant{Name: v.Name, F: arm}
+		// THE ARM'S RENAME (docs/SPEC-TABLES.md §5): on an arm with a payload
+		// the field line carries it, and on a payload-free arm the name's own
+		// section does
+		if arm != nil {
+			out.WasName = arm.WasName
+		} else {
+			out.WasName = c.variantWas("union", d.Name, ast.Name{Text: v.Name, Pos: v.Pos, Attrs: v.Attrs})
+		}
 		if arm != nil && arm.Type.Kind == ir.TNamed {
 			if st, isStruct := arm.Type.Ref.(*ir.Struct); isStruct {
 				out.Type, out.Ref = arm.Type.Name, st
@@ -970,7 +990,7 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 // field and the closure, not to the arm.
 func (c *checker) resolveArm(union string, v ast.UnionVariant) *ir.Field {
 	if v.Arm == nil {
-		return nil // a PAYLOAD-FREE arm: the name is the whole of it (SPEC §4.8)
+		return nil // a PAYLOAD-FREE arm: the name and its section are the whole of it (SPEC §4.8)
 	}
 	where := fmt.Sprintf("union %s: arm %s", union, v.Name)
 	if v.Arm.Default != nil {
@@ -989,9 +1009,6 @@ func (c *checker) resolveArm(union string, v ast.UnionVariant) *ir.Field {
 		return nil
 	}
 	switch {
-	case f.WasName != "":
-		c.errf(v.Arm.Pos, "%s: was on an arm is a named follow-on — an arm's wire id is its NAME hash and arms already evolve by name, so a rename is a new arm today (docs/SPEC-TABLES.md §2.6, §5, §15)", where)
-		return nil
 	case f.JsonKey != "":
 		c.errf(v.Arm.Pos, "%s: json on an arm is a named follow-on — an arm's own name is its key in the text form (docs/SPEC-TABLES.md §2.6, §16.2, §15)", where)
 		return nil
@@ -1373,13 +1390,11 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 
 	c.resolveAttrs(f, out)
 
-	if out.WasName != "" && !inTable {
-		c.errf(f.Pos, "field %s: was is a table-wire concept — it aliases a renamed field's wire id, and only table fields have wire ids; a `type`'s wire is positional, so a rename there moves no bit (docs/SPEC-TABLES.md)", f.Name)
-		return nil
-	}
-	// `json` outside a table CLOSURE is refused in checkTables, where the
-	// closure is known: a `type` a table reaches has a text form and may
-	// carry the attribute, and only membership decides it.
+	// `was` and `json` outside a table CLOSURE are refused in checkTables,
+	// where the closure is known: a `type` a table reaches has table-wire
+	// field ids and a text form and may carry both, and only membership
+	// decides it (docs/SPEC-TABLES.md §5, §16.4).
+	_ = inTable
 
 	// the fixed and 128-bit families mirror serialize's own surface exactly
 	// (SPEC §4.3, runtime-first): fixed(I, F) and int128 are RANGED — the
@@ -2322,6 +2337,7 @@ func (c *checker) checkTables() {
 	c.checkTableVariantIdentity(names)
 	c.checkOptionalVariableClosures(names)
 	c.checkJsonKeysInClosure()
+	c.checkWasInClosure()
 }
 
 // checkWideTextInClosure refuses a `wstring(N)` field of any `type` a table
@@ -2704,27 +2720,53 @@ func (c *checker) checkTableVariantIdentity(closureNames []string) {
 				name, e.Max, reachedBy[name], name)
 		}
 		seen := map[uint64]string{}
-		for _, v := range e.Variants {
-			id := ir.TableWireId(v)
+		for i, v := range e.Variants {
+			// THE EFFECTIVE NAME: a variant renamed under `was` rides under
+			// the hash of its old name (docs/SPEC-TABLES.md §5)
+			id := ir.TableWireId(e.VariantWireName(i))
 			if prev, dup := seen[id]; dup {
 				c.errf(pos(name), "enum %s: variants %s and %s collide on table-wire id 0x%016x, and %s reaches it, putting %s in a table closure — rename one (docs/SPEC-TABLES.md §5)",
-					name, prev, v, id, reachedBy[name], name)
+					name, prev, describeVariant(v, e.Was[i]), id, reachedBy[name], name)
 				continue
 			}
-			seen[id] = v
+			seen[id] = describeVariant(v, e.Was[i])
 		}
 	}
 	for _, name := range sortedKeys(unions) {
 		un := unions[name]
 		seen := map[uint64]string{}
 		for _, v := range un.Variants {
-			id := ir.TableWireId(v.Name)
+			id := ir.TableWireId(v.WireName())
 			if prev, dup := seen[id]; dup {
 				c.errf(pos(name), "union %s: arms %s and %s collide on table-wire id 0x%016x, and %s reaches it, putting %s in a table closure — rename one (docs/SPEC-TABLES.md §5)",
-					name, prev, v.Name, id, reachedBy[name], name)
+					name, prev, describeVariant(v.Name, v.WasName), id, reachedBy[name], name)
 				continue
 			}
-			seen[id] = v.Name
+			seen[id] = describeVariant(v.Name, v.WasName)
+		}
+	}
+	// `was` IS A TABLE-WIRE CONCEPT (docs/SPEC-TABLES.md §5): a variant or an
+	// arm has a wire identity only where a table closure reaches its
+	// declaration, so an alias anywhere else preserves nothing and is refused
+	// naming the declaration, exactly as a field's is outside a closure.
+	for _, name := range sortedKeys(c.enums) {
+		if _, reached := enums[name]; reached {
+			continue
+		}
+		for i, w := range c.enums[name].Was {
+			if w != "" {
+				c.errf(pos(name), "enum %s: variant %s carries was = %q, but no table reaches %s — was is a table-wire concept, and a variant of an enum outside a table closure has no wire identity for it to keep (docs/SPEC-TABLES.md §5)", name, c.enums[name].Variants[i], w, name)
+			}
+		}
+	}
+	for _, name := range sortedKeys(c.unions) {
+		if _, reached := unions[name]; reached {
+			continue
+		}
+		for _, v := range c.unions[name].Variants {
+			if v.WasName != "" {
+				c.errf(pos(name), "union %s: arm %s carries was = %q, but no table reaches %s — was is a table-wire concept, and an arm of a union outside a table closure has no wire identity for it to keep (docs/SPEC-TABLES.md §5)", name, v.Name, v.WasName, name)
+			}
 		}
 	}
 }
@@ -3928,4 +3970,66 @@ func (c *checker) resolveFlagsDefault(f *ast.Field, out *ir.Field, fl *ir.Flags,
 	}
 	out.HasDefault = true
 	out.DefInt = mask
+}
+
+// variantWas resolves one enum variant's qualification section (SPEC §4.2,
+// docs/SPEC-TABLES.md §5): `was = "OldName"` is the variant's rename, held
+// to the field rule (a quoted string, not empty, not its own name), a bare
+// identifier is a tag, and every other valued key is refused by name. It
+// returns the alias, "" when none is declared.
+func (c *checker) variantWas(what, decl string, v ast.Name) string {
+	was := ""
+	for _, a := range v.Attrs {
+		switch {
+		case a.Key == "was":
+			lit, ok := a.Value.(*ast.StringLit)
+			switch {
+			case a.Value == nil:
+				c.errf(a.Pos, "attribute was requires a value, as was = ... (SPEC §4.6)")
+			case !ok:
+				c.errf(a.Pos, `was takes the variant's old name as a quoted string, e.g. was = "Argent" (docs/SPEC-TABLES.md §5)`)
+			case lit.Value == "":
+				c.errf(a.Pos, "was = \"\" names nothing — was records the variant's old name after a rename (docs/SPEC-TABLES.md §5)")
+			case lit.Value == v.Text:
+				c.errf(a.Pos, "%s %s: variant %s: was = %q names the variant's own current name — was records the OLD name after a rename; drop the attribute until one happens (docs/SPEC-TABLES.md §5)", what, decl, v.Text, lit.Value)
+			default:
+				was = lit.Value
+			}
+		case a.Value != nil:
+			c.errf(a.Pos, "%s %s: variant %s: %s is not an attribute a variant takes — the valued vocabulary here is was alone, and a tag is a bare identifier (SPEC §4.2, docs/SPEC-TABLES.md §5)", what, decl, v.Text, a.Key)
+		}
+	}
+	return was
+}
+
+// describeVariant names a variant or an arm for the id-collision diagnostic,
+// showing the was alias when that is where the colliding id comes from.
+func describeVariant(name, was string) string {
+	if was != "" {
+		return fmt.Sprintf("%s (was %q)", name, was)
+	}
+	return name
+}
+
+// checkWasInClosure is §5's closure rule for a `type`'s fields: a field of a
+// type no table reaches has no table-wire id, so its `was` preserves nothing
+// and is refused naming the type. A type a table reaches by value has
+// table-wire field ids, and the alias is what its stored bodies ride under.
+func (c *checker) checkWasInClosure() {
+	for _, name := range sortedKeys(c.structs) {
+		if c.tableClosure[name] {
+			continue
+		}
+		st := c.structs[name]
+		pos := ast.Pos{}
+		if d, ok := c.astDecls[name]; ok {
+			pos = d.DeclPos()
+		}
+		for _, f := range st.Fields {
+			if f.WasName != "" {
+				c.errf(pos, "type %s: field %s carries was = %q, but no table reaches %s — was is a table-wire concept, and a field of a type outside a table closure has no wire id for it to keep; the packet wire is positional, so a rename there orphans nothing (docs/SPEC-TABLES.md §5)",
+					name, f.Name, f.WasName, name)
+			}
+		}
+	}
 }

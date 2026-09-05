@@ -83,6 +83,9 @@ type UnionVariant struct {
 	Type    string // the payload type name, when the arm names a bare declaration
 	TypePos Pos
 	Arm     *Field
+	// Attrs is a PAYLOAD-FREE arm's qualification section: a bare name
+	// followed by `|`. An arm with a payload carries its section on Arm.
+	Attrs []Attr
 }
 
 func (d *ConstDecl) DeclName() string { return d.Name }
@@ -102,6 +105,10 @@ func (d *UnionDecl) DeclPos() Pos { return d.Pos }
 type Name struct {
 	Text string
 	Pos  Pos
+	// Attrs is the variant's qualification section (SPEC §4.2): tags, and on
+	// an enum variant the `was` rename (docs/SPEC-TABLES.md §5). The section
+	// runs to the end of the line, so a qualified variant ends its line.
+	Attrs []Attr
 }
 
 // Block is a { ... } body.

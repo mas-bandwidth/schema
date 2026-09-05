@@ -298,7 +298,20 @@ func (p *parser) parseVariantList(what string) []ast.Name {
 		if t.Kind != scanner.Ident {
 			break
 		}
-		names = append(names, ast.Name{Text: t.Text, Pos: t.Pos})
+		n := ast.Name{Text: t.Text, Pos: t.Pos}
+		if p.kind() == scanner.Pipe {
+			// A QUALIFIED VARIANT (SPEC §4.2): the section runs to the end of
+			// the line, so the variant ends its line and the newline is its
+			// separator. A trailing comma inside the section is the section's
+			// own, and the list goes on below it.
+			n.Attrs = p.parsePipeAttrs()
+			names = append(names, n)
+			for p.kind() == scanner.Newline {
+				p.advance()
+			}
+			continue
+		}
+		names = append(names, n)
 		if p.kind() == scanner.Comma {
 			p.advance() // trailing comma allowed; newlines around commas are whitespace
 			continue
@@ -357,11 +370,16 @@ func (p *parser) parseUnionBody() []ast.UnionVariant {
 				continue
 			}
 			typePos := p.tok().Pos
-			if p.kind() == scanner.Newline || p.kind() == scanner.RBrace || p.kind() == scanner.EOF {
+			if p.kind() == scanner.Newline || p.kind() == scanner.RBrace || p.kind() == scanner.EOF || p.kind() == scanner.Pipe {
 				// A PAYLOAD-FREE ARM is a bare name (SPEC §4.8): the arm has
 				// no storage, the packet wire carries the tag alone and the
-				// table wire the arm id with L = 0 (docs/SPEC-TABLES.md §2.6)
-				variants = append(variants, ast.UnionVariant{Name: name.Text, Pos: name.Pos, TypePos: typePos})
+				// table wire the arm id with L = 0 (docs/SPEC-TABLES.md §2.6).
+				// Its qualification section, when it has one, follows the name.
+				v := ast.UnionVariant{Name: name.Text, Pos: name.Pos, TypePos: typePos}
+				if p.kind() == scanner.Pipe {
+					v.Attrs = p.parsePipeAttrs()
+				}
+				variants = append(variants, v)
 				p.expectTerminator("union arm")
 				continue
 			}
