@@ -30,8 +30,16 @@ table Node
 table Only
     field w id=0xaf63ea4c86020456 kind=4
 
+table Rack
+    field items id=0x3e7884bf4f412c6f kind=14 elem=15 union=Slots array=unbounded
+    field after id=0xbf82010f6f71eae9 kind=4
+
 table Ring
     field items id=0x3e7884bf4f412c6f kind=14 elem=15 union=Slot array=unbounded
+    field after id=0xbf82010f6f71eae9 kind=4
+
+table Tray
+    field entries id=0xc5b2a72c0845a253 kind=14 elem=15 union=Slots array=bounded bound=2
     field after id=0xbf82010f6f71eae9 kind=4
 
 table Twig
@@ -58,9 +66,16 @@ union Slot
     arm node id=0x3c2f1bbad18642ad kind=17 type=Node
     arm plain id=0xfd4d194e1652b207 kind=4
 
+union Slots
+    arm many id=0x1f6459a2cea1fc02 kind=14 elem=17 type=Node array=bounded bound=2
+    arm plain id=0xfd4d194e1652b207 kind=4
+
 ## history
 ### 2026-09-05 (UTC) — first baseline: the union-arm traversal corpus (schema#565)
 - baseline created over 9 tables — data written BEFORE this point is not covered by it
 
 ### 2026-09-05 (UTC) — the list-of-unions shape Chain joins the union-arm corpus (schema#565)
+- no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-09-05 (UTC) — the array-of-pointers arm shapes Rack and Tray join the union-arm corpus (schema#578)
 - no compatibility-affecting edits; the wire absorbs the rest

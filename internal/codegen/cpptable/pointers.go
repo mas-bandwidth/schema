@@ -1455,16 +1455,19 @@ func (g *tableGen) emitPointerSlots(f *ir.Field, v edgeVisitor, body func(slot e
 
 // emitPointerSlotsOf is that walk over an explicit storage, which a pointer
 // ARM needs: an arm's slots live in the overlay, and a counted array arm's
-// count is the companion beside them (docs/SPEC-TABLES.md §2.6).
+// count is the companion beside them (docs/SPEC-TABLES.md §2.6). The slot
+// index is `k`, its own spelling everywhere, because under a list or an
+// array of unions the slot loop runs inside the element loop's `i`, and slot
+// k of element i must read element i.
 func (g *tableGen) emitPointerSlotsOf(f *ir.Field, base edgeExpr, count string, body func(slot edgeExpr)) {
 	switch f.Array {
 	case ir.ArrayCounted:
-		g.pf("    for ( int32_t i = 0; i < %s && i < %d; i++ ) // %s: [..%d]*%s\n    {\n", count, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
-		body(base.index("i", 8))
+		g.pf("    for ( int32_t k = 0; k < %s && k < %d; k++ ) // %s: [..%d]*%s\n    {\n", count, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		body(base.index("k", 8))
 		g.pf("    }\n")
 	case ir.ArrayFixed:
-		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s: [%d]*%s\n    {\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
-		body(base.index("i", 8))
+		g.pf("    for ( int32_t k = 0; k < %d; k++ ) // %s: [%d]*%s\n    {\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		body(base.index("k", 8))
 		g.pf("    }\n")
 	default:
 		body(base)

@@ -2922,4 +2922,38 @@ int64_t RingToJson( const Ring * root, char * buffer, int64_t capacity, TableAll
     return TableJsonWriteGraph( root, RingTableType(), buffer, capacity, allocator );
 }
 
+bool RackFromJson( RackBuilder & builder, const char * text, int64_t bytes, TableReport * report )
+{
+    Rack * root = builder.GetRoot();
+    if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
+    return TableJsonReadGraph( builder.main, root, RackTableType(), text, bytes, report );
+}
+
+int64_t RackToJsonMeasure( const Rack * root, TableAllocator allocator )
+{
+    return TableJsonWriteGraph( root, RackTableType(), NULL, 0, allocator );
+}
+
+int64_t RackToJson( const Rack * root, char * buffer, int64_t capacity, TableAllocator allocator )
+{
+    return TableJsonWriteGraph( root, RackTableType(), buffer, capacity, allocator );
+}
+
+bool TrayFromJson( TrayBuilder & builder, const char * text, int64_t bytes, TableReport * report )
+{
+    Tray * root = builder.GetRoot();
+    if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
+    return TableJsonReadGraph( builder.main, root, TrayTableType(), text, bytes, report );
+}
+
+int64_t TrayToJsonMeasure( const Tray * root, TableAllocator allocator )
+{
+    return TableJsonWriteGraph( root, TrayTableType(), NULL, 0, allocator );
+}
+
+int64_t TrayToJson( const Tray * root, char * buffer, int64_t capacity, TableAllocator allocator )
+{
+    return TableJsonWriteGraph( root, TrayTableType(), buffer, capacity, allocator );
+}
+
 } // namespace armdemo

@@ -18,3 +18,28 @@ table Ring
     items []Slot
     after int32
 }
+
+// A LIST OF UNIONS WHOSE ARM IS AN ARRAY OF POINTERS, and a BOUNDED ARRAY of
+// the same unions (docs/SPEC-TABLES.md §2.6, §3.1): the arm's slot loop runs
+// inside the element loop, so the two indexes are two spellings, and slot k
+// of element i names element i's node and not element k's. Each element's
+// slots hold distinct nodes, so a slot read off the wrong element is a node
+// never numbered.
+
+union Slots
+{
+    many  [..2]*Node
+    plain int32
+}
+
+table Rack
+{
+    items []Slots
+    after int32
+}
+
+table Tray
+{
+    entries [..2]Slots
+    after   int32
+}

@@ -2958,8 +2958,10 @@ tables-lists-negative-controls: tables-lists-allocation-negative-control \
 # ---- THE UNION-ARM TRAVERSAL GATE (docs/SPEC-TABLES.md §2.6, §2.9, §3.1, §7.6) --
 #
 # One binary over the `tables/arms` corpus: five shapes where a union arm hides
-# a pointer or a collection extent (schema#565), each crossed by Measure and
-# Save, LoadMeasure and Load, the tool's path, Lock and a dereference after it,
+# a pointer or a collection extent (schema#565), the cross of two of them, and
+# two where an array-of-pointers arm sits under a list or an array of unions
+# (schema#578), each crossed by Measure and Save, LoadMeasure and Load, the
+# tool's path, Lock and a dereference after it,
 # a memcpy relocation, and a cook from the arena and from the region, opened
 # and walked. Its wire goldens are the reference's, pinned like every other
 # table golden, and the Go tool reads every wire it writes back into the text
@@ -2982,7 +2984,7 @@ build/schema_test_arms_asan: build/tables-generated/.stamp test/tables/arms_main
 		$(TABLES_INCLUDES) test/tables/arms_main.cpp $(ARMS_SOURCES) -o $@
 
 # root table per pinned wire, for the tool's round trip
-ARMS_WIRE_ROOTS := arms_ring:Ring arms_holder:Holder arms_nest:Nest arms_hand:Hand arms_chain:Chain arms_gate:Gate arms_gate_text:Gate
+ARMS_WIRE_ROOTS := arms_ring:Ring arms_holder:Holder arms_nest:Nest arms_hand:Hand arms_chain:Chain arms_gate:Gate arms_gate_text:Gate arms_rack:Rack arms_tray:Tray
 
 .PHONY: tables-arms
 tables-arms: build/schema_test_arms build/schema_test_arms_asan
@@ -3007,7 +3009,8 @@ tables-arms: build/schema_test_arms build/schema_test_arms_asan
 # clean tree passes, the one that names the shape.
 #
 # $(1) the sabotage's name, $(2) the compiler source it patches, $(3) the
-# sentence a reader gets when the gate stayed green.
+# sentence a reader gets when the gate stayed green, $(4) flags the sabotaged
+# header needs to compile at all, so the control reaches its CHECK.
 define arms_negative_control
 	@mkdir -p build
 	@go run ./tools/sabotage -name $(1) -out build/$(1).gotext $(2)
@@ -3015,7 +3018,7 @@ define arms_negative_control
 	@go build -overlay=build/$(1)-overlay.json -o build/schema-$(1) ./cmd/schema
 	@rm -rf build/tables-$(1) && mkdir -p build/tables-$(1)
 	@./build/schema-$(1) generate --lang cpp --out build/tables-$(1)/arms tables/arms
-	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-$(1)/arms -Itest/tables test/tables/arms_main.cpp \
+	@$(CXX) $(TABLES_CXXFLAGS) $(4) -Ibuild/tables-$(1)/arms -Itest/tables test/tables/arms_main.cpp \
 		build/tables-$(1)/arms/*Table.cpp -o build/schema_test_$(1)
 	@if ./build/schema_test_$(1) > build/$(1).log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: $(3)"; exit 1; \
@@ -3079,13 +3082,25 @@ tables-arms-reachable-negative-control: bin/schema build/tables-generated/.stamp
 	$(call arms_negative_control,arms-reachable-arm,ir/table.go,a pointer arm left out of the reachable set left the arms gate GREEN)
 	$(call arms_control_red_on,arms-reachable-arm,\[arms_gate\] ref_inside)
 
+# THE ARM'S SLOT LOOP REUSES THE ELEMENT INDEX: under a list or an array of
+# unions the arm's `[..N]*T` walk spells its index `i` as the element loop
+# does, so the inner `i` shadows the element index, slot k reads element k's
+# node, and `Rack`'s second node of its first element is never numbered, so
+# Measure refuses. The gate's own `-Wshadow` refuses the header first, so the
+# control compiles without it to reach the CHECK.
+.PHONY: tables-arms-slot-index-negative-control
+tables-arms-slot-index-negative-control: bin/schema build/tables-generated/.stamp
+	$(call arms_negative_control,arms-slot-index-shadows,internal/codegen/cpptable/pointers.go,the arm's slot loop shadowing the element index left the arms gate GREEN,-Wno-shadow)
+	$(call arms_control_red_on,arms-slot-index-shadows,\[arms_rack\] measured > 0)
+
 .PHONY: tables-arms-negative-controls
 tables-arms-negative-controls: tables-arms-list-edge-negative-control \
 	tables-arms-cook-arm-negative-control \
 	tables-arms-cook-check-negative-control \
 	tables-arms-nested-union-negative-control \
 	tables-arms-array-framing-negative-control \
-	tables-arms-reachable-negative-control
+	tables-arms-reachable-negative-control \
+	tables-arms-slot-index-negative-control
 
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin

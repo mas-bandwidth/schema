@@ -215,6 +215,25 @@ var sabotages = map[string][]edit{
 			}`,
 	}},
 
+	// SPEC-TABLES §2.6, §3.1 (schema#578): a pointer arm's slot loop has its
+	// own index, because under a list or an array of unions it runs inside
+	// the element loop. Spell it `i` again, and slot k of element i reads
+	// element k's slot while the bound test reads past the live count.
+	"arms-slot-index-shadows": {{
+		old: `		g.pf("    for ( int32_t k = 0; k < %s && k < %d; k++ ) // %s: [..%d]*%s\n    {\n", count, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		body(base.index("k", 8))
+		g.pf("    }\n")
+	case ir.ArrayFixed:
+		g.pf("    for ( int32_t k = 0; k < %d; k++ ) // %s: [%d]*%s\n    {\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		body(base.index("k", 8))`,
+		new: `		g.pf("    for ( int32_t i = 0; i < %s && i < %d; i++ ) // %s: [..%d]*%s\n    {\n", count, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name) // SABOTAGED: the slot loop reuses the element index
+		body(base.index("i", 8))
+		g.pf("    }\n")
+	case ir.ArrayFixed:
+		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s: [%d]*%s\n    {\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		body(base.index("i", 8))`,
+	}},
+
 	// the same walk on the C# leg's Open
 	"cook-open-walk-cs": {{
 		old: `	g.hf("        cook = new %sCook(at + dataOffset, (long) dataLength);\n", name)`,

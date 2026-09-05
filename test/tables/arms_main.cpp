@@ -1,6 +1,7 @@
 // THE UNION-ARM TRAVERSAL GATE (docs/SPEC-TABLES.md §2.6, §2.9, §3.1, §6.3,
 // §7.6). One binary over the `tables/arms` unit: five shapes where a union arm
-// hides a pointer or a collection extent, and the cross of two of them, each
+// hides a pointer or a collection extent, the cross of two of them, and two
+// where an array-of-pointers arm sits under a list or an array of unions, each
 // crossed by every walk the reference has. Measure and Save, LoadMeasure and
 // Load into an exact region, the tool's path into a builder, Lock and a
 // dereference after it, a plain memcpy relocation of the locked region, and a
@@ -222,6 +223,8 @@ ROOT_SURFACE( Nest );
 ROOT_SURFACE( Hand );
 ROOT_SURFACE( Chain );
 ROOT_SURFACE( Gate );
+ROOT_SURFACE( Rack );
+ROOT_SURFACE( Tray );
 
 // a const form is checked against the block it lies in, so every reference it
 // holds can be shown to resolve inside that block before it is followed
@@ -610,6 +613,93 @@ static void check_gate_text( const Gate * g, const uint8_t * base, int64_t bytes
     CHECK_EQ( g->after, 6 );
 }
 
+// A LIST OF UNIONS WHOSE ARM IS AN ARRAY OF POINTERS: two elements, each
+// selecting the array arm with two distinct nodes in its slots, then a plain
+// element and a None element. The arm's slot loop runs inside the element
+// loop, so slot k of element i must name element i's node and not element
+// k's: a slot read off the wrong element is a node never numbered, and
+// Measure refuses.
+static void build_rack( RackBuilder & b )
+{
+    Rack * rack = b.GetRoot();
+    Slots * first = RackItemsAdd( b.main, rack->items );
+    first->type = SlotsType::Many;
+    first->many.value_count = 2;
+    NodeEmplace( b.main, first->many.value[0] )->v = 1;
+    NodeEmplace( b.main, first->many.value[1] )->v = 2;
+    Slots * second = RackItemsAdd( b.main, rack->items );
+    second->type = SlotsType::Many;
+    second->many.value_count = 2;
+    NodeEmplace( b.main, second->many.value[0] )->v = 3;
+    NodeEmplace( b.main, second->many.value[1] )->v = 4;
+    Slots * third = RackItemsAdd( b.main, rack->items );
+    third->type = SlotsType::Plain;
+    third->plain = 5;
+    RackItemsAdd( b.main, rack->items ); // a None element in its place
+    rack->after = 12;
+}
+
+// every slot of one array arm resolves inside the block and holds the value
+// its element and slot say: element `e`, slot `k` holds `first + k`
+static void check_slots( const Slots & element, const uint8_t * base, int64_t bytes, int first )
+{
+    CHECK( element.type == SlotsType::Many );
+    if ( element.type != SlotsType::Many ) { return; }
+    CHECK_EQ( element.many.value_count, 2 );
+    if ( element.many.value_count != 2 ) { return; }
+    for ( int k = 0; k < 2; k++ )
+    {
+        CHECK( ref_inside( base, bytes, element.many.value[k], (int64_t) sizeof( Node ) ) );
+        if ( ref_inside( base, bytes, element.many.value[k], (int64_t) sizeof( Node ) ) )
+        {
+            const Node * node = NodeAt( element.many.value[k] );
+            CHECK( node != NULL );
+            if ( node != NULL ) { CHECK_EQ( node->v, first + k ); }
+        }
+    }
+}
+
+static void check_rack( const Rack * r, const uint8_t * base, int64_t bytes, const char * where )
+{
+    (void) where;
+    CHECK_EQ( r->items.size(), 4 );
+    if ( r->items.size() != 4 ) { return; }
+    CHECK( ref_inside( base, bytes, r->items.elements, (int64_t) sizeof( Slots ) * r->items.size() ) );
+    if ( !ref_inside( base, bytes, r->items.elements, (int64_t) sizeof( Slots ) * r->items.size() ) ) { return; }
+    check_slots( r->items[0], base, bytes, 1 );
+    check_slots( r->items[1], base, bytes, 3 );
+    CHECK( r->items[2].type == SlotsType::Plain && r->items[2].plain == 5 );
+    CHECK( r->items[3].type == SlotsType::None );
+    CHECK_EQ( r->after, 12 );
+}
+
+// A BOUNDED ARRAY OF UNIONS whose arm is the same array of pointers: both
+// live elements select the arm, each with two distinct nodes, so the slot
+// loop's own index is what keeps slot 1 of element 0 from reading element 1.
+static void build_tray( TrayBuilder & b )
+{
+    Tray * tray = b.GetRoot();
+    tray->entries_count = 2;
+    for ( int e = 0; e < 2; e++ )
+    {
+        tray->entries[e].type = SlotsType::Many;
+        tray->entries[e].many.value_count = 2;
+        NodeEmplace( b.main, tray->entries[e].many.value[0] )->v = 1 + 2 * e;
+        NodeEmplace( b.main, tray->entries[e].many.value[1] )->v = 2 + 2 * e;
+    }
+    tray->after = 13;
+}
+
+static void check_tray( const Tray * t, const uint8_t * base, int64_t bytes, const char * where )
+{
+    (void) where;
+    CHECK_EQ( t->entries_count, 2 );
+    if ( t->entries_count != 2 ) { return; }
+    check_slots( t->entries[0], base, bytes, 1 );
+    check_slots( t->entries[1], base, bytes, 3 );
+    CHECK_EQ( t->after, 13 );
+}
+
 int main()
 {
     exercise<RingSurface>( "arms_ring", build_ring, check_ring );
@@ -619,6 +709,8 @@ int main()
     exercise<ChainSurface>( "arms_chain", build_chain, check_chain );
     exercise<GateSurface>( "arms_gate", build_gate, check_gate );
     exercise<GateSurface>( "arms_gate_text", build_gate_text, check_gate_text );
+    exercise<RackSurface>( "arms_rack", build_rack, check_rack );
+    exercise<TraySurface>( "arms_tray", build_tray, check_tray );
 
     if ( failures != 0 )
     {
