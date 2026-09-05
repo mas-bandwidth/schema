@@ -118,7 +118,7 @@ func newWireRoot(u *units, unitKey, rootName string, message bool) (*wireRoot, e
 			continue
 		}
 		size := alignUp8(ir.RecordLayout(unit, st).Size)
-		r.storage[ir.TableTypeId(name)] = size
+		r.storage[ir.TableTypeId(st.WireName())] = size
 		if size > r.maxStorage {
 			r.maxStorage = size
 		}

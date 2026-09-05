@@ -52,7 +52,7 @@ func TestValueDefaultAndTableWasRefusals(t *testing.T) {
 			src: "package t\ntable Tab | was\n{\n    x int32\n}\n"},
 		{name: "a table's was colliding with a live table", want: "collide on table-wire type id",
 			src: "package t\ntable Old { x int32 }\ntable Tab | was = \"Old\"\n{\n    y int32\n}\ntable Root\n{\n    a *Old\n    b *Tab\n}\n"},
-		{name: "a table's was taking a held-back id is refused by name", want: "is not an attribute a table declaration takes",
+		{name: "a valued key a table declaration does not take is refused by name", want: "is not an attribute a table declaration takes",
 			src: "package t\ntable Tab | json = \"x\"\n{\n    x int32\n}\n"},
 	}
 	for _, tc := range cases {

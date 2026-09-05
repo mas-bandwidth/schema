@@ -3642,7 +3642,7 @@ registry:
 
 # THE `was` CONTROL (docs/SPEC-TABLES.md §5). A table renamed under `was` keeps
 # the node type id every stored record carries, so W1's fleet reads under W2's
-# Ship in silence — which is what the conformance rows w1_fleet_as_w2 and
+# Ship in silence, which is what the conformance rows w1_fleet_as_w2 and
 # w2_fleet_as_w1 pin, and what a green run cannot be read for. The control
 # strips `| was = "Vessel"` from W2 in a build copy, regenerates that unit with
 # the SHIPPED compiler, and reads the same golden through the same program:

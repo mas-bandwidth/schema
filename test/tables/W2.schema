@@ -1,4 +1,4 @@
-// W2.schema — the NEW side of the `was` rows' evolution pair: Vessel is now
+// W2.schema: the NEW side of the `was` rows' evolution pair: Vessel is now
 // Ship, declared `was = "Vessel"`, so every node record still rides under
 // fnv1a64( "Vessel" ) and a W1 fleet reads in silence (docs/SPEC-TABLES.md
 // §5). The negative control strips the attribute and watches `unknown` count.

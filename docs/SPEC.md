@@ -1020,7 +1020,7 @@ SPEC-TABLES.md §3.3 and §6.6 take. What the tree carries is a tag on a
 inert comment above. Every other line kind refuses one, each under a
 diagnostic written for a different rule: a field's pipe draws "unknown
 attribute ... the vocabulary is typed and closed per compiler version", a
-`table` and a `union` declaration draw "takes no qualification", a `const`
+`union` declaration draws "takes no qualification", a `const`
 draws "a constant takes no qualification, and | is never an operator", a
 union arm's pipe draws "expected a field type", and an enum or flags variant
 carrying one does not parse at all. Owed as schema#523 ruling 4, together

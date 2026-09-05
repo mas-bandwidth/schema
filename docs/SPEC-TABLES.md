@@ -5113,7 +5113,7 @@ tolerance is the versioning model:
 
 - **Unknown field** (newer writer): skipped by its length, counted.
 - **Absent field** (older writer): the reader's value takes the field's
-  default — the specified default, else zero. A `string(N)`, `bytes(N)`
+  default: the specified default, else zero. A `string(N)`, `bytes(N)`
   or `flags` field's declared default is that default (SPEC §4.2): the writer elides such a field holding it exactly as it elides a
   scalar holding its own, so an empty string rides when the default is not
   empty. That fallback is always
@@ -11783,10 +11783,10 @@ array the KEY enum it names, and for a map the KEY's kind and the KEY's
 capacity), string and bytes capacity, the declared
 RANGE (`min=` and `max=`), presence of an optional, a fixed field's `F`
 (`frac=`, the one wire-invisible fact a wide kind has, §4.1), the specified
-default as exact canonical text — a fixed default as the RAW integer its
+default as exact canonical text (a fixed default as the RAW integer its
 storage holds, a string or bytes default as `bytes:` and its bytes in hex,
 so a space in a default cannot split the token, and a flags default as the
-mask its names spell — and the `was` alias; then each enum's variants in order with their ids, each flags'
+mask its names spell), and the `was` alias; then each enum's variants in order with their ids, each flags'
 variants in positional order, and each union's arms in order with their ids
 and their own wire facts.
 

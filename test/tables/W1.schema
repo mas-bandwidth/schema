@@ -1,4 +1,4 @@
-// W1.schema — the OLD side of the `was` rows' evolution pair
+// W1.schema: the OLD side of the `was` rows' evolution pair
 // (docs/SPEC-TABLES.md §5, SPEC §4.2): string, bytes and flags DEFAULTS on the
 // table wire, and a POINTER TARGET whose name W2 changes under `was`. Every
 // node record of Vessel carries fnv1a64( "Vessel" ) as its type id, so a

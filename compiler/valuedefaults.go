@@ -27,6 +27,6 @@ func refuseValueDefaults(u *ir.Unit, target string) error {
 		return nil
 	}
 	carry, flags := carriers(valueDefaultTargets)
-	return fmt.Errorf("unit declares a string, bytes or flags default (%s) — the three are %s only today, and the %s form is a named follow-on; generate with %s, or drop the default (SPEC §4.2)",
+	return fmt.Errorf("unit declares a string, bytes or flags default (%s): the three are %s only today, and the %s form is a named follow-on; generate with %s, or drop the default (SPEC §4.2)",
 		englishList(names), englishList(carry), target, englishList(flags))
 }
