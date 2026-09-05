@@ -2030,6 +2030,9 @@ func walkArms(un *ir.Union, visit func(string), seen map[*ir.Union]bool) {
 
 func (c *checker) checkTables() {
 	closure := map[string]bool{}
+	// the field that pulled each `type` into the closure, so a refusal that
+	// exists BECAUSE of closure membership names the edge that created it
+	reachedBy := map[string]string{}
 	var walk func(name string)
 	walk = func(name string) {
 		if closure[name] {
@@ -2040,15 +2043,28 @@ func (c *checker) checkTables() {
 			return
 		}
 		closure[name] = true
+		what := "type"
+		if st.IsTable {
+			what = "table"
+		}
 		for _, f := range st.Fields {
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
+			site := fmt.Sprintf("%s %s's field %s", what, name, f.Name)
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Struct:
+				if !closure[ref.Name] {
+					reachedBy[ref.Name] = site
+				}
 				walk(ref.Name)
 			case *ir.Union:
-				walkArms(ref, walk, map[*ir.Union]bool{})
+				walkArms(ref, func(target string) {
+					if !closure[target] {
+						reachedBy[target] = fmt.Sprintf("%s, through an arm of %s,", site, ref.Name)
+					}
+					walk(target)
+				}, map[*ir.Union]bool{})
 			}
 		}
 	}
@@ -2063,6 +2079,7 @@ func (c *checker) checkTables() {
 	}
 	c.tableClosure = closure
 	c.checkTableArmsReached(closure)
+	c.checkWideTextInClosure(closure, reachedBy)
 
 	names := make([]string, 0, len(closure))
 	for name := range closure {
@@ -2169,6 +2186,33 @@ func (c *checker) checkTables() {
 	c.checkTableVariantIdentity(names)
 	c.checkOptionalVariableClosures(names)
 	c.checkJsonKeysInClosure()
+}
+
+// checkWideTextInClosure refuses a `wstring(N)` field of any `type` a table
+// reaches (docs/SPEC-TABLES.md §11, schema#522). Wide text rides the packet
+// wire only today: the table half is kind 33, specified ahead of its
+// implementation, and the table emitters have no arm for the kind. A table
+// body's own wstring field is refused where it resolves; a `type` body
+// resolves as packet wire, so its wide text is refused here, once the closure
+// is known, with the same rule and the edge that put the type in a closure.
+func (c *checker) checkWideTextInClosure(closure map[string]bool, reachedBy map[string]string) {
+	for _, name := range sortedKeys(closure) {
+		st := c.closureMember(name)
+		if st == nil || st.IsTable {
+			continue
+		}
+		pos := ast.Pos{}
+		if d, ok := c.astDecls[name]; ok {
+			pos = d.DeclPos()
+		}
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TWString {
+				continue
+			}
+			c.errf(pos, "type %s: field %s: wstring is not carried on the TABLE wire yet — wide text rides the packet wire today (SPEC §4.12), and %s reaches %s, putting it in a table closure; declare the field string(N), or hold %s outside the closure (docs/SPEC-TABLES.md §11, schema#522)",
+				name, f.Name, reachedBy[name], name, name)
+		}
+	}
 }
 
 // checkOptionalVariableClosures refuses an OPTIONAL whose value's closure is
