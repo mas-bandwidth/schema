@@ -1864,6 +1864,77 @@ projection-wire-law-negative-control:
 		  cat build/projection-no-wire-law-variants.log; exit 1; }
 	@echo "negative control: without the codec law line both law gates go red, and the variant-order gate stays green"
 
+# ---------------------------------------------------------------------------
+# THE WIDE TEXT NEGATIVE CONTROLS (SPEC §4.12, §4.7; schema#188, schema#519) --
+#
+# build/schema_test_wide replays serialize's shared corpus, and a green run
+# cannot be read for WHICH rule earned it. Each control below removes exactly
+# one rule from a COPY of the C++ emitter (tools/sabotage, applied through a
+# Go overlay so the tree is never written), regenerates examples-wide/ with
+# it, rebuilds the gate and requires the gate to go RED on the vector the rule
+# is named for. The sabotage tool refuses unless its anchor matches exactly
+# once, so an emitter that drifts fails the control rather than passing it.
+#
+# wide-negative-control-body is the shared body: SABOTAGE names the sabotage,
+# EXPECT the text the red run must print.
+define wide-negative-control-body
+	@mkdir -p build
+	@go run ./tools/sabotage -name $(SABOTAGE) -out build/wide-$(SABOTAGE).gotext internal/codegen/cpp/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/cpp/functions.go":"%s/build/wide-$(SABOTAGE).gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/wide-$(SABOTAGE)-overlay.json
+	@rm -rf build/wide-$(SABOTAGE)-generated && mkdir -p build/wide-$(SABOTAGE)-generated
+	@go run -overlay=build/wide-$(SABOTAGE)-overlay.json ./cmd/schema generate \
+		--lang cpp --out build/wide-$(SABOTAGE)-generated examples-wide
+	@$(CXX) $(CXXFLAGS) -Ibuild/wide-$(SABOTAGE)-generated test/wide/main.cpp \
+		-o build/schema_test_wide-$(SABOTAGE)
+	@if ./build/schema_test_wide-$(SABOTAGE) > build/wide-$(SABOTAGE).log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the wide gate passed with $(SABOTAGE) applied"; \
+		cat build/wide-$(SABOTAGE).log; exit 1; \
+	fi
+	@grep -q '$(EXPECT)' build/wide-$(SABOTAGE).log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on $(EXPECT)"; \
+		  cat build/wide-$(SABOTAGE).log; exit 1; }
+	@echo "negative control ($(SABOTAGE)): the gate goes red —" \
+		"$$(grep FAILED build/wide-$(SABOTAGE).log | head -1)"
+endef
+
+# The wire has NO alignment between the length and the code units (SPEC
+# §4.12). Put serialize.modern's align back and every byte after the length
+# field moves, so the corpus bytes stop being what the codec produces.
+.PHONY: wide-no-align-negative-control
+wide-no-align-negative-control: SABOTAGE = wstring-align
+wide-no-align-negative-control: EXPECT = on vector wstring-
+wide-no-align-negative-control:
+	$(wide-negative-control-body)
+
+# An unpaired surrogate fails the read, in its three shapes (SPEC §4.12).
+# Remove the pairing rule and the corpus's seven unpaired-surrogate vectors
+# stop being refused.
+.PHONY: wide-surrogate-negative-control
+wide-surrogate-negative-control: SABOTAGE = wstring-accept-unpaired-surrogate
+wide-surrogate-negative-control: EXPECT = surrogate
+wide-surrogate-negative-control:
+	$(wide-negative-control-body)
+
+# A successful read writes the zero unit at index length, always (SPEC §4.12).
+# Drop the store and the harness's terminator check goes red — which it can
+# only do because the harness poisons the buffer before the read.
+.PHONY: wide-terminator-negative-control
+wide-terminator-negative-control: SABOTAGE = wstring-drop-terminator
+wide-terminator-negative-control: EXPECT = out.text\[out.text_length\] == 0
+wide-terminator-negative-control:
+	$(wide-negative-control-body)
+
+# string(N) refuses malformed UTF-8 on READ, in every build mode (SPEC §4.7,
+# schema#519). Restore the write-only stance the amendment replaced and the
+# corpus's UTF-8 refusal vectors stop being refused.
+.PHONY: wide-utf8-read-negative-control
+wide-utf8-read-negative-control: SABOTAGE = string-write-only-utf8
+wide-utf8-read-negative-control: EXPECT = on vector string-refuse-
+wide-utf8-read-negative-control:
+	$(wide-negative-control-body)
+
+
 # THE UNION ARM-ORDER NEGATIVE CONTROL (SPEC §3.1, §4.8, issue #491). A union's
 # arm order rides in its payload types only while the arms DIFFER in type: two
 # arms of one type reorder with every projected type unmoved, so the arm names
@@ -2294,6 +2365,14 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	./build/schema_test
 	./build/schema_test_guard
 	./build/schema_test_wide
+	# THE WIDE TEXT CONTROLS (SPEC §4.12, §4.7): the gate above replays a
+	# shared corpus and a green run cannot be read for WHICH rule earned it,
+	# so each control removes one rule from a copy of the emitter and names
+	# the vector that must go red.
+	$(MAKE) wide-no-align-negative-control
+	$(MAKE) wide-surrogate-negative-control
+	$(MAKE) wide-terminator-negative-control
+	$(MAKE) wide-utf8-read-negative-control
 	$(MAKE) check-zero-range-negative-control
 	$(MAKE) projection-variant-order-negative-control
 	$(MAKE) projection-wire-law-negative-control

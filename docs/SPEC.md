@@ -1352,6 +1352,17 @@ terminal** (§5), and refusal is the only conforming answer: no target traps,
 panics or aborts on a malformed payload. An application with genuinely
 arbitrary payloads uses `bytes(N)`, which remains exactly that.
 
+**Backend status for that rule: ONE TARGET ENFORCES IT ON READ TODAY.**
+The read side is specified ahead of its implementation in eight of the
+nine, on the terms §3.1 and §4.2 take. The C++ reference runs the
+generated validator on the READ path in every build mode and fails the
+read on a malformed payload. The other eight run the same validator as a
+WRITE-side assertion, the stance this rule replaces, so a malformed
+payload written by another language reaches their readers unrefused and
+the release build of those eight checks nothing at all. Owed as
+schema#519, narrowed by each target that moves the check, and this line
+is deleted by the last of them.
+
 Beneath the encoding rule, `string(N)` carries **bytes excluding 0x00** —
 all generated readers reject interior nulls, and writes assert per §5 (NUL
 is valid UTF-8, so the interior-null rule is its own, stricter check).
@@ -1723,6 +1734,19 @@ prefix's bits and it sizes the storage. A `wstring` field takes no
 attributes and no `= default` (§4.2), and `wstring(N)` with N below 2 is a
 compile error, the same floor `string(N)` carries (§4.6).
 
+**Backend status: ONE TARGET CARRIES WIDE TEXT TODAY.** This section is
+written for all nine and one of them has landed it, on the terms §3.1
+and §4.2 take. The C++ packet emitter carries the storage, the wire and
+every read refusal below. The other eight REFUSE a unit declaring a
+`wstring(N)` field by name at generate time, rather than emit a member
+they never laid out and a wire that skips it, so the storage and
+boundary table below states what each target owes rather than what it
+runs. The TABLE wire's half of the row (kind `33` and `*wstring`) has
+landed nowhere and a `wstring` inside a table closure is refused by name
+in the front end, which is SPEC-TABLES.md §11 and schema#522. Owed as
+schema#188, narrowed by each target that lands the codec, and this line
+is deleted by the last of them.
+
 **Why the language carries a wide type at all:** on a host whose native text
 is already UTF-16, the wire and the string hold the same units, so text
 crosses the boundary as a copy of code units rather than as a transcode.
@@ -1917,13 +1941,21 @@ wires, the same verdict on every vector either wire can express, and a
 difference only in what a refusal COSTS — a stopped read on one, a defaulted
 field and a counter on the other.**
 
-Beside the corpus, the cross-language matrix is **owed** a `wstring(7)`
-field holding serialize.js's interop cases: empty, three basic-plane code
-units, `0xE000`, `0xFFFF`, an astral pair between two basic-plane units, and
-seven code units, the most the bound carries. That field, schema's own
-golden source and golden-id pins for a wstring-bearing unit (gates 1, 2 and
-7), and the `examples/` declaration §7.3 requires are owed by the first
-implementation PR, which is the one that teaches a backend to emit the type.
+Beside the corpus, the cross-language matrix takes a `wstring(7)` field
+holding serialize.js's interop cases: empty, three basic-plane code
+units, `0xE000`, `0xFFFF`, an astral pair between two basic-plane units,
+and seven code units, the most the bound carries. **That field and the
+golden source and golden-id pins for a wstring-bearing unit (gates 1, 2
+and 7) live in `examples-wide/`, a corpus unit of its own beside the
+proving ground rather than a declaration inside it.** §7.3's `examples/`
+pins gate 1 for all nine targets and eight of them refuse wide text by
+name, so a `wstring` field declared there would stop the other eight
+pins from generating at all. `examples-wide/` rides `make check` and the
+same gates 1, 2 and 7, its C++ pin is the one target that carries the
+construct, and a companion gate holds the other eight to refusing the
+unit BY NAME so that a backend cannot go green by quietly dropping the
+field. The unit folds back into `examples/` when the ninth target lands
+the codec and the split stops paying for itself.
 
 ## 5. Trust model — inherited
 

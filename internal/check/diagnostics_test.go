@@ -138,6 +138,35 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { const(-1, 8) }\n"},
 		{name: "string below two", want: "below 2",
 			src: "package t\ntype T { s string(1) }\n"},
+
+		// ---- wide text (SPEC §4.12, §4.6): every refusal the construct owes.
+		// The type itself compiles — examples-wide/ is the corpus that pins it
+		// — so what a case here breaks is one rule and never the construct.
+		{name: "wstring below two", want: "wstring(1): N below 2",
+			src: "package t\ntype T { s wstring(1) }\n"},
+		{name: "wstring bound above int32", want: "lengths live in int32",
+			src: "package t\ntype T { s wstring(5000000000) }\n"},
+		{name: "wstring takes no default", want: "defaults in v1 cover bool, integer, float and enum fields",
+			src: "package t\ntype T { s wstring(4) = 1 }\n"},
+		{name: "wstring takes no min/max", want: "min/max apply to integer fields",
+			src: "package t\ntype T { s wstring(4) | min = 0, max = 3 }\n"},
+		{name: "an array of wstring is not in v1", want: "an array of wstring(N) is not supported",
+			src: "package t\ntype T { a [4]wstring(4) }\n"},
+		{name: "wstring collides with its sibling's length companion", want: "length companion",
+			src: "package t\ntype T {\n    text wstring(8)\n    text_length uint8\n}\n"},
+		// the TABLE half of the row is schema#522 and has landed nowhere, so a
+		// table closure refuses wide text BY NAME rather than emitting
+		// something else (docs/SPEC-TABLES.md §11)
+		{name: "wstring inside a table closure", want: "not carried on the TABLE wire yet",
+			src: "package t\ntable T { s wstring(4) }\n"},
+		{name: "an optional wstring inside a table closure", want: "not carried on the TABLE wire yet",
+			src: "package t\ntable T { s ?wstring(4) }\n"},
+		{name: "unbounded wide text", want: "*wstring is specified ahead of its implementation",
+			src: "package t\ntype T { s *wstring }\n"},
+		// memcmp over UTF-8 is a portable order and little-endian code units
+		// have none, so the key diagnostic names string(N) (§2.8, §11)
+		{name: "a wstring map key", want: "a wstring(N) key is refused",
+			src: "package t\ntable T { m map[wstring(4)]uint8 }\n"},
 		{name: "array bound zero", want: "below 1",
 			src: "package t\ntype T { a [0]uint8 }\n"},
 		{name: "count range backwards", want: "0 <= Min < N",

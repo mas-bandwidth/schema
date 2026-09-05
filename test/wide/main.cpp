@@ -66,6 +66,19 @@ struct Vector
     bool canonical = false;
 };
 
+// POISON every destination buffer before the read. Generated storage
+// default-initializes to zeros, so a terminator check against a fresh
+// object passes whether or not the reader wrote anything at index
+// length. Filling the buffer with a non-zero unit first makes that zero
+// the READ's work and nothing else's (SPEC §4.7, §4.12).
+template <typename T, int N> static void poison( T ( & buffer )[N] )
+{
+    for ( int i = 0; i < N; i++ )
+    {
+        buffer[i] = T( 0x7F );
+    }
+}
+
 static bool hex_nibble( char c, int & out )
 {
     if ( c >= '0' && c <= '9' ) { out = c - '0'; return true; }
@@ -258,6 +271,7 @@ int main()
         if ( v.buffer_size == 8 )
         {
             WideSeven out;
+            poison( out.text );
             serialize::ReadStream rs( scratch, stream_bytes( v ) );
             const bool ok = ReadWideSeven( rs, out );
             check_vector( ok == !v.refused, v );
@@ -286,6 +300,7 @@ int main()
         else
         {
             WideFour out;
+            poison( out.text );
             serialize::ReadStream rs( scratch, stream_bytes( v ) );
             const bool ok = ReadWideFour( rs, out );
             check_vector( ok == !v.refused, v );
@@ -329,6 +344,7 @@ int main()
         if ( v.refused ) { narrow_refusals++; }
 
         NarrowFifteen out;
+        poison( out.text );
         serialize::ReadStream rs( scratch, stream_bytes( v ) );
         const bool ok = ReadNarrowFifteen( rs, out );
         check_vector( ok == !v.refused, v );
@@ -378,6 +394,7 @@ int main()
             check( ws.GetBitsProcessed() == 3 + 32 * int64_t( lengths[c] ) );
 
             WideInterop out;
+            poison( out.caption );
             serialize::ReadStream rs( encoded, ws.GetBytesProcessed() );
             check( ReadWideInterop( rs, out ) );
             check( out.caption_length == lengths[c] );
