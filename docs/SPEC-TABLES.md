@@ -3998,6 +3998,16 @@ UDP either.
   on a channel of its own before the connection goes. A refused announcement
   sets NO vocabulary, so every body after it is refused for want of one, which
   is what makes the refusal safe to hold rather than urgent to act on.
+- **REFUSAL IS TERMINAL, and a refused FIRST announcement is the one the
+  connection gets.** A connection whose first announcement was refused, for
+  any reason, carries no vocabulary for its life: the refusal is a state the
+  connection enters and not a call that failed, and every announcement after
+  it is refused as `second_announcement`, whether or not the first set
+  anything. That is what makes "once, for the life of the connection" true as
+  stated and the one-announcement work budget (SECURITY, below) a bound rather
+  than a hope: a peer whose announcement was refused holds no retry on that
+  connection, and a peer that wants another try wants a new connection, which
+  starts with an empty vocabulary like any other.
 - **A STATELESS REQUEST-RESPONSE TRANSPORT IS OUT OF SCOPE, by name.** A request
   sharing no state with the last one has nowhere to put an announcement, so the
   announcement would ride every request and cost more than the id table it
@@ -4151,7 +4161,7 @@ count. Reference `k` names the vocabulary's `k`th entry, counted from `1`.
 Reference `0` names no entry and is the body terminator, the enum's `None` and
 the union's empty arm, the three places on this wire where "no id" is a value.
 A reference above `E` is damage (below). For the `backenddemo` unit below,
-`E` is 28 and a reference is 5 bits.
+`E` is 33 and a reference is 6 bits.
 
 **A PAYLOAD IS WHAT THE PACKET WIRE WRITES FOR THAT DECLARATION** (SPEC.md
 §4.3), and every row below that departs from it says so, because each departure
@@ -4181,11 +4191,12 @@ would leave every stored ordinal meaning a different variant on the two builds,
 read in silence, which is the one class this wire exists to make impossible. So
 a variant and an arm ride by NAME, at a reference's width, and a name this
 reader cannot place is §4's ordinary `unknown`. **That is a residual over the
-packet wire and it is named as one, and the number is TWO BITS on a four-variant
-enum**: such an enum is ranged over `[0, 4]`, because `None` is a value, so the
-packet wire spends THREE bits on it and this wire spends five. That is the price
+packet wire and it is named as one, and the number is THREE BITS on a
+four-variant enum under `backenddemo`'s six-bit reference**: such an enum is
+ranged over `[0, 4]`, because `None` is a value, so the
+packet wire spends THREE bits on it and this wire spends six. That is the price
 of evolution paid where evolution actually happens, and §15 names the shape that
-would remove those two bits and the reason it is not taken here.
+would remove those bits and the reason it is not taken here.
 
 **A VARIANT OR AN ARM REFERENCE THAT NAMES AN ENTRY OF THE WRONG SORT IS
 MALFORMED**, and this is decidable from the announcement alone. A variant name is
@@ -4338,8 +4349,8 @@ and that is its integer.
   |---|---|---|
   | `0` | nothing | A NAME WHOSE FRAMING IS NOT AN ENTRY'S TO GIVE: a table's name id, one of the three blob type ids and an enum VARIANT name, which are referenced as values and carry no payload at all, and the reserved node-table id, whose field's framing is stated above and is known to every reader by the id itself |
   | `1` bool | nothing | one bit |
-  | `2`–`9`, `18`, `19` integers | `packing (u8)`, then its facts | `0` RAW, nothing more, the kind's storage width in raw bits, two's complement for the signed kinds. `1` RANGED, then `bits`, then `base` (zigzag LEB128 for `2`–`9`, sixteen bytes little-endian for `18` and `19`): the value is `base` plus the offset those `bits` spell. A `bits(N)` field is RANGED with `base` `0` and `bits` N, and a `flags` mask is RANGED with `base` `0` and `bits` the mask's own declared width W. Neither spells a kind of its own, because both are a width and a base and that is what RANGED already is |
-  | `10` f32 | `packing (u8)`, then its facts | `0` RAW, thirty-two bits. `2` QUANTIZED, then `bits`, then `min` and `step`, four bytes each, IEEE-754: the value is `min + index * step` |
+  | `2`–`9`, `18`, `19` integers | `packing (u8)`, then its facts | `0` RAW, nothing more, the kind's storage width in raw bits, two's complement for the signed kinds. `1` RANGED, then `bits`, then `base`, encoded by the KIND'S SIGNEDNESS (below): zigzag LEB128 for the signed kinds `2`–`5`, unsigned LEB128 for the unsigned kinds `6`–`9`, both canonical on §3's rule, and sixteen bytes little-endian for `18` and `19`. The value is `base` plus the offset those `bits` spell. A `bits(N)` field is RANGED with `base` `0` and `bits` N, and a `flags` mask is RANGED with `base` `0` and `bits` the mask's own declared width W. Neither spells a kind of its own, because both are a width and a base and that is what RANGED already is |
+  | `10` f32 | `packing (u8)`, then its facts | `0` RAW, thirty-two bits. `2` QUANTIZED, then `min`, `max` and `res`, four bytes each, IEEE-754 float32, which are the three facts SPEC.md §4.3's compressed-float rule takes: the step count, the width and the value all derive from them by that rule and by nothing else (below) |
   | `11` f64 | nothing | sixty-four bits |
   | `20`–`29` fixed/ufixed | `packing (u8)`, then its facts | `0` RAW, the storage width. `1` RANGED, then `bits`, then `base` (sixteen bytes little-endian, the raw scaled `A << F`) |
   | `12` string, `33` wstring | `max` | the declared capacity, which sizes the length at `bits_required(0, max)`. Kind `12` aligns before its bytes and kind `33` does not, and kind `33` spends SIXTEEN bits a code unit rather than SPEC.md §4.12's 32-bit group |
@@ -4354,14 +4365,65 @@ and that is its integer.
 
 **A SHAPE IS ENOUGH TO SKIP AND ENOUGH TO DECODE, and those are two different
 claims.** Skipping needs the WIDTH, which every row above gives. Decoding under a
-declaration that has MOVED needs the RANGE, which is why `base`, `min` and `step`
-ride beside `bits`: a receiver whose `score` runs to 200000 meeting a sender
+declaration that has MOVED needs the RANGE, which is why `base` rides beside
+`bits` for the ranged integer kinds and `min`, `max` and `res` ride for the
+quantized float: a receiver whose `score` runs to 200000 meeting a sender
 whose `score` runs to 100000 reads the sender's seventeen bits, reconstructs the
 value from the sender's base, and applies its own bound, counting `clamped`
 exactly as §4 says. **That is what keeps every row of §4's evolution table
 standing under a bitpacked body**, and it costs a few bytes in an announcement
 paid once against a rule that would otherwise have made every range edit a
 dropped field.
+
+**A RANGED BASE IS ENCODED BY ITS KIND'S SIGNEDNESS, and the announcement's
+kind byte is what says which.** A signed kind's base is a zigzag LEB128 and an
+unsigned kind's base is an unsigned LEB128, each canonical on §3's rule, and the
+entry spends no byte saying which because the kind rides ahead of the base in
+the entry and the reader has already read it. Zigzag maps a signed integer `n`
+to `2n` for `n >= 0` and to `-2n - 1` for `n < 0`, so small magnitudes of
+either sign take few bytes. The reason is the unsigned domain's
+high half: a `uint64` ranged over `[2^63, 2^63 + 1]` has the base `2^63`, which
+an unsigned LEB128 spells in ten bytes and a zigzag cannot spell at all, since
+zigzag maps it to `2^64` and that is a sixty-fifth bit. A negative base exists
+only under a signed kind, and zigzag is what keeps it short there. The 128-bit
+kinds are untouched: their base is the sixteen-byte pattern, which spells either
+domain whole.
+
+**A COMPRESSED FLOAT QUANTIZES BY THE PACKET WIRE'S RULE, IN FLOAT32, AND BY
+NOTHING ELSE.** The announced shape is `min`, `max` and `res` as float32, which
+is what SPEC.md §4.3's rule takes, and a reader derives from them at
+`AnnounceRead` exactly what the packet wire derives from the declaration at
+compile time (`serialize_compressed_float_params`, the row's classic twin):
+`delta = max - min` in float32, `count = ceil(delta / res)` with `delta / res`
+taken in float32 and clamped to `[1, 4294967040]`, and the width
+`bits_required(0, count)`. A writer clamps `(value - min) / delta` to `[0, 1]`,
+multiplies by `count` and ROUNDS THAT PRODUCT TO FLOAT32, adds `0.5`, floors,
+and clamps the integer to `count`. A reader takes `index / count` in float32,
+multiplies by `delta` and ROUNDS THAT PRODUCT TO FLOAT32, then adds `min`. **An
+index above `count` on the wire is REJECTED, as the packet wire rejects it, and
+is never reconstructed and clamped.** The width can spell such an index
+whenever `count` is not one less than a power of two, ten bits spelling `1023`
+over a `count` of `1000`, and SPEC.md §4.3's read and `serialize.h`'s
+`serialize_compressed_float` refuse it. The message form refuses it the same
+way, at that field and terminally for the batch (DAMAGE, below), because the
+message form quantizes and reads floats by the packet wire's rule bit for bit
+and there is one rule for both wires. The ranged-offset paragraph below, which
+reconstructs and clamps, is a rule for the ranged integer kinds and does not
+reach the quantized float. Two roundings on each side, never one, and never a
+float64 anywhere: that is the
+rule the packet wire's `-ffp-contract=off` discipline exists to hold (SPEC.md
+§7.2), and the message form holds it for the same reason, so that a message
+index and a packet index over one declaration and one value are the SAME BITS
+and a float decoded from either is the same float. A triple whose `delta` or
+`delta / res` is not finite in float32, whose `min` is not below `max`, or
+whose `res` is not above zero is a declaration SPEC.md calls non-conforming,
+and on the announcement it is a hostile width like any other (SECURITY, below):
+the announcement is refused and no vocabulary is set. What the rule costs is
+stated once: file to message to file reproduces a compressed float only when
+the float already lies on the announced grid, because the file carries the raw
+float and the message carries its nearest grid point, and an off-grid value, a
+rounding tie and a value past the clamp each come back as the grid point the
+rule chose (the round-trip paragraph, below).
 
 **A RANGED OFFSET ABOVE THE SENDER'S OWN `max` RECONSTRUCTS AND CLAMPS, AND IS
 NOT DAMAGE.** A ranged value's `bits` can spell offsets past the sender's own
@@ -4373,7 +4435,10 @@ sender's `max` has a width and a base, so the value reconstructs as `base` plus
 the offset, the reader's own bound applies, and `clamped` counts if it fires.
 The position after the field is known either way, which is the whole test, and a
 reader that refused here would be refusing a body over a value rather than over
-a framing.
+a framing. This is the ranged integer kinds' rule and it does not reach the
+quantized float, whose index above `count` refuses as the packet wire refuses
+it (the quantization paragraph, above): the float's rule is the packet wire's
+rule bit for bit, and the packet wire rejects there.
 
 **THE ESCAPE KIND `31` IS THE ONLY PATH A LATER-MAJOR WRITER HAS ON THIS FORM**,
 because an announcement carrying a kind outside the closed set is malformed and
@@ -4501,12 +4566,17 @@ batch.** The fields decoded before it stand, ONE `malformed` counts, and nothing
 after it is read, which is the packet wire's own answer (SPEC.md §4.3) reached
 for the same reason.
 
-The four ways a batch is damaged, at bit granularity:
+The five ways a batch is damaged, at bit granularity:
 
 - **A REFERENCE ABOVE THE ENTRY COUNT `E`.** The width can spell values above
   `E` whenever `E` is not one less than a power of two, and every one of them is
   damage. So is a reference of `0` where an entry is REQUIRED, which is an
   enum-keyed array's slot key and a node record's type id (§3.1, §3.2).
+- **A QUANTIZED INDEX ABOVE `count`.** The width can spell it whenever `count`
+  is not one less than a power of two, and the packet wire rejects it (SPEC.md
+  §4.3), so this form rejects it too, since the quantized float has one rule on
+  both wires (above). A ranged integer's offset above the sender's `max` is
+  the opposite case and reconstructs and clamps (above).
 - **A REFERENCE NAMING AN ENTRY OF THE WRONG SORT**, which is a variant
   reference on an entry that is not kind `0` and an arm reference on one that
   is (above). The entry resolved and it contradicts the position it was used
@@ -4594,10 +4664,23 @@ One body is bytes and the other is bits, so there is no substitution that turns
 either into the other and no byte equality to claim between them. What is
 claimed is the VALUE, and what pins it is **loading either form and saving the
 other, which reproduces the other's pinned bytes**, for every vector below, in
-both directions, with ONE exception the mask paragraph above states: a file
-carrying a `flags` mask's bits above the writer's W, saved as a message, drops
-them by width, so file to message to file does not reproduce that file. Each
-vector's own byte length is a pinned golden.
+both directions. Each vector's own byte length is a pinned golden.
+
+**THE FORM CHANGES WHAT A VALUE IS ON THE WIRE IN THREE WAYS, and the round
+trip names each rather than two of them.** A `flags` mask rides at its declared
+W bits and not as the file's raw `uint64` (above). An enum variant and a union
+arm ride by NAME at a reference's width and not by the packet wire's ordinal or
+tag (above). And a compressed float rides as its QUANTIZED INDEX under SPEC.md
+§4.3's rule (the announcement, above), where the file carries the raw float
+and clamps it to its bounds. The first and the third are the two exceptions to
+the round trip, and each is stated: a file carrying a mask's bits above the
+writer's W, saved as a message, drops them by width, and a file carrying a
+compressed float OFF the announced grid, saved as a message, carries the
+nearest grid point, so file to message to file reproduces a mask only inside W
+and a float only when it already lies on the grid. The second is not an
+exception, because a name is the value on both forms and the file form already
+carries it. A value that is on the grid and inside W reproduces its file byte
+for byte, which is what every vector below is.
 
 **FORM `2` IS A STREAM FORM AND NEVER A FILE FORM.** `schema pack` writes form
 `1`, `schema unpack` reads form `1`, and a reader handed a form-`2` wire where a
@@ -4631,9 +4714,12 @@ the field, so unknown, absent, `kind_mismatch`, `widened`, `clamped`,
 §4's framing-damage row says a damaged level stops only itself and the parent
 reads on past its length, and a bitpacked body has no length to read on past,
 so damage is terminal for the batch (above). **§4's MASK ROUND-TRIP ROW moves
-too, and those two are the whole list**: a mask rides at its declared W bits
-here rather than as a raw `uint64`, so a bit a newer build appended survives a
-file round trip and not a message one (above).
+too, and those two are the whole list of §4's rows**: a mask rides at its
+declared W bits here rather than as a raw `uint64`, so a bit a newer build
+appended survives a file round trip and not a message one (above). The
+compressed float's quantization is not a §4 row, because §4 has none for it: it
+is the third of the three ways this form changes a value across the forms
+(above), and it is pinned by the round trip's own rows rather than by §4's.
 
 **WHERE THE FORM IS CARRIED TODAY, and this section is ahead of it.** The
 BITPACKED body is specified ahead of its implementation, on the terms §6.6
@@ -4723,7 +4809,10 @@ caller's storage and reports how many bodies it read, and neither allocates.
 - **THERE IS NO ANNOUNCEMENT STORM, because there is no second announcement.**
   One announcement a direction is the whole of the resolve work a connection can
   ask for, and a peer that sends a second is refused by name, the application
-  closing the connection or not as it chooses. That is
+  closing the connection or not as it chooses. A REFUSED first announcement is
+  that one (the scope, above): the refusal is terminal, every announcement after
+  it is `second_announcement`, and a peer cannot buy a second resolve by having
+  its first refused. That is
   the security half of ruling out re-announcement, and it is why the rule is a
   refusal rather than a rate limit.
 - **A REFERENCE STORM IS LINEAR AND ALLOCATES NOTHING.** A reference is
@@ -4773,35 +4862,41 @@ WIRE, and a wire is allowed to spend CPU to buy bandwidth. The two rules coexist
 because they price different things, and neither is an exception to the other.
 
 **WHERE THE ARITHMETIC BELOW SAYS THE RULE IS NOT MET, IT SAYS SO.** Two of the
-three messages sit within a byte or two of proto3 rather than under it, the
-batch of three is seventeen percent under, and the cause is named rather than
+three messages sit within three bytes of proto3 rather than under it, the
+batch of three is fourteen percent under, and the cause is named rather than
 averaged away.
 
 ---
 
 #### THE ARITHMETIC, worked from the wire model
 
-The three backend messages of schema#523, hand-sized from the model above. `E`
-is 28 for the `backenddemo` unit, so a reference is 5 bits. Each message is
-written as its own batch of one unless the row says otherwise.
+The three backend messages of schema#523, hand-sized from the model above, and
+the ENVELOPE that carries the three as one batch. `E` is 33 for the
+`backenddemo` unit, so a reference is 6 bits: 28 entries are the three
+messages' own and five are the envelope's, and those five are what take the
+reference from five bits to six, because `bits_required(0, 28)` is five and
+`bits_required(0, 33)` is six. That is the vocabulary being the UNIT's rather
+than the message's, paid by every message the unit carries, and it is stated
+here rather than hidden in the rows. Each message is written as its own batch
+of one unless the row says otherwise.
 
 **`LoginRequest`, every field non-default**, a 32-byte `session_token`:
 
 ```
   form byte                                    8      cumulative     8
   body count, 1 body                           8                    16
-  player_id      reference                     5                    21
-                 uint64, bare                  64                   85
-  session_token  reference                     5                    90
-                 length in bits_required(0,32) 6                    96
-                 align to the byte boundary    0                    96
-                 32 bytes                      256                 352
-  client_build   reference                     5                   357
-                 uint32, bare                  32                  389
-  region         reference                     5                   394
-                 variant name reference        5                   399
-  terminator     reference 0                   5                   404
-                                                     404 bits = 51 bytes
+  player_id      reference                     6                    22
+                 uint64, bare                  64                   86
+  session_token  reference                     6                    92
+                 length in bits_required(0,32) 6                    98
+                 align to the byte boundary    6                   104
+                 32 bytes                      256                 360
+  client_build   reference                     6                   366
+                 uint32, bare                  32                  398
+  region         reference                     6                   404
+                 variant name reference        6                   410
+  terminator     reference 0                   6                   416
+                                                     416 bits = 52 bytes
 ```
 
 **`MatchResult`, every field non-default**, ten `PlayerRow`s with placements 1
@@ -4809,42 +4904,99 @@ through 10, so the row at placement `1` elides it at its declared default:
 
 ```
   form byte and count                          16     cumulative    16
-  match_id       reference and uint64          69                   85
-  players        reference                     5                    90
-                 [10] is min == max, no count  0                    90
-                 9 rows at 105 bits each      945                 1035
-                   player_id  5 + 64  =  69
-                   score      5 + 17  =  22   (bits_required(0,100000))
-                   placement  5 +  4  =   9   (bits_required(1,10))
-                   terminator            =   5
-                 1 row eliding placement       96                 1131
-  terminator                                   5                 1136
-                                                    1136 bits = 142 bytes
+  match_id       reference and uint64          70                   86
+  players        reference                     6                    92
+                 [10] is min == max, no count  0                    92
+                 9 rows at 109 bits each      981                 1073
+                   player_id  6 + 64  =  70
+                   score      6 + 17  =  23   (bits_required(0,100000))
+                   placement  6 +  4  =  10   (bits_required(1,10))
+                   terminator            =   6
+                 1 row eliding placement       99                 1172
+  terminator                                   6                 1178
+                                                    1178 bits = 148 bytes
 ```
 
 **`StorePurchase`, every field non-default**, a 21-byte `sku`:
 
 ```
   form byte and count                          16     cumulative    16
-  player_id      reference and uint64          69                   85
-  sku            reference                     5                    90
-                 length in bits_required(0,32) 6                    96
-                 align                         0                    96
-                 21 bytes                     168                  264
-  quantity       reference                     5                   269
-                 bits_required(1,99)           7                   276
-  price_minor    reference and uint32          37                  313
-  currency       reference and variant name    10                  323
-  terminator                                   5                   328
-                                                     328 bits = 41 bytes
+  player_id      reference and uint64          70                   86
+  sku            reference                     6                    92
+                 length in bits_required(0,32) 6                    98
+                 align                         6                   104
+                 21 bytes                     168                  272
+  quantity       reference                     6                   278
+                 bits_required(1,99)           7                   285
+  price_minor    reference and uint32          38                  323
+  currency       reference and variant name    12                  335
+  terminator                                   6                   341
+                                                     341 bits = 43 bytes
 ```
 
-**THE THREE AS ONE BATCH**, which is the primitive rather than three of them:
-one form byte, one count of three, and the three bodies back to back with no
-alignment between them. `login` ends at bit 404 and `match` begins there, `match`
-ends at 1524 and `store` begins there, and `store`'s own `align` before its `sku`
-bytes now costs 4 bits where alone it cost 0. **1840 bits, 230 bytes**, against
-234 for the three sent alone.
+**THE THREE AS ONE BATCH, UNDER AN ENVELOPE**, which is the primitive rather
+than three of them. A batch is of ONE root (above), so three roots ride as
+three bodies of one root that holds a union of them, which is §2.6's own shape
+and the answer the batch rule gives a peer that mixes roots. A root is a table
+(§3), so the union rides as the one field of a table root:
+
+```
+union Payload
+{
+    login    LoginRequest
+    match    MatchResult
+    purchase StorePurchase
+}
+
+table Envelope
+{
+    payload Payload
+}
+```
+
+What the envelope costs on this wire is EIGHTEEN BITS A BODY, a reference for
+the field, a reference naming the arm, and the envelope's own terminator, and
+FIVE ENTRIES in the vocabulary: `payload` at kind `15`, the three arms at kind
+`13`, and `Envelope`'s name id in the tail. The batch is one form byte, one
+count of three, and the three envelopes back to back with no alignment between
+them, each message's body sitting inside its arm exactly as the rows above
+spell it from its first field to its terminator, with its `align` recomputed
+from where the batch puts it:
+
+```
+  form byte                                    8      cumulative     8
+  body count, 3 bodies                         8                    16
+  envelope 1
+  payload        reference                     6                    22
+                 arm reference, login          6                    28
+  login          player_id to terminator      396                  424
+                 (400 above, its align now 2 bits where alone it cost 6)
+  terminator     reference 0                   6                   430
+  envelope 2
+  payload        reference                     6                   436
+                 arm reference, match          6                   442
+  match          match_id to terminator      1162                 1604
+                 (1162 above, no align in it)
+  terminator     reference 0                   6                  1610
+  envelope 3
+  payload        reference                     6                  1616
+                 arm reference, purchase       6                  1622
+  purchase       player_id to terminator      319                 1941
+                 (325 above, its align now 0 bits where alone it cost 6)
+  terminator     reference 0                   6                  1947
+  zero pad to the byte boundary                5                  1952
+                                                    1952 bits = 244 bytes
+```
+
+**244 bytes, against 249 for the three envelopes sent alone**, 54, 150 and 45
+as three batches of one, which is 430, 1196 and 355 bits by the same rows, and
+against 243 for the three messages sent BARE as three batches of one. The
+batch saves the two form bytes and two counts it does not repeat and the align
+it moves, and the envelope costs 54 bits for the three, so a batch of three
+under an envelope is one byte over three bare messages and five under three
+enveloped ones. That is what an envelope is worth stating: the batch is not
+the sum of its bodies, and the union that makes a mixed batch possible is not
+free either.
 
 **THE FULL TABLE.** Bytes, every column hand-sized from its own wire model over
 the same six instances. The PACKET WIRE column is what a `type` of the same
@@ -4855,57 +5007,73 @@ encoding spec over the same values.
 
   | instance | packet wire | file form | byte body | **bitpacked body** | proto3 |
   |---|---:|---:|---:|---:|---:|
-  | `LoginRequest`, full | 46 | 106 | 58 | **51** | 49 |
-  | `MatchResult`, full | 115 | 273 | 225 | **142** | 189 |
-  | `StorePurchase`, full | 36 | 104 | 48 | **41** | 40 |
+  | `LoginRequest`, full | 46 | 106 | 58 | **52** | 49 |
+  | `MatchResult`, full | 115 | 273 | 225 | **148** | 189 |
+  | `StorePurchase`, full | 36 | 104 | 48 | **43** | 40 |
   | `LoginRequest`, defaults | 14 | 10 | 2 | **3** | 0 |
-  | `MatchResult`, defaults | 115 | 43 | 27 | **10** | 40 |
+  | `MatchResult`, defaults | 115 | 43 | 27 | **11** | 40 |
   | `StorePurchase`, defaults | 15 | 10 | 2 | **3** | 2 |
-  | the three full, one batch | 196 | 483 | 331 | **230** | 278 |
+  | the three full, one batch under `Envelope` | 196 | 550 | 350 | **244** | 285 |
+
+**THE BATCH ROW IS THREE ENVELOPES IN EVERY COLUMN**, so the columns compare
+one thing. On the PACKET WIRE an envelope is a `type` holding a union of three,
+whose tag is `bits_required(0, 3)`, two bits a message: 6 bits over the three
+bare messages' 1562, and `sku`'s align absorbs them, so the row stays at 196.
+In the FILE FORM an envelope adds, per message, a `payload` header of a
+reference and a kind byte, an arm header of a reference, a kind byte and an
+`L` (one byte under 128, two above), the envelope's terminator, and two
+id-table entries for `payload` and the arm: 106, 273 and 104 become 128, 296
+and 126. The BYTE BODY adds the same headers and terminator with no table: 58,
+225 and 48 become 64, 232 and 54. And proto3's envelope is a `oneof` of three
+messages, whose set arm is a one-byte tag and a length varint before the
+embedded message, one byte under 128 and two above: 49, 189 and 40 become 51,
+192 and 42, summed because proto3 has no batch to frame them.
 
 **WHAT THE TABLE SAYS, and it says three things.**
 
-- **AGAINST THE BYTE BODY, the form takes 12%, 37% and 15% off the three
-  messages and 63% off `MatchResult` at its defaults**, and the largest win is
+- **AGAINST THE BYTE BODY, the form takes 10%, 34% and 10% off the three
+  messages and 59% off `MatchResult` at its defaults**, and the largest win is
   where the structure is: ten rows of three small fields cost 225 bytes of kind
-  bytes and lengths and cost 142 bitpacked. `LoginRequest` and `StorePurchase`
+  bytes and lengths and cost 148 bitpacked. `LoginRequest` and `StorePurchase`
   at their defaults GROW by one byte, from 2 to 3, because a batch pays a count
   the byte body did not.
-- **AGAINST proto3, the batch is 17% under and `MatchResult` is 25% under, and
-  the two BLOB-SHAPED messages are OVER, `LoginRequest` by two bytes and
-  `StorePurchase` by one.** The cause is named rather than averaged away:
+- **AGAINST proto3, the batch is 14% under and `MatchResult` is 22% under, and
+  the two BLOB-SHAPED messages are OVER, `LoginRequest` and `StorePurchase` by
+  three bytes each.** The cause is named rather than averaged away:
   `player_id`, `client_build` and `price_minor` are declared BARE, so this wire
   writes 64, 32 and 32 raw bits where proto3 writes a varint whose value happens
   to be small, and a message that is one opaque payload plus a few scalars has
   nothing else to win with. The form's fixed cost, one form byte and one count a
-  batch, is what tips them. **Three things close it and none is built here.**
+  batch, is what tips them, and the envelope's five entries cost each of them a
+  bit a reference. **Three things close it and none is built here.**
   Declaring the range a field actually holds is the schema's own answer and
-  costs nothing new: `client_build uint32 | max = 65535` alone puts
-  `LoginRequest` LEVEL WITH proto3 at 49 bytes, sixteen bits down from
-  thirty-two, and `price_minor uint32 | max = 9999`, a price cap of 99.99 in
-  minor units, puts `StorePurchase` at 39 bytes and UNDER proto3's 40, fourteen
-  bits down from thirty-two. The BATCH closes the rest, because the form byte and
-  the count are paid once for however many bodies ride. And a variable-width
-  encoding for BARE integer kinds on this form is the third, a divergence from
-  the packet wire that wants a measurement before it wants a page (§15).
-- **AGAINST THE PACKET WIRE the residual is 5, 27 and 5 bytes**, and it is
+  costs nothing new: `client_build uint32 | max = 65535` alone takes
+  `LoginRequest` from 52 to 50 bytes, sixteen bits down from thirty-two, one
+  byte over proto3's 49, and `price_minor uint32 | max = 9999`, a price cap of
+  99.99 in minor units, takes `StorePurchase` from 43 to 41, fourteen bits down
+  from thirty-two, one byte over proto3's 40. The BATCH closes the rest, because
+  the form byte and the count are paid once for however many bodies ride and
+  the batch of three is already under. And a variable-width encoding for BARE
+  integer kinds on this form is the third, a divergence from the packet wire
+  that wants a measurement before it wants a page (§15).
+- **AGAINST THE PACKET WIRE the residual is 6, 33 and 7 bytes**, and it is
   exactly what the design statement says it is. On `MatchResult` it is ten rows
-  of three references and a terminator, 25 of the 27 bytes, which is the price of
+  of three references and a terminator, 30 of the 33 bytes, which is the price of
   naming a field inside an array of tables and is what the batch-level passes
   and the column door (#554, SPEC.md §4.11) are aimed at. On the DEFAULTS rows
-  the sign flips: `MatchResult` is 10 bytes against the packet wire's 115,
+  the sign flips: `MatchResult` is 11 bytes against the packet wire's 115,
   because elision beats a positional wire outright whenever a message is sparse.
 
-**THE ANNOUNCEMENT'S OWN COST.** The `backenddemo` vocabulary is 28 entries and
-273 bytes of entry records: 129 bytes for the twelve field names with their
-kinds and shapes, 72 for the eight variant names at kind `0`, and 72 for the
-tail's eight. The announcement file is **316 bytes**: one form byte, a body of
-291 bytes carrying the build version and the vocabulary array, and a trailer of
-two entries and its count. **An entry averages ten bytes rather than the eight a
-bare id would cost**, and those two bytes are what pay for there being no kind
-byte and no length on any body. Against proto3 the batch of three saves 48 bytes
-a round, so **the announcement pays for itself in the seventh round** and every
-round after it is profit. **The unit's whole vocabulary
+**THE ANNOUNCEMENT'S OWN COST.** The `backenddemo` vocabulary is 33 entries and
+318 bytes of entry records: 138 bytes for the thirteen field names with their
+kinds and shapes, 99 for the eight variant names at kind `0` and the three arm
+names at kind `13`, and 81 for the tail's nine. The announcement file is **361
+bytes**: one form byte, a body of 336 bytes carrying the build version and the
+vocabulary array, and a trailer of two entries and its count. **An entry
+averages ten bytes rather than the eight a bare id would cost**, and those two
+bytes are what pay for there being no kind byte and no length on any body.
+Against proto3 the batch of three saves 41 bytes a round, so **the announcement
+pays for itself in the ninth round** and every round after it is profit. **The unit's whole vocabulary
 is what is paid for**, not the part a connection uses, which is the cost of
 ruling out the re-announcement state machine and the drifting slot: a unit of 500
 entries announces about 5 KB once.
@@ -4922,12 +5090,51 @@ entries announces about 5 KB once.
   the file form and saving the message form must reproduce the message form's
   pinned bytes, and the reverse must reproduce the file form's. Red if one byte
   differs in either direction, which is the negative control on every rule here
-  that says the VALUE does not move.
-- **The batch.** One vector of three bodies of one root written as a batch and
-  as three batches of one, whose byte counts are both pinned, and a vector of 256
+  that says the VALUE does not move. The two exceptions the round-trip
+  paragraph states, a mask's bits above W and a compressed float off the grid,
+  each have a row of their own below and never ride this one.
+- **The batch.** One vector of three `Envelope` bodies, each arm a different
+  message, written as a batch and as three batches of one, whose byte counts
+  are both pinned, and a vector of 256
   bodies. Red if a leg aligns between bodies, writes a terminator the batch does
   not carry, sizes a batch as the sum of its bodies alone, or accepts a count of
   zero.
+- **The base's two encodings.** Four announcements, each pinned as bytes with
+  the values a body under it recovers. `uint64 | min = 9223372036854775808,
+  max = 9223372036854775809`, whose shape is packing `01`, bits `01` and the
+  base `80 80 80 80 80 80 80 80 80 01`, recovering `2^63` at offset `0` and
+  `2^63 + 1` at offset `1`. `uint64 | min = 18446744073709551614, max =
+  18446744073709551615`, whose base is `FE FF FF FF FF FF FF FF FF 01`,
+  recovering the two largest values the kind holds. `int32 | min = -5, max =
+  10`, whose bits are `04` and whose base is the zigzag `09`, recovering `-5`
+  at offset `0` and `10` at offset `15`. And `uint8 | min = 7, max = 7`, whose
+  bits are `00` and whose base is `07`, the value being the base with nothing
+  on the wire. Red if a leg zigzags an unsigned base, reads an unsigned base as
+  signed, spends a byte saying which encoding it used, or recovers any value
+  but the four.
+- **The quantized index across the forms.** A `float32 | min = 0, max = 10,
+  resolution = 0.01` carrying `0.005`, the rounding tie, `0.123`, an off-grid
+  value, and `11.0`, a value past the clamp, whose indices are `1`, `12` and
+  `1000`: each encoded by the file codec into a message and by the packet
+  wire's `serialize_compressed_float` over the same declaration, the two
+  indices identical bit for bit, and each message read back into a file whose
+  float is the grid point and not the original. Beside it the decode of index
+  `6666` under `min = -100, max = 100, resolution = 0.01`, which is
+  `0xC2055C2A` and no neighbor of it. And a batch carrying the index `1023`
+  under the first declaration, whose `count` is `1000` and whose ten bits spell
+  it: the read refuses as malformed at that field, exactly as
+  `serialize_compressed_float` refuses it, and nothing after it is read. Red if
+  a leg computes in float64, rounds once where the rule rounds twice, differs
+  from the packet wire's index or float by one, clamps the index above the
+  count to `count` or to any float instead of refusing, or reproduces `0.005`,
+  `0.123` or `11.0` out of the file it
+  wrote.
+- **A refused first announcement.** A connection whose first announcement is
+  refused as `vocabulary_too_large`, then a well-formed announcement, then a
+  body: the second announcement refuses as `second_announcement` and sets
+  nothing, and the body refuses as `no_vocabulary` with nothing decoded and no
+  counter moved. Red if a leg accepts the second announcement, sets a
+  vocabulary from it, or decodes the body.
 - **A reference at and above the entry count.** The fuzzer's reference pass
   (§4.2) with the vocabulary announced: every reference set to `E`, which is the
   last legal slot and must RESOLVE, and to `E + 1` and to the largest the width
@@ -4985,7 +5192,9 @@ entries announces about 5 KB once.
   the field, reads the wrong value, or fails to count `clamped` where the value
   falls outside its own bound.
 - **A hostile shape.** An announcement carrying `bits` above 128, an array whose
-  `min` exceeds its `max`, an element kind outside the closed set, and a shape
+  `min` exceeds its `max`, an element kind outside the closed set, a quantized
+  `f32` triple whose `min` is not below its `max` and one whose `delta / res`
+  is not finite in float32, and a shape
   running past the vocabulary field's `L`. Each a refusal by name, and red if a
   leg allocates or reads a body after one.
 - **Per-direction independence.** A vector pair written by two peers whose units
@@ -5071,11 +5280,25 @@ table StorePurchase
     price_minor uint32 = 0
     currency    Currency
 }
+
+union Payload
+{
+    login    LoginRequest
+    match    MatchResult
+    purchase StorePurchase
+}
+
+table Envelope
+{
+    payload Payload
+}
 ```
 
 - **The unit is `backenddemo`, at `tables/backend`**, and the connection is
   `backend_conn`, whose announcement is `testdata/wire/tables/backend_conn.bin`,
-  **28 entries and 316 bytes**.
+  **33 entries and 361 bytes**. The three messages are the measurement's,
+  field for field, and `Payload` and `Envelope` are the unit's own addition
+  beyond it, the one root the batch vector rides under.
 - **Six FILE-form vectors**, `login_full`, `login_default`, `match_full`,
   `match_default`, `store_full` and `store_default`, are ordinary `instance`
   lines and ride every surface an instance rides, the text form included.
@@ -5083,8 +5306,9 @@ table StorePurchase
   alone, each a batch of one. Their text is the file-form vector's, byte for
   byte, because the value is the same.
 - **One BATCH vector**, `backend_round`, carrying `login_full`, `match_full` and
-  `store_full` in that order as one batch, whose 230 bytes are the pin that a
-  batch is not the sum of its bodies.
+  `store_full` in that order as the arms of three `Envelope` bodies in one
+  batch, whose 244 bytes are the pin that a batch is not the sum of its bodies,
+  beside the three envelopes as three batches of one at 54, 150 and 45.
 - **Four more vectors carry the rules a value alone cannot reach**: a wide
   vocabulary, a pointered root over the `graphdemo` unit, a two-peer pair for
   per-direction independence, and a connection carrying a second announcement.
@@ -6374,7 +6598,7 @@ number and never has to reason about the list.
 | the unknown | retained | why not |
 |---|---|---|
 | a FIELD id this reader cannot name, of any kind but those below | **yes** | a self-framed unit, and no id this reader writes can collide with it |
-| a field of kind `17`, or an ARRAY whose element kind is `17` (§3.1) | no | the payload is a NODE INDEX into the writer's numbering, and this reader neither keeps that numbering nor retains the record it names, so a re-emitted index would point at another node or at nothing |
+| a field whose payload carries a NODE INDEX anywhere in it: kind `17` itself, an ARRAY whose element kind is `17` (§3.1), and a table, union, array or map whose recursively walked payload meets a `17` at ANY depth | no | the payload is a NODE INDEX into the writer's numbering, and this reader neither keeps that numbering nor retains the record it names, so a re-emitted index would point at another node or at nothing. A `17` met INSIDE an unknown table's or union's payload rejects the WHOLE record, because a record is atomic and a field holding a node index is not self-contained: a save can omit or renumber the node it names. The unrelated unknown siblings inside that outer field are lost with it, and that is the trade, stated: one `retain_lost` for the record and never a partial one |
 | the RESERVED node-table field, id `0xFFFFFFFFFFFFFFFF` under kind `12` (§3.1) | no | it is the writer's whole numbering. A build with no kind `17` counts it one `unknown`, and re-emitting it would put a second numbering in a file whose own numbering the writer re-derives |
 | an unknown ENUM variant reference (§3) | no | the FIELD is the reader's, and the reader writes its own value under that id, so a retained copy would be a second occurrence of an id the reader already wrote |
 | an unknown UNION arm id (§3) | no | the same, one level in: the union field is the reader's |
@@ -6388,6 +6612,30 @@ in a body under an id the reader also wrote. A body carrying one id twice is
 legal input whose last occurrence wins (§3), which is exactly the shape a
 retained field must never take, and the definition of the class is what rules
 it out.
+
+**A RETAINED RECORD BELONGS TO THE BODY OCCURRENCE THAT CARRIED IT, AND DIES
+WITH IT.** Legal input can carry a known child body twice, `child { future = 7
+}` and then `child { known = 2 }`, and the later occurrence resets the child
+and wins whole (§3, §4). The records retained under the earlier occurrence go
+with the values it held: **when a known ancestor body is reset or replaced by
+a later legal occurrence on the same wire, every record retained under the
+earlier occurrence is discarded before the later one is read, and only the
+winning occurrence's records survive to the save.** The occurrences are four,
+and each is a body the wire lets a writer put down again: a repeated TABLE
+field, by value or under `?`, a UNION whose arm is written again, the same arm
+or another, a MAP's duplicate key (§2.8), and a KEYED-ARRAY slot written again
+(§3.2). The path is the reader's own address for the body (below), so both
+occurrences of `child` name one path, and a record that outlived its occurrence
+would be appended into the winner's body at save as if the winner had carried
+it. It did not, and a save that resurrected `future = 7` beside `known = 2`
+would be writing a field no occurrence of that body ever held whole. **The
+discard moves neither `retain_lost` nor `retained`.** The writer's own later
+occurrence superseded the data, so nothing was lost that the load could have
+kept, and `retained` counted the record when its bytes were kept and does not
+fall when they are let go: both counters stay monotonic, and a reset is the
+writer's act and not a loss (THE REPORT, below). The caller's own edits
+between load and save are a different hazard and are stated on their own
+(WHAT INVALIDATES A PATH, below).
 
 **RETENTION FORM: the field with every reference resolved.** A reference names
 a slot of the FILE's id table (§3), so a verbatim copy re-emitted into a file
@@ -6423,8 +6671,16 @@ whatever the elements are (§3.2), so its keys resolve even when the elements
 carry no reference of their own. Every other payload is copied verbatim, which
 is every scalar, every fixed-point and 128-bit kind, and kinds `12`, `31` and
 `33`.
-Kinds `17` and `32` never reach this walk: `17` is excluded above, and `32`
-has no payload.
+**Kind `17` is what the walk is LOOKING FOR as much as a reference is**: the
+outer-kind exclusion above catches a `17` field and an array of `17` before
+the walk begins, and the walk catches every other one, a `17` field or an
+array of `17` inside a kind `13` body, under a kind `15` arm, in a kind `14`
+or `16` element of either, or in a map's entry bodies, at any depth. Meeting
+one anywhere in the payload DROPS THE WHOLE RECORD, counts one `retain_lost`,
+and keeps the record atomic, on the excluded-class row above. A retained
+record therefore never carries a node index, and that is established by the
+walk and not by the outer kind alone. Kind `32` has no payload and there is
+nothing to walk.
 
 **THE WALK IS AN INTERPRETATION, AND ITS VERDICT IS STATED.** Resolving
 references means reading the field's inner structure, which the plain read did
@@ -6516,13 +6772,16 @@ Two consequences follow, and each is a rule:
 - **`retain_lost`** counts every unknown this load or save could not keep: a
   record the remaining capacity had no room for, an unknown of one of the
   excluded classes above, a record the resolving walk found damaged, and, at
-  save, a retained record whose path no longer names a body.
+  save, a retained record whose path no longer names a body. A record discarded
+  because a known ancestor was reset or replaced by a later legal occurrence
+  (record lifetime, above) is none of these and moves neither counter: the
+  writer superseded it, and the load could not have kept it.
 
-Both are zero in every read that did not opt in, and they ride the same report
-struct for the reason `duplicate` does, which is that a caller has one report
-type and not two (§4). Retention moves no existing counter: a retained field
-still counts `unknown`, because `unknown` says what a READER could not name and
-that stays true.
+Both are monotonic, both are zero in every read that did not opt in, and they
+ride the same report struct for the reason `duplicate` does, which is that a
+caller has one report type and not two (§4). Retention moves no existing
+counter: a retained field still counts `unknown`, because `unknown` says what a
+READER could not name and that stays true.
 
 **`retain_lost` IS NOT THE WHOLE OF THE SAFETY CHECK, and the other three
 counters are still in it.** Retention covers the `unknown` class and nothing
@@ -6533,7 +6792,10 @@ rewrite exactly as it did before. **A rewrite is safe when the last load's
 report was silent, OR when retention was on and `retain_lost`,
 `kind_mismatch`, `clamped` and `malformed` are all zero after the save.** The
 second is the first with `unknown` struck out, and that is precisely what
-retention buys.
+retention buys. A record discarded under a reset ancestor is not in the check
+and does not need to be: the reset is the writer's act and not a loss, the
+winning occurrence holds what the writer meant the body to hold, and the save
+that carries it is as safe as the four counters say.
 
 **REFUSAL IS PER RECORD AND NEVER PARTIAL.** A record the remaining capacity
 cannot hold whole is not written at all: `retain_lost` counts one, the read
@@ -6616,6 +6878,16 @@ red for one reason:
 - each excluded class, pinning `retain_lost` at one and `retained` unmoved,
   with the kind `17`, element-kind `17` and reserved-node-table rows each
   their own case. Red if any of them is retained.
+- an unknown outer table holding a nested pointer three bodies down, beside
+  an unknown scalar in that same outer field: `retained` unmoved,
+  `retain_lost` one, and the save carrying nothing of the outer field. Red if
+  a leg re-emits the node index, keeps the scalar sibling as a record of its
+  own, or counts more than one.
+- a body carrying `child { future = 7 }` and then `child { known = 2 }`, the
+  second occurrence resetting the first: the save carries `known = 2` and no
+  `future`, `retain_lost` is `0`, and `retained` is unchanged by the discard.
+  Red if a leg resurrects `7` into the winning occurrence, writes it beside
+  it, or counts the discard as lost.
 - a pointered save whose retained tail sits before the node-table field in the
   root body. Red on any other order.
 
