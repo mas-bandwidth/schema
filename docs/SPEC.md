@@ -580,14 +580,17 @@ TableDecl   = "table" ident ( Block
             | AttrSection NL Block ) NL .               // the TABLE wire, SPEC-TABLES.md —
                                                         // a type body, plus pointers and `was`.
                                                         // A table declaration's qualification
-                                                        // carries TAGS and nothing else (§4.2)
+                                                        // carries TAGS and `was` (§4.2)
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If .
 Field       = ident Type [ "=" Default ] [ AttrSection ] NL .   // the default DEFINES, so it
                                                                  // precedes the qualification
-Default     = ConstExpr | ident .                    // specified default (see below):
-                                                     // ident = true | false | an enum variant
+Default     = ConstExpr | ident | string
+            | "{" [ ident { "," ident } ] "}" .      // specified default (see below):
+                                                     // ident = true | false | an enum variant,
+                                                     // a string for string(N) and bytes(N),
+                                                     // a brace list of variant names for flags
 ConstField  = "const" "(" IntExpr "," IntExpr ")" NL .          // (value, bits)
 Reserved    = "reserved" "(" IntExpr ")" NL .
 Align       = "align" NL .
@@ -683,8 +686,19 @@ FloatExpr   = float expression over float literals, int literals and const names
   qualification: `active bool = true`. Defaults cover bool
   (`true`/`false`), integer and float fields (constant expressions,
   fit-checked like any use site), enum fields (a variant name), the 128-bit
-  integers, and `fixed` (§4.6); arrays, strings, bytes, composite and union
-  fields zero-initialize with no override. **The default is STORAGE initialization —
+  integers, `fixed` (§4.6), `string(N)` and `bytes(N)` fields (a quoted
+  string, at most N bytes, valid UTF-8 for a string: `name string(32) =
+  "untitled"`, `tag bytes(4) = "ab"`, the literal's bytes with no escapes,
+  as every quoted string in the language is), and `flags` fields (a brace
+  list of the declaration's variant names, each at most once, whose bits are
+  the fresh mask: `caps Caps = { Jump, Crouch }`, and `{}` the zero mask).
+  Arrays, `wstring(N)`, composite and union fields zero-initialize with no
+  override. On the TABLE wire a field at its declared default elides and an
+  absent field reads as it, whatever the kind (SPEC-TABLES.md §4), so the
+  string, bytes and flags defaults are part of that wire's contract exactly
+  as a scalar's is. The C++ reference carries the three, and every other
+  backend refuses a unit that declares one, naming the follow-on.
+  **The default is STORAGE initialization —
   what a freshly constructed object holds. It does not touch the wire**: per
   §5's read rule, fields in untaken branches read as ZERO values, not as
   defaults — the wire contract stays a pure function of the schema's
@@ -880,9 +894,10 @@ sequence    uint16
   IS the compressed float); `fixed`/`ufixed`/`int128` take `min`/`max`
   (required — §4.3); enum and flags declarations take `max`; type
   declarations take the `cpp_native`/`cpp_include` pair (below); a field of a
-  **table** body takes `was` (below) and `json` (SPEC-TABLES.md §16.4); and a
-  **table** declaration, a **union** declaration, a **constant**, an enum or
-  flags **variant** and a union **arm** take no valued key at all. **The
+  **table** body takes `was` (below) and `json` (SPEC-TABLES.md §16.4), a
+  **table** declaration takes `was` (below), and a **union** declaration, a
+  **constant**, an enum or flags **variant** and a union **arm** take no
+  valued key at all. **The
   VALUELESS half is open at every one of them** — that is the tag, below.
 - **A bare identifier that spells a known valued key is refused by name**,
   never taken as a tag: `| min` draws "min takes a value: write min = 0". The
@@ -906,7 +921,14 @@ sequence    uint16
   is refused by name: the packet wire is positional, so a rename orphans no
   stored value and there is no identity for `was` to carry. It is not a free
   edit — field NAMES ride in the projection (§3.1), so renaming a `type`
-  field moves the protocol id and both sides redeploy together.
+  field moves the protocol id and both sides redeploy together. **A `table`
+  declaration takes the same attribute**, `table Ship | was = "Vessel"`: a
+  table's name is its node type id on the table wire (SPEC-TABLES.md §3.1),
+  and the alias keeps that id through the rename, so every stored record of
+  the old name still reads as this table. A `type` declaration refuses it by
+  name, because a type rides by value and has no node type id. The alias
+  moves neither the protocol id nor the build version (SPEC-TABLES.md §5,
+  §20.4).
 
 ### Tags — the vocabulary is the user's; meaning is claimed later
 
@@ -998,7 +1020,7 @@ SPEC-TABLES.md §3.3 and §6.6 take. What the tree carries is a tag on a
 inert comment above. Every other line kind refuses one, each under a
 diagnostic written for a different rule: a field's pipe draws "unknown
 attribute ... the vocabulary is typed and closed per compiler version", a
-`table` and a `union` declaration draw "takes no qualification", a `const`
+`union` declaration draws "takes no qualification", a `const`
 draws "a constant takes no qualification, and | is never an operator", a
 union arm's pipe draws "expected a field type", and an enum or flags variant
 carrying one does not parse at all. Owed as schema#523 ruling 4, together

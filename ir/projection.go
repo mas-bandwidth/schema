@@ -265,6 +265,8 @@ func projectField(b *strings.Builder, f *Field, ind string) {
 		switch {
 		case f.DefVariant != "":
 			fmt.Fprintf(b, " default=variant:%s", f.DefVariant)
+		case f.Type.Kind == TString || f.Type.Kind == TBytes:
+			fmt.Fprintf(b, " default=bytes:%x", f.DefBytes)
 		case f.DefInt != nil:
 			fmt.Fprintf(b, " default=%s", f.DefInt.String())
 		case f.Type.Kind == TBool:

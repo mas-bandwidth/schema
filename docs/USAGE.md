@@ -675,6 +675,22 @@ Everything zero-initializes unless a default says otherwise. Defaults are
 for values whose *rest state is not zero* — a quaternion's `w`, a health
 that starts full.
 
+A string, a byte block and a flags mask take one too: a quoted string of at
+most N bytes for `string(N)` and `bytes(N)`, and a brace list of variant
+names for `flags`:
+
+```
+name string(32) = "untitled"
+tag  bytes(4) = "ab"
+caps Caps = { Jump, Crouch }
+```
+
+On the table wire a field holding its declared default is not written and
+an absent field reads as it, so with the lines above an EMPTY name rides,
+because absence would read back as "untitled". The C++ backend carries the
+three, and every other backend refuses a unit that declares one, naming the
+follow-on.
+
 A fixed default must be **exactly representable** in its format; the
 compiler refuses one that would silently round.
 
@@ -3003,6 +3019,22 @@ refuses exactly that and names the spelling that is right. And `was` keeps
 the WIRE id, not the TEXT key — the JSON key is the field's own name (see the
 text form) — so pair `json = "velocity"` when an existing text file has to
 keep reading.
+
+A table takes the same attribute. A table's name is the type id every node
+record of it carries, so renaming a pointer target bare leaves every stored
+record unreadable:
+
+```
+table Ship | was = "Vessel"
+{
+    ...
+}
+```
+
+Old fleets whose records say `Vessel` load as `Ship`, new fleets keep
+writing the old id, and neither the protocol id nor the build version
+moves. `was` on a `type` declaration is refused: a type rides by value and
+has no node type id to keep.
 
 ### The tables baseline: catching the edits the wire cannot report
 

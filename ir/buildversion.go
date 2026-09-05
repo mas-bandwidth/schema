@@ -289,7 +289,9 @@ func cookFacts(u *Unit, fl FieldLayout, enums map[string]*Enum, flags map[string
 	if f.Type.Kind == TNamed {
 		switch ref := f.Type.Ref.(type) {
 		case *Struct:
-			fmt.Fprintf(&b, " type=%s", ref.Name)
+			// the WIRE name (§5): a table renamed under `was` keeps the name
+			// every cooked node directory carries, so the rename moves nothing
+			fmt.Fprintf(&b, " type=%s", ref.WireName())
 		case *Enum:
 			fmt.Fprintf(&b, " enum=%s", ref.Name)
 			enums[ref.Name] = ref
@@ -383,6 +385,8 @@ func cookValue(f *Field) string {
 	switch {
 	case f.DefVariant != "":
 		return f.DefVariant
+	case f.Type.Kind == TString || f.Type.Kind == TBytes:
+		return fmt.Sprintf("bytes:%x", f.DefBytes)
 	case f.Type.Kind == TBool:
 		if f.DefBool {
 			return "true"

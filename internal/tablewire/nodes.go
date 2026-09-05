@@ -44,7 +44,7 @@ func (n Node) TypeId() uint64 {
 		}
 		return ir.BytesWireTypeId
 	}
-	return ir.TableWireId(n.Inst.Def.Name)
+	return ir.TableWireId(n.Inst.Def.WireName())
 }
 
 // Name spells the node for a diagnostic.
