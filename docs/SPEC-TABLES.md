@@ -1337,6 +1337,11 @@ already spends what it would buy**, and each is refused by name (§11):
   `[E]*T` and `[E]Body` do (§15);
 - **an `if` guard** — a guard is a body construct, and a union body has no
   fields to guard;
+- **an ARRAY OF TABLES, `[..N]T` or `[N]T` over a `table` T** — a union arm
+  is one table, not an array of tables: every walk descends a table arm as
+  ONE body (§3.1), so the shape is refused by name; declare a table holding
+  the array and make that table the arm. Whether to admit the shape is
+  schema#579;
 - **a MAP (§2.8) and an UNBOUNDED ARRAY, `[]T` or `[]*T` (§2.9)**, as a
   SURFACE RULE. Both are a reference and a count in the record, with the
   entries or elements laid in the HOLDER'S NODE EXTENT by a placement walk
@@ -10971,6 +10976,13 @@ inspects everything in the schema built:
   body elides slots by name (§3.2), so its empty end wants stating in arm
   position exactly as `[E]*T` and `[E]Body` want it in field position, and
   the three land together or not at all.
+- **AN ARRAY OF TABLES AS AN ARM — `[..N]T` or `[N]T` over a `table` T
+  inside a union** (§2.6). Refused: every walk descends a table arm as ONE
+  body (§3.1), the node extent asks that body for its own, and the tool's
+  edge walk has no element to step. The shape a schema writes today is a
+  table holding the array, made the arm. What admitting it would take is an
+  element step in each of the five walks and a framing that says where one
+  element's body ends, and that is schema#579.
 - **GENERAL ARMS ON THE PACKET WIRE** (SPEC §4.8, §2.6): the encoding is
   stated where the packet union is, and what waits is the nine backends'
   packet codecs. Until they land, a union whose arms do not all name
