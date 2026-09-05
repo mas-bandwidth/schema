@@ -150,9 +150,12 @@ func refuseVoidArms(u *ir.Unit, target string) error {
 }
 
 // refuseUnported bundles the refusals a port gives a unit that declares a
-// table-closure construct it does not carry: a union with table arms, an
-// array of unions, a byte buffer, a payload-free arm.
+// construct it does not carry: a union with table arms, an array of unions, a
+// byte buffer, a payload-free arm, and a string, bytes or flags default.
 func refuseUnported(u *ir.Unit, target string) error {
+	if err := refuseValueDefaults(u, target); err != nil {
+		return err
+	}
 	if err := refuseTableArms(u, target); err != nil {
 		return err
 	}

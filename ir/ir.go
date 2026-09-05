@@ -6,6 +6,7 @@ package ir
 
 import (
 	"math/big"
+	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
 )
@@ -201,7 +202,12 @@ type Struct struct {
 	// spelled in a schema: the name is CLAIMED on the declaring table, so a
 	// unit that declares one beside the map is refused.
 	MapEntryOf string
-	Tags       []string // inert in v1 (SPEC §4.2)
+	// WasName is a TABLE's `was = "OldName"` rename alias (docs/SPEC-TABLES.md
+	// §5): the table's node type id derives from this name instead of Name,
+	// so every stored record of the old name still reads as this table.
+	// Tables only; "" when unset. See [Struct.WireName].
+	WasName string
+	Tags    []string // inert in v1 (SPEC §4.2)
 	// C++ native type mapping (SPEC §4.2, Native type mapping): when set,
 	// generated C++ declares fields of this type as ::CppNative (a hand type
 	// deriving from the generated basis struct — same layout, plus behavior)
@@ -213,6 +219,17 @@ type Struct struct {
 	CppInclude string
 	Fields     []*Field // flattened; branch fields carry Guard — storage emission
 	Items      []Item   // the wire tree: fields and branches in wire order — function emission
+}
+
+// WireName is the name a table's NODE TYPE ID is the hash of
+// (docs/SPEC-TABLES.md §3.1, §5): the `was` alias after a rename, so identity
+// survives it, and the declared name otherwise. Every id derivation over a
+// table reads this and never Name.
+func (st *Struct) WireName() string {
+	if st.WasName != "" {
+		return st.WasName
+	}
+	return st.Name
 }
 
 // Item is one wire-ordered element of a struct body: a field, an if branch
@@ -329,9 +346,10 @@ type Field struct {
 	// specified default overrides it)
 	HasDefault bool
 	DefBool    bool
-	DefInt     *big.Int
+	DefInt     *big.Int // integers, bits, a fixed field's RAW value, and a FLAGS field's mask
 	DefFloat   float64
 	DefVariant string // enum-typed field: the defaulted variant name
+	DefBytes   []byte // string(N) / bytes(N): the fresh value's bytes, at most N of them (SPEC §4.2)
 	DefExpr    Expr   // for symbolic rendering
 
 	// resolved wire refinements
@@ -487,4 +505,42 @@ func StorageBitsFor(max int64) int {
 	default:
 		return 64
 	}
+}
+
+// ValueDefaultFields names every field of the unit that carries a string,
+// bytes or flags default (SPEC §4.2), as `Decl.field`, sorted: the packet
+// types, the tables, and the generated map entries alike. It is what a target
+// without the form refuses by name.
+func ValueDefaultFields(u *Unit) []string {
+	var out []string
+	note := func(owner string, fields []*Field) {
+		for _, f := range fields {
+			if !f.HasDefault {
+				continue
+			}
+			_, flags := f.Type.Ref.(*Flags)
+			if f.Type.Kind == TString || f.Type.Kind == TBytes || flags {
+				out = append(out, owner+"."+f.Name)
+			}
+		}
+	}
+	for name, st := range u.Structs {
+		note(name, st.Fields)
+	}
+	for name, st := range u.Tables {
+		note(name, st.Fields)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// PointeeWireName is the name a field's REFERENT rides under on the table
+// wire: a table's [Struct.WireName], which is its `was` alias after a rename,
+// and the declared type name for every field whose referent is not a
+// declared struct, a byte buffer's reserved word included.
+func PointeeWireName(f *Field) string {
+	if st, ok := f.Type.Ref.(*Struct); ok && st != nil {
+		return st.WireName()
+	}
+	return f.Type.Name
 }

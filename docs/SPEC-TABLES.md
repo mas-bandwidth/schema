@@ -5113,7 +5113,10 @@ tolerance is the versioning model:
 
 - **Unknown field** (newer writer): skipped by its length, counted.
 - **Absent field** (older writer): the reader's value takes the field's
-  default — the specified default, else zero. That fallback is always
+  default — the specified default, else zero. A `string(N)`, `bytes(N)`
+  or `flags` field's declared default is that default (SPEC §4.2): the writer elides such a field holding it exactly as it elides a
+  scalar holding its own, so an empty string rides when the default is not
+  empty. That fallback is always
   inside the field's declared range: a range excluding zero requires a
   declared default in range (SPEC §4.6), so an absent field never lands
   out of bounds and never clamps.
@@ -5539,6 +5542,8 @@ only.
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
 | a DECLARATION renamed — a `type`, or a table held BY VALUE | silent: a name held by value is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
 | a TABLE renamed where it is a POINTER TARGET | **not silent**: a table's own name is its node's type id on the wire (§5), so every node of the old name is unnameable — skipped by its length and counted `unknown`, with every pointer to it reading null (§3.1) | as the row above | **moves** |
+| a TABLE renamed under `was` (§5) | silent, and nothing is lost: the type id is the old name's hash | passes, and the file records the declared name beside the wire name | no: the record line and every referent carry the wire name |
+| a TABLE renamed a SECOND time, the new `was` naming the INTERMEDIATE spelling | `unknown` for every stored record of the table, and every pointer to it reads null | **refuses**: `was` names the first wire name, forever (§5) | **moves** |
 | a `type`'s FIELD renamed, where `was` is refused (SPEC.md §4.2) | `unknown` on the table wire, whose field id is the name's hash | passes in silence | **moves**, and through the protocol id as well (SPEC.md §3.1) |
 
 ### 4.2 The read is the verifier: the wire fuzzer
@@ -5788,6 +5793,33 @@ at compile time:
   are a compile error naming both fields. This is the failure hand-rolled
   tag systems cannot see; the compiler sees every id in the closure and
   refuses once, forever.
+
+**A TABLE's own name is identity too, and takes the same attribute.** A
+node record says what it is by its type id, `fnv1a64( name )` (§3.1), so a
+bare rename of a pointer target leaves every stored record of the old name
+one the reader cannot name. The declaration carries the rename:
+
+```
+table Ship | was = "Vessel"
+{
+    ...
+}
+```
+
+The table's type id is the hash of the OLD name, so a fleet written under
+`Vessel` reads under `Ship` in silence, and a fleet written under `Ship`
+carries the old id for a `Vessel` reader. Every id derivation reads the
+alias: the node record, the cooked node directory, the connection's
+announced vocabulary (§3.3), the baseline and the build version, so a `was`
+rename of a table moves nothing anywhere (§20.4), the protocol id
+included. The refusals are the field's: `was` naming the table's own name,
+`was = ""`, an alias colliding with a live table's id or taking a held-back
+id, and `was` on a `type` declaration, which rides by value and has no
+node type id to keep (§11). A table held by value may carry one, and it is
+harmless there. `was` names the FIRST wire name, forever, for a table as
+for a field: the baseline records a renamed table's declared name beside
+its wire name and refuses a second rename aimed at the intermediate
+spelling (§18.2).
 
 **Variants carry the same identity, and the same refusals.** An enum's
 values and a union's arms ride under their own name hashes (§3), so:
@@ -8949,9 +8981,16 @@ in build version (§20.5).
   and a wire body past it is refused at LOAD rather than at compile time
   (§3.1). It sits far below where an int64 size stops being exact.
 - Recursive nesting (§2 — the cycle is named).
-- A bare rename hazard: `was` naming the field's own name (§5).
-- Id collisions, hash or `was`-induced (§5).
-- `was` outside a table body (§5).
+- A bare rename hazard: `was` naming the field's own name, or the table's
+  own name (§5).
+- Id collisions, hash or `was`-induced, a table's alias colliding with a
+  live table's type id included (§5).
+- `was` outside a table body, and `was` on a `type` declaration (§5).
+- A string, bytes or flags default that is not the field's own literal: a
+  string past the capacity, a string that is not UTF-8, a brace list on a
+  field that is not `flags`, a name in it that is not a variant of the
+  field's declaration or that repeats, and a quoted string on any field but
+  `string(N)` and `bytes(N)` (SPEC §4.2).
 - **Variant id collisions** — two variants of one enum, or two arms of one
   union, whose name hashes collide, with both named (§5). An enum reaching
   the closure only as an ARRAY KEY is in scope, and the diagnostic names
@@ -11745,7 +11784,9 @@ capacity), string and bytes capacity, the declared
 RANGE (`min=` and `max=`), presence of an optional, a fixed field's `F`
 (`frac=`, the one wire-invisible fact a wide kind has, §4.1), the specified
 default as exact canonical text — a fixed default as the RAW integer its
-storage holds — and the `was` alias; then each enum's variants in order with their ids, each flags'
+storage holds, a string or bytes default as `bytes:` and its bytes in hex,
+so a space in a default cannot split the token, and a flags default as the
+mask its names spell — and the `was` alias; then each enum's variants in order with their ids, each flags'
 variants in positional order, and each union's arms in order with their ids
 and their own wire facts.
 
@@ -11786,6 +11827,15 @@ baseline silences it.
 **A field that names a declaration records WHICH KIND of declaration it
 names** — a table, an `enum`, a `flags` or a `union` — because those four
 are judged by four different identity rules (§18.3).
+
+**A TABLE IS KEYED BY ITS WIRE NAME** (§5): the member line and every
+`type=` and `payload=` that names it carry the `was` alias of a renamed
+table, so a rename under `was` regenerates every line byte-identically. The
+declared name is recorded beside it, `table Vessel name=Ship`, on the
+renamed table's line only, and it is judged on nothing: it is what lets
+the check say which spelling a second rename should have used (§18.2). An
+untouched schema renders no `name=`, so the rendering version is
+unmoved.
 
 **A MAP's generated ENTRY is a member here, and it is ANONYMOUS** (§2.8). Its
 member line is keyed by the holder's wire id and the map field's wire id
@@ -11887,7 +11937,9 @@ committed file whenever one is there, and:
   ITSELF rode under a `was` — `was` names the FIRST wire name, forever (§5),
   so a second one aimed at the intermediate spelling hashes a name no byte
   was ever written under, and the refusal names both spellings and the one
-  that is correct.
+  that is correct. A TABLE's `was` is held to the same rule over the
+  declared name the file recorded beside its wire name (§18.1): a second
+  rename aimed at that name is refused, naming the first.
 - **WARNS** — an array bound or a string/bytes capacity shrunk, a map's KEY
   bound included, **and an unbounded `[]T` given a bound** (§2.9), which is a
   capacity shrunk from every count to N; a field changed between a map and the

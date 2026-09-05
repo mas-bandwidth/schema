@@ -232,7 +232,6 @@ func TableWireIdCapacity(u *Unit) int {
 		}
 	}
 	for name := range TableClosure(u) {
-		ids[TableWireId(name)] = true
 		st := u.Tables[name]
 		if st == nil {
 			st = u.Structs[name]
@@ -240,6 +239,7 @@ func TableWireIdCapacity(u *Unit) int {
 		if st == nil {
 			continue
 		}
+		ids[TableWireId(st.WireName())] = true
 		for _, f := range st.Fields {
 			noteField(f)
 		}
@@ -361,7 +361,7 @@ func TableVocabulary(u *Unit) []uint64 {
 		if u.Tables[name] == nil {
 			continue // a `type` in the closure is nested by value and never pointed at
 		}
-		place(TableWireId(name))
+		place(TableWireId(u.Tables[name].WireName()))
 	}
 	return ids
 }

@@ -525,6 +525,7 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 		read: "value",
 		pointer: func(f *ir.Field, slot edgeExpr) {
 			t := f.Type.Name
+			wire := ir.PointeeWireName(f) // the node type id is the hash of the WIRE name (§5)
 			g.pf("    {\n")
 			g.pf("        const %s * pointee = %sAt( ctx, %s ); // %s\n", t, t, slot.Src, f.Name)
 			g.pf("        if ( pointee != NULL )\n        {\n")
@@ -538,8 +539,8 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 			g.pf("            }\n            else\n            {\n")
 			g.pf("                TableNodeEntry node;\n")
 			g.pf("                node.node = (const void *) pointee;\n")
-			g.pf("                node.type_id = 0x%016xull; // fnv1a64( \"%s\" )\n", ir.TableWireId(t), t)
-			g.pf("                node.type_slot = %s; // its slot in the unit's vocabulary (§3.3)\n", g.slotOf(ir.TableWireId(t)))
+			g.pf("                node.type_id = 0x%016xull; // fnv1a64( \"%s\" )\n", ir.TableWireId(wire), wire)
+			g.pf("                node.type_slot = %s; // its slot in the unit's vocabulary (§3.3)\n", g.slotOf(ir.TableWireId(wire)))
 			g.pf("                node.measure = &TableNodeMeasureThunk<Ctx, %s>;\n", t)
 			g.pf("                node.save = &TableNodeSaveThunk<Ctx, %s>;\n", t)
 			g.pf("                if ( !TableNumberingAppend( numbering, node ) ) { return false; }\n")
@@ -1028,7 +1029,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    TableNodeDirEntry * directory = (TableNodeDirEntry *) allocator.alloc( allocator.context, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );\n")
 	g.pf("    if ( directory == NULL ) { out->malformed = true; return false; }\n")
 	g.pf("    directory[0].offset = (uint64_t) builder.root_ref.value;\n")
-	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableWireId(st.Name))
+	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableWireId(st.WireName()))
 	g.pf("    TableNodeMap nodes;\n")
 	g.pf("    nodes.base = NULL;\n")
 	g.pf("    nodes.entries = directory;\n")
@@ -1121,13 +1122,13 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	g.pf("    switch ( type_id )\n    {\n")
 	for _, t := range reachable {
 		if g.anyExtent && g.hasExtent(t) {
-			g.pf("        case 0x%016xull: // %s\n        {\n", ir.TableWireId(t.Name), t.Name)
+			g.pf("        case 0x%016xull: // %s\n        {\n", ir.TableWireId(t.WireName()), t.Name)
 			g.pf("            int64_t extent = 0;\n")
 			g.pf("            if ( !%sWireExtent( body, length, extent, ids, reason ) ) { return kTableNodeRefused; }\n", t.Name)
 			g.pf("            return TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + extent );\n        }\n", t.Name)
 			continue
 		}
-		g.pf("        case 0x%016xull: return TableAlignUp64( (int64_t) sizeof( %s ) ); // %s\n", ir.TableWireId(t.Name), t.Name, t.Name)
+		g.pf("        case 0x%016xull: return TableAlignUp64( (int64_t) sizeof( %s ) ); // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name)
 	}
 	for _, b := range blobs {
 		g.pf("        case %s: return TableBlobStorage( length, %v ); // *%s\n", b.constant, b.terminated, b.word)
@@ -1150,7 +1151,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	g.pf("    switch ( type_id )\n    {\n")
 	for _, t := range reachable {
 		g.pf("        case 0x%016xull: { %s * node = new ( at ) %s; %sReset( *node ); break; } // %s\n",
-			ir.TableWireId(t.Name), t.Name, t.Name, t.Name, t.Name)
+			ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name, t.Name)
 	}
 	for _, b := range blobs {
 		g.pf("        case %s: { TableBlob * blob = (TableBlob *) at; blob->length = (uint32_t) length; blob->zero = 0; break; } // *%s\n", b.constant, b.word)
@@ -1163,7 +1164,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 		g.pf("inline int64_t %sNodeRecordBytes( uint64_t type_id )\n{\n", n)
 		g.pf("    switch ( type_id )\n    {\n")
 		for _, t := range reachable {
-			g.pf("        case 0x%016xull: return TableAlignUp64( (int64_t) sizeof( %s ) ); // %s\n", ir.TableWireId(t.Name), t.Name, t.Name)
+			g.pf("        case 0x%016xull: return TableAlignUp64( (int64_t) sizeof( %s ) ); // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name)
 		}
 		g.pf("        default: break;\n    }\n")
 		g.pf("    return 0;\n}\n\n")
@@ -1181,7 +1182,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	}
 	g.pf("    switch ( type_id )\n    {\n")
 	for _, t := range reachable {
-		g.pf("        case 0x%016xull: return (uint32_t) worker.Alloc<%s>().ref.value; // %s\n", ir.TableWireId(t.Name), t.Name, t.Name)
+		g.pf("        case 0x%016xull: return (uint32_t) worker.Alloc<%s>().ref.value; // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name)
 	}
 	for _, b := range blobs {
 		if b.terminated {
@@ -1229,7 +1230,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 		if !g.isVar(t.Name) {
 			call = fmt.Sprintf("%sLoadBody( r, *(%s *) at )", t.Name, t.Name)
 		}
-		g.pf("        case 0x%016xull: %s; break; // %s\n", ir.TableWireId(t.Name), call, t.Name)
+		g.pf("        case 0x%016xull: %s; break; // %s\n", ir.TableWireId(t.WireName()), call, t.Name)
 	}
 	for _, b := range blobs {
 		// the bytes verbatim; the storage's zeros are a string's terminator
@@ -1612,7 +1613,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct, message bool) {
 	g.pf("    nodes.count = records + 1;\n")
 	g.pf("    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );\n")
 	g.pf("    directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)\n")
-	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableWireId(st.Name))
+	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableWireId(st.WireName()))
 	g.pf("    %s * root = new ( region ) %s; // lifetime only: LoadBody's first act is %sReset\n", n, n, n)
 	g.pf("    %sReset( *root );\n\n", n)
 	g.pf("    // PASS ONE: fill the numbering from the framing, so that an index\n")

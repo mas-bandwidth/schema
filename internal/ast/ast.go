@@ -53,11 +53,13 @@ type TypeDecl struct {
 
 // TableDecl is a `table` declaration: a data type on the evolution-tolerant
 // TABLE wire (docs/SPEC-TABLES.md) rather than the packet wire. The body grammar
-// is the type body's; a table declaration takes no qualification.
+// is the type body's; the qualification carries tags and the `was` rename
+// (docs/SPEC-TABLES.md §5).
 type TableDecl struct {
-	Name string
-	Pos  Pos
-	Body *Block
+	Name  string
+	Pos   Pos
+	Attrs []Attr
+	Body  *Block
 }
 
 // UnionDecl is a first-class one-of type (SPEC §4.8): an implicit None row,
@@ -263,6 +265,15 @@ type StringLit struct {
 	Value string // without the quotes
 }
 
+// SetLit is a FLAGS default, `= { Jump, Crouch }` (SPEC §4.2): the variant
+// names whose bits the fresh mask holds. It stands only where a field default
+// stands, and the checker resolves every name against the field's own flags
+// declaration.
+type SetLit struct {
+	Pos   Pos
+	Names []Name
+}
+
 // MaxExpr is a set reference: E.Max, the extent of an enum or a generated
 // set, and E.Count, the declared variant count of an enum or a flags
 // declaration (SPEC §4.2). Sel is "Max" or "Count".
@@ -292,6 +303,7 @@ type ParenExpr struct {
 
 func (e *IntLit) ExprPos() Pos     { return e.Pos }
 func (e *StringLit) ExprPos() Pos  { return e.Pos }
+func (e *SetLit) ExprPos() Pos     { return e.Pos }
 func (e *FloatLit) ExprPos() Pos   { return e.Pos }
 func (e *IdentExpr) ExprPos() Pos  { return e.Pos }
 func (e *MaxExpr) ExprPos() Pos    { return e.Pos }

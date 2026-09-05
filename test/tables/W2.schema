@@ -1,0 +1,29 @@
+// W2.schema — the NEW side of the `was` rows' evolution pair: Vessel is now
+// Ship, declared `was = "Vessel"`, so every node record still rides under
+// fnv1a64( "Vessel" ) and a W1 fleet reads in silence (docs/SPEC-TABLES.md
+// §5). The negative control strips the attribute and watches `unknown` count.
+package tblw2
+
+flags Caps { Jump, Crouch, Fly }
+
+type Badge
+{
+    label string(8) = "new"
+}
+
+table Ship | was = "Vessel"
+{
+    name  string(32) = "untitled"
+    tag   bytes(4) = "ab"
+    caps  Caps = { Jump, Fly }
+    badge Badge
+    hull  int32 = 100             | min = 0, max = 1000
+}
+
+table Fleet
+{
+    title    string(16) = "fleet"
+    flagship *Ship
+    escorts  [..4]*Ship
+    home     Ship
+}
