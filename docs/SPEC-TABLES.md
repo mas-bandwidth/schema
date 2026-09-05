@@ -4432,10 +4432,9 @@ so damage is terminal for the batch (above).
 
 **WHERE THE FORM IS CARRIED TODAY, and this section is ahead of it.** The
 BITPACKED body is specified ahead of its implementation, on the terms §6.6
-takes. What the C++ reference and the compiler's own engine carry today is the
-BYTE-FRAMED body of the first round under the same form byte, and the codec
-change that lands this section replaces it in place and re-pins every form-`2`
-golden with it. The eight ports carry the FILE form alone: a port's
+takes. What the C++ reference and the compiler's own engine carry today under
+form byte `2` is a BYTE-FRAMED body, and the codec change that lands this
+section replaces it in place and re-pins every form-`2` golden with it. The eight ports carry the FILE form alone: a port's
 `LoadMessages`, `MeasureMessages` and `SaveMessages` are a named follow-on
 beside the wire-form work M20 already registers (test/conformance/README.md),
 and the harness's `message` surface prints ABSENT for each rather than failing
@@ -4625,11 +4624,13 @@ bytes now costs 4 bits where alone it cost 0. **1840 bits, 230 bytes**, against
 234 for the three sent alone.
 
 **THE FULL TABLE.** Bytes, every column hand-sized from its own wire model over
-the same six instances. The packet-wire column is what a `type` of the same
-shape would cost (SPEC.md §4.3) and exists so the residual is a number. The
-proto3 column is computed from its encoding spec over the same values.
+the same six instances. The PACKET WIRE column is what a `type` of the same
+shape would cost (SPEC.md §4.3) and exists so the residual is a number. The BYTE
+BODY column is the byte-framed message body the tree carries today under form
+byte `2`, which this section replaces. The proto3 column is computed from its
+encoding spec over the same values.
 
-  | instance | packet wire | file form | byte body (#549) | **bitpacked body** | proto3 |
+  | instance | packet wire | file form | byte body | **bitpacked body** | proto3 |
   |---|---:|---:|---:|---:|---:|
   | `LoginRequest`, full | 46 | 106 | 58 | **51** | 49 |
   | `MatchResult`, full | 115 | 273 | 225 | **142** | 189 |
@@ -4648,18 +4649,20 @@ proto3 column is computed from its encoding spec over the same values.
   at their defaults GROW by one byte, from 2 to 3, because a batch pays a count
   the byte body did not.
 - **AGAINST proto3, the batch is 17% under and `MatchResult` is 25% under, and
-  the two blob-shaped messages are one and two bytes OVER.** The cause is named:
+  the two BLOB-SHAPED messages are OVER, `LoginRequest` by two bytes and
+  `StorePurchase` by one.** The cause is named rather than averaged away:
   `player_id`, `client_build` and `price_minor` are declared BARE, so this wire
   writes 64, 32 and 32 raw bits where proto3 writes a varint whose value happens
-  to be small, and a message that is one 32-byte opaque blob plus three scalars
-  has nothing else to win with. The form's fixed cost, one form byte and one
-  count a batch, is what tips those two. **Two things close it and neither is
-  built here.** Declaring the ranges those fields actually hold is the schema's
-  own answer and costs nothing new: `client_build uint32 | max = 65535` alone
-  puts `LoginRequest` at 49 bytes, and a bounded `price_minor` puts
-  `StorePurchase` under 40. A variable-width encoding for BARE integer kinds on
-  this form is the other, and it is a divergence from the packet wire that wants
-  a measurement before it wants a page (§15).
+  to be small, and a message that is one opaque payload plus a few scalars has
+  nothing else to win with. The form's fixed cost, one form byte and one count a
+  batch, is what tips them. **Three things close it and none is built here.**
+  Declaring the range a field actually holds is the schema's own answer and
+  costs nothing new: `client_build uint32 | max = 65535` alone puts
+  `LoginRequest` level with proto3 at 49 bytes, and a bounded `price_minor` puts
+  `StorePurchase` under 40. The BATCH closes the rest, because the form byte and
+  the count are paid once for however many bodies ride. And a variable-width
+  encoding for BARE integer kinds on this form is the third, a divergence from
+  the packet wire that wants a measurement before it wants a page (§15).
 - **AGAINST THE PACKET WIRE the residual is 5, 27 and 5 bytes**, and it is
   exactly what the design statement says it is. On `MatchResult` it is ten rows
   of three references and a terminator, 25 of the 27 bytes, which is the price of
@@ -4673,10 +4676,11 @@ proto3 column is computed from its encoding spec over the same values.
 kinds and shapes, 72 for the eight variant names at kind `0`, and 72 for the
 tail's eight. The announcement file is **316 bytes**: one form byte, a body of
 291 bytes carrying the build version and the vocabulary array, and a trailer of
-two entries and its count. It replaces a 252-byte announcement that carried bare
-ids, and the 64 bytes buy every entry's kind and width. Against proto3 the batch
-of three saves 48 bytes a round, so **the announcement pays for itself in the
-seventh round** and every round after it is profit. **The unit's whole vocabulary
+two entries and its count. **An entry averages ten bytes rather than the eight a
+bare id would cost**, and those two bytes are what pay for there being no kind
+byte and no length on any body. Against proto3 the batch of three saves 48 bytes
+a round, so **the announcement pays for itself in the seventh round** and every
+round after it is profit. **The unit's whole vocabulary
 is what is paid for**, not the part a connection uses, which is the cost of
 ruling out the re-announcement state machine and the drifting slot: a unit of 500
 entries announces about 5 KB once.

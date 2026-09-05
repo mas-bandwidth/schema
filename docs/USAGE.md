@@ -1667,9 +1667,9 @@ $ schema unpack --root LoginRequest --announce backend_conn.bin \
 
 **The bitpacked body is specified ahead of its implementation**, on the terms
 SPEC-TABLES.md §3.3 and §6.6 take. The C++ backend and the tool carry a form-`2`
-path today and it is the byte-framed body of the first round, which the codec
-change that lands §3.3 replaces in place, re-pinning the corpus with it. The
-other eight targets carry the file form alone.
+path today and its body is byte framed, which the codec change that lands §3.3
+replaces in place, re-pinning the corpus with it. The other eight targets carry
+the file form alone.
 
 ### Nesting: a root table IS a format
 
