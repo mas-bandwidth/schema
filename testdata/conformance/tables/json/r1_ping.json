@@ -1,0 +1,18 @@
+{
+  "grade": "Silver",
+  "effect": {
+    "ping": null
+  },
+  "buff": {
+    "multiplier": 1.5
+  },
+  "grades": [
+    "Silver",
+    "Gold"
+  ],
+  "tally": {
+    "Bronze": 0,
+    "Silver": 7,
+    "Gold": 0
+  }
+}
