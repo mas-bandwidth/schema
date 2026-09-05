@@ -3698,7 +3698,7 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                                             {
                                                 if ( elem_arm_kind_items != 14 ) { ( *slot ).type = SlotsType::None; r.report->kind_mismatch++; break; }
                                                 ( *slot ).type = SlotsType::Many;
-                                                memset( &( *slot ).many, 0, sizeof( ( *slot ).many ) ); // selection establishes the arm (§2.6)
+                                                memset( (void *) &( *slot ).many, 0, sizeof( ( *slot ).many ) ); // selection establishes the arm (§2.6)
                                                 if ( !elem_arm_items.has( 2 ) ) { break; }
                                                 {
                                                     uint8_t arm_elem_kind_itemsa = elem_arm_items.get8();
@@ -4030,7 +4030,7 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
                                     {
                                         if ( elem_arm_kind != 14 ) { value.entries[(int32_t) i].type = SlotsType::None; r.report->kind_mismatch++; break; }
                                         value.entries[(int32_t) i].type = SlotsType::Many;
-                                        memset( &value.entries[(int32_t) i].many, 0, sizeof( value.entries[(int32_t) i].many ) ); // selection establishes the arm (§2.6)
+                                        memset( (void *) &value.entries[(int32_t) i].many, 0, sizeof( value.entries[(int32_t) i].many ) ); // selection establishes the arm (§2.6)
                                         if ( !elem_arm.has( 2 ) ) { break; }
                                         {
                                             uint8_t arm_elem_kinda = elem_arm.get8();
