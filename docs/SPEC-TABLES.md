@@ -3541,7 +3541,12 @@ the payload opens with the count and then carries the records:
   anywhere else, in a file and in a message alike, is malformed on the same
   terms. Each is
   damage rather than a foreign name: that body stops, `malformed` counts, and
-  the parent reads on past its length (§4).
+  the parent reads on past its length (§4). **THE RECOVERY HALF OF THAT SENTENCE
+  IS THE FILE FORM'S ALONE**, said here where §4 says it of its own framing-damage
+  row: a bitpacked body has no length for a parent to read on past, so on the
+  message form the planted id stops the BATCH, one `malformed` counting for it
+  (§3.3). What is malformed does not move between the forms, and only what
+  happens next does.
 - This implementation writes the node-table field LAST in the root body,
   after the root's own declared fields, so that **a reader which gives up
   inside the node table has already decoded the ROOT'S OWN FIELDS** — the
@@ -3978,9 +3983,13 @@ UDP either.
   holds no vocabulary for the peer and names the build version if one was ever
   read.
 - **NO RE-ANNOUNCEMENT, EVER.** The first announcement sets the vocabulary and
-  it is the only one that can. A second is refused by name, does not replace or
-  amend anything, and closes the connection. A refused announcement sets NO
-  vocabulary, so every body after it is refused for want of one.
+  it is the only one that can. A second is refused by name and does not replace
+  or amend anything. **The library RETURNS A REFUSAL and nothing more, and
+  CLOSING THE CONNECTION IS THE APPLICATION'S ACT**, because this library owns
+  no socket and a caller may well want to log the peer, count it, or answer it
+  on a channel of its own before the connection goes. A refused announcement
+  sets NO vocabulary, so every body after it is refused for want of one, which
+  is what makes the refusal safe to hold rather than urgent to act on.
 - **A STATELESS REQUEST-RESPONSE TRANSPORT IS OUT OF SCOPE, by name.** A request
   sharing no state with the last one has nowhere to put an announcement, so the
   announcement would ride every request and cost more than the id table it
@@ -4013,6 +4022,46 @@ time."*
 `LoadMessages` reads one buffer into the caller's storage and allocates nothing.
 `MeasureMessages` sizes the buffer. There is no singular verb, because a caller
 with one message passes one and pays a count of eight bits for it.
+
+**THE BATCH SURFACE'S FIVE ANSWERS, each stated rather than left to a codec.**
+
+- **`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME.** `MeasureMessages`
+  and `SaveMessages` both refuse and return `-1`, and neither writes consecutive
+  batches into one buffer. The refusal is learned at MEASURE time, before a
+  buffer is allocated, which is the point of measuring first. Concatenating
+  batches was declined because it invents a second framing level the wire does
+  not describe, and because it would break the one-batch-per-datagram rule
+  silently for a caller who passed three hundred bodies to an unreliable
+  channel. **A caller with more bodies calls again**, which is one loop in the
+  application and no rule at all on the wire.
+- **`M` ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME.** The
+  count is eight bits and is read before any body, so `LoadMessages` compares it
+  to the storage it was handed and refuses before it decodes anything. Nothing
+  is decoded, no counter moves and `malformed` does not fire, on the form byte's
+  own precedent. **The refusal reason is `batch_too_large` on both sides**,
+  covering the wire's 256 and the caller's capacity for the reason
+  `vocabulary_too_large` covers two bounds: a caller reads a reason and then
+  reads the two numbers itself.
+- **DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`.** The returned count
+  states `k - 1`, ONE `malformed` counts, and nothing at or after body `k` is
+  read. The caller's storage for body `k` holds whatever the decode had put in
+  it before the damage, and **the COUNT is what says it is not a body**, so a
+  caller reads the count and never that slot. This is "the fields decoded before
+  the damage stand" (below) seen one level up: a whole body is the unit the
+  count can talk about.
+- **BYTES AFTER THE PAD ARE MALFORMED**, exactly as they are in the file form
+  (§3): the batch ends at the pad to the byte boundary, and a buffer with bytes
+  left over describes no batch this reader can name.
+- **A BATCH OF POINTERED ROOTS TAKES ONE REGION FOR THE BATCH**, not one a body.
+  `LoadMeasure`'s message overload reads the batch and returns the region bytes
+  for the whole of it, the caller allocates once, and `LoadMessages` fills it and
+  writes each body's root into the caller's array of root pointers. Each body
+  keeps its OWN numbering inside that one region, because a numbering is a
+  body's own (§3.1) and nothing about sharing storage makes two numberings one.
+  One region is the symmetry the writer already has, one buffer for a batch, and
+  it is one measurement, one allocation and one bounds check rather than `M` of
+  each. A batch cut short by damage leaves the region holding `k - 1` complete
+  values, which is what the count already says.
 
 **THE BATCH IS STATED AS THE UNIT SO THAT LATER FORMS HAVE SOMEWHERE TO STAND.**
 Three bandwidth passes are only available to a writer holding every body at once,
@@ -4061,8 +4110,12 @@ zero pad to the next byte boundary                 (verified zero)
   SPELLABLE**, and a caller with nothing to send writes nothing at all.
 - **A BODY ENDS AT ITS OWN ZERO REFERENCE**, which is what a body has always
   been, and the NEXT BODY BEGINS AT THE NEXT BIT. There is no per-message
-  alignment and no per-message length. **The batch adds no terminator of its
-  own**: the last body's is the batch's.
+  alignment and no per-message length. **THE BATCH ADDS NO TERMINATOR OF ITS
+  OWN, and that is the RULING**: `M` bodies carry `M` terminators, one each, and
+  the last body's is the last thing in the batch. A single terminator for a
+  whole batch has nothing to say about where body `k` ends, because elision
+  means the only thing that can say a body's fields are finished is that body's
+  own zero reference.
 - **THE FINAL FLUSH ZERO-FILLS to the next byte boundary and a reader VERIFIES
   the pad is zero**, which is the packet wire's rule for the same reason (SPEC.md
   §4.3). A batch's length in bytes is `ceil(bits / 8)`.
@@ -4085,15 +4138,18 @@ buys something this wire needs and none of them is derivable:
 
 | the payload | the bits |
 |---|---|
-| a bare integer, `bits(N)`, a `flags` mask, `bool`, `f32`, `f64`, a 128-bit kind | the packet wire's own, at the declared width |
+| a bare integer, `bool`, `f32`, `f64`, a 128-bit kind | the packet wire's own, at the declared width |
+| `bits(N)` | N bits, which is RANGED over `[0, 2^N - 1]` and therefore `base` `0` and `bits` N in the announced shape, not a kind of its own |
 | a RANGED integer, a fixed-point value, a compressed float | the packet wire's own: `value - min` at `bits_required(min, max)`, the quantized index at its step count, the fixed-point raw offset at its own width |
+| a `flags` mask | **its declared W bits**, W being the writer's own variant count, and NOT the file form's raw `uint64`. This is a DEPARTURE and it is the packet wire's rule (SPEC.md §4.2, §4.3) reached for the packet wire's reason, bandwidth: a three-variant mask costs three bits here and sixty-four in a file, and a mask is the one payload where the file form's width is set by its STORAGE rather than by anything declared |
 | a `string(N)` payload, and an ARRAY whose element kind is `6` (which is every `bytes(N)`) | the length or count, then **ALIGN to the next byte boundary**, then the bytes. The align costs at most seven bits and buys a `memcpy` on the largest payload on the wire |
-| a `wstring(N)` payload | the length, NO align, then sixteen bits a code unit, which is the packet wire's own rule (§4.12) |
+| a `wstring(N)` payload | the length, NO align, then **SIXTEEN BITS A CODE UNIT**. This is a DEPARTURE from SPEC.md §4.12, which spends a 32-BIT GROUP a code unit, and the reason is bandwidth: the group is the packet wire's word-oriented codec showing through, a code unit holds sixteen bits, and a bit stream has no word to fill. A `wstring(8)` of eight units costs 128 bits here and 256 there |
 | an ENUM value | **a REFERENCE naming the VARIANT's name**, `0` for `None`, and NOT the packet wire's declaration ordinal |
 | a UNION | **a REFERENCE naming the ARM's name**, `0` for the empty arm, then the arm's payload under that arm entry's own kind and shape, and NOT the packet wire's positional tag |
 | a nested `table` or `type` | its fields in place, ending at its own zero reference |
 | a POINTER | the node index at `bits_required(0, node count)` (§3.1) |
 | an ENUM-KEYED ARRAY | the present-slot count at `bits_required(0, slots)`, then per slot a KEY REFERENCE and the element |
+| an UNBOUNDED ARRAY `[]T` and a MAP | the count at **THIRTY-TWO RAW BITS**, then the elements, and a map's elements are its `{ key, value }` bodies in ascending key order as §2.8 states |
 
 **THE ENUM AND THE UNION ARE THE TWO PLACES THIS FORM REFUSES THE PACKET WIRE'S
 ANSWER, and the reason is the whole reason the table wire exists.** A packet
@@ -4104,17 +4160,90 @@ would leave every stored ordinal meaning a different variant on the two builds,
 read in silence, which is the one class this wire exists to make impossible. So
 a variant and an arm ride by NAME, at a reference's width, and a name this
 reader cannot place is §4's ordinary `unknown`. **That is a residual over the
-packet wire and it is named as one**: a four-variant enum costs two bits on the
-packet wire and five here, and that is the price of evolution paid where
-evolution actually happens.
+packet wire and it is named as one, and the number is TWO BITS on a four-variant
+enum**: such an enum is ranged over `[0, 4]`, because `None` is a value, so the
+packet wire spends THREE bits on it and this wire spends five. That is the price
+of evolution paid where evolution actually happens, and §15 names the shape that
+would remove those two bits and the reason it is not taken here.
+
+**A VARIANT OR AN ARM REFERENCE THAT NAMES AN ENTRY OF THE WRONG SORT IS
+MALFORMED**, and this is decidable from the announcement alone. A variant name is
+announced at kind `0` and carries no payload, so an ENUM's reference naming an
+entry at any other kind describes a payload an enum does not have. An ARM entry
+carries the arm's own kind and shape, which is what frames the payload that
+follows, so a UNION's reference naming a kind-`0` entry leaves the reader with
+nothing to frame. Neither is an `unknown`, because the reader RESOLVED the entry
+and the entry contradicts the position it was used in, and neither is
+recoverable, because the very next bit's meaning is what is in doubt. It is
+damage, terminal for the batch like all damage here.
+
+**THREE THINGS COUNT AT THIRTY-TWO RAW BITS, and none of them is a special
+case**: an UNBOUNDED ARRAY's count, a MAP's count, and a BLOB NODE's byte length
+(§2.8, §2.9, §3.1). Each is a number the DATA decides rather than a declaration,
+so there is no bound to size a width from, and the announced shape says so by
+carrying `min` `0` and `max` `2^32 - 1`, whose `bits_required` is thirty-two.
+**They are NOT refused on this form**, because a message form that could not
+carry the constructs the language carries would be a second language, and the
+mission is one type system rather than a wire's subset of one. What it costs is
+four bytes where a bounded array costs a handful of bits, and that is what a
+declared bound buys on this wire: `[..1000]T` spends ten bits on its count and
+`[]T` spends thirty-two.
+
+**A `flags` MASK'S APPENDED BITS SURVIVE A FILE ROUND TRIP AND NOT A MESSAGE
+ONE, and that is §4's round-trip row MOVED for this form.** §4 states it for the
+packet wire and the reason carries over unchanged: a file rides a mask as a raw
+`uint64` under kind `9`, so an older build loads the bits a newer one appended,
+holds them, and writes them back unharmed, and a message rides a mask at W bits,
+W being the writer's own variant count, so a build that loaded appended bits out
+of a file and then puts that same mask on a message DROPS them by width, with no
+counter on either wire able to say so. **The reason the row moves is
+BANDWIDTH**, which is this form's whole design statement: sixty-four bits for a
+three-bit mask is the single largest fixed overspend a small message has, and a
+mask is the one payload whose file width comes from its storage rather than from
+anything the schema declares. A build that ferries masks between the forms keeps
+its own bits inside its own W, or carries the mask in a file. **This is the
+SECOND row of §4 this form moves**, beside the framing-damage row, and there is
+no third.
 
 **THE NODE TABLE, WHEN A MESSAGE HAS ONE, IS THE FIRST FIELD OF THE ROOT BODY.**
 A pointer index is `bits_required(0, node count)` bits wide and the node count
 rides in the node table, so the node table has to be read before an index can
 be. That is a writer rule this form adds and it is the only ordering constraint
-on a body. §3.1's numbering, its flat encoding and every malformed rule of it
-are untouched, and the node records' type ids are references like every other
-reference on this wire.
+on a body. §3.1's numbering, its depth-first order and every malformed rule of it
+are untouched. Its FRAMING is not, because §3.1 frames it as a kind-`12` opaque
+payload with an `L`, and this wire has no `L`:
+
+```
+the reserved node-table id, as a reference          bits_required(0, E)
+node count                                          32 raw bits
+node count records, back to back:
+    type id, as a reference                         bits_required(0, E)
+    a TABLE record's body: its fields, ending at its own zero reference
+    a BLOB record's body:  a length, 32 raw bits, then ALIGN, then the bytes
+```
+
+- **THE NODE COUNT IS THIRTY-TWO RAW BITS**, on the rule above: a numbering's
+  size is a fact of the data and no declaration bounds it.
+- **A TABLE RECORD IS A TYPE REFERENCE AND A BODY, AND THE BODY ENDS AT ITS OWN
+  ZERO REFERENCE.** There is no per-record length, because a bitpacked body is
+  self-delimiting to a reader holding the vocabulary, which is the same fact
+  that lets one body follow another in a batch. A type-id reference of `0` is
+  malformed, as §3.1 says.
+- **A BLOB RECORD CARRIES A LENGTH AT THIRTY-TWO RAW BITS, then ALIGNS, then the
+  bytes verbatim.** Its type id is one of the three reserved blob ids and it is
+  a reference like any other. The align is `string(N)`'s and `bytes(N)`'s, for
+  `memcpy`, and a blob is the largest payload this wire carries.
+- **A ROOT THAT REACHES NO NODES ELIDES THE FIELD**, like every other empty
+  thing on this wire (§3). There is no empty node table and no count of zero: a
+  message with no pointers carries no reserved reference at all.
+- **§3.1's "whole or nothing" needs no restatement here.** Damage anywhere in a
+  form-`2` batch is terminal for the batch, so a partly read numbering is not a
+  state this reader can be in.
+
+**EVERY ALIGN ON THIS WIRE IS RELATIVE TO THE BATCH BUFFER'S BYTE `0`**, which
+is the form byte's own first byte, and never to a body's start or to anything
+inside one, because a body does not begin on a byte boundary and there is
+nothing else for an offset to be measured from.
 
 **THERE IS NO NON-CANONICAL SPELLING ON THIS WIRE.** Every reference, length,
 count and index is a fixed number of bits, so §3's canonicality rules for
@@ -4180,15 +4309,15 @@ and that is its integer.
 
   | kind | shape | what it means |
   |---|---|---|
-  | `0` | nothing | A NAME WHOSE FRAMING IS NOT AN ENTRY'S TO GIVE: a table's name id, one of the three blob type ids and an enum VARIANT name, which are referenced as values and carry no payload at all, and the reserved node-table id, whose field's framing is §3.1's and is known to every reader by the id itself |
+  | `0` | nothing | A NAME WHOSE FRAMING IS NOT AN ENTRY'S TO GIVE: a table's name id, one of the three blob type ids and an enum VARIANT name, which are referenced as values and carry no payload at all, and the reserved node-table id, whose field's framing is stated above and is known to every reader by the id itself |
   | `1` bool | nothing | one bit |
-  | `2`–`9`, `18`, `19` integers | `packing (u8)`, then its facts | `0` RAW, nothing more, the kind's storage width in raw bits, two's complement for the signed kinds. `1` RANGED, then `bits`, then `base` (zigzag LEB128 for `2`–`9`, sixteen bytes little-endian for `18` and `19`): the value is `base` plus the offset those `bits` spell. A `flags` mask is RANGED with `base` `0` and `bits` the mask width |
+  | `2`–`9`, `18`, `19` integers | `packing (u8)`, then its facts | `0` RAW, nothing more, the kind's storage width in raw bits, two's complement for the signed kinds. `1` RANGED, then `bits`, then `base` (zigzag LEB128 for `2`–`9`, sixteen bytes little-endian for `18` and `19`): the value is `base` plus the offset those `bits` spell. A `bits(N)` field is RANGED with `base` `0` and `bits` N, and a `flags` mask is RANGED with `base` `0` and `bits` the mask's own declared width W. Neither spells a kind of its own, because both are a width and a base and that is what RANGED already is |
   | `10` f32 | `packing (u8)`, then its facts | `0` RAW, thirty-two bits. `2` QUANTIZED, then `bits`, then `min` and `step`, four bytes each, IEEE-754: the value is `min + index * step` |
   | `11` f64 | nothing | sixty-four bits |
   | `20`–`29` fixed/ufixed | `packing (u8)`, then its facts | `0` RAW, the storage width. `1` RANGED, then `bits`, then `base` (sixteen bytes little-endian, the raw scaled `A << F`) |
-  | `12` string, `33` wstring | `max` | the declared capacity, which sizes the length at `bits_required(0, max)`. Kind `12` aligns before its bytes and kind `33` does not |
+  | `12` string, `33` wstring | `max` | the declared capacity, which sizes the length at `bits_required(0, max)`. Kind `12` aligns before its bytes and kind `33` does not, and kind `33` spends SIXTEEN bits a code unit rather than SPEC.md §4.12's 32-bit group |
   | `13` table | nothing | a nested body, ending at its own zero reference |
-  | `14` array | `min`, `max`, `element kind (u8)`, the element's own shape | the count is `bits_required(min, max)` bits and NO count rides when `min` equals `max`. An element kind of `6` aligns before the elements, which is what `bytes(N)` is |
+  | `14` array | `min`, `max`, `element kind (u8)`, the element's own shape | the count is `bits_required(min, max)` bits and NO count rides when `min` equals `max`. An element kind of `6` aligns before the elements, which is what `bytes(N)` is. An UNBOUNDED array and a MAP carry `min` `0` and `max` `2^32 - 1`, which is a thirty-two bit count, and a map's element kind is `13` |
   | `15` union | nothing | the arm reference names an entry carrying that arm's own kind and shape |
   | `16` enum-keyed array | `slots`, `element kind (u8)`, the element's own shape | the present-slot count is `bits_required(0, slots)` bits, then a key reference and an element a slot |
   | `17` pointer index | nothing | `bits_required(0, node count)` bits, the node table read first |
@@ -4206,6 +4335,24 @@ exactly as §4 says. **That is what keeps every row of §4's evolution table
 standing under a bitpacked body**, and it costs a few bytes in an announcement
 paid once against a rule that would otherwise have made every range edit a
 dropped field.
+
+**A RANGED OFFSET ABOVE THE SENDER'S OWN `max` RECONSTRUCTS AND CLAMPS, AND IS
+NOT DAMAGE.** A ranged value's `bits` can spell offsets past the sender's own
+range whenever `max - min` is not one less than a power of two, exactly as a
+reference's width can spell values past `E`, and the two are answered
+differently on purpose. A reference above `E` names nothing and leaves the
+reader with no width for what follows, so it is damage. An offset above the
+sender's `max` has a width and a base, so the value reconstructs as `base` plus
+the offset, the reader's own bound applies, and `clamped` counts if it fires.
+The position after the field is known either way, which is the whole test, and a
+reader that refused here would be refusing a body over a value rather than over
+a framing.
+
+**THE ESCAPE KIND `31` IS THE ONLY PATH A LATER-MAJOR WRITER HAS ON THIS FORM**,
+because an announcement carrying a kind outside the closed set is malformed and
+refused WHOLE (below), so a later major cannot introduce a kind and be read at
+all, and what it can do is ride a payload this reader steps over by an explicit
+length.
 
 **THE TWO RESERVED IDS OF THE ANNOUNCEMENT ITSELF ARE NOT IN THE VOCABULARY.**
 The build version and the vocabulary are the announcement's own transport, they
@@ -4353,6 +4500,19 @@ keeps what fits and counts `clamped`, cutting at a code point boundary for kind
 exactly as §3 states, because the length was read from the wire and the position
 after it is known.
 
+**AN OVER-LONG ARRAY CLAMPS BY WALKING THE SURPLUS, and that is the one place
+this wire pays for a clamp in work rather than in bits.** A file form skips the
+surplus by the array's `L`. A bitpacked array has no `L`, so a reader that keeps
+the first `N` elements has to find the bit the array ENDS at, and how it finds
+it depends on the element: a FIXED-WIDTH element is arithmetic, the surplus
+count times the element's width, and a NON-FIXED-WIDTH element, which is a
+string, a nested table, an array, a union or anything holding one, has to be
+WALKED, element by element by its announced shape, and discarded as it goes. The
+walk is bounded by the batch's own bits and stores nothing, so it is linear in
+the surplus and allocates not at all, which is what keeps it a clamp and not a
+refusal. **The reader counts ONE `clamped` for the array**, as §4 says, however
+many elements it walked past.
+
 ---
 
 #### Form byte `2` keeps its number, and the byte body is replaced
@@ -4407,7 +4567,13 @@ both directions. Each vector's own byte length is a pinned golden.
 **FORM `2` IS A STREAM FORM AND NEVER A FILE FORM.** `schema pack` writes form
 `1`, `schema unpack` reads form `1`, and a reader handed a form-`2` wire where a
 file was expected refuses by name: a batch stored on its own is not readable,
-because its vocabulary is somewhere else. That cost is the form's one real one
+because its vocabulary is somewhere else. **`schema unpack` HANDED AN
+ANNOUNCEMENT PRINTS THE VOCABULARY DECODED**, one line an entry carrying the
+slot, the id, the name where this unit's own closure names it, the kind and the
+shape, because an announcement is an ordinary form-`1` file and a tool that
+could print its two fields as opaque bytes and stop would be hiding the only
+part anyone reads. It is OWED BY THE CODEC PR, with the rest of the form-`2`
+path. That cost is the form's one real one
 and it is stated rather than hidden. proto3 makes the same trade, since a
 `.proto` is required out of band, and the build version is what makes this one
 nameable: a receiver says which build's vocabulary it lacks.
@@ -4428,7 +4594,10 @@ the field, so unknown, absent, `kind_mismatch`, `widened`, `clamped`,
 `duplicate` and every guard and bound row read exactly as they read on a file.
 §4's framing-damage row says a damaged level stops only itself and the parent
 reads on past its length, and a bitpacked body has no length to read on past,
-so damage is terminal for the batch (above).
+so damage is terminal for the batch (above). **§4's MASK ROUND-TRIP ROW moves
+too, and those two are the whole list**: a mask rides at its declared W bits
+here rather than as a raw `uint64`, so a bit a newer build appended survives a
+file round trip and not a message one (above).
 
 **WHERE THE FORM IS CARRIED TODAY, and this section is ahead of it.** The
 BITPACKED body is specified ahead of its implementation, on the terms §6.6
@@ -4462,10 +4631,16 @@ precedent.
   them: a surface with both would let a caller write one message a call and
   never learn that the batch is where the bandwidth is.
 - **The refusal reason values `no_vocabulary`, `second_announcement`,
-  `vocabulary_too_large` and `message_form_as_file`** beside the form byte's own
-  `newer_form`. `vocabulary_too_large` covers both bounds, the entry count and
-  the vocabulary's bytes, because a caller reads a reason and then reads the
-  announcement's own numbers.
+  `vocabulary_too_large`, `batch_too_large` and `message_form_as_file`** beside
+  the form byte's own `newer_form`. `vocabulary_too_large` covers both bounds,
+  the entry count and the vocabulary's bytes, and `batch_too_large` covers both
+  of its own, `M` above 256 on the write side and `M` above the caller's
+  capacity on the read side, because a caller reads a reason and then reads the
+  numbers itself.
+- **`LoadMeasure`'s MESSAGE OVERLOAD sizes the batch's one region** and claims
+  no new verb: the file form's `LoadMeasure` already overloads on what it is
+  handed, a wire file or a vocabulary and a message, and the batch overload
+  returns the region bytes for the whole batch.
 - **Dart's member spellings** are `measureMessages`, `saveMessages` and
   `loadMessages`, with `TableVocabulary`, `announce`, `announceMeasure` and
   `announceRead` in the Dart library-scope registry the names negative control
@@ -4509,7 +4684,8 @@ caller's storage and reports how many bodies it read, and neither allocates.
   bound and nothing else.
 - **THERE IS NO ANNOUNCEMENT STORM, because there is no second announcement.**
   One announcement a direction is the whole of the resolve work a connection can
-  ask for, and a peer that sends a second is refused by name and closed. That is
+  ask for, and a peer that sends a second is refused by name, the application
+  closing the connection or not as it chooses. That is
   the security half of ruling out re-announcement, and it is why the rule is a
   refusal rather than a rate limit.
 - **A REFERENCE STORM IS LINEAR AND ALLOCATES NOTHING.** A reference is
@@ -4520,8 +4696,9 @@ caller's storage and reports how many bodies it read, and neither allocates.
   a storm of BAD references costs a single lookup. Nothing in this form is
   superlinear in a batch's length.
 - **THE BATCH COUNT ALLOCATES NOTHING BY ITSELF.** It is bounded at 256 by the
-  wire, and a reader fills the caller's storage and stops, so a count of 256 over
-  a two-byte buffer is exhaustion at the second body and not an allocation.
+  wire and it is READ BEFORE ANY BODY, so a count above the caller's storage is
+  a refusal by name with nothing decoded, and a count of 256 over storage for
+  two never reaches a second body. The count sizes nothing a reader owns.
 - **Every §3 malformed rule already covers the announcement**, because it is a
   file: a trailer that cannot be read whole, a count whose `8 x count + 8` runs
   past the front, bytes left between the body's terminator and the first entry,
@@ -4538,10 +4715,18 @@ just need to get it less bytes than protobufs, and not be massively slower."*
 
 - **FEWER BYTES THAN proto3**, on the three measured messages and on the general
   shape.
-- **NOT MASSIVELY SLOWER than the byte body**, on read and on write, within a
-  factor stated and measured at a named sitting and recorded here.
-- **MEASURED LATER, AT ANY TIME.** The measurement is owed before the form is
-  claimed done and is not owed before the page lands.
+- **NOT MASSIVELY SLOWER than the byte body, AND THE FACTOR IS TWO.** "Not
+  massively slower" is A FACTOR OF TWO on the matching read path and on the
+  matching write path, measured against the BYTE BODY over the same values.
+  Inside two, the form is accepted and the bandwidth is what it bought. **Above
+  two on either path, THE BITPACKED BODY REOPENS**, which is a real outcome and
+  not a formality: the byte body is a wire that works, and a form that costs
+  more than double the CPU to save a third of the bytes is a trade the owner has
+  not made.
+- **MEASURED LATER, AT A NAMED SITTING, AND RECORDED HERE.** The measurement is
+  owed before the form is claimed done and is not owed before the page lands.
+  What it owes is the two ratios, the machine, the build and the date, written
+  onto this page beside the factor they are held to.
 
 **THIS RULE IS NOT #546's, and the difference matters.** #546 binds
 DIAGNOSTICS to zero measured cost on the read and write path, because a
@@ -4712,8 +4897,40 @@ entries announces about 5 KB once.
   SECOND, and the same damage planted inside a NESTED body of the second. Red if
   a leg reads the third body, counts more than one `malformed`, or discards the
   first body.
-- **The pad.** A batch whose trailing bits to the byte boundary are not zero. Red
-  if a leg reads it clean.
+- **The pad, and what follows it.** A batch whose trailing bits to the byte
+  boundary are not zero, and a buffer carrying a whole batch and then a byte
+  more. Red if a leg reads either clean.
+- **The batch's five answers.** A `SaveMessages` and a `MeasureMessages` of 257
+  bodies, each refusing by name and writing nothing; a `LoadMessages` of a
+  256-body batch into storage for eight, refusing by name with no counter moved
+  and nothing decoded; a three-body batch damaged inside the second, whose
+  returned count must be one; and a pointered batch measured once and loaded
+  into ONE region. Red if a leg writes consecutive batches, decodes a body before
+  refusing on capacity, returns two or three for the damaged batch, or asks for a
+  region a body.
+- **The mask's width.** A `flags` field of three variants in a message and in a
+  file, whose message payload is three bits and whose file payload is eight
+  bytes, and a file load carrying a bit above the reader's W saved into a
+  message, which must drop it. Red if a leg writes sixty-four bits on a message,
+  or keeps the appended bit through the message round trip and so contradicts the
+  row §4 states as moved.
+- **The wide string's width.** A `wstring(8)` of eight code units, 128 bits on
+  this wire against SPEC.md §4.12's 256. Red if a leg spends a 32-bit group a
+  unit, or aligns before the units.
+- **The counts the data decides.** An unbounded array, a map and a `*bytes`
+  blob node in one message, each carrying a thirty-two bit count or length. Red
+  if a leg sizes any of the three from a declaration, or refuses the construct on
+  this form.
+- **A reference of the wrong sort.** An enum reference naming a field-name entry,
+  and a union arm reference naming a kind-`0` entry. Each malformed, terminal for
+  the batch. Red if a leg counts `unknown`, or reads a field after either.
+- **A ranged offset above the sender's `max`.** A `score` ranged `[0, 100000]`
+  whose seventeen bits spell 130000. Red if a leg calls it damage rather than
+  reconstructing it and clamping to its own bound with one `clamped`.
+- **An over-long array of a NON-FIXED-WIDTH element.** A writer's `[..16]` of
+  `string(32)` read by a `[..4]`, whose four kept elements must be followed by
+  the field that comes after the array. Red if a leg lands on the wrong bit,
+  which the following field's value catches, or counts more than one `clamped`.
 - **A wide vocabulary.** The `vocabdemo` unit below, whose vocabulary passes 128
   entries so a reference is 8 bits, and a second generated unit sized so a
   reference is 9 bits, with a body naming an entry at each end of the range. Red
@@ -4735,10 +4952,14 @@ entries announces about 5 KB once.
   announce different vocabularies, each decoding the other's bodies against the
   vocabulary that peer announced. Red if a leg resolves against its own.
 - **A pointered batch.** A form-`2` batch over a pointered root, whose node table
-  is the FIRST field of each root body and whose indices are
-  `bits_required(0, node count)` wide. Red if the node table is not first, if an
-  index is a fixed width, or if the node-table id or a type id is missing from
-  the vocabulary.
+  is the FIRST field of each root body, whose count is thirty-two raw bits, whose
+  table records carry NO length and end at their own zero reference, whose blob
+  records carry a thirty-two bit length and align, and whose indices are
+  `bits_required(0, node count)` wide. Beside it a root reaching no node, which
+  must carry no node-table reference at all. Red if the node table is not first,
+  if a record carries a length, if an index is a fixed width, if an empty
+  numbering is written, or if the node-table id or a type id is missing from the
+  vocabulary.
 - **A refused second announcement.** A connection carrying two. Red if the second
   sets, replaces or amends a vocabulary, or if it is anything but a refusal by
   name.
@@ -5121,13 +5342,18 @@ loads the bits a newer one appended, holds them, and writes them back on its
 next save unharmed, which is the one thing that keeps append-at-the-end worth
 having across a mixed fleet.
 
-**The bits survive a TABLE round trip and NOT a packet one, and the cost is
-named rather than left to be discovered.** The packet wire carries a mask in
-W raw bits, W being the reader's own variant count (SPEC.md §4.2, §4.3), so
-an older build that loaded appended bits out of a table and then puts that
-same mask on a packet DROPS them by width, silently, with no counter on
-either wire able to say so. A build that ferries masks between the two wires
-keeps its own bits inside its own W, or carries the mask as a table field.
+**The bits survive a FILE round trip and NOT a packet one, and NOT a MESSAGE
+one, and the cost is named rather than left to be discovered.** The packet wire
+carries a mask in W raw bits, W being the reader's own variant count (SPEC.md
+§4.2, §4.3), so an older build that loaded appended bits out of a file and then
+puts that same mask on a packet DROPS them by width, silently, with no counter
+on either wire able to say so. **The MESSAGE FORM takes the packet wire's rule
+here** (§3.3), for the packet wire's reason, bandwidth: a form-`2` body writes a
+mask at its declared W bits rather than as kind `9`'s raw `uint64`, so a mask on
+a message drops appended bits exactly as a mask on a packet does. This is the
+one row of this table the message form moves besides framing damage, and §3.3
+states it as a departure. A build that ferries masks between the forms keeps its
+own bits inside its own W, or carries the mask in a FILE.
 
 **A DEFAULT IS PART OF THE WIRE CONTRACT.** A field holding its declared
 default is elided (§3), so the reader's default is what the absence means —
