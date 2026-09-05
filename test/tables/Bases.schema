@@ -1,0 +1,26 @@
+// Bases.schema — the announcement's two base encodings and the quantized
+// index, held by the C++ tables test and the conformance harness
+// (docs/SPEC-TABLES.md §3.3). A RANGED BASE IS ENCODED BY ITS KIND'S
+// SIGNEDNESS: an unsigned kind's base is an unsigned LEB128, which spells the
+// domain's high half a zigzag cannot, and a signed kind's is a zigzag. A
+// COMPRESSED FLOAT rides as the index SPEC.md §4.3's rule names, in float32.
+//
+// Each range comes as a PAIR whose defaults are the two ends, so that one
+// value of each pair rides in every vector and the other elides: a field at
+// its declared default is not written.
+package basesdemo
+
+table Bases
+{
+    high_a uint64 = 9223372036854775809 | min = 9223372036854775808, max = 9223372036854775809
+    high_b uint64 = 9223372036854775808 | min = 9223372036854775808, max = 9223372036854775809
+    top_a  uint64 = 18446744073709551615 | min = 18446744073709551614, max = 18446744073709551615
+    top_b  uint64 = 18446744073709551614 | min = 18446744073709551614, max = 18446744073709551615
+    small_a int32 = 0 | min = -5, max = 10
+    small_b int32 = 0 | min = -5, max = 10
+    seven  uint8 = 7 | min = 7, max = 7
+    q      float32 = 0.0 | min = 0.0, max = 10.0, resolution = 0.01
+    wide   float32 = 0.0 | min = -100.0, max = 100.0, resolution = 0.01
+    few    [2..5]uint32
+    narrow uint8 = 200 | min = 200, max = 250
+}

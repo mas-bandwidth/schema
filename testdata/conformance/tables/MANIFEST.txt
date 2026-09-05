@@ -735,14 +735,14 @@ unit backenddemo tables/backend
 unit vocabdemo   tables/vocab
 unit vocab9demo  tables/vocab9
 
-connection backend_conn backenddemo 0x46ae4a4d6c9fe4a6 testdata/wire/tables/backend_conn.bin
+connection backend_conn backenddemo 0xe617e7ec50da8165 testdata/wire/tables/backend_conn.bin
 connection vocab_conn   vocabdemo   0x6952591c2cd71990 testdata/wire/tables/vocab_conn.bin
 connection vocab9_conn  vocab9demo  0x5488b0ff7e31d7af testdata/wire/tables/vocab9_conn.bin
 connection graph_conn   graphdemo   0xa1f52e4e9db89bad testdata/wire/tables/graph_conn.bin
 
 # The three backend messages of schema#523, each in both instances: 106 / 273 /
-# 104 bytes as files against 51 / 142 / 41 as messages, and 10 / 43 / 10 against
-# 3 / 10 / 3 at their declared defaults. A count that moves is a wire that moved.
+# 104 bytes as files against 52 / 148 / 43 as messages, and 10 / 43 / 10 against
+# 3 / 11 / 3 at their declared defaults. A count that moves is a wire that moved.
 instance login_full     backenddemo LoginRequest  testdata/wire/tables/login_full.bin
 instance login_default  backenddemo LoginRequest  testdata/wire/tables/login_default.bin
 instance match_full     backenddemo MatchResult   testdata/wire/tables/match_full.bin

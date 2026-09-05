@@ -799,8 +799,10 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 	signed := f.Type.Kind == ir.TInt && f.Type.Signed
 	var value int64
 	switch {
-	case shape.Packing == ir.TableMessageRanged:
+	case shape.Packing == ir.TableMessageRanged && signed:
 		value = int64(raw) + base.Int64()
+	case shape.Packing == ir.TableMessageRanged:
+		value = int64(raw + base.Uint64()) // the unsigned domain, whole: the sum wraps into the bits below
 	case signed && width < 64 && width > 0:
 		shift := uint(64 - width)
 		value = int64(raw<<shift) >> shift
@@ -818,12 +820,13 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 				d.report.Clamped++
 			}
 		} else {
-			u := uint64(value)
-			if u < uint64(lo) {
-				u = uint64(lo)
+			// the bounds are read whole: an unsigned range reaches 2^64 - 1
+			u, ulo, uhi := uint64(value), f.IntMin.Uint64(), f.IntMax.Uint64()
+			if u < ulo {
+				u = ulo
 				d.report.Clamped++
-			} else if u > uint64(hi) {
-				u = uint64(hi)
+			} else if u > uhi {
+				u = uhi
 				d.report.Clamped++
 			}
 			value = int64(u)
@@ -854,7 +857,9 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 			d.report.Malformed = true
 			return false
 		}
-		v := float64(float32(float64(shape.QMin) + float64(index)*float64(shape.QStep)))
+		// THE PACKET WIRE'S RULE, IN FLOAT32 (SPEC.md §4.3, §3.3): the float an
+		// index names is the float a packet's reader names for it
+		v := float64(ir.TableMessageDequantize(shape, uint32(index)))
 		cell.F = float64(float32(d.clampFloat(v, f)))
 		return true
 	}

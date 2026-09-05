@@ -77,6 +77,8 @@ func (g *tableGen) emitMessageReadField(f *ir.Field) {
 	switch {
 	case f.IsMap():
 		g.emitMessageReadMap(f, ind)
+	case f.IsList():
+		g.emitMessageReadList(f, ind)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.emitMessageReadIndex(f, "value."+name, ind)
 	case f.Type.Optional:
@@ -206,7 +208,12 @@ func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from 
 		g.pf("%s%s scratch%s;\n", inner, f.Type.Name, sfx)
 		g.emitMessageReadUnion(f, elem, inner)
 	default:
-		g.emitMessageReadScalarFromEntry(f, fmt.Sprintf("%s[ in_bounds%s ? %s : 0 ]", base, sfx, idx), inner, from, true)
+		// A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION: it
+		// decodes into scratch, and only an in-bounds one lands
+		typ, _ := g.cppFieldType(f.Type)
+		g.pf("%s%s scratch%s = %s;\n", inner, typ, sfx, g.fieldDefaultExpr(f))
+		g.emitMessageReadScalarFromEntry(f, "scratch"+sfx, inner, from, true)
+		g.pf("%sif ( in_bounds%s ) { %s[%s] = scratch%s; }\n", inner, sfx, base, idx, sfx)
 	}
 	g.pf("%s    }\n", ind)
 	if f.CountedOnWire() {
@@ -337,7 +344,11 @@ func (g *tableGen) emitMessageReadKeyed(f *ir.Field, ind string) {
 		g.emitMessageReadEnum(f, "slot_value"+sfx, inner)
 		g.pf("%sif ( in_bounds%s ) { %s[slot%s] = slot_value%s; }\n", inner, sfx, slots, sfx, sfx)
 	default:
-		g.emitMessageReadScalarFromEntry(f, fmt.Sprintf("%s[ in_bounds%s ? slot%s : 0 ]", slots, sfx, sfx), inner, "entry", true)
+		// an unknown key's element decodes into scratch and lands nowhere
+		typ, _ := g.cppFieldType(f.Type)
+		g.pf("%s%s scratch%s = %s;\n", inner, typ, sfx, g.fieldDefaultExpr(f))
+		g.emitMessageReadScalarFromEntry(f, "scratch"+sfx, inner, "entry", true)
+		g.pf("%sif ( in_bounds%s ) { %s[slot%s] = scratch%s; }\n", inner, sfx, slots, sfx, sfx)
 	}
 	g.pf("%s    }\n%s}\n", ind, ind)
 }
@@ -422,9 +433,9 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 	sfx := g.msgEnter()
 	defer g.msgLeave()
 	kind := tableScalarKind(f)
-	packing, bits, base, qmin, qstep := from+".packing", from+".value_bits", from+".base_lo", from+".qmin", from+".qstep"
+	packing, bits, base, baseHi, qmin, qdelta, qcount := from+".packing", from+".value_bits", from+".base_lo", from+".base_hi", from+".qmin", from+".qdelta", from+".qcount"
 	if element {
-		packing, bits, base, qmin, qstep = from+".elem_packing", from+".elem_value_bits", from+".elem_base_lo", from+".elem_qmin", from+".elem_qstep"
+		packing, bits, base, baseHi, qmin, qdelta, qcount = from+".elem_packing", from+".elem_value_bits", from+".elem_base_lo", from+".elem_base_hi", from+".elem_qmin", from+".elem_qdelta", from+".elem_qcount"
 	}
 	width := fmt.Sprintf("TableMessageValueBits( %d, %s, %s )", kind, packing, bits)
 	switch kind {
@@ -439,7 +450,7 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		g.pf("%s    if ( %s == 2 )\n%s    {\n", ind, packing, ind)
 		g.pf("%s        uint64_t index%s = 0;\n", ind, sfx)
 		g.pf("%s        if ( !r.get( index%s, %s ) ) { report->malformed = true; return false; }\n", ind, sfx, bits)
-		g.pf("%s        decoded_f%s = %s + float( index%s ) * %s;\n%s    }\n", ind, sfx, qmin, sfx, qstep, ind)
+		g.pf("%s        decoded_f%s = TableMessageDequantize( (uint32_t) index%s, %s, %s, %s ); // SPEC.md §4.3's rule, in float32\n%s    }\n", ind, sfx, sfx, qmin, qdelta, qcount, ind)
 		g.pf("%s    else\n%s    {\n", ind, ind)
 		g.pf("%s        uint64_t raw%s = 0;\n", ind, sfx)
 		g.pf("%s        if ( !r.get( raw%s, 32 ) ) { report->malformed = true; return false; }\n", ind, sfx)
@@ -455,14 +466,21 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 	bytesWide := tableKindWidth(kind)
 	decoded := "decoded_v" + sfx
 	g.pf("%s{\n", ind)
+	g.pf("%s    const int64_t width%s = %s;\n", ind, sfx, width)
 	if bytesWide == 16 {
+		// A 128-BIT KIND at the width the SENDER's shape states: the low half
+		// first and the high half where the width reaches it, then the base
+		// added at 128 bits, which is the one arithmetic measure, save and
+		// read share (§3.3)
 		storage := "serialize::uint128_t"
 		if signed {
 			storage = "serialize::int128_t"
 		}
 		g.pf("%s    uint64_t lo_v%s = 0, hi_v%s = 0;\n", ind, sfx, sfx)
-		g.pf("%s    if ( !r.get( lo_v%s, 64 ) || !r.get( hi_v%s, 64 ) ) { report->malformed = true; return false; }\n", ind, sfx, sfx)
-		g.pf("%s    %s %s = %s( ( serialize::uint128_t( hi_v%s ) << 64 ) | serialize::uint128_t( lo_v%s ) );\n", ind, storage, decoded, storage, sfx, sfx)
+		g.pf("%s    if ( width%s < 0 || !r.get( lo_v%s, width%s < 64 ? width%s : 64 ) || ( width%s > 64 && !r.get( hi_v%s, width%s - 64 ) ) ) { report->malformed = true; return false; }\n", ind, sfx, sfx, sfx, sfx, sfx, sfx, sfx)
+		g.pf("%s    serialize::uint128_t raw_v%s = ( serialize::uint128_t( hi_v%s ) << 64 ) | serialize::uint128_t( lo_v%s );\n", ind, sfx, sfx, sfx)
+		g.pf("%s    if ( %s == 1 ) { raw_v%s = raw_v%s + ( ( serialize::uint128_t( (uint64_t) %s ) << 64 ) | serialize::uint128_t( (uint64_t) %s ) ); }\n", ind, packing, sfx, sfx, baseHi, base)
+		g.pf("%s    %s %s = %s( raw_v%s );\n", ind, storage, decoded, storage, sfx)
 		g.emitMessageClamp(f, signed, bytesWide, decoded, ind+"    ")
 		g.pf("%s    %s = %s;\n%s}\n", ind, lvalue, decoded, ind)
 		return
@@ -472,7 +490,6 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		storage = fmt.Sprintf("int%d_t", bytesWide*8)
 	}
 	g.pf("%s    uint64_t raw%s = 0;\n", ind, sfx)
-	g.pf("%s    const int64_t width%s = %s;\n", ind, sfx, width)
 	g.pf("%s    if ( width%s < 0 || !r.get( raw%s, width%s ) ) { report->malformed = true; return false; }\n", ind, sfx, sfx, sfx)
 	g.pf("%s    int64_t decoded_wide%s = (int64_t) raw%s;\n", ind, sfx, sfx)
 	g.pf("%s    if ( %s == 1 ) { decoded_wide%s = (int64_t) ( raw%s + (uint64_t) %s ); }\n", ind, packing, sfx, sfx, base)
@@ -482,9 +499,47 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		g.pf("%s        if ( ( raw%s & sign%s ) != 0 ) { decoded_wide%s = (int64_t) ( raw%s | ~( ( uint64_t(1) << width%s ) - 1 ) ); }\n", ind, sfx, sfx, sfx, sfx, sfx)
 		g.pf("%s    }\n", ind)
 	}
+	// THE BOUND APPLIES WHILE THE VALUE IS STILL WIDE, and the narrowing
+	// comes after: a reconstructed value past the storage or the declared
+	// range clamps to the reader's own bound and never wraps into it (§3.3)
+	g.emitMessageClampWide(f, signed, bytesWide, "decoded_wide"+sfx, ind+"    ")
 	g.pf("%s    %s %s = (%s) decoded_wide%s;\n", ind, storage, decoded, storage, sfx)
-	g.emitMessageClamp(f, signed, bytesWide, decoded, ind+"    ")
 	g.pf("%s    %s = %s;\n%s}\n", ind, lvalue, decoded, ind)
+}
+
+// emitMessageClampWide is §4's clamp taken on the sixty-four bit value a
+// narrower kind was reconstructed into: the declared range where there is
+// one, intersected with the kind's own storage range, on the signed or the
+// unsigned scale the kind names, and a `bits(N)` width clamp beside it.
+func (g *tableGen) emitMessageClampWide(f *ir.Field, signed bool, width int, decoded, ind string) {
+	lo, hi := tableStorageRange(signed, width*8)
+	if rlo, rhi, ok := ir.TableRawRange(f); ok {
+		if rlo.Cmp(lo) > 0 {
+			lo = rlo
+		}
+		if rhi.Cmp(hi) < 0 {
+			hi = rhi
+		}
+	}
+	slo, shi := tableStorageRange(signed, 64)
+	if lo.Cmp(slo) > 0 {
+		if signed {
+			g.pf("%sif ( %s < %s ) { %s = %s; report->clamped++; }\n", ind, decoded, tableIntLit(lo, true, 8), decoded, tableIntLit(lo, true, 8))
+		} else {
+			g.pf("%sif ( (uint64_t) %s < %s ) { %s = (int64_t) %s; report->clamped++; }\n", ind, decoded, tableIntLit(lo, false, 8), decoded, tableIntLit(lo, false, 8))
+		}
+	}
+	if hi.Cmp(shi) < 0 {
+		if signed {
+			g.pf("%sif ( %s > %s ) { %s = %s; report->clamped++; }\n", ind, decoded, tableIntLit(hi, true, 8), decoded, tableIntLit(hi, true, 8))
+		} else {
+			g.pf("%sif ( (uint64_t) %s > %s ) { %s = (int64_t) %s; report->clamped++; }\n", ind, decoded, tableIntLit(hi, false, 8), decoded, tableIntLit(hi, false, 8))
+		}
+	}
+	if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
+		maxv := (uint64(1) << f.Type.Width) - 1
+		g.pf("%sif ( (uint64_t) %s > %dull ) { %s = (int64_t) %dull; report->clamped++; } // bits(%d) width clamp\n", ind, decoded, maxv, decoded, maxv, f.Type.Width)
+	}
 }
 
 // emitMessageClamp is §4's clamp, the file form's own text: the declared range
@@ -583,4 +638,45 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("        br.remaining--;\n    }\n")
 	g.pf("    *count = bodies;\n")
 	g.pf("    return TableMessageBatchClose( br );\n}\n\n")
+}
+
+// emitMessageReadList decodes one UNBOUNDED ARRAY on the message wire
+// (docs/SPEC-TABLES.md §2.9, §3.3): the count at the thirty-two bits the data
+// decides, then the elements into slots the fill carves from the node's own
+// extent, in index order. There is no bound, so `clamped` cannot fire on the
+// count, and a count above the int32 storage cap is the fill's refusal.
+func (g *tableGen) emitMessageReadList(f *ir.Field, ind string) {
+	sfx := g.msgEnter()
+	defer g.msgLeave()
+	idx := "i" + sfx
+	g.pf("%s{\n", ind)
+	g.pf("%s    uint64_t n%s = 0;\n", ind, sfx)
+	g.pf("%s    if ( !r.get( n%s, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }\n", ind, sfx)
+	g.pf("%s    n%s += (uint64_t) entry.min;\n", ind, sfx)
+	if listElementWireKind(f) == tkU8 {
+		g.pf("%s    if ( !r.align() ) { report->malformed = true; return false; } // an array of kind 6 aligns before its elements\n", ind)
+	}
+	g.pf("%s    TableListFill<%s> fill%s = TableListFillBegin( nodes, value.%s, n%s );\n", ind, g.listTypeArg(f), sfx, f.Name, sfx)
+	g.pf("%s    if ( fill%s.refused ) { nodes.refused = true; return false; }\n", ind, sfx)
+	g.pf("%s    if ( !fill%s.ok ) { report->malformed = true; return false; } // the measure and the load disagree\n", ind, sfx)
+	g.pf("%s    for ( uint64_t %s = 0; %s < n%s; %s++ )\n%s    {\n", ind, idx, idx, sfx, idx, ind)
+	inner := ind + "        "
+	g.pf("%s%s * slot%s = TableListFillNext( fill%s );\n", inner, g.listElementType(f), sfx, sfx)
+	g.pf("%sif ( slot%s == NULL ) { report->malformed = true; return false; } // the arena could not carve\n", inner, sfx)
+	elem := "( *slot" + sfx + " )"
+	switch {
+	case f.Type.Pointer:
+		g.emitMessageReadIndex(f, elem, inner)
+	case tableScalarKind(f) == tkTable:
+		g.pf("%sif ( !%s ) { return false; }\n", inner, g.msgLoadCall(f.Type.Name, "r", elem))
+	case tableScalarKind(f) == tkEnum:
+		g.emitMessageReadEnum(f, elem, inner)
+	case tableScalarKind(f) == tkUnion:
+		g.emitMessageReadUnion(f, elem, inner)
+	default:
+		g.emitMessageReadScalarFromEntry(f, elem, inner, "entry", true)
+	}
+	g.pf("%s    }\n", ind)
+	g.pf("%s    TableListFillEnd( fill%s );\n", ind, sfx)
+	g.pf("%s}\n", ind)
 }

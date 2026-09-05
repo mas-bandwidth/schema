@@ -89,6 +89,13 @@ type tableGen struct {
 	// §2.8). It gates the map runtime and every map-shaped walk, so not one
 	// symbol of the machinery reaches a map-free unit's header (§2.2).
 	anyMap bool
+	// anyList is the unit declaring at least one `[]T` (docs/SPEC-TABLES.md
+	// §2.9). It gates the list runtime and the builder's three the same way.
+	anyList bool
+	// anyExtent is either: the unit carries the NODE EXTENT machinery both
+	// constructs share: the carve, the framing walk, the extent walks and the
+	// refusal reason (§2.8, §2.9, §6.5). A unit with neither carries none of it.
+	anyExtent bool
 	// blocks is the unit's BLOCK FORM surface (docs/SPEC-TABLES.md §19), nil when
 	// no table is marked `| block`. Nil is what makes the zero-cost gate
 	// answerable by asking one question (§2.2).
@@ -365,7 +372,7 @@ struct TableKeyed
 // same way would be a redefinition.
 func tableInlineMacro(pkg string) string { return strings.ToUpper(pkg) + "_TABLE_INLINE" }
 
-func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyMap bool, idCap int, u *ir.Unit) string {
+func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool, idCap int, u *ir.Unit) string {
 	// THE ID TABLE'S CAPACITY IS A COMPILE-TIME FACT of the unit (§3): the
 	// distinct names its table closure can spell, so a save allocates nothing.
 	// The bucket count is the next power of two at twice the capacity, so the
@@ -389,24 +396,35 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyMap bool, i
 	// the two pointer-era descriptor members exist only in a unit that HAS
 	// pointers: a unit of value-only tables emits the descriptor surface it
 	// always emitted, to the byte (docs/SPEC-TABLES.md §2, the zero-cost gate)
-	// the MAP columns (docs/SPEC-TABLES.md §2.8, §16), emitted only into a unit
-	// that declares one: the generated ENTRY's descriptor, whose two fields
-	// ARE the key and the value, and the three thunks the ONE walk cannot
-	// spell for itself because TableMap<Entry> is a type it has no name for.
-	mapFieldMember := ""
-	if anyMap {
-		mapFieldMember = "\n    // a MAP (docs/SPEC-TABLES.md §2.8): the generated ENTRY's descriptor —\n" +
-			"    // fields[0] is the key and fields[1] the value — and the three the ONE\n" +
-			"    // text walk cannot spell for itself, because TableMap<Entry> is a type\n" +
-			"    // it has no name for. NULL on every field that is not a map.\n" +
-			"    const TableTypeInfo * entry;\n" +
-			"    int32_t ( * map_count )( const void * slot );\n" +
-			"    const void * ( * map_at )( const void * slot, int32_t index );\n" +
-			"    // place one entry BY KEY and hand back the entry, at its defaults: a\n" +
-			"    // string key comes in as the bytes and the length, an integer key as\n" +
-			"    // the value, and NULL is NOT INSERTED — a key past the bound, or an\n" +
-			"    // arena that could not carve another segment.\n" +
-			"    void * ( * map_insert )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );"
+	// the PLACE column (docs/SPEC-TABLES.md §8.1, §16), emitted only into a
+	// unit that declares a map or an unbounded array: the one resolver the ONE
+	// text walk cannot spell for itself, because TableMap<Entry> and
+	// TableList<T> are types it has no name for. The SHAPE of either is read
+	// from the array columns like every other array's, with array_bound = 0
+	// the one tell that the offset names a reference and not the first element.
+	placeMember := ""
+	refuseReason := ""
+	if anyExtent {
+		placeMember = "\n    // an OUT-OF-LINE array (docs/SPEC-TABLES.md §8.1): place one element and\n" +
+			"    // hand it back at its defaults. A MAP places BY KEY, a string key comes\n" +
+			"    // in as the bytes and the length, an integer key as the value, and NULL\n" +
+			"    // is NOT INSERTED: a key past the bound, or an arena that could not carve\n" +
+			"    // another segment. A LIST ignores the key and APPENDS, NULL at the arena\n" +
+			"    // or the int32 cap. NULL on every field that is neither.\n" +
+			"    void * ( * place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );"
+		refuseReason = `
+
+// WHY A MEASURE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5): a -1 from
+// LoadMeasure carries one of these as an out-parameter. A REFUSAL moves no
+// counter: nothing was decoded, so there is nothing to report, and the reason
+// is where the answer lives. The two values here are the ones a map's and an
+// unbounded array's framing can raise. The rest of §6.5's vocabulary, the
+// accelerators' refusals, is owed with them (schema#523).
+enum TableRefuseReason
+{
+    count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
+    count_over_extent_cap  // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
+};`
 	}
 	pointerFieldMember, pointerTypeMember, pointerForward := "", "", ""
 	if anyVariable {
@@ -490,7 +508,7 @@ struct TableReport
     // must not look at then (docs/SPEC-TABLES.md §3.3).
     TableMessageReason reason = newer_form;
 };
-
+` + refuseReason + `
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
@@ -591,7 +609,7 @@ struct TableWideRange
     // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
     // a function pointer at compile time; the arms themselves are a static
     // inside it). NULL for every other kind.
-    const TableUnionInfo * (*arms)();` + mapFieldMember + `
+    const TableUnionInfo * (*arms)();` + placeMember + `
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
 };
 
@@ -966,6 +984,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	anyVariable := len(variable) > 0
 	anyKeyed := unitHasKeyedArray(u, closure)
 	anyMap := unitHasMap(u, closure)
+	anyList := unitHasList(u, closure)
+	anyExtent := anyMap || anyList
 	blocks := ir.Blocks(u)
 
 	// The BLOCK FORM (docs/SPEC-TABLES.md §19) is emitted ON THE SIDE, into
@@ -979,7 +999,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// literal beside the id.
 	slots := ir.TableVocabularySlots(u)
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets,
+		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
 			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
@@ -1041,6 +1061,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			}
 			g.pf("\n")
 			g.emitCookLayoutAsserts(members)
+			g.emitListAlignAsserts(members)
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----\n\n")
 			for _, st := range members {
 				g.pf("inline const TableTypeInfo * %sTableType();\n", st.Name)
@@ -1091,11 +1112,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		// The relocatability and standard-layout asserts read the COMPILER
 		// INTRINSICS, so <type_traits> — 124 headers on its own — is not here.
 		h.WriteString("#pragma once\n\n#include <stdint.h>\n#include <string.h> // the prefill's scalar-array fills\n#include <stddef.h> // offsetof, for the reflection descriptors\n")
-		if anyKeyed {
-			// ENUM-KEYED arrays only: indexing one by None is a program error in
-			// EVERY configuration, and the accessor is where a runtime key can
-			// first be caught (docs/SPEC-TABLES.md §2.4). It is the runtime's
-			// only refusal, so it is the only reason these two hooks are here.
+		if anyKeyed || anyList {
+			// ENUM-KEYED arrays and UNBOUNDED arrays only: indexing a keyed array
+			// by None, or a list past its count, is a program error in EVERY
+			// configuration, and the accessor is where a runtime key or index can
+			// first be caught (docs/SPEC-TABLES.md §2.4, §2.9). Those are the
+			// runtime's only refusals, so they are the only reason these two
+			// hooks are here.
 			h.WriteString(tableHooks)
 		}
 		if anyVariable {
@@ -1131,21 +1154,36 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			fmt.Fprintf(&h, "#include \"%s\"\n", n)
 		}
 		h.WriteString("\n")
-		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyMap, ir.TableWireIdCapacity(u), u))
+		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyExtent, ir.TableWireIdCapacity(u), u))
 		if anyVariable {
 			h.WriteString("\n")
-			h.WriteString(tableArenaRuntime(u.Package, anyMap))
+			h.WriteString(tableArenaRuntime(u.Package, anyExtent))
+			// the node table on the MESSAGE wire (docs/SPEC-TABLES.md §3.3),
+			// spelled in terms of the numbering the arena runtime declares
 			h.WriteString("\n")
 			nodeGuard := strings.ToUpper(u.Package) + "_SCHEMA_TABLE_MESSAGE_NODES"
 			h.WriteString("#ifndef " + nodeGuard + "\n#define " + nodeGuard + "\n\nnamespace " + u.Package + " {\n\n" + cppMessageNodeRuntime + "} // namespace " + u.Package + "\n\n#endif // " + nodeGuard + "\n")
 		}
+		if anyExtent {
+			// the NODE EXTENT runtime (docs/SPEC-TABLES.md §2.8, §2.9): what a
+			// map and an unbounded array share once the key and the sort are
+			// taken out. Either makes its holder variable-length, so it always
+			// follows the arena runtime it is spelled in terms of.
+			h.WriteString("\n")
+			h.WriteString(tableExtentRuntime(u.Package))
+		}
 		if anyMap {
 			// the MAP runtime (docs/SPEC-TABLES.md §2.8): the storage type, the
 			// order, the builder's head and segments, and the optional index.
-			// A map makes its holder variable-length, so it always follows the
-			// arena runtime it is spelled in terms of.
 			h.WriteString("\n")
 			h.WriteString(tableMapRuntime(u.Package))
+		}
+		if anyList {
+			// the LIST runtime (docs/SPEC-TABLES.md §2.9): the storage type and
+			// its const surface, the builder's head and segments, the index-order
+			// cursor and the load side's fill.
+			h.WriteString("\n")
+			h.WriteString(tableListRuntime(u.Package))
 		}
 		// the COOKED FORM's read side (docs/SPEC-TABLES.md §7) and the BUILD VERSION
 		// it matches against, in EVERY unit that declares a table: every table
@@ -1185,9 +1223,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			c.WriteString("#include <stdio.h> // the text form: number formatting\n")
 			c.WriteString("#include <stdlib.h> // the text form: exact number conversion\n")
 			c.WriteString("#include <locale.h> // the text form: the runtime's decimal point\n\n")
-			c.WriteString(tableJsonWalk(u.Package, anyVariable, anyMap))
+			c.WriteString(tableJsonWalk(u.Package, anyVariable, anyMap, anyList))
 			fmt.Fprintf(&c, "\nnamespace %s {\n\n", u.Package)
-			cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets,
+			cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
+
 				includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
 			for _, st := range members {
 				cg.emitJsonDefinitions(st)

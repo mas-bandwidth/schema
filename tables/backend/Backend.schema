@@ -42,3 +42,20 @@ table StorePurchase
     price_minor uint32 = 0
     currency    Currency
 }
+
+// THE ENVELOPE: a batch is of ONE root, so a peer that mixes the three rides
+// them as three bodies of one root holding a union of them (§2.6, §3.3). What
+// it costs on the wire is eighteen bits a body and five entries in the
+// vocabulary, and the batch vector is the pin that a batch is not the sum of
+// its bodies.
+union Payload
+{
+    login    LoginRequest
+    result   MatchResult
+    purchase StorePurchase
+}
+
+table Envelope
+{
+    payload Payload
+}

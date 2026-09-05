@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"math"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -256,19 +257,19 @@ func TestTheWideStringsWidth(t *testing.T) {
 	if err != nil || !v.Announced() || report.Malformed {
 		t.Fatalf("the announcement with a kind-33 entry was refused: %v %+v", err, report)
 	}
-	if v.RefBits() != 5 {
-		t.Fatalf("29 entries take %d bits, not five", v.RefBits())
+	if v.RefBits() != 6 {
+		t.Fatalf("34 entries take %d bits, not six", v.RefBits())
 	}
 	playerID := slotOf(t, v, ir.TableWireId("player_id"), ir.TableKindU64)
 	body := &bitw{}
-	body.put(uint64(len(entries)), 5) // the wide string's slot, the last
+	body.put(uint64(len(entries)), v.RefBits()) // the wide string's slot, the last
 	body.put(8, ir.TableMessageBitsRequired(0, 8))
 	for i := range 8 {
 		body.put(uint64(0x4100+i), 16) // sixteen bits a unit, no align
 	}
-	body.put(playerID, 5)
+	body.put(playerID, v.RefBits())
 	body.put(77, 64)
-	body.put(0, 5)
+	body.put(0, v.RefBits())
 	inst, ok, rep, derr := decodeOne(t, model, "LoginRequest", v, batchOf(body))
 	if derr != nil || !ok || rep.Malformed || rep.Unknown != 1 || rep.KindMismatch != 0 {
 		t.Errorf("the wide string was not stepped over exactly: ok=%v err=%v report=%+v", ok, derr, rep)
@@ -278,7 +279,7 @@ func TestTheWideStringsWidth(t *testing.T) {
 	}
 	// and the body is 128 bits of units, not 256: a body sized for a 32-bit
 	// group a unit does not fit
-	if bits := 5 + 4 + 128 + 5 + 64 + 5; body.n != bits {
+	if bits := 3*v.RefBits() + 4 + 128 + 64; body.n != bits {
 		t.Errorf("the crafted body is %d bits, the arithmetic says %d", body.n, bits)
 	}
 }
@@ -384,11 +385,11 @@ func TestAReferenceOfTheWrongSort(t *testing.T) {
 		{"an enum reference naming the node-table id", nodeTable},
 	} {
 		body := &bitw{}
-		body.put(region, 5)
-		body.put(row.variant, 5)
-		body.put(playerID, 5) // a field AFTER the damage, which must not be read
+		body.put(region, v.RefBits())
+		body.put(row.variant, v.RefBits())
+		body.put(playerID, v.RefBits()) // a field AFTER the damage, which must not be read
 		body.put(9, 64)
-		body.put(0, 5)
+		body.put(0, v.RefBits())
 		inst, ok, report, derr := decodeOne(t, model, "LoginRequest", v, batchOf(body))
 		if derr != nil || ok || !report.Malformed || report.Unknown != 0 || report.Refused {
 			t.Errorf("%s: ok=%v err=%v report=%+v", row.name, ok, derr, report)
@@ -437,14 +438,14 @@ func TestARangedOffsetAboveTheSendersMax(t *testing.T) {
 		t.Fatalf("score is announced at %d bits, not seventeen", got.Bits)
 	}
 	body := &bitw{}
-	body.put(players, 5) // ten rows, no count
-	body.put(score, 5)
+	body.put(players, v.RefBits()) // ten rows, no count
+	body.put(score, v.RefBits())
 	body.put(130000, 17)
-	body.put(0, 5)
+	body.put(0, v.RefBits())
 	for i := 1; i < 10; i++ {
-		body.put(0, 5)
+		body.put(0, v.RefBits())
 	}
-	body.put(0, 5)
+	body.put(0, v.RefBits())
 	inst, ok, report, derr := decodeOne(t, model, "MatchResult", v, batchOf(body))
 	if derr != nil || !ok || report.Malformed || report.Clamped != 1 {
 		t.Errorf("an offset above the sender's max: ok=%v err=%v report=%+v", ok, derr, report)
@@ -749,7 +750,7 @@ func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 		t.Errorf("the tolerant wire differs from the pinned announce_unknown_field at byte %d", firstDifference(pinned, tolerant))
 	}
 	v, report, err := readAnnouncement(tolerant)
-	if err != nil || !v.Announced() || v.BuildVersion() != 0x8877665544332211 || len(v.Entries()) != 28 {
+	if err != nil || !v.Announced() || v.BuildVersion() != 0x8877665544332211 || len(v.Entries()) != 33 {
 		t.Errorf("the tolerant row did not set the vocabulary: err=%v announced=%v version=%016x entries=%d", err, v.Announced(), v.BuildVersion(), len(v.Entries()))
 	}
 	if report.Unknown != 1 || report.Malformed || report.Refused {
@@ -802,4 +803,375 @@ func setI64(t *testing.T, inst *tabletext.Instance, name string, v int64) {
 	f := fieldOf(t, inst, name)
 	f.Cell.I = v
 	f.Cell.U = uint64(v)
+}
+
+// basesUnit is test/tables/Bases.schema: the unit whose announcement carries
+// the base's two encodings and the quantized triple, and whose pins the C++
+// tables test writes.
+func basesUnit(t *testing.T) (*tabletext.Model, *tablewire.Vocabulary) {
+	t.Helper()
+	if _, err := os.Stat("test/tables/Bases.schema"); err != nil {
+		t.Chdir(conformanceRoot(t))
+	}
+	c := compiler.New()
+	c.FormatInPlace = false
+	paths, err := compiler.GatherPaths([]string{"test/tables/Bases.schema"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit, err := c.Load(paths)
+	if err != nil {
+		t.Fatalf("test/tables/Bases.schema does not compile: %v", err)
+	}
+	return tabletext.NewModel(unit), vocabularyOf(t, unit)
+}
+
+// entryWhere is the first entry a predicate accepts, and its slot.
+func entryWhere(t *testing.T, v *tablewire.Vocabulary, accept func(ir.TableVocabularyEntry) bool) (ir.TableVocabularyEntry, uint64) {
+	t.Helper()
+	for i, e := range v.Entries() {
+		if accept(e) {
+			return e, uint64(i + 1)
+		}
+	}
+	t.Fatal("the vocabulary carries no such entry")
+	return ir.TableVocabularyEntry{}, 0
+}
+
+// forgedOver is the unit's own announcement with one entry's SHAPE replaced,
+// which is the C++ test's forge_over_vocabulary byte for byte.
+func forgedOver(v *tablewire.Vocabulary, accept func(ir.TableVocabularyEntry) bool, shape ir.TableMessageShape) []byte {
+	entries := append([]ir.TableVocabularyEntry(nil), v.Entries()...)
+	for i := range entries {
+		if accept(entries[i]) {
+			entries[i].Shape = shape
+		}
+	}
+	return announce(0x8877665544332211, entries)
+}
+
+func bytesContain(hay, needle []byte) bool {
+	for i := 0; i+len(needle) <= len(hay); i++ {
+		if string(hay[i:i+len(needle)]) == string(needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestTheBasesTwoEncodings: the four announced shapes the page pins as bytes,
+// with the values a body under them recovers. `uint64 | min = 2^63, max =
+// 2^63 + 1` is packing 01, bits 01 and the base `80 80 80 80 80 80 80 80 80
+// 01`; `uint64 | min = 2^64 - 2` is the base `FE FF FF FF FF FF FF FF FF 01`;
+// `int32 | min = -5, max = 10` is bits 04 and the zigzag base 09; `uint8 | min
+// = 7, max = 7` is bits 00 and the base 07, the value being the base with
+// nothing on the wire. Red if a leg zigzags an unsigned base, reads an
+// unsigned base as signed, spends a byte saying which encoding it used, or
+// recovers any value but the four.
+func TestTheBasesTwoEncodings(t *testing.T) {
+	model, v := basesUnit(t)
+	announcement := ir.TableAnnouncement(model.Unit)
+	if pinned := wireBytes(t, "testdata/wire/tables/bases_conn.bin"); string(pinned) != string(announcement) {
+		t.Errorf("the bases announcement differs from the pinned bases_conn at byte %d", firstDifference(pinned, announcement))
+	}
+	vocab := ir.TableVocabularyBytes(v.Entries())
+	for _, row := range []struct {
+		name  string
+		bytes []byte
+	}{
+		{"uint64 over [2^63, 2^63 + 1]", []byte{1, 1, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01}},
+		{"uint64 over [2^64 - 2, 2^64 - 1]", []byte{1, 1, 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01}},
+		{"int32 over [-5, 10]", []byte{1, 4, 9}},
+		{"uint8 over [7, 7]", []byte{1, 0, 7}},
+	} {
+		if !bytesContain(vocab, row.bytes) {
+			t.Errorf("%s: the announcement does not carry the shape %x", row.name, row.bytes)
+		}
+	}
+	high, _ := entryWhere(t, v, func(e ir.TableVocabularyEntry) bool {
+		return e.Kind == ir.TableKindU64 && e.Shape.Packing == ir.TableMessageRanged
+	})
+	if high.Shape.Bits != 1 || high.Shape.Base.Cmp(new(big.Int).Lsh(big.NewInt(1), 63)) != 0 {
+		t.Errorf("the uint64 base reads %s at %d bits, not 2^63 at one", high.Shape.Base, high.Shape.Bits)
+	}
+	small, _ := entryWhere(t, v, func(e ir.TableVocabularyEntry) bool { return e.Kind == ir.TableKindI32 })
+	if small.Shape.Bits != 4 || small.Shape.Base.Int64() != -5 {
+		t.Errorf("the int32 base reads %s at %d bits, not -5 at four", small.Shape.Base, small.Shape.Bits)
+	}
+	// THE VALUES A BODY UNDER IT RECOVERS, from the pinned vector and from a
+	// value of this engine's own
+	pinned := wireBytes(t, "testdata/wire/tables/bases_message.bin")
+	read, ok, report, err := decodeOne(t, model, "Bases", v, pinned)
+	if err != nil || !ok || !report.Silent() {
+		t.Fatalf("bases_message did not read: ok=%v err=%v report=%+v", ok, err, report)
+	}
+	if instU64(t, read, "high_a") != 1<<63 || instU64(t, read, "high_b") != 1<<63+1 {
+		t.Errorf("the high pair reads %d and %d", instU64(t, read, "high_a"), instU64(t, read, "high_b"))
+	}
+	if instU64(t, read, "top_a") != 1<<64-2 || instU64(t, read, "top_b") != 1<<64-1 {
+		t.Errorf("the top pair reads %d and %d", instU64(t, read, "top_a"), instU64(t, read, "top_b"))
+	}
+	if fieldOf(t, read, "small_a").Cell.I != -5 || fieldOf(t, read, "small_b").Cell.I != 10 || instU64(t, read, "seven") != 7 {
+		t.Error("the signed pair or the seven did not read")
+	}
+	if few := fieldOf(t, read, "few"); few.Count != 3 || few.Elems[0].U != 1 || few.Elems[2].U != 3 {
+		t.Errorf("few reads %d elements", few.Count)
+	}
+	again, err := tablewire.EncodeMessage(model, read)
+	if err != nil || string(again) != string(pinned) {
+		t.Errorf("bases_message does not re-save to its own bytes (%v)", err)
+	}
+	own := model.New(model.Lookup("Bases"))
+	var textReport tabletext.Report
+	if !model.Read(own, []byte(`{"small_a":-5,"small_b":10,"seven":7,"q":0.123,"wide":-33.34,"few":[1,2,3],"narrow":200}`), &textReport) || !textReport.Silent() {
+		t.Fatalf("the bases text did not read: %+v", textReport)
+	}
+	setU64(t, own, "high_a", 1<<63)
+	setU64(t, own, "high_b", 1<<63+1)
+	setU64(t, own, "top_a", 1<<64-2)
+	setU64(t, own, "top_b", 1<<64-1)
+	mine, err := tablewire.EncodeMessage(model, own)
+	if err != nil || string(mine) != string(pinned) {
+		t.Errorf("this engine's bases message differs from the pinned one at byte %d (%v)", firstDifference(mine, pinned), err)
+	}
+	// M4: THE COUNT RIDES AS ITS OFFSET FROM THE ANNOUNCED MINIMUM: few's
+	// three of [2..5] spend two bits carrying 1
+	_, fewSlot := entryWhere(t, v, func(e ir.TableVocabularyEntry) bool {
+		return e.Kind == ir.TableKindArray && e.Shape.Min == 2 && e.Shape.Max == 5
+	})
+	r := newBits(pinned[1:])
+	r.get(8)
+	found := false
+	for !found {
+		ref := r.get(v.RefBits())
+		if ref == 0 {
+			break
+		}
+		entry := v.Entries()[ref-1]
+		if ref == fewSlot {
+			if got := r.get(2); got != 1 {
+				t.Errorf("few's count rides as %d, not the offset 1 from the announced minimum of two", got)
+			}
+			found = true
+			break
+		}
+		width := ir.TableMessageValueBits(entry.Kind, entry.Shape)
+		if width < 0 {
+			t.Fatalf("a field before few is not fixed width: kind %d", entry.Kind)
+		}
+		r.get(int(width))
+	}
+	if !found {
+		t.Error("few's count was not found in the pinned vector")
+	}
+}
+
+// TestTheQuantizedIndexAcrossTheForms: `float32 | min = 0, max = 10,
+// resolution = 0.01` carrying 0.005, the rounding tie, 0.123, an off-grid
+// value, and 11.0, a value past the clamp, whose indices are 1, 12 and 1000:
+// the packet wire's own, and each message read back into a float that is the
+// grid point and not the original. Beside it the decode of index 6666 under
+// `min = -100, max = 100, resolution = 0.01`, which is 0xC2055C2A and no
+// neighbor of it. Red if a leg computes in float64, rounds once where the rule
+// rounds twice, differs from the packet wire's index or float by one, or
+// reproduces 0.005, 0.123 or 11.0 out of the file it wrote.
+func TestTheQuantizedIndexAcrossTheForms(t *testing.T) {
+	model, v := basesUnit(t)
+	q, qSlot := entryWhere(t, v, func(e ir.TableVocabularyEntry) bool { return e.Kind == ir.TableKindF32 && e.Shape.QMin == 0 })
+	count, delta, ok := ir.TableMessageQuantization(q.Shape)
+	if !ok || count != 1000 || delta != 10 || q.Shape.Bits != 10 {
+		t.Fatalf("the triple derives count %d delta %g bits %d", count, delta, q.Shape.Bits)
+	}
+	for _, row := range []struct {
+		value float32
+		index uint32
+		grid  float32
+	}{{0.005, 1, 0.01}, {0.123, 12, 0.12}, {11.0, 1000, 10.0}} {
+		if got := ir.TableMessageQuantize(q.Shape, row.value); got != row.index {
+			t.Errorf("%g quantizes to %d, the packet wire writes %d", row.value, got, row.index)
+		}
+		inst := model.New(model.Lookup("Bases"))
+		fieldOf(t, inst, "q").Cell.F = float64(row.value)
+		message, err := tablewire.EncodeMessage(model, inst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := newBits(message[1:])
+		r.get(8)
+		if ref := r.get(v.RefBits()); ref != qSlot {
+			t.Fatalf("%g: the body does not open with q", row.value)
+		}
+		if got := r.get(10); got != uint64(row.index) {
+			t.Errorf("%g: the message carries index %d, the packet wire's is %d", row.value, got, row.index)
+		}
+		back, ok, report, derr := decodeOne(t, model, "Bases", v, message)
+		if derr != nil || !ok || !report.Silent() {
+			t.Fatalf("%g: the message did not read: %v %+v", row.value, derr, report)
+		}
+		if got := float32(fieldOf(t, back, "q").Cell.F); got != ir.TableMessageDequantize(q.Shape, row.index) {
+			t.Errorf("%g: the float read back is %g, the grid point is %g", row.value, got, ir.TableMessageDequantize(q.Shape, row.index))
+		}
+		if got := float32(fieldOf(t, back, "q").Cell.F); got == row.value {
+			t.Errorf("%g: the original came back out of the message", row.value)
+		}
+	}
+	wide, _ := entryWhere(t, v, func(e ir.TableVocabularyEntry) bool { return e.Kind == ir.TableKindF32 && e.Shape.QMin == -100 })
+	if got := math.Float32bits(ir.TableMessageDequantize(wide.Shape, 6666)); got != 0xC2055C2A {
+		t.Errorf("index 6666 over [-100, 100] at 0.01 decodes to %08x, not C2055C2A", got)
+	}
+}
+
+// TestARefusedFirstAnnouncement: a connection whose first announcement is
+// refused as vocabulary_too_large, then a well-formed announcement, then a
+// body: the second announcement refuses as second_announcement and sets
+// nothing, and the body refuses as no_vocabulary with nothing decoded and no
+// counter moved. Red if a leg accepts the second announcement, sets a
+// vocabulary from it, or decodes the body.
+func TestARefusedFirstAnnouncement(t *testing.T) {
+	m, model, _ := backend(t)
+	c, _ := m.LookupConnection("backend_conn")
+	announcement := wireBytes(t, c.Wire)
+	v := tablewire.Vocabulary{MaxEntries: 4}
+	var first tabletext.Report
+	var refused *tablewire.MessageRefusal
+	if err := v.AnnounceRead(announcement, &first); !asRefusal(err, &refused) || refused.Reason != tablewire.ReasonVocabularyTooLarge || v.Announced() {
+		t.Fatalf("the first announcement was not refused as vocabulary_too_large: %v", err)
+	}
+	v.MaxEntries = 0
+	var second tabletext.Report
+	if err := v.AnnounceRead(announcement, &second); !asRefusal(err, &refused) || refused.Reason != tablewire.ReasonSecondAnnouncement || !second.Refused || second.Malformed {
+		t.Errorf("the announcement after a refused first is not second_announcement: %v %+v", err, second)
+	}
+	if v.Announced() || len(v.Entries()) != 0 {
+		t.Error("the announcement after a refused first set a vocabulary")
+	}
+	inst, ok, report, err := decodeOne(t, model, "LoginRequest", &v, wireBytes(t, "testdata/wire/tables/login_full_message.bin"))
+	if ok || !asRefusal(err, &refused) || refused.Reason != tablewire.ReasonNoVocabulary || !report.Refused || !report.Silent() || instU64(t, inst, "client_build") != 0 {
+		t.Errorf("a body on the refused connection was not refused as no_vocabulary: ok=%v err=%v report=%+v", ok, err, report)
+	}
+}
+
+// TestTheSixFindings holds schema#571's six findings on the codec, each a
+// vector the C++ tables test pins beside this engine's own reading.
+func TestTheSixFindings(t *testing.T) {
+	_, _, u := corpus(t) // the corpus first: it chooses the working directory
+	model, own := basesUnit(t)
+	isFew := func(e ir.TableVocabularyEntry) bool {
+		return e.Kind == ir.TableKindArray && e.Shape.Min == 2 && e.Shape.Max == 5
+	}
+	isHigh := func(e ir.TableVocabularyEntry) bool {
+		return e.Kind == ir.TableKindU64 && e.Shape.Packing == ir.TableMessageRanged && e.Shape.Base.Cmp(new(big.Int).Lsh(big.NewInt(1), 63)) == 0
+	}
+	isNarrow := func(e ir.TableVocabularyEntry) bool {
+		return e.Kind == ir.TableKindU8 && e.Shape.Packing == ir.TableMessageRanged && e.Shape.Base.Int64() == 200
+	}
+
+	// M1: A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION. The
+	// sender announces few over [0, 8] and sends six; the reader keeps the
+	// first five, counts one clamped, and element zero is element zero.
+	{
+		forged := forgedOver(own, isFew, ir.TableMessageShape{Min: 0, Max: 8, Elem: ir.TableKindU32, Inner: &ir.TableMessageShape{}})
+		if pinned := wireBytes(t, "testdata/wire/tables/bases_few_wide_conn.bin"); string(pinned) != string(forged) {
+			t.Errorf("the forged announcement differs from the pinned bases_few_wide_conn at byte %d", firstDifference(pinned, forged))
+		}
+		v, report, err := readAnnouncement(forged)
+		if err != nil || !v.Announced() || report.Malformed {
+			t.Fatalf("the forged announcement was refused: %v %+v", err, report)
+		}
+		_, fewSlot := entryWhere(t, v, func(e ir.TableVocabularyEntry) bool { return e.Kind == ir.TableKindArray && e.Shape.Max == 8 })
+		body := &bitw{}
+		body.put(fewSlot, v.RefBits())
+		body.put(6, 4)
+		for i := uint64(1); i <= 6; i++ {
+			body.put(i, 32)
+		}
+		body.put(0, v.RefBits())
+		message := batchOf(body)
+		if pinned := wireBytes(t, "testdata/wire/tables/bases_few_surplus_message.bin"); string(pinned) != string(message) {
+			t.Errorf("the surplus body differs from the pinned bases_few_surplus_message at byte %d", firstDifference(pinned, message))
+		}
+		read, ok, rep, derr := decodeOne(t, model, "Bases", v, message)
+		if derr != nil || !ok || rep.Malformed || rep.Clamped != 1 {
+			t.Errorf("the surplus body: ok=%v err=%v report=%+v", ok, derr, rep)
+		}
+		if few := fieldOf(t, read, "few"); few.Count != 5 || few.Elems[0].U != 1 || few.Elems[4].U != 5 {
+			t.Errorf("the reader kept %d elements, element zero reads %d", few.Count, few.Elems[0].U)
+		}
+	}
+
+	// M2: A RANGED 128-BIT VALUE IS ONE ARITHMETIC FOR MEASURE, WRITE AND READ:
+	// flux over a 101-bit range with a base of -2^100, energy over 34 bits,
+	// and the raw entity_id after them lands where it should
+	{
+		unit, err := u.get("scalars")
+		if err != nil {
+			t.Fatal(err)
+		}
+		sm := tabletext.NewModel(unit)
+		sv := vocabularyOf(t, unit)
+		pinned := wireBytes(t, "testdata/wire/tables/scalars_wide_message.bin")
+		read, ok, report, derr := decodeOne(t, sm, "SimState", sv, pinned)
+		if derr != nil || !ok || !report.Silent() {
+			t.Fatalf("scalars_wide_message did not read: ok=%v err=%v report=%+v", ok, derr, report)
+		}
+		flux := new(big.Int).Add(new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), 100)), big.NewInt(5))
+		if got := fieldOf(t, read, "flux").Cell.Wide; got == nil || got.Cmp(flux) != 0 {
+			t.Errorf("flux reads %s, not -2^100 + 5", got)
+		}
+		if got := fieldOf(t, read, "energy").Cell.Wide; got == nil || got.Int64() != 123 {
+			t.Errorf("energy reads %s, not 123", got)
+		}
+		if got := fieldOf(t, read, "entity_id").Cell.Wide; got == nil || got.Int64() != 77 {
+			t.Errorf("entity_id after the ranged pair reads %s, not 77", got)
+		}
+		again, err := tablewire.EncodeMessage(sm, read)
+		if err != nil || string(again) != string(pinned) {
+			t.Errorf("scalars_wide_message does not re-save to its own bytes (%v)", err)
+		}
+		mine := sm.New(sm.Lookup("SimState"))
+		var textReport tabletext.Report
+		if !sm.Read(mine, []byte(`{"flux":-1267650600228229401496703205371,"energy":123,"entity_id":77}`), &textReport) || !textReport.Silent() {
+			t.Fatalf("the scalars text did not read: %+v", textReport)
+		}
+		if own, err := tablewire.EncodeMessage(sm, mine); err != nil || string(own) != string(pinned) {
+			t.Errorf("this engine's wide message differs from the pinned one at byte %d (%v)", firstDifference(own, pinned), err)
+		}
+	}
+
+	// M3: A WIDTH ABOVE THE KIND'S OWN DOMAIN IS A HOSTILE WIDTH: 65 bits on a
+	// uint64 and 9 on a uint8 are each refused whole, and set no vocabulary
+	for _, row := range []struct {
+		name   string
+		accept func(ir.TableVocabularyEntry) bool
+		shape  ir.TableMessageShape
+	}{
+		{"65 bits on a uint64", isHigh, ir.TableMessageShape{Packing: ir.TableMessageRanged, Bits: 65, Base: big.NewInt(0)}},
+		{"9 bits on a uint8", isNarrow, ir.TableMessageShape{Packing: ir.TableMessageRanged, Bits: 9, Base: big.NewInt(200)}},
+	} {
+		v, report, err := readAnnouncement(forgedOver(own, row.accept, row.shape))
+		if err != nil || !report.Malformed || v.Announced() {
+			t.Errorf("%s: err=%v report=%+v announced=%v", row.name, err, report, v.Announced())
+		}
+	}
+
+	// M6: THE BOUND APPLIES WHILE THE VALUE IS WIDE: narrow over [200, 250]
+	// reading offset 63 reconstructs 263 and clamps to 250, never to 7
+	{
+		_, narrowSlot := entryWhere(t, own, isNarrow)
+		body := &bitw{}
+		body.put(narrowSlot, own.RefBits())
+		body.put(63, 6)
+		body.put(0, own.RefBits())
+		message := batchOf(body)
+		if pinned := wireBytes(t, "testdata/wire/tables/bases_narrow_offset_message.bin"); string(pinned) != string(message) {
+			t.Errorf("the offset body differs from the pinned bases_narrow_offset_message at byte %d", firstDifference(pinned, message))
+		}
+		read, ok, report, derr := decodeOne(t, model, "Bases", own, message)
+		if derr != nil || !ok || report.Malformed || report.Clamped != 1 || instU64(t, read, "narrow") != 250 {
+			t.Errorf("the offset body: ok=%v err=%v report=%+v narrow=%d", ok, derr, report, instU64(t, read, "narrow"))
+		}
+	}
+	// M4 rides TestTheBasesTwoEncodings and M5 rides
+	// TestTheQuantizedIndexAcrossTheForms, each on the pinned vector both
+	// engines write.
 }

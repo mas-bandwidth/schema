@@ -45,11 +45,12 @@ type TableMessageShape struct {
 	Packing uint8    // integers, fixed-point and f32
 	Bits    int64    // the value width under a ranged or quantized packing
 	Base    *big.Int // the ranged base: the wire carries value - Base
-	QMin    float32  // the quantized minimum
-	QStep   float32  // the quantized step
-	Min     int64    // an array's minimum count
-	Max     int64    // an array's maximum count, a string's capacity, a keyed array's slots
-	Elem    uint8    // an array's or a keyed array's element kind
+	QMin    float32  // the quantized triple, SPEC.md §4.3's compressed-float declaration
+	QMax    float32
+	QRes    float32
+	Min     int64 // an array's minimum count
+	Max     int64 // an array's maximum count, a string's capacity, a keyed array's slots
+	Elem    uint8 // an array's or a keyed array's element kind
 	Inner   *TableMessageShape
 }
 
@@ -109,18 +110,26 @@ func appendShape(out []byte, kind uint8, s TableMessageShape) []byte {
 		out = append(out, s.Packing)
 		if s.Packing == TableMessageRanged {
 			out = appendLebBytes(out, uint64(s.Bits))
-			if kind == TableKindI128 || kind == TableKindU128 {
+			// A RANGED BASE IS ENCODED BY ITS KIND'S SIGNEDNESS (§3.3): a
+			// signed kind's is a zigzag LEB128, an unsigned kind's an
+			// unsigned LEB128, and a 128-bit kind's the sixteen-byte pattern
+			switch {
+			case kind == TableKindI128 || kind == TableKindU128:
 				out = appendWideBase(out, s.Base)
-			} else {
+			case TableKindSigned(int(kind)):
 				out = appendLebBytes(out, tableMessageZigzag(s.Base))
+			default:
+				out = appendLebBytes(out, tableMessageUnsignedBase(s.Base))
 			}
 		}
 	case kind == TableKindF32:
 		out = append(out, s.Packing)
 		if s.Packing == TableMessageQuantized {
-			out = appendLebBytes(out, uint64(s.Bits))
+			// the three facts SPEC.md §4.3's rule takes, as float32: the step
+			// count, the width and the value all derive from them
 			out = binary.LittleEndian.AppendUint32(out, math.Float32bits(s.QMin))
-			out = binary.LittleEndian.AppendUint32(out, math.Float32bits(s.QStep))
+			out = binary.LittleEndian.AppendUint32(out, math.Float32bits(s.QMax))
+			out = binary.LittleEndian.AppendUint32(out, math.Float32bits(s.QRes))
 		}
 	case tableMessageFixedKind(kind):
 		out = append(out, s.Packing)
@@ -175,35 +184,45 @@ func DecodeShape(in []byte, kind uint8) (TableMessageShape, int, bool) {
 		case s.Packing == TableMessageRaw:
 		case s.Packing == TableMessageRanged && kind != TableKindF32:
 			v, ok := leb()
-			if !ok || v > 128 {
-				return s, 0, false // no kind holds more bits than a u128
+			if !ok || v > uint64(TableMessageKindBits(kind)) {
+				return s, 0, false // A WIDTH ABOVE THE KIND'S OWN DOMAIN is a hostile width
 			}
 			s.Bits = int64(v)
-			if kind == TableKindI128 || kind == TableKindU128 || tableMessageFixedKind(kind) {
+			switch {
+			case kind == TableKindI128 || kind == TableKindU128 || tableMessageFixedKind(kind):
 				if at+16 > len(in) {
 					return s, 0, false
 				}
 				s.Base = wideBaseFrom(in[at : at+16])
 				at += 16
-				break
+			case TableKindSigned(int(kind)):
+				z, ok := leb()
+				if !ok {
+					return s, 0, false
+				}
+				s.Base = big.NewInt(tableMessageUnzigzag(z))
+			default:
+				u, ok := leb()
+				if !ok {
+					return s, 0, false
+				}
+				s.Base = new(big.Int).SetUint64(u)
 			}
-			z, ok := leb()
-			if !ok {
-				return s, 0, false
-			}
-			s.Base = big.NewInt(tableMessageUnzigzag(z))
 		case s.Packing == TableMessageQuantized && kind == TableKindF32:
-			v, ok := leb()
-			if !ok || v > 32 {
-				return s, 0, false
-			}
-			s.Bits = int64(v)
-			if at+8 > len(in) {
+			if at+12 > len(in) {
 				return s, 0, false
 			}
 			s.QMin = math.Float32frombits(binary.LittleEndian.Uint32(in[at:]))
-			s.QStep = math.Float32frombits(binary.LittleEndian.Uint32(in[at+4:]))
-			at += 8
+			s.QMax = math.Float32frombits(binary.LittleEndian.Uint32(in[at+4:]))
+			s.QRes = math.Float32frombits(binary.LittleEndian.Uint32(in[at+8:]))
+			at += 12
+			// A NON-CONFORMING TRIPLE IS A HOSTILE WIDTH like any other: the
+			// announcement is refused and no vocabulary is set
+			count, _, ok := TableMessageQuantization(s)
+			if !ok {
+				return s, 0, false
+			}
+			s.Bits = int64(bits.Len32(count))
 		default:
 			return s, 0, false // a packing outside the closed set
 		}
@@ -279,6 +298,89 @@ func tableMessageZigzag(v *big.Int) uint64 {
 }
 
 func tableMessageUnzigzag(v uint64) int64 { return int64(v>>1) ^ -int64(v&1) }
+
+// tableMessageUnsignedBase is an unsigned kind's base, whole: the domain's
+// high half has a base a zigzag cannot spell, and an unsigned LEB128 can.
+func tableMessageUnsignedBase(v *big.Int) uint64 {
+	if v == nil {
+		return 0
+	}
+	return v.Uint64()
+}
+
+// TableMessageKindBits is the widest RANGED value a kind can carry: its own
+// storage width. A width above it is a hostile width on the announcement
+// (§3.3), and bounding it here is what keeps every bit read under the
+// primitive that holds it.
+func TableMessageKindBits(kind uint8) int64 {
+	return int64(TableKindWidth(int(kind))) * 8
+}
+
+// ---- the compressed float's rule, in float32 and by nothing else ----
+//
+// A compressed float quantizes by SPEC.md §4.3's rule (docs/SPEC-TABLES.md
+// §3.3): the step count and the width derive from the announced triple at
+// AnnounceRead exactly as the packet wire derives them at compile time, and
+// the index and the float derive from those with TWO roundings on each side,
+// never one, and never a float64 anywhere. The explicit float32 conversions
+// on every product are what hold the second rounding: Go permits a compiler
+// to fuse a multiply and an add across statements, and a conversion is the
+// one thing that stops it.
+
+// TableMessageQuantization is the triple's derivation: the step count and
+// `delta`, and ok false for a triple SPEC.md calls non-conforming — `min` not
+// below `max`, `res` not above zero, or a `delta` or `delta / res` not finite
+// in float32.
+func TableMessageQuantization(s TableMessageShape) (count uint32, delta float32, ok bool) {
+	if !(s.QMin < s.QMax) || !(s.QRes > 0) {
+		return 0, 0, false
+	}
+	delta = float32(s.QMax - s.QMin)
+	values := float32(delta / s.QRes)
+	if delta-delta != 0 || values-values != 0 {
+		return 0, 0, false // Inf - Inf is NaN, and NaN - NaN is NaN
+	}
+	if !(values >= 1) {
+		values = 1
+	} else if values > 4294967040.0 {
+		values = 4294967040.0 // the largest float below 2^32
+	}
+	return uint32(math.Ceil(float64(values))), delta, true
+}
+
+// TableMessageQuantize is the writer's half: the index a value takes.
+func TableMessageQuantize(s TableMessageShape, value float32) uint32 {
+	count, delta, ok := TableMessageQuantization(s)
+	if !ok {
+		return 0
+	}
+	normalized := float32((value - s.QMin) / delta)
+	if !(normalized >= 0) {
+		normalized = 0
+	} else if !(normalized <= 1) {
+		normalized = 1
+	}
+	scaled := float32(normalized * float32(count))
+	index := uint32(math.Floor(float64(float32(scaled + 0.5))))
+	if index > count {
+		index = count
+	}
+	return index
+}
+
+// TableMessageDequantize is the reader's half: the float an index names.
+func TableMessageDequantize(s TableMessageShape, index uint32) float32 {
+	count, delta, ok := TableMessageQuantization(s)
+	if !ok {
+		return s.QMin
+	}
+	if index > count {
+		index = count
+	}
+	normalized := float32(float32(index) / float32(count))
+	scaled := float32(normalized * delta)
+	return float32(scaled + s.QMin)
+}
 
 func appendWideBase(out []byte, v *big.Int) []byte {
 	lo, hi := uint64(0), uint64(0)
@@ -387,7 +489,8 @@ func tableMessageElementShape(f *Field) TableMessageShape {
 				Packing: TableMessageQuantized,
 				Bits:    CompressedFloatBits(f.FMin, f.FMax, f.Resolution),
 				QMin:    float32(f.FMin),
-				QStep:   float32(f.Resolution),
+				QMax:    float32(f.FMax),
+				QRes:    float32(f.Resolution),
 			}
 		}
 		return TableMessageShape{Packing: TableMessageRaw}
@@ -533,7 +636,7 @@ func TableMessageShapeString(kind uint8, s TableMessageShape) string {
 		return "raw"
 	case kind == TableKindF32:
 		if s.Packing == TableMessageQuantized {
-			return fmt.Sprintf("quantized %d bits from %g by %g", s.Bits, s.QMin, s.QStep)
+			return fmt.Sprintf("quantized %d bits over [%g, %g] at %g", s.Bits, s.QMin, s.QMax, s.QRes)
 		}
 		return "raw"
 	case kind == TableKindString, kind == TableKindWstring:

@@ -52,3 +52,18 @@ func ListFields(u *Unit) []string {
 func (f *Field) CountedOnWire() bool {
 	return f != nil && (f.Array == ArrayCounted || f.Array == ArrayList)
 }
+
+// ListElementLayout is the storage one element of a `[]T` takes and the
+// alignment its array is laid at (docs/SPEC-TABLES.md §2.9): a TableRef for a
+// `[]*T`, and the element type's own size and alignment otherwise. The element
+// array in a holder's node extent is `count × size` at `align`, and this is
+// the one place both the C++ writer and the tool's cook-check take the two
+// numbers from.
+func ListElementLayout(u *Unit, f *Field) (size, align int64) {
+	single := *f
+	single.Array = ArrayNone
+	single.ArrayBound = 0
+	single.Type.Optional = false
+	p := elementPiece(u, &single)
+	return p.size, p.align
+}

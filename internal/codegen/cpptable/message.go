@@ -177,9 +177,12 @@ struct TableBitReader
 
     bool has( int64_t n ) const { return n >= 0 && offset + n <= bits; }
 
+    // the primitive is sixty-four bits, and a width above it is refused
+    // here as well as at the announcement: no field on any body can ask this
+    // reader to move more bits than it holds
     bool get( uint64_t & value, int64_t n )
     {
-        if ( !has( n ) ) { return false; }
+        if ( n > 64 || !has( n ) ) { return false; }
         value = 0;
         for ( int64_t i = 0; i < n; i++ )
         {
@@ -233,17 +236,90 @@ struct TableMessageEntry
     int64_t value_bits = 0; // a ranged or quantized width
     int64_t min = 0;        // an array's minimum count
     int64_t max = 0;        // an array's maximum count, a string's capacity, a keyed array's slots
-    int64_t base_lo = 0;    // the ranged base, low half
+    int64_t base_lo = 0;    // the ranged base, low half: a signed kind's sign-extends, an unsigned kind's is whole
     int64_t base_hi = 0;    // its high half, for a 128-bit kind
+    // the QUANTIZED triple, and what SPEC.md §4.3's rule derives from it once
     float qmin = 0.0f;
-    float qstep = 0.0f;
+    float qmax = 0.0f;
+    float qres = 0.0f;
+    float qdelta = 0.0f;
+    uint32_t qcount = 0;
     int64_t elem_value_bits = 0;
     int64_t elem_max = 0;
     int64_t elem_base_lo = 0;
     int64_t elem_base_hi = 0;
     float elem_qmin = 0.0f;
-    float elem_qstep = 0.0f;
+    float elem_qmax = 0.0f;
+    float elem_qres = 0.0f;
+    float elem_qdelta = 0.0f;
+    uint32_t elem_qcount = 0;
 };
+
+// TableMessageKindBits is the widest RANGED value a kind can carry, its own
+// storage width: a width above it is a hostile width on the announcement.
+inline int64_t TableMessageKindBits( uint8_t kind )
+{
+    switch ( kind )
+    {
+        case 2: case 6: case 20: case 25: return 8;
+        case 3: case 7: case 21: case 26: return 16;
+        case 4: case 8: case 22: case 27: return 32;
+        case 5: case 9: case 23: case 28: return 64;
+        default: return 128;
+    }
+}
+
+// TableMessageQuantization is SPEC.md §4.3's derivation over an announced
+// triple, in float32 and by nothing else: delta, the step count and the
+// width. False is a triple SPEC.md calls non-conforming, which on the
+// announcement is a hostile width like any other (§3.3).
+inline bool TableMessageQuantization( float qmin, float qmax, float qres, float & delta, uint32_t & count, int64_t & bits )
+{
+    if ( !( qmin < qmax ) || !( qres > 0.0f ) ) { return false; }
+    delta = qmax - qmin;
+    float values = delta / qres;
+    if ( !( delta - delta == 0.0f ) || !( values - values == 0.0f ) ) { return false; } // Inf - Inf is NaN
+    if ( !( values >= 1.0f ) ) { values = 1.0f; }
+    else if ( values > 4294967040.0f ) { values = 4294967040.0f; } // the largest float below 2^32
+    count = (uint32_t) values;
+    if ( (float) count < values ) { count++; } // ceil, on a value the cast holds exactly
+    bits = TableBitsRequired( 0, (int64_t) count );
+    return true;
+}
+
+// The two roundings on each side of the rule (SPEC.md §7.2): the product
+// rounds to float32 BEFORE the add, which a compiler permitted to contract
+// would otherwise fuse into one rounding and move the wire.
+#if ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) )
+#define TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+w" ( x ) )
+#elif ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) )
+#define TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+x" ( x ) )
+#else
+#define TABLE_FLOAT_FORCE_ROUND( x ) do { volatile float table_float_force_round_slot = ( x ); ( x ) = table_float_force_round_slot; } while ( 0 )
+#endif
+
+// TableMessageQuantize is the writer's half: the index a value takes.
+inline uint32_t TableMessageQuantize( float value, float qmin, float delta, uint32_t count )
+{
+    float normalized = ( value - qmin ) / delta;
+    if ( !( normalized >= 0.0f ) ) { normalized = 0.0f; }
+    else if ( !( normalized <= 1.0f ) ) { normalized = 1.0f; }
+    float scaled = normalized * (float) count;
+    TABLE_FLOAT_FORCE_ROUND( scaled );
+    uint32_t index = (uint32_t) ( scaled + 0.5f ); // floor of a non-negative value
+    if ( index > count ) { index = count; }
+    return index;
+}
+
+// TableMessageDequantize is the reader's half: the float an index names.
+inline float TableMessageDequantize( uint32_t index, float qmin, float delta, uint32_t count )
+{
+    if ( index > count ) { index = count; }
+    const float normalized = index / (float) count;
+    float scaled = normalized * delta;
+    TABLE_FLOAT_FORCE_ROUND( scaled );
+    return scaled + qmin;
+}
 
 inline bool TableMessageIntegerKind( uint8_t kind )
 {
@@ -272,15 +348,21 @@ inline bool TableMessageLeb( const uint8_t * in, int64_t size, int64_t & at, uin
     return false;
 }
 
-inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & at, uint8_t kind,
-                                   uint8_t & packing, int64_t & value_bits, int64_t & base_lo, int64_t & base_hi,
-                                   float & qmin, float & qstep, int64_t & min, int64_t & max, uint8_t & elem_kind );
+// TableMessageShapeFacts is where one shape's facts land: the field's own,
+// or its element's, which is the one nesting this wire has.
+struct TableMessageShapeFacts
+{
+    uint8_t & packing; int64_t & value_bits; int64_t & base_lo; int64_t & base_hi;
+    float & qmin; float & qmax; float & qres; float & qdelta; uint32_t & qcount;
+    int64_t & min; int64_t & max; uint8_t & elem_kind;
+};
+
+inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & at, uint8_t kind, TableMessageShapeFacts f );
 
 // TableMessageEntryRead parses ONE entry, and answers false for a HOSTILE
-// SHAPE: bits above 128, an array whose min exceeds its max, an element kind
-// outside the closed set, or a shape running past the vocabulary's own bytes.
-// It runs once, at AnnounceRead, and never again — so a width a reader
-// accepted is a width bounded by the kind it came under.
+// SHAPE: bits above the kind's own domain, an array whose min exceeds its
+// max, an element kind outside the closed set, a quantized triple SPEC.md
+// calls non-conforming, or a shape running past the vocabulary's own bytes.
 inline bool TableMessageEntryRead( const uint8_t * in, int64_t size, int64_t & at, TableMessageEntry & entry )
 {
     if ( at + 9 > size ) { return false; }
@@ -289,71 +371,73 @@ inline bool TableMessageEntryRead( const uint8_t * in, int64_t size, int64_t & a
     entry.kind = in[ at + 8 ];
     at += 9;
     if ( !TableMessageKnownKind( entry.kind ) ) { return false; }
-    if ( !TableMessageShapeRead( in, size, at, entry.kind, entry.packing, entry.value_bits,
-                                 entry.base_lo, entry.base_hi, entry.qmin, entry.qstep,
-                                 entry.min, entry.max, entry.elem_kind ) ) { return false; }
+    TableMessageShapeFacts own = { entry.packing, entry.value_bits, entry.base_lo, entry.base_hi,
+                                   entry.qmin, entry.qmax, entry.qres, entry.qdelta, entry.qcount,
+                                   entry.min, entry.max, entry.elem_kind };
+    if ( !TableMessageShapeRead( in, size, at, entry.kind, own ) ) { return false; }
     if ( entry.kind == 14 || entry.kind == 16 )
     {
         int64_t elem_min = 0;
         uint8_t inner_kind = 0;
-        if ( !TableMessageShapeRead( in, size, at, entry.elem_kind, entry.elem_packing, entry.elem_value_bits,
-                                     entry.elem_base_lo, entry.elem_base_hi, entry.elem_qmin, entry.elem_qstep,
-                                     elem_min, entry.elem_max, inner_kind ) ) { return false; }
-        (void) elem_min; (void) inner_kind;
+        TableMessageShapeFacts elem = { entry.elem_packing, entry.elem_value_bits, entry.elem_base_lo, entry.elem_base_hi,
+                                        entry.elem_qmin, entry.elem_qmax, entry.elem_qres, entry.elem_qdelta, entry.elem_qcount,
+                                        elem_min, entry.elem_max, inner_kind };
+        if ( !TableMessageShapeRead( in, size, at, entry.elem_kind, elem ) ) { return false; }
     }
     return true;
 }
 
 // TableMessageShapeRead is one shape, by the kind that names it (§3.3's shape
 // table). Every number in it is a canonical LEB128 except where the row says
-// otherwise.
-inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & at, uint8_t kind,
-                                   uint8_t & packing, int64_t & value_bits, int64_t & base_lo, int64_t & base_hi,
-                                   float & qmin, float & qstep, int64_t & min, int64_t & max, uint8_t & elem_kind )
+// otherwise: a RANGED BASE IS ENCODED BY ITS KIND'S SIGNEDNESS, zigzag for the
+// signed kinds, unsigned for the unsigned kinds and sixteen bytes for the
+// 128-bit and fixed-point kinds, and a QUANTIZED f32 carries min, max and res
+// as float32, from which the step count and the width derive by SPEC.md
+// §4.3's rule and by nothing else.
+inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & at, uint8_t kind, TableMessageShapeFacts f )
 {
     uint64_t v = 0;
     if ( TableMessageIntegerKind( kind ) || TableMessageFixedKind( kind ) || kind == 10 )
     {
         if ( at >= size ) { return false; }
-        packing = in[ at++ ];
-        if ( packing == 0 ) { return true; }
-        if ( packing == 1 && kind != 10 )
+        f.packing = in[ at++ ];
+        if ( f.packing == 0 ) { return true; }
+        if ( f.packing == 1 && kind != 10 )
         {
-            if ( !TableMessageLeb( in, size, at, v ) || v > 128 ) { return false; }
-            value_bits = (int64_t) v;
+            if ( !TableMessageLeb( in, size, at, v ) || (int64_t) v > TableMessageKindBits( kind ) ) { return false; }
+            f.value_bits = (int64_t) v;
             if ( kind == 18 || kind == 19 || TableMessageFixedKind( kind ) )
             {
                 if ( at + 16 > size ) { return false; }
                 uint64_t lo = 0, hi = 0;
                 for ( int i = 0; i < 8; i++ ) { lo |= uint64_t( in[ at + i ] ) << ( 8 * i ); }
                 for ( int i = 0; i < 8; i++ ) { hi |= uint64_t( in[ at + 8 + i ] ) << ( 8 * i ); }
-                base_lo = (int64_t) lo; base_hi = (int64_t) hi;
+                f.base_lo = (int64_t) lo; f.base_hi = (int64_t) hi;
                 at += 16;
                 return true;
             }
             if ( !TableMessageLeb( in, size, at, v ) ) { return false; }
-            base_lo = (int64_t) ( v >> 1 ) ^ -(int64_t) ( v & 1 ); // zigzag
+            if ( kind >= 2 && kind <= 5 ) { f.base_lo = (int64_t) ( v >> 1 ) ^ -(int64_t) ( v & 1 ); } // zigzag
+            else { f.base_lo = (int64_t) v; }                                                       // the unsigned domain, whole
             return true;
         }
-        if ( packing == 2 && kind == 10 )
+        if ( f.packing == 2 && kind == 10 )
         {
-            if ( !TableMessageLeb( in, size, at, v ) || v > 32 ) { return false; }
-            value_bits = (int64_t) v;
-            if ( at + 8 > size ) { return false; }
-            uint32_t raw_min = 0, raw_step = 0;
-            for ( int i = 0; i < 4; i++ ) { raw_min |= uint32_t( in[ at + i ] ) << ( 8 * i ); }
-            for ( int i = 0; i < 4; i++ ) { raw_step |= uint32_t( in[ at + 4 + i ] ) << ( 8 * i ); }
-            at += 8;
-            memcpy( &qmin, &raw_min, 4 );
-            memcpy( &qstep, &raw_step, 4 );
-            return true;
+            if ( at + 12 > size ) { return false; }
+            uint32_t raw[3] = { 0, 0, 0 };
+            for ( int k = 0; k < 3; k++ ) { for ( int i = 0; i < 4; i++ ) { raw[k] |= uint32_t( in[ at + 4 * k + i ] ) << ( 8 * i ); } }
+            at += 12;
+            memcpy( &f.qmin, &raw[0], 4 );
+            memcpy( &f.qmax, &raw[1], 4 );
+            memcpy( &f.qres, &raw[2], 4 );
+            return TableMessageQuantization( f.qmin, f.qmax, f.qres, f.qdelta, f.qcount, f.value_bits );
         }
         return false; // a packing outside the closed set
     }
     if ( kind == 12 || kind == 33 )
     {
         if ( !TableMessageLeb( in, size, at, v ) ) { return false; }
-        max = (int64_t) v;
+        f.max = (int64_t) v;
         return true;
     }
     if ( kind == 14 || kind == 16 )
@@ -361,13 +445,13 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( kind == 14 )
         {
             if ( !TableMessageLeb( in, size, at, v ) ) { return false; }
-            min = (int64_t) v;
+            f.min = (int64_t) v;
         }
-        if ( !TableMessageLeb( in, size, at, v ) || (int64_t) v < min ) { return false; }
-        max = (int64_t) v;
+        if ( !TableMessageLeb( in, size, at, v ) || (int64_t) v < f.min ) { return false; }
+        f.max = (int64_t) v;
         if ( at >= size ) { return false; }
-        elem_kind = in[ at++ ];
-        if ( !TableMessageKnownKind( elem_kind ) ) { return false; }
+        f.elem_kind = in[ at++ ];
+        if ( !TableMessageKnownKind( f.elem_kind ) ) { return false; }
         return true;
     }
     return true;
@@ -425,6 +509,10 @@ struct TableVocabulary
     int64_t ref_bits = 0;
     uint64_t build_version = 0;
     bool announced = false;
+    // REFUSAL IS TERMINAL (§3.3): a connection whose first announcement was
+    // refused, for any reason, carries no vocabulary for its life, and every
+    // announcement after it is refused as second_announcement
+    bool refused = false;
     int64_t max_entries = kDefaultMaxEntries;
     int64_t max_bytes = kDefaultMaxBytes;
 };
@@ -451,17 +539,29 @@ inline TableMessageEntry TableVocabularyEntryAt( const TableVocabulary & vocabul
 //
 // The FIRST announcement sets the vocabulary and it is the only one that can.
 // A SECOND is refused by name: it does not replace it, does not amend it and
-// changes nothing. A refused announcement sets NO VOCABULARY.
+// changes nothing. A refused announcement sets NO VOCABULARY, and the refusal
+// is TERMINAL: every announcement after it, whether or not the first set
+// anything, is second_announcement, so a peer holds no retry on the
+// connection and cannot buy a second resolve by having its first refused.
+inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * to );
+
 inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( vocabulary.announced )
+    if ( vocabulary.announced || vocabulary.refused )
     {
         to->refused = true;
         to->reason = second_announcement;
         return false;
     }
+    const bool set = AnnounceReadOnce( vocabulary, buffer, bytes, to );
+    if ( !set ) { vocabulary.refused = true; }
+    return set;
+}
+
+inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * to )
+{
     if ( bytes < 1 ) { to->malformed = true; return false; }
     if ( buffer[0] != kTableWireForm )
     {
@@ -583,6 +683,32 @@ inline bool TableMessageArmEntry( const TableVocabulary & vocabulary, uint64_t r
 // skippable on a body with no kind byte, and it is ONE function over every
 // table, because a shape says everything a skipper needs.
 inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits );
+inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry );
+
+// TableMessageSkipElement steps over ONE element of an array or keyed entry
+// by the element's own announced shape: a nested body to its zero reference,
+// a variant or a node index at its reference width, a union arm by its own
+// entry, and a fixed-width value at its bits.
+inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry )
+{
+    switch ( entry.elem_kind )
+    {
+        case 13: return TableMessageSkipBody( r, vocabulary, index_bits );
+        case 30: return r.skip( vocabulary.ref_bits );
+        case 17: return index_bits > 0 && r.skip( index_bits );
+        case 15:
+        {
+            TableMessageEntry inner;
+            inner.kind = 15;
+            return TableMessageSkip( r, vocabulary, index_bits, inner );
+        }
+        default:
+        {
+            const int64_t elem = TableMessageValueBits( entry.elem_kind, entry.elem_packing, entry.elem_value_bits );
+            return elem >= 0 && r.skip( elem );
+        }
+    }
+}
 
 inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry )
 {
@@ -634,24 +760,10 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
                 n = entry.kind == 16 ? raw : raw + (uint64_t) entry.min;
             }
             if ( entry.kind == 14 && entry.elem_kind == 6 && !r.align() ) { return false; }
-            const int64_t elem = TableMessageValueBits( entry.elem_kind, entry.elem_packing, entry.elem_value_bits );
             for ( uint64_t i = 0; i < n; i++ )
             {
                 if ( entry.kind == 16 && !r.skip( vocabulary.ref_bits ) ) { return false; }
-                switch ( entry.elem_kind )
-                {
-                    case 13: if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { return false; } break;
-                    case 30: if ( !r.skip( vocabulary.ref_bits ) ) { return false; } break;
-                    case 17: if ( index_bits <= 0 || !r.skip( index_bits ) ) { return false; } break;
-                    case 15:
-                    {
-                        TableMessageEntry inner;
-                        inner.kind = 15;
-                        if ( !TableMessageSkip( r, vocabulary, index_bits, inner ) ) { return false; }
-                        break;
-                    }
-                    default: if ( elem < 0 || !r.skip( elem ) ) { return false; } break;
-                }
+                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry ) ) { return false; }
             }
             return true;
         }

@@ -223,3 +223,75 @@ var messageEmitterSabotages = map[string][]edit{
 func init() {
 	maps.Copy(sabotages, messageEmitterSabotages)
 }
+
+// THE SECOND ROUND'S ROWS (docs/SPEC-TABLES.md §3.3, schema#571): the base's
+// two encodings, the quantized index, the terminal refusal, and the six
+// findings, each with the one rule its red clause names taken out.
+var messageRoundTwoSabotages = map[string][]edit{
+	// A RANGED BASE IS ENCODED BY ITS KIND'S SIGNEDNESS: zigzag an unsigned
+	// base and the domain's high half stops spelling.
+	"message-base-zigzag-unsigned": {{
+		old: "\t\t\t\tout = appendLebBytes(out, tableMessageUnsignedBase(s.Base))\n",
+		new: "\t\t\t\tout = appendLebBytes(out, tableMessageZigzag(s.Base)) // SABOTAGED: every base zigzags\n",
+	}},
+
+	// THE WRITER'S RULE IS IN FLOAT32: normalize in float64 and the rounding
+	// tie at 0.005 falls to 0 where the packet wire writes 1.
+	"message-quantize-float64": {{
+		old: "\tnormalized := float32((value - s.QMin) / delta)\n",
+		new: "\tnormalized := float32((float64(value) - float64(s.QMin)) / float64(delta)) // SABOTAGED: the writer normalizes in float64\n",
+	}},
+
+	// THE READER ROUNDS TWICE: fold the product and the add into one
+	// rounding and 6666 over [-100, 100] decodes to C2055C29.
+	"message-dequantize-round-once": {{
+		old: "\tscaled := float32(normalized * delta)\n\treturn float32(scaled + s.QMin)\n",
+		new: "\treturn float32(float64(normalized)*float64(delta) + float64(s.QMin)) // SABOTAGED: one rounding\n",
+	}},
+
+	// REFUSAL IS TERMINAL: a refused first announcement leaves the connection
+	// open to a second resolve.
+	"message-refusal-not-terminal": {{
+		old: "\tif v.announced || v.refused {\n",
+		new: "\tif v.announced { // SABOTAGED: a refused first announcement is not terminal\n",
+	}},
+
+	// A WIDTH ABOVE THE KIND'S OWN DOMAIN IS A HOSTILE WIDTH (M3): bound every
+	// kind at 128 instead and a uint8 announced at nine bits is accepted.
+	"message-width-above-kind": {{
+		old: "\t\t\tif !ok || v > uint64(TableMessageKindBits(kind)) {\n",
+		new: "\t\t\tif !ok || v > 128 { // SABOTAGED: every kind may announce 128 bits\n",
+	}},
+
+	// THE COUNT RIDES AS ITS OFFSET FROM THE MINIMUM (M4): write the count
+	// itself and the pinned vector moves.
+	"message-count-not-offset": {{
+		old: "\t\tw.put(uint64(count)-uint64(shape.Min), bits)\n",
+		new: "\t\tw.put(uint64(count), bits) // SABOTAGED: the count, not its offset\n",
+	}},
+
+	// A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION (M1): land
+	// it on element zero instead.
+	"message-surplus-lands-on-zero": {{
+		old: "\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n",
+		new: "\t\tcell := &fv.Elems[0] // SABOTAGED: a surplus element overwrites element zero\n",
+	}},
+
+	// A RANGED 128-BIT VALUE READS AT ITS ANNOUNCED WIDTH (M2): read the raw
+	// sixteen bytes instead.
+	"message-wide-reads-raw": {{
+		old: "\t\tif shape.Packing == ir.TableMessageRanged {\n\t\t\toffset, ok := d.r.getBig(width)\n",
+		new: "\t\tif false { // SABOTAGED: a ranged 128-bit value reads raw\n\t\t\toffset, ok := d.r.getBig(width)\n",
+	}},
+
+	// THE BOUND APPLIES WHILE THE VALUE IS WIDE (M6): narrow first and 263
+	// becomes 7, which clamps to 200 rather than 250.
+	"message-narrow-before-clamp": {{
+		old: "\t\t\tu, ulo, uhi := uint64(value), f.IntMin.Uint64(), f.IntMax.Uint64()\n",
+		new: "\t\t\tu, ulo, uhi := uint64(value)&(uint64(1)<<uint(f.Type.Width)-1), f.IntMin.Uint64(), f.IntMax.Uint64() // SABOTAGED: narrowed before the clamp\n",
+	}},
+}
+
+func init() {
+	maps.Copy(sabotages, messageRoundTwoSabotages)
+}

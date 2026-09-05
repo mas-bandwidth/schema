@@ -8779,6 +8779,10 @@ int main()
     test_message_form_announcement_check();
     test_message_form_reserved_ids();
     test_message_form_reference_bound();
+    test_message_form_bases();
+    test_message_form_quantized();
+    test_message_form_refused_first();
+    test_message_form_findings();
 
     if ( failures > 0 )
     {

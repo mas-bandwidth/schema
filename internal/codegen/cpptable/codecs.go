@@ -219,6 +219,15 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		g.pf("    TableMap<%s> %s; // %s — the sorted entry array, empty until an insert\n", f.MapEntry.Name, f.Name, ir.TableTypeSpelling(f))
 		return
 	}
+	if f.IsList() {
+		// AN UNBOUNDED ARRAY FIELD IS SIXTEEN BYTES (docs/SPEC-TABLES.md §2.9,
+		// §7.2): the map's slot exactly, a self-relative reference to the
+		// element array and the live count, then padding to eight. The ELEMENTS
+		// are not here: they are by-value records inside the holder's node
+		// extent, laid after the record's own storage.
+		g.pf("    %s %s; // %s: the element array, empty until an Add\n", g.listStorageType(f), f.Name, ir.TableTypeSpelling(f))
+		return
+	}
 	if f.Type.Pointer {
 		// a pointer is EIGHT BYTES and no address: an arena offset while the
 		// builder is mutable, a self-relative delta once packed. That is what
@@ -346,7 +355,15 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		// null in both encodings and the live count is zero. The builder's
 		// head and its segments are the arena's, and Reset does not free them
 		// — the arena's own reset is what reclaims a dead entry's storage.
-		g.pf("    value.%s.entries.value = 0; // %s — empty\n", f.Name, ir.TableTypeSpelling(f))
+		g.pf("    value.%s.entries.value = 0; // %s: empty\n", f.Name, ir.TableTypeSpelling(f))
+		g.pf("    value.%s.count = 0;\n", f.Name)
+		g.pf("    value.%s.padding = 0;\n", f.Name)
+		return
+	}
+	if f.IsList() {
+		// a fresh list is EMPTY (docs/SPEC-TABLES.md §2.9), on the map's terms:
+		// the reference is null in both encodings and the live count is zero
+		g.pf("    value.%s.elements.value = 0; // %s: empty\n", f.Name, ir.TableTypeSpelling(f))
 		g.pf("    value.%s.count = 0;\n", f.Name)
 		g.pf("    value.%s.padding = 0;\n", f.Name)
 		return
@@ -720,6 +737,10 @@ func (g *tableGen) emitSlotIndexMeasure(f *ir.Field, expr, into, ind, onBad, sfx
 func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 	if f.IsMap() {
 		g.emitMapMeasureField(f)
+		return
+	}
+	if f.IsList() {
+		g.emitListMeasureField(f)
 		return
 	}
 	id := tableFieldWireId(f)
@@ -1111,6 +1132,10 @@ func (g *tableGen) emitArrayField(f *ir.Field, id uint64, elemKind int, n, acces
 func (g *tableGen) emitTableWriteField(f *ir.Field) {
 	if f.IsMap() {
 		g.emitMapWriteField(f)
+		return
+	}
+	if f.IsList() {
+		g.emitListWriteField(f)
 		return
 	}
 	id := tableFieldWireId(f)
@@ -1587,6 +1612,10 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 	ind := "                "
 	if f.IsMap() {
 		g.emitMapReadField(f)
+		return
+	}
+	if f.IsList() {
+		g.emitListReadField(f)
 		return
 	}
 	switch {
@@ -2156,8 +2185,38 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		elemSize = elemSizeOverride
 		countOffset = "0xffffffffu"
 	}
+	if f.IsMap() || f.IsList() {
+		// AN OUT-OF-LINE ARRAY (docs/SPEC-TABLES.md §8.1): an array field whose
+		// elements are not inline, and array_bound = 0 is what says so. kind is
+		// the ELEMENT's, as on every array line: 13 for a map's entry, the
+		// element's own for a list, 17 for a []*T. is_array and counted are
+		// set, elem_size is the pitch, count_offset names the int32 count
+		// beside the reference in the sixteen-byte slot, and offset names the
+		// REFERENCE, which a walker resolves before it steps.
+		isArray = true
+		counted = true
+		bound = "0"
+		countOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s.count )", sp.owner, sp.member)
+		if f.IsMap() {
+			kind = tkTable
+			elemSize = fmt.Sprintf("(uint32_t) sizeof( %s )", f.MapEntry.Name)
+		} else {
+			kind = listElementWireKind(f)
+			elemSize = fmt.Sprintf("(uint32_t) sizeof( %s )", g.listElementType(f))
+		}
+	}
 	table := "NULL"
+	if f.IsMap() {
+		// the generated ENTRY's descriptor: fields[0] is the key and fields[1]
+		// the value (§2.8, §8.1)
+		if hoisted {
+			table = "&" + f.MapEntry.Name + "TableInfo"
+		} else {
+			table = fmt.Sprintf("%sTableType()", f.MapEntry.Name)
+		}
+	}
 	if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
+
 		if hoisted {
 			// an ADDRESS, not a call: constant-initialisable, so a
 			// self-reference (Node -> *Node) is simply &NodeTableInfo
@@ -2279,5 +2338,5 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		sp.indent, f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, fracBits, wide, enumMax, enumName, variantId,
-		keyTypeName, keyName, keyId, arms, g.mapColumn(f), sp.guard)
+		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard)
 }

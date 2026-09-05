@@ -263,24 +263,24 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 func TestTheCostRows(t *testing.T) {
 	m, model, vocabulary := backend(t)
 	c, _ := m.LookupConnection("backend_conn")
-	if got := len(wireBytes(t, c.Wire)); got != 316 {
-		t.Errorf("the announcement is %d bytes, the page prints 316", got)
+	if got := len(wireBytes(t, c.Wire)); got != 361 {
+		t.Errorf("the announcement is %d bytes, the page prints 361", got)
 	}
-	if got := len(vocabulary.Entries()); got != 28 {
-		t.Errorf("the vocabulary has %d entries, the page prints 28", got)
+	if got := len(vocabulary.Entries()); got != 33 {
+		t.Errorf("the vocabulary has %d entries, the page prints 33", got)
 	}
-	if got := vocabulary.RefBits(); got != 5 {
-		t.Errorf("a reference is %d bits, the page prints 5", got)
+	if got := vocabulary.RefBits(); got != 6 {
+		t.Errorf("a reference is %d bits, the page prints 6", got)
 	}
 	rows := []struct {
 		name          string
 		file, message int
 	}{
-		{"login_full", 106, 51},
+		{"login_full", 106, 52},
 		{"login_default", 10, 3},
-		{"match_full", 273, 142},
-		{"match_default", 43, 10},
-		{"store_full", 104, 41},
+		{"match_full", 273, 148},
+		{"match_default", 43, 11},
+		{"store_full", 104, 43},
 		{"store_default", 10, 3},
 	}
 	byName := map[string]Message{}
@@ -300,32 +300,68 @@ func TestTheCostRows(t *testing.T) {
 			t.Errorf("%s: the message form is %d bytes, the page prints %d", row.name, got, row.message)
 		}
 	}
-	// THE THREE FULL AS ONE BATCH: 230 bytes, against 234 for the three alone
+	// THE THREE FULL AS ONE BATCH UNDER AN ENVELOPE: 244 bytes, against 249
+	// for the three envelopes sent alone and 243 for the three messages sent
+	// BARE as three batches of one
 	login := fileInstance(t, model, "LoginRequest", byName["login_full"].FileWire)
 	match := fileInstance(t, model, "MatchResult", byName["match_full"].FileWire)
 	store := fileInstance(t, model, "StorePurchase", byName["store_full"].FileWire)
-	batch, err := tablewire.EncodeMessages(model, []*tabletext.Instance{login, match, store})
+	envelopes := []*tabletext.Instance{envelopeOf(t, model, 1, login), envelopeOf(t, model, 2, match), envelopeOf(t, model, 3, store)}
+	batch, err := tablewire.EncodeMessages(model, envelopes)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(batch) != 230 {
-		t.Errorf("the three as one batch are %d bytes, the page prints 230", len(batch))
+	if len(batch) != 244 {
+		t.Errorf("the three as one batch under an envelope are %d bytes, the page prints 244", len(batch))
 	}
 	pinned := wireBytes(t, "testdata/wire/tables/backend_round_message.bin")
 	if string(pinned) != string(batch) {
 		t.Errorf("the engine's batch differs from the pinned backend_round_message at byte %d", firstDifference(pinned, batch))
 	}
-	alone := 0
+	for i, want := range []int{54, 150, 45} {
+		one, err := tablewire.EncodeMessage(model, envelopes[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(one) != want {
+			t.Errorf("envelope %d alone is %d bytes, the page prints %d", i+1, len(one), want)
+		}
+	}
+	bare := 0
 	for _, inst := range []*tabletext.Instance{login, match, store} {
 		one, err := tablewire.EncodeMessage(model, inst)
 		if err != nil {
 			t.Fatal(err)
 		}
-		alone += len(one)
+		bare += len(one)
 	}
-	if alone != 234 {
-		t.Errorf("the three alone are %d bytes, the page prints 234", alone)
+	if bare != 243 {
+		t.Errorf("the three bare as three batches of one are %d bytes, the page prints 243", bare)
 	}
+	// and the batch reads back as three envelopes, each arm its message
+	out := []*tabletext.Instance{model.New(model.Lookup("Envelope")), model.New(model.Lookup("Envelope")), model.New(model.Lookup("Envelope"))}
+	var report tabletext.Report
+	count, ok, derr := tablewire.DecodeMessages(model, out, batch, vocabulary, &report)
+	if derr != nil || !ok || count != 3 || !report.Silent() {
+		t.Fatalf("the envelope batch did not read back: count=%d ok=%v err=%v report=%+v", count, ok, derr, report)
+	}
+	if p := fieldOf(t, out[0], "payload"); p.Cell.U != 1 || p.Cell.Tab == nil || instU64(t, p.Cell.Tab, "client_build") != 140233 {
+		t.Error("the first envelope's login arm did not land")
+	}
+	if p := fieldOf(t, out[2], "payload"); p.Cell.U != 3 || p.Cell.Tab == nil || instU64(t, p.Cell.Tab, "quantity") != 7 {
+		t.Error("the third envelope's purchase arm did not land")
+	}
+}
+
+// envelopeOf wraps one message in an Envelope whose payload arm `tag` holds
+// it, which is how three roots ride one batch (§2.6, §3.3).
+func envelopeOf(t *testing.T, model *tabletext.Model, tag uint64, body *tabletext.Instance) *tabletext.Instance {
+	t.Helper()
+	env := model.New(model.Lookup("Envelope"))
+	payload := fieldOf(t, env, "payload")
+	payload.Cell.U = tag
+	payload.Cell.Tab = body
+	return env
 }
 
 // TestTheBatch holds the batch's shape: one count, the bodies back to back with
@@ -349,10 +385,11 @@ func TestTheBatch(t *testing.T) {
 	if batch[0] != ir.TableWireMessageForm || batch[1] != 2 {
 		t.Errorf("the batch does not open with the form byte and a count of three carried as M - 1")
 	}
-	// THE BODIES ARE ONE CONTINUOUS BIT STREAM: login's 388 bits, match's 1120
-	// and store's 316 (its align now costing four bits where alone it cost
-	// none), 1824 bits after the count, 230 bytes whole
-	if bits := 8 + 8 + 388 + 1120 + 316; (bits+7)/8 != len(batch) {
+	// THE BODIES ARE ONE CONTINUOUS BIT STREAM: login's 400 bits and match's
+	// 1162 as the page sizes them alone, and store's 323 (its align now
+	// costing four bits where alone it cost six), 1885 bits after the count,
+	// 238 bytes whole
+	if bits := 8 + 8 + 400 + 1162 + 323; (bits+7)/8 != len(batch) || len(batch) != 238 {
 		t.Errorf("the batch is %d bytes and the page's bit arithmetic says %d", len(batch), (bits+7)/8)
 	}
 	// and it reads back as three bodies, each its own root
@@ -384,8 +421,8 @@ func TestTheBatch(t *testing.T) {
 	if wide[1] != 255 {
 		t.Errorf("a batch of 256 carries a count byte of %d, not 255", wide[1])
 	}
-	// each body is a reference, 32 bits and a terminator: 42 bits
-	if want := 1 + (8+256*42+7)/8; len(wide) != want {
+	// each body is a reference, 32 bits and a terminator: 44 bits
+	if want := 1 + (8+256*44+7)/8; len(wide) != want {
 		t.Errorf("a batch of 256 is %d bytes, the arithmetic says %d", len(wide), want)
 	}
 	pinned := wireBytes(t, "testdata/wire/tables/backend_batch_256_message.bin")
@@ -480,25 +517,25 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 	// A VOCABULARY PAST A BOUND, refused before an entry is touched: the bound
 	// is two numbers
 	{
-		bounded := tablewire.Vocabulary{MaxEntries: 27}
+		bounded := tablewire.Vocabulary{MaxEntries: 32}
 		var report tabletext.Report
 		derr := bounded.AnnounceRead(announcement, &report)
 		refusal("vocabulary_too_large (entries)", derr, tablewire.ReasonVocabularyTooLarge, report)
 		if bounded.Announced() || len(bounded.Entries()) != 0 {
 			t.Error("vocabulary_too_large: an entry was touched")
 		}
-		exact := tablewire.Vocabulary{MaxEntries: 28}
+		exact := tablewire.Vocabulary{MaxEntries: 33}
 		if err := exact.AnnounceRead(announcement, &tabletext.Report{}); err != nil || !exact.Announced() {
 			t.Errorf("the entry bound's own value must be accepted: %v", err)
 		}
-		bytesBound := tablewire.Vocabulary{MaxBytes: 272}
+		bytesBound := tablewire.Vocabulary{MaxBytes: 317}
 		var bytesReport tabletext.Report
 		derr = bytesBound.AnnounceRead(announcement, &bytesReport)
 		refusal("vocabulary_too_large (bytes)", derr, tablewire.ReasonVocabularyTooLarge, bytesReport)
 		if bytesBound.Announced() {
 			t.Error("vocabulary_too_large: the byte bound set a vocabulary")
 		}
-		bytesExact := tablewire.Vocabulary{MaxBytes: 273}
+		bytesExact := tablewire.Vocabulary{MaxBytes: 318}
 		if err := bytesExact.AnnounceRead(announcement, &tabletext.Report{}); err != nil || !bytesExact.Announced() {
 			t.Errorf("the byte bound's own value must be accepted: %v", err)
 		}
@@ -590,10 +627,10 @@ func TestTheFiveAnswers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// body 1 spans bits 8..49 of the stream; body 2's reference begins at
-		// bit 50: plant 31, the largest five bits spell and three past E
+		// body 1 spans bits 8..51 of the stream; body 2's reference begins at
+		// bit 52: plant 63, the largest six bits spell and thirty past E
 		damaged := append([]byte(nil), batch...)
-		setBits(damaged, 1, 50, 5, 31)
+		setBits(damaged, 1, 52, 6, 63)
 		pinned := wireBytes(t, "testdata/wire/tables/backend_batch_damaged_second_message.bin")
 		if string(pinned) != string(damaged) {
 			t.Errorf("the damaged batch differs from the pinned one at byte %d", firstDifference(pinned, damaged))
@@ -636,10 +673,10 @@ func TestDamageIsTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// each body: match_id (5 + 64), players (5, no count), ten rows of which
-	// the first carries score (5 + 17) and a terminator (5) and nine are
-	// terminators alone (5 each), then the body's terminator (5): 151 bits
-	const bodyBits = 5 + 64 + 5 + (5 + 17 + 5) + 9*5 + 5
+	// each body: match_id (6 + 64), players (6, no count), ten rows of which
+	// the first carries score (6 + 17) and a terminator (6) and nine are
+	// terminators alone (6 each), then the body's terminator (6): 165 bits
+	const bodyBits = 6 + 64 + 6 + (6 + 17 + 6) + 9*6 + 6
 	if want := 1 + (8+3*bodyBits+7)/8; len(batch) != want {
 		t.Fatalf("the batch is %d bytes, the arithmetic says %d", len(batch), want)
 	}
@@ -649,11 +686,11 @@ func TestDamageIsTerminal(t *testing.T) {
 		pinned string
 	}{
 		{"the second body's match_id reference", 8 + bodyBits, "testdata/wire/tables/match_batch_damaged_second_message.bin"},
-		{"the second body's first PlayerRow's score reference", 8 + bodyBits + 5 + 64 + 5, "testdata/wire/tables/match_batch_damaged_nested_message.bin"},
+		{"the second body's first PlayerRow's score reference", 8 + bodyBits + 6 + 64 + 6, "testdata/wire/tables/match_batch_damaged_nested_message.bin"},
 	}
 	for _, row := range rows {
 		damaged := append([]byte(nil), batch...)
-		setBits(damaged, 1, row.at, 5, 31)
+		setBits(damaged, 1, row.at, 6, 63)
 		if pinned := wireBytes(t, row.pinned); string(pinned) != string(damaged) {
 			t.Errorf("%s: the damaged batch differs from the pinned one at byte %d", row.name, firstDifference(pinned, damaged))
 		}
@@ -684,34 +721,34 @@ func TestDamageIsTerminal(t *testing.T) {
 // if a leg reads either clean.
 func TestThePadAndWhatFollowsIt(t *testing.T) {
 	_, model, vocabulary := backend(t)
-	message := wireBytes(t, "testdata/wire/tables/login_full_message.bin")
-	if len(message) != 51 {
-		t.Fatalf("login_full is %d bytes, not 51", len(message))
+	message := wireBytes(t, "testdata/wire/tables/store_full_message.bin")
+	if len(message) != 43 {
+		t.Fatalf("store_full is %d bytes, not 43", len(message))
 	}
-	// 404 bits: the last byte carries four bits of body and four of pad
+	// 341 bits: the last byte carries five bits of body and three of pad
 	badPad := append([]byte(nil), message...)
 	badPad[len(badPad)-1] |= 0x80
-	if pinned := wireBytes(t, "testdata/wire/tables/login_full_bad_pad_message.bin"); string(pinned) != string(badPad) {
+	if pinned := wireBytes(t, "testdata/wire/tables/store_full_bad_pad_message.bin"); string(pinned) != string(badPad) {
 		t.Errorf("the bad-pad wire differs from the pinned one at byte %d", firstDifference(pinned, badPad))
 	}
 	{
-		inst := model.New(model.Lookup("LoginRequest"))
+		inst := model.New(model.Lookup("StorePurchase"))
 		var report tabletext.Report
 		count, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{inst}, badPad, vocabulary, &report)
 		if derr != nil || ok || !report.Malformed || report.Refused {
 			t.Errorf("a pad bit that is not zero read clean: count=%d ok=%v err=%v report=%+v", count, ok, derr, report)
 		}
 		// the body before the pad stands, and the count says so
-		if count != 1 || instU64(t, inst, "client_build") != 140233 {
+		if count != 1 || instU64(t, inst, "quantity") != 7 {
 			t.Errorf("the body before the bad pad did not stand: count=%d", count)
 		}
 	}
 	trailing := append(append([]byte(nil), message...), 0)
-	if pinned := wireBytes(t, "testdata/wire/tables/login_full_trailing_byte_message.bin"); string(pinned) != string(trailing) {
+	if pinned := wireBytes(t, "testdata/wire/tables/store_full_trailing_byte_message.bin"); string(pinned) != string(trailing) {
 		t.Errorf("the trailing-byte wire differs from the pinned one at byte %d", firstDifference(pinned, trailing))
 	}
 	{
-		inst := model.New(model.Lookup("LoginRequest"))
+		inst := model.New(model.Lookup("StorePurchase"))
 		var report tabletext.Report
 		_, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{inst}, trailing, vocabulary, &report)
 		if derr != nil || ok || !report.Malformed || report.Refused {
@@ -720,8 +757,8 @@ func TestThePadAndWhatFollowsIt(t *testing.T) {
 	}
 }
 
-// TestAReferenceAtAndAboveTheEntryCount: E is 28 and a reference is five
-// bits, so 29, 30 and 31 are spellable and damage; the entry count itself is
+// TestAReferenceAtAndAboveTheEntryCount: E is 33 and a reference is six
+// bits, so 34, 35 and 63 are spellable and damage; the entry count itself is
 // the last legal slot and must resolve. Red if a leg resolves past E, refuses
 // E, discards the fields decoded before the bad reference, or reads a body
 // after it.
@@ -734,14 +771,14 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// player_id: a reference and a u64, so the terminator sits at bit 77
-	if want := 1 + (8+5+64+5+7)/8; len(one) != want {
+	// player_id: a reference and a u64, so the terminator sits at bit 78
+	if want := 1 + (8+6+64+6+7)/8; len(one) != want {
 		t.Fatalf("the vector is %d bytes, the arithmetic says %d", len(one), want)
 	}
-	for _, past := range []uint64{29, 30, 31} {
+	for _, past := range []uint64{34, 35, 63} {
 		damaged := append([]byte(nil), one...)
-		setBits(damaged, 1, 77, 5, past)
-		if past == 31 {
+		setBits(damaged, 1, 78, 6, past)
+		if past == 63 {
 			if pinned := wireBytes(t, "testdata/wire/tables/message_reference_past_table.bin"); string(pinned) != string(damaged) {
 				t.Errorf("the reference-past-table wire differs from the pinned one at byte %d", firstDifference(pinned, damaged))
 			}
@@ -759,9 +796,9 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 			t.Errorf("reference %d: the returned count reads %d", past, count)
 		}
 	}
-	// the entry count itself, 28, names StorePurchase's own type id, a kind-0
+	// the entry count itself, 33, names StorePurchase's own type id, a kind-0
 	// entry no field of LoginRequest carries: §4's ordinary unknown, and then
-	// a terminator at bit 82
+	// a terminator at bit 84
 	last := wireBytes(t, "testdata/wire/tables/message_reference_last_slot.bin")
 	out := model.New(login)
 	var report tabletext.Report

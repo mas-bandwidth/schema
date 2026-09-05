@@ -643,9 +643,11 @@ static void test_reader()
         CHECK_EQ( v.after, 777 );
     }
     {
-        // CONTROL: an `N` past what the map's `L` can carry. A row of a few
-        // dozen bytes asking for gigabytes — LoadMeasure's answer goes red if
-        // the fit check is dropped (§4.2).
+        // An `N` past the int32 cap, in a row of a few dozen bytes: LoadMeasure
+        // refuses from the framing alone and read_row never reaches Load
+        // (§6.5). The cap is tested before the map's `L`, so this row cannot
+        // see the `L` check, and test_measure_refusals asserts both refusals
+        // by their reason.
         RowSpec spec = ascending_spec();
         spec.declared_n = 0xFFFFFFFFll;
         RowWire w = build_row( spec );
@@ -777,6 +779,105 @@ static void test_load_measure_depth()
     TableReport short_report;
     CHECK( FleetLoad( region, need - 1, wire, n, &short_report ) == NULL );
     free( region );
+}
+
+// ---- the LoadMeasure REFUSALS at a map (docs/SPEC-TABLES.md §2.8, §6.5) ----
+//
+// A unit test and not a `report` row, because a refusal produces no counters.
+// Each wire is built in memory with a SYNTHETIC map count rather than a
+// golden: a count above the int32 cap, which no golden could carry because
+// the file would be two gigabytes, a count whose entries cannot fit the map's
+// own L, and a clean wire beside them, which must measure and load. The
+// REASON is asserted by name, because the cap is tested before the L: a count
+// past both answers count_over_extent_cap, and only a count under the cap
+// reaches the L check, so a dropped L check goes red on the 100000 row and
+// nowhere a count past the cap is used.
+
+struct Wire
+{
+    uint8_t bytes[4096];
+    int64_t size;
+};
+
+// a `Fleet` body written FROM THE GRAMMAR: its `ships` map as a kind 14 array
+// of kind 13 `{ key, value }` entries (§2.8), with the declared count a knob
+// of its own and the entries actually written a second one
+static Wire build_fleet_wire( uint64_t ships, int32_t real_ships )
+{
+    WireBuilder b;
+    b.field( "ships", 14 );
+    const int64_t body = b.open_len();
+    b.u8( 13 );
+    b.leb( ships );
+    for ( int32_t i = 0; i < real_ships; i++ )
+    {
+        const int64_t entry = b.open_len();
+        b.field( "key", 12 );
+        b.leb( 1 );
+        b.u8( (uint8_t) ( 'a' + i ) );
+        b.field( "value", 13 );
+        const int64_t ship = b.open_len();
+        b.field( "health", 4 );
+        b.u32( (uint32_t) ( 100 + i ) );
+        b.end();
+        b.close_len( ship );
+        b.end();
+        b.close_len( entry );
+    }
+    b.close_len( body );
+    b.end();
+    Wire w;
+    w.size = b.finish( w.bytes );
+    return w;
+}
+
+static void report_silent( const TableReport & r, const char * where )
+{
+    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 || r.malformed )
+    {
+        printf( "FAIL %s: the report is not silent (unknown %d, kind_mismatch %d, clamped %d, duplicate %d, malformed %d)\n",
+                where, r.unknown, r.kind_mismatch, r.clamped, r.duplicate, (int) r.malformed );
+        failures++;
+    }
+}
+
+static void test_measure_refusals()
+{
+    // a count above the int32 cap: the cap answers first
+    {
+        Wire w = build_fleet_wire( 0x80000000ull, 1 );
+        TableRefuseReason reason = count_over_length;
+        CHECK_EQ( FleetLoadMeasure( w.bytes, w.size, NULL, &reason ), -1 );
+        CHECK( reason == count_over_extent_cap );
+    }
+    // a count under the cap that the map's L cannot carry: the L answers
+    {
+        Wire w = build_fleet_wire( 100000, 1 );
+        TableRefuseReason reason = count_over_extent_cap;
+        CHECK_EQ( FleetLoadMeasure( w.bytes, w.size, NULL, &reason ), -1 );
+        CHECK( reason == count_over_length );
+    }
+    // and a clean wire beside them, which must measure and load silently
+    {
+        Wire w = build_fleet_wire( 2, 2 );
+        TableRefuseReason reason = count_over_length;
+        const int64_t need = FleetLoadMeasure( w.bytes, w.size, NULL, &reason );
+        CHECK( need > 0 );
+        uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+        if ( region == NULL ) { return; }
+        TableReport r;
+        const Fleet * fleet = FleetLoad( region, need, w.bytes, w.size, &r );
+        CHECK( fleet != NULL );
+        report_silent( r, "the clean wire beside the refusals" );
+        if ( fleet != NULL )
+        {
+            CHECK_EQ( fleet->ships.size(), 2 );
+            const ShipConfig * ship = fleet->ships.Find( "b" );
+            CHECK( ship != NULL );
+            if ( ship != NULL ) { CHECK_EQ( ship->health, 101 ); }
+        }
+        free( region );
+    }
 }
 
 // ---- the TEXT form (docs/SPEC-TABLES.md §2.8, §16) ----
@@ -1055,14 +1156,26 @@ static void test_message_form()
         CHECK( memcmp( again_message, message, (size_t) bytes ) == 0 );
     }
 }
-int main()
+int main( int argc, char ** argv )
 {
+    if ( argc > 1 && strcmp( argv[1], "measure-refusals" ) == 0 )
+    {
+        test_measure_refusals();
+        if ( failures != 0 )
+        {
+            printf( "\n%d measure refusal check(s) failed\n", failures );
+            return 1;
+        }
+        printf( "map measure refusals: two -1s with their reasons, one clean measure, no counter moved (docs/SPEC-TABLES.md §2.8, §6.5)\n" );
+        return 0;
+    }
     test_writer();
     test_builder();
     test_const_forms();
     test_reader();
     test_key_kind();
     test_load_measure_depth();
+    test_measure_refusals();
     test_text();
     test_depth();
     test_message_form();

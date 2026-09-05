@@ -15,13 +15,15 @@
 #include "BackendTable.h"
 #include "VocabTable.h"
 #include "Vocab9Table.h"
+#include "BasesTable.h"
+#include "serialize.h"
 
 // ---- the six values, field for field (docs/SPEC-TABLES.md §3.3) ------------
 //
 // The three FULL vectors carry the measurement's own values, and their byte
-// counts are the page's: 106 / 273 / 104 as files, 51 / 142 / 41 as messages.
+// counts are the page's: 106 / 273 / 104 as files, 52 / 148 / 43 as messages.
 // The three DEFAULT vectors touch nothing, so every field elides and the body
-// is its terminator alone: 10 / 43 / 10 as files, 3 / 10 / 3 as messages.
+// is its terminator alone: 10 / 43 / 10 as files, 3 / 11 / 3 as messages.
 
 static void build_backend_login( backenddemo::LoginRequest & value )
 {
@@ -41,7 +43,7 @@ static void build_backend_match( backenddemo::MatchResult & value )
         value.players[i].score = 1234 + i * 77;
         // placement runs 1..10, so ONE of the ten rows sits at its declared
         // default and elides — which is the row that puts elision INSIDE an
-        // array element in this corpus, and is what the page's 142 counts
+        // array element in this corpus, and is what the page's 148 counts
         value.players[i].placement = (uint8_t) ( ( i % 10 ) + 1 );
     }
 }
@@ -107,21 +109,21 @@ static void pin_message_vector( const char * name, const T & value,
 
 static void test_message_form_goldens()
 {
-    // THE ANNOUNCEMENT: 28 entries and 316 bytes, an ordinary form 1 FILE
+    // THE ANNOUNCEMENT: 33 entries and 361 bytes, an ordinary form 1 FILE
     // (docs/SPEC-TABLES.md §3.3)
     {
         static uint8_t announcement[4096];
         const int64_t bytes = backenddemo::Announce( announcement, sizeof( announcement ) );
-        CHECK( bytes == 316 );
+        CHECK( bytes == 361 );
         CHECK( announcement[0] == 1 );
         pin_table_golden( "backend_conn", announcement, bytes );
         // and a buffer one byte short is refused rather than half-written
         CHECK( backenddemo::Announce( announcement, bytes - 1 ) == -1 );
         backenddemo::TableVocabulary vocabulary;
         CHECK( backenddemo::AnnounceRead( vocabulary, announcement, bytes, NULL ) );
-        CHECK( vocabulary.count == 28 );
-        CHECK( vocabulary.ref_bits == 5 ); // bits_required( 0, 28 )
-        CHECK( backenddemo::kTableMessageRefBitsHere == 5 );
+        CHECK( vocabulary.count == 33 );
+        CHECK( vocabulary.ref_bits == 6 ); // bits_required( 0, 33 )
+        CHECK( backenddemo::kTableMessageRefBitsHere == 6 );
     }
 
     {
@@ -130,7 +132,7 @@ static void test_message_form_goldens()
         pin_message_vector( "login_full", value,
                             backenddemo::LoginRequestMeasure, backenddemo::LoginRequestSave,
                             backenddemo::LoginRequestMeasureMessages, backenddemo::LoginRequestSaveMessages,
-                            106, 51 );
+                            106, 52 );
     }
     {
         static backenddemo::LoginRequest value; // untouched: everything elides
@@ -145,14 +147,14 @@ static void test_message_form_goldens()
         pin_message_vector( "match_full", value,
                             backenddemo::MatchResultMeasure, backenddemo::MatchResultSave,
                             backenddemo::MatchResultMeasureMessages, backenddemo::MatchResultSaveMessages,
-                            273, 142 );
+                            273, 148 );
     }
     {
         static backenddemo::MatchResult value;
         pin_message_vector( "match_default", value,
                             backenddemo::MatchResultMeasure, backenddemo::MatchResultSave,
                             backenddemo::MatchResultMeasureMessages, backenddemo::MatchResultSaveMessages,
-                            43, 10 );
+                            43, 11 );
     }
     {
         static backenddemo::StorePurchase value;
@@ -160,7 +162,7 @@ static void test_message_form_goldens()
         pin_message_vector( "store_full", value,
                             backenddemo::StorePurchaseMeasure, backenddemo::StorePurchaseSave,
                             backenddemo::StorePurchaseMeasureMessages, backenddemo::StorePurchaseSaveMessages,
-                            104, 41 );
+                            104, 43 );
     }
     {
         static backenddemo::StorePurchase value;
@@ -173,13 +175,24 @@ static void test_message_form_goldens()
 
 // ---- THE BATCH (docs/SPEC-TABLES.md §3.3) ---------------------------------
 //
-// The three full messages as ONE batch: one form byte, one count of three, and
-// the three bodies back to back with no alignment between them, which is 230
-// bytes against 234 for the three sent alone. A batch is of one root, so a
-// batch of three roots is what the page calls the application's discriminator
-// done by hand: the body-level codec, under one count. Red if a leg aligns
-// between bodies, writes a terminator the batch does not carry, sizes a batch
-// as the sum of its bodies alone, or accepts a count of zero.
+// A batch is of ONE root, so the three messages ride as three bodies of one
+// root holding a union of them: the ENVELOPE. One form byte, one count of
+// three, and the three envelopes back to back with no alignment between them,
+// which is 244 bytes against 249 for the three envelopes sent alone and 243
+// for the three messages sent BARE as three batches of one. Red if a leg
+// aligns between bodies, writes a terminator the batch does not carry, sizes
+// a batch as the sum of its bodies alone, or accepts a count of zero.
+
+static void build_backend_envelopes( backenddemo::Envelope * three )
+{
+    for ( int i = 0; i < 3; i++ ) { backenddemo::EnvelopeReset( three[i] ); }
+    three[0].payload.type = backenddemo::PayloadType::Login;
+    build_backend_login( three[0].payload.login );
+    three[1].payload.type = backenddemo::PayloadType::Result;
+    build_backend_match( three[1].payload.result );
+    three[2].payload.type = backenddemo::PayloadType::Purchase;
+    build_backend_store( three[2].payload.purchase );
+}
 
 static void test_message_form_batch()
 {
@@ -191,52 +204,56 @@ static void test_message_form_batch()
     build_backend_store( store );
     backenddemo::TableReport report;
 
-    // the three ALONE: 51 + 142 + 41
-    const int64_t alone = backenddemo::LoginRequestMeasureMessages( &login, 1, &report )
-                        + backenddemo::MatchResultMeasureMessages( &match, 1, &report )
-                        + backenddemo::StorePurchaseMeasureMessages( &store, 1, &report );
-    CHECK( alone == 234 );
+    // the three BARE, as three batches of one: 52 + 148 + 43
+    const int64_t bare = backenddemo::LoginRequestMeasureMessages( &login, 1, &report )
+                       + backenddemo::MatchResultMeasureMessages( &match, 1, &report )
+                       + backenddemo::StorePurchaseMeasureMessages( &store, 1, &report );
+    CHECK( bare == 243 );
 
-    // the three as ONE BATCH: measured as one bit stream, then written as one
+    // the three ENVELOPED, as three batches of one: 54 + 150 + 45, eighteen
+    // bits an envelope over the bare message and the align moved
+    static backenddemo::Envelope three[3];
+    build_backend_envelopes( three );
+    CHECK( backenddemo::EnvelopeMeasureMessages( &three[0], 1, &report ) == 54 );
+    CHECK( backenddemo::EnvelopeMeasureMessages( &three[1], 1, &report ) == 150 );
+    CHECK( backenddemo::EnvelopeMeasureMessages( &three[2], 1, &report ) == 45 );
+
+    // and as ONE BATCH: measured as one bit stream, then written as one
     int64_t bits = 8;
-    bits += backenddemo::LoginRequestMeasureMessageBody( bits, login );
-    CHECK( bits == 396 ); // login ends at bit 404 of the batch, the form byte's eight aside
-    bits += backenddemo::MatchResultMeasureMessageBody( bits, match );
-    CHECK( bits == 1516 ); // match ends at 1524
-    bits += backenddemo::StorePurchaseMeasureMessageBody( bits, store );
-    CHECK( bits == 1832 ); // 1840 bits whole, the form byte counted as eight of them
-    const int64_t batch_bytes = backenddemo::TableMessageBatchBytes( bits - 8 );
-    CHECK( batch_bytes == 230 );
-
+    bits += backenddemo::EnvelopeMeasureMessageBody( bits, three[0] );
+    CHECK( bits == 422 ); // the login envelope ends at bit 430 of the batch, the form byte's eight aside
+    bits += backenddemo::EnvelopeMeasureMessageBody( bits, three[1] );
+    CHECK( bits == 1602 ); // the match envelope ends at 1610
+    bits += backenddemo::EnvelopeMeasureMessageBody( bits, three[2] );
+    CHECK( bits == 1939 ); // 1947 bits whole, the form byte counted as eight of them, and five bits of pad
+    CHECK( backenddemo::TableMessageBatchBytes( bits - 8 ) == 244 );
     static uint8_t batch[1024];
-    backenddemo::TableMessageBatch writer;
-    CHECK( backenddemo::TableMessageBatchBegin( writer, batch, sizeof( batch ), 3 ) );
-    CHECK( backenddemo::LoginRequestSaveMessageBody( writer.w, login ) ); writer.written++;
-    CHECK( backenddemo::MatchResultSaveMessageBody( writer.w, match ) ); writer.written++;
-    CHECK( backenddemo::StorePurchaseSaveMessageBody( writer.w, store ) ); writer.written++;
-    const int64_t wrote = backenddemo::TableMessageBatchEnd( writer );
-    CHECK( wrote == 230 );
+    const int64_t wrote = backenddemo::EnvelopeSaveMessages( three, 3, batch, sizeof( batch ), &report );
+    CHECK( wrote == 244 && wrote == backenddemo::EnvelopeMeasureMessages( three, 3, &report ) );
     CHECK( batch[0] == 2 && batch[1] == 2 ); // the form byte, and a count of three carried as M - 1
     pin_table_golden( "backend_round_message", batch, wrote );
 
     // and it reads back, body by body, against the connection's vocabulary
     const backenddemo::TableVocabulary vocabulary = backend_connection();
-    backenddemo::TableMessageBatchReader reader;
+    static backenddemo::Envelope read[3];
+    int64_t count = 3;
     backenddemo::TableReport read_report;
-    CHECK( backenddemo::TableMessageBatchOpen( reader, vocabulary, batch, wrote, &read_report ) == 3 );
-    backenddemo::LoginRequest login_read;
-    backenddemo::MatchResult match_read;
-    backenddemo::StorePurchase store_read;
-    CHECK( backenddemo::LoginRequestLoadMessageBody( reader.r, vocabulary, &read_report, login_read ) ); reader.remaining--;
-    CHECK( backenddemo::MatchResultLoadMessageBody( reader.r, vocabulary, &read_report, match_read ) ); reader.remaining--;
-    CHECK( backenddemo::StorePurchaseLoadMessageBody( reader.r, vocabulary, &read_report, store_read ) ); reader.remaining--;
-    CHECK( backenddemo::TableMessageBatchClose( reader ) );
+    CHECK( backenddemo::EnvelopeLoadMessages( read, &count, vocabulary, batch, wrote, &read_report ) );
+    CHECK( count == 3 );
     CHECK( !read_report.malformed && !read_report.refused && read_report.unknown == 0 );
-    CHECK( login_read.client_build == 140233 && match_read.players[9].placement == 10 && store_read.quantity == 7 );
+    CHECK( read[0].payload.type == backenddemo::PayloadType::Login && read[0].payload.login.client_build == 140233 );
+    CHECK( read[1].payload.type == backenddemo::PayloadType::Result && read[1].payload.result.players[9].placement == 10 );
+    CHECK( read[2].payload.type == backenddemo::PayloadType::Purchase && read[2].payload.purchase.quantity == 7 );
+    // and the three bodies of the batch are the three envelopes' own bodies: a
+    // batch is not the sum of its bodies only in the framing it does not repeat
+    static uint8_t again[1024];
+    CHECK( backenddemo::EnvelopeSaveMessages( read, 3, again, sizeof( again ), &report ) == wrote );
+    CHECK( memcmp( again, batch, (size_t) wrote ) == 0 );
 
     // A BATCH OF ZERO IS NOT SPELLABLE: the verbs refuse it
     CHECK( backenddemo::LoginRequestMeasureMessages( &login, 0, &report ) == -1 );
     CHECK( backenddemo::LoginRequestSaveMessages( &login, 0, batch, sizeof( batch ), &report ) == -1 );
+    backenddemo::TableMessageBatch writer;
     CHECK( !backenddemo::TableMessageBatchBegin( writer, batch, sizeof( batch ), 0 ) );
 
     // A BATCH OF 256, which is the wire's own maximum, as one buffer
@@ -246,14 +263,14 @@ static void test_message_form_batch()
     const int64_t wide_bytes = backenddemo::LoginRequestSaveMessages( many, 256, wide, sizeof( wide ), &report );
     CHECK( wide_bytes > 0 && wide_bytes == backenddemo::LoginRequestMeasureMessages( many, 256, &report ) );
     CHECK( wide[1] == 255 ); // M - 1
-    // each body is a reference, 32 bits and a terminator: 42 bits, 256 of them, plus the count
-    CHECK( wide_bytes == 1 + ( 8 + 256 * 42 + 7 ) / 8 );
+    // each body is a reference, 32 bits and a terminator: 44 bits, 256 of them, plus the count
+    CHECK( wide_bytes == 1 + ( 8 + 256 * 44 + 7 ) / 8 );
     pin_table_golden( "backend_batch_256_message", wide, wide_bytes );
     static backenddemo::LoginRequest back[256];
-    int64_t count = 256;
+    int64_t wide_count = 256;
     backenddemo::TableReport wide_report;
-    CHECK( backenddemo::LoginRequestLoadMessages( back, &count, vocabulary, wide, wide_bytes, &wide_report ) );
-    CHECK( count == 256 && back[0].client_build == 1 && back[255].client_build == 256 );
+    CHECK( backenddemo::LoginRequestLoadMessages( back, &wide_count, vocabulary, wide, wide_bytes, &wide_report ) );
+    CHECK( wide_count == 256 && back[0].client_build == 1 && back[255].client_build == 256 );
     CHECK( !wide_report.malformed && !wide_report.refused );
 }
 
@@ -345,7 +362,7 @@ static void test_message_form_reload()
     // announcement carries under the reserved id, and what a refusal names.
     CHECK( vocabulary.announced );
     CHECK( vocabulary.build_version == backenddemo::BuildVersion );
-    CHECK( vocabulary.count == 28 );
+    CHECK( vocabulary.count == 33 );
 
     reload_message_golden<backenddemo::LoginRequest>( "login_full", vocabulary,
         backenddemo::LoginRequestLoadMessages, backenddemo::LoginRequestMeasureMessages, backenddemo::LoginRequestSaveMessages, backenddemo::LoginRequestReset );
@@ -758,7 +775,7 @@ static void test_message_form_refusals()
     // read off the field's own L before an entry is touched.
     {
         backenddemo::TableVocabulary vocabulary;
-        vocabulary.max_entries = 27; // one below what this unit announces
+        vocabulary.max_entries = 32; // one below what this unit announces
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, announcement, announced, &report ) );
         CHECK( report.refused && report.reason == backenddemo::vocabulary_too_large );
@@ -766,18 +783,18 @@ static void test_message_form_refusals()
         CHECK( vocabulary.vocabulary == NULL && vocabulary.count == 0 );
         // and exactly at the bound it is read
         backenddemo::TableVocabulary exact;
-        exact.max_entries = 28;
+        exact.max_entries = 33;
         CHECK( backenddemo::AnnounceRead( exact, announcement, announced, NULL ) );
-        // the BYTE bound: the unit's vocabulary is 273 bytes of entries
+        // the BYTE bound: the unit's vocabulary is 318 bytes of entries
         backenddemo::TableVocabulary bytes_bound;
-        bytes_bound.max_bytes = 272;
+        bytes_bound.max_bytes = 317;
         backenddemo::TableReport bytes_report;
         CHECK( !backenddemo::AnnounceRead( bytes_bound, announcement, announced, &bytes_report ) );
         CHECK( bytes_report.refused && bytes_report.reason == backenddemo::vocabulary_too_large && !bytes_bound.announced );
         backenddemo::TableVocabulary bytes_exact;
-        bytes_exact.max_bytes = 273;
+        bytes_exact.max_bytes = 318;
         CHECK( backenddemo::AnnounceRead( bytes_exact, announcement, announced, NULL ) );
-        CHECK( bytes_exact.vocabulary_bytes == 273 );
+        CHECK( bytes_exact.vocabulary_bytes == 318 );
     }
 
     // A REFUSED ANNOUNCEMENT SETS NO VOCABULARY, so every message on that
@@ -855,13 +872,13 @@ static void test_message_form_five_answers()
         static uint8_t batch[256];
         backenddemo::TableReport report;
         const int64_t bytes = backenddemo::LoginRequestSaveMessages( three, 3, batch, sizeof( batch ), &report );
-        CHECK( bytes == 1 + ( 8 + 3 * 42 + 7 ) / 8 );
-        // body 1 spans bits 8..49 of the stream; body 2's reference begins at
-        // bit 50. Plant a reference of 31, the largest five bits spell and
-        // three past E, in place of body 2's field reference.
+        CHECK( bytes == 1 + ( 8 + 3 * 44 + 7 ) / 8 );
+        // body 1 spans bits 8..51 of the stream; body 2's reference begins at
+        // bit 52. Plant a reference of 63, the largest six bits spell and
+        // thirty past E, in place of body 2's field reference.
         static uint8_t damaged[256];
         memcpy( damaged, batch, (size_t) bytes );
-        for ( int64_t bit = 50; bit < 55; bit++ ) { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
+        for ( int64_t bit = 52; bit < 58; bit++ ) { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
         pin_table_golden( "backend_batch_damaged_second_message", damaged, bytes );
         static backenddemo::LoginRequest out[3];
         for ( int32_t i = 0; i < 3; i++ ) { backenddemo::LoginRequestReset( out[i] ); out[i].client_build = 999; }
@@ -891,18 +908,18 @@ static void test_message_form_damage_terminal()
     backenddemo::TableReport report;
     const int64_t bytes = backenddemo::MatchResultSaveMessages( three, 3, batch, sizeof( batch ), &report );
     CHECK( bytes > 0 );
-    // each body: match_id (5 + 64), players (5, no count), ten rows of which
-    // the first carries score (5 + 17) and a terminator (5) and nine are
-    // terminators alone (5 each), then the body's terminator (5): 151 bits
-    const int64_t body_bits = 5 + 64 + 5 + ( 5 + 17 + 5 ) + 9 * 5 + 5;
+    // each body: match_id (6 + 64), players (6, no count), ten rows of which
+    // the first carries score (6 + 17) and a terminator (6) and nine are
+    // terminators alone (6 each), then the body's terminator (6): 165 bits
+    const int64_t body_bits = 6 + 64 + 6 + ( 6 + 17 + 6 ) + 9 * 6 + 6;
     CHECK( bytes == 1 + ( 8 + 3 * body_bits + 7 ) / 8 );
 
-    // inside the SECOND body: its match_id reference becomes 31, three past E
+    // inside the SECOND body: its match_id reference becomes 63, thirty past E
     {
         static uint8_t damaged[1024];
         memcpy( damaged, batch, (size_t) bytes );
         const int64_t at = 8 + body_bits;
-        for ( int64_t bit = at; bit < at + 5; bit++ ) { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
+        for ( int64_t bit = at; bit < at + 6; bit++ ) { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
         pin_table_golden( "match_batch_damaged_second_message", damaged, bytes );
         static backenddemo::MatchResult out[3];
         for ( int32_t i = 0; i < 3; i++ ) { backenddemo::MatchResultReset( out[i] ); out[i].match_id = 999; }
@@ -916,8 +933,8 @@ static void test_message_form_damage_terminal()
     {
         static uint8_t damaged[1024];
         memcpy( damaged, batch, (size_t) bytes );
-        const int64_t at = 8 + body_bits + 5 + 64 + 5; // past match_id and the players reference
-        for ( int64_t bit = at; bit < at + 5; bit++ ) { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
+        const int64_t at = 8 + body_bits + 6 + 64 + 6; // past match_id and the players reference
+        for ( int64_t bit = at; bit < at + 6; bit++ ) { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
         pin_table_golden( "match_batch_damaged_nested_message", damaged, bytes );
         static backenddemo::MatchResult out[3];
         for ( int32_t i = 0; i < 3; i++ ) { backenddemo::MatchResultReset( out[i] ); out[i].match_id = 999; }
@@ -935,25 +952,24 @@ static void test_message_form_damage_terminal()
 static void test_message_form_pad()
 {
     const backenddemo::TableVocabulary vocabulary = backend_connection();
-    static backenddemo::LoginRequest value;
-    build_backend_login( value );
+    static backenddemo::StorePurchase value;
+    build_backend_store( value );
     static uint8_t message[256];
     backenddemo::TableReport report;
-    const int64_t bytes = backenddemo::LoginRequestSaveMessages( &value, 1, message, sizeof( message ), &report );
-    CHECK( bytes == 51 ); // 404 bits: the last byte carries four bits of body and four of pad
-
+    const int64_t bytes = backenddemo::StorePurchaseSaveMessages( &value, 1, message, sizeof( message ), &report );
+    CHECK( bytes == 43 ); // 341 bits: the last byte carries five bits of body and three of pad
     // a pad bit that is not zero
     {
         static uint8_t bad_pad[256];
         memcpy( bad_pad, message, (size_t) bytes );
         bad_pad[bytes - 1] = (uint8_t) ( bad_pad[bytes - 1] | 0x80 );
-        pin_table_golden( "login_full_bad_pad_message", bad_pad, bytes );
-        backenddemo::LoginRequest out;
+        pin_table_golden( "store_full_bad_pad_message", bad_pad, bytes );
+        backenddemo::StorePurchase out;
         int64_t count = 1;
         backenddemo::TableReport pad;
-        CHECK( !backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, bad_pad, bytes, &pad ) );
+        CHECK( !backenddemo::StorePurchaseLoadMessages( &out, &count, vocabulary, bad_pad, bytes, &pad ) );
         CHECK( pad.malformed && !pad.refused );
-        CHECK( out.client_build == 140233 ); // the body decoded before the pad stands, and the count says so
+        CHECK( out.quantity == 7 ); // the body decoded before the pad stands, and the count says so
         CHECK( count == 1 );
     }
     // a byte after the pad
@@ -961,11 +977,11 @@ static void test_message_form_pad()
         static uint8_t trailing[256];
         memcpy( trailing, message, (size_t) bytes );
         trailing[bytes] = 0;
-        pin_table_golden( "login_full_trailing_byte_message", trailing, bytes + 1 );
-        backenddemo::LoginRequest out;
+        pin_table_golden( "store_full_trailing_byte_message", trailing, bytes + 1 );
+        backenddemo::StorePurchase out;
         int64_t count = 1;
         backenddemo::TableReport extra;
-        CHECK( !backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, trailing, bytes + 1, &extra ) );
+        CHECK( !backenddemo::StorePurchaseLoadMessages( &out, &count, vocabulary, trailing, bytes + 1, &extra ) );
         CHECK( extra.malformed && !extra.refused );
     }
 }
@@ -1192,7 +1208,7 @@ static void test_message_form_announcement_check()
         CHECK( backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
         CHECK( vocabulary.announced );
         CHECK( vocabulary.build_version == 0x8877665544332211ull );
-        CHECK( vocabulary.count == 28 );
+        CHECK( vocabulary.count == 33 );
         CHECK( report.unknown == 1 );
         CHECK( !report.refused && !report.malformed );
         pin_table_golden( "announce_unknown_field", forged, bytes );
@@ -1313,7 +1329,7 @@ static void test_message_form_reserved_ids()
 
 // ---- A REFERENCE AT AND ABOVE THE ENTRY COUNT (§3.3) ------------------------
 //
-// E is 28 and a reference is five bits, so 29, 30 and 31 are spellable and
+// E is 33 and a reference is six bits, so 34, 35 and 63 are spellable and
 // damage. The entry count ITSELF is the last legal slot and must resolve. The
 // fields decoded before a bad reference stand, and nothing after it is read.
 
@@ -1326,17 +1342,17 @@ static void test_message_form_reference_bound()
     static uint8_t message[64];
     backenddemo::TableReport report;
     const int64_t bytes = backenddemo::LoginRequestSaveMessages( &value, 1, message, sizeof( message ), &report );
-    // player_id: reference (5) and u64 (64), then the terminator at bit 77 of
-    // the stream: 8 + 5 + 64 = 77
-    CHECK( bytes == 1 + ( 8 + 5 + 64 + 5 + 7 ) / 8 );
-    const uint64_t past[3] = { 29, 30, 31 };
+    // player_id: reference (6) and u64 (64), then the terminator at bit 78 of
+    // the stream: 8 + 6 + 64 = 78
+    CHECK( bytes == 1 + ( 8 + 6 + 64 + 6 + 7 ) / 8 );
+    const uint64_t past[3] = { 34, 35, 63 };
     for ( int i = 0; i < 3; i++ )
     {
         static uint8_t damaged[64];
         memcpy( damaged, message, (size_t) bytes );
-        for ( int b = 0; b < 5; b++ )
+        for ( int b = 0; b < 6; b++ )
         {
-            const int64_t bit = 77 + b;
+            const int64_t bit = 78 + b;
             if ( ( past[i] >> b ) & 1 ) { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
             else { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] & ~( 1 << ( bit % 8 ) ) ); }
         }
@@ -1350,21 +1366,21 @@ static void test_message_form_reference_bound()
         CHECK( count == 0 );
         if ( i == 2 ) { pin_table_golden( "message_reference_past_table", damaged, bytes ); }
     }
-    // the entry count itself, 28, is the LAST LEGAL SLOT and must resolve: it
+    // the entry count itself, 33, is the LAST LEGAL SLOT and must resolve: it
     // names StorePurchase's own type id, a kind-0 entry no field of
     // LoginRequest carries, so it is §4's ordinary unknown
     {
         static uint8_t last[64];
         memcpy( last, message, (size_t) bytes );
-        for ( int b = 0; b < 5; b++ )
+        for ( int b = 0; b < 6; b++ )
         {
-            const int64_t bit = 77 + b;
-            if ( ( 28u >> b ) & 1 ) { last[ 1 + bit / 8 ] = (uint8_t) ( last[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
+            const int64_t bit = 78 + b;
+            if ( ( 33u >> b ) & 1 ) { last[ 1 + bit / 8 ] = (uint8_t) ( last[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
             else { last[ 1 + bit / 8 ] = (uint8_t) ( last[ 1 + bit / 8 ] & ~( 1 << ( bit % 8 ) ) ); }
         }
-        // then a terminator at bit 82, and the pad from 87 stays zero
-        const int64_t last_bytes = 1 + ( 82 + 5 + 7 ) / 8;
-        for ( int64_t bit = 82; bit < last_bytes * 8 - 8; bit++ ) { last[ 1 + bit / 8 ] = (uint8_t) ( last[ 1 + bit / 8 ] & ~( 1 << ( bit % 8 ) ) ); }
+        // then a terminator at bit 84, and the pad from 90 stays zero
+        const int64_t last_bytes = 1 + ( 84 + 6 + 7 ) / 8;
+        for ( int64_t bit = 84; bit < last_bytes * 8 - 8; bit++ ) { last[ 1 + bit / 8 ] = (uint8_t) ( last[ 1 + bit / 8 ] & ~( 1 << ( bit % 8 ) ) ); }
         backenddemo::LoginRequest out;
         backenddemo::LoginRequestReset( out );
         int64_t count = 1;
@@ -1377,3 +1393,387 @@ static void test_message_form_reference_bound()
 }
 
 #endif // SCHEMA_TEST_MESSAGE_FORM_H
+
+// ---- THE BASE'S TWO ENCODINGS, AND THE QUANTIZED INDEX (docs/SPEC-TABLES.md §3.3) ----
+//
+// A RANGED BASE IS ENCODED BY ITS KIND'S SIGNEDNESS: an unsigned kind's base
+// is an unsigned LEB128, which is what spells the domain's high half, and a
+// signed kind's is a zigzag. A COMPRESSED FLOAT rides as the index SPEC.md
+// §4.3's rule names, in float32 and by nothing else, so a message index and a
+// packet index over one declaration and one value are the SAME BITS.
+
+// the index the PACKET WIRE writes for one value, read back off its stream
+static bool packet_index( float value, float min, float max, float res, uint32_t & index, int & bits )
+{
+    uint8_t buffer[64];
+    memset( buffer, 0, sizeof( buffer ) );
+    serialize::WriteStream ws( buffer, sizeof( buffer ) );
+    serialize_compressed_float( ws, value, min, max, res );
+    ws.Flush();
+    uint32_t max_integer_value = 0;
+    float delta = 0.0f;
+    serialize::serialize_compressed_float_params( min, max, res, max_integer_value, bits, delta );
+    basesdemo::TableBitReader r( buffer, sizeof( buffer ) );
+    uint64_t raw = 0;
+    if ( !r.get( raw, bits ) ) { return false; }
+    index = (uint32_t) raw;
+    return true;
+}
+
+static float packet_float( uint32_t index, float min, float max, float res )
+{
+    uint32_t max_integer_value = 0;
+    int bits = 0;
+    float delta = 0.0f;
+    serialize::serialize_compressed_float_params( min, max, res, max_integer_value, bits, delta );
+    uint8_t buffer[64];
+    memset( buffer, 0, sizeof( buffer ) );
+    basesdemo::TableBitWriter w( buffer, sizeof( buffer ) );
+    w.put( index, bits );
+    serialize::ReadStream rs( buffer, sizeof( buffer ) );
+    float value = 0.0f;
+    if ( !serialize::serialize_compressed_float_internal( rs, value, min, max, res ) ) { return 0.0f; }
+    return value;
+}
+
+// forge_over_vocabulary builds an announcement whose vocabulary is `vocabulary`
+// with the entry `replace` names substituted by `with`, byte for byte, and
+// whose build version is `version`.
+static int64_t forge_over_vocabulary( uint8_t * out, int64_t capacity, const uint8_t * vocabulary, int64_t vocabulary_bytes,
+                                      bool ( *replace )( const basesdemo::TableMessageEntry & ), const uint8_t * with, int64_t with_bytes )
+{
+    static uint8_t words[16384];
+    int64_t n = 0;
+    for ( int64_t at = 0; at < vocabulary_bytes; )
+    {
+        const int64_t begin = at;
+        basesdemo::TableMessageEntry entry;
+        if ( !basesdemo::TableMessageEntryRead( vocabulary, vocabulary_bytes, at, entry ) ) { return -1; }
+        if ( replace != NULL && replace( entry ) )
+        {
+            memcpy( words + n, vocabulary + begin, 9 ); n += 9; // the id and the kind stay
+            memcpy( words + n, with, (size_t) with_bytes ); n += with_bytes;
+            continue;
+        }
+        memcpy( words + n, vocabulary + begin, (size_t) ( at - begin ) );
+        n += at - begin;
+    }
+    // reference 2, kind 14, L, element kind 6, the byte count, the bytes
+    uint8_t count_leb[10]; int count_len = 0;
+    { uint64_t v = (uint64_t) n; do { uint8_t b = (uint8_t) ( v & 0x7F ); v >>= 7; count_leb[count_len++] = (uint8_t) ( v != 0 ? b | 0x80 : b ); } while ( v != 0 ); }
+    const int64_t inner = 1 + count_len + n;
+    uint8_t inner_leb[10]; int inner_len = 0;
+    { uint64_t v = (uint64_t) inner; do { uint8_t b = (uint8_t) ( v & 0x7F ); v >>= 7; inner_leb[inner_len++] = (uint8_t) ( v != 0 ? b | 0x80 : b ); } while ( v != 0 ); }
+    const uint8_t version_field[10] = { 1, 9, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88 };
+    const int64_t total = 1 + 10 + 2 + inner_len + 1 + count_len + n + 1 + 2 * 8 + 8;
+    if ( total > capacity ) { return -1; }
+    int64_t at = 0;
+    out[at++] = 1;
+    memcpy( out + at, version_field, 10 ); at += 10;
+    out[at++] = 2; out[at++] = 14;
+    memcpy( out + at, inner_leb, (size_t) inner_len ); at += inner_len;
+    out[at++] = 6;
+    memcpy( out + at, count_leb, (size_t) count_len ); at += count_len;
+    memcpy( out + at, words, (size_t) n ); at += n;
+    out[at++] = 0;
+    const uint64_t ids[2] = { basesdemo::kTableBuildVersionFieldId, basesdemo::kTableMessageVocabularyFieldId };
+    for ( int i = 0; i < 2; i++ ) { for ( int b = 0; b < 8; b++ ) { out[at++] = (uint8_t) ( ids[i] >> ( 8 * b ) ); } }
+    out[at++] = 2; for ( int b = 1; b < 8; b++ ) { out[at++] = 0; }
+    return at;
+}
+
+static bool is_high_u64( const basesdemo::TableMessageEntry & e ) { return e.kind == 9 && e.packing == 1 && e.base_lo == (int64_t) 0x8000000000000000ull; }
+static bool is_few( const basesdemo::TableMessageEntry & e ) { return e.kind == 14 && e.elem_kind == 8 && e.min == 2 && e.max == 5; }
+static bool is_q( const basesdemo::TableMessageEntry & e ) { return e.kind == 10 && e.packing == 2 && e.qmin == 0.0f; }
+static bool is_narrow( const basesdemo::TableMessageEntry & e ) { return e.kind == 6 && e.packing == 1 && e.base_lo == 200; }
+
+static bool bytes_contain( const uint8_t * hay, int64_t hay_bytes, const uint8_t * needle, int64_t needle_bytes )
+{
+    for ( int64_t i = 0; i + needle_bytes <= hay_bytes; i++ ) { if ( memcmp( hay + i, needle, (size_t) needle_bytes ) == 0 ) { return true; } }
+    return false;
+}
+
+static void build_bases( basesdemo::Bases & value )
+{
+    basesdemo::BasesReset( value );
+    value.high_a = 9223372036854775808ull;  // offset 0 under base 2^63
+    value.high_b = 9223372036854775809ull;  // offset 1
+    value.top_a = 18446744073709551614ull;  // offset 0 under base 2^64 - 2
+    value.top_b = 18446744073709551615ull;  // offset 1
+    value.small_a = -5;                     // offset 0 under the zigzag base 9
+    value.small_b = 10;                     // offset 15
+    value.seven = 7;                        // the base with nothing on the wire
+    value.q = 0.123f;                       // index 12 over [0, 10] at 0.01
+    value.wide = -33.34f;                   // index 6666 over [-100, 100] at 0.01
+    value.few_count = 3;                    // three of [2..5]: the count rides as 1 in two bits
+    value.few[0] = 1; value.few[1] = 2; value.few[2] = 3;
+    value.narrow = 200;
+}
+
+static void test_message_form_bases()
+{
+    static uint8_t announcement[8192];
+    const int64_t announced = basesdemo::Announce( announcement, sizeof( announcement ) );
+    CHECK( announced == basesdemo::AnnounceMeasure() );
+    basesdemo::TableVocabulary vocabulary;
+    CHECK( basesdemo::AnnounceRead( vocabulary, announcement, announced, NULL ) );
+    pin_table_golden( "bases_conn", announcement, announced );
+
+    // THE FOUR SHAPES, byte for byte, inside the announcement
+    const uint8_t high[12] = { 1, 1, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01 }; // uint64 over [2^63, 2^63 + 1]
+    const uint8_t top[12] = { 1, 1, 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01 };  // uint64 over [2^64 - 2, 2^64 - 1]
+    const uint8_t small[3] = { 1, 4, 9 };                                                            // int32 over [-5, 10]: the zigzag 9
+    const uint8_t seven[3] = { 1, 0, 7 };                                                            // uint8 over [7, 7]: no bit on the wire
+    CHECK( bytes_contain( vocabulary.vocabulary, vocabulary.vocabulary_bytes, high, 12 ) );
+    CHECK( bytes_contain( vocabulary.vocabulary, vocabulary.vocabulary_bytes, top, 12 ) );
+    CHECK( bytes_contain( vocabulary.vocabulary, vocabulary.vocabulary_bytes, small, 3 ) );
+    CHECK( bytes_contain( vocabulary.vocabulary, vocabulary.vocabulary_bytes, seven, 3 ) );
+    // and the announcement spends no byte saying which encoding it used: an
+    // entry is the id, the kind, the packing, the bits and the base
+    int found_high = 0, found_small = 0;
+    for ( int64_t slot = 1; slot <= vocabulary.count; slot++ )
+    {
+        const basesdemo::TableMessageEntry e = basesdemo::TableVocabularyEntryAt( vocabulary, slot );
+        if ( is_high_u64( e ) ) { found_high++; CHECK( e.value_bits == 1 ); }
+        if ( e.kind == 4 && e.packing == 1 && e.base_lo == -5 ) { found_small++; CHECK( e.value_bits == 4 ); }
+    }
+    CHECK( found_high == 2 && found_small == 2 );
+
+    // THE VALUES A BODY UNDER IT RECOVERS
+    static basesdemo::Bases value;
+    build_bases( value );
+    static uint8_t message[512];
+    basesdemo::TableReport report;
+    const int64_t bytes = basesdemo::BasesSaveMessages( &value, 1, message, sizeof( message ), &report );
+    CHECK( bytes > 0 && bytes == basesdemo::BasesMeasureMessages( &value, 1, &report ) );
+    pin_table_golden( "bases_message", message, bytes );
+    basesdemo::Bases read;
+    int64_t count = 1;
+    CHECK( basesdemo::BasesLoadMessages( &read, &count, vocabulary, message, bytes, &report ) );
+    CHECK( count == 1 && !report.malformed && report.clamped == 0 && report.unknown == 0 );
+    CHECK( read.high_a == 9223372036854775808ull && read.high_b == 9223372036854775809ull );
+    CHECK( read.top_a == 18446744073709551614ull && read.top_b == 18446744073709551615ull );
+    CHECK( read.small_a == -5 && read.small_b == 10 && read.seven == 7 );
+    CHECK( read.few_count == 3 && read.few[0] == 1 && read.few[2] == 3 );
+    CHECK( read.narrow == 200 );
+    static uint8_t again[512];
+    CHECK( basesdemo::BasesSaveMessages( &read, 1, again, sizeof( again ), &report ) == bytes );
+    CHECK( memcmp( again, message, (size_t) bytes ) == 0 );
+}
+
+static void test_message_form_quantized()
+{
+    // THE INDEX IS THE PACKET WIRE'S, bit for bit: 0.005 the rounding tie, 0.123
+    // off the grid, 11.0 past the clamp, over [0, 10] at 0.01
+    const float values[3] = { 0.005f, 0.123f, 11.0f };
+    const uint32_t indices[3] = { 1, 12, 1000 };
+
+    static uint8_t announcement[8192];
+    const int64_t announced = basesdemo::Announce( announcement, sizeof( announcement ) );
+    basesdemo::TableVocabulary vocabulary;
+    CHECK( basesdemo::AnnounceRead( vocabulary, announcement, announced, NULL ) );
+    int64_t q_slot = 0;
+    for ( int64_t slot = 1; slot <= vocabulary.count; slot++ ) { if ( is_q( basesdemo::TableVocabularyEntryAt( vocabulary, slot ) ) ) { q_slot = slot; } }
+    CHECK( q_slot > 0 );
+    const basesdemo::TableMessageEntry q = basesdemo::TableVocabularyEntryAt( vocabulary, q_slot );
+    CHECK( q.qcount == 1000 && q.value_bits == 10 && q.qdelta == 10.0f );
+    for ( int i = 0; i < 3; i++ )
+    {
+        uint32_t packet = 0;
+        int packet_bits = 0;
+        CHECK( packet_index( values[i], 0.0f, 10.0f, 0.01f, packet, packet_bits ) );
+        CHECK( packet == indices[i] && packet_bits == 10 );
+        // the message: the q field alone, so the body is its reference, ten bits and the terminator
+        basesdemo::Bases value;
+        basesdemo::BasesReset( value );
+        value.q = values[i];
+        uint8_t message[64];
+        basesdemo::TableReport report;
+        const int64_t bytes = basesdemo::BasesSaveMessages( &value, 1, message, sizeof( message ), &report );
+        CHECK( bytes == 1 + ( 8 + basesdemo::kTableMessageRefBitsHere + 10 + basesdemo::kTableMessageRefBitsHere + 7 ) / 8 );
+        basesdemo::TableBitReader r( message + 1, bytes - 1 );
+        uint64_t raw = 0;
+        CHECK( r.get( raw, 8 ) && raw == 0 );
+        CHECK( r.get( raw, basesdemo::kTableMessageRefBitsHere ) && (int64_t) raw == q_slot );
+        CHECK( r.get( raw, 10 ) && raw == indices[i] ); // THE SAME BITS as the packet wire
+        // and the float read back is the GRID POINT and not the original
+        basesdemo::Bases read;
+        int64_t count = 1;
+        CHECK( basesdemo::BasesLoadMessages( &read, &count, vocabulary, message, bytes, &report ) );
+        CHECK( read.q == packet_float( indices[i], 0.0f, 10.0f, 0.01f ) ); // the packet wire's float, bit for bit
+        CHECK( read.q != values[i] ); // the grid point, never the original
+    }
+    // THE DECODE OF 6666 OVER [-100, 100] AT 0.01 is 0xC2055C2A and no neighbor of it
+    {
+        const float decoded = basesdemo::TableMessageDequantize( 6666, -100.0f, 200.0f, 20000 );
+        uint32_t bits = 0;
+        memcpy( &bits, &decoded, 4 );
+        CHECK( bits == 0xC2055C2Au );
+        CHECK( decoded == packet_float( 6666, -100.0f, 100.0f, 0.01f ) );
+    }
+}
+
+// ---- A REFUSED FIRST ANNOUNCEMENT IS TERMINAL (docs/SPEC-TABLES.md §3.3) ----
+
+static void test_message_form_refused_first()
+{
+    static uint8_t announcement[4096];
+    const int64_t announced = backenddemo::Announce( announcement, sizeof( announcement ) );
+    backenddemo::TableVocabulary vocabulary;
+    vocabulary.max_entries = 4;
+    backenddemo::TableReport first;
+    CHECK( !backenddemo::AnnounceRead( vocabulary, announcement, announced, &first ) );
+    CHECK( first.refused && first.reason == backenddemo::vocabulary_too_large && !vocabulary.announced );
+    // a well-formed announcement after it refuses as second_announcement and sets nothing
+    vocabulary.max_entries = backenddemo::TableVocabulary::kDefaultMaxEntries;
+    backenddemo::TableReport second;
+    CHECK( !backenddemo::AnnounceRead( vocabulary, announcement, announced, &second ) );
+    CHECK( second.refused && second.reason == backenddemo::second_announcement && !second.malformed );
+    CHECK( !vocabulary.announced && vocabulary.count == 0 );
+    // and a body refuses as no_vocabulary with nothing decoded and no counter moved
+    static backenddemo::LoginRequest value;
+    build_backend_login( value );
+    static uint8_t message[256];
+    backenddemo::TableReport unused;
+    const int64_t bytes = backenddemo::LoginRequestSaveMessages( &value, 1, message, sizeof( message ), &unused );
+    backenddemo::LoginRequest out;
+    backenddemo::LoginRequestReset( out );
+    int64_t count = 1;
+    backenddemo::TableReport body;
+    CHECK( !backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, message, bytes, &body ) );
+    CHECK( body.refused && body.reason == backenddemo::no_vocabulary && !body.malformed && body.unknown == 0 );
+    CHECK( out.client_build == 0 && count == 0 );
+}
+
+// ---- THE SIX FINDINGS OF schema#571 (docs/SPEC-TABLES.md §3.3) ------------
+
+static void test_message_form_findings()
+{
+    static uint8_t announcement[8192];
+    const int64_t announced = basesdemo::Announce( announcement, sizeof( announcement ) );
+    basesdemo::TableVocabulary own;
+    CHECK( basesdemo::AnnounceRead( own, announcement, announced, NULL ) );
+
+    // M1: A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION. The
+    // sender announces `few` over [0, 8] and sends six; the reader's [2..5]
+    // keeps the first five, counts one clamped, and element zero is element
+    // zero.
+    {
+        const uint8_t wide_few[4] = { 0, 8, 8, 0 }; // min 0, max 8, element kind 8 raw
+        static uint8_t forged[8192];
+        const int64_t bytes = forge_over_vocabulary( forged, sizeof( forged ), own.vocabulary, own.vocabulary_bytes, is_few, wide_few, 4 );
+        CHECK( bytes > 0 );
+        pin_table_golden( "bases_few_wide_conn", forged, bytes );
+        basesdemo::TableVocabulary vocabulary;
+        CHECK( basesdemo::AnnounceRead( vocabulary, forged, bytes, NULL ) );
+        int64_t few_slot = 0;
+        for ( int64_t slot = 1; slot <= vocabulary.count; slot++ ) { const basesdemo::TableMessageEntry e = basesdemo::TableVocabularyEntryAt( vocabulary, slot ); if ( e.kind == 14 && e.elem_kind == 8 && e.max == 8 ) { few_slot = slot; } }
+        CHECK( few_slot > 0 );
+        static uint8_t message[64];
+        basesdemo::TableBitWriter w( message, sizeof( message ) );
+        w.put( 2, 8 ); w.put( 0, 8 ); // the form byte and a count of one
+        w.put( (uint64_t) few_slot, vocabulary.ref_bits );
+        w.put( 6, 4 ); // six elements at bits_required( 0, 8 )
+        for ( uint64_t i = 1; i <= 6; i++ ) { w.put( i, 32 ); }
+        w.put( 0, vocabulary.ref_bits );
+        w.align();
+        const int64_t message_bytes = w.bits / 8;
+        pin_table_golden( "bases_few_surplus_message", message, message_bytes );
+        basesdemo::Bases read;
+        int64_t count = 1;
+        basesdemo::TableReport report;
+        CHECK( basesdemo::BasesLoadMessages( &read, &count, vocabulary, message, message_bytes, &report ) );
+        CHECK( !report.malformed && report.clamped == 1 );
+        CHECK( read.few_count == 5 && read.few[0] == 1 && read.few[4] == 5 );
+    }
+
+    // M2: A RANGED 128-BIT VALUE IS ONE ARITHMETIC FOR MEASURE, WRITE AND READ:
+    // flux over a 101-bit range with a base of -2^100, energy over 34 bits,
+    // and the field after them lands where it should
+    {
+        scalardemo::SimState state;
+        scalardemo::SimStateReset( state );
+        state.flux = serialize::int128_t( ( serialize::uint128_t( 0xFFFFFFF000000000ull ) << 64 ) | serialize::uint128_t( 5ull ) ); // -2^100 + 5, five above the range's floor
+        state.energy = 123;
+        state.entity_id = serialize::uint128_t( 77 );
+        static uint8_t announce[8192];
+        const int64_t announced_scalars = scalardemo::Announce( announce, sizeof( announce ) );
+        scalardemo::TableVocabulary vocabulary;
+        CHECK( scalardemo::AnnounceRead( vocabulary, announce, announced_scalars, NULL ) );
+        static uint8_t message[512];
+        scalardemo::TableReport report;
+        const int64_t bytes = scalardemo::SimStateSaveMessages( &state, 1, message, sizeof( message ), &report );
+        CHECK( bytes > 0 && bytes == scalardemo::SimStateMeasureMessages( &state, 1, &report ) );
+        pin_table_golden( "scalars_wide_message", message, bytes );
+        scalardemo::SimState read;
+        int64_t count = 1;
+        CHECK( scalardemo::SimStateLoadMessages( &read, &count, vocabulary, message, bytes, &report ) );
+        CHECK( !report.malformed && report.clamped == 0 && report.unknown == 0 );
+        CHECK( read.flux == state.flux && read.energy == 123 && read.entity_id == serialize::uint128_t( 77 ) );
+    }
+
+    // M3: A WIDTH ABOVE THE KIND'S OWN DOMAIN IS A HOSTILE WIDTH: 65 bits on a
+    // uint64 and 9 on a uint8 are each refused whole, and no vocabulary is set
+    {
+        const uint8_t sixty_five[3] = { 1, 65, 0 };
+        static uint8_t forged[8192];
+        int64_t bytes = forge_over_vocabulary( forged, sizeof( forged ), own.vocabulary, own.vocabulary_bytes, is_high_u64, sixty_five, 3 );
+        CHECK( bytes > 0 );
+        basesdemo::TableVocabulary vocabulary;
+        basesdemo::TableReport report;
+        CHECK( !basesdemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
+        CHECK( report.malformed && !vocabulary.announced );
+        const uint8_t nine[4] = { 1, 9, 0xC8, 0x01 }; // bits 9, base 200 as a two-byte LEB128
+        bytes = forge_over_vocabulary( forged, sizeof( forged ), own.vocabulary, own.vocabulary_bytes, is_narrow, nine, 4 );
+        basesdemo::TableVocabulary narrow_vocabulary;
+        basesdemo::TableReport narrow_report;
+        CHECK( !basesdemo::AnnounceRead( narrow_vocabulary, forged, bytes, &narrow_report ) );
+        CHECK( narrow_report.malformed && !narrow_vocabulary.announced );
+        // and the bit reader itself refuses a width above its primitive
+        uint8_t zeros[16] = { 0 };
+        basesdemo::TableBitReader r( zeros, 16 );
+        uint64_t raw = 0;
+        CHECK( !r.get( raw, 65 ) && r.get( raw, 64 ) );
+    }
+
+    // M6: THE BOUND APPLIES WHILE THE VALUE IS WIDE: narrow over [200, 250]
+    // reading offset 63 reconstructs 263 and clamps to 250, never to 7
+    {
+        int64_t narrow_slot = 0;
+        for ( int64_t slot = 1; slot <= own.count; slot++ ) { if ( is_narrow( basesdemo::TableVocabularyEntryAt( own, slot ) ) ) { narrow_slot = slot; } }
+        CHECK( narrow_slot > 0 );
+        static uint8_t message[64];
+        basesdemo::TableBitWriter w( message, sizeof( message ) );
+        w.put( 2, 8 ); w.put( 0, 8 );
+        w.put( (uint64_t) narrow_slot, own.ref_bits );
+        w.put( 63, 6 );
+        w.put( 0, own.ref_bits );
+        w.align();
+        const int64_t message_bytes = w.bits / 8;
+        pin_table_golden( "bases_narrow_offset_message", message, message_bytes );
+        basesdemo::Bases read;
+        int64_t count = 1;
+        basesdemo::TableReport report;
+        CHECK( basesdemo::BasesLoadMessages( &read, &count, own, message, message_bytes, &report ) );
+        CHECK( !report.malformed && report.clamped == 1 && read.narrow == 250 );
+    }
+
+    // A HOSTILE QUANTIZED TRIPLE: min not below max, res not above zero, and a
+    // delta not finite in float32, each refused whole
+    {
+        const uint8_t upside_down[13] = { 2, 0x00, 0x00, 0x20, 0x41, 0x00, 0x00, 0x00, 0x00, 0x0a, 0xd7, 0x23, 0x3c }; // min 10, max 0, res 0.01
+        const uint8_t no_step[13] = { 2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x41, 0x00, 0x00, 0x00, 0x00 };     // min 0, max 10, res 0
+        const uint8_t infinite[13] = { 2, 0xe6, 0xb1, 0x61, 0xff, 0xe6, 0xb1, 0x61, 0x7f, 0x0a, 0xd7, 0x23, 0x3c };    // min -3e38, max 3e38: delta overflows
+        const uint8_t * rows[3] = { upside_down, no_step, infinite };
+        for ( int i = 0; i < 3; i++ )
+        {
+            static uint8_t forged[8192];
+            const int64_t bytes = forge_over_vocabulary( forged, sizeof( forged ), own.vocabulary, own.vocabulary_bytes, is_q, rows[i], 13 );
+            CHECK( bytes > 0 );
+            basesdemo::TableVocabulary vocabulary;
+            basesdemo::TableReport report;
+            CHECK( !basesdemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
+            CHECK( report.malformed && !vocabulary.announced );
+        }
+    }
+}

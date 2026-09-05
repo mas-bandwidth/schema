@@ -130,7 +130,7 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 	g.pf("        records++;\n")
 	g.pf("    }\n")
 	g.pf("    int64_t root_extent = 0;\n")
-	if g.anyMap && g.hasMapExtent(st) {
+	if g.anyMap && g.hasExtent(st) {
 		g.pf("    if ( !%sMessageExtent( r, vocabulary, index_bits, root_extent ) ) { return false; }\n", n)
 	} else {
 		g.pf("    if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { return false; }\n")
@@ -205,7 +205,7 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 	g.pf("    }\n")
 	g.pf("    const int64_t fields_start = r.offset;\n")
 	g.pf("    int64_t root_extent = 0;\n")
-	if g.anyMap && g.hasMapExtent(st) {
+	if g.anyMap && g.hasExtent(st) {
 		g.pf("    {\n        TableBitReader walk = r;\n")
 		g.pf("        if ( !%sMessageExtent( walk, vocabulary, index_bits, root_extent ) ) { out->malformed = true; return false; }\n    }\n", n)
 	}
@@ -220,7 +220,7 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 	// COUNT is what says it is not a body (§3.3)
 	g.pf("    root_out = root;\n")
 	if g.anyMap {
-		g.pf("    TableMapCarve root_carve;\n")
+		g.pf("    TableExtentCarve root_carve;\n")
 		g.pf("    root_carve.at = region + used + TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
 		g.pf("    root_carve.left = root_extent;\n")
 	}
@@ -317,14 +317,14 @@ func (g *tableGen) emitRootNodeMessageDispatch(st *ir.Struct) {
 	g.pf("    extent = 0;\n")
 	anyExtent := false
 	for _, t := range reachable {
-		if g.anyMap && g.hasMapExtent(t) {
+		if g.anyMap && g.hasExtent(t) {
 			anyExtent = true
 		}
 	}
 	if anyExtent {
 		g.pf("    switch ( type_id )\n    {\n")
 		for _, t := range reachable {
-			if g.anyMap && g.hasMapExtent(t) {
+			if g.anyMap && g.hasExtent(t) {
 				g.pf("        case 0x%016xull: return %sMessageExtent( r, vocabulary, index_bits, extent ); // %s\n", ir.TableWireId(t.Name), t.Name, t.Name)
 			}
 		}
@@ -338,7 +338,7 @@ func (g *tableGen) emitRootNodeMessageDispatch(st *ir.Struct) {
 	g.pf("// storage it already owns, its map entries carved from its own extent.\n")
 	g.pf("inline bool %sNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )\n{\n", n)
 	if g.anyMap {
-		g.pf("    TableMapCarve carve;\n")
+		g.pf("    TableExtentCarve carve;\n")
 		g.pf("    carve.at = at + %sNodeRecordBytes( type_id );\n", n)
 		g.pf("    carve.left = 0;\n")
 		g.pf("    {\n")

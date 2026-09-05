@@ -98,7 +98,7 @@ func (g *tableGen) emitMessageBodyDeclarations(members []*ir.Struct) {
 			g.pf("template <typename Ctx> inline int64_t %sMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const %s & value );\n", st.Name, st.Name)
 			g.pf("template <typename Ctx> inline bool %sSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const %s & value );\n", st.Name, st.Name)
 			g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, %s & value );\n", st.Name, st.Name)
-			if g.anyMap && g.hasMapExtent(st) {
+			if g.anyMap && g.hasExtent(st) {
 				g.pf("inline bool %sMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at );\n", st.Name)
 			}
 			continue
@@ -120,7 +120,7 @@ func (g *tableGen) emitMessageBodyDeclarations(members []*ir.Struct) {
 func (g *tableGen) emitMessageCodec(st *ir.Struct) {
 	g.emitMessageMeasureBody(st)
 	g.emitMessageSaveBody(st)
-	if g.isVar(st.Name) && g.anyMap && g.hasMapExtent(st) {
+	if g.isVar(st.Name) && g.anyMap && g.hasExtent(st) {
 		g.emitMessageExtent(st)
 	}
 	g.emitMessageLoadBody(st)
@@ -245,6 +245,20 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 		g.emitMessageHeader(entry, pass, "        ")
 		g.emitMessageTextPayload(f, entry, "value."+name, fmt.Sprintf("value.%s_length", name), "        ", pass)
 		g.pf("    }\n")
+
+	case f.IsList():
+		// AN UNBOUNDED ARRAY rides as the count the data decides, thirty-two
+		// raw bits, then its live elements in INDEX order (docs/SPEC-TABLES.md
+		// §2.9, §3.3): the cursor is the file form's own, and an EMPTY list
+		// elides on the by-value rule.
+		cursor := "cursor_" + name
+		g.pf("    {\n")
+		g.pf("        TableListCursor<%s> %s = TableListElements( ctx, value.%s ); // %s\n", g.listElementType(f), cursor, name, name)
+		g.pf("        if ( !%s.ok ) { return %s; } // the slot and the head disagree\n", cursor, messageBad(pass))
+		g.pf("        if ( %s.count > 0 )\n        {\n", cursor)
+		g.emitMessageHeader(entry, pass, "            ")
+		g.emitMessageArray(f, entry, cursor+".count", cursor+"[%s]", "            ", pass)
+		g.pf("        }\n    }\n")
 
 	case f.CountedOnWire():
 		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return %s; } // storage invariant\n",
@@ -472,19 +486,33 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 		g.pf("%sw.put( table_double_to_bits( %s ), 64 );\n", ind, expr)
 	case tkF32:
 		if shape.Packing == ir.TableMessageQuantized {
-			g.pf("%s{\n%s    const float delta%s = float( %s ) - %s;\n", ind, ind, sfx, expr, formatFloat(float64(shape.QMin), true))
-			g.pf("%s    float steps%s = delta%s / %s;\n", ind, sfx, sfx, formatFloat(float64(shape.QStep), true))
-			g.pf("%s    if ( !( steps%s >= 0.0f ) ) { steps%s = 0.0f; }\n", ind, sfx, sfx)
-			g.pf("%s    uint64_t index%s = (uint64_t) ( steps%s + 0.5f );\n", ind, sfx, sfx)
-			g.pf("%s    const uint64_t top%s = ( uint64_t(1) << %d ) - 1;\n", ind, sfx, width)
-			g.pf("%s    if ( index%s > top%s ) { index%s = top%s; }\n", ind, sfx, sfx, sfx, sfx)
-			g.pf("%s    w.put( index%s, %d );\n%s}\n", ind, sfx, width, ind)
+			// THE PACKET WIRE'S RULE, IN FLOAT32 (SPEC.md §4.3, §3.3): the
+			// step count and delta are the declaration's, derived once here
+			count, delta, _ := ir.TableMessageQuantization(shape)
+			g.pf("%sw.put( (uint64_t) TableMessageQuantize( float( %s ), %s, %s, %du ), %d );\n",
+				ind, expr, formatFloat(float64(shape.QMin), true), formatFloat(float64(delta), true), count, width)
 			return
 		}
 		g.pf("%sw.put( (uint64_t) table_float_to_bits( %s ), 32 );\n", ind, expr)
 	default:
-		if width > 64 {
-			g.pf("%s{ serialize::uint128_t raw_v%s = serialize::uint128_t( %s ); w.put( uint64_t( raw_v%s ), 64 ); w.put( uint64_t( raw_v%s >> 64 ), 64 ); }\n", ind, sfx, expr, sfx, sfx)
+		if ir.TableKindWide(int(kind)) {
+			// A 128-BIT KIND at the width its shape states: the base subtracted
+			// at 128 bits, the low half first and the high half where the
+			// width reaches it, which is ONE arithmetic for measure, save and
+			// read (§3.3)
+			base := "serialize::uint128_t( 0 )"
+			if shape.Packing == ir.TableMessageRanged && shape.Base != nil && shape.Base.Sign() != 0 {
+				base = tableWideLit(shape.Base, false)
+			}
+			lo, hi := width, int64(0)
+			if lo > 64 {
+				lo, hi = 64, width-64
+			}
+			g.pf("%s{ serialize::uint128_t raw_v%s = serialize::uint128_t( %s ) - %s; w.put( uint64_t( raw_v%s ), %d );", ind, sfx, expr, base, sfx, lo)
+			if hi > 0 {
+				g.pf(" w.put( uint64_t( raw_v%s >> 64 ), %d );", sfx, hi)
+			}
+			g.pf(" }\n")
 			return
 		}
 		if shape.Packing == ir.TableMessageRanged && shape.Base != nil && shape.Base.Sign() != 0 {
@@ -883,7 +911,7 @@ func (g *tableGen) emitMessageExtentCases(st *ir.Struct) {
 			g.pf("            at = ( at + %d ) & ~(int64_t) %d; // at alignof( %s )\n", alignOfEntry(g.unit, me)-1, alignOfEntry(g.unit, me)-1, me.Name)
 			g.pf("            at += (int64_t) n * (int64_t) sizeof( %s ); // the whole array FIRST\n", me.Name)
 			g.pf("            for ( uint64_t i = 0; i < n; i++ ) // then, entry by entry in key order\n            {\n")
-			if g.hasMapExtent(me) {
+			if g.hasExtent(me) {
 				g.pf("                if ( !%sMessageExtent( r, vocabulary, index_bits, at ) ) { return false; }\n", me.Name)
 			} else {
 				g.pf("                if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { return false; }\n")
@@ -892,10 +920,34 @@ func (g *tableGen) emitMessageExtentCases(st *ir.Struct) {
 			g.pf("            continue;\n        }\n")
 			continue
 		}
+		if f.IsList() {
+			// AN UNBOUNDED ARRAY's elements are this node's extent: the whole
+			// array first, then, element by element, whatever each holds
+			elem := g.listElementType(f)
+			g.pf("        if ( entry.id == 0x%016xull && entry.kind == %d && entry.elem_kind == %d ) // %s: an unbounded array\n        {\n", ir.TableFieldWireId(f), tkArray, listElementWireKind(f), f.Name)
+			g.pf("            uint64_t n = 0;\n")
+			g.pf("            if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) ) { return false; }\n")
+			g.pf("            n += (uint64_t) entry.min;\n")
+			g.pf("            if ( n > (uint64_t) INT32_MAX ) { return false; } // above the int32 storage cap (§2.9)\n")
+			if listElementWireKind(f) == tkU8 {
+				g.pf("            if ( !r.align() ) { return false; } // an array of kind 6 aligns before its elements\n")
+			}
+			g.pf("            at = ( at + %d ) & ~(int64_t) %d; // at alignof( %s )\n", alignOfList(g.unit, f)-1, alignOfList(g.unit, f)-1, elem)
+			g.pf("            at += (int64_t) n * (int64_t) sizeof( %s ); // the whole array FIRST\n", elem)
+			g.pf("            for ( uint64_t i = 0; i < n; i++ ) // then, element by element in index order\n            {\n")
+			if ref := listElementStruct(f); ref != nil && g.hasExtent(ref) {
+				g.pf("                if ( !%sMessageExtent( r, vocabulary, index_bits, at ) ) { return false; }\n", ref.Name)
+			} else {
+				g.pf("                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry ) ) { return false; }\n")
+			}
+			g.pf("            }\n")
+			g.pf("            continue;\n        }\n")
+			continue
+		}
 		switch g.edgeOf(f) {
 		case edgeNested:
 			ref, _ := f.Type.Ref.(*ir.Struct)
-			if ref == nil || !g.hasMapExtent(ref) {
+			if ref == nil || !g.hasExtent(ref) {
 				continue
 			}
 			switch {
@@ -926,7 +978,7 @@ func (g *tableGen) emitMessageExtentCases(st *ir.Struct) {
 			un := f.Type.Ref.(*ir.Union)
 			any := false
 			for _, v := range un.Variants {
-				if ref := memberOf(g.unit, v.Type); ref != nil && g.hasMapExtent(ref) {
+				if ref := memberOf(g.unit, v.Type); ref != nil && g.hasExtent(ref) {
 					any = true
 				}
 			}
@@ -942,7 +994,7 @@ func (g *tableGen) emitMessageExtentCases(st *ir.Struct) {
 			g.pf("            switch ( arm.id )\n            {\n")
 			for _, v := range un.Variants {
 				ref := memberOf(g.unit, v.Type)
-				if ref == nil || !g.hasMapExtent(ref) {
+				if ref == nil || !g.hasExtent(ref) {
 					continue
 				}
 				g.pf("                case 0x%016xull: // %s\n", ir.TableWireId(v.Name), v.Name)

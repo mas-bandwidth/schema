@@ -786,7 +786,9 @@ func (d *differ) pairedRename(key, was string) string {
 //     class this whole file exists to refuse.
 //   - an ENUM value is its variant NAME hash, so it stands in when every
 //     variant name survives;
-//   - a UNION body opens with its arm NAME hash, same rule;
+//   - a UNION body opens with its arm NAME hash, and an arm is a field line,
+//     so it stands in when every arm name survives AND THE FACTS UNDER THOSE
+//     ARMS ARE UNCHANGED, the payload's own ids and facts included;
 //   - a FLAGS mask is POSITIONAL and carries no names at all, so it stands in
 //     only when the old declaration's variants sit at the same bits.
 //   - an ENUM-KEYED array's KEY enum is judged as an enum: its slots ride
@@ -799,8 +801,7 @@ func (d *differ) substitutable(key, was, now string) []Finding {
 		return namesRide(enumNames(d.base, was), enumNames(d.live, now), now,
 			"variant name", "stored values naming them read as None")
 	case "union":
-		return namesRide(armNames(d.base, was), armNames(d.live, now), now,
-			"arm name", "stored bodies naming them are skipped")
+		return d.armsRide(was, now)
 	default: // "type", "payload" — a table body, read by field id
 		return d.bodyRides(was, now)
 	}
@@ -837,6 +838,43 @@ func (d *differ) bodyRides(was, now string) []Finding {
 	if missing > 0 {
 		out = append(out, Finding{Refuse, "", fmt.Sprintf(
 			"%d of %d field ids do not ride — that much of every stored body reads back as declared defaults", missing, len(before.Fields))})
+	}
+	return out
+}
+
+// armsRide compares two union declarations as a reader would meet them: the
+// arm names that stop riding, then EVERY FACT the policy judges on the arms
+// that do. An arm is a field line (docs/SPEC-TABLES.md §2.6, §18.1), so it
+// reuses diffTokens exactly as bodyRides does, and a replacement union is
+// judged by the one path an in-place edit is: a shared arm's payload is a
+// referent, walked by field id through the same recursion guard.
+func (d *differ) armsRide(was, now string) []Finding {
+	before, after := findUnion(d.base, was), findUnion(d.live, now)
+	if after == nil {
+		return []Finding{{Refuse, "", now + " is not described by this baseline"}}
+	}
+	if before == nil {
+		return nil
+	}
+	liveArms := map[string]Field{}
+	for _, a := range after.Arms {
+		liveArms[a.Name] = a
+	}
+	var out []Finding
+	missing := 0
+	for _, ba := range before.Arms {
+		la, ok := liveArms[ba.Name]
+		if !ok {
+			missing++
+			continue
+		}
+		for _, f := range d.diffTokens("", ba, la) {
+			out = append(out, Finding{f.Verdict, "", fmt.Sprintf("%s's %s", ba.Name, f.What)})
+		}
+	}
+	if missing > 0 {
+		out = append(out, Finding{Refuse, "", fmt.Sprintf(
+			"%d of %d arm names do not ride — stored bodies naming them are skipped", missing, len(before.Arms))})
 	}
 	return out
 }
@@ -897,16 +935,11 @@ func enumNames(u *Unit, name string) map[string]bool {
 	return nil
 }
 
-func armNames(u *Unit, name string) map[string]bool {
-	for _, un := range u.Unions {
-		if un.Name != name {
-			continue
+func findUnion(u *Unit, name string) *Union {
+	for i := range u.Unions {
+		if u.Unions[i].Name == name {
+			return &u.Unions[i]
 		}
-		set := map[string]bool{}
-		for _, a := range un.Arms {
-			set[a.Name] = true
-		}
-		return set
 	}
 	return nil
 }

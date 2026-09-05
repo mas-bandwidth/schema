@@ -110,6 +110,18 @@ struct TableReport
     TableMessageReason reason = newer_form;
 };
 
+
+// WHY A MEASURE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5): a -1 from
+// LoadMeasure carries one of these as an out-parameter. A REFUSAL moves no
+// counter: nothing was decoded, so there is nothing to report, and the reason
+// is where the answer lives. The two values here are the ones a map's and an
+// unbounded array's framing can raise. The rest of §6.5's vocabulary, the
+// accelerators' refusals, is owed with them (schema#523).
+enum TableRefuseReason
+{
+    count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
+    count_over_extent_cap  // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
+};
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
@@ -225,18 +237,13 @@ struct TableFieldInfo
     // a function pointer at compile time; the arms themselves are a static
     // inside it). NULL for every other kind.
     const TableUnionInfo * (*arms)();
-    // a MAP (docs/SPEC-TABLES.md §2.8): the generated ENTRY's descriptor —
-    // fields[0] is the key and fields[1] the value — and the three the ONE
-    // text walk cannot spell for itself, because TableMap<Entry> is a type
-    // it has no name for. NULL on every field that is not a map.
-    const TableTypeInfo * entry;
-    int32_t ( * map_count )( const void * slot );
-    const void * ( * map_at )( const void * slot, int32_t index );
-    // place one entry BY KEY and hand back the entry, at its defaults: a
-    // string key comes in as the bytes and the length, an integer key as
-    // the value, and NULL is NOT INSERTED — a key past the bound, or an
-    // arena that could not carve another segment.
-    void * ( * map_insert )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );
+    // an OUT-OF-LINE array (docs/SPEC-TABLES.md §8.1): place one element and
+    // hand it back at its defaults. A MAP places BY KEY, a string key comes
+    // in as the bytes and the length, an integer key as the value, and NULL
+    // is NOT INSERTED: a key past the bound, or an arena that could not carve
+    // another segment. A LIST ignores the key and APPENDS, NULL at the arena
+    // or the int32 cap. NULL on every field that is neither.
+    void * ( * place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
 };
 
@@ -1292,8 +1299,8 @@ struct TableWorker
         return blob;
     }
 
-    // RAW, ZEROED storage of the bytes asked for, at the alignment asked for — a MAP's builder head and its
-    // entry segments (docs/SPEC-TABLES.md §2.8). It is not a node: it carries
+    // RAW, ZEROED storage of the bytes asked for, at the alignment asked for: a MAP's or a LIST's builder
+    // head and its segments (docs/SPEC-TABLES.md §2.8, §2.9). It is not a node: it carries
     // no type id, takes no index and has no Reset, so it goes through the same
     // slab and span the blob path uses rather than through Alloc.
     uint8_t * AllocRaw( int64_t bytes, int64_t align, uint32_t & at )
@@ -1577,12 +1584,6 @@ static const uint64_t kTableNodeIndexRoot = 1;         // the body that hosts th
 // resolving through it yields NULL and can never fabricate the root.
 static const uint64_t kTableNodeAbsent = 0xFFFFFFFFFFFFFFFFull;
 
-// What a node's storage answers when the FRAMING ITSELF is refused rather than
-// merely unnameable: a map whose N cannot fit in its L (docs/SPEC-TABLES.md
-// §2.8). An unnameable type id commands no storage and keeps its index; this
-// one makes the whole measure answer -1 (§7.6).
-static const int64_t kTableNodeRefused = -2;
-
 // ---- the numbering, on the SAVE side ----
 //
 // One entry per reachable node in FIRST-VISIT order, so entry k is node index
@@ -1780,9 +1781,9 @@ struct TableNodeDirEntry
     uint64_t type_id;
 };
 
-// a map's extent cursor, defined with the map runtime (docs/SPEC-TABLES.md
-// §2.8); the node map names it only through a pointer.
-struct TableMapCarve;
+// the node's extent cursor, defined with the extent runtime (docs/SPEC-TABLES.md
+// §2.8, §2.9); the node map names it only through a pointer.
+struct TableExtentCarve;
 
 // TableNodeMap is what a pointer slot resolves through while a body decodes.
 struct TableNodeMap
@@ -1795,17 +1796,21 @@ struct TableNodeMap
     // takes the SELF-RELATIVE delta so a deref is one add, and the tool's
     // builder path takes the node's ARENA OFFSET (§6.3).
     bool arena = false;
-    // WHERE A MAP'S ENTRIES LAND while this node's body decodes
-    // (docs/SPEC-TABLES.md §2.8): the node's own extent on the region path
-    // and the builder's arena on the tool's. It is MUTABLE because the
-    // cursor belongs to ONE node's decode and the dispatch that owns that
-    // node holds the map by const reference, exactly as it did before maps
-    // existed — the decoder's signature does not move for a construct it
-    // may not carry.
-    mutable TableMapCarve * carve = NULL;
-    // and the TOOL's path's allocation front, set once: there a map's
-    // entries are the builder's arena's rather than a node's extent.
+    // WHERE A MAP'S ENTRIES AND A LIST'S ELEMENTS LAND while this node's body
+    // decodes (docs/SPEC-TABLES.md §2.8, §2.9): the node's own extent on the
+    // region path and the builder's arena on the tool's. It is MUTABLE
+    // because the cursor belongs to ONE node's decode and the dispatch that
+    // owns that node holds the map by const reference, exactly as it did
+    // before either construct existed. The decoder's signature does not
+    // move for a construct it may not carry.
+    mutable TableExtentCarve * carve = NULL;
+    // and the TOOL's path's allocation front, set once: there the arrays
+    // are the builder's arena's rather than a node's extent.
     TableWorker * worker = NULL;
+    // THE TOOL PATH'S REFUSAL (docs/SPEC-TABLES.md §2.9): a count above the
+    // int32 cap met while a body decoded. LoadBuilder answers NULL for it
+    // and moves no counter; mutable for the reason the cursor is.
+    mutable bool refused = false;
 };
 
 // TableNodeResolve places one node index in a pointer slot, and every failure
@@ -1948,6 +1953,90 @@ inline bool TableNodeScanWhole( TableNodeScan & s )
 } // namespace mapdemo
 
 #endif // MAPDEMO_SCHEMA_TABLE_ARENA
+
+#ifndef MAPDEMO_SCHEMA_TABLE_EXTENT
+#define MAPDEMO_SCHEMA_TABLE_EXTENT
+
+namespace mapdemo {
+
+// ---- the NODE EXTENT: where a map's entries and a list's elements live (§2.8, §2.9) ----
+
+// What a node's storage answers when the FRAMING ITSELF is refused rather than
+// merely unnameable: a count its L cannot carry, or one above the int32 cap
+// (docs/SPEC-TABLES.md §6.5). An unnameable type id commands no storage and
+// keeps its index. This one makes the whole measure answer -1 with its reason.
+static const int64_t kTableNodeRefused = -2;
+
+// TableExtentCarve is a node's extent cursor, PRE-ORDER: a container's whole
+// array first, then, element by element in the container's own order, the
+// arrays of any list or map an element holds by value. The cursor is the node
+// map's, because the generated decoder is threaded with that and not with a
+// region.
+struct TableExtentCarve
+{
+    uint8_t * at = NULL;         // the region path: the node's extent, unspent
+    int64_t left = 0;
+    TableWorker * worker = NULL; // the TOOL's path: the arrays come from the arena
+};
+
+// AN UNREACHED SLOT MUST HOLD NO LIST OR MAP WITH ELEMENTS IN IT (§2.8, §2.9,
+// §7.6). An empty one takes no bytes, so a record whose extent measures ZERO is
+// a record whose every by-value list and map is empty. A measure that REFUSED
+// answers non-zero here too, and refusing on it is the same answer one level up.
+inline bool TableExtentUnreachedEmpty( int64_t extent ) { return extent == 0; }
+
+// ---- LoadMeasure's framing walk (§6.5) ----
+//
+// The measure reads no field value: it walks each record's field headers,
+// skipping every payload by its framing, to reach each N at every depth. A
+// false is a REFUSAL, and it carries its reason (§6.5).
+typedef bool ( * TableWireExtentFn )( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason );
+
+// the framing walk over an ARRAY OF TABLES held by value: its elements' own
+// lists and maps are part of this node's extent too
+inline bool TableWireExtentElements( const uint8_t * body, int64_t length, int64_t & at, TableWireExtentFn inner, const TableIdTable * ids, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, ids );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 13 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        uint64_t elem = 0;
+        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
+        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
+        r.offset += (int64_t) elem;
+    }
+    return true;
+}
+
+// and over an ENUM-KEYED array, whose triples carry a key REFERENCE before each
+// length-prefixed element (docs/SPEC-TABLES.md §3.2)
+inline bool TableWireExtentKeyed( const uint8_t * body, int64_t length, int64_t & at, TableWireExtentFn inner, const TableIdTable * ids, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, ids );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 13 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        uint64_t key = 0;
+        if ( !r.getleb( key ) ) { return true; }
+        uint64_t elem = 0;
+        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
+        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
+        r.offset += (int64_t) elem;
+    }
+    return true;
+}
+
+} // namespace mapdemo
+
+#endif // MAPDEMO_SCHEMA_TABLE_EXTENT
 
 #ifndef MAPDEMO_SCHEMA_TABLE_MAP
 #define MAPDEMO_SCHEMA_TABLE_MAP
@@ -2379,12 +2468,6 @@ inline TableMapEach<Entry> TableMapEachOf( const TableArena & arena, const Table
     return each;
 }
 
-// AN UNREACHED SLOT MUST HOLD NO MAP WITH ENTRIES IN IT (§2.8, §7.6). An empty
-// map takes no bytes, so a record whose extent measures ZERO is a record whose
-// every by-value map is empty; a measure that REFUSED answers non-zero here
-// too, and refusing on it is the same answer one level up.
-inline bool TableMapUnreachedEmpty( int64_t extent ) { return extent == 0; }
-
 // ---- the LOAD side: where a decoded entry lands (§2.8) ----
 //
 // THE READER TRUSTS NOTHING and spends one compare per entry. Every load path
@@ -2394,16 +2477,9 @@ inline bool TableMapUnreachedEmpty( int64_t extent ) { return extent == 0; }
 // out of the holder node's own extent, and the TOOL's path appends into the
 // builder's arena, and the decoder above them cannot tell which it has.
 
-// TableMapCarve is a node's extent cursor, PRE-ORDER: a map's whole entry
-// array first, then, entry by entry in key order, the arrays of any map an
-// entry's value holds by value. The cursor is the node map's, because the
-// generated decoder is threaded with that and not with a region.
-struct TableMapCarve
-{
-    uint8_t * at = NULL;         // the region path: the node's extent, unspent
-    int64_t left = 0;
-    TableWorker * worker = NULL; // the TOOL's path: entries come from the arena
-};
+// The node's extent cursor is TableExtentCarve, the extent runtime's (§2.8,
+// §2.9): a map's whole entry array is carved first, then, entry by entry in
+// key order, the arrays of any list or map an entry's value holds by value.
 
 // TableMapFill is one map field being decoded: where the next entry lands, and
 // the entry that last LANDED, which is what the ascending check compares
@@ -2528,10 +2604,11 @@ inline Entry * TableMapLive( const TableArena & arena, const TableMap<Entry> & m
 // LoadMeasure's term for a map is N x sizeof( Entry ) rounded to
 // alignof( Entry ), AT EVERY DEPTH. N is framing and not a value, so this
 // reads no field: it walks the map's own header and, where an entry's value
-// holds a map of its own, the entries' headers under it. The caller owns the
-// allocation precisely so it can refuse a number it did not expect.
-typedef bool ( * TableMapWireExtentFn )( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids );
-
+// holds a map or a list of its own, the entries' headers under it. The caller
+// owns the allocation precisely so it can refuse a number it did not expect.
+// Every -1 carries its REASON (§6.5): the int32 cap first, because a count
+// past it cannot fit any body, and then the body's own L, the one rule a
+// list's term answers by.
 // A MAP ENTRY'S SMALLEST WIRE FOOTPRINT that commands one storage unit is its
 // own L and the body's terminator, and under this form's variable lengths that
 // footprint is TWO BYTES (docs/SPEC-TABLES.md §4.2). It is what bounds the N a
@@ -2539,8 +2616,8 @@ typedef bool ( * TableMapWireExtentFn )( const uint8_t * body, int64_t length, i
 static const int64_t kTableMapEntryFloor = 2;
 
 inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & at,
-                                int64_t entry_size, int64_t entry_align, TableMapWireExtentFn inner,
-                                const TableIdTable * ids )
+                                int64_t entry_size, int64_t entry_align, TableWireExtentFn inner,
+                                const TableIdTable * ids, TableRefuseReason & reason )
 {
     TableReport scratch;
     TableReader r( body, length, &scratch, ids );
@@ -2548,8 +2625,9 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
     if ( r.get8() != 13 ) { return true; } // not an array of tables: §4's ordinary kind mismatch
     uint64_t n = 0;
     if ( !r.getleb( n ) ) { return true; }
+    if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }
     const int64_t rest = length - r.offset;
-    if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { return false; } // an N the map's L cannot carry
+    if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { reason = count_over_length; return false; } // an N the map's L cannot carry
     at = ( at + entry_align - 1 ) & ~( entry_align - 1 );
     at += (int64_t) n * entry_size;
     if ( inner == NULL ) { return true; } // no map below an entry: one depth is the whole term
@@ -2557,49 +2635,7 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
     {
         uint64_t elem = 0;
         if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; } // framing damage: the load reports it
-        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids ) ) { return false; }
-        r.offset += (int64_t) elem;
-    }
-    return true;
-}
-
-// the same framing walk over an ARRAY OF TABLES that is not a map: its
-// elements' own maps are part of this node's extent too
-inline bool TableWireExtentElements( const uint8_t * body, int64_t length, int64_t & at, TableMapWireExtentFn inner, const TableIdTable * ids )
-{
-    TableReport scratch;
-    TableReader r( body, length, &scratch, ids );
-    if ( length < 2 ) { return true; }
-    if ( r.get8() != 13 ) { return true; }
-    uint64_t n = 0;
-    if ( !r.getleb( n ) ) { return true; }
-    for ( uint64_t i = 0; i < n; i++ )
-    {
-        uint64_t elem = 0;
-        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
-        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids ) ) { return false; }
-        r.offset += (int64_t) elem;
-    }
-    return true;
-}
-
-// and over an ENUM-KEYED array, whose triples carry a key REFERENCE before each
-// length-prefixed element (docs/SPEC-TABLES.md §3.2)
-inline bool TableWireExtentKeyed( const uint8_t * body, int64_t length, int64_t & at, TableMapWireExtentFn inner, const TableIdTable * ids )
-{
-    TableReport scratch;
-    TableReader r( body, length, &scratch, ids );
-    if ( length < 2 ) { return true; }
-    if ( r.get8() != 13 ) { return true; }
-    uint64_t n = 0;
-    if ( !r.getleb( n ) ) { return true; }
-    for ( uint64_t i = 0; i < n; i++ )
-    {
-        uint64_t key = 0;
-        if ( !r.getleb( key ) ) { return true; }
-        uint64_t elem = 0;
-        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
-        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids ) ) { return false; }
+        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
         r.offset += (int64_t) elem;
     }
     return true;
@@ -2996,7 +3032,7 @@ inline void RowEntriesEntryReset( RowEntriesEntry & value )
 
 inline void RowReset( Row & value )
 {
-    value.entries.entries.value = 0; // map[string(8)]Item — empty
+    value.entries.entries.value = 0; // map[string(8)]Item: empty
     value.entries.count = 0;
     value.entries.padding = 0;
     value.after = 0;
@@ -3010,7 +3046,7 @@ inline void WideRowEntriesEntryReset( WideRowEntriesEntry & value )
 
 inline void WideRowReset( WideRow & value )
 {
-    value.entries.entries.value = 0; // map[uint32]Item — empty
+    value.entries.entries.value = 0; // map[uint32]Item: empty
     value.entries.count = 0;
     value.entries.padding = 0;
     value.after = 0;
@@ -3868,10 +3904,10 @@ inline bool WideRowLoadBody( TableReader & r, const TableNodeMap & nodes, WideRo
     }
 }
 
-// RowWireExtent: the extent Row's maps command, from the FRAMING alone.
+// RowWireExtent: the extent Row's lists and maps command, from the FRAMING alone.
 // It reads no field value, so a caller can refuse a number it did not
 // expect before one byte is allocated (docs/SPEC-TABLES.md §6.5).
-inline bool RowWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids )
+inline bool RowWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason )
 {
     TableReport scratch; // the scan's framing damage is the LOAD's to report
     TableReader r( body, length, &scratch, ids );
@@ -3890,17 +3926,17 @@ inline bool RowWireExtent( const uint8_t * body, int64_t length, int64_t & at, c
             if ( !r.getleb( map_len ) || !r.room( map_len ) ) { return true; }
             const uint8_t * map_body = r.buffer + r.offset;
             r.offset += (int64_t) map_len;
-            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( RowEntriesEntry ), (int64_t) alignof( RowEntriesEntry ), NULL, ids ) ) { return false; }
+            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( RowEntriesEntry ), (int64_t) alignof( RowEntriesEntry ), NULL, ids, reason ) ) { return false; }
             continue;
         }
         if ( !r.skip( field_kind ) ) { return true; }
     }
 }
 
-// RowMapExtentAt: the node extent Row's maps take, PRE-ORDER, advancing the
-// running offset exactly as RowMapPack advances it (docs/SPEC-TABLES.md §2.8).
+// RowExtentAt: the node extent Row's lists and maps take, PRE-ORDER, advancing
+// the running offset exactly as RowExtentPack advances it (§2.8, §2.9).
 template <typename Ctx>
-inline bool RowMapExtentAt( const Ctx & ctx, const Row & value, int64_t & at )
+inline bool RowExtentAt( const Ctx & ctx, const Row & value, int64_t & at )
 {
     {
         TableMapCursor<RowEntriesEntry> cursor = TableMapOrder( ctx, value.entries );
@@ -3915,18 +3951,18 @@ inline bool RowMapExtentAt( const Ctx & ctx, const Row & value, int64_t & at )
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
 template <typename Ctx>
-inline int64_t RowMapExtent( const Ctx & ctx, const Row & value )
+inline int64_t RowExtent( const Ctx & ctx, const Row & value )
 {
     int64_t at = 0;
-    if ( !RowMapExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !RowExtentAt( ctx, value, at ) ) { return -1; }
     return at;
 }
 
-// RowMapPack: carve Row's map arrays out of the node's extent and copy the
-// entries in ASCENDING key order, PRE-ORDER, advancing the same running
-// offset RowMapExtentAt advances (docs/SPEC-TABLES.md §2.8).
+// RowExtentPack: carve Row's arrays out of the node's extent and copy the
+// entries in ASCENDING key order and the elements in INDEX order, PRE-ORDER,
+// advancing the same running offset RowExtentAt advances (§2.8, §2.9).
 template <typename Ctx>
-inline bool RowMapPack( const Ctx & ctx, const Row & src, Row & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+inline bool RowExtentPack( const Ctx & ctx, const Row & src, Row & dst, uint8_t * extent, int64_t & at, int64_t capacity )
 {
     {
         TableMapCursor<RowEntriesEntry> cursor = TableMapOrder( ctx, src.entries );
@@ -3948,10 +3984,10 @@ inline bool RowMapPack( const Ctx & ctx, const Row & src, Row & dst, uint8_t * e
     return true;
 }
 
-// WideRowWireExtent: the extent WideRow's maps command, from the FRAMING alone.
+// WideRowWireExtent: the extent WideRow's lists and maps command, from the FRAMING alone.
 // It reads no field value, so a caller can refuse a number it did not
 // expect before one byte is allocated (docs/SPEC-TABLES.md §6.5).
-inline bool WideRowWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids )
+inline bool WideRowWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason )
 {
     TableReport scratch; // the scan's framing damage is the LOAD's to report
     TableReader r( body, length, &scratch, ids );
@@ -3970,17 +4006,17 @@ inline bool WideRowWireExtent( const uint8_t * body, int64_t length, int64_t & a
             if ( !r.getleb( map_len ) || !r.room( map_len ) ) { return true; }
             const uint8_t * map_body = r.buffer + r.offset;
             r.offset += (int64_t) map_len;
-            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( WideRowEntriesEntry ), (int64_t) alignof( WideRowEntriesEntry ), NULL, ids ) ) { return false; }
+            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( WideRowEntriesEntry ), (int64_t) alignof( WideRowEntriesEntry ), NULL, ids, reason ) ) { return false; }
             continue;
         }
         if ( !r.skip( field_kind ) ) { return true; }
     }
 }
 
-// WideRowMapExtentAt: the node extent WideRow's maps take, PRE-ORDER, advancing the
-// running offset exactly as WideRowMapPack advances it (docs/SPEC-TABLES.md §2.8).
+// WideRowExtentAt: the node extent WideRow's lists and maps take, PRE-ORDER, advancing
+// the running offset exactly as WideRowExtentPack advances it (§2.8, §2.9).
 template <typename Ctx>
-inline bool WideRowMapExtentAt( const Ctx & ctx, const WideRow & value, int64_t & at )
+inline bool WideRowExtentAt( const Ctx & ctx, const WideRow & value, int64_t & at )
 {
     {
         TableMapCursor<WideRowEntriesEntry> cursor = TableMapOrder( ctx, value.entries );
@@ -3995,18 +4031,18 @@ inline bool WideRowMapExtentAt( const Ctx & ctx, const WideRow & value, int64_t 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
 template <typename Ctx>
-inline int64_t WideRowMapExtent( const Ctx & ctx, const WideRow & value )
+inline int64_t WideRowExtent( const Ctx & ctx, const WideRow & value )
 {
     int64_t at = 0;
-    if ( !WideRowMapExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !WideRowExtentAt( ctx, value, at ) ) { return -1; }
     return at;
 }
 
-// WideRowMapPack: carve WideRow's map arrays out of the node's extent and copy the
-// entries in ASCENDING key order, PRE-ORDER, advancing the same running
-// offset WideRowMapExtentAt advances (docs/SPEC-TABLES.md §2.8).
+// WideRowExtentPack: carve WideRow's arrays out of the node's extent and copy the
+// entries in ASCENDING key order and the elements in INDEX order, PRE-ORDER,
+// advancing the same running offset WideRowExtentAt advances (§2.8, §2.9).
 template <typename Ctx>
-inline bool WideRowMapPack( const Ctx & ctx, const WideRow & src, WideRow & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+inline bool WideRowExtentPack( const Ctx & ctx, const WideRow & src, WideRow & dst, uint8_t * extent, int64_t & at, int64_t capacity )
 {
     {
         TableMapCursor<WideRowEntriesEntry> cursor = TableMapOrder( ctx, src.entries );
@@ -4270,7 +4306,7 @@ inline bool RowPack( const Ctx & ctx, TablePackMap & seen, const Row & src, Row 
     int64_t at = 0;
     uint8_t * extent = (uint8_t *) &dst + TableAlignUp64( (int64_t) sizeof( Row ) );
     const int64_t room = capacity - ( (int64_t) ( extent - base ) );
-    if ( !RowMapPack( ctx, src, dst, extent, at, room ) ) { return false; }
+    if ( !RowExtentPack( ctx, src, dst, extent, at, room ) ) { return false; }
     return RowPackEdges( ctx, seen, src, dst, base, capacity, used );
 }
 
@@ -4323,7 +4359,7 @@ inline bool WideRowPack( const Ctx & ctx, TablePackMap & seen, const WideRow & s
     int64_t at = 0;
     uint8_t * extent = (uint8_t *) &dst + TableAlignUp64( (int64_t) sizeof( WideRow ) );
     const int64_t room = capacity - ( (int64_t) ( extent - base ) );
-    if ( !WideRowMapPack( ctx, src, dst, extent, at, room ) ) { return false; }
+    if ( !WideRowExtentPack( ctx, src, dst, extent, at, room ) ) { return false; }
     return WideRowPackEdges( ctx, seen, src, dst, base, capacity, used );
 }
 
@@ -4415,7 +4451,7 @@ inline bool RowBuilder::Lock()
         below = RowPackMeasure( ctx, seen, root );
     }
     if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, named at the reference that closes it
-    int64_t root_extent = RowMapExtent( ctx, root );
+    int64_t root_extent = RowExtent( ctx, root );
     if ( root_extent < 0 ) { TablePackMapShutdown( seen ); return false; } // the sort could not run
     int64_t total = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Row ) ) + root_extent ) + below;
     // the AUTHORING path may allocate (§6.5), and it does so through the
@@ -4513,10 +4549,11 @@ inline uint32_t RowNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t le
 // already owns.
 inline void RowNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
-    // the node's own EXTENT, where its maps' entry arrays are carved from,
-    // PRE-ORDER as the bodies decode (docs/SPEC-TABLES.md §2.8). The tool's
-    // path carries a worker instead: there the entries are the arena's.
-    TableMapCarve carve;
+    // the node's own EXTENT, where its lists' and maps' arrays are carved
+    // from, PRE-ORDER as the bodies decode (docs/SPEC-TABLES.md §2.8, §2.9).
+    // The tool's path carries a worker instead: there the arrays are the
+    // arena's.
+    TableExtentCarve carve;
     carve.worker = nodes.worker;
     if ( carve.worker == NULL )
     {
@@ -4665,7 +4702,7 @@ inline int64_t RowSaveMessage( const RowBuilder & builder, uint8_t * buffer, int
 // It reports the DATA bytes and the ATTRIBUTION bytes separately, because the
 // attribution is the wire's numbering made resident (§6.3) and a caller may
 // release it once Load returns. The answer is their sum.
-inline int64_t RowLoadMeasure( const uint8_t * wire_file, int64_t wire_file_bytes, int64_t * attribution_bytes = NULL )
+inline int64_t RowLoadMeasure( const uint8_t * wire_file, int64_t wire_file_bytes, int64_t * attribution_bytes = NULL, TableRefuseReason * reason_out = NULL )
 {
     TableReport ignored;
     TableIdTable ids_table;
@@ -4678,8 +4715,9 @@ inline int64_t RowLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byte
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
     TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );
+    TableRefuseReason reason = count_over_length;
     int64_t root_extent = 0;
-    if ( !RowWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { return -1; }
+    if ( !RowWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Row ) ) + root_extent );
     int64_t records = 0;
     uint64_t type_id = 0;
@@ -4689,7 +4727,7 @@ inline int64_t RowLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byte
     {
         records++;
         int64_t storage = RowNodeStorage( type_id, length );
-        if ( storage == kTableNodeRefused ) { return -1; } // an N the record's framing cannot carry (§2.8)
+        if ( storage == kTableNodeRefused ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; } // an N the record's framing cannot carry (§2.8, §2.9)
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -4733,8 +4771,9 @@ inline const Row * RowLoad( uint8_t * region, int64_t region_bytes, const uint8_
     int64_t length = 0;
 
     // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
     int64_t root_extent = 0;
-    if ( !RowWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { out->malformed = true; return NULL; }
+    if ( !RowWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { out->malformed = true; return NULL; }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Row ) ) + root_extent );
     int64_t records = 0;
     {
@@ -4817,7 +4856,7 @@ inline const Row * RowLoad( uint8_t * region, int64_t region_bytes, const uint8_
     // against a numbering already known good or already known bad
     TableReader r( wire, wire_bytes, out, &ids_table );
     r.nested = false; // the ROOT body, the one that carries the node table
-    TableMapCarve root_carve;
+    TableExtentCarve root_carve;
     root_carve.at = region + TableAlignUp64( (int64_t) sizeof( Row ) );
     root_carve.left = root_extent;
     nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
@@ -4833,7 +4872,7 @@ inline const Row * RowLoad( uint8_t * region, int64_t region_bytes, const uint8_
 // It reports the DATA bytes and the ATTRIBUTION bytes separately, because the
 // attribution is the wire's numbering made resident (§6.3) and a caller may
 // release it once Load returns. The answer is their sum.
-inline int64_t RowLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * message, int64_t message_bytes, int64_t * attribution_bytes = NULL )
+inline int64_t RowLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * message, int64_t message_bytes, int64_t * attribution_bytes = NULL, TableRefuseReason * reason_out = NULL )
 {
     TableReport ignored;
     if ( message_bytes < 1 || message[0] != kTableWireMessageForm || !vocabulary.announced ) { return -1; }
@@ -4841,8 +4880,9 @@ inline int64_t RowLoadMeasure( const TableVocabulary & vocabulary, const uint8_t
     const uint8_t * const wire = message + 1;
     const int64_t wire_bytes = message_bytes - 1;
     TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );
+    TableRefuseReason reason = count_over_length;
     int64_t root_extent = 0;
-    if ( !RowWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { return -1; }
+    if ( !RowWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Row ) ) + root_extent );
     int64_t records = 0;
     uint64_t type_id = 0;
@@ -4852,7 +4892,7 @@ inline int64_t RowLoadMeasure( const TableVocabulary & vocabulary, const uint8_t
     {
         records++;
         int64_t storage = RowNodeStorage( type_id, length );
-        if ( storage == kTableNodeRefused ) { return -1; } // an N the record's framing cannot carry (§2.8)
+        if ( storage == kTableNodeRefused ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; } // an N the record's framing cannot carry (§2.8, §2.9)
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -4887,8 +4927,9 @@ inline const Row * RowLoadMessage( uint8_t * region, int64_t region_bytes, const
     int64_t length = 0;
 
     // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
     int64_t root_extent = 0;
-    if ( !RowWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { out->malformed = true; return NULL; }
+    if ( !RowWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { out->malformed = true; return NULL; }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Row ) ) + root_extent );
     int64_t records = 0;
     {
@@ -4971,7 +5012,7 @@ inline const Row * RowLoadMessage( uint8_t * region, int64_t region_bytes, const
     // against a numbering already known good or already known bad
     TableReader r( wire, wire_bytes, out, &ids_table );
     r.nested = false; // the ROOT body, the one that carries the node table
-    TableMapCarve root_carve;
+    TableExtentCarve root_carve;
     root_carve.at = region + TableAlignUp64( (int64_t) sizeof( Row ) );
     root_carve.left = root_extent;
     nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
@@ -5026,7 +5067,7 @@ inline bool RowLoadBuilder( RowBuilder & builder, const uint8_t * wire_file, int
     nodes.entries = directory;
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
-    nodes.worker = &builder.main; // and a map's entries are the arena's, not a node extent's (§2.8)
+    nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -5065,10 +5106,14 @@ inline bool RowLoadBuilder( RowBuilder & builder, const uint8_t * wire_file, int
     }
     TableReader r( wire, wire_bytes, out, &ids_table );
     r.nested = false; // the ROOT body, the one that carries the node table
-    TableMapCarve root_carve;
+    TableExtentCarve root_carve;
     root_carve.worker = &builder.main;
     nodes.carve = &root_carve;
     bool ok = RowLoadBody( r, nodes, *root );
+    // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
+    // §2.9): the partial builder is the caller's to discard, and the report
+    // holds what it held when the count was met
+    ok = ok && !nodes.refused;
     allocator.free( allocator.context, directory );
     return ok;
 }
@@ -5154,7 +5199,7 @@ inline bool WideRowBuilder::Lock()
         below = WideRowPackMeasure( ctx, seen, root );
     }
     if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, named at the reference that closes it
-    int64_t root_extent = WideRowMapExtent( ctx, root );
+    int64_t root_extent = WideRowExtent( ctx, root );
     if ( root_extent < 0 ) { TablePackMapShutdown( seen ); return false; } // the sort could not run
     int64_t total = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( WideRow ) ) + root_extent ) + below;
     // the AUTHORING path may allocate (§6.5), and it does so through the
@@ -5252,10 +5297,11 @@ inline uint32_t WideRowNodeAlloc( uint64_t type_id, TableWorker & worker, int64_
 // already owns.
 inline void WideRowNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
-    // the node's own EXTENT, where its maps' entry arrays are carved from,
-    // PRE-ORDER as the bodies decode (docs/SPEC-TABLES.md §2.8). The tool's
-    // path carries a worker instead: there the entries are the arena's.
-    TableMapCarve carve;
+    // the node's own EXTENT, where its lists' and maps' arrays are carved
+    // from, PRE-ORDER as the bodies decode (docs/SPEC-TABLES.md §2.8, §2.9).
+    // The tool's path carries a worker instead: there the arrays are the
+    // arena's.
+    TableExtentCarve carve;
     carve.worker = nodes.worker;
     if ( carve.worker == NULL )
     {
@@ -5404,7 +5450,7 @@ inline int64_t WideRowSaveMessage( const WideRowBuilder & builder, uint8_t * buf
 // It reports the DATA bytes and the ATTRIBUTION bytes separately, because the
 // attribution is the wire's numbering made resident (§6.3) and a caller may
 // release it once Load returns. The answer is their sum.
-inline int64_t WideRowLoadMeasure( const uint8_t * wire_file, int64_t wire_file_bytes, int64_t * attribution_bytes = NULL )
+inline int64_t WideRowLoadMeasure( const uint8_t * wire_file, int64_t wire_file_bytes, int64_t * attribution_bytes = NULL, TableRefuseReason * reason_out = NULL )
 {
     TableReport ignored;
     TableIdTable ids_table;
@@ -5417,8 +5463,9 @@ inline int64_t WideRowLoadMeasure( const uint8_t * wire_file, int64_t wire_file_
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
     TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );
+    TableRefuseReason reason = count_over_length;
     int64_t root_extent = 0;
-    if ( !WideRowWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { return -1; }
+    if ( !WideRowWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( WideRow ) ) + root_extent );
     int64_t records = 0;
     uint64_t type_id = 0;
@@ -5428,7 +5475,7 @@ inline int64_t WideRowLoadMeasure( const uint8_t * wire_file, int64_t wire_file_
     {
         records++;
         int64_t storage = WideRowNodeStorage( type_id, length );
-        if ( storage == kTableNodeRefused ) { return -1; } // an N the record's framing cannot carry (§2.8)
+        if ( storage == kTableNodeRefused ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; } // an N the record's framing cannot carry (§2.8, §2.9)
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -5472,8 +5519,9 @@ inline const WideRow * WideRowLoad( uint8_t * region, int64_t region_bytes, cons
     int64_t length = 0;
 
     // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
     int64_t root_extent = 0;
-    if ( !WideRowWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { out->malformed = true; return NULL; }
+    if ( !WideRowWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { out->malformed = true; return NULL; }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( WideRow ) ) + root_extent );
     int64_t records = 0;
     {
@@ -5556,7 +5604,7 @@ inline const WideRow * WideRowLoad( uint8_t * region, int64_t region_bytes, cons
     // against a numbering already known good or already known bad
     TableReader r( wire, wire_bytes, out, &ids_table );
     r.nested = false; // the ROOT body, the one that carries the node table
-    TableMapCarve root_carve;
+    TableExtentCarve root_carve;
     root_carve.at = region + TableAlignUp64( (int64_t) sizeof( WideRow ) );
     root_carve.left = root_extent;
     nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
@@ -5572,7 +5620,7 @@ inline const WideRow * WideRowLoad( uint8_t * region, int64_t region_bytes, cons
 // It reports the DATA bytes and the ATTRIBUTION bytes separately, because the
 // attribution is the wire's numbering made resident (§6.3) and a caller may
 // release it once Load returns. The answer is their sum.
-inline int64_t WideRowLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * message, int64_t message_bytes, int64_t * attribution_bytes = NULL )
+inline int64_t WideRowLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * message, int64_t message_bytes, int64_t * attribution_bytes = NULL, TableRefuseReason * reason_out = NULL )
 {
     TableReport ignored;
     if ( message_bytes < 1 || message[0] != kTableWireMessageForm || !vocabulary.announced ) { return -1; }
@@ -5580,8 +5628,9 @@ inline int64_t WideRowLoadMeasure( const TableVocabulary & vocabulary, const uin
     const uint8_t * const wire = message + 1;
     const int64_t wire_bytes = message_bytes - 1;
     TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );
+    TableRefuseReason reason = count_over_length;
     int64_t root_extent = 0;
-    if ( !WideRowWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { return -1; }
+    if ( !WideRowWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( WideRow ) ) + root_extent );
     int64_t records = 0;
     uint64_t type_id = 0;
@@ -5591,7 +5640,7 @@ inline int64_t WideRowLoadMeasure( const TableVocabulary & vocabulary, const uin
     {
         records++;
         int64_t storage = WideRowNodeStorage( type_id, length );
-        if ( storage == kTableNodeRefused ) { return -1; } // an N the record's framing cannot carry (§2.8)
+        if ( storage == kTableNodeRefused ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; } // an N the record's framing cannot carry (§2.8, §2.9)
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -5626,8 +5675,9 @@ inline const WideRow * WideRowLoadMessage( uint8_t * region, int64_t region_byte
     int64_t length = 0;
 
     // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
     int64_t root_extent = 0;
-    if ( !WideRowWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { out->malformed = true; return NULL; }
+    if ( !WideRowWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { out->malformed = true; return NULL; }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( WideRow ) ) + root_extent );
     int64_t records = 0;
     {
@@ -5710,7 +5760,7 @@ inline const WideRow * WideRowLoadMessage( uint8_t * region, int64_t region_byte
     // against a numbering already known good or already known bad
     TableReader r( wire, wire_bytes, out, &ids_table );
     r.nested = false; // the ROOT body, the one that carries the node table
-    TableMapCarve root_carve;
+    TableExtentCarve root_carve;
     root_carve.at = region + TableAlignUp64( (int64_t) sizeof( WideRow ) );
     root_carve.left = root_extent;
     nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
@@ -5765,7 +5815,7 @@ inline bool WideRowLoadBuilder( WideRowBuilder & builder, const uint8_t * wire_f
     nodes.entries = directory;
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
-    nodes.worker = &builder.main; // and a map's entries are the arena's, not a node extent's (§2.8)
+    nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -5804,10 +5854,14 @@ inline bool WideRowLoadBuilder( WideRowBuilder & builder, const uint8_t * wire_f
     }
     TableReader r( wire, wire_bytes, out, &ids_table );
     r.nested = false; // the ROOT body, the one that carries the node table
-    TableMapCarve root_carve;
+    TableExtentCarve root_carve;
     root_carve.worker = &builder.main;
     nodes.carve = &root_carve;
     bool ok = WideRowLoadBody( r, nodes, *root );
+    // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
+    // §2.9): the partial builder is the caller's to discard, and the report
+    // holds what it held when the count was met
+    ok = ok && !nodes.refused;
     allocator.free( allocator.context, directory );
     return ok;
 }
@@ -5887,8 +5941,8 @@ inline void RowEntriesEntryCookBody( uint8_t * at, const RowEntriesEntry & value
 
 template <typename Ctx> inline bool RowCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Row & value, TableByteOrder order )
 {
-    (void) ctx; (void) region; // no reference below this node: the class was decided by a pointer elsewhere in its closure
-    table_cook_put( at + 0, 0, 8, order ); // entries: the entry array's delta, filled by the extent writer
+    (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
+    table_cook_put( at + 0, 0, 8, order ); // entries: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
     table_cook_put( at + 16, (uint64_t) value.after, 4, order );
     return true;
@@ -5902,31 +5956,33 @@ inline void WideRowEntriesEntryCookBody( uint8_t * at, const WideRowEntriesEntry
 
 template <typename Ctx> inline bool WideRowCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const WideRow & value, TableByteOrder order )
 {
-    (void) ctx; (void) region; // no reference below this node: the class was decided by a pointer elsewhere in its closure
-    table_cook_put( at + 0, 0, 8, order ); // entries: the entry array's delta, filled by the extent writer
+    (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
+    table_cook_put( at + 0, 0, 8, order ); // entries: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
     table_cook_put( at + 16, (uint64_t) value.after, 4, order );
     return true;
 }
 
-template <typename Ctx> inline bool RowEntriesEntryCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const RowEntriesEntry & value, TableByteOrder order );
-template <typename Ctx> inline bool RowCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Row & value, TableByteOrder order );
-template <typename Ctx> inline bool WideRowEntriesEntryCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const WideRowEntriesEntry & value, TableByteOrder order );
-template <typename Ctx> inline bool WideRowCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const WideRow & value, TableByteOrder order );
+template <typename Ctx> inline bool RowEntriesEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const RowEntriesEntry & value, TableByteOrder order );
+template <typename Ctx> inline bool RowCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Row & value, TableByteOrder order );
+template <typename Ctx> inline bool WideRowEntriesEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const WideRowEntriesEntry & value, TableByteOrder order );
+template <typename Ctx> inline bool WideRowCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const WideRow & value, TableByteOrder order );
 
-// RowEntriesEntryCookMaps: RowEntriesEntry's map arrays into the node's extent, PRE-ORDER, the entries
-// in ASCENDING key order, each through its own cook body (§2.8, §7.6).
-template <typename Ctx> inline bool RowEntriesEntryCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const RowEntriesEntry & value, TableByteOrder order )
+// RowEntriesEntryCookExtent: RowEntriesEntry's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx> inline bool RowEntriesEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const RowEntriesEntry & value, TableByteOrder order )
 {
     (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
-    return true; // no map below this record
+    return true; // no list or map below this record
 }
 
-// RowCookMaps: Row's map arrays into the node's extent, PRE-ORDER, the entries
-// in ASCENDING key order, each through its own cook body (§2.8, §7.6).
-template <typename Ctx> inline bool RowCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Row & value, TableByteOrder order )
+// RowCookExtent: Row's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx> inline bool RowCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Row & value, TableByteOrder order )
 {
-    (void) region; // a map's entries carry their own references through their own bodies
+    (void) region; // a table element's and an entry's references resolve through their own bodies
     { // entries
         TableMapCursor<RowEntriesEntry> cursor = TableMapOrder( ctx, value.entries );
         if ( !cursor.ok ) { return false; }
@@ -5945,19 +6001,21 @@ template <typename Ctx> inline bool RowCookMaps( const Ctx & ctx, const TableCoo
     return true;
 }
 
-// WideRowEntriesEntryCookMaps: WideRowEntriesEntry's map arrays into the node's extent, PRE-ORDER, the entries
-// in ASCENDING key order, each through its own cook body (§2.8, §7.6).
-template <typename Ctx> inline bool WideRowEntriesEntryCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const WideRowEntriesEntry & value, TableByteOrder order )
+// WideRowEntriesEntryCookExtent: WideRowEntriesEntry's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx> inline bool WideRowEntriesEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const WideRowEntriesEntry & value, TableByteOrder order )
 {
     (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
-    return true; // no map below this record
+    return true; // no list or map below this record
 }
 
-// WideRowCookMaps: WideRow's map arrays into the node's extent, PRE-ORDER, the entries
-// in ASCENDING key order, each through its own cook body (§2.8, §7.6).
-template <typename Ctx> inline bool WideRowCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const WideRow & value, TableByteOrder order )
+// WideRowCookExtent: WideRow's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx> inline bool WideRowCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const WideRow & value, TableByteOrder order )
 {
-    (void) region; // a map's entries carry their own references through their own bodies
+    (void) region; // a table element's and an entry's references resolve through their own bodies
     { // entries
         TableMapCursor<WideRowEntriesEntry> cursor = TableMapOrder( ctx, value.entries );
         if ( !cursor.ok ) { return false; }
@@ -5976,36 +6034,36 @@ template <typename Ctx> inline bool WideRowCookMaps( const Ctx & ctx, const Tabl
     return true;
 }
 
-// RowEntriesEntryCookNode: one node — the record, then the extent its maps take (§2.8).
+// RowEntriesEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
 template <typename Ctx> inline bool RowEntriesEntryCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const RowEntriesEntry & value, TableByteOrder order )
 {
     RowEntriesEntryCookBody( at, value, order );
     int64_t extent_at = 0;
-    return RowEntriesEntryCookMaps( ctx, region, at + 24, extent_at, at, value, order );
+    return RowEntriesEntryCookExtent( ctx, region, at + 24, extent_at, at, value, order );
 }
 
-// RowCookNode: one node — the record, then the extent its maps take (§2.8).
+// RowCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
 template <typename Ctx> inline bool RowCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Row & value, TableByteOrder order )
 {
     if ( !RowCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return RowCookMaps( ctx, region, at + 24, extent_at, at, value, order );
+    return RowCookExtent( ctx, region, at + 24, extent_at, at, value, order );
 }
 
-// WideRowEntriesEntryCookNode: one node — the record, then the extent its maps take (§2.8).
+// WideRowEntriesEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
 template <typename Ctx> inline bool WideRowEntriesEntryCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const WideRowEntriesEntry & value, TableByteOrder order )
 {
     WideRowEntriesEntryCookBody( at, value, order );
     int64_t extent_at = 0;
-    return WideRowEntriesEntryCookMaps( ctx, region, at + 8, extent_at, at, value, order );
+    return WideRowEntriesEntryCookExtent( ctx, region, at + 8, extent_at, at, value, order );
 }
 
-// WideRowCookNode: one node — the record, then the extent its maps take (§2.8).
+// WideRowCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
 template <typename Ctx> inline bool WideRowCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const WideRow & value, TableByteOrder order )
 {
     if ( !WideRowCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return WideRowCookMaps( ctx, region, at + 24, extent_at, at, value, order );
+    return WideRowCookExtent( ctx, region, at + 24, extent_at, at, value, order );
 }
 
 // RowCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one
@@ -6015,15 +6073,15 @@ template <typename Ctx> inline bool WideRowCookNode( const Ctx & ctx, const Tabl
 // eight. The offsets go into the region's table when it has one, and are only
 // summed when it does not (a measure). A type id the numbering carries that
 // this root cannot name is the two walks disagreeing, and it is refused.
-// A NODE'S SIZE DEPENDS ON ITS VALUE where a map rides in its extent
+// A NODE'S SIZE DEPENDS ON ITS VALUE where a list or a map rides in its extent
 // (docs/SPEC-TABLES.md §2.8), so the layout takes the resolution context
-// the numbering walked and reads the same maps that walk read.
+// the numbering walked and reads the same arrays that walk read.
 template <typename Ctx>
 inline bool RowCookLayout( const Ctx & ctx, const Row & root, const TableNumbering & numbering, TableCookRegion & region )
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = RowMapExtent( ctx, root );
+    const int64_t root_extent = RowExtent( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -6178,15 +6236,15 @@ inline bool RowCook( const RowBuilder & builder, void * out, uint64_t capacity, 
 // eight. The offsets go into the region's table when it has one, and are only
 // summed when it does not (a measure). A type id the numbering carries that
 // this root cannot name is the two walks disagreeing, and it is refused.
-// A NODE'S SIZE DEPENDS ON ITS VALUE where a map rides in its extent
+// A NODE'S SIZE DEPENDS ON ITS VALUE where a list or a map rides in its extent
 // (docs/SPEC-TABLES.md §2.8), so the layout takes the resolution context
-// the numbering walked and reads the same maps that walk read.
+// the numbering walked and reads the same arrays that walk read.
 template <typename Ctx>
 inline bool WideRowCookLayout( const Ctx & ctx, const WideRow & root, const TableNumbering & numbering, TableCookRegion & region )
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = WideRowMapExtent( ctx, root );
+    const int64_t root_extent = WideRowExtent( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -6399,29 +6457,29 @@ extern const TableTypeInfo WideRowEntriesEntryTableInfo;
 extern const TableTypeInfo WideRowTableInfo;
 
 inline const TableFieldInfo RowEntriesEntryTableFields[] = {
-    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( RowEntriesEntry, key ), (uint32_t) sizeof( RowEntriesEntry::key ), (uint32_t) offsetof( RowEntriesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RowEntriesEntry, value ), (uint32_t) sizeof( RowEntriesEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( RowEntriesEntry, key ), (uint32_t) sizeof( RowEntriesEntry::key ), (uint32_t) offsetof( RowEntriesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RowEntriesEntry, value ), (uint32_t) sizeof( RowEntriesEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo RowEntriesEntryTableInfo = { "RowEntriesEntry", (uint32_t) sizeof( RowEntriesEntry ), 2, RowEntriesEntryTableFields, +[]( void * p ) { RowEntriesEntryReset( *(RowEntriesEntry *) p ); }, false };
 inline const TableTypeInfo * RowEntriesEntryTableType() { return &RowEntriesEntryTableInfo; }
 
 inline const TableFieldInfo RowTableFields[] = {
-    { "entries", "entries", "map[string(8)]Item", 0xc5b2a72c0845a253ull, 0, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Row, entries ), (uint32_t) sizeof( Row::entries ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, &RowEntriesEntryTableInfo, []( const void * slot ) -> int32_t { return ( (const TableMap<RowEntriesEntry> *) slot )->count; }, []( const void * slot, int32_t index ) -> const void * { return (const void *) ( ( (const TableMap<RowEntriesEntry> *) slot )->Entries() + index ); }, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL || key_length > kRowEntriesEntryKeyBound ) { return NULL; } RowEntriesEntry * placed = TableMapPlace( worker, *(TableMap<RowEntriesEntry> *) slot, key ); if ( placed != NULL ) { TableEntrySetKey( *placed, key, key_length ); } return (void *) placed; }, "" },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Row, after ), (uint32_t) sizeof( Row::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "entries", "entries", "map[string(8)]Item", 0xc5b2a72c0845a253ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Row, entries ), (uint32_t) sizeof( RowEntriesEntry ), (uint32_t) offsetof( Row, entries.count ), 0xffffffffu, &RowEntriesEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL || key_length > kRowEntriesEntryKeyBound ) { return NULL; } RowEntriesEntry * placed = TableMapPlace( worker, *(TableMap<RowEntriesEntry> *) slot, key ); if ( placed != NULL ) { TableEntrySetKey( *placed, key, key_length ); } return (void *) placed; }, "" },
+    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Row, after ), (uint32_t) sizeof( Row::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo RowTableInfo = { "Row", (uint32_t) sizeof( Row ), 2, RowTableFields, +[]( void * p ) { RowReset( *(Row *) p ); }, true };
 inline const TableTypeInfo * RowTableType() { return &RowTableInfo; }
 
 inline const TableFieldInfo WideRowEntriesEntryTableFields[] = {
-    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRowEntriesEntry, key ), (uint32_t) sizeof( WideRowEntriesEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRowEntriesEntry, value ), (uint32_t) sizeof( WideRowEntriesEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRowEntriesEntry, key ), (uint32_t) sizeof( WideRowEntriesEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRowEntriesEntry, value ), (uint32_t) sizeof( WideRowEntriesEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo WideRowEntriesEntryTableInfo = { "WideRowEntriesEntry", (uint32_t) sizeof( WideRowEntriesEntry ), 2, WideRowEntriesEntryTableFields, +[]( void * p ) { WideRowEntriesEntryReset( *(WideRowEntriesEntry *) p ); }, false };
 inline const TableTypeInfo * WideRowEntriesEntryTableType() { return &WideRowEntriesEntryTableInfo; }
 
 inline const TableFieldInfo WideRowTableFields[] = {
-    { "entries", "entries", "map[uint32]Item", 0xc5b2a72c0845a253ull, 0, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRow, entries ), (uint32_t) sizeof( WideRow::entries ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, &WideRowEntriesEntryTableInfo, []( const void * slot ) -> int32_t { return ( (const TableMap<WideRowEntriesEntry> *) slot )->count; }, []( const void * slot, int32_t index ) -> const void * { return (const void *) ( ( (const TableMap<WideRowEntriesEntry> *) slot )->Entries() + index ); }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { WideRowEntriesEntry * placed = TableMapPlace( worker, *(TableMap<WideRowEntriesEntry> *) slot, (uint32_t) key_value ); if ( placed != NULL ) { TableEntrySetKey( *placed, (uint32_t) key_value ); } return (void *) placed; }, "" },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRow, after ), (uint32_t) sizeof( WideRow::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "entries", "entries", "map[uint32]Item", 0xc5b2a72c0845a253ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( WideRow, entries ), (uint32_t) sizeof( WideRowEntriesEntry ), (uint32_t) offsetof( WideRow, entries.count ), 0xffffffffu, &WideRowEntriesEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { WideRowEntriesEntry * placed = TableMapPlace( worker, *(TableMap<WideRowEntriesEntry> *) slot, (uint32_t) key_value ); if ( placed != NULL ) { TableEntrySetKey( *placed, (uint32_t) key_value ); } return (void *) placed; }, "" },
+    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRow, after ), (uint32_t) sizeof( WideRow::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo WideRowTableInfo = { "WideRow", (uint32_t) sizeof( WideRow ), 2, WideRowTableFields, +[]( void * p ) { WideRowReset( *(WideRow *) p ); }, true };
 inline const TableTypeInfo * WideRowTableType() { return &WideRowTableInfo; }

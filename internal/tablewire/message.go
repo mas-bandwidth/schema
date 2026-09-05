@@ -115,6 +115,10 @@ type Vocabulary struct {
 	entries      []ir.TableVocabularyEntry
 	buildVersion uint64
 	announced    bool
+	// refused is the terminal state a refused first announcement leaves the
+	// connection in: no vocabulary for its life, and every announcement after
+	// it refused as second_announcement (§3.3)
+	refused bool
 }
 
 // Entries is the vocabulary, whole, in slot order: slot `k` is
@@ -185,10 +189,24 @@ func Announce(u *ir.Unit) []byte { return ir.TableAnnouncement(u) }
 func (v *Vocabulary) AnnounceRead(data []byte, report *tabletext.Report) error {
 	// THE FIRST ANNOUNCEMENT SETS THE VOCABULARY, AND IT IS THE ONLY ONE THAT
 	// CAN. A second does not replace it, does not amend it and changes nothing.
-	if v.announced {
+	// REFUSAL IS TERMINAL: a connection whose first announcement was refused,
+	// for any reason, carries no vocabulary for its life, and every
+	// announcement after it is refused as second_announcement whether or not
+	// the first set anything, so a peer cannot buy a second resolve by having
+	// its first refused (§3.3).
+	if v.announced || v.refused {
 		report.Refused = true
 		return &MessageRefusal{Reason: ReasonSecondAnnouncement, BuildVersion: v.buildVersion}
 	}
+	err := v.announceRead(data, report)
+	if !v.announced {
+		v.refused = true
+	}
+	return err
+}
+
+// announceRead is the one read a connection gets.
+func (v *Vocabulary) announceRead(data []byte, report *tabletext.Report) error {
 	if len(data) < 1 {
 		report.Malformed = true
 		return nil

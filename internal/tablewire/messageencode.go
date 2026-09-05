@@ -292,7 +292,9 @@ func encodeBitEnum(e *bitEncoder, w *bitWriter, f *ir.Field, cell *tabletext.Cel
 func encodeBitArray(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.TableVocabularyEntry, count int) error {
 	shape := entry.Shape
 	if bits := ir.TableMessageCountBits(shape); bits > 0 {
-		w.put(uint64(count), bits)
+		// the count rides as its OFFSET from the announced minimum, which is
+		// what a ranged integer over [min, max] is (§3.3)
+		w.put(uint64(count)-uint64(shape.Min), bits)
 	}
 	if ir.TableMessageAligns(entry.Kind, shape) {
 		w.align()
@@ -352,14 +354,9 @@ func encodeBitValue(e *bitEncoder, w *bitWriter, f *ir.Field, kind uint8, shape 
 		return nil
 	case ir.TableKindF32:
 		if shape.Packing == ir.TableMessageQuantized {
-			index := uint64(0)
-			if v := (cell.F - float64(shape.QMin)) / float64(shape.QStep); v > 0 {
-				index = uint64(math.Floor(v + 0.5))
-			}
-			if top := uint64(1)<<uint(shape.Bits) - 1; index > top {
-				index = top
-			}
-			w.put(index, int(shape.Bits))
+			// THE PACKET WIRE'S RULE, IN FLOAT32 (SPEC.md §4.3, §3.3): the
+			// index a message carries is the index a packet carries
+			w.put(uint64(ir.TableMessageQuantize(shape, float32(cell.F))), int(shape.Bits))
 			return nil
 		}
 		w.put(uint64(narrowF32(cell.F)), 32)
@@ -390,7 +387,7 @@ func encodeBitValue(e *bitEncoder, w *bitWriter, f *ir.Field, kind uint8, shape 
 			w.put(uint64(cell.I-base.Int64()), bits)
 			return nil
 		}
-		w.put(cell.U-uint64(base.Int64()), bits)
+		w.put(cell.U-base.Uint64(), bits) // an unsigned base spans the whole domain, 2^63 and above included
 		return nil
 	}
 	if ir.TableKindWide(int(kind)) {
