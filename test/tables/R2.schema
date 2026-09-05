@@ -1,0 +1,44 @@
+// R2.schema — the NEW side of the vocabulary rename pair: Silver is Argent,
+// the ward arm is shield, the ping arm is pong, and Buff.multiplier is mult,
+// each declared with `was`, so every id is the old name's hash and an R1
+// config reads in silence (docs/SPEC-TABLES.md §5). The negative control
+// strips the four attributes and watches `unknown` count.
+package tblr2
+
+enum Grade
+{
+    Bronze,
+    Argent | was = "Silver"
+    Gold
+}
+
+type Buff
+{
+    mult float32 = 1.0 | was = "multiplier"
+}
+
+type Boost
+{
+    power int32 = 0
+}
+
+type Ward
+{
+    charge float32 = 0.0
+}
+
+union Effect
+{
+    boost  Boost
+    shield Ward  | was = "ward"
+    pong         | was = "ping"
+}
+
+table Cfg
+{
+    grade  Grade
+    effect Effect
+    buff   Buff
+    grades [..4]Grade
+    tally  [Grade]int32
+}
