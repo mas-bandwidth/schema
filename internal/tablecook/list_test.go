@@ -88,3 +88,44 @@ func TestCookCheckListSlot(t *testing.T) {
 		})
 	}
 }
+
+// squadCook writes a cook of one Squad root from tables/lists, the holder of
+// `roster map[uint8]Item`: a 24-byte record, the sixteen-byte map slot at
+// null and `name` after it, and one directory entry.
+func squadCook(u *ir.Unit) []byte {
+	const header, data, attrib = int64(64), int64(24), int64(16)
+	out := make([]byte, header+data+attrib)
+	le := binary.LittleEndian
+	le.PutUint64(out[0:], tablecook.Magic)
+	le.PutUint64(out[8:], ir.BuildVersion(u))
+	le.PutUint64(out[16:], tablecook.ByteOrderLittle)
+	le.PutUint64(out[24:], uint64(data))
+	le.PutUint64(out[32:], uint64(attrib))
+	le.PutUint64(out[40:], 8)
+	le.PutUint32(out[header+16:], 7) // name
+	dir := out[header+data:]
+	le.PutUint64(dir[0:], 0)
+	le.PutUint64(dir[8:], ir.TableTypeId("Squad"))
+	return out
+}
+
+// TestCookCheckMapSlotRefusedByName: §7.4's map-slot clause is schema#380's
+// next PR, so the scan refuses a map slot BY NAME where it meets one, naming
+// the field, the reference that reads it and the PR that lands the clause,
+// and a cook of a map-free root in the same unit checks as any other does.
+func TestCookCheckMapSlotRefusedByName(t *testing.T) {
+	u := unit(t, "../../tables/lists")
+	m := tabletext.NewModel(u)
+	_, err := tablecook.Check(m, squadCook(u))
+	if err == nil {
+		t.Fatalf("FAILED: cook-check walked past a map slot it has no clause for")
+	}
+	for _, want := range []string{"Squad.roster", "schema#380", "cpp", "§7.4"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not name %q: %v", want, err)
+		}
+	}
+	if _, err := tablecook.Check(m, intsCook(u, 24, 3)); err != nil {
+		t.Fatalf("a map-free root in a unit that declares a map elsewhere was refused: %v", err)
+	}
+}

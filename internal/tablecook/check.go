@@ -201,6 +201,15 @@ func (s *scan) field(at int64, f *ir.Field) error {
 	}
 	value := pieces[0]
 	switch {
+	case f.IsMap():
+		// §7.4's MAP-SLOT clause (docs/SPEC-TABLES.md §2.8, §7.4) is
+		// schema#380's next PR, beside the tool's cook half, so a cook that
+		// holds a map slot is refused HERE, by name, at the node that holds
+		// it, rather than walked past: a slot the scan cannot bound is a slot
+		// a forgery could steer through. The C++ reference reads it (--lang
+		// cpp). A cook of a unit that declares a map SOMEWHERE ELSE checks as
+		// any other does, because the scan meets no such slot.
+		return fmt.Errorf("a map slot, and `cook-check` carries no map-slot clause yet (docs/SPEC-TABLES.md §7.4): the C++ reference reads the cook (--lang cpp), and the tool's clause is schema#380's next PR")
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return s.ref(value.Offset, f)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
@@ -259,7 +268,6 @@ func (s *scan) list(at int64, f *ir.Field) error {
 	s.arrays = append(s.arrays, arrayRange{start, end})
 	return s.slots(start, f, count)
 }
-
 
 // companion checks one count companion against its DECLARED bound. A negative
 // one is refused too: a count is an extent and an extent is never negative, and

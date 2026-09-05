@@ -271,17 +271,18 @@ func TestMapEntryIsNotARoot(t *testing.T) {
 }
 
 // TestToolRefusesMapsByName: the tool's WIRE and TEXT halves carry maps now
-// (docs/SPEC-TABLES.md §2.8), and its COOK half does not — so the cook
-// surfaces refuse a map-bearing unit BY NAME rather than laying out an entry
-// array they have no placement for. Without the refusal a caller gets a cook
-// whose region is short of the entries, which is worse than a diagnostic.
+// (docs/SPEC-TABLES.md §2.8), and its COOK half does not — so the cook and
+// uncook surfaces refuse a map-bearing unit BY NAME rather than laying out an
+// entry array they have no placement for. Without the refusal a caller gets a
+// cook whose region is short of the entries, which is worse than a diagnostic.
+// `cook-check` refuses at the SLOT instead, where its scan meets one, and
+// internal/tablecook's TestCookCheckMapSlotRefusedByName holds that.
 func TestToolRefusesMapsByName(t *testing.T) {
 	u := unitFromSource(t, mapSrc)
 	c := New()
 	surfaces := map[string]func() error{
-		"Cook":      func() error { _, _, _, err := c.Cook(u, "Fleet", nil, CookOptions{}); return err },
-		"Uncook":    func() error { _, err := c.Uncook(u, "Fleet", nil); return err },
-		"CookCheck": func() error { _, err := c.CookCheck(u, "Fleet", nil); return err },
+		"Cook":   func() error { _, _, _, err := c.Cook(u, "Fleet", nil, CookOptions{}); return err },
+		"Uncook": func() error { _, err := c.Uncook(u, "Fleet", nil); return err },
 	}
 	for name, call := range surfaces {
 		t.Run(name, func(t *testing.T) {

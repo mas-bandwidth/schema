@@ -117,9 +117,6 @@ func orderWord(big bool) string {
 // It is a person's decision to run it, not a parameter on a load: the runtime
 // keeps one `Open` that matches the header and points.
 func (c *Compiler) CookCheck(u *ir.Unit, root string, file []byte) (CookReport, error) {
-	if err := refuseToolMaps(u); err != nil {
-		return CookReport{}, err
-	}
 	m := tabletext.NewModel(u)
 	res, err := tablecook.Check(m, file)
 	if err != nil {

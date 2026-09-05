@@ -2708,16 +2708,22 @@ tables-lists: build/schema_test_lists build/schema_test_lists_asan
 	SCHEMA_LIST_COOK_DIR=build/lists-cooks ./build/schema_test_lists
 	./build/schema_test_lists_asan
 	# `schema cook-check` reads what the runtime cooked (§7.4): the root's list
-	# slot, every element's own slots and companions, a pointed-at holder's
-	# list, and an element's map, and refuses the forgery beside them
+	# slot, every element's own slots and companions, and a pointed-at holder's
+	# list, and refuses the forgery beside them. The cook whose element holds a
+	# MAP is refused by name at the map slot, because the tool's map-slot
+	# clause is schema#380's next PR, and the refusal must be that one and not
+	# a list clause's
 	./bin/schema cook-check --root Save build/lists-cooks/save.cook tables/lists
 	./bin/schema cook-check --root Sheet build/lists-cooks/sheet.cook tables/lists
-	./bin/schema cook-check --root Army build/lists-cooks/army.cook tables/lists
+	@if ./bin/schema cook-check --root Army build/lists-cooks/army.cook tables/lists > build/lists-cooks/army.log 2>&1; then \
+		echo "LIST GATE FAILED: cook-check walked past an element's map slot, which it has no clause for"; exit 1; \
+	fi
+	@grep -q "Squad.roster.*schema#380" build/lists-cooks/army.log || { echo "LIST GATE FAILED: the map-holding cook was refused, but not by name at the map slot"; cat build/lists-cooks/army.log; exit 1; }
 	@if ./bin/schema cook-check --root Sheet build/lists-cooks/sheet-forged.cook tables/lists > build/lists-cooks/forged.log 2>&1; then \
 		echo "LIST GATE FAILED: cook-check accepted a list slot pointing past its holder's extent"; exit 1; \
 	fi
 	@grep -q "leaves\|extent" build/lists-cooks/forged.log || { echo "LIST GATE FAILED: the forgery was refused, but not on the element-array clause"; cat build/lists-cooks/forged.log; exit 1; }
-	@echo "list gate: cook-check reads three cooks the runtime wrote and refuses the forged list slot"
+	@echo "list gate: cook-check reads two cooks the runtime wrote, refuses the forged list slot, and refuses the map-holding cook by name"
 
 # THE FOUR LoadMeasure REFUSALS are a unit test and not a `report` row (§2.9,
 # §6.5): each wire is built in memory with a SYNTHETIC count, and the answer

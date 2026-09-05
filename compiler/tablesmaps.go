@@ -39,16 +39,17 @@ func refuseMaps(u *ir.Unit, target string) error {
 }
 
 // refuseToolMaps is the TOOL's COOK refusal (docs/SPEC-TABLES.md §2.8, §15): a unit
-// whose table closure declares a map is refused by name at every table surface
-// the tool has — pack, unpack, cook, cook-check and uncook — because
-// internal/tablewire does not carry the construct yet.
+// whose table closure declares a map is refused by name at the tool's COOK and
+// UNCOOK surfaces, because internal/tablecook does not lay out the entry
+// arrays yet. `cook-check` is not among them: its scan refuses a map SLOT by
+// name where it meets one (internal/tablecook), so a cook of a map-free root
+// in a unit that declares a map elsewhere is checked as any other is.
 //
 // It is here, at the surface, rather than in the engine, and it is NAMED rather
-// than left to the decoder. Without it the engine meets a kind 14 field whose
-// element kind is 13, decodes nothing into a slot it has no shape for, and
-// reports FRAMING DAMAGE — an answer that sends its reader looking for a
-// corrupt file when the file is fine and the reader is the one that is short.
-// A refusal that says which is which is the whole difference.
+// than left to the layout. Without it the engine lays out a region short of
+// the entry arrays and a reader meets a slot pointing past its holder's
+// extent, which is a corrupt file with nothing saying who wrote it. A refusal
+// that says which is which is the whole difference.
 func refuseToolMaps(u *ir.Unit) error {
 	fields := ir.MapFields(u)
 	if len(fields) == 0 {
