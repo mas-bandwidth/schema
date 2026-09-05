@@ -4365,8 +4365,9 @@ and that is its integer.
 
 **A SHAPE IS ENOUGH TO SKIP AND ENOUGH TO DECODE, and those are two different
 claims.** Skipping needs the WIDTH, which every row above gives. Decoding under a
-declaration that has MOVED needs the RANGE, which is why `base`, `min` and `step`
-ride beside `bits`: a receiver whose `score` runs to 200000 meeting a sender
+declaration that has MOVED needs the RANGE, which is why `base` rides beside
+`bits` for the ranged integer kinds and `min`, `max` and `res` ride for the
+quantized float: a receiver whose `score` runs to 200000 meeting a sender
 whose `score` runs to 100000 reads the sender's seventeen bits, reconstructs the
 value from the sender's base, and applies its own bound, counting `clamped`
 exactly as §4 says. **That is what keeps every row of §4's evolution table
@@ -4378,7 +4379,9 @@ dropped field.
 kind byte is what says which.** A signed kind's base is a zigzag LEB128 and an
 unsigned kind's base is an unsigned LEB128, each canonical on §3's rule, and the
 entry spends no byte saying which because the kind rides ahead of the base in
-the entry and the reader has already read it. The reason is the unsigned domain's
+the entry and the reader has already read it. Zigzag maps a signed integer `n`
+to `2n` for `n >= 0` and to `-2n - 1` for `n < 0`, so small magnitudes of
+either sign take few bytes. The reason is the unsigned domain's
 high half: a `uint64` ranged over `[2^63, 2^63 + 1]` has the base `2^63`, which
 an unsigned LEB128 spells in ten bytes and a zigzag cannot spell at all, since
 zigzag maps it to `2^64` and that is a sixty-fifth bit. A negative base exists
@@ -4396,8 +4399,18 @@ taken in float32 and clamped to `[1, 4294967040]`, and the width
 `bits_required(0, count)`. A writer clamps `(value - min) / delta` to `[0, 1]`,
 multiplies by `count` and ROUNDS THAT PRODUCT TO FLOAT32, adds `0.5`, floors,
 and clamps the integer to `count`. A reader takes `index / count` in float32,
-multiplies by `delta` and ROUNDS THAT PRODUCT TO FLOAT32, then adds `min`. Two
-roundings on each side, never one, and never a float64 anywhere: that is the
+multiplies by `delta` and ROUNDS THAT PRODUCT TO FLOAT32, then adds `min`. **An
+index above `count` on the wire is REJECTED, as the packet wire rejects it, and
+is never reconstructed and clamped.** The width can spell such an index
+whenever `count` is not one less than a power of two, ten bits spelling `1023`
+over a `count` of `1000`, and SPEC.md §4.3's read and `serialize.h`'s
+`serialize_compressed_float` refuse it. The message form refuses it the same
+way, at that field and terminally for the batch (DAMAGE, below), because the
+message form quantizes and reads floats by the packet wire's rule bit for bit
+and there is one rule for both wires. The ranged-offset paragraph below, which
+reconstructs and clamps, is a rule for the ranged integer kinds and does not
+reach the quantized float. Two roundings on each side, never one, and never a
+float64 anywhere: that is the
 rule the packet wire's `-ffp-contract=off` discipline exists to hold (SPEC.md
 §7.2), and the message form holds it for the same reason, so that a message
 index and a packet index over one declaration and one value are the SAME BITS
@@ -4422,7 +4435,10 @@ sender's `max` has a width and a base, so the value reconstructs as `base` plus
 the offset, the reader's own bound applies, and `clamped` counts if it fires.
 The position after the field is known either way, which is the whole test, and a
 reader that refused here would be refusing a body over a value rather than over
-a framing.
+a framing. This is the ranged integer kinds' rule and it does not reach the
+quantized float, whose index above `count` refuses as the packet wire refuses
+it (the quantization paragraph, above): the float's rule is the packet wire's
+rule bit for bit, and the packet wire rejects there.
 
 **THE ESCAPE KIND `31` IS THE ONLY PATH A LATER-MAJOR WRITER HAS ON THIS FORM**,
 because an announcement carrying a kind outside the closed set is malformed and
@@ -4550,12 +4566,17 @@ batch.** The fields decoded before it stand, ONE `malformed` counts, and nothing
 after it is read, which is the packet wire's own answer (SPEC.md §4.3) reached
 for the same reason.
 
-The four ways a batch is damaged, at bit granularity:
+The five ways a batch is damaged, at bit granularity:
 
 - **A REFERENCE ABOVE THE ENTRY COUNT `E`.** The width can spell values above
   `E` whenever `E` is not one less than a power of two, and every one of them is
   damage. So is a reference of `0` where an entry is REQUIRED, which is an
   enum-keyed array's slot key and a node record's type id (§3.1, §3.2).
+- **A QUANTIZED INDEX ABOVE `count`.** The width can spell it whenever `count`
+  is not one less than a power of two, and the packet wire rejects it (SPEC.md
+  §4.3), so this form rejects it too, since the quantized float has one rule on
+  both wires (above). A ranged integer's offset above the sender's `max` is
+  the opposite case and reconstructs and clamps (above).
 - **A REFERENCE NAMING AN ENTRY OF THE WRONG SORT**, which is a variant
   reference on an entry that is not kind `0` and an arm reference on one that
   is (above). The entry resolved and it contradicts the position it was used
@@ -5099,9 +5120,14 @@ entries announces about 5 KB once.
   indices identical bit for bit, and each message read back into a file whose
   float is the grid point and not the original. Beside it the decode of index
   `6666` under `min = -100, max = 100, resolution = 0.01`, which is
-  `0xC2055C2A` and no neighbor of it. Red if a leg computes in float64, rounds
-  once where the rule rounds twice, differs from the packet wire's index or
-  float by one, or reproduces `0.005`, `0.123` or `11.0` out of the file it
+  `0xC2055C2A` and no neighbor of it. And a batch carrying the index `1023`
+  under the first declaration, whose `count` is `1000` and whose ten bits spell
+  it: the read refuses as malformed at that field, exactly as
+  `serialize_compressed_float` refuses it, and nothing after it is read. Red if
+  a leg computes in float64, rounds once where the rule rounds twice, differs
+  from the packet wire's index or float by one, clamps the index above the
+  count to `count` or to any float instead of refusing, or reproduces `0.005`,
+  `0.123` or `11.0` out of the file it
   wrote.
 - **A refused first announcement.** A connection whose first announcement is
   refused as `vocabulary_too_large`, then a well-formed announcement, then a
@@ -6602,9 +6628,14 @@ or another, a MAP's duplicate key (§2.8), and a KEYED-ARRAY slot written again
 occurrences of `child` name one path, and a record that outlived its occurrence
 would be appended into the winner's body at save as if the winner had carried
 it. It did not, and a save that resurrected `future = 7` beside `known = 2`
-would be writing a field no occurrence of that body ever held whole. The
-caller's own edits between load and save are a different hazard and are stated
-on their own (WHAT INVALIDATES A PATH, below).
+would be writing a field no occurrence of that body ever held whole. **The
+discard moves neither `retain_lost` nor `retained`.** The writer's own later
+occurrence superseded the data, so nothing was lost that the load could have
+kept, and `retained` counted the record when its bytes were kept and does not
+fall when they are let go: both counters stay monotonic, and a reset is the
+writer's act and not a loss (THE REPORT, below). The caller's own edits
+between load and save are a different hazard and are stated on their own
+(WHAT INVALIDATES A PATH, below).
 
 **RETENTION FORM: the field with every reference resolved.** A reference names
 a slot of the FILE's id table (§3), so a verbatim copy re-emitted into a file
@@ -6741,13 +6772,16 @@ Two consequences follow, and each is a rule:
 - **`retain_lost`** counts every unknown this load or save could not keep: a
   record the remaining capacity had no room for, an unknown of one of the
   excluded classes above, a record the resolving walk found damaged, and, at
-  save, a retained record whose path no longer names a body.
+  save, a retained record whose path no longer names a body. A record discarded
+  because a known ancestor was reset or replaced by a later legal occurrence
+  (record lifetime, above) is none of these and moves neither counter: the
+  writer superseded it, and the load could not have kept it.
 
-Both are zero in every read that did not opt in, and they ride the same report
-struct for the reason `duplicate` does, which is that a caller has one report
-type and not two (§4). Retention moves no existing counter: a retained field
-still counts `unknown`, because `unknown` says what a READER could not name and
-that stays true.
+Both are monotonic, both are zero in every read that did not opt in, and they
+ride the same report struct for the reason `duplicate` does, which is that a
+caller has one report type and not two (§4). Retention moves no existing
+counter: a retained field still counts `unknown`, because `unknown` says what a
+READER could not name and that stays true.
 
 **`retain_lost` IS NOT THE WHOLE OF THE SAFETY CHECK, and the other three
 counters are still in it.** Retention covers the `unknown` class and nothing
@@ -6758,7 +6792,10 @@ rewrite exactly as it did before. **A rewrite is safe when the last load's
 report was silent, OR when retention was on and `retain_lost`,
 `kind_mismatch`, `clamped` and `malformed` are all zero after the save.** The
 second is the first with `unknown` struck out, and that is precisely what
-retention buys.
+retention buys. A record discarded under a reset ancestor is not in the check
+and does not need to be: the reset is the writer's act and not a loss, the
+winning occurrence holds what the writer meant the body to hold, and the save
+that carries it is as safe as the four counters say.
 
 **REFUSAL IS PER RECORD AND NEVER PARTIAL.** A record the remaining capacity
 cannot hold whole is not written at all: `retain_lost` counts one, the read
@@ -6848,8 +6885,9 @@ red for one reason:
   own, or counts more than one.
 - a body carrying `child { future = 7 }` and then `child { known = 2 }`, the
   second occurrence resetting the first: the save carries `known = 2` and no
-  `future`. Red if a leg resurrects `7` into the winning occurrence or writes
-  it beside it.
+  `future`, `retain_lost` is `0`, and `retained` is unchanged by the discard.
+  Red if a leg resurrects `7` into the winning occurrence, writes it beside
+  it, or counts the discard as lost.
 - a pointered save whose retained tail sits before the node-table field in the
   root body. Red on any other order.
 
