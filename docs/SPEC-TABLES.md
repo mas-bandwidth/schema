@@ -4474,18 +4474,23 @@ batch.** The fields decoded before it stand, ONE `malformed` counts, and nothing
 after it is read, which is the packet wire's own answer (SPEC.md §4.3) reached
 for the same reason.
 
-The three ways a batch is damaged, at bit granularity:
+The four ways a batch is damaged, at bit granularity:
 
 - **A REFERENCE ABOVE THE ENTRY COUNT `E`.** The width can spell values above
   `E` whenever `E` is not one less than a power of two, and every one of them is
   damage. So is a reference of `0` where an entry is REQUIRED, which is an
   enum-keyed array's slot key and a node record's type id (§3.1, §3.2).
+- **A REFERENCE NAMING AN ENTRY OF THE WRONG SORT**, which is a variant
+  reference on an entry that is not kind `0` and an arm reference on one that
+  is (above). The entry resolved and it contradicts the position it was used
+  in, so the next bit's meaning is what is in doubt.
 - **A LENGTH, COUNT OR INDEX WHOSE PAYLOAD RUNS PAST THE BATCH.** A string
   length, an array count, a node index or an escape's `L` that would read beyond
   the batch's bits is damage at the field that carried it.
-- **EXHAUSTION.** The bits run out inside a field, or the count promised `M`
-  bodies and fewer terminators arrive, or the trailing pad to the byte boundary
-  is not zero.
+- **EXHAUSTION, AND ITS OPPOSITE.** The bits run out inside a field, or the
+  count promised `M` bodies and fewer terminators arrive, or the trailing pad to
+  the byte boundary is not zero, or BYTES REMAIN AFTER THE PAD, which is §3's
+  rule for a file with bytes left over met on a batch.
 
 **ILL-FORMED TEXT IS DAMAGE HERE TOO, and it is terminal like the rest.** §3's
 one content rule holds unchanged in what it rejects, a kind `12` payload that is
@@ -4903,10 +4908,10 @@ entries announces about 5 KB once.
   boundary are not zero, and a buffer carrying a whole batch and then a byte
   more. Red if a leg reads either clean.
 - **The batch's five answers.** A `SaveMessages` and a `MeasureMessages` of 257
-  bodies, each refusing by name and writing nothing; a `LoadMessages` of a
+  bodies, each refusing by name and writing nothing. A `LoadMessages` of a
   256-body batch into storage for eight, refusing by name with no counter moved
-  and nothing decoded; a three-body batch damaged inside the second, whose
-  returned count must be one; and a pointered batch measured once and loaded
+  and nothing decoded. A three-body batch damaged inside the second, whose
+  returned count must be one. And a pointered batch measured once and loaded
   into ONE region. Red if a leg writes consecutive batches, decodes a body before
   refusing on capacity, returns two or three for the damaged batch, or asks for a
   region a body.
@@ -6868,8 +6873,8 @@ the wire, and keeps the flexibility that comes with it.
 
   **It is not the MESSAGE FORM's vocabulary, though, and the two are worth
   telling apart.** §3.3's `no_vocabulary`, `second_announcement`,
-  `vocabulary_too_large` and `message_form_as_file`, and the form byte's own
-  `newer_form`, ride on the message path and are stated there. A caller
+  `vocabulary_too_large`, `batch_too_large` and `message_form_as_file`, and the
+  form byte's own `newer_form`, ride on the message path and are stated there. A caller
   meeting a `TableRefuseReason` has been refused a FILE, by a header match or by
   a measure, and falls back or gives up; a caller meeting one of the message
   form's has been refused a MESSAGE on a connection, which is a different
