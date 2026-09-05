@@ -285,7 +285,7 @@ does today.
 | a field renamed bare | `unknown` on every old file; the new field reads its default | warns: a removal and an addition in one table in one edit is the shape of a rename | moves |
 | a field of a `type` that a table reaches, renamed | `unknown` on every old file; `was` is refused there today (#478) | passes, in silence | moves, and so does the protocol id |
 | a scalar's default changed | **silent**: the same bytes mean something else | **refuses** | moves (a meaning fact) |
-| a string, bytes or flags default changed | silent | refuses once #396 lands; not declarable today | moves |
+| a string, bytes or flags default changed | **silent**: an absent field reads as the new default | **refuses**, as a scalar's default change does (SPEC-TABLES.md §18.2) | moves (a meaning fact) |
 | a bound raised or lowered, a capacity or array bound grown | `clamped` where a stored value exceeds it | passes; warns on a shrink | moves |
 | a range tightened | `clamped` | warns | moves |
 | a field's kind changed (`T`→`*T`, `string`→`bytes`, `int64`→`int32`) | `kind_mismatch`; the value reads as the default | **refuses** | moves |
