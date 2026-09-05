@@ -10,7 +10,6 @@ package cpptable
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -525,12 +524,6 @@ inline TableMapEach<Entry> TableMapEachOf( const TableArena & arena, const Table
     return each;
 }
 
-// AN UNREACHED SLOT MUST HOLD NO MAP WITH ENTRIES IN IT (§2.8, §7.6). An empty
-// map takes no bytes, so a record whose extent measures ZERO is a record whose
-// every by-value map is empty; a measure that REFUSED answers non-zero here
-// too, and refusing on it is the same answer one level up.
-inline bool TableMapUnreachedEmpty( int64_t extent ) { return extent == 0; }
-
 // ---- the LOAD side: where a decoded entry lands (§2.8) ----
 //
 // THE READER TRUSTS NOTHING and spends one compare per entry. Every load path
@@ -540,16 +533,9 @@ inline bool TableMapUnreachedEmpty( int64_t extent ) { return extent == 0; }
 // out of the holder node's own extent, and the TOOL's path appends into the
 // builder's arena, and the decoder above them cannot tell which it has.
 
-// TableMapCarve is a node's extent cursor, PRE-ORDER: a map's whole entry
-// array first, then, entry by entry in key order, the arrays of any map an
-// entry's value holds by value. The cursor is the node map's, because the
-// generated decoder is threaded with that and not with a region.
-struct TableMapCarve
-{
-    uint8_t * at = NULL;         // the region path: the node's extent, unspent
-    int64_t left = 0;
-    TableWorker * worker = NULL; // the TOOL's path: entries come from the arena
-};
+// The node's extent cursor is TableExtentCarve, the extent runtime's (§2.8,
+// §2.9): a map's whole entry array is carved first, then, entry by entry in
+// key order, the arrays of any list or map an entry's value holds by value.
 
 // TableMapFill is one map field being decoded: where the next entry lands, and
 // the entry that last LANDED, which is what the ascending check compares
@@ -674,10 +660,11 @@ inline Entry * TableMapLive( const TableArena & arena, const TableMap<Entry> & m
 // LoadMeasure's term for a map is N x sizeof( Entry ) rounded to
 // alignof( Entry ), AT EVERY DEPTH. N is framing and not a value, so this
 // reads no field: it walks the map's own header and, where an entry's value
-// holds a map of its own, the entries' headers under it. The caller owns the
-// allocation precisely so it can refuse a number it did not expect.
-typedef bool ( * TableMapWireExtentFn )( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids );
-
+// holds a map or a list of its own, the entries' headers under it. The caller
+// owns the allocation precisely so it can refuse a number it did not expect.
+// Every -1 carries its REASON (§6.5): the int32 cap first, because a count
+// past it cannot fit any body, and then the body's own L, the one rule a
+// list's term answers by.
 // A MAP ENTRY'S SMALLEST WIRE FOOTPRINT that commands one storage unit is its
 // own L and the body's terminator, and under this form's variable lengths that
 // footprint is TWO BYTES (docs/SPEC-TABLES.md §4.2). It is what bounds the N a
@@ -685,8 +672,8 @@ typedef bool ( * TableMapWireExtentFn )( const uint8_t * body, int64_t length, i
 static const int64_t kTableMapEntryFloor = 2;
 
 inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & at,
-                                int64_t entry_size, int64_t entry_align, TableMapWireExtentFn inner,
-                                const TableIdTable * ids )
+                                int64_t entry_size, int64_t entry_align, TableWireExtentFn inner,
+                                const TableIdTable * ids, TableRefuseReason & reason )
 {
     TableReport scratch;
     TableReader r( body, length, &scratch, ids );
@@ -694,8 +681,9 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
     if ( r.get8() != 13 ) { return true; } // not an array of tables: §4's ordinary kind mismatch
     uint64_t n = 0;
     if ( !r.getleb( n ) ) { return true; }
+    if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }
     const int64_t rest = length - r.offset;
-    if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { return false; } // an N the map's L cannot carry
+    if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { reason = count_over_length; return false; } // an N the map's L cannot carry
     at = ( at + entry_align - 1 ) & ~( entry_align - 1 );
     at += (int64_t) n * entry_size;
     if ( inner == NULL ) { return true; } // no map below an entry: one depth is the whole term
@@ -703,49 +691,7 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
     {
         uint64_t elem = 0;
         if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; } // framing damage: the load reports it
-        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids ) ) { return false; }
-        r.offset += (int64_t) elem;
-    }
-    return true;
-}
-
-// the same framing walk over an ARRAY OF TABLES that is not a map: its
-// elements' own maps are part of this node's extent too
-inline bool TableWireExtentElements( const uint8_t * body, int64_t length, int64_t & at, TableMapWireExtentFn inner, const TableIdTable * ids )
-{
-    TableReport scratch;
-    TableReader r( body, length, &scratch, ids );
-    if ( length < 2 ) { return true; }
-    if ( r.get8() != 13 ) { return true; }
-    uint64_t n = 0;
-    if ( !r.getleb( n ) ) { return true; }
-    for ( uint64_t i = 0; i < n; i++ )
-    {
-        uint64_t elem = 0;
-        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
-        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids ) ) { return false; }
-        r.offset += (int64_t) elem;
-    }
-    return true;
-}
-
-// and over an ENUM-KEYED array, whose triples carry a key REFERENCE before each
-// length-prefixed element (docs/SPEC-TABLES.md §3.2)
-inline bool TableWireExtentKeyed( const uint8_t * body, int64_t length, int64_t & at, TableMapWireExtentFn inner, const TableIdTable * ids )
-{
-    TableReport scratch;
-    TableReader r( body, length, &scratch, ids );
-    if ( length < 2 ) { return true; }
-    if ( r.get8() != 13 ) { return true; }
-    uint64_t n = 0;
-    if ( !r.getleb( n ) ) { return true; }
-    for ( uint64_t i = 0; i < n; i++ )
-    {
-        uint64_t key = 0;
-        if ( !r.getleb( key ) ) { return true; }
-        uint64_t elem = 0;
-        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
-        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids ) ) { return false; }
+        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
         r.offset += (int64_t) elem;
     }
     return true;
@@ -1149,410 +1095,6 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	g.pf("%sr.offset = body_end; // the remaining entries skip by the map's L\n", ind)
 }
 
-// ---- the NODE EXTENT (docs/SPEC-TABLES.md §2.8, §6.3) ----
-//
-// A map's entries are BY-VALUE RECORDS INSIDE THE HOLDER'S NODE EXTENT, laid
-// after the record's own storage: count x sizeof( Entry ) at alignof( Entry ),
-// zero slack, one array per map reachable BY VALUE from the record — which
-// includes a map inside a nested table and a map inside an entry — in
-// depth-first field order. The placement is PRE-ORDER: a map's whole entry
-// array first, then, entry by entry in key order, the arrays of any map an
-// entry's value holds by value.
-//
-// Two emitters walk that layout and they are ONE walk: the measure advances a
-// running offset, and the pack advances the same one and copies. Nothing
-// passes between them, which is what makes `used == total` a real check.
-
-// hasMapExtent reports a member with any map reachable by value — the members
-// that carry an extent, and the ones whose two extent walks are emitted.
-func (g *tableGen) hasMapExtent(st *ir.Struct) bool {
-	for _, f := range st.Fields {
-		if f.IsMap() {
-			return true
-		}
-		// A MAP REACHABLE BY VALUE IS THIS RECORD'S EXTENT (docs/SPEC-TABLES.md
-		// §2.8), whichever by-value edge reaches it: a nested table, an array
-		// of them, an enum-keyed array of them, or a union arm.
-		switch g.edgeOf(f) {
-		case edgeNested:
-			if ref, ok := f.Type.Ref.(*ir.Struct); ok && g.hasMapExtent(ref) {
-				return true
-			}
-		case edgeArm:
-			for _, v := range f.Type.Ref.(*ir.Union).Variants {
-				if ref := memberOf(g.unit, v.Type); ref != nil && g.hasMapExtent(ref) {
-					return true
-				}
-			}
-		}
-		// a nested table this walk does not call an edge can still hold a map,
-		// because a map makes its holder VARIABLE and every variable nesting is
-		// an edge — so there is nothing else to look at here
-	}
-	return false
-}
-
-// memberOf resolves one closure member by name.
-func memberOf(u *ir.Unit, name string) *ir.Struct {
-	if st := u.Tables[name]; st != nil {
-		return st
-	}
-	return u.Structs[name]
-}
-
-// emitMapExtent emits `<T>MapExtentAt`: the running offset every map array
-// reachable by value from one record takes, in the order the pack lays them.
-func (g *tableGen) emitMapExtent(st *ir.Struct) {
-	g.pf("// %sMapExtentAt: the node extent %s's maps take, PRE-ORDER, advancing the\n", st.Name, st.Name)
-	g.pf("// running offset exactly as %sMapPack advances it (docs/SPEC-TABLES.md §2.8).\n", st.Name)
-	g.pf("template <typename Ctx>\ninline bool %sMapExtentAt( const Ctx & ctx, const %s & value, int64_t & at )\n{\n", st.Name, st.Name)
-	if !g.hasMapExtent(st) {
-		g.pf("    (void) ctx; (void) value; (void) at; // no map below this record\n")
-		g.pf("    return true;\n}\n\n")
-		return
-	}
-	g.emitMapExtentWalk(st, "value", func(f *ir.Field, expr, ind string) {
-		entry := mapEntryOf(f)
-		g.pf("%s{\n", ind)
-		g.pf("%s    TableMapCursor<%s> cursor = TableMapOrder( ctx, %s );\n", ind, entry.Name, expr)
-		g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
-		g.pf("%s    at = ( at + %d ) & ~(int64_t) %d; // at alignof( %s )\n", ind, alignOfEntry(g.unit, entry)-1, alignOfEntry(g.unit, entry)-1, entry.Name)
-		g.pf("%s    at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // the whole array FIRST\n", ind, entry.Name)
-		if g.isVar(entry.Name) {
-			g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order\n%s    {\n", ind, ind)
-			g.pf("%s        if ( !%sMapExtentAt( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }\n", ind, entry.Name)
-			g.pf("%s    }\n", ind)
-		}
-		g.pf("%s    TableMapRelease( cursor );\n", ind)
-		g.pf("%s}\n", ind)
-	}, func(table, expr, ind string) {
-		g.pf("%sif ( !%sMapExtentAt( ctx, %s, at ) ) { return false; }\n", ind, table, expr)
-	})
-	g.pf("    return true;\n}\n\n")
-	g.pf("// the whole extent of one node, from a fresh offset: what a pack reserves\n")
-	g.pf("// for it beside the record's own storage.\n")
-	g.pf("template <typename Ctx>\ninline int64_t %sMapExtent( const Ctx & ctx, const %s & value )\n{\n", st.Name, st.Name)
-	g.pf("    int64_t at = 0;\n")
-	g.pf("    if ( !%sMapExtentAt( ctx, value, at ) ) { return -1; }\n", st.Name)
-	g.pf("    return at;\n}\n\n")
-}
-
-// emitMapPack emits `<T>MapPack`: the same walk, copying each map's entries in
-// key order into the node's extent and pointing the record's slot at them.
-func (g *tableGen) emitMapPack(st *ir.Struct) {
-	g.pf("// %sMapPack: carve %s's map arrays out of the node's extent and copy the\n", st.Name, st.Name)
-	g.pf("// entries in ASCENDING key order, PRE-ORDER, advancing the same running\n")
-	g.pf("// offset %sMapExtentAt advances (docs/SPEC-TABLES.md §2.8).\n", st.Name)
-	g.pf("template <typename Ctx>\ninline bool %sMapPack( const Ctx & ctx, const %s & src, %s & dst, uint8_t * extent, int64_t & at, int64_t capacity )\n{\n", st.Name, st.Name, st.Name)
-	if !g.hasMapExtent(st) {
-		g.pf("    (void) ctx; (void) src; (void) dst; (void) extent; (void) at; (void) capacity; // no map below this record\n")
-		g.pf("    return true;\n}\n\n")
-		return
-	}
-	dstOf := func(expr string) string { return "dst" + expr[len("src"):] }
-	g.emitMapExtentWalk(st, "src", func(f *ir.Field, expr, ind string) {
-		entry := mapEntryOf(f)
-		slot := dstOf(expr)
-		g.pf("%s{\n", ind)
-		g.pf("%s    TableMapCursor<%s> cursor = TableMapOrder( ctx, %s );\n", ind, entry.Name, expr)
-		g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
-		g.pf("%s    at = ( at + %d ) & ~(int64_t) %d;\n", ind, alignOfEntry(g.unit, entry)-1, alignOfEntry(g.unit, entry)-1)
-		g.pf("%s    const int64_t bytes = (int64_t) cursor.count * (int64_t) sizeof( %s );\n", ind, entry.Name)
-		g.pf("%s    if ( at + bytes > capacity ) { TableMapRelease( cursor ); return false; }\n", ind)
-		g.pf("%s    %s * placed = (%s *) ( extent + at );\n", ind, entry.Name, entry.Name)
-		g.pf("%s    at += bytes;\n", ind)
-		g.pf("%s    %s.count = cursor.count;\n", ind, slot)
-		g.pf("%s    %s.padding = 0;\n", ind, slot)
-		g.pf("%s    %s.entries.value = cursor.count > 0 ? (int64_t) ( (uint8_t *) placed - (const uint8_t *) &%s.entries ) : 0;\n", ind, slot, slot)
-		g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ )\n%s    {\n", ind, ind)
-		g.pf("%s        memcpy( (void *) ( placed + i ), (const void *) cursor[i], sizeof( %s ) ); // trivially copyable, by construction\n", ind, entry.Name)
-		g.pf("%s    }\n", ind)
-		if g.isVar(entry.Name) {
-			g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ )\n%s    {\n", ind, ind)
-			g.pf("%s        if ( !%sMapPack( ctx, *cursor[i], placed[i], extent, at, capacity ) ) { TableMapRelease( cursor ); return false; }\n", ind, entry.Name)
-			g.pf("%s    }\n", ind)
-		}
-		g.pf("%s    TableMapRelease( cursor );\n", ind)
-		g.pf("%s}\n", ind)
-	}, func(table, expr, ind string) {
-		g.pf("%sif ( !%sMapPack( ctx, %s, %s, extent, at, capacity ) ) { return false; }\n", ind, table, expr, dstOf(expr))
-	})
-	g.pf("    return true;\n}\n\n")
-}
-
-// emitMapExtentWalk is the ONE walk both extent emitters take: the record's
-// fields in declaration order, every map at its own position, descending each
-// by-value edge in place. A pointer is NOT an edge here — a pointee is its own
-// node with its own extent — and neither is a union arm that is one, for the
-// same reason.
-func (g *tableGen) emitMapExtentWalk(st *ir.Struct, subject string, mapField func(f *ir.Field, expr, ind string), descend func(table, expr, ind string)) {
-	v := edgeVisitor{read: subject}
-	for _, f := range st.Fields {
-		if f.IsMap() {
-			mapField(f, subject+"."+f.Name, "    ")
-			continue
-		}
-		switch g.edgeOf(f) {
-		case edgeNested:
-			ref, _ := f.Type.Ref.(*ir.Struct)
-			if ref == nil || !g.hasMapExtent(ref) {
-				continue
-			}
-			g.emitVariableByValueWalk(f, v, func(expr edgeExpr) { descend(f.Type.Name, expr.Src, "        ") })
-			g.emitUnreachedMapRefusal(f, ref, subject)
-		case edgeArm:
-			un := f.Type.Ref.(*ir.Union)
-			any := false
-			for _, arm := range un.Variants {
-				if ref := memberOf(g.unit, arm.Type); ref != nil && g.hasMapExtent(ref) {
-					any = true
-				}
-			}
-			if !any {
-				continue
-			}
-			// only the ARMS that hold a map are descended: a pointer arm and a
-			// byte buffer arm reach nodes, not this node's extent
-			armed := edgeVisitor{read: subject,
-				pointer: func(*ir.Field, edgeExpr) {},
-				blob:    func(*ir.Field, edgeExpr) {},
-				descend: func(table string, expr edgeExpr, indent string) {
-					if ref := memberOf(g.unit, table); ref != nil && g.hasMapExtent(ref) {
-						descend(table, expr.Src, indent)
-					}
-				},
-			}
-			g.emitVariableUnionWalk(f, armed)
-		}
-	}
-}
-
-// alignOfEntry is the C ABI alignment of one generated entry record — the
-// alignment its array is laid at, and the same model §20.3 commits the
-// compiler to for every record in the closure.
-func alignOfEntry(u *ir.Unit, entry *ir.Struct) int64 {
-	if ml := ir.RecordLayout(u, entry); ml != nil && ml.Align > 0 {
-		return ml.Align
-	}
-	return 8
-}
-
-// ---- the three walks at a map (docs/SPEC-TABLES.md §2.8, §3.1) ----
-//
-// A map is a BY-VALUE EDGE of the ONE declaration-order walk: it is reached at
-// its field's position, its entries are visited in ASCENDING KEY ORDER, and
-// each entry's value is descended for the pointer slots inside it before the
-// next entry is reached. A map declared before a pointer field therefore
-// reaches a shared node FIRST and numbers it first, exactly as a union arm or
-// a nested table declared there does. The rule is the walk's, not the map's.
-
-// mapNumberEdge descends one map's entries for the NUMBERING walk.
-func (g *tableGen) mapNumberEdge(f *ir.Field) {
-	g.emitMapEntryLoop(f, "value", "return false;", func(entry, elem, ind string) {
-		g.pf("%sif ( !%sNumber( ctx, numbering, %s ) ) { TableMapRelease( cursor_%s ); return false; }\n", ind, entry, elem, f.Name)
-	})
-}
-
-// mapPackMeasureEdge descends one map's entries for the PACK MEASURE.
-func (g *tableGen) mapPackMeasureEdge(f *ir.Field) {
-	g.emitMapEntryLoop(f, "value", "return -1;", func(entry, elem, ind string) {
-		g.pf("%sint64_t inner = %sPackMeasure( ctx, seen, %s );\n", ind, entry, elem)
-		g.pf("%sif ( inner < 0 ) { TableMapRelease( cursor_%s ); return -1; }\n", ind, f.Name)
-		g.pf("%sbytes += inner;\n", ind)
-	})
-}
-
-// mapPackEdge descends one map's entries for the PACK, against the array
-// <T>MapPack already placed in the node's extent.
-func (g *tableGen) mapPackEdge(f *ir.Field) {
-	entry := mapEntryOf(f)
-	g.emitMapEntryLoopHead(f, "src", "return false;")
-	g.pf("        %s * placed_%s = (%s *) ( dst.%s.entries.value != 0 ? ( (uint8_t *) &dst.%s.entries + dst.%s.entries.value ) : NULL );\n",
-		entry.Name, f.Name, entry.Name, f.Name, f.Name, f.Name)
-	g.pf("        for ( int32_t i = 0; i < cursor_%s.count; i++ )\n        {\n", f.Name)
-	g.pf("            if ( !%sPackEdges( ctx, seen, *cursor_%s[i], placed_%s[i], base, capacity, used ) ) { TableMapRelease( cursor_%s ); return false; }\n",
-		entry.Name, f.Name, f.Name, f.Name)
-	g.pf("        }\n")
-	g.pf("        TableMapRelease( cursor_%s );\n    }\n", f.Name)
-}
-
-// emitMapEntryLoopHead opens one map's sorted cursor over the given subject.
-func (g *tableGen) emitMapEntryLoopHead(f *ir.Field, subject, onBad string) {
-	entry := mapEntryOf(f)
-	g.pf("    { // %s: a by-value edge, entries in ASCENDING key order (§2.8, §3.1)\n", f.Name)
-	g.pf("        TableMapCursor<%s> cursor_%s = TableMapOrder( ctx, %s.%s );\n", entry.Name, f.Name, subject, f.Name)
-	g.pf("        if ( !cursor_%s.ok ) { %s }\n", f.Name, onBad)
-}
-
-// emitMapEntryLoop is the whole shape: the cursor, the loop, the release.
-func (g *tableGen) emitMapEntryLoop(f *ir.Field, subject, onBad string, body func(entry, elem, ind string)) {
-	entry := mapEntryOf(f)
-	g.emitMapEntryLoopHead(f, subject, onBad)
-	g.pf("        for ( int32_t i = 0; i < cursor_%s.count; i++ )\n        {\n", f.Name)
-	body(entry.Name, fmt.Sprintf("*cursor_%s[i]", f.Name), "            ")
-	g.pf("        }\n")
-	g.pf("        TableMapRelease( cursor_%s );\n    }\n", f.Name)
-}
-
-// emitMapWalkSurface emits the two extent walks for every variable member of a
-// map-bearing unit. They are emitted for EVERY such member, because a walk
-// that descends a by-value nesting has to be able to name the nested one's.
-func (g *tableGen) emitMapWalkSurface(members []*ir.Struct) {
-	if !g.anyMap {
-		return
-	}
-	for _, st := range g.varMembers(members) {
-		g.emitMapWireExtent(st)
-		g.emitMapExtent(st)
-		g.emitMapPack(st)
-	}
-}
-
-// emitNodeBytes emits the bytes ONE NODE takes in a packed region: the
-// record's own storage rounded to the arena's alignment, plus the extent its
-// maps take (docs/SPEC-TABLES.md §2.8, §6.3), the sum rounded again so the
-// next node starts aligned. A unit with no map emits exactly the term it
-// always emitted.
-func (g *tableGen) emitNodeBytes(table, expr, ind, onBad string, plain func(term string), extent func(term string)) {
-	target := memberOf(g.unit, table)
-	if !g.anyMap || target == nil || !g.hasMapExtent(target) {
-		// a node with no map below it takes exactly the term it always took,
-		// so a map-free unit emits what it emitted before the construct existed
-		plain(fmt.Sprintf("TableAlignUp64( (int64_t) sizeof( %s ) )", table))
-		return
-	}
-	g.pf("%sint64_t node_extent = %sMapExtent( ctx, %s );\n", ind, table, expr)
-	g.pf("%sif ( node_extent < 0 ) { %s }\n", ind, onBad)
-	extent(fmt.Sprintf("TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + node_extent )", table))
-}
-
-// emitMapWireExtent emits `<T>WireExtent`: the region bytes one record's maps
-// command, read from the wire FRAMING alone at every depth
-// (docs/SPEC-TABLES.md §2.8, §6.5). False is the refusal — an N the map's L
-// cannot carry — and it is what makes LoadMeasure answer -1.
-func (g *tableGen) emitMapWireExtent(st *ir.Struct) {
-	g.pf("// %sWireExtent: the extent %s's maps command, from the FRAMING alone.\n", st.Name, st.Name)
-	g.pf("// It reads no field value, so a caller can refuse a number it did not\n")
-	g.pf("// expect before one byte is allocated (docs/SPEC-TABLES.md §6.5).\n")
-	g.pf("inline bool %sWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids )\n{\n", st.Name)
-	if !g.hasMapExtent(st) {
-		g.pf("    (void) body; (void) length; (void) at; (void) ids; // no map below this record\n")
-		g.pf("    return true;\n}\n\n")
-		return
-	}
-	g.pf("    TableReport scratch; // the scan's framing damage is the LOAD's to report\n")
-	g.pf("    TableReader r( body, length, &scratch, ids );\n")
-	g.pf("    for ( ;; )\n    {\n")
-	g.pf("        uint64_t field_ref = 0;\n")
-	g.pf("        if ( !r.getleb( field_ref ) ) { return true; }\n")
-	g.pf("        if ( field_ref == 0 ) { return true; }\n")
-	g.pf("        if ( ids == NULL || field_ref > (uint64_t) ids->count ) { return true; }\n")
-	g.pf("        const uint64_t field_id = ids->at( field_ref );\n")
-	g.pf("        if ( !r.has( 1 ) ) { return true; }\n")
-	g.pf("        uint8_t field_kind = r.get8();\n")
-	g.emitMapExtentWireCases(st)
-	g.pf("        if ( !r.skip( field_kind ) ) { return true; }\n")
-	g.pf("    }\n}\n\n")
-}
-
-// emitMapExtentWireCases emits one arm per map field and one per by-value
-// nesting that holds a map, in DECLARATION ORDER, so the framing scan advances
-// the running offset in the same order the pack and the load carve it.
-func (g *tableGen) emitMapExtentWireCases(st *ir.Struct) {
-	for _, f := range st.Fields {
-		if f.IsMap() {
-			entry := mapEntryOf(f)
-			inner := "NULL"
-			if g.hasMapExtent(entry) {
-				inner = "&" + entry.Name + "WireExtent"
-			}
-			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s\n        {\n", ir.TableFieldWireId(f), tkArray, f.Name)
-			g.pf("            uint64_t map_len = 0;\n")
-			g.pf("            if ( !r.getleb( map_len ) || !r.room( map_len ) ) { return true; }\n")
-			g.pf("            const uint8_t * map_body = r.buffer + r.offset;\n")
-			g.pf("            r.offset += (int64_t) map_len;\n")
-			g.pf("            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( %s ), (int64_t) alignof( %s ), %s, ids ) ) { return false; }\n",
-				entry.Name, entry.Name, inner)
-			g.pf("            continue;\n        }\n")
-			continue
-		}
-		switch g.edgeOf(f) {
-		case edgeNested:
-			ref, _ := f.Type.Ref.(*ir.Struct)
-			if ref == nil || !g.hasMapExtent(ref) {
-				continue
-			}
-			// a nested table's maps are part of THIS node's extent, so its own
-			// scan runs over the nested body at the running offset
-			kind, walk := tkTable, ""
-			switch {
-			case f.KeyEnum != "":
-				kind, walk = tkKeyed, "TableWireExtentKeyed"
-			case f.Array != ir.ArrayNone:
-				kind, walk = tkArray, "TableWireExtentElements"
-			}
-			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: a nesting that holds a map\n        {\n", ir.TableFieldWireId(f), kind, f.Name)
-			g.pf("            uint64_t nested_len = 0;\n")
-			g.pf("            if ( !r.getleb( nested_len ) || !r.room( nested_len ) ) { return true; }\n")
-			g.pf("            const uint8_t * nested_body = r.buffer + r.offset;\n")
-			g.pf("            r.offset += (int64_t) nested_len;\n")
-			if walk == "" {
-				g.pf("            if ( !%sWireExtent( nested_body, (int64_t) nested_len, at, ids ) ) { return false; }\n", f.Type.Name)
-			} else {
-				g.pf("            if ( !%s( nested_body, (int64_t) nested_len, at, &%sWireExtent, ids ) ) { return false; }\n", walk, f.Type.Name)
-			}
-			g.pf("            continue;\n        }\n")
-		case edgeArm:
-			un := f.Type.Ref.(*ir.Union)
-			any := false
-			for _, v := range un.Variants {
-				if ref := memberOf(g.unit, v.Type); ref != nil && g.hasMapExtent(ref) {
-					any = true
-				}
-			}
-			if !any {
-				continue
-			}
-			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: a union arm that holds a map\n        {\n", ir.TableFieldWireId(f), tkUnion, f.Name)
-			g.pf("            uint64_t arm_ref = 0;\n")
-			g.pf("            if ( !r.getleb( arm_ref ) ) { return true; }\n")
-			g.pf("            if ( arm_ref == 0 ) { continue; } // None: the reference is the whole payload\n")
-			g.pf("            if ( arm_ref > (uint64_t) ids->count ) { return true; }\n")
-			g.pf("            const uint64_t arm_id = ids->at( arm_ref );\n")
-			g.pf("            if ( !r.has( 1 ) ) { return true; }\n")
-			g.pf("            r.offset += 1; // the arm's kind byte\n")
-			g.pf("            uint64_t arm_len = 0;\n")
-			g.pf("            if ( !r.getleb( arm_len ) || !r.room( arm_len ) ) { return true; }\n")
-			g.pf("            const uint8_t * arm_body = r.buffer + r.offset;\n")
-			g.pf("            r.offset += (int64_t) arm_len;\n")
-			g.pf("            switch ( arm_id )\n            {\n")
-			for _, v := range un.Variants {
-				ref := memberOf(g.unit, v.Type)
-				if ref == nil || !g.hasMapExtent(ref) {
-					continue
-				}
-				g.pf("                case 0x%016xull: if ( !%sWireExtent( arm_body, (int64_t) arm_len, at, ids ) ) { return false; } break; // %s\n",
-					ir.TableWireId(v.Name), v.Type, v.Name)
-			}
-			g.pf("                default: break; // an arm this reader cannot name reads None\n")
-			g.pf("            }\n")
-			g.pf("            continue;\n        }\n")
-		}
-	}
-}
-
-// emitRootDataBytes emits a load's DATA term for the root itself: its record,
-// plus the extent its own maps take, read from the wire framing (§2.8, §6.5).
-func (g *tableGen) emitRootDataBytes(st *ir.Struct, ind, onBad string) {
-	if !g.anyMap {
-		g.pf("%sint64_t data = TableAlignUp64( (int64_t) sizeof( %s ) );\n", ind, st.Name)
-		return
-	}
-	g.pf("%sint64_t root_extent = 0;\n", ind)
-	g.pf("%sif ( !%sWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { %s }\n", ind, st.Name, onBad)
-	g.pf("%sint64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + root_extent );\n", ind, st.Name)
-}
-
 // ---- the builder's five, and the optional index (docs/SPEC-TABLES.md §2.8) ----
 //
 // FREE FUNCTIONS taking the worker or the arena, as Emplace and the arena At
@@ -1707,246 +1249,59 @@ func (g *tableGen) emitMapBuilderSurfaces(members []*ir.Struct) {
 	}
 }
 
-// ---- the COOK's write side at a map (docs/SPEC-TABLES.md §2.8, §7.6) ----
+// ---- the three walks at a map (docs/SPEC-TABLES.md §2.8, §3.1) ----
 //
-// A cook is a region written verbatim, so a cooked map is its SORTED entry
-// array where the cook put it: the node's extent, laid after the record's own
-// storage by the same PRE-ORDER rule the pack lays it by. Find is then a
-// binary search over the mapped bytes, in place, with nothing to parse.
+// A map is a BY-VALUE EDGE of the ONE declaration-order walk: it is reached at
+// its field's position, its entries are visited in ASCENDING KEY ORDER, and
+// each entry's value is descended for the pointer slots inside it before the
+// next entry is reached. A map declared before a pointer field therefore
+// reaches a shared node FIRST and numbers it first, exactly as a union arm or
+// a nested table declared there does. The rule is the walk's, not the map's.
 
-// cookMapsSignature is one record's extent writer.
-func (g *tableGen) cookMapsSignature(st *ir.Struct) string {
-	return fmt.Sprintf("template <typename Ctx> inline bool %sCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const %s & value, TableByteOrder order )", st.Name, st.Name)
+// mapNumberEdge descends one map's entries for the NUMBERING walk.
+func (g *tableGen) mapNumberEdge(f *ir.Field) {
+	g.emitMapEntryLoop(f, "value", "return false;", func(entry, elem, ind string) {
+		g.pf("%sif ( !%sNumber( ctx, numbering, %s ) ) { TableMapRelease( cursor_%s ); return false; }\n", ind, entry, elem, f.Name)
+	})
 }
 
-// emitCookMaps emits one record's extent writer: every map reachable by value,
-// PRE-ORDER, each entry through its own cook body.
-func (g *tableGen) emitCookMaps(st *ir.Struct) {
-	g.pf("// %sCookMaps: %s's map arrays into the node's extent, PRE-ORDER, the entries\n", st.Name, st.Name)
-	g.pf("// in ASCENDING key order, each through its own cook body (§2.8, §7.6).\n")
-	g.pf("%s\n{\n", g.cookMapsSignature(st))
-	if !g.hasMapExtent(st) {
-		g.pf("    (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;\n")
-		g.pf("    return true; // no map below this record\n}\n\n")
-		return
-	}
-	g.pf("    (void) region; // a map's entries carry their own references through their own bodies\n")
-	ml := ir.RecordLayout(g.unit, st)
-	offsetOf := func(name string) int64 {
-		for i := range ml.Fields {
-			if ml.Fields[i].Field.Name == name {
-				return ml.Fields[i].Offset
-			}
-		}
-		return 0
-	}
-	for _, f := range st.Fields {
-		if f.IsMap() {
-			entry := mapEntryOf(f)
-			el := ir.RecordLayout(g.unit, entry)
-			slot := offsetOf(f.Name)
-			g.pf("    { // %s\n", f.Name)
-			g.pf("        TableMapCursor<%s> cursor = TableMapOrder( ctx, value.%s );\n", entry.Name, f.Name)
-			g.pf("        if ( !cursor.ok ) { return false; }\n")
-			g.pf("        at = ( at + %d ) & ~(int64_t) %d; // at alignof( %s )\n", el.Align-1, el.Align-1, entry.Name)
-			g.pf("        uint8_t * array = extent + at;\n")
-			g.pf("        at += (int64_t) cursor.count * %d; // the whole array FIRST\n", el.Size)
-			g.pf("        // the SIXTEEN BYTES of the slot: the self-relative delta, then the count\n")
-			g.pf("        table_cook_put( record + %d, cursor.count > 0 ? (uint64_t) (int64_t) ( array - ( record + %d ) ) : 0, 8, order );\n", slot, slot)
-			g.pf("        table_cook_put( record + %d, (uint64_t) (uint32_t) cursor.count, 4, order );\n", slot+8)
-			g.pf("        for ( int32_t i = 0; i < cursor.count; i++ )\n        {\n")
-			g.pf("            %s\n", g.cookBodyCall(entry, fmt.Sprintf("array + i * %d", el.Size), "*cursor[i]"))
-			g.pf("        }\n")
-			if g.hasMapExtent(entry) {
-				g.pf("        for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order\n        {\n")
-				g.pf("            if ( !%sCookMaps( ctx, region, extent, at, array + i * %d, *cursor[i], order ) ) { TableMapRelease( cursor ); return false; }\n", entry.Name, el.Size)
-				g.pf("        }\n")
-			}
-			g.pf("        TableMapRelease( cursor );\n    }\n")
-			continue
-		}
-		if g.edgeOf(f) != edgeNested {
-			continue
-		}
-		ref, _ := f.Type.Ref.(*ir.Struct)
-		if ref == nil || !g.hasMapExtent(ref) {
-			continue
-		}
-		nested := offsetOf(f.Name)
-		if f.Array == ir.ArrayNone {
-			g.pf("    if ( !%sCookMaps( ctx, region, extent, at, record + %d, value.%s, order ) ) { return false; } // %s\n", ref.Name, nested, f.Name, f.Name)
-			continue
-		}
-		stride := cookElementBytes(g.unit, f)
-		base := "value." + f.Name
-		bound := fmt.Sprintf("%d", f.ArrayBound)
-		if f.KeyEnum != "" && st.IsTable {
-			base += ".slots"
-		}
-		if f.Array == ir.ArrayCounted {
-			// THE LIVE COUNT, as the extent walk counts it: a slot past the
-			// count is storage the walk does not reach, and a non-empty map in
-			// one was already refused there (§7.6)
-			bound = fmt.Sprintf("( value.%s_count < %d ? value.%s_count : %d )", f.Name, f.ArrayBound, f.Name, f.ArrayBound)
-		}
-		g.pf("    for ( int32_t i = 0; i < %s; i++ ) // %s\n    {\n", bound, f.Name)
-		g.pf("        if ( !%sCookMaps( ctx, region, extent, at, record + %d + i * %d, %s[i], order ) ) { return false; }\n", ref.Name, nested, stride, base)
-		g.pf("    }\n")
-	}
-	g.pf("    return true;\n}\n\n")
+// mapPackMeasureEdge descends one map's entries for the PACK MEASURE.
+func (g *tableGen) mapPackMeasureEdge(f *ir.Field) {
+	g.emitMapEntryLoop(f, "value", "return -1;", func(entry, elem, ind string) {
+		g.pf("%sint64_t inner = %sPackMeasure( ctx, seen, %s );\n", ind, entry, elem)
+		g.pf("%sif ( inner < 0 ) { TableMapRelease( cursor_%s ); return -1; }\n", ind, f.Name)
+		g.pf("%sbytes += inner;\n", ind)
+	})
 }
 
-// emitCookNode emits `<T>CookNode`: one NODE's record and then its own extent.
-// A nested record's writer is the body alone, because a nesting's maps are
-// part of the HOLDER's extent and this walk already reached them.
-func (g *tableGen) emitCookNode(st *ir.Struct) {
-	ml := ir.RecordLayout(g.unit, st)
-	record := cookAlignUp(ml.Size, ir.RegionAlignFloor)
-	g.pf("// %sCookNode: one node — the record, then the extent its maps take (§2.8).\n", st.Name)
-	g.pf("template <typename Ctx> inline bool %sCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %s & value, TableByteOrder order )\n{\n", st.Name, st.Name)
-	if g.isVar(st.Name) {
-		g.pf("    if ( !%sCookBody( ctx, region, at, value, order ) ) { return false; }\n", st.Name)
-	} else {
-		g.pf("    %sCookBody( at, value, order );\n", st.Name)
-	}
-	g.pf("    int64_t extent_at = 0;\n")
-	g.pf("    return %sCookMaps( ctx, region, at + %d, extent_at, at, value, order );\n}\n\n", st.Name, record)
-}
-
-// emitCookMapSurface emits the extent writer and the node writer for every
-// closure member of a map-bearing unit.
-func (g *tableGen) emitCookMapSurface(members []*ir.Struct) {
-	if !g.anyMap {
-		return
-	}
-	var bodies []*ir.Struct
-	for _, st := range members {
-		if ir.RecordLayout(g.unit, st) != nil {
-			bodies = append(bodies, st)
-		}
-	}
-	for _, st := range bodies {
-		g.pf("%s;\n", g.cookMapsSignature(st))
-	}
-	g.pf("\n")
-	for _, st := range bodies {
-		g.emitCookMaps(st)
-	}
-	for _, st := range bodies {
-		g.emitCookNode(st)
-	}
-}
-
-// cookNodeBytes is one node's whole span in a cooked region: its record at the
-// region's alignment floor, plus the extent its maps take (docs/SPEC-TABLES.md
-// §2.8, §7.2).
-func (g *tableGen) emitCookNodeBytes(st *ir.Struct, ind, expr, onBad string) {
-	ml := ir.RecordLayout(g.unit, st)
-	if !g.anyMap || !g.hasMapExtent(st) {
-		g.pf("%ssize = %d; node_align = %d;\n", ind, ml.Size, ml.Align)
-		return
-	}
-	g.pf("%s{\n", ind)
-	g.pf("%s    const int64_t extent = %sMapExtent( ctx, %s );\n", ind, st.Name, expr)
-	g.pf("%s    if ( extent < 0 ) { %s }\n", ind, onBad)
-	g.pf("%s    size = %d + extent; node_align = %d;\n", ind, cookAlignUp(ml.Size, ir.RegionAlignFloor), ml.Align)
-	g.pf("%s}\n", ind)
-}
-
-// onlyMapFields reports a record whose every field is a map — a cook body that
-// writes the empty slots and reads nothing off the value, because the extent
-// writer fills them.
-func onlyMapFields(st *ir.Struct) bool {
-	for _, f := range st.Fields {
-		if !f.IsMap() {
-			return false
-		}
-	}
-	return len(st.Fields) > 0
-}
-
-// mapColumn is the four descriptor columns a MAP field carries
-// (docs/SPEC-TABLES.md §2.8, §16): the generated entry's descriptor, and the
-// three thunks the ONE text walk cannot spell for itself. Empty in a unit that
-// declares no map, so a map-free unit's descriptors are what they always were.
-func (g *tableGen) mapColumn(f *ir.Field) string {
-	if !g.anyMap {
-		return ""
-	}
-	if !f.IsMap() {
-		return "NULL, NULL, NULL, NULL, "
-	}
+// mapPackEdge descends one map's entries for the PACK, against the array
+// <T>MapPack already placed in the node's extent.
+func (g *tableGen) mapPackEdge(f *ir.Field) {
 	entry := mapEntryOf(f)
-	n := entry.Name
-	hold := fmt.Sprintf("TableMap<%s>", n)
-	count := fmt.Sprintf("[]( const void * slot ) -> int32_t { return ( (const %s *) slot )->count; }", hold)
-	at := fmt.Sprintf("[]( const void * slot, int32_t index ) -> const void * { return (const void *) ( ( (const %s *) slot )->Entries() + index ); }", hold)
-	var insert string
-	if mapKeyIsString(f) {
-		insert = fmt.Sprintf("[]( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * "+
-			"{ if ( key == NULL || key_length > k%sKeyBound ) { return NULL; } "+ // KEYS NEVER CLAMP
-			"%s * placed = TableMapPlace( worker, *(%s *) slot, key ); "+
-			"if ( placed != NULL ) { TableEntrySetKey( *placed, key, key_length ); } return (void *) placed; }", n, n, hold)
-	} else {
-		typ, _ := g.cppFieldType(ir.MapKeyField(f).Type)
-		insert = fmt.Sprintf("[]( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * "+
-			"{ %s * placed = TableMapPlace( worker, *(%s *) slot, (%s) key_value ); "+
-			"if ( placed != NULL ) { TableEntrySetKey( *placed, (%s) key_value ); } return (void *) placed; }", n, hold, typ, typ)
-	}
-	return fmt.Sprintf("&%sTableInfo, %s, %s, %s, ", n, count, at, insert)
+	g.emitMapEntryLoopHead(f, "src", "return false;")
+	g.pf("        %s * placed_%s = (%s *) ( dst.%s.entries.value != 0 ? ( (uint8_t *) &dst.%s.entries + dst.%s.entries.value ) : NULL );\n",
+		entry.Name, f.Name, entry.Name, f.Name, f.Name, f.Name)
+	g.pf("        for ( int32_t i = 0; i < cursor_%s.count; i++ )\n        {\n", f.Name)
+	g.pf("            if ( !%sPackEdges( ctx, seen, *cursor_%s[i], placed_%s[i], base, capacity, used ) ) { TableMapRelease( cursor_%s ); return false; }\n",
+		entry.Name, f.Name, f.Name, f.Name)
+	g.pf("        }\n")
+	g.pf("        TableMapRelease( cursor_%s );\n    }\n", f.Name)
 }
 
-// nodeStorageBody, nodeStorageArg and nodeStorageReader are the ONE extra
-// parameter a node's storage takes where a map rides in an extent
-// (docs/SPEC-TABLES.md §2.8): the record's body, from which the framing scan
-// sums the entry arrays. A root that can name no such record does not take it,
-// so a map-free unit's dispatch is the one it always emitted.
-func (g *tableGen) nodeStorageBody(anyExtent bool) string {
-	if anyExtent {
-		return "const uint8_t * body, "
-	}
-	return ""
+// emitMapEntryLoopHead opens one map's sorted cursor over the given subject.
+func (g *tableGen) emitMapEntryLoopHead(f *ir.Field, subject, onBad string) {
+	entry := mapEntryOf(f)
+	g.pf("    { // %s: a by-value edge, entries in ASCENDING key order (§2.8, §3.1)\n", f.Name)
+	g.pf("        TableMapCursor<%s> cursor_%s = TableMapOrder( ctx, %s.%s );\n", entry.Name, f.Name, subject, f.Name)
+	g.pf("        if ( !cursor_%s.ok ) { %s }\n", f.Name, onBad)
 }
 
-func (g *tableGen) nodeStorageArg(root *ir.Struct) string {
-	if g.rootHasExtent(root) {
-		return "body, "
-	}
-	return ""
-}
-
-func (g *tableGen) nodeStorageReader(root *ir.Struct) string {
-	if g.rootHasExtent(root) {
-		return "r.buffer, "
-	}
-	return ""
-}
-
-// rootHasExtent reports whether any record one root's numbering can name holds
-// a map by value — which is what decides both halves of the signature above.
-func (g *tableGen) rootHasExtent(root *ir.Struct) bool {
-	if !g.anyMap {
-		return false
-	}
-	return slices.ContainsFunc(g.pointerReachable(root), g.hasMapExtent)
-}
-
-// emitUnreachedMapRefusal refuses an UNREACHED NON-EMPTY MAP SLOT, the same
-// refusal §7.6 gives a pointer in that position (docs/SPEC-TABLES.md §2.8): a
-// COUNTED array's slots past its live count are storage the walk does not
-// reach, so a non-empty map in one names entries the region will not hold, and
-// the write answers false with nothing partial written.
-//
-// The test is the extent itself: an empty map takes no bytes and advances the
-// running offset by none, so a record whose extent measures ZERO is a record
-// whose every by-value map is empty. A measure that refuses answers non-zero
-// here too, and refusing on it is the same answer one level up.
-func (g *tableGen) emitUnreachedMapRefusal(f *ir.Field, ref *ir.Struct, subject string) {
-	if f.Array != ir.ArrayCounted {
-		return // every other array shape is reached whole
-	}
-	g.pf("    for ( int32_t i = %s.%s_count; i < %d; i++ ) // %s: the slots the walk does not reach (§7.6)\n    {\n",
-		subject, f.Name, f.ArrayBound, f.Name)
-	g.pf("        if ( !TableMapUnreachedEmpty( %sMapExtent( ctx, %s.%s[i] ) ) ) { return false; }\n", ref.Name, subject, f.Name)
-	g.pf("    }\n")
+// emitMapEntryLoop is the whole shape: the cursor, the loop, the release.
+func (g *tableGen) emitMapEntryLoop(f *ir.Field, subject, onBad string, body func(entry, elem, ind string)) {
+	entry := mapEntryOf(f)
+	g.emitMapEntryLoopHead(f, subject, onBad)
+	g.pf("        for ( int32_t i = 0; i < cursor_%s.count; i++ )\n        {\n", f.Name)
+	body(entry.Name, fmt.Sprintf("*cursor_%s[i]", f.Name), "            ")
+	g.pf("        }\n")
+	g.pf("        TableMapRelease( cursor_%s );\n    }\n", f.Name)
 }

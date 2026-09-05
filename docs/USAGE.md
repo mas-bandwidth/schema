@@ -2337,10 +2337,13 @@ its quoted decimal spelling, entries in ascending key order.
 
 ### Unbounded arrays: `placements []Placement`
 
-*Partly landed. The front end takes the `[]T` spelling and holds every
-refusal below, and `pack` and `unpack` read and write one. No backend carries
-the construct — every one of them refuses a unit that declares one, by name —
-and the corpus holds no `tables/lists` (SPEC-TABLES.md §2.9).*
+*Carried by the C++ reference: the `TableList` runtime, the builder's `Add`,
+`Each` and `Erase`, the wire, the region, the cook, the text form and the
+descriptors, held by the `tables/lists` corpus. `pack`, `unpack` and
+`cook-check` read and write one; the tool's `cook` and `uncook` halves do not
+yet, and every port refuses a unit that declares one, by name
+(SPEC-TABLES.md §2.9, §15).*
+
 
 **An unbounded array is a counted array whose count the DATA decides.** It is
 the map with the key and the sort taken out: the same kind `14` body a

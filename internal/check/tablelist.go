@@ -5,8 +5,8 @@
 // almost nothing here is new machinery: the ELEMENT resolves through the
 // ordinary array path, so whatever `[..N]T` admits `[]T` admits and whatever
 // `[..N]T` refuses `[]T` refuses on the bounded array's own diagnostic. What
-// this file adds is the placements the construct is refused in and the
-// qualifications it does not take.
+// this file adds is the placements the construct is refused in and the two
+// qualifications it does not take, `?` and a specified default.
 package check
 
 import (
@@ -42,18 +42,11 @@ func (c *checker) checkListSpelling(f *ast.Field, inTable bool) bool {
 			f.Name)
 		return false
 	}
-	for i := range f.Attrs {
-		a := &f.Attrs[i]
-		switch a.Key {
-		case "was", "json":
-			// a list is renamed under `was` as any field is, and takes a
-			// `json` key as any field does: both are about the field, not the
-			// construct (docs/SPEC-TABLES.md §2.9, §5, §16.4)
-		default:
-			c.errf(a.Pos, "field %s: %s does not apply to an unbounded array — THE COUNT IS THE DATA'S, and a bound would buy only a CLAMP, which drops a tail; drop the qualification, or declare the array at a bound, [..N]T, which is the same bytes with a bound (docs/SPEC-TABLES.md §2.9, §11)",
-				f.Name, a.Key)
-			return false
-		}
-	}
+	// THE BAR ATTRIBUTES QUALIFY THE ELEMENT, exactly as they do on a `[..N]T`
+	// (docs/SPEC-TABLES.md §2.9, §11): `min` and `max` bound each element, `was`
+	// renames the field and `json` keys its text. What the construct has no
+	// spelling for is a COUNT bound, and there is no attribute that names one,
+	// so nothing is refused here and the element path judges each attribute
+	// on the bounded array's own terms.
 	return true
 }

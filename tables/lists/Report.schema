@@ -1,0 +1,25 @@
+package listdemo
+
+// THE REPORT ROWS' ROOTS (docs/SPEC-TABLES.md §2.9, §4): a []uint8 that
+// carries 100,000 elements, past 2^16 and so past any bound a schema on the
+// page declares, so a reader that CLAMPS the count goes red; and two roots
+// that differ only in the ELEMENT's kind, read one against the other, with a
+// field AFTER the list so the parent can be seen to read on.
+
+table Bytes
+{
+    data  []uint8
+    after int32
+}
+
+table Ints
+{
+    values []int32
+    after  int32
+}
+
+table Floats
+{
+    values []float32
+    after  int32
+}

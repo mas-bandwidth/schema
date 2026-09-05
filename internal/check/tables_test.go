@@ -349,8 +349,6 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable E { a uint32 }\ntable Tab { xs ?[]E }\n"},
 		{name: "a default on a []T is refused by name", want: "a []T takes no specified default",
 			src: "package t\ntable Tab { xs []int32 = 0 }\n"},
-		{name: "a qualification on a []T is refused by name", want: "does not apply to an unbounded array",
-			src: "package t\ntable Tab { xs []int32 | max = 4 }\n"},
 		// the bounded spellings of the construct itself, and the element set's
 		// own four refusals, each on the bounded array's own diagnostic
 		{name: "[][]T is an array of arrays", want: "an array of arrays is not supported in v1",
@@ -1305,5 +1303,21 @@ func TestTheIdRefusalsUnderAPlantedCollision(t *testing.T) {
 				t.Fatalf("%s: the refusal fired with nothing planted — the row proves the source, not the check", tc.name)
 			}
 		}
+	}
+}
+
+// TestListQualificationBoundsTheElement: a bar attribute on a `[]T` qualifies
+// the ELEMENT, exactly as it does on a `[..N]T` (docs/SPEC-TABLES.md §2.9,
+// §11). The construct has no spelling for a count bound, and `max` is not
+// one: it is the element's range, and the checker judges it on the bounded
+// array's own terms.
+func TestListQualificationBoundsTheElement(t *testing.T) {
+	u := buildUnit(t, "package t\ntable Tab { xs []int32 | min = 0, max = 4 }\n")
+	f := u.Tables["Tab"].Fields[0]
+	if !f.IsList() {
+		t.Fatalf("xs is not an unbounded array: %+v", f.Array)
+	}
+	if !f.HasIntRange || f.IntMin.Int64() != 0 || f.IntMax.Int64() != 4 {
+		t.Fatalf("the qualification did not bound the element: has=%v min=%v max=%v", f.HasIntRange, f.IntMin, f.IntMax)
 	}
 }

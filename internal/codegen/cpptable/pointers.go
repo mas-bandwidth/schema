@@ -163,6 +163,11 @@ type edgeVisitor struct {
 	// and because a map's entries are not a path under the write subject: the
 	// pack's twin is the array it already placed in the node's extent.
 	mapField func(f *ir.Field)
+	// listField is one `[]T` whose elements the walk descends, in INDEX order
+	// (docs/SPEC-TABLES.md §2.9). It takes the visitor itself, because a list's
+	// element is the pointer slot or the nested table the visitor already
+	// knows how to reach. The list adds only the cursor around them.
+	listField func(f *ir.Field, v edgeVisitor)
 }
 
 // at spells one storage PATH — ".field", ".field[i]", ".body.chunk" — under
@@ -190,9 +195,25 @@ const (
 	// A map whose entry reaches nothing is not an edge — its extent is the
 	// extent walk's, not this one's.
 	edgeMap
+	// edgeList is a `[]T` whose ELEMENTS reach a node: a `[]*T`, whose elements
+	// ARE the pointer slots, or a `[]T` over a variable table with pointers
+	// inside it. The walk descends the elements in INDEX ORDER, the order the
+	// wire carries and the order a region holds (docs/SPEC-TABLES.md §2.9). A
+	// list whose elements reach nothing is not an edge: its extent is the
+	// extent walk's, not this one's.
+	edgeList
 )
 
 func (g *tableGen) edgeOf(f *ir.Field) edgeKind {
+	if f.IsList() {
+		if listElementIsPointer(f) {
+			return edgeList
+		}
+		if ref := listElementStruct(f); ref != nil && g.isVar(ref.Name) {
+			return edgeList
+		}
+		return edgeNone
+	}
 	if f.IsMap() {
 		if g.noVariableEdges(f.MapEntry) {
 			return edgeNone
@@ -304,6 +325,8 @@ func (g *tableGen) emitEdgeOf(f *ir.Field, v edgeVisitor) {
 		g.emitVariableUnionWalk(f, v)
 	case edgeMap:
 		v.mapField(f)
+	case edgeList:
+		v.listField(f, v)
 	}
 }
 
@@ -456,8 +479,9 @@ func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 	if !g.anyVariable {
 		return
 	}
-	g.emitMapWalkSurface(members)
+	g.emitExtentWalkSurface(members)
 	g.emitMapBuilderSurfaces(members)
+	g.emitListBuilderSurfaces(members)
 	for _, st := range g.varMembers(members) {
 		g.owner = st
 		g.emitNumber(st)
@@ -551,7 +575,8 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 		descend: func(table string, expr edgeExpr, indent string) {
 			g.pf("%sif ( !%sNumber( ctx, numbering, %s ) ) { return false; }\n", indent, table, expr.Src)
 		},
-		mapField: g.mapNumberEdge,
+		mapField:  g.mapNumberEdge,
+		listField: func(f *ir.Field, v edgeVisitor) { g.emitListEdge(f, v, "return false;") },
 	})
 	g.pf("    return true;\n}\n\n")
 }
@@ -614,7 +639,8 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 			g.pf("%sif ( inner < 0 ) { return -1; }\n", indent)
 			g.pf("%sbytes += inner;\n", indent)
 		},
-		mapField: g.mapPackMeasureEdge,
+		mapField:  g.mapPackMeasureEdge,
+		listField: func(f *ir.Field, v edgeVisitor) { g.emitListEdge(f, v, "return -1;") },
 	})
 	g.pf("    return bytes;\n}\n\n")
 }
@@ -632,7 +658,7 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 	g.pf("// required sign (§6.3), and sharing and a back-reference are one fact. A\n")
 	g.pf("// reference to a node whose descent is still OPEN is a cycle, and this\n")
 	g.pf("// refuses it rather than packing one.\n")
-	if g.anyMap {
+	if g.anyExtent {
 		// THE NODE'S EXTENT IS CARVED BEFORE ANY POINTEE IS PLACED
 		// (docs/SPEC-TABLES.md §2.8, §6.3): a node's extent runs to the next
 		// directory entry, so a pointee laid between two of its map arrays
@@ -645,7 +671,7 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 		g.pf("    int64_t at = 0;\n")
 		g.pf("    uint8_t * extent = (uint8_t *) &dst + TableAlignUp64( (int64_t) sizeof( %s ) );\n", st.Name)
 		g.pf("    const int64_t room = capacity - ( (int64_t) ( extent - base ) );\n")
-		g.pf("    if ( !%sMapPack( ctx, src, dst, extent, at, room ) ) { return false; }\n", st.Name)
+		g.pf("    if ( !%sExtentPack( ctx, src, dst, extent, at, room ) ) { return false; }\n", st.Name)
 		g.pf("    return %sPackEdges( ctx, seen, src, dst, base, capacity, used );\n}\n\n", st.Name)
 		g.pf("template <typename Ctx>\ninline bool %sPackEdges( const Ctx & ctx, TablePackMap & seen, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used )\n{\n", st.Name, st.Name, st.Name)
 		if g.noVariableEdges(st) {
@@ -697,12 +723,13 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 		blob: g.emitPackBlobField,
 		descend: func(table string, expr edgeExpr, indent string) {
 			call := "Pack"
-			if g.anyMap {
+			if g.anyExtent {
 				call = "PackEdges" // the extent walk already reached this nesting
 			}
 			g.pf("%sif ( !%s%s( ctx, seen, %s, %s, base, capacity, used ) ) { return false; }\n", indent, table, call, expr.Src, expr.Dst)
 		},
-		mapField: g.mapPackEdge,
+		mapField:  g.mapPackEdge,
+		listField: func(f *ir.Field, v edgeVisitor) { g.emitListEdge(f, v, "return false;") },
 	})
 	g.pf("    return true;\n}\n\n")
 }
@@ -811,8 +838,8 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("        below = %sPackMeasure( ctx, seen, root );\n", n)
 	g.pf("    }\n")
 	g.pf("    if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, named at the reference that closes it\n")
-	if g.anyMap {
-		g.pf("    int64_t root_extent = %sMapExtent( ctx, root );\n", n)
+	if g.anyExtent {
+		g.pf("    int64_t root_extent = %sExtent( ctx, root );\n", n)
 		g.pf("    if ( root_extent < 0 ) { TablePackMapShutdown( seen ); return false; } // the sort could not run\n")
 		g.pf("    int64_t total = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + root_extent ) + below;\n", n)
 	} else {
@@ -823,7 +850,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    // allocator's contract: a packed region carries node padding.\n")
 	g.pf("    uint8_t * packed = (uint8_t *) arena.allocator.alloc( arena.allocator.context, total );\n")
 	g.pf("    if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }\n")
-	if g.anyMap {
+	if g.anyExtent {
 		g.pf("    int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + root_extent );\n", n)
 	} else {
 		g.pf("    int64_t used = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
@@ -1007,8 +1034,8 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    nodes.entries = directory;\n")
 	g.pf("    nodes.count = records + 1;\n")
 	g.pf("    nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here\n")
-	if g.anyMap {
-		g.pf("    nodes.worker = &builder.main; // and a map's entries are the arena's, not a node extent's (§2.8)\n")
+	if g.anyExtent {
+		g.pf("    nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)\n")
 	}
 	g.pf("    {\n")
 	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );\n")
@@ -1040,12 +1067,18 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("        }\n    }\n")
 	g.pf("    TableReader r( wire, wire_bytes, out, &ids_table );\n")
 	g.pf("    r.nested = false; // the ROOT body, the one that carries the node table\n")
-	if g.anyMap {
-		g.pf("    TableMapCarve root_carve;\n")
+	if g.anyExtent {
+		g.pf("    TableExtentCarve root_carve;\n")
 		g.pf("    root_carve.worker = &builder.main;\n")
 		g.pf("    nodes.carve = &root_carve;\n")
 	}
 	g.pf("    bool ok = %sLoadBody( r, nodes, *root );\n", n)
+	if g.anyExtent {
+		g.pf("    // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md\n")
+		g.pf("    // §2.9): the partial builder is the caller's to discard, and the report\n")
+		g.pf("    // holds what it held when the count was met\n")
+		g.pf("    ok = ok && !nodes.refused;\n")
+	}
 	g.pf("    allocator.free( allocator.context, directory );\n")
 	g.pf("    return ok;\n}\n\n")
 }
@@ -1066,7 +1099,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	g.pf("// this build cannot name — which keeps its index and reads null. A BYTE\n")
 	g.pf("// BUFFER's record commands its header and its bytes (docs/SPEC-TABLES.md §2.5),\n")
 	g.pf("// which is the one answer the record's LENGTH decides.\n")
-	if g.anyMap {
+	if g.anyExtent {
 		g.pf("// A MAP'S ENTRIES RIDE IN THEIR HOLDER'S EXTENT (docs/SPEC-TABLES.md §2.8),\n")
 		g.pf("// so a record's storage is its type's PLUS N x sizeof( Entry ) at every\n")
 		g.pf("// depth, summed from the FRAMING: N is framing and not a value, and this\n")
@@ -1074,23 +1107,23 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	}
 	anyExtent := false
 	for _, t := range reachable {
-		if g.anyMap && g.hasMapExtent(t) {
+		if g.anyExtent && g.hasExtent(t) {
 			anyExtent = true
 		}
 	}
 	// THE BODY IS ONLY A PARAMETER WHERE A MAP RIDES IN AN EXTENT: a root that
 	// can name no such record answers from the type id and the length, exactly
 	// as it did before the construct existed.
-	g.pf("inline int64_t %sNodeStorage( uint64_t type_id, %sint64_t length )\n{\n", n, g.nodeStorageBody(anyExtent))
+	g.pf("inline int64_t %sNodeStorage( uint64_t type_id, %sint64_t length%s )\n{\n", n, g.nodeStorageBody(anyExtent), g.nodeStorageTail(anyExtent))
 	if len(blobs) == 0 {
 		g.pf("    (void) length; // no byte buffer below this root: every node's storage is its type's\n")
 	}
 	g.pf("    switch ( type_id )\n    {\n")
 	for _, t := range reachable {
-		if g.anyMap && g.hasMapExtent(t) {
+		if g.anyExtent && g.hasExtent(t) {
 			g.pf("        case 0x%016xull: // %s\n        {\n", ir.TableWireId(t.Name), t.Name)
 			g.pf("            int64_t extent = 0;\n")
-			g.pf("            if ( !%sWireExtent( body, length, extent ) ) { return kTableNodeRefused; }\n", t.Name)
+			g.pf("            if ( !%sWireExtent( body, length, extent, ids, reason ) ) { return kTableNodeRefused; }\n", t.Name)
 			g.pf("            return TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + extent );\n        }\n", t.Name)
 			continue
 		}
@@ -1124,7 +1157,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	}
 	g.pf("        default: break;\n    }\n}\n\n")
 
-	if g.anyMap {
+	if g.anyExtent {
 		g.pf("// %sNodeRecordBytes: one record's OWN storage, before the extent its maps\n", n)
 		g.pf("// take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.\n")
 		g.pf("inline int64_t %sNodeRecordBytes( uint64_t type_id )\n{\n", n)
@@ -1163,14 +1196,18 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	g.pf("// %sNodeBody: PASS TWO's half — decode one record's body into the storage it\n", n)
 	g.pf("// already owns.\n")
 	g.pf("inline void %sNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )\n{\n", n)
-	if g.anyMap {
-		g.pf("    // the node's own EXTENT, where its maps' entry arrays are carved from,\n")
-		g.pf("    // PRE-ORDER as the bodies decode (docs/SPEC-TABLES.md §2.8). The tool's\n")
-		g.pf("    // path carries a worker instead: there the entries are the arena's.\n")
-		g.pf("    TableMapCarve carve;\n")
+	if g.anyExtent {
+		g.pf("    // the node's own EXTENT, where its lists' and maps' arrays are carved\n")
+		g.pf("    // from, PRE-ORDER as the bodies decode (docs/SPEC-TABLES.md §2.8, §2.9).\n")
+		g.pf("    // The tool's path carries a worker instead: there the arrays are the\n")
+		g.pf("    // arena's.\n")
+		g.pf("    TableExtentCarve carve;\n")
 		g.pf("    carve.worker = nodes.worker;\n")
 		g.pf("    if ( carve.worker == NULL )\n    {\n")
-		g.pf("        const int64_t storage = %sNodeStorage( type_id, %sr.size );\n", n, g.nodeStorageReader(st))
+		if g.rootHasExtent(st) {
+			g.pf("        TableRefuseReason reason = count_over_length; // pass one already refused what this could refuse\n")
+		}
+		g.pf("        const int64_t storage = %sNodeStorage( type_id, %sr.size%s );\n", n, g.nodeStorageReader(st), g.nodeStorageReaderTail(st))
 		g.pf("        const int64_t record = storage > 0 ? %sNodeRecordBytes( type_id ) : 0;\n", n)
 		g.pf("        carve.at = at + record;\n")
 		g.pf("        carve.left = storage > record ? storage - record : 0;\n")
@@ -1199,7 +1236,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 		g.pf("        case %s: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *%s\n", b.constant, b.word)
 	}
 	g.pf("        default: break;\n    }\n")
-	if g.anyMap {
+	if g.anyExtent {
 		g.pf("    nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done\n")
 	}
 	g.pf("}\n\n")
@@ -1452,14 +1489,14 @@ func (g *tableGen) emitVariableLoadMeasure(st *ir.Struct, message bool) {
 		// the connection's rather than the wire's, so there is no trailer to
 		// locate and no stray-byte rule between a terminator and a first
 		// entry — the message's last byte IS the body's terminator.
-		g.pf("inline int64_t %sLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * message, int64_t message_bytes, int64_t * attribution_bytes = NULL )\n{\n", n)
+		g.pf("inline int64_t %sLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * message, int64_t message_bytes, int64_t * attribution_bytes = NULL%s )\n{\n", n, g.loadMeasureReasonParam())
 		g.pf("    TableReport ignored;\n")
 		g.pf("    if ( message_bytes < 1 || message[0] != kTableWireMessageForm || !vocabulary.announced ) { return -1; }\n")
 		g.pf("    const TableIdTable & ids_table = vocabulary.table;\n")
 		g.pf("    const uint8_t * const wire = message + 1;\n")
 		g.pf("    const int64_t wire_bytes = message_bytes - 1;\n")
 	} else {
-		g.pf("inline int64_t %sLoadMeasure( const uint8_t * wire_file, int64_t wire_file_bytes, int64_t * attribution_bytes = NULL )\n{\n", n)
+		g.pf("inline int64_t %sLoadMeasure( const uint8_t * wire_file, int64_t wire_file_bytes, int64_t * attribution_bytes = NULL%s )\n{\n", n, g.loadMeasureReasonParam())
 		g.pf("    TableReport ignored;\n")
 		g.pf("    TableIdTable ids_table;\n")
 		g.pf("    int64_t body_bytes = 0;\n")
@@ -1472,16 +1509,23 @@ func (g *tableGen) emitVariableLoadMeasure(st *ir.Struct, message bool) {
 		g.pf("    const int64_t wire_bytes = body_bytes;\n")
 	}
 	g.pf("    TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );\n")
-	g.emitRootDataBytes(st, "    ", "return -1;")
+	refuse := "return -1;"
+	if g.anyExtent {
+		// A -1 CARRIES A REASON (docs/SPEC-TABLES.md §6.5), as an enum
+		// out-parameter, and a refusal moves no counter
+		g.pf("    TableRefuseReason reason = count_over_length;\n")
+		refuse = "if ( reason_out != NULL ) { *reason_out = reason; } return -1;"
+	}
+	g.emitRootDataBytes(st, "    ", refuse)
 	g.pf("    int64_t records = 0;\n")
 	g.pf("    uint64_t type_id = 0;\n")
 	g.pf("    const uint8_t * body = NULL;\n")
 	g.pf("    int64_t length = 0;\n")
 	g.pf("    while ( TableNodeScanNext( scan, type_id, body, length ) )\n    {\n")
 	g.pf("        records++;\n")
-	g.pf("        int64_t storage = %sNodeStorage( type_id, %slength );\n", n, g.nodeStorageArg(st))
-	if g.anyMap {
-		g.pf("        if ( storage == kTableNodeRefused ) { return -1; } // an N the record's framing cannot carry (§2.8)\n")
+	g.pf("        int64_t storage = %sNodeStorage( type_id, %slength%s );\n", n, g.nodeStorageArg(st), g.nodeStorageArgTail(st))
+	if g.anyExtent {
+		g.pf("        if ( storage == kTableNodeRefused ) { %s } // an N the record's framing cannot carry (§2.8, §2.9)\n", refuse)
 	}
 	g.pf("        if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none\n")
 	g.pf("    }\n")
@@ -1544,6 +1588,9 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct, message bool) {
 	g.pf("    const uint8_t * body = NULL;\n")
 	g.pf("    int64_t length = 0;\n\n")
 	g.pf("    // the record count and the data bytes, from the FRAMING alone\n")
+	if g.anyExtent {
+		g.pf("    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed\n")
+	}
 	g.emitRootDataBytes(st, "    ", "out->malformed = true; return NULL;")
 	g.pf("    int64_t records = 0;\n")
 	g.pf("    {\n")
@@ -1551,8 +1598,8 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct, message bool) {
 	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );\n")
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
 	g.pf("            records++;\n")
-	g.pf("            int64_t storage = %sNodeStorage( type_id, %slength );\n", n, g.nodeStorageArg(st))
-	if g.anyMap {
+	g.pf("            int64_t storage = %sNodeStorage( type_id, %slength%s );\n", n, g.nodeStorageArg(st), g.nodeStorageArgTail(st))
+	if g.anyExtent {
 		g.pf("            if ( storage == kTableNodeRefused ) { out->malformed = true; return NULL; }\n")
 	}
 	g.pf("            if ( storage > 0 ) { data += storage; }\n")
@@ -1572,7 +1619,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct, message bool) {
 	g.pf("    // resolves whichever way it points. It reads no body.\n")
 	g.pf("    {\n")
 	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );\n")
-	if g.anyMap {
+	if g.anyExtent {
 		g.pf("        int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + root_extent );\n", n)
 	} else {
 		g.pf("        int64_t used = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
@@ -1580,8 +1627,9 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct, message bool) {
 	g.pf("        int64_t k = 0;\n")
 	g.pf("        int32_t unknown_records = 0; // counted once the scan is known whole\n")
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
-	g.pf("            int64_t storage = %sNodeStorage( type_id, %slength );\n", n, g.nodeStorageArg(st))
+	g.pf("            int64_t storage = %sNodeStorage( type_id, %slength%s );\n", n, g.nodeStorageArg(st), g.nodeStorageArgTail(st))
 	g.pf("            if ( storage <= 0 )\n            {\n")
+
 	g.pf("                // a record whose type id this build cannot name KEEPS ITS\n")
 	g.pf("                // INDEX, is counted once here and not once per pointer, and\n")
 	g.pf("                // every reference to it reads null (§3.1)\n")
@@ -1618,12 +1666,22 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct, message bool) {
 	g.pf("    // against a numbering already known good or already known bad\n")
 	g.pf("    TableReader r( wire, wire_bytes, out, &ids_table );\n")
 	g.pf("    r.nested = false; // the ROOT body, the one that carries the node table\n")
-	if g.anyMap {
-		g.pf("    TableMapCarve root_carve;\n")
+	if g.anyExtent {
+		g.pf("    TableExtentCarve root_carve;\n")
 		g.pf("    root_carve.at = region + TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
 		g.pf("    root_carve.left = root_extent;\n")
 		g.pf("    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's\n")
 	}
 	g.pf("    %sLoadBody( r, nodes, *root );\n", n)
 	g.pf("    return root;\n}\n\n")
+}
+
+// loadMeasureReasonParam is the out-parameter a LoadMeasure takes where a unit
+// has an extent (docs/SPEC-TABLES.md §6.5): the reason a -1 carries. A unit
+// with neither a list nor a map keeps the signature it always had.
+func (g *tableGen) loadMeasureReasonParam() string {
+	if g.anyExtent {
+		return ", TableRefuseReason * reason_out = NULL"
+	}
+	return ""
 }

@@ -1,0 +1,44 @@
+package listdemo
+
+// WHERE ELSE A LIST RIDES IN A HOLDER'S EXTENT (docs/SPEC-TABLES.md §2.9): a
+// list of tables that hold lists, a list whose element holds a map, and a
+// pointed-at node that holds a list of its own, so the node's storage is its
+// record plus the extent its list commands. Lists and maps are ONE population
+// in the extent, in declaration order, pre-order.
+
+table Sample { v int32 }
+
+table Row
+{
+    items []Sample
+    label int32
+}
+
+table Sheet
+{
+    rows   []Row // a list of tables that hold lists: LoadMeasure sums at every depth
+    pinned *Row  // a pointed-at holder: the node's extent is its list's
+}
+
+table Item { count int32 }
+
+table Squad
+{
+    roster map[uint8]Item
+    name   int32
+}
+
+table Army
+{
+    squads []Squad // an element that holds a MAP: the element array first, then each map
+    after  int32
+}
+
+// AN UNREACHED NON-EMPTY LIST SLOT IS REFUSED by Cook and by Lock (§7.6): a
+// counted array's slots past its live count are storage the walk does not
+// reach, so a list with elements in one names storage the region will not hold
+table Deck
+{
+    hands [..3]Row
+    after int32
+}

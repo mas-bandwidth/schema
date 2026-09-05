@@ -109,6 +109,18 @@ struct TableReport
     TableMessageReason reason = newer_form;
 };
 
+
+// WHY A MEASURE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5): a -1 from
+// LoadMeasure carries one of these as an out-parameter. A REFUSAL moves no
+// counter: nothing was decoded, so there is nothing to report, and the reason
+// is where the answer lives. The two values here are the ones a map's and an
+// unbounded array's framing can raise. The rest of §6.5's vocabulary, the
+// accelerators' refusals, is owed with them (schema#523).
+enum TableRefuseReason
+{
+    count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
+    count_over_extent_cap  // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
+};
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
@@ -224,18 +236,13 @@ struct TableFieldInfo
     // a function pointer at compile time; the arms themselves are a static
     // inside it). NULL for every other kind.
     const TableUnionInfo * (*arms)();
-    // a MAP (docs/SPEC-TABLES.md §2.8): the generated ENTRY's descriptor —
-    // fields[0] is the key and fields[1] the value — and the three the ONE
-    // text walk cannot spell for itself, because TableMap<Entry> is a type
-    // it has no name for. NULL on every field that is not a map.
-    const TableTypeInfo * entry;
-    int32_t ( * map_count )( const void * slot );
-    const void * ( * map_at )( const void * slot, int32_t index );
-    // place one entry BY KEY and hand back the entry, at its defaults: a
-    // string key comes in as the bytes and the length, an integer key as
-    // the value, and NULL is NOT INSERTED — a key past the bound, or an
-    // arena that could not carve another segment.
-    void * ( * map_insert )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );
+    // an OUT-OF-LINE array (docs/SPEC-TABLES.md §8.1): place one element and
+    // hand it back at its defaults. A MAP places BY KEY, a string key comes
+    // in as the bytes and the length, an integer key as the value, and NULL
+    // is NOT INSERTED: a key past the bound, or an arena that could not carve
+    // another segment. A LIST ignores the key and APPENDS, NULL at the arena
+    // or the int32 cap. NULL on every field that is neither.
+    void * ( * place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
 };
 
@@ -1291,8 +1298,8 @@ struct TableWorker
         return blob;
     }
 
-    // RAW, ZEROED storage of the bytes asked for, at the alignment asked for — a MAP's builder head and its
-    // entry segments (docs/SPEC-TABLES.md §2.8). It is not a node: it carries
+    // RAW, ZEROED storage of the bytes asked for, at the alignment asked for: a MAP's or a LIST's builder
+    // head and its segments (docs/SPEC-TABLES.md §2.8, §2.9). It is not a node: it carries
     // no type id, takes no index and has no Reset, so it goes through the same
     // slab and span the blob path uses rather than through Alloc.
     uint8_t * AllocRaw( int64_t bytes, int64_t align, uint32_t & at )
@@ -1576,12 +1583,6 @@ static const uint64_t kTableNodeIndexRoot = 1;         // the body that hosts th
 // resolving through it yields NULL and can never fabricate the root.
 static const uint64_t kTableNodeAbsent = 0xFFFFFFFFFFFFFFFFull;
 
-// What a node's storage answers when the FRAMING ITSELF is refused rather than
-// merely unnameable: a map whose N cannot fit in its L (docs/SPEC-TABLES.md
-// §2.8). An unnameable type id commands no storage and keeps its index; this
-// one makes the whole measure answer -1 (§7.6).
-static const int64_t kTableNodeRefused = -2;
-
 // ---- the numbering, on the SAVE side ----
 //
 // One entry per reachable node in FIRST-VISIT order, so entry k is node index
@@ -1779,9 +1780,9 @@ struct TableNodeDirEntry
     uint64_t type_id;
 };
 
-// a map's extent cursor, defined with the map runtime (docs/SPEC-TABLES.md
-// §2.8); the node map names it only through a pointer.
-struct TableMapCarve;
+// the node's extent cursor, defined with the extent runtime (docs/SPEC-TABLES.md
+// §2.8, §2.9); the node map names it only through a pointer.
+struct TableExtentCarve;
 
 // TableNodeMap is what a pointer slot resolves through while a body decodes.
 struct TableNodeMap
@@ -1794,17 +1795,21 @@ struct TableNodeMap
     // takes the SELF-RELATIVE delta so a deref is one add, and the tool's
     // builder path takes the node's ARENA OFFSET (§6.3).
     bool arena = false;
-    // WHERE A MAP'S ENTRIES LAND while this node's body decodes
-    // (docs/SPEC-TABLES.md §2.8): the node's own extent on the region path
-    // and the builder's arena on the tool's. It is MUTABLE because the
-    // cursor belongs to ONE node's decode and the dispatch that owns that
-    // node holds the map by const reference, exactly as it did before maps
-    // existed — the decoder's signature does not move for a construct it
-    // may not carry.
-    mutable TableMapCarve * carve = NULL;
-    // and the TOOL's path's allocation front, set once: there a map's
-    // entries are the builder's arena's rather than a node's extent.
+    // WHERE A MAP'S ENTRIES AND A LIST'S ELEMENTS LAND while this node's body
+    // decodes (docs/SPEC-TABLES.md §2.8, §2.9): the node's own extent on the
+    // region path and the builder's arena on the tool's. It is MUTABLE
+    // because the cursor belongs to ONE node's decode and the dispatch that
+    // owns that node holds the map by const reference, exactly as it did
+    // before either construct existed. The decoder's signature does not
+    // move for a construct it may not carry.
+    mutable TableExtentCarve * carve = NULL;
+    // and the TOOL's path's allocation front, set once: there the arrays
+    // are the builder's arena's rather than a node's extent.
     TableWorker * worker = NULL;
+    // THE TOOL PATH'S REFUSAL (docs/SPEC-TABLES.md §2.9): a count above the
+    // int32 cap met while a body decoded. LoadBuilder answers NULL for it
+    // and moves no counter; mutable for the reason the cursor is.
+    mutable bool refused = false;
 };
 
 // TableNodeResolve places one node index in a pointer slot, and every failure
@@ -1947,6 +1952,90 @@ inline bool TableNodeScanWhole( TableNodeScan & s )
 } // namespace mapdemo
 
 #endif // MAPDEMO_SCHEMA_TABLE_ARENA
+
+#ifndef MAPDEMO_SCHEMA_TABLE_EXTENT
+#define MAPDEMO_SCHEMA_TABLE_EXTENT
+
+namespace mapdemo {
+
+// ---- the NODE EXTENT: where a map's entries and a list's elements live (§2.8, §2.9) ----
+
+// What a node's storage answers when the FRAMING ITSELF is refused rather than
+// merely unnameable: a count its L cannot carry, or one above the int32 cap
+// (docs/SPEC-TABLES.md §6.5). An unnameable type id commands no storage and
+// keeps its index. This one makes the whole measure answer -1 with its reason.
+static const int64_t kTableNodeRefused = -2;
+
+// TableExtentCarve is a node's extent cursor, PRE-ORDER: a container's whole
+// array first, then, element by element in the container's own order, the
+// arrays of any list or map an element holds by value. The cursor is the node
+// map's, because the generated decoder is threaded with that and not with a
+// region.
+struct TableExtentCarve
+{
+    uint8_t * at = NULL;         // the region path: the node's extent, unspent
+    int64_t left = 0;
+    TableWorker * worker = NULL; // the TOOL's path: the arrays come from the arena
+};
+
+// AN UNREACHED SLOT MUST HOLD NO LIST OR MAP WITH ELEMENTS IN IT (§2.8, §2.9,
+// §7.6). An empty one takes no bytes, so a record whose extent measures ZERO is
+// a record whose every by-value list and map is empty. A measure that REFUSED
+// answers non-zero here too, and refusing on it is the same answer one level up.
+inline bool TableExtentUnreachedEmpty( int64_t extent ) { return extent == 0; }
+
+// ---- LoadMeasure's framing walk (§6.5) ----
+//
+// The measure reads no field value: it walks each record's field headers,
+// skipping every payload by its framing, to reach each N at every depth. A
+// false is a REFUSAL, and it carries its reason (§6.5).
+typedef bool ( * TableWireExtentFn )( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason );
+
+// the framing walk over an ARRAY OF TABLES held by value: its elements' own
+// lists and maps are part of this node's extent too
+inline bool TableWireExtentElements( const uint8_t * body, int64_t length, int64_t & at, TableWireExtentFn inner, const TableIdTable * ids, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, ids );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 13 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        uint64_t elem = 0;
+        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
+        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
+        r.offset += (int64_t) elem;
+    }
+    return true;
+}
+
+// and over an ENUM-KEYED array, whose triples carry a key REFERENCE before each
+// length-prefixed element (docs/SPEC-TABLES.md §3.2)
+inline bool TableWireExtentKeyed( const uint8_t * body, int64_t length, int64_t & at, TableWireExtentFn inner, const TableIdTable * ids, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, ids );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 13 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        uint64_t key = 0;
+        if ( !r.getleb( key ) ) { return true; }
+        uint64_t elem = 0;
+        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
+        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
+        r.offset += (int64_t) elem;
+    }
+    return true;
+}
+
+} // namespace mapdemo
+
+#endif // MAPDEMO_SCHEMA_TABLE_EXTENT
 
 #ifndef MAPDEMO_SCHEMA_TABLE_MAP
 #define MAPDEMO_SCHEMA_TABLE_MAP
@@ -2378,12 +2467,6 @@ inline TableMapEach<Entry> TableMapEachOf( const TableArena & arena, const Table
     return each;
 }
 
-// AN UNREACHED SLOT MUST HOLD NO MAP WITH ENTRIES IN IT (§2.8, §7.6). An empty
-// map takes no bytes, so a record whose extent measures ZERO is a record whose
-// every by-value map is empty; a measure that REFUSED answers non-zero here
-// too, and refusing on it is the same answer one level up.
-inline bool TableMapUnreachedEmpty( int64_t extent ) { return extent == 0; }
-
 // ---- the LOAD side: where a decoded entry lands (§2.8) ----
 //
 // THE READER TRUSTS NOTHING and spends one compare per entry. Every load path
@@ -2393,16 +2476,9 @@ inline bool TableMapUnreachedEmpty( int64_t extent ) { return extent == 0; }
 // out of the holder node's own extent, and the TOOL's path appends into the
 // builder's arena, and the decoder above them cannot tell which it has.
 
-// TableMapCarve is a node's extent cursor, PRE-ORDER: a map's whole entry
-// array first, then, entry by entry in key order, the arrays of any map an
-// entry's value holds by value. The cursor is the node map's, because the
-// generated decoder is threaded with that and not with a region.
-struct TableMapCarve
-{
-    uint8_t * at = NULL;         // the region path: the node's extent, unspent
-    int64_t left = 0;
-    TableWorker * worker = NULL; // the TOOL's path: entries come from the arena
-};
+// The node's extent cursor is TableExtentCarve, the extent runtime's (§2.8,
+// §2.9): a map's whole entry array is carved first, then, entry by entry in
+// key order, the arrays of any list or map an entry's value holds by value.
 
 // TableMapFill is one map field being decoded: where the next entry lands, and
 // the entry that last LANDED, which is what the ascending check compares
@@ -2527,10 +2603,11 @@ inline Entry * TableMapLive( const TableArena & arena, const TableMap<Entry> & m
 // LoadMeasure's term for a map is N x sizeof( Entry ) rounded to
 // alignof( Entry ), AT EVERY DEPTH. N is framing and not a value, so this
 // reads no field: it walks the map's own header and, where an entry's value
-// holds a map of its own, the entries' headers under it. The caller owns the
-// allocation precisely so it can refuse a number it did not expect.
-typedef bool ( * TableMapWireExtentFn )( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids );
-
+// holds a map or a list of its own, the entries' headers under it. The caller
+// owns the allocation precisely so it can refuse a number it did not expect.
+// Every -1 carries its REASON (§6.5): the int32 cap first, because a count
+// past it cannot fit any body, and then the body's own L, the one rule a
+// list's term answers by.
 // A MAP ENTRY'S SMALLEST WIRE FOOTPRINT that commands one storage unit is its
 // own L and the body's terminator, and under this form's variable lengths that
 // footprint is TWO BYTES (docs/SPEC-TABLES.md §4.2). It is what bounds the N a
@@ -2538,8 +2615,8 @@ typedef bool ( * TableMapWireExtentFn )( const uint8_t * body, int64_t length, i
 static const int64_t kTableMapEntryFloor = 2;
 
 inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & at,
-                                int64_t entry_size, int64_t entry_align, TableMapWireExtentFn inner,
-                                const TableIdTable * ids )
+                                int64_t entry_size, int64_t entry_align, TableWireExtentFn inner,
+                                const TableIdTable * ids, TableRefuseReason & reason )
 {
     TableReport scratch;
     TableReader r( body, length, &scratch, ids );
@@ -2547,8 +2624,9 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
     if ( r.get8() != 13 ) { return true; } // not an array of tables: §4's ordinary kind mismatch
     uint64_t n = 0;
     if ( !r.getleb( n ) ) { return true; }
+    if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }
     const int64_t rest = length - r.offset;
-    if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { return false; } // an N the map's L cannot carry
+    if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { reason = count_over_length; return false; } // an N the map's L cannot carry
     at = ( at + entry_align - 1 ) & ~( entry_align - 1 );
     at += (int64_t) n * entry_size;
     if ( inner == NULL ) { return true; } // no map below an entry: one depth is the whole term
@@ -2556,49 +2634,7 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
     {
         uint64_t elem = 0;
         if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; } // framing damage: the load reports it
-        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids ) ) { return false; }
-        r.offset += (int64_t) elem;
-    }
-    return true;
-}
-
-// the same framing walk over an ARRAY OF TABLES that is not a map: its
-// elements' own maps are part of this node's extent too
-inline bool TableWireExtentElements( const uint8_t * body, int64_t length, int64_t & at, TableMapWireExtentFn inner, const TableIdTable * ids )
-{
-    TableReport scratch;
-    TableReader r( body, length, &scratch, ids );
-    if ( length < 2 ) { return true; }
-    if ( r.get8() != 13 ) { return true; }
-    uint64_t n = 0;
-    if ( !r.getleb( n ) ) { return true; }
-    for ( uint64_t i = 0; i < n; i++ )
-    {
-        uint64_t elem = 0;
-        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
-        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids ) ) { return false; }
-        r.offset += (int64_t) elem;
-    }
-    return true;
-}
-
-// and over an ENUM-KEYED array, whose triples carry a key REFERENCE before each
-// length-prefixed element (docs/SPEC-TABLES.md §3.2)
-inline bool TableWireExtentKeyed( const uint8_t * body, int64_t length, int64_t & at, TableMapWireExtentFn inner, const TableIdTable * ids )
-{
-    TableReport scratch;
-    TableReader r( body, length, &scratch, ids );
-    if ( length < 2 ) { return true; }
-    if ( r.get8() != 13 ) { return true; }
-    uint64_t n = 0;
-    if ( !r.getleb( n ) ) { return true; }
-    for ( uint64_t i = 0; i < n; i++ )
-    {
-        uint64_t key = 0;
-        if ( !r.getleb( key ) ) { return true; }
-        uint64_t elem = 0;
-        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
-        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids ) ) { return false; }
+        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
         r.offset += (int64_t) elem;
     }
     return true;
@@ -3057,7 +3093,7 @@ inline void FleetLoadoutsEntryReset( FleetLoadoutsEntry & value )
 {
     memset( value.key, 0, sizeof( value.key ) );
     value.key_length = 0;
-    value.value.entries.value = 0; // map[uint8]Item — empty
+    value.value.entries.value = 0; // map[uint8]Item: empty
     value.value.count = 0;
     value.value.padding = 0;
 }
@@ -3070,17 +3106,17 @@ inline void FleetTiersEntryReset( FleetTiersEntry & value )
 
 inline void FleetReset( Fleet & value )
 {
-    value.ships.entries.value = 0; // map[string(32)]ShipConfig — empty
+    value.ships.entries.value = 0; // map[string(32)]ShipConfig: empty
     value.ships.count = 0;
     value.ships.padding = 0;
-    value.by_id.entries.value = 0; // map[uint32]*ShipConfig — empty
+    value.by_id.entries.value = 0; // map[uint32]*ShipConfig: empty
     value.by_id.count = 0;
     value.by_id.padding = 0;
     value.flagship.value = 0; // *ShipConfig — null
-    value.loadouts.entries.value = 0; // map[string(16)]map[uint8]Item — empty
+    value.loadouts.entries.value = 0; // map[string(16)]map[uint8]Item: empty
     value.loadouts.count = 0;
     value.loadouts.padding = 0;
-    value.tiers.entries.value = 0; // map[int16]Item — empty
+    value.tiers.entries.value = 0; // map[int16]Item: empty
     value.tiers.count = 0;
     value.tiers.padding = 0;
 }
@@ -3436,7 +3472,7 @@ struct FleetLoadoutsEntryEach { const char * key; decltype( TableEntryValue( (Fl
 inline FleetLoadoutsEntryEach TableEntryEach( FleetLoadoutsEntry * entry ) { return FleetLoadoutsEntryEach{ TableEntryKey( *entry ), TableEntryValue( entry ) }; }
 inline void TableResetMapValue( FleetLoadoutsEntry & value )
 {
-    value.value.entries.value = 0; // map[uint8]Item — empty
+    value.value.entries.value = 0; // map[uint8]Item: empty
     value.value.count = 0;
     value.value.padding = 0;
 }
@@ -5249,66 +5285,66 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
     }
 }
 
-// ShipConfigWireExtent: the extent ShipConfig's maps command, from the FRAMING alone.
+// ShipConfigWireExtent: the extent ShipConfig's lists and maps command, from the FRAMING alone.
 // It reads no field value, so a caller can refuse a number it did not
 // expect before one byte is allocated (docs/SPEC-TABLES.md §6.5).
-inline bool ShipConfigWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids )
+inline bool ShipConfigWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason )
 {
-    (void) body; (void) length; (void) at; (void) ids; // no map below this record
+    (void) body; (void) length; (void) at; (void) ids; (void) reason; // no list or map below this record
     return true;
 }
 
-// ShipConfigMapExtentAt: the node extent ShipConfig's maps take, PRE-ORDER, advancing the
-// running offset exactly as ShipConfigMapPack advances it (docs/SPEC-TABLES.md §2.8).
+// ShipConfigExtentAt: the node extent ShipConfig's lists and maps take, PRE-ORDER, advancing
+// the running offset exactly as ShipConfigExtentPack advances it (§2.8, §2.9).
 template <typename Ctx>
-inline bool ShipConfigMapExtentAt( const Ctx & ctx, const ShipConfig & value, int64_t & at )
+inline bool ShipConfigExtentAt( const Ctx & ctx, const ShipConfig & value, int64_t & at )
 {
-    (void) ctx; (void) value; (void) at; // no map below this record
+    (void) ctx; (void) value; (void) at; // no list or map below this record
     return true;
 }
 
-// ShipConfigMapPack: carve ShipConfig's map arrays out of the node's extent and copy the
-// entries in ASCENDING key order, PRE-ORDER, advancing the same running
-// offset ShipConfigMapExtentAt advances (docs/SPEC-TABLES.md §2.8).
+// ShipConfigExtentPack: carve ShipConfig's arrays out of the node's extent and copy the
+// entries in ASCENDING key order and the elements in INDEX order, PRE-ORDER,
+// advancing the same running offset ShipConfigExtentAt advances (§2.8, §2.9).
 template <typename Ctx>
-inline bool ShipConfigMapPack( const Ctx & ctx, const ShipConfig & src, ShipConfig & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+inline bool ShipConfigExtentPack( const Ctx & ctx, const ShipConfig & src, ShipConfig & dst, uint8_t * extent, int64_t & at, int64_t capacity )
 {
-    (void) ctx; (void) src; (void) dst; (void) extent; (void) at; (void) capacity; // no map below this record
+    (void) ctx; (void) src; (void) dst; (void) extent; (void) at; (void) capacity; // no list or map below this record
     return true;
 }
 
-// FleetByIdEntryWireExtent: the extent FleetByIdEntry's maps command, from the FRAMING alone.
+// FleetByIdEntryWireExtent: the extent FleetByIdEntry's lists and maps command, from the FRAMING alone.
 // It reads no field value, so a caller can refuse a number it did not
 // expect before one byte is allocated (docs/SPEC-TABLES.md §6.5).
-inline bool FleetByIdEntryWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids )
+inline bool FleetByIdEntryWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason )
 {
-    (void) body; (void) length; (void) at; (void) ids; // no map below this record
+    (void) body; (void) length; (void) at; (void) ids; (void) reason; // no list or map below this record
     return true;
 }
 
-// FleetByIdEntryMapExtentAt: the node extent FleetByIdEntry's maps take, PRE-ORDER, advancing the
-// running offset exactly as FleetByIdEntryMapPack advances it (docs/SPEC-TABLES.md §2.8).
+// FleetByIdEntryExtentAt: the node extent FleetByIdEntry's lists and maps take, PRE-ORDER, advancing
+// the running offset exactly as FleetByIdEntryExtentPack advances it (§2.8, §2.9).
 template <typename Ctx>
-inline bool FleetByIdEntryMapExtentAt( const Ctx & ctx, const FleetByIdEntry & value, int64_t & at )
+inline bool FleetByIdEntryExtentAt( const Ctx & ctx, const FleetByIdEntry & value, int64_t & at )
 {
-    (void) ctx; (void) value; (void) at; // no map below this record
+    (void) ctx; (void) value; (void) at; // no list or map below this record
     return true;
 }
 
-// FleetByIdEntryMapPack: carve FleetByIdEntry's map arrays out of the node's extent and copy the
-// entries in ASCENDING key order, PRE-ORDER, advancing the same running
-// offset FleetByIdEntryMapExtentAt advances (docs/SPEC-TABLES.md §2.8).
+// FleetByIdEntryExtentPack: carve FleetByIdEntry's arrays out of the node's extent and copy the
+// entries in ASCENDING key order and the elements in INDEX order, PRE-ORDER,
+// advancing the same running offset FleetByIdEntryExtentAt advances (§2.8, §2.9).
 template <typename Ctx>
-inline bool FleetByIdEntryMapPack( const Ctx & ctx, const FleetByIdEntry & src, FleetByIdEntry & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+inline bool FleetByIdEntryExtentPack( const Ctx & ctx, const FleetByIdEntry & src, FleetByIdEntry & dst, uint8_t * extent, int64_t & at, int64_t capacity )
 {
-    (void) ctx; (void) src; (void) dst; (void) extent; (void) at; (void) capacity; // no map below this record
+    (void) ctx; (void) src; (void) dst; (void) extent; (void) at; (void) capacity; // no list or map below this record
     return true;
 }
 
-// FleetLoadoutsEntryWireExtent: the extent FleetLoadoutsEntry's maps command, from the FRAMING alone.
+// FleetLoadoutsEntryWireExtent: the extent FleetLoadoutsEntry's lists and maps command, from the FRAMING alone.
 // It reads no field value, so a caller can refuse a number it did not
 // expect before one byte is allocated (docs/SPEC-TABLES.md §6.5).
-inline bool FleetLoadoutsEntryWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids )
+inline bool FleetLoadoutsEntryWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason )
 {
     TableReport scratch; // the scan's framing damage is the LOAD's to report
     TableReader r( body, length, &scratch, ids );
@@ -5327,17 +5363,17 @@ inline bool FleetLoadoutsEntryWireExtent( const uint8_t * body, int64_t length, 
             if ( !r.getleb( map_len ) || !r.room( map_len ) ) { return true; }
             const uint8_t * map_body = r.buffer + r.offset;
             r.offset += (int64_t) map_len;
-            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( FleetLoadoutsEntryValueEntry ), (int64_t) alignof( FleetLoadoutsEntryValueEntry ), NULL, ids ) ) { return false; }
+            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( FleetLoadoutsEntryValueEntry ), (int64_t) alignof( FleetLoadoutsEntryValueEntry ), NULL, ids, reason ) ) { return false; }
             continue;
         }
         if ( !r.skip( field_kind ) ) { return true; }
     }
 }
 
-// FleetLoadoutsEntryMapExtentAt: the node extent FleetLoadoutsEntry's maps take, PRE-ORDER, advancing the
-// running offset exactly as FleetLoadoutsEntryMapPack advances it (docs/SPEC-TABLES.md §2.8).
+// FleetLoadoutsEntryExtentAt: the node extent FleetLoadoutsEntry's lists and maps take, PRE-ORDER, advancing
+// the running offset exactly as FleetLoadoutsEntryExtentPack advances it (§2.8, §2.9).
 template <typename Ctx>
-inline bool FleetLoadoutsEntryMapExtentAt( const Ctx & ctx, const FleetLoadoutsEntry & value, int64_t & at )
+inline bool FleetLoadoutsEntryExtentAt( const Ctx & ctx, const FleetLoadoutsEntry & value, int64_t & at )
 {
     {
         TableMapCursor<FleetLoadoutsEntryValueEntry> cursor = TableMapOrder( ctx, value.value );
@@ -5352,18 +5388,18 @@ inline bool FleetLoadoutsEntryMapExtentAt( const Ctx & ctx, const FleetLoadoutsE
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
 template <typename Ctx>
-inline int64_t FleetLoadoutsEntryMapExtent( const Ctx & ctx, const FleetLoadoutsEntry & value )
+inline int64_t FleetLoadoutsEntryExtent( const Ctx & ctx, const FleetLoadoutsEntry & value )
 {
     int64_t at = 0;
-    if ( !FleetLoadoutsEntryMapExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !FleetLoadoutsEntryExtentAt( ctx, value, at ) ) { return -1; }
     return at;
 }
 
-// FleetLoadoutsEntryMapPack: carve FleetLoadoutsEntry's map arrays out of the node's extent and copy the
-// entries in ASCENDING key order, PRE-ORDER, advancing the same running
-// offset FleetLoadoutsEntryMapExtentAt advances (docs/SPEC-TABLES.md §2.8).
+// FleetLoadoutsEntryExtentPack: carve FleetLoadoutsEntry's arrays out of the node's extent and copy the
+// entries in ASCENDING key order and the elements in INDEX order, PRE-ORDER,
+// advancing the same running offset FleetLoadoutsEntryExtentAt advances (§2.8, §2.9).
 template <typename Ctx>
-inline bool FleetLoadoutsEntryMapPack( const Ctx & ctx, const FleetLoadoutsEntry & src, FleetLoadoutsEntry & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+inline bool FleetLoadoutsEntryExtentPack( const Ctx & ctx, const FleetLoadoutsEntry & src, FleetLoadoutsEntry & dst, uint8_t * extent, int64_t & at, int64_t capacity )
 {
     {
         TableMapCursor<FleetLoadoutsEntryValueEntry> cursor = TableMapOrder( ctx, src.value );
@@ -5385,10 +5421,10 @@ inline bool FleetLoadoutsEntryMapPack( const Ctx & ctx, const FleetLoadoutsEntry
     return true;
 }
 
-// FleetWireExtent: the extent Fleet's maps command, from the FRAMING alone.
+// FleetWireExtent: the extent Fleet's lists and maps command, from the FRAMING alone.
 // It reads no field value, so a caller can refuse a number it did not
 // expect before one byte is allocated (docs/SPEC-TABLES.md §6.5).
-inline bool FleetWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids )
+inline bool FleetWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason )
 {
     TableReport scratch; // the scan's framing damage is the LOAD's to report
     TableReader r( body, length, &scratch, ids );
@@ -5407,7 +5443,7 @@ inline bool FleetWireExtent( const uint8_t * body, int64_t length, int64_t & at,
             if ( !r.getleb( map_len ) || !r.room( map_len ) ) { return true; }
             const uint8_t * map_body = r.buffer + r.offset;
             r.offset += (int64_t) map_len;
-            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( FleetShipsEntry ), (int64_t) alignof( FleetShipsEntry ), NULL, ids ) ) { return false; }
+            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( FleetShipsEntry ), (int64_t) alignof( FleetShipsEntry ), NULL, ids, reason ) ) { return false; }
             continue;
         }
         if ( field_id == 0x7b024c46e98d3404ull && field_kind == 14 ) // by_id
@@ -5416,7 +5452,7 @@ inline bool FleetWireExtent( const uint8_t * body, int64_t length, int64_t & at,
             if ( !r.getleb( map_len ) || !r.room( map_len ) ) { return true; }
             const uint8_t * map_body = r.buffer + r.offset;
             r.offset += (int64_t) map_len;
-            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( FleetByIdEntry ), (int64_t) alignof( FleetByIdEntry ), NULL, ids ) ) { return false; }
+            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( FleetByIdEntry ), (int64_t) alignof( FleetByIdEntry ), NULL, ids, reason ) ) { return false; }
             continue;
         }
         if ( field_id == 0x294fa1b3f0f5f070ull && field_kind == 14 ) // loadouts
@@ -5425,7 +5461,7 @@ inline bool FleetWireExtent( const uint8_t * body, int64_t length, int64_t & at,
             if ( !r.getleb( map_len ) || !r.room( map_len ) ) { return true; }
             const uint8_t * map_body = r.buffer + r.offset;
             r.offset += (int64_t) map_len;
-            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( FleetLoadoutsEntry ), (int64_t) alignof( FleetLoadoutsEntry ), &FleetLoadoutsEntryWireExtent, ids ) ) { return false; }
+            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( FleetLoadoutsEntry ), (int64_t) alignof( FleetLoadoutsEntry ), &FleetLoadoutsEntryWireExtent, ids, reason ) ) { return false; }
             continue;
         }
         if ( field_id == 0x6dd8dc6c5fdae3ceull && field_kind == 14 ) // tiers
@@ -5434,17 +5470,17 @@ inline bool FleetWireExtent( const uint8_t * body, int64_t length, int64_t & at,
             if ( !r.getleb( map_len ) || !r.room( map_len ) ) { return true; }
             const uint8_t * map_body = r.buffer + r.offset;
             r.offset += (int64_t) map_len;
-            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( FleetTiersEntry ), (int64_t) alignof( FleetTiersEntry ), NULL, ids ) ) { return false; }
+            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( FleetTiersEntry ), (int64_t) alignof( FleetTiersEntry ), NULL, ids, reason ) ) { return false; }
             continue;
         }
         if ( !r.skip( field_kind ) ) { return true; }
     }
 }
 
-// FleetMapExtentAt: the node extent Fleet's maps take, PRE-ORDER, advancing the
-// running offset exactly as FleetMapPack advances it (docs/SPEC-TABLES.md §2.8).
+// FleetExtentAt: the node extent Fleet's lists and maps take, PRE-ORDER, advancing
+// the running offset exactly as FleetExtentPack advances it (§2.8, §2.9).
 template <typename Ctx>
-inline bool FleetMapExtentAt( const Ctx & ctx, const Fleet & value, int64_t & at )
+inline bool FleetExtentAt( const Ctx & ctx, const Fleet & value, int64_t & at )
 {
     {
         TableMapCursor<FleetShipsEntry> cursor = TableMapOrder( ctx, value.ships );
@@ -5460,7 +5496,7 @@ inline bool FleetMapExtentAt( const Ctx & ctx, const Fleet & value, int64_t & at
         at += (int64_t) cursor.count * (int64_t) sizeof( FleetByIdEntry ); // the whole array FIRST
         for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order
         {
-            if ( !FleetByIdEntryMapExtentAt( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }
+            if ( !FleetByIdEntryExtentAt( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }
         }
         TableMapRelease( cursor );
     }
@@ -5471,7 +5507,7 @@ inline bool FleetMapExtentAt( const Ctx & ctx, const Fleet & value, int64_t & at
         at += (int64_t) cursor.count * (int64_t) sizeof( FleetLoadoutsEntry ); // the whole array FIRST
         for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order
         {
-            if ( !FleetLoadoutsEntryMapExtentAt( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }
+            if ( !FleetLoadoutsEntryExtentAt( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }
         }
         TableMapRelease( cursor );
     }
@@ -5488,18 +5524,18 @@ inline bool FleetMapExtentAt( const Ctx & ctx, const Fleet & value, int64_t & at
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
 template <typename Ctx>
-inline int64_t FleetMapExtent( const Ctx & ctx, const Fleet & value )
+inline int64_t FleetExtent( const Ctx & ctx, const Fleet & value )
 {
     int64_t at = 0;
-    if ( !FleetMapExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !FleetExtentAt( ctx, value, at ) ) { return -1; }
     return at;
 }
 
-// FleetMapPack: carve Fleet's map arrays out of the node's extent and copy the
-// entries in ASCENDING key order, PRE-ORDER, advancing the same running
-// offset FleetMapExtentAt advances (docs/SPEC-TABLES.md §2.8).
+// FleetExtentPack: carve Fleet's arrays out of the node's extent and copy the
+// entries in ASCENDING key order and the elements in INDEX order, PRE-ORDER,
+// advancing the same running offset FleetExtentAt advances (§2.8, §2.9).
 template <typename Ctx>
-inline bool FleetMapPack( const Ctx & ctx, const Fleet & src, Fleet & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+inline bool FleetExtentPack( const Ctx & ctx, const Fleet & src, Fleet & dst, uint8_t * extent, int64_t & at, int64_t capacity )
 {
     {
         TableMapCursor<FleetShipsEntry> cursor = TableMapOrder( ctx, src.ships );
@@ -5535,7 +5571,7 @@ inline bool FleetMapPack( const Ctx & ctx, const Fleet & src, Fleet & dst, uint8
         }
         for ( int32_t i = 0; i < cursor.count; i++ )
         {
-            if ( !FleetByIdEntryMapPack( ctx, *cursor[i], placed[i], extent, at, capacity ) ) { TableMapRelease( cursor ); return false; }
+            if ( !FleetByIdEntryExtentPack( ctx, *cursor[i], placed[i], extent, at, capacity ) ) { TableMapRelease( cursor ); return false; }
         }
         TableMapRelease( cursor );
     }
@@ -5556,7 +5592,7 @@ inline bool FleetMapPack( const Ctx & ctx, const Fleet & src, Fleet & dst, uint8
         }
         for ( int32_t i = 0; i < cursor.count; i++ )
         {
-            if ( !FleetLoadoutsEntryMapPack( ctx, *cursor[i], placed[i], extent, at, capacity ) ) { TableMapRelease( cursor ); return false; }
+            if ( !FleetLoadoutsEntryExtentPack( ctx, *cursor[i], placed[i], extent, at, capacity ) ) { TableMapRelease( cursor ); return false; }
         }
         TableMapRelease( cursor );
     }
@@ -6121,7 +6157,7 @@ inline bool ShipConfigPack( const Ctx & ctx, TablePackMap & seen, const ShipConf
     int64_t at = 0;
     uint8_t * extent = (uint8_t *) &dst + TableAlignUp64( (int64_t) sizeof( ShipConfig ) );
     const int64_t room = capacity - ( (int64_t) ( extent - base ) );
-    if ( !ShipConfigMapPack( ctx, src, dst, extent, at, room ) ) { return false; }
+    if ( !ShipConfigExtentPack( ctx, src, dst, extent, at, room ) ) { return false; }
     return ShipConfigPackEdges( ctx, seen, src, dst, base, capacity, used );
 }
 
@@ -6220,7 +6256,7 @@ inline bool FleetByIdEntryPack( const Ctx & ctx, TablePackMap & seen, const Flee
     int64_t at = 0;
     uint8_t * extent = (uint8_t *) &dst + TableAlignUp64( (int64_t) sizeof( FleetByIdEntry ) );
     const int64_t room = capacity - ( (int64_t) ( extent - base ) );
-    if ( !FleetByIdEntryMapPack( ctx, src, dst, extent, at, room ) ) { return false; }
+    if ( !FleetByIdEntryExtentPack( ctx, src, dst, extent, at, room ) ) { return false; }
     return FleetByIdEntryPackEdges( ctx, seen, src, dst, base, capacity, used );
 }
 
@@ -6298,7 +6334,7 @@ inline bool FleetLoadoutsEntryPack( const Ctx & ctx, TablePackMap & seen, const 
     int64_t at = 0;
     uint8_t * extent = (uint8_t *) &dst + TableAlignUp64( (int64_t) sizeof( FleetLoadoutsEntry ) );
     const int64_t room = capacity - ( (int64_t) ( extent - base ) );
-    if ( !FleetLoadoutsEntryMapPack( ctx, src, dst, extent, at, room ) ) { return false; }
+    if ( !FleetLoadoutsEntryExtentPack( ctx, src, dst, extent, at, room ) ) { return false; }
     return FleetLoadoutsEntryPackEdges( ctx, seen, src, dst, base, capacity, used );
 }
 
@@ -6417,7 +6453,7 @@ inline bool FleetPack( const Ctx & ctx, TablePackMap & seen, const Fleet & src, 
     int64_t at = 0;
     uint8_t * extent = (uint8_t *) &dst + TableAlignUp64( (int64_t) sizeof( Fleet ) );
     const int64_t room = capacity - ( (int64_t) ( extent - base ) );
-    if ( !FleetMapPack( ctx, src, dst, extent, at, room ) ) { return false; }
+    if ( !FleetExtentPack( ctx, src, dst, extent, at, room ) ) { return false; }
     return FleetPackEdges( ctx, seen, src, dst, base, capacity, used );
 }
 
@@ -6544,7 +6580,7 @@ inline bool FleetBuilder::Lock()
         below = FleetPackMeasure( ctx, seen, root );
     }
     if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, named at the reference that closes it
-    int64_t root_extent = FleetMapExtent( ctx, root );
+    int64_t root_extent = FleetExtent( ctx, root );
     if ( root_extent < 0 ) { TablePackMapShutdown( seen ); return false; } // the sort could not run
     int64_t total = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Fleet ) ) + root_extent ) + below;
     // the AUTHORING path may allocate (§6.5), and it does so through the
@@ -6644,10 +6680,11 @@ inline uint32_t FleetNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t 
 // already owns.
 inline void FleetNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
-    // the node's own EXTENT, where its maps' entry arrays are carved from,
-    // PRE-ORDER as the bodies decode (docs/SPEC-TABLES.md §2.8). The tool's
-    // path carries a worker instead: there the entries are the arena's.
-    TableMapCarve carve;
+    // the node's own EXTENT, where its lists' and maps' arrays are carved
+    // from, PRE-ORDER as the bodies decode (docs/SPEC-TABLES.md §2.8, §2.9).
+    // The tool's path carries a worker instead: there the arrays are the
+    // arena's.
+    TableExtentCarve carve;
     carve.worker = nodes.worker;
     if ( carve.worker == NULL )
     {
@@ -6797,7 +6834,7 @@ inline int64_t FleetSaveMessage( const FleetBuilder & builder, uint8_t * buffer,
 // It reports the DATA bytes and the ATTRIBUTION bytes separately, because the
 // attribution is the wire's numbering made resident (§6.3) and a caller may
 // release it once Load returns. The answer is their sum.
-inline int64_t FleetLoadMeasure( const uint8_t * wire_file, int64_t wire_file_bytes, int64_t * attribution_bytes = NULL )
+inline int64_t FleetLoadMeasure( const uint8_t * wire_file, int64_t wire_file_bytes, int64_t * attribution_bytes = NULL, TableRefuseReason * reason_out = NULL )
 {
     TableReport ignored;
     TableIdTable ids_table;
@@ -6810,8 +6847,9 @@ inline int64_t FleetLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
     TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );
+    TableRefuseReason reason = count_over_length;
     int64_t root_extent = 0;
-    if ( !FleetWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { return -1; }
+    if ( !FleetWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Fleet ) ) + root_extent );
     int64_t records = 0;
     uint64_t type_id = 0;
@@ -6821,7 +6859,7 @@ inline int64_t FleetLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
     {
         records++;
         int64_t storage = FleetNodeStorage( type_id, length );
-        if ( storage == kTableNodeRefused ) { return -1; } // an N the record's framing cannot carry (§2.8)
+        if ( storage == kTableNodeRefused ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; } // an N the record's framing cannot carry (§2.8, §2.9)
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -6865,8 +6903,9 @@ inline const Fleet * FleetLoad( uint8_t * region, int64_t region_bytes, const ui
     int64_t length = 0;
 
     // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
     int64_t root_extent = 0;
-    if ( !FleetWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { out->malformed = true; return NULL; }
+    if ( !FleetWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { out->malformed = true; return NULL; }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Fleet ) ) + root_extent );
     int64_t records = 0;
     {
@@ -6949,7 +6988,7 @@ inline const Fleet * FleetLoad( uint8_t * region, int64_t region_bytes, const ui
     // against a numbering already known good or already known bad
     TableReader r( wire, wire_bytes, out, &ids_table );
     r.nested = false; // the ROOT body, the one that carries the node table
-    TableMapCarve root_carve;
+    TableExtentCarve root_carve;
     root_carve.at = region + TableAlignUp64( (int64_t) sizeof( Fleet ) );
     root_carve.left = root_extent;
     nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
@@ -6965,7 +7004,7 @@ inline const Fleet * FleetLoad( uint8_t * region, int64_t region_bytes, const ui
 // It reports the DATA bytes and the ATTRIBUTION bytes separately, because the
 // attribution is the wire's numbering made resident (§6.3) and a caller may
 // release it once Load returns. The answer is their sum.
-inline int64_t FleetLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * message, int64_t message_bytes, int64_t * attribution_bytes = NULL )
+inline int64_t FleetLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * message, int64_t message_bytes, int64_t * attribution_bytes = NULL, TableRefuseReason * reason_out = NULL )
 {
     TableReport ignored;
     if ( message_bytes < 1 || message[0] != kTableWireMessageForm || !vocabulary.announced ) { return -1; }
@@ -6973,8 +7012,9 @@ inline int64_t FleetLoadMeasure( const TableVocabulary & vocabulary, const uint8
     const uint8_t * const wire = message + 1;
     const int64_t wire_bytes = message_bytes - 1;
     TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );
+    TableRefuseReason reason = count_over_length;
     int64_t root_extent = 0;
-    if ( !FleetWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { return -1; }
+    if ( !FleetWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Fleet ) ) + root_extent );
     int64_t records = 0;
     uint64_t type_id = 0;
@@ -6984,7 +7024,7 @@ inline int64_t FleetLoadMeasure( const TableVocabulary & vocabulary, const uint8
     {
         records++;
         int64_t storage = FleetNodeStorage( type_id, length );
-        if ( storage == kTableNodeRefused ) { return -1; } // an N the record's framing cannot carry (§2.8)
+        if ( storage == kTableNodeRefused ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; } // an N the record's framing cannot carry (§2.8, §2.9)
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -7019,8 +7059,9 @@ inline const Fleet * FleetLoadMessage( uint8_t * region, int64_t region_bytes, c
     int64_t length = 0;
 
     // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
     int64_t root_extent = 0;
-    if ( !FleetWireExtent( wire, wire_bytes, root_extent, &ids_table ) ) { out->malformed = true; return NULL; }
+    if ( !FleetWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { out->malformed = true; return NULL; }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Fleet ) ) + root_extent );
     int64_t records = 0;
     {
@@ -7103,7 +7144,7 @@ inline const Fleet * FleetLoadMessage( uint8_t * region, int64_t region_bytes, c
     // against a numbering already known good or already known bad
     TableReader r( wire, wire_bytes, out, &ids_table );
     r.nested = false; // the ROOT body, the one that carries the node table
-    TableMapCarve root_carve;
+    TableExtentCarve root_carve;
     root_carve.at = region + TableAlignUp64( (int64_t) sizeof( Fleet ) );
     root_carve.left = root_extent;
     nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
@@ -7158,7 +7199,7 @@ inline bool FleetLoadBuilder( FleetBuilder & builder, const uint8_t * wire_file,
     nodes.entries = directory;
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
-    nodes.worker = &builder.main; // and a map's entries are the arena's, not a node extent's (§2.8)
+    nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -7197,10 +7238,14 @@ inline bool FleetLoadBuilder( FleetBuilder & builder, const uint8_t * wire_file,
     }
     TableReader r( wire, wire_bytes, out, &ids_table );
     r.nested = false; // the ROOT body, the one that carries the node table
-    TableMapCarve root_carve;
+    TableExtentCarve root_carve;
     root_carve.worker = &builder.main;
     nodes.carve = &root_carve;
     bool ok = FleetLoadBody( r, nodes, *root );
+    // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
+    // §2.9): the partial builder is the caller's to discard, and the report
+    // holds what it held when the count was met
+    ok = ok && !nodes.refused;
     allocator.free( allocator.context, directory );
     return ok;
 }
@@ -7333,10 +7378,10 @@ inline void FleetLoadoutsEntryValueEntryCookBody( uint8_t * at, const FleetLoado
 
 template <typename Ctx> inline bool FleetLoadoutsEntryCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const FleetLoadoutsEntry & value, TableByteOrder order )
 {
-    (void) ctx; (void) region; // no reference below this node: the class was decided by a pointer elsewhere in its closure
+    (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_bytes( at + 0, value.key, value.key_length, 17 );
     table_cook_put( at + 20, (uint64_t) (uint32_t) value.key_length, 4, order );
-    table_cook_put( at + 24, 0, 8, order ); // value: the entry array's delta, filled by the extent writer
+    table_cook_put( at + 24, 0, 8, order ); // value: the array's delta, filled by the extent writer
     table_cook_put( at + 32, 0, 4, order ); // and its count
     return true;
 }
@@ -7349,72 +7394,78 @@ inline void FleetTiersEntryCookBody( uint8_t * at, const FleetTiersEntry & value
 
 template <typename Ctx> inline bool FleetCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Fleet & value, TableByteOrder order )
 {
-    table_cook_put( at + 0, 0, 8, order ); // ships: the entry array's delta, filled by the extent writer
+    table_cook_put( at + 0, 0, 8, order ); // ships: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
-    table_cook_put( at + 16, 0, 8, order ); // by_id: the entry array's delta, filled by the extent writer
+    table_cook_put( at + 16, 0, 8, order ); // by_id: the array's delta, filled by the extent writer
     table_cook_put( at + 24, 0, 4, order ); // and its count
     if ( !table_cook_ref( region, at + 32, (const void *) ShipConfigAt( ctx, value.flagship ), order ) ) { return false; } // flagship
-    table_cook_put( at + 40, 0, 8, order ); // loadouts: the entry array's delta, filled by the extent writer
+    table_cook_put( at + 40, 0, 8, order ); // loadouts: the array's delta, filled by the extent writer
     table_cook_put( at + 48, 0, 4, order ); // and its count
-    table_cook_put( at + 56, 0, 8, order ); // tiers: the entry array's delta, filled by the extent writer
+    table_cook_put( at + 56, 0, 8, order ); // tiers: the array's delta, filled by the extent writer
     table_cook_put( at + 64, 0, 4, order ); // and its count
     return true;
 }
 
-template <typename Ctx> inline bool ShipConfigCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const ShipConfig & value, TableByteOrder order );
-template <typename Ctx> inline bool ItemCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Item & value, TableByteOrder order );
-template <typename Ctx> inline bool FleetShipsEntryCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetShipsEntry & value, TableByteOrder order );
-template <typename Ctx> inline bool FleetByIdEntryCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetByIdEntry & value, TableByteOrder order );
-template <typename Ctx> inline bool FleetLoadoutsEntryValueEntryCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetLoadoutsEntryValueEntry & value, TableByteOrder order );
-template <typename Ctx> inline bool FleetLoadoutsEntryCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetLoadoutsEntry & value, TableByteOrder order );
-template <typename Ctx> inline bool FleetTiersEntryCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetTiersEntry & value, TableByteOrder order );
-template <typename Ctx> inline bool FleetCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Fleet & value, TableByteOrder order );
+template <typename Ctx> inline bool ShipConfigCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const ShipConfig & value, TableByteOrder order );
+template <typename Ctx> inline bool ItemCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Item & value, TableByteOrder order );
+template <typename Ctx> inline bool FleetShipsEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetShipsEntry & value, TableByteOrder order );
+template <typename Ctx> inline bool FleetByIdEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetByIdEntry & value, TableByteOrder order );
+template <typename Ctx> inline bool FleetLoadoutsEntryValueEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetLoadoutsEntryValueEntry & value, TableByteOrder order );
+template <typename Ctx> inline bool FleetLoadoutsEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetLoadoutsEntry & value, TableByteOrder order );
+template <typename Ctx> inline bool FleetTiersEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetTiersEntry & value, TableByteOrder order );
+template <typename Ctx> inline bool FleetCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Fleet & value, TableByteOrder order );
 
-// ShipConfigCookMaps: ShipConfig's map arrays into the node's extent, PRE-ORDER, the entries
-// in ASCENDING key order, each through its own cook body (§2.8, §7.6).
-template <typename Ctx> inline bool ShipConfigCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const ShipConfig & value, TableByteOrder order )
+// ShipConfigCookExtent: ShipConfig's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx> inline bool ShipConfigCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const ShipConfig & value, TableByteOrder order )
 {
     (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
-    return true; // no map below this record
+    return true; // no list or map below this record
 }
 
-// ItemCookMaps: Item's map arrays into the node's extent, PRE-ORDER, the entries
-// in ASCENDING key order, each through its own cook body (§2.8, §7.6).
-template <typename Ctx> inline bool ItemCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Item & value, TableByteOrder order )
+// ItemCookExtent: Item's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx> inline bool ItemCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Item & value, TableByteOrder order )
 {
     (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
-    return true; // no map below this record
+    return true; // no list or map below this record
 }
 
-// FleetShipsEntryCookMaps: FleetShipsEntry's map arrays into the node's extent, PRE-ORDER, the entries
-// in ASCENDING key order, each through its own cook body (§2.8, §7.6).
-template <typename Ctx> inline bool FleetShipsEntryCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetShipsEntry & value, TableByteOrder order )
+// FleetShipsEntryCookExtent: FleetShipsEntry's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx> inline bool FleetShipsEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetShipsEntry & value, TableByteOrder order )
 {
     (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
-    return true; // no map below this record
+    return true; // no list or map below this record
 }
 
-// FleetByIdEntryCookMaps: FleetByIdEntry's map arrays into the node's extent, PRE-ORDER, the entries
-// in ASCENDING key order, each through its own cook body (§2.8, §7.6).
-template <typename Ctx> inline bool FleetByIdEntryCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetByIdEntry & value, TableByteOrder order )
+// FleetByIdEntryCookExtent: FleetByIdEntry's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx> inline bool FleetByIdEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetByIdEntry & value, TableByteOrder order )
 {
     (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
-    return true; // no map below this record
+    return true; // no list or map below this record
 }
 
-// FleetLoadoutsEntryValueEntryCookMaps: FleetLoadoutsEntryValueEntry's map arrays into the node's extent, PRE-ORDER, the entries
-// in ASCENDING key order, each through its own cook body (§2.8, §7.6).
-template <typename Ctx> inline bool FleetLoadoutsEntryValueEntryCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetLoadoutsEntryValueEntry & value, TableByteOrder order )
+// FleetLoadoutsEntryValueEntryCookExtent: FleetLoadoutsEntryValueEntry's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx> inline bool FleetLoadoutsEntryValueEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetLoadoutsEntryValueEntry & value, TableByteOrder order )
 {
     (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
-    return true; // no map below this record
+    return true; // no list or map below this record
 }
 
-// FleetLoadoutsEntryCookMaps: FleetLoadoutsEntry's map arrays into the node's extent, PRE-ORDER, the entries
-// in ASCENDING key order, each through its own cook body (§2.8, §7.6).
-template <typename Ctx> inline bool FleetLoadoutsEntryCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetLoadoutsEntry & value, TableByteOrder order )
+// FleetLoadoutsEntryCookExtent: FleetLoadoutsEntry's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx> inline bool FleetLoadoutsEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetLoadoutsEntry & value, TableByteOrder order )
 {
-    (void) region; // a map's entries carry their own references through their own bodies
+    (void) region; // a table element's and an entry's references resolve through their own bodies
     { // value
         TableMapCursor<FleetLoadoutsEntryValueEntry> cursor = TableMapOrder( ctx, value.value );
         if ( !cursor.ok ) { return false; }
@@ -7433,19 +7484,21 @@ template <typename Ctx> inline bool FleetLoadoutsEntryCookMaps( const Ctx & ctx,
     return true;
 }
 
-// FleetTiersEntryCookMaps: FleetTiersEntry's map arrays into the node's extent, PRE-ORDER, the entries
-// in ASCENDING key order, each through its own cook body (§2.8, §7.6).
-template <typename Ctx> inline bool FleetTiersEntryCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetTiersEntry & value, TableByteOrder order )
+// FleetTiersEntryCookExtent: FleetTiersEntry's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx> inline bool FleetTiersEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const FleetTiersEntry & value, TableByteOrder order )
 {
     (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
-    return true; // no map below this record
+    return true; // no list or map below this record
 }
 
-// FleetCookMaps: Fleet's map arrays into the node's extent, PRE-ORDER, the entries
-// in ASCENDING key order, each through its own cook body (§2.8, §7.6).
-template <typename Ctx> inline bool FleetCookMaps( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Fleet & value, TableByteOrder order )
+// FleetCookExtent: Fleet's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx> inline bool FleetCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Fleet & value, TableByteOrder order )
 {
-    (void) region; // a map's entries carry their own references through their own bodies
+    (void) region; // a table element's and an entry's references resolve through their own bodies
     { // ships
         TableMapCursor<FleetShipsEntry> cursor = TableMapOrder( ctx, value.ships );
         if ( !cursor.ok ) { return false; }
@@ -7491,7 +7544,7 @@ template <typename Ctx> inline bool FleetCookMaps( const Ctx & ctx, const TableC
         }
         for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order
         {
-            if ( !FleetLoadoutsEntryCookMaps( ctx, region, extent, at, array + i * 40, *cursor[i], order ) ) { TableMapRelease( cursor ); return false; }
+            if ( !FleetLoadoutsEntryCookExtent( ctx, region, extent, at, array + i * 40, *cursor[i], order ) ) { TableMapRelease( cursor ); return false; }
         }
         TableMapRelease( cursor );
     }
@@ -7513,68 +7566,68 @@ template <typename Ctx> inline bool FleetCookMaps( const Ctx & ctx, const TableC
     return true;
 }
 
-// ShipConfigCookNode: one node — the record, then the extent its maps take (§2.8).
+// ShipConfigCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
 template <typename Ctx> inline bool ShipConfigCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const ShipConfig & value, TableByteOrder order )
 {
     ShipConfigCookBody( at, value, order );
     int64_t extent_at = 0;
-    return ShipConfigCookMaps( ctx, region, at + 80, extent_at, at, value, order );
+    return ShipConfigCookExtent( ctx, region, at + 80, extent_at, at, value, order );
 }
 
-// ItemCookNode: one node — the record, then the extent its maps take (§2.8).
+// ItemCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
 template <typename Ctx> inline bool ItemCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Item & value, TableByteOrder order )
 {
     ItemCookBody( at, value, order );
     int64_t extent_at = 0;
-    return ItemCookMaps( ctx, region, at + 8, extent_at, at, value, order );
+    return ItemCookExtent( ctx, region, at + 8, extent_at, at, value, order );
 }
 
-// FleetShipsEntryCookNode: one node — the record, then the extent its maps take (§2.8).
+// FleetShipsEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
 template <typename Ctx> inline bool FleetShipsEntryCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const FleetShipsEntry & value, TableByteOrder order )
 {
     FleetShipsEntryCookBody( at, value, order );
     int64_t extent_at = 0;
-    return FleetShipsEntryCookMaps( ctx, region, at + 120, extent_at, at, value, order );
+    return FleetShipsEntryCookExtent( ctx, region, at + 120, extent_at, at, value, order );
 }
 
-// FleetByIdEntryCookNode: one node — the record, then the extent its maps take (§2.8).
+// FleetByIdEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
 template <typename Ctx> inline bool FleetByIdEntryCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const FleetByIdEntry & value, TableByteOrder order )
 {
     if ( !FleetByIdEntryCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return FleetByIdEntryCookMaps( ctx, region, at + 16, extent_at, at, value, order );
+    return FleetByIdEntryCookExtent( ctx, region, at + 16, extent_at, at, value, order );
 }
 
-// FleetLoadoutsEntryValueEntryCookNode: one node — the record, then the extent its maps take (§2.8).
+// FleetLoadoutsEntryValueEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
 template <typename Ctx> inline bool FleetLoadoutsEntryValueEntryCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const FleetLoadoutsEntryValueEntry & value, TableByteOrder order )
 {
     FleetLoadoutsEntryValueEntryCookBody( at, value, order );
     int64_t extent_at = 0;
-    return FleetLoadoutsEntryValueEntryCookMaps( ctx, region, at + 8, extent_at, at, value, order );
+    return FleetLoadoutsEntryValueEntryCookExtent( ctx, region, at + 8, extent_at, at, value, order );
 }
 
-// FleetLoadoutsEntryCookNode: one node — the record, then the extent its maps take (§2.8).
+// FleetLoadoutsEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
 template <typename Ctx> inline bool FleetLoadoutsEntryCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const FleetLoadoutsEntry & value, TableByteOrder order )
 {
     if ( !FleetLoadoutsEntryCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return FleetLoadoutsEntryCookMaps( ctx, region, at + 40, extent_at, at, value, order );
+    return FleetLoadoutsEntryCookExtent( ctx, region, at + 40, extent_at, at, value, order );
 }
 
-// FleetTiersEntryCookNode: one node — the record, then the extent its maps take (§2.8).
+// FleetTiersEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
 template <typename Ctx> inline bool FleetTiersEntryCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const FleetTiersEntry & value, TableByteOrder order )
 {
     FleetTiersEntryCookBody( at, value, order );
     int64_t extent_at = 0;
-    return FleetTiersEntryCookMaps( ctx, region, at + 8, extent_at, at, value, order );
+    return FleetTiersEntryCookExtent( ctx, region, at + 8, extent_at, at, value, order );
 }
 
-// FleetCookNode: one node — the record, then the extent its maps take (§2.8).
+// FleetCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
 template <typename Ctx> inline bool FleetCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Fleet & value, TableByteOrder order )
 {
     if ( !FleetCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return FleetCookMaps( ctx, region, at + 72, extent_at, at, value, order );
+    return FleetCookExtent( ctx, region, at + 72, extent_at, at, value, order );
 }
 
 // ShipConfigCookMeasure: the whole cooked file's bytes — the header, the data part
@@ -7688,15 +7741,15 @@ inline bool ItemCook( const Item & value, void * out, uint64_t capacity, TableBy
 // eight. The offsets go into the region's table when it has one, and are only
 // summed when it does not (a measure). A type id the numbering carries that
 // this root cannot name is the two walks disagreeing, and it is refused.
-// A NODE'S SIZE DEPENDS ON ITS VALUE where a map rides in its extent
+// A NODE'S SIZE DEPENDS ON ITS VALUE where a list or a map rides in its extent
 // (docs/SPEC-TABLES.md §2.8), so the layout takes the resolution context
-// the numbering walked and reads the same maps that walk read.
+// the numbering walked and reads the same arrays that walk read.
 template <typename Ctx>
 inline bool FleetCookLayout( const Ctx & ctx, const Fleet & root, const TableNumbering & numbering, TableCookRegion & region )
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = FleetMapExtent( ctx, root );
+    const int64_t root_extent = FleetExtent( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 72 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -7954,59 +8007,59 @@ extern const TableTypeInfo FleetTiersEntryTableInfo;
 extern const TableTypeInfo FleetTableInfo;
 
 inline const TableFieldInfo ShipConfigTableFields[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 64, (uint32_t) offsetof( ShipConfig, name ), (uint32_t) sizeof( ShipConfig::name ), (uint32_t) offsetof( ShipConfig, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "health", "health", "int32", 0x7f69d4b5288ba9cfull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ShipConfig, health ), (uint32_t) sizeof( ShipConfig::health ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 64, (uint32_t) offsetof( ShipConfig, name ), (uint32_t) sizeof( ShipConfig::name ), (uint32_t) offsetof( ShipConfig, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "health", "health", "int32", 0x7f69d4b5288ba9cfull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ShipConfig, health ), (uint32_t) sizeof( ShipConfig::health ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo ShipConfigTableInfo = { "ShipConfig", (uint32_t) sizeof( ShipConfig ), 2, ShipConfigTableFields, +[]( void * p ) { ShipConfigReset( *(ShipConfig *) p ); }, false };
 inline const TableTypeInfo * ShipConfigTableType() { return &ShipConfigTableInfo; }
 
 inline const TableFieldInfo ItemTableFields[] = {
-    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Item, count ), (uint32_t) sizeof( Item::count ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Item, count ), (uint32_t) sizeof( Item::count ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo ItemTableInfo = { "Item", (uint32_t) sizeof( Item ), 1, ItemTableFields, +[]( void * p ) { ItemReset( *(Item *) p ); }, false };
 inline const TableTypeInfo * ItemTableType() { return &ItemTableInfo; }
 
 inline const TableFieldInfo FleetShipsEntryTableFields[] = {
-    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( FleetShipsEntry, key ), (uint32_t) sizeof( FleetShipsEntry::key ), (uint32_t) offsetof( FleetShipsEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "value", "value", "ShipConfig", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetShipsEntry, value ), (uint32_t) sizeof( FleetShipsEntry::value ), 0xffffffffu, 0xffffffffu, &ShipConfigTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( FleetShipsEntry, key ), (uint32_t) sizeof( FleetShipsEntry::key ), (uint32_t) offsetof( FleetShipsEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "value", "value", "ShipConfig", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetShipsEntry, value ), (uint32_t) sizeof( FleetShipsEntry::value ), 0xffffffffu, 0xffffffffu, &ShipConfigTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo FleetShipsEntryTableInfo = { "FleetShipsEntry", (uint32_t) sizeof( FleetShipsEntry ), 2, FleetShipsEntryTableFields, +[]( void * p ) { FleetShipsEntryReset( *(FleetShipsEntry *) p ); }, false };
 inline const TableTypeInfo * FleetShipsEntryTableType() { return &FleetShipsEntryTableInfo; }
 
 inline const TableFieldInfo FleetByIdEntryTableFields[] = {
-    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetByIdEntry, key ), (uint32_t) sizeof( FleetByIdEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "value", "value", "ShipConfig", 0x7ce4fd9430e80ceaull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ShipConfigAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ShipConfigEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( FleetByIdEntry, value ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ShipConfigTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetByIdEntry, key ), (uint32_t) sizeof( FleetByIdEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "value", "value", "ShipConfig", 0x7ce4fd9430e80ceaull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ShipConfigAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ShipConfigEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( FleetByIdEntry, value ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ShipConfigTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo FleetByIdEntryTableInfo = { "FleetByIdEntry", (uint32_t) sizeof( FleetByIdEntry ), 2, FleetByIdEntryTableFields, +[]( void * p ) { FleetByIdEntryReset( *(FleetByIdEntry *) p ); }, true };
 inline const TableTypeInfo * FleetByIdEntryTableType() { return &FleetByIdEntryTableInfo; }
 
 inline const TableFieldInfo FleetLoadoutsEntryValueEntryTableFields[] = {
-    { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetLoadoutsEntryValueEntry, key ), (uint32_t) sizeof( FleetLoadoutsEntryValueEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetLoadoutsEntryValueEntry, value ), (uint32_t) sizeof( FleetLoadoutsEntryValueEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetLoadoutsEntryValueEntry, key ), (uint32_t) sizeof( FleetLoadoutsEntryValueEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetLoadoutsEntryValueEntry, value ), (uint32_t) sizeof( FleetLoadoutsEntryValueEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo FleetLoadoutsEntryValueEntryTableInfo = { "FleetLoadoutsEntryValueEntry", (uint32_t) sizeof( FleetLoadoutsEntryValueEntry ), 2, FleetLoadoutsEntryValueEntryTableFields, +[]( void * p ) { FleetLoadoutsEntryValueEntryReset( *(FleetLoadoutsEntryValueEntry *) p ); }, false };
 inline const TableTypeInfo * FleetLoadoutsEntryValueEntryTableType() { return &FleetLoadoutsEntryValueEntryTableInfo; }
 
 inline const TableFieldInfo FleetLoadoutsEntryTableFields[] = {
-    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( FleetLoadoutsEntry, key ), (uint32_t) sizeof( FleetLoadoutsEntry::key ), (uint32_t) offsetof( FleetLoadoutsEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "value", "value", "map[uint8]Item", 0x7ce4fd9430e80ceaull, 0, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetLoadoutsEntry, value ), (uint32_t) sizeof( FleetLoadoutsEntry::value ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, &FleetLoadoutsEntryValueEntryTableInfo, []( const void * slot ) -> int32_t { return ( (const TableMap<FleetLoadoutsEntryValueEntry> *) slot )->count; }, []( const void * slot, int32_t index ) -> const void * { return (const void *) ( ( (const TableMap<FleetLoadoutsEntryValueEntry> *) slot )->Entries() + index ); }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { FleetLoadoutsEntryValueEntry * placed = TableMapPlace( worker, *(TableMap<FleetLoadoutsEntryValueEntry> *) slot, (uint8_t) key_value ); if ( placed != NULL ) { TableEntrySetKey( *placed, (uint8_t) key_value ); } return (void *) placed; }, "" },
+    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( FleetLoadoutsEntry, key ), (uint32_t) sizeof( FleetLoadoutsEntry::key ), (uint32_t) offsetof( FleetLoadoutsEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "value", "value", "map[uint8]Item", 0x7ce4fd9430e80ceaull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( FleetLoadoutsEntry, value ), (uint32_t) sizeof( FleetLoadoutsEntryValueEntry ), (uint32_t) offsetof( FleetLoadoutsEntry, value.count ), 0xffffffffu, &FleetLoadoutsEntryValueEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { FleetLoadoutsEntryValueEntry * placed = TableMapPlace( worker, *(TableMap<FleetLoadoutsEntryValueEntry> *) slot, (uint8_t) key_value ); if ( placed != NULL ) { TableEntrySetKey( *placed, (uint8_t) key_value ); } return (void *) placed; }, "" },
 };
 inline const TableTypeInfo FleetLoadoutsEntryTableInfo = { "FleetLoadoutsEntry", (uint32_t) sizeof( FleetLoadoutsEntry ), 2, FleetLoadoutsEntryTableFields, +[]( void * p ) { FleetLoadoutsEntryReset( *(FleetLoadoutsEntry *) p ); }, true };
 inline const TableTypeInfo * FleetLoadoutsEntryTableType() { return &FleetLoadoutsEntryTableInfo; }
 
 inline const TableFieldInfo FleetTiersEntryTableFields[] = {
-    { "key", "key", "int16", 0x3dc94a19365b10ecull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetTiersEntry, key ), (uint32_t) sizeof( FleetTiersEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetTiersEntry, value ), (uint32_t) sizeof( FleetTiersEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "key", "key", "int16", 0x3dc94a19365b10ecull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetTiersEntry, key ), (uint32_t) sizeof( FleetTiersEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( FleetTiersEntry, value ), (uint32_t) sizeof( FleetTiersEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo FleetTiersEntryTableInfo = { "FleetTiersEntry", (uint32_t) sizeof( FleetTiersEntry ), 2, FleetTiersEntryTableFields, +[]( void * p ) { FleetTiersEntryReset( *(FleetTiersEntry *) p ); }, false };
 inline const TableTypeInfo * FleetTiersEntryTableType() { return &FleetTiersEntryTableInfo; }
 
 inline const TableFieldInfo FleetTableFields[] = {
-    { "ships", "ships", "map[string(32)]ShipConfig", 0x294a5c4913e1ad44ull, 0, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Fleet, ships ), (uint32_t) sizeof( Fleet::ships ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, &FleetShipsEntryTableInfo, []( const void * slot ) -> int32_t { return ( (const TableMap<FleetShipsEntry> *) slot )->count; }, []( const void * slot, int32_t index ) -> const void * { return (const void *) ( ( (const TableMap<FleetShipsEntry> *) slot )->Entries() + index ); }, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL || key_length > kFleetShipsEntryKeyBound ) { return NULL; } FleetShipsEntry * placed = TableMapPlace( worker, *(TableMap<FleetShipsEntry> *) slot, key ); if ( placed != NULL ) { TableEntrySetKey( *placed, key, key_length ); } return (void *) placed; }, "" },
-    { "by_id", "by_id", "map[uint32]*ShipConfig", 0x7b024c46e98d3404ull, 0, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Fleet, by_id ), (uint32_t) sizeof( Fleet::by_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, &FleetByIdEntryTableInfo, []( const void * slot ) -> int32_t { return ( (const TableMap<FleetByIdEntry> *) slot )->count; }, []( const void * slot, int32_t index ) -> const void * { return (const void *) ( ( (const TableMap<FleetByIdEntry> *) slot )->Entries() + index ); }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { FleetByIdEntry * placed = TableMapPlace( worker, *(TableMap<FleetByIdEntry> *) slot, (uint32_t) key_value ); if ( placed != NULL ) { TableEntrySetKey( *placed, (uint32_t) key_value ); } return (void *) placed; }, "" },
-    { "flagship", "flagship", "ShipConfig", 0x63dfa0c4a4b3815dull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ShipConfigAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ShipConfigEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Fleet, flagship ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ShipConfigTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "loadouts", "loadouts", "map[string(16)]map[uint8]Item", 0x294fa1b3f0f5f070ull, 0, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Fleet, loadouts ), (uint32_t) sizeof( Fleet::loadouts ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, &FleetLoadoutsEntryTableInfo, []( const void * slot ) -> int32_t { return ( (const TableMap<FleetLoadoutsEntry> *) slot )->count; }, []( const void * slot, int32_t index ) -> const void * { return (const void *) ( ( (const TableMap<FleetLoadoutsEntry> *) slot )->Entries() + index ); }, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL || key_length > kFleetLoadoutsEntryKeyBound ) { return NULL; } FleetLoadoutsEntry * placed = TableMapPlace( worker, *(TableMap<FleetLoadoutsEntry> *) slot, key ); if ( placed != NULL ) { TableEntrySetKey( *placed, key, key_length ); } return (void *) placed; }, "" },
-    { "tiers", "tiers", "map[int16]Item", 0x6dd8dc6c5fdae3ceull, 0, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Fleet, tiers ), (uint32_t) sizeof( Fleet::tiers ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, &FleetTiersEntryTableInfo, []( const void * slot ) -> int32_t { return ( (const TableMap<FleetTiersEntry> *) slot )->count; }, []( const void * slot, int32_t index ) -> const void * { return (const void *) ( ( (const TableMap<FleetTiersEntry> *) slot )->Entries() + index ); }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { FleetTiersEntry * placed = TableMapPlace( worker, *(TableMap<FleetTiersEntry> *) slot, (int16_t) key_value ); if ( placed != NULL ) { TableEntrySetKey( *placed, (int16_t) key_value ); } return (void *) placed; }, "" },
+    { "ships", "ships", "map[string(32)]ShipConfig", 0x294a5c4913e1ad44ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, ships ), (uint32_t) sizeof( FleetShipsEntry ), (uint32_t) offsetof( Fleet, ships.count ), 0xffffffffu, &FleetShipsEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL || key_length > kFleetShipsEntryKeyBound ) { return NULL; } FleetShipsEntry * placed = TableMapPlace( worker, *(TableMap<FleetShipsEntry> *) slot, key ); if ( placed != NULL ) { TableEntrySetKey( *placed, key, key_length ); } return (void *) placed; }, "" },
+    { "by_id", "by_id", "map[uint32]*ShipConfig", 0x7b024c46e98d3404ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, by_id ), (uint32_t) sizeof( FleetByIdEntry ), (uint32_t) offsetof( Fleet, by_id.count ), 0xffffffffu, &FleetByIdEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { FleetByIdEntry * placed = TableMapPlace( worker, *(TableMap<FleetByIdEntry> *) slot, (uint32_t) key_value ); if ( placed != NULL ) { TableEntrySetKey( *placed, (uint32_t) key_value ); } return (void *) placed; }, "" },
+    { "flagship", "flagship", "ShipConfig", 0x63dfa0c4a4b3815dull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ShipConfigAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ShipConfigEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Fleet, flagship ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ShipConfigTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "loadouts", "loadouts", "map[string(16)]map[uint8]Item", 0x294fa1b3f0f5f070ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, loadouts ), (uint32_t) sizeof( FleetLoadoutsEntry ), (uint32_t) offsetof( Fleet, loadouts.count ), 0xffffffffu, &FleetLoadoutsEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL || key_length > kFleetLoadoutsEntryKeyBound ) { return NULL; } FleetLoadoutsEntry * placed = TableMapPlace( worker, *(TableMap<FleetLoadoutsEntry> *) slot, key ); if ( placed != NULL ) { TableEntrySetKey( *placed, key, key_length ); } return (void *) placed; }, "" },
+    { "tiers", "tiers", "map[int16]Item", 0x6dd8dc6c5fdae3ceull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, tiers ), (uint32_t) sizeof( FleetTiersEntry ), (uint32_t) offsetof( Fleet, tiers.count ), 0xffffffffu, &FleetTiersEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { FleetTiersEntry * placed = TableMapPlace( worker, *(TableMap<FleetTiersEntry> *) slot, (int16_t) key_value ); if ( placed != NULL ) { TableEntrySetKey( *placed, (int16_t) key_value ); } return (void *) placed; }, "" },
 };
 inline const TableTypeInfo FleetTableInfo = { "Fleet", (uint32_t) sizeof( Fleet ), 5, FleetTableFields, +[]( void * p ) { FleetReset( *(Fleet *) p ); }, true };
 inline const TableTypeInfo * FleetTableType() { return &FleetTableInfo; }
