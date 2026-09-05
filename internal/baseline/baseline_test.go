@@ -1635,3 +1635,104 @@ func TestBaselineHistoryStampsUTCAndLabelsIt(t *testing.T) {
 		t.Errorf("the history entry is not a labelled UTC stamp:\n%s", data)
 	}
 }
+
+// swapSrc is the fixture for a field REPOINTED at another union
+// (docs/SPEC-TABLES.md §18.3). Both unions stay in the closure through their
+// own fields, so nothing vanishes and no rename pairing fires; both carry an
+// arm named item; and the payloads behind that arm are twins carrying one
+// field id under different specified defaults.
+const swapSrc = `package swap
+
+type OldPayload
+{
+    value int32 = 1
+}
+
+type NewPayload
+{
+    value int32 = 2
+}
+
+union U1
+{
+    item OldPayload
+}
+
+// U1's arm under a twin payload: every arm name survives, and a stored body
+// whose elided value meant 1 now means 2
+union U2
+{
+    item NewPayload
+}
+
+// U1's arm under U1's payload, plus one: a union that really can stand in
+union U1Plus
+{
+    item  OldPayload
+    extra NewPayload
+}
+
+// U1's arm under a scalar: the arm's own facts moved, with no payload to judge
+union U3
+{
+    item int32
+}
+
+table Root
+{
+    selected U1
+    one      U1
+    two      U2
+    plus     U1Plus
+    three    U3
+}
+`
+
+// TestReplacementUnionArmsCompareAsFields is the referent rule for a UNION
+// (docs/SPEC-TABLES.md §18.3): the arms a replacement shares with the union
+// it replaces are field lines, judged by the one policy an in-place edit is
+// judged by, so a union whose arm names all survive still cannot stand in
+// when a fact under a shared arm moved.
+func TestReplacementUnionArmsCompareAsFields(t *testing.T) {
+	base := committed(t, swapSrc)
+	judge := func(edited string, policy map[string]baseline.TokenRule) []baseline.Finding {
+		return baseline.Diff(base, baseline.Render(unit(t, edited)), policy)
+	}
+	cases := []struct {
+		name   string
+		edited string
+		what   string
+		token  string
+	}{
+		{
+			name:   "a twin payload under a shared arm",
+			edited: editOf(t, swapSrc, "    selected U1\n", "    selected U2\n"),
+			what:   "union U1 -> U2, and item's arm payload OldPayload -> NewPayload, and value's specified default 1 -> 2",
+			token:  "default",
+		},
+		{
+			name:   "a scalar under a shared arm",
+			edited: editOf(t, swapSrc, "    selected U1\n", "    selected U3\n"),
+			what:   "union U1 -> U3, and item's arm payload OldPayload removed",
+			token:  "payload",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := judge(tc.edited, baseline.DefaultTokenPolicy)
+			if !find(got, baseline.Refuse, "Root.selected", tc.what) {
+				t.Fatalf("the edit was not refused; wanted Root.selected: %s, got:%s", tc.what, summary(got))
+			}
+			// the ATTRIBUTION control: the arm's fact is judged by that
+			// policy row and no other
+			if got := judge(tc.edited, without(tc.token)); find(got, baseline.Refuse, "Root.selected", tc.what) {
+				t.Errorf("with the %q rule removed the refusal should be gone, got:%s", tc.token, summary(got))
+			}
+		})
+	}
+	// the DISCRIMINATION control: a union carrying every arm of the old one
+	// under the same facts stands in
+	if got := judge(editOf(t, swapSrc, "    selected U1\n", "    selected U1Plus\n"), baseline.DefaultTokenPolicy); len(got) != 0 {
+		t.Errorf("a union that carries every arm under the same facts should stand in, got:%s", summary(got))
+	}
+}
