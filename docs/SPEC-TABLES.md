@@ -4028,11 +4028,15 @@ with one message passes one and pays a count of eight bits for it.
 - **`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME.** `MeasureMessages`
   and `SaveMessages` both refuse and return `-1`, and neither writes consecutive
   batches into one buffer. **The `-1` carries its reason on the carrier
-  `LoadMeasure` already uses**: the `TableRefuseReason` enum out-parameter
-  (§7, §11), never an exception, so the write side and the read side answer a
-  refusal one way and neither is a special case. The refusal is learned at
-  MEASURE time, before a buffer is allocated, which is the point of measuring
-  first. Concatenating
+  `LoadMessages` already uses**: the `TableReport` each of the three verbs
+  takes as its last parameter, with its refusal verdict set and the reason
+  `batch_too_large` on it, never an exception. The file form's `LoadMeasure`
+  carries its own `-1` on the file's vocabulary (§7), and this form does not
+  borrow it: a message-form reason rides the message path in both directions
+  (§7's note on the two vocabularies), so the write side and the read side
+  answer a refusal one way and neither is a special case. The refusal is
+  learned at MEASURE time, before a buffer is allocated, which is the point of
+  measuring first. Concatenating
   batches was declined because it invents a second framing level the wire does
   not describe, and because it would break the one-batch-per-datagram rule
   silently for a caller who passed three hundred bodies to an unreliable

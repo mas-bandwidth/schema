@@ -1589,15 +1589,16 @@ send( announcement );
 // and every batch after it
 backenddemo::LoginRequest logins[3];
 logins[0].player_id = 0x5c0ffee5;
-backenddemo::TableRefuseReason reason;
-int64_t size = backenddemo::LoginRequestMeasureMessages( logins, 3, &reason );
+backenddemo::TableReport report;
+int64_t size = backenddemo::LoginRequestMeasureMessages( logins, 3, &report );
 if ( size < 0 )
 {
-    // reason is batch_too_large: more than 256 bodies. Nothing is written.
-    // Call again with 256 of them, then again with the rest.
+    // report.refused with reason batch_too_large: more than 256 bodies.
+    // Nothing is written. Call again with 256 of them, then again with
+    // the rest.
 }
 std::vector<uint8_t> buffer( size );
-backenddemo::LoginRequestSaveMessages( logins, 3, buffer.data(), size, &reason );
+backenddemo::LoginRequestSaveMessages( logins, 3, buffer.data(), size, &report );
 send( buffer );
 ```
 
