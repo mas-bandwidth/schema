@@ -562,8 +562,8 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	g.pf("inline bool TableEnumRef( TableIds & ids, %s value, uint64_t & ref )\n{\n", e.Name)
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %s::None: ref = 0; return true;\n", e.Name)
-	for _, v := range e.Variants {
-		g.pf("        case %s::%s: ref = %s; return true;\n", e.Name, v, g.wireRef(ir.TableWireId(v)))
+	for i, v := range e.Variants {
+		g.pf("        case %s::%s: ref = %s; return true;\n", e.Name, v, g.wireRef(ir.TableWireId(e.VariantWireName(i))))
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
@@ -578,15 +578,15 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	g.pf("inline bool TableEnumId( %s value, uint64_t & id )\n{\n", e.Name)
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %s::None: id = 0; return true;\n", e.Name)
-	for _, v := range e.Variants {
-		g.pf("        case %s::%s: id = 0x%016xull; return true;\n", e.Name, v, ir.TableWireId(v))
+	for i, v := range e.Variants {
+		g.pf("        case %s::%s: id = 0x%016xull; return true;\n", e.Name, v, ir.TableWireId(e.VariantWireName(i)))
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
 	g.pf("inline bool TableEnumValue( uint64_t id, %s & out )\n{\n", e.Name)
 	g.pf("    switch ( id )\n    {\n")
-	for _, v := range e.Variants {
-		g.pf("        case 0x%016xull: out = %s::%s; return true;\n", ir.TableWireId(v), e.Name, v)
+	for i, v := range e.Variants {
+		g.pf("        case 0x%016xull: out = %s::%s; return true;\n", ir.TableWireId(e.VariantWireName(i)), e.Name, v)
 	}
 	g.pf("        default: return false; // an id this build cannot name\n")
 	g.pf("    }\n}\n")
@@ -956,7 +956,7 @@ func (g *tableGen) emitUnionPayloadMeasure(f *ir.Field, expr, into, ind, sfx str
 		g.noteRef(v.Type)
 		g.pf("%s    case %sType::%s:\n%s    {\n", ind, un.Name, ir.GoExportName(v.Name), ind)
 		g.pf("%s        int64_t %s = 0;\n", ind, body)
-		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.Name)))
+		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.WireName())))
 		g.emitArmMeasure(v, expr, body, ind+"        ", "return -1;", sfx)
 		g.pf("%s        %s += TableLebBytes( arm_ref%s ) + 1 + %s;\n", ind, into, sfx, framed(body))
 		g.pf("%s        break;\n%s    }\n", ind, ind)
@@ -1373,7 +1373,7 @@ func (g *tableGen) emitUnionPayloadSave(f *ir.Field, expr, ind, onBad, sfx strin
 	for _, v := range un.Variants {
 		g.noteRef(v.Type)
 		g.pf("%s    case %sType::%s:\n%s    {\n", ind, un.Name, ir.GoExportName(v.Name), ind)
-		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.Name)))
+		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.WireName())))
 		g.pf("%s        int64_t %s = 0;\n", ind, body)
 		g.emitArmMeasure(v, expr, body, ind+"        ", onBad, sfx)
 		g.pf("%s        w.putleb( arm_ref%s ); w.put8( %d ); w.putleb( (uint64_t) %s ); // %s\n", ind, sfx, armWireKind(v), body, v.Name)
@@ -1748,7 +1748,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );\n", ind, ind)
 		g.pf("%s    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n%s    {\n", ind, ind)
 		for _, v := range un.Variants {
-			g.pf("%s        case 0x%016xull: // %s\n%s        {\n", ind, ir.TableWireId(v.Name), v.Name, ind)
+			g.pf("%s        case 0x%016xull: // %s\n%s        {\n", ind, ir.TableWireId(v.WireName()), v.Name, ind)
 			g.pf("%s            if ( arm_kind != %d )\n%s            {\n", ind, armWireKind(v), ind)
 			g.pf("%s                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the\n", ind)
 			g.pf("%s                // arm skips by L, the union reads None, and the parent reads on\n", ind)
@@ -1824,7 +1824,7 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 		g.pf("%s        TableReader elem_arm%s( %s.buffer + %s.offset, (int64_t) %s, r.report, r.ids );\n", ind, sfx, rdr, rdr, length)
 		g.pf("%s        switch ( %s ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n%s        {\n", ind, id, ind)
 		for _, v := range un.Variants {
-			g.pf("%s            case 0x%016xull: // %s\n%s            {\n", ind, ir.TableWireId(v.Name), v.Name, ind)
+			g.pf("%s            case 0x%016xull: // %s\n%s            {\n", ind, ir.TableWireId(v.WireName()), v.Name, ind)
 			g.pf("%s                if ( %s != %d ) { %s.type = %sType::None; r.report->kind_mismatch++; break; }\n", ind, armKind, armWireKind(v), dst, un.Name)
 			g.pf("%s                %s.type = %sType::%s;\n", ind, dst, un.Name, ir.GoExportName(v.Name))
 			g.emitArmLoad(v, dst, ind+"                ", "elem_arm"+sfx, dst+".type", un.Name+"Type::None", sfx+"a")
@@ -2287,7 +2287,7 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 				return fmt.Sprintf("\"%s\"", v.Name)
 			}, "\"???\"", "\"None\"")
 			variantId = unionArmLambda(ref, "uint64_t", func(v ir.UnionVariant) string {
-				return fmt.Sprintf("0x%016xull", ir.TableWireId(v.Name))
+				return fmt.Sprintf("0x%016xull", ir.TableWireId(v.WireName()))
 			}, "0", "0")
 			arms = g.unionArmsLambda(ref, hoisted)
 			for _, v := range ref.Variants {

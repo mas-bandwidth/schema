@@ -150,6 +150,10 @@ type Variant struct {
 	Name    string
 	Id      uint64
 	Payload string // union arms only
+	// Was is the variant's `was` alias, rendered as `was=` on its line and
+	// judged on nothing: the id is the identity, and this is what lets the
+	// check name the spelling a second rename should have used (§18.2).
+	Was string
 }
 
 // A Flags is one flags declaration in the closure. The ORDER IS THE FACT:
@@ -252,8 +256,8 @@ func Render(u *ir.Unit) *Unit {
 
 func renderEnum(e *ir.Enum) Enum {
 	out := Enum{Name: e.Name}
-	for _, v := range e.Variants {
-		out.Variants = append(out.Variants, Variant{Name: v, Id: ir.TableWireId(v)})
+	for i, v := range e.Variants {
+		out.Variants = append(out.Variants, Variant{Name: v, Id: ir.TableWireId(e.VariantWireName(i)), Was: wasOf(e.Was, i)})
 	}
 	return out
 }
@@ -272,7 +276,8 @@ func renderUnion(un *ir.Union) Union {
 		// else still reads; an arm with NO PAYLOAD carries `kind=none`; every
 		// other arm carries the FIELD tokens for what it is, judged by the one
 		// policy table a field is judged by.
-		arm := Field{Name: v.Name, Id: ir.TableWireId(v.Name)}
+		// the id is the WIRE name's hash, the `was` alias after a rename (§5)
+		arm := Field{Name: v.Name, Id: ir.TableWireId(v.WireName())}
 		switch {
 		case v.Body():
 			arm.Tokens = []Token{{Key: "payload", Value: v.Ref.WireName()}} // the wire name, as a field's type= is
@@ -281,6 +286,13 @@ func renderUnion(un *ir.Union) Union {
 		default:
 			arm.Tokens = renderField(v.F).Tokens
 		}
+		if v.WasName != "" && !arm.hasToken("was") {
+			arm.Tokens = append(arm.Tokens, Token{Key: "was", Value: v.WasName})
+		}
+		// AN ARM'S TEXT KEY IS ITS OWN NAME and takes no `json =` (§2.6, §16.2),
+		// so there is no pairing for the rename hint to offer: the key is
+		// recorded as already answered, and a renamed arm draws no hint
+		arm.JsonKey = v.Name
 		out.Arms = append(out.Arms, arm)
 	}
 	return out
@@ -471,7 +483,11 @@ func (u *Unit) Text() string {
 	for _, e := range u.Enums {
 		fmt.Fprintf(&b, "\nenum %s\n", e.Name)
 		for _, v := range e.Variants {
-			fmt.Fprintf(&b, "    variant %s id=0x%016x\n", v.Name, v.Id)
+			if v.Was != "" {
+				fmt.Fprintf(&b, "    variant %s id=0x%016x was=%s\n", v.Name, v.Id, v.Was)
+			} else {
+				fmt.Fprintf(&b, "    variant %s id=0x%016x\n", v.Name, v.Id)
+			}
 		}
 	}
 	for _, f := range u.Flags {
@@ -620,6 +636,11 @@ func (u *Unit) parseMemberLine(path string, lineno int, section string, fields [
 			if fields[0] != "variant" || len(u.Enums) == 0 {
 				return bad()
 			}
+			for _, tok := range fields[2:] {
+				if k, val, ok := strings.Cut(tok, "="); ok && k == "was" {
+					v.Was = val
+				}
+			}
 			e := &u.Enums[len(u.Enums)-1]
 			e.Variants = append(e.Variants, v)
 			return nil
@@ -707,4 +728,18 @@ func collectUnion(out *Unit, un *ir.Union, seenEnum, seenFlags, seenUnion map[st
 			collectUnion(out, ref, seenEnum, seenFlags, seenUnion)
 		}
 	}
+}
+
+// wasOf is the i-th alias of a parallel `was` list, "" past its end.
+func wasOf(was []string, i int) string {
+	if i < len(was) {
+		return was[i]
+	}
+	return ""
+}
+
+// hasToken reports whether the field's line carries the key.
+func (f Field) hasToken(key string) bool {
+	_, has := f.Get(key)
+	return has
 }

@@ -156,6 +156,9 @@ func refuseUnported(u *ir.Unit, target string) error {
 	if err := refuseValueDefaults(u, target); err != nil {
 		return err
 	}
+	if err := refuseWasRows(u, target); err != nil {
+		return err
+	}
 	if err := refuseTableArms(u, target); err != nil {
 		return err
 	}

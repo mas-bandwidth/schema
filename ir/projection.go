@@ -118,8 +118,8 @@ func WireProjection(u *Unit) string {
 		// reorder is invisible without them — the spurious MATCH this
 		// projection exists to refuse — and a rename therefore moves the id.
 		fmt.Fprintf(&b, "enum %s max=%d storage=%d variants=%d\n", e.Name, e.Max, e.StorageBits, len(e.Variants))
-		for i, v := range e.Variants {
-			fmt.Fprintf(&b, "  variant %d name=%s\n", i+1, v)
+		for i := range e.Variants {
+			fmt.Fprintf(&b, "  variant %d name=%s\n", i+1, e.VariantWireName(i))
 		}
 	}
 
@@ -186,11 +186,11 @@ func WireProjection(u *Unit) string {
 		for i, v := range un.Variants {
 			switch {
 			case v.Void():
-				fmt.Fprintf(&b, "  variant %d name=%s kind=none\n", i+1, v.Name)
+				fmt.Fprintf(&b, "  variant %d name=%s kind=none\n", i+1, v.WireName())
 			case v.Body():
-				fmt.Fprintf(&b, "  variant %d name=%s payload=%s\n", i+1, v.Name, v.Type)
+				fmt.Fprintf(&b, "  variant %d name=%s payload=%s\n", i+1, v.WireName(), v.Type)
 			default:
-				fmt.Fprintf(&b, "  variant %d name=%s ", i+1, v.Name)
+				fmt.Fprintf(&b, "  variant %d name=%s ", i+1, v.WireName())
 				projectField(&b, v.F, "")
 			}
 		}
@@ -226,7 +226,9 @@ func projectField(b *strings.Builder, f *Field, ind string) {
 	// existing id stable — so a rename moves the id even though the wire is
 	// unmoved. Dropping it is a ProjectionVersion bump, taken deliberately
 	// or not at all.
-	fmt.Fprintf(b, "%sfield %s kind=%d", ind, f.Name, int(f.Type.Kind))
+	// A `was` RENAME PROJECTS THE WIRE NAME (docs/SPEC-TABLES.md §5), so the
+	// rename that keeps a table-wire identity keeps the protocol id too.
+	fmt.Fprintf(b, "%sfield %s kind=%d", ind, TableFieldWireName(f), int(f.Type.Kind))
 
 	if f.Type.Kind == TNamed {
 		fmt.Fprintf(b, " type=%s", f.Type.Name)
