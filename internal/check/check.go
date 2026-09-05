@@ -2028,6 +2028,72 @@ func walkArms(un *ir.Union, visit func(string), seen map[*ir.Union]bool) {
 	}
 }
 
+// closureEdge names the edge a closure member's field makes, as the author
+// wrote it. A generated map entry (docs/SPEC-TABLES.md §2.8) is a closure
+// member the author never spelled, so its value field is named as the map
+// field that generated it, reached through the map's value, climbing a map of
+// maps to the field the author wrote.
+func (c *checker) closureEdge(name string, st *ir.Struct, f *ir.Field) string {
+	if st.MapEntryOf == "" {
+		what := "type"
+		if st.IsTable {
+			what = "table"
+		}
+		return fmt.Sprintf("%s %s's field %s", what, name, f.Name)
+	}
+	owner, field, _ := strings.Cut(st.MapEntryOf, ".")
+	through := "its map value"
+	for entry := c.tables[owner]; entry != nil && entry.MapEntryOf != ""; entry = c.tables[owner] {
+		owner, field, _ = strings.Cut(entry.MapEntryOf, ".")
+		through += "'s map value"
+	}
+	return fmt.Sprintf("table %s's field %s, through %s,", owner, field, through)
+}
+
+// fieldPos is where a declared body spells a field, descending `if` blocks,
+// so a diagnostic about the field lands on its line rather than the
+// declaration's. The declaration's own position stands in when the body does
+// not spell the name.
+func (c *checker) fieldPos(name, field string) ast.Pos {
+	d, ok := c.astDecls[name]
+	if !ok {
+		return ast.Pos{}
+	}
+	var body *ast.Block
+	switch d := d.(type) {
+	case *ast.TypeDecl:
+		body = d.Body
+	case *ast.TableDecl:
+		body = d.Body
+	}
+	if pos, found := blockFieldPos(body, field); found {
+		return pos
+	}
+	return d.DeclPos()
+}
+
+func blockFieldPos(b *ast.Block, field string) (ast.Pos, bool) {
+	if b == nil {
+		return ast.Pos{}, false
+	}
+	for _, item := range b.Items {
+		switch item := item.(type) {
+		case *ast.Field:
+			if item.Name == field {
+				return item.Pos, true
+			}
+		case *ast.IfItem:
+			if pos, found := blockFieldPos(item.Then, field); found {
+				return pos, true
+			}
+			if pos, found := blockFieldPos(item.Else, field); found {
+				return pos, true
+			}
+		}
+	}
+	return ast.Pos{}, false
+}
+
 func (c *checker) checkTables() {
 	closure := map[string]bool{}
 	// the field that pulled each `type` into the closure, so a refusal that
@@ -2043,15 +2109,11 @@ func (c *checker) checkTables() {
 			return
 		}
 		closure[name] = true
-		what := "type"
-		if st.IsTable {
-			what = "table"
-		}
 		for _, f := range st.Fields {
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
-			site := fmt.Sprintf("%s %s's field %s", what, name, f.Name)
+			site := c.closureEdge(name, st, f)
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Struct:
 				if !closure[ref.Name] {
@@ -2194,22 +2256,19 @@ func (c *checker) checkTables() {
 // implementation, and the table emitters have no arm for the kind. A table
 // body's own wstring field is refused where it resolves; a `type` body
 // resolves as packet wire, so its wide text is refused here, once the closure
-// is known, with the same rule and the edge that put the type in a closure.
+// is known, at the field's own line, with the same rule and the edge that put
+// the type in a closure as the author wrote it.
 func (c *checker) checkWideTextInClosure(closure map[string]bool, reachedBy map[string]string) {
 	for _, name := range sortedKeys(closure) {
 		st := c.closureMember(name)
 		if st == nil || st.IsTable {
 			continue
 		}
-		pos := ast.Pos{}
-		if d, ok := c.astDecls[name]; ok {
-			pos = d.DeclPos()
-		}
 		for _, f := range st.Fields {
 			if f.Type.Kind != ir.TWString {
 				continue
 			}
-			c.errf(pos, "type %s: field %s: wstring is not carried on the TABLE wire yet — wide text rides the packet wire today (SPEC §4.12), and %s reaches %s, putting it in a table closure; declare the field string(N), or hold %s outside the closure (docs/SPEC-TABLES.md §11, schema#522)",
+			c.errf(c.fieldPos(name, f.Name), "type %s: field %s: wstring is not carried on the TABLE wire yet — wide text rides the packet wire today (SPEC §4.12), and %s reaches %s, putting it in a table closure; declare the field string(N), or hold %s outside the closure (docs/SPEC-TABLES.md §11, schema#522)",
 				name, f.Name, reachedBy[name], name, name)
 		}
 	}

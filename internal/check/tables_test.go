@@ -1383,3 +1383,72 @@ func TestWideTextRefusalCoversTheClosure(t *testing.T) {
 		})
 	}
 }
+
+// TestWideTextRefusalLandsOnTheField pins WHERE the closure refusal reports:
+// the wstring field's own line, not the line of the `type` that holds it,
+// including a field an `if` block nests. Two fields of one type each get
+// their own line, so a reader can tell them apart.
+func TestWideTextRefusalLandsOnTheField(t *testing.T) {
+	const src = "package t\n" +
+		"type Text\n" +
+		"{\n" +
+		"    name wstring(4)\n" +
+		"    flag bool\n" +
+		"    title wstring(4)\n" +
+		"    if flag { note wstring(4) }\n" +
+		"}\n" +
+		"table Root { t Text }\n"
+	errs := runUnit(t, map[string]string{"T.schema": src})
+	want := map[string]string{
+		"field name:":  "T.schema:4:",
+		"field title:": "T.schema:6:",
+		"field note:":  "T.schema:7:",
+	}
+	for field, prefix := range want {
+		found := false
+		for _, e := range errs {
+			if !strings.Contains(e.Error(), field) {
+				continue
+			}
+			found = true
+			if !strings.HasPrefix(e.Error(), prefix) {
+				t.Errorf("%s reported at the wrong position, want prefix %q: %v", field, prefix, e)
+			}
+		}
+		if !found {
+			t.Errorf("no diagnostic names %q; got: %v", field, errs)
+		}
+	}
+}
+
+// TestWideTextRefusalNamesTheMapField pins the edge a map makes: the map's
+// value reaches the `type` through a generated entry table the author never
+// wrote, so the refusal names the map field as the author spelled it, and a
+// map of maps climbs to that field.
+func TestWideTextRefusalNamesTheMapField(t *testing.T) {
+	const text = "type Text { name wstring(4) }\n"
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{name: "a map's value", src: "package t\n" + text + "table Root { m map[uint32]Text }\n",
+			want: "table Root's field m, through its map value, reaches Text"},
+		{name: "a map of maps' value", src: "package t\n" + text + "table Root { m map[uint32]map[uint32]Text }\n",
+			want: "table Root's field m, through its map value's map value, reaches Text"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := runUnit(t, map[string]string{"T.schema": tc.src})
+			for _, e := range errs {
+				if strings.Contains(e.Error(), tc.want) {
+					if strings.Contains(e.Error(), "Entry") {
+						t.Fatalf("the diagnostic names a generated entry table: %v", e)
+					}
+					return
+				}
+			}
+			t.Fatalf("no diagnostic contains %q; got: %v", tc.want, errs)
+		})
+	}
+}
