@@ -46,20 +46,28 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
 // skips the value whole, as it skips everything else it does not place.
 inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t depth );
 
-// ---- the map adapters (docs/SPEC-TABLES.md §2.8, §16) ----
+// ---- the map and list adapters (docs/SPEC-TABLES.md §2.8, §2.9, §16) ----
 //
-// A MAP is the other construct the walk cannot walk alone: its entries live
-// behind a TableMap<Entry> this walk has no name for, reading one needs the
-// builder's arena, and neither exists in a unit that declares no map. Same
-// shape as the pointer's three — declared here, defined after the walk by
-// whichever half the unit carries.
+// A MAP and an UNBOUNDED ARRAY are the other constructs the walk cannot walk
+// alone: their arrays live behind a TableMap<Entry> or a TableList<T> this
+// walk has no name for, reading one needs the builder's arena, and neither
+// exists in a unit that declares neither construct. Same shape as the
+// pointer's three: declared here, defined after the walk by whichever half
+// the unit carries. Both are OUT-OF-LINE ARRAYS to the descriptors (§8.1):
+// array_bound = 0 is the tell, and the type name says which of the two.
 
-// a map field: its descriptor carries the generated ENTRY's
+// a map field: an out-of-line array whose type name spells the map
 inline bool TableJsonIsMap( const TableFieldInfo * f );
 // the map as a plain JSON object keyed by the KEY, in ASCENDING key order
 inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth );
 // that object back into the slot, in whatever order the text gives it
 inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth );
+// an unbounded array: the other out-of-line array
+inline bool TableJsonIsList( const TableFieldInfo * f );
+// the list as a JSON array, in INDEX order
+inline bool TableJsonWriteList( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth );
+// that array back into the slot, every element the text carries
+inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth );
 
 // ---- json walk: begin ----
 //
@@ -818,6 +826,10 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     if ( TableJsonIsMap( f ) )
     {
         return TableJsonWriteMap( out, (const void *) storage, f, depth );
+    }
+    if ( TableJsonIsList( f ) )
+    {
+        return TableJsonWriteList( out, (const void *) storage, f, depth );
     }
     if ( f->kind == 17 && !f->is_array )
     {
@@ -1826,6 +1838,11 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     {
         return TableJsonReadMap( in, (void *) storage, f, depth );
     }
+    if ( TableJsonIsList( f ) )
+    {
+        return TableJsonReadList( in, (void *) storage, f, depth );
+    }
+
     if ( f->kind == 12 )
     {
         int32_t length = 0;
@@ -2263,6 +2280,25 @@ inline bool TableJsonWriteMap( TableJsonOut &, const void *, const TableFieldInf
 }
 
 inline bool TableJsonReadMap( TableJsonIn & in, void *, const TableFieldInfo *, int32_t )
+{
+    in.report->malformed = true;
+    in.bad = true;
+    return false;
+}
+
+// ---- this unit declares no unbounded array ----
+//
+// No descriptor of this unit is an out-of-line array that is not a map, so the
+// two slot adapters are unreachable and say so.
+
+inline bool TableJsonIsList( const TableFieldInfo * ) { return false; }
+
+inline bool TableJsonWriteList( TableJsonOut &, const void *, const TableFieldInfo *, int32_t )
+{
+    return false;
+}
+
+inline bool TableJsonReadList( TableJsonIn & in, void *, const TableFieldInfo *, int32_t )
 {
     in.report->malformed = true;
     in.bad = true;

@@ -46,20 +46,28 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
 // skips the value whole, as it skips everything else it does not place.
 inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t depth );
 
-// ---- the map adapters (docs/SPEC-TABLES.md §2.8, §16) ----
+// ---- the map and list adapters (docs/SPEC-TABLES.md §2.8, §2.9, §16) ----
 //
-// A MAP is the other construct the walk cannot walk alone: its entries live
-// behind a TableMap<Entry> this walk has no name for, reading one needs the
-// builder's arena, and neither exists in a unit that declares no map. Same
-// shape as the pointer's three — declared here, defined after the walk by
-// whichever half the unit carries.
+// A MAP and an UNBOUNDED ARRAY are the other constructs the walk cannot walk
+// alone: their arrays live behind a TableMap<Entry> or a TableList<T> this
+// walk has no name for, reading one needs the builder's arena, and neither
+// exists in a unit that declares neither construct. Same shape as the
+// pointer's three: declared here, defined after the walk by whichever half
+// the unit carries. Both are OUT-OF-LINE ARRAYS to the descriptors (§8.1):
+// array_bound = 0 is the tell, and the type name says which of the two.
 
-// a map field: its descriptor carries the generated ENTRY's
+// a map field: an out-of-line array whose type name spells the map
 inline bool TableJsonIsMap( const TableFieldInfo * f );
 // the map as a plain JSON object keyed by the KEY, in ASCENDING key order
 inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth );
 // that object back into the slot, in whatever order the text gives it
 inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth );
+// an unbounded array: the other out-of-line array
+inline bool TableJsonIsList( const TableFieldInfo * f );
+// the list as a JSON array, in INDEX order
+inline bool TableJsonWriteList( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth );
+// that array back into the slot, every element the text carries
+inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth );
 
 // ---- json walk: begin ----
 //
@@ -818,6 +826,10 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     if ( TableJsonIsMap( f ) )
     {
         return TableJsonWriteMap( out, (const void *) storage, f, depth );
+    }
+    if ( TableJsonIsList( f ) )
+    {
+        return TableJsonWriteList( out, (const void *) storage, f, depth );
     }
     if ( f->kind == 17 && !f->is_array )
     {
@@ -1826,6 +1838,11 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     {
         return TableJsonReadMap( in, (void *) storage, f, depth );
     }
+    if ( TableJsonIsList( f ) )
+    {
+        return TableJsonReadList( in, (void *) storage, f, depth );
+    }
+
     if ( f->kind == 12 )
     {
         int32_t length = 0;
@@ -2731,14 +2748,33 @@ inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * inf
 
 // ---- json graph walk: end ----
 
+// ---- the out-of-line array's slot (docs/SPEC-TABLES.md §8.1) ----
+
+inline int32_t TableJsonExtentCount( const void * slot )
+{
+    int32_t count = 0;
+    memcpy( &count, (const uint8_t *) slot + 8, sizeof( count ) );
+    return count < 0 ? 0 : count;
+}
+
+inline const uint8_t * TableJsonExtentElements( const void * slot )
+{
+    int64_t delta = 0;
+    memcpy( &delta, slot, sizeof( delta ) );
+    return delta != 0 ? (const uint8_t *) slot + delta : NULL;
+}
+
 // ---- json map walk: begin ----
 
-inline bool TableJsonIsMap( const TableFieldInfo * f ) { return f->entry != NULL; }
+inline bool TableJsonIsMap( const TableFieldInfo * f )
+{
+    return f->is_array && f->array_bound == 0 && strncmp( f->type_name, "map[", 4 ) == 0;
+}
 
 // the entry's two rows: fields[0] IS the key and fields[1] IS the value, which
 // is what makes a user's own table of pairs the same bytes (§2.8)
-inline const TableFieldInfo * TableJsonMapKeyField( const TableFieldInfo * f ) { return &f->entry->fields[0]; }
-inline const TableFieldInfo * TableJsonMapValueField( const TableFieldInfo * f ) { return &f->entry->fields[1]; }
+inline const TableFieldInfo * TableJsonMapKeyField( const TableFieldInfo * f ) { return &f->table->fields[0]; }
+inline const TableFieldInfo * TableJsonMapValueField( const TableFieldInfo * f ) { return &f->table->fields[1]; }
 
 inline bool TableJsonMapKeyIsString( const TableFieldInfo * key ) { return key->kind == 12; }
 inline bool TableJsonMapKeySigned( const TableFieldInfo * key ) { return key->kind >= 2 && key->kind <= 5; }
@@ -2798,16 +2834,17 @@ inline void TableJsonWriteMapKey( TableJsonOut & out, const void * entry, const 
 // A region holds them in that order already, so this is the array in place.
 inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth )
 {
-    const int32_t count = f->map_count( slot );
+    const int32_t count = TableJsonExtentCount( slot );
     if ( count == 0 ) { out.raw( "{}", 2 ); return true; }
     const TableFieldInfo * key = TableJsonMapKeyField( f );
     const TableFieldInfo * value = TableJsonMapValueField( f );
+    const uint8_t * entries = TableJsonExtentElements( slot );
     out.put( '{' );
     for ( int32_t i = 0; i < count; i++ )
     {
         if ( i > 0 ) { out.put( ',' ); }
         out.line( depth + 1 );
-        const void * entry = f->map_at( slot, i );
+        const void * entry = (const void *) ( entries + (int64_t) i * f->elem_size );
         TableJsonWriteMapKey( out, entry, key );
         out.raw( ": ", 2 );
         if ( !TableJsonWriteField( out, entry, value, depth + 1 ) ) { return false; }
@@ -2896,15 +2933,15 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             }
             if ( !fits ) { in.report->kind_mismatch++; place = false; }
         }
-        const int32_t before = f->map_count( (const void *) slot );
-        void * entry = place ? f->map_insert( *graph->worker, slot, token, token_length, key_value ) : NULL;
+        const int32_t before = TableJsonExtentCount( (const void *) slot );
+        void * entry = place ? f->place( *graph->worker, slot, token, token_length, key_value ) : NULL;
         if ( place && entry == NULL )
         {
             // A KEY LONGER THAN N DROPS ITS ENTRY AND COUNTS clamped, the
             // wire's rule, because a clamped key is a merged entry (§2.8).
             in.report->clamped++;
         }
-        else if ( entry != NULL && f->map_count( (const void *) slot ) == before )
+        else if ( entry != NULL && TableJsonExtentCount( (const void *) slot ) == before )
         {
             in.report->duplicate++; // last-wins, the object rule inside the map
         }
@@ -2954,6 +2991,25 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
 }
 
 // ---- json map walk: end ----
+
+// ---- this unit declares no unbounded array ----
+//
+// No descriptor of this unit is an out-of-line array that is not a map, so the
+// two slot adapters are unreachable and say so.
+
+inline bool TableJsonIsList( const TableFieldInfo * ) { return false; }
+
+inline bool TableJsonWriteList( TableJsonOut &, const void *, const TableFieldInfo *, int32_t )
+{
+    return false;
+}
+
+inline bool TableJsonReadList( TableJsonIn & in, void *, const TableFieldInfo *, int32_t )
+{
+    in.report->malformed = true;
+    in.bad = true;
+    return false;
+}
 
 } // namespace mapdemo
 
