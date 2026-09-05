@@ -2941,4 +2941,21 @@ int64_t HandToJson( const Hand * root, char * buffer, int64_t capacity, TableAll
     return TableJsonWriteGraph( root, HandTableType(), buffer, capacity, allocator );
 }
 
+bool ChainFromJson( ChainBuilder & builder, const char * text, int64_t bytes, TableReport * report )
+{
+    Chain * root = builder.GetRoot();
+    if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
+    return TableJsonReadGraph( builder.main, root, ChainTableType(), text, bytes, report );
+}
+
+int64_t ChainToJsonMeasure( const Chain * root, TableAllocator allocator )
+{
+    return TableJsonWriteGraph( root, ChainTableType(), NULL, 0, allocator );
+}
+
+int64_t ChainToJson( const Chain * root, char * buffer, int64_t capacity, TableAllocator allocator )
+{
+    return TableJsonWriteGraph( root, ChainTableType(), buffer, capacity, allocator );
+}
+
 } // namespace armdemo

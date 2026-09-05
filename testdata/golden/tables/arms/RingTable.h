@@ -325,7 +325,7 @@ inline int64_t TableLebBytes( uint64_t v )
 // nothing rides.
 struct TableIds
 {
-    static const int32_t kCapacity = 27;
+    static const int32_t kCapacity = 29;
     static const int32_t kBuckets = 64;
 
     uint64_t ids[ kCapacity ];
@@ -633,9 +633,9 @@ static const uint64_t kTableBuildVersionFieldId = 0xFFFFFFFFFFFFFFFEull;
 // The reserved NODE-TABLE id's own slot in this unit's vocabulary (§3.3). A
 // pointered message names the node table through it, exactly as every other
 // field header names its id through a slot.
-static const uint64_t kTableNodeTableFieldSlot = 17;
+static const uint64_t kTableNodeTableFieldSlot = 18;
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 29 entries and 252 bytes. It is an
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 31 entries and 268 bytes. It is an
 // ordinary form 1 FILE — the form byte, a body carrying the BUILD VERSION
 // under the reserved id at kind 9, and the trailer that IS the connection's
 // table, slot 1 the reserved id and slots 2 and up the vocabulary under one
@@ -650,29 +650,31 @@ static const uint64_t kTableNodeTableFieldSlot = 17;
 // record order. The tail is UNCONDITIONAL, so an ordinary edit only ever grows
 // it at its end and never moves a slot a generated field header carries as a
 // literal.
-static const int64_t kTableAnnounceBytes = 252;
+static const int64_t kTableAnnounceBytes = 268;
 static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0xb4, 0xf3, 0xe0, 0xc5, 0x22, 0xd5, 0x35, 0xed, 0x00,
-    0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x58, 0xb8, 0xde, 0x05,
-    0xf3, 0xa1, 0x1d, 0x89, 0xe9, 0xea, 0x71, 0x6f, 0x0f, 0x01, 0x82, 0xbf,
-    0x53, 0xa2, 0x45, 0x08, 0x2c, 0xa7, 0xb2, 0xc5, 0xf0, 0x8e, 0x9f, 0x09,
-    0x3b, 0x9a, 0xcd, 0xaf, 0x23, 0xd7, 0x98, 0x07, 0xef, 0x56, 0x4c, 0xd9,
-    0x6f, 0x2c, 0x41, 0x4f, 0xbf, 0x84, 0x78, 0x3e, 0xd4, 0x1b, 0x5e, 0x8f,
-    0x67, 0xed, 0xe6, 0x30, 0x09, 0x06, 0x02, 0x86, 0x4c, 0xeb, 0x63, 0xaf,
-    0x56, 0x04, 0x02, 0x86, 0x4c, 0xea, 0x63, 0xaf, 0x87, 0x92, 0x88, 0x5f,
-    0x8f, 0x06, 0x4c, 0x2d, 0xd5, 0x08, 0x02, 0xa2, 0xad, 0x84, 0xad, 0x24,
-    0x07, 0xb2, 0x52, 0x16, 0x4e, 0x19, 0x4d, 0xfd, 0xb7, 0x4a, 0xf0, 0x6a,
-    0xb4, 0xda, 0x2d, 0x07, 0x7e, 0x40, 0x95, 0x19, 0xef, 0xf4, 0x04, 0xfa,
-    0xad, 0x42, 0x86, 0xd1, 0xba, 0x1b, 0x2f, 0x3c, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0xff, 0xff, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f,
-    0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0xc7, 0xd4, 0x7b, 0x26,
-    0xb0, 0x9d, 0x29, 0x5f, 0xd2, 0xfe, 0xbb, 0x05, 0x7e, 0x7a, 0x87, 0xb5,
-    0xc0, 0x67, 0x7c, 0x75, 0xd8, 0x95, 0xba, 0x58, 0x2f, 0x45, 0xad, 0x4e,
-    0xc4, 0x26, 0xf5, 0xa1, 0xb5, 0xd1, 0x73, 0xbb, 0xb4, 0x85, 0xc0, 0xa5,
-    0xab, 0x83, 0xb5, 0xa1, 0xc6, 0x6f, 0xe4, 0x0f, 0x8d, 0xb6, 0xf6, 0xd2,
-    0xc6, 0x1c, 0xbd, 0x66, 0x97, 0x0b, 0x5f, 0x6c, 0xc0, 0xdb, 0xba, 0x31,
-    0xeb, 0xce, 0x11, 0xfa, 0x2b, 0x4d, 0xea, 0xdc, 0x78, 0x2f, 0x2a, 0x61,
-    0xfb, 0x22, 0x8e, 0x9f, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x01, 0x01, 0x09, 0xe8, 0x1f, 0x68, 0x34, 0xc2, 0x44, 0x7b, 0x0c, 0x00,
+    0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x4e, 0x27, 0xb8, 0xf1,
+    0xa9, 0x01, 0xc2, 0x5c, 0xe9, 0xea, 0x71, 0x6f, 0x0f, 0x01, 0x82, 0xbf,
+    0x58, 0xb8, 0xde, 0x05, 0xf3, 0xa1, 0x1d, 0x89, 0x53, 0xa2, 0x45, 0x08,
+    0x2c, 0xa7, 0xb2, 0xc5, 0xf0, 0x8e, 0x9f, 0x09, 0x3b, 0x9a, 0xcd, 0xaf,
+    0x23, 0xd7, 0x98, 0x07, 0xef, 0x56, 0x4c, 0xd9, 0x6f, 0x2c, 0x41, 0x4f,
+    0xbf, 0x84, 0x78, 0x3e, 0xd4, 0x1b, 0x5e, 0x8f, 0x67, 0xed, 0xe6, 0x30,
+    0x09, 0x06, 0x02, 0x86, 0x4c, 0xeb, 0x63, 0xaf, 0x56, 0x04, 0x02, 0x86,
+    0x4c, 0xea, 0x63, 0xaf, 0x87, 0x92, 0x88, 0x5f, 0x8f, 0x06, 0x4c, 0x2d,
+    0xd5, 0x08, 0x02, 0xa2, 0xad, 0x84, 0xad, 0x24, 0x07, 0xb2, 0x52, 0x16,
+    0x4e, 0x19, 0x4d, 0xfd, 0xb7, 0x4a, 0xf0, 0x6a, 0xb4, 0xda, 0x2d, 0x07,
+    0x7e, 0x40, 0x95, 0x19, 0xef, 0xf4, 0x04, 0xfa, 0xad, 0x42, 0x86, 0xd1,
+    0xba, 0x1b, 0x2f, 0x3c, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f, 0x58, 0xfc, 0xaf, 0xfa,
+    0xd8, 0xe0, 0x4b, 0x70, 0xc7, 0xd4, 0x7b, 0x26, 0xb0, 0x9d, 0x29, 0x5f,
+    0xb6, 0x82, 0x2f, 0xbe, 0xdc, 0x77, 0x03, 0x67, 0xd2, 0xfe, 0xbb, 0x05,
+    0x7e, 0x7a, 0x87, 0xb5, 0xc0, 0x67, 0x7c, 0x75, 0xd8, 0x95, 0xba, 0x58,
+    0x2f, 0x45, 0xad, 0x4e, 0xc4, 0x26, 0xf5, 0xa1, 0xb5, 0xd1, 0x73, 0xbb,
+    0xb4, 0x85, 0xc0, 0xa5, 0xab, 0x83, 0xb5, 0xa1, 0xc6, 0x6f, 0xe4, 0x0f,
+    0x8d, 0xb6, 0xf6, 0xd2, 0xc6, 0x1c, 0xbd, 0x66, 0x97, 0x0b, 0x5f, 0x6c,
+    0xc0, 0xdb, 0xba, 0x31, 0xeb, 0xce, 0x11, 0xfa, 0x2b, 0x4d, 0xea, 0xdc,
+    0x78, 0x2f, 0x2a, 0x61, 0xfb, 0x22, 0x8e, 0x9f, 0x1f, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
 };
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
@@ -2463,7 +2465,7 @@ namespace armdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xed35d522c5e0f3b4ull;
+static const uint64_t BuildVersion = 0x0c7b44c234681fe8ull;
 
 } // namespace armdemo
 
@@ -2864,7 +2866,7 @@ template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableN
 inline int64_t NodeMeasureBody( TableIds & ids, const Node & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.v != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63eb4c86020609ull, 9 ) ) + 1 + 4; } // v
+    if ( value.v != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63eb4c86020609ull, 10 ) ) + 1 + 4; } // v
     return bytes;
 }
 
@@ -2880,7 +2882,7 @@ ARMDEMO_TABLE_INLINE bool NodeSaveBody( TableWriter & w, TableIds & ids, const N
 {
     if ( value.v != 0 )
     {
-        w.putleb( ids.ref( 0xaf63eb4c86020609ull, 9 ) ); w.put8( 4 ); // v
+        w.putleb( ids.ref( 0xaf63eb4c86020609ull, 10 ) ); w.put8( 4 ); // v
         w.put32( uint32_t( value.v ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -3052,7 +3054,7 @@ inline int64_t RingMeasureBody( const Ctx & ctx, const TableNumbering & numberin
         if ( !cursor_items.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_items.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_items = ids.ref( 0x3e7884bf4f412c6full, 7 );
+            const uint64_t ref_items = ids.ref( 0x3e7884bf4f412c6full, 8 );
             int64_t body_items = 0;
             body_items += 1 + TableLebBytes( (uint64_t) ( cursor_items.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_items = 0; elem_i_items < cursor_items.count; elem_i_items++ )
@@ -3066,7 +3068,7 @@ inline int64_t RingMeasureBody( const Ctx & ctx, const TableNumbering & numberin
                         case SlotType::Node:
                         {
                             int64_t arm_payload_itemsu = 0;
-                            const uint64_t arm_ref_itemsu = ids.ref( 0x3c2f1bbad18642adull, 16 );
+                            const uint64_t arm_ref_itemsu = ids.ref( 0x3c2f1bbad18642adull, 17 );
                             {
                                 const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
                                 uint64_t arm_index_itemsu = 0;
@@ -3079,7 +3081,7 @@ inline int64_t RingMeasureBody( const Ctx & ctx, const TableNumbering & numberin
                         case SlotType::Plain:
                         {
                             int64_t arm_payload_itemsu = 0;
-                            const uint64_t arm_ref_itemsu = ids.ref( 0xfd4d194e1652b207ull, 13 );
+                            const uint64_t arm_ref_itemsu = ids.ref( 0xfd4d194e1652b207ull, 14 );
                             arm_payload_itemsu += 4; // int32
                             body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
                             break;
@@ -3103,7 +3105,7 @@ inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
         if ( !cursor_items.ok ) { return false; }
         if ( cursor_items.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_items = ids.ref( 0x3e7884bf4f412c6full, 7 );
+            const uint64_t ref_items = ids.ref( 0x3e7884bf4f412c6full, 8 );
             int64_t body_items = 0;
             body_items += 1 + TableLebBytes( (uint64_t) ( cursor_items.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_items = 0; elem_i_items < cursor_items.count; elem_i_items++ )
@@ -3117,7 +3119,7 @@ inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         case SlotType::Node:
                         {
                             int64_t arm_payload_itemsu = 0;
-                            const uint64_t arm_ref_itemsu = ids.ref( 0x3c2f1bbad18642adull, 16 );
+                            const uint64_t arm_ref_itemsu = ids.ref( 0x3c2f1bbad18642adull, 17 );
                             {
                                 const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
                                 uint64_t arm_index_itemsu = 0;
@@ -3130,7 +3132,7 @@ inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         case SlotType::Plain:
                         {
                             int64_t arm_payload_itemsu = 0;
-                            const uint64_t arm_ref_itemsu = ids.ref( 0xfd4d194e1652b207ull, 13 );
+                            const uint64_t arm_ref_itemsu = ids.ref( 0xfd4d194e1652b207ull, 14 );
                             arm_payload_itemsu += 4; // int32
                             body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
                             break;
@@ -3150,7 +3152,7 @@ inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     {
                         case SlotType::Node:
                         {
-                            const uint64_t arm_ref_itemsu = ids.ref( 0x3c2f1bbad18642adull, 16 );
+                            const uint64_t arm_ref_itemsu = ids.ref( 0x3c2f1bbad18642adull, 17 );
                             int64_t arm_payload_itemsu = 0;
                             {
                                 const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
@@ -3169,7 +3171,7 @@ inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         }
                         case SlotType::Plain:
                         {
-                            const uint64_t arm_ref_itemsu = ids.ref( 0xfd4d194e1652b207ull, 13 );
+                            const uint64_t arm_ref_itemsu = ids.ref( 0xfd4d194e1652b207ull, 14 );
                             int64_t arm_payload_itemsu = 0;
                             arm_payload_itemsu += 4; // int32
                             w.putleb( arm_ref_itemsu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload_itemsu ); // plain
@@ -3576,7 +3578,7 @@ inline bool RingNumber( const Ctx & ctx, TableNumbering & numbering, const Ring 
                         TableNodeEntry node;
                         node.node = (const void *) pointee;
                         node.type_id = 0x66bd1cc6d2f6b68dull; // fnv1a64( "Node" )
-                        node.type_slot = 26; // its slot in the unit's vocabulary (§3.3)
+                        node.type_slot = 28; // its slot in the unit's vocabulary (§3.3)
                         node.measure = &TableNodeMeasureThunk<Ctx, Node>;
                         node.save = &TableNodeSaveThunk<Ctx, Node>;
                         if ( !TableNumberingAppend( numbering, node ) ) { return false; }
