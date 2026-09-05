@@ -2129,7 +2129,7 @@ static double median_open_ns( const Root * root, const File & file, int64_t iter
     return samples[runs / 2];
 }
 
-static void mode_time( const Root * root, const char * small_path, const char * large_path )
+static void mode_time( const Root * root, const char * small_path, const char * large_path, int64_t iterations )
 {
     uint64_t small_length = 0, large_length = 0;
     uint8_t * small_source = whole_file( small_path, &small_length );
@@ -2142,7 +2142,6 @@ static void mode_time( const Root * root, const char * small_path, const char * 
          root->open( large_file.base, large_file.length ) == NULL )
         fail( "one of the two fixtures did not open" );
 
-    const int64_t iterations = 200000;
     // warm both, then interleave: two arms measured in one sitting, alternating,
     // so a machine that drifts drifts under both
     median_open_ns( root, small_file, iterations / 10 );
@@ -2157,11 +2156,12 @@ static void mode_time( const Root * root, const char * small_path, const char * 
             (unsigned long long) large_length, large_ns, (long long) iterations, ratio );
 
     // The bar is FLAT, and flat is stated as a band rather than as equality: a
-    // header match is tens of nanoseconds, where the scheduler and the cache
-    // are the whole variance. A walk of any shape over a hundred-megabyte
-    // region would be five orders of magnitude out, so this band cannot pass
-    // one by accident.
-    if ( ratio > 2.0 || ratio < 0.5 )
+    // header match is tens of nanoseconds, where one cache miss or one
+    // scheduler tick on a shared runner is a 2x by itself. The walk this gate
+    // refuses is at least 100x, by the two fixtures' size spread, so a band of
+    // 10 holds an order of magnitude of headroom on both sides: above what a
+    // certification runner's noise reaches, below the cheapest walk there is.
+    if ( ratio > 10.0 || ratio < 0.1 )
         fail( "open time is not flat across the two sizes: ratio %.3f", ratio );
 
     small_file.destroy();
@@ -2280,7 +2280,13 @@ int main( int argc, char ** argv )
     else if ( strcmp( mode, "time" ) == 0 )
     {
         if ( argc < 5 ) { printf( "FAILED: time wants two cooks\n" ); return 1; }
-        mode_time( root, argv[3], argv[4] );
+        // ITERATIONS is the walk control's knob: an Open sabotaged to walk
+        // 100 MB cannot be opened 200000 times in a control's budget, and the
+        // gate is a ratio, which the count does not move
+        int64_t iterations = 200000;
+        if ( const char * e = getenv( "ITERATIONS" ) )
+            if ( *e != 0 ) iterations = strtoll( e, NULL, 0 );
+        mode_time( root, argv[3], argv[4], iterations );
     }
     else if ( strcmp( mode, "accept" ) == 0 )
     {

@@ -850,7 +850,7 @@ static unsafe class Program
         return samples[runs / 2];
     }
 
-    static void ModeTime(Root root, string smallPath, string largePath)
+    static void ModeTime(Root root, string smallPath, string largePath, long iterations)
     {
         byte[] smallSource = WholeFile(smallPath);
         byte[] largeSource = WholeFile(largePath);
@@ -864,7 +864,6 @@ static unsafe class Program
             Fail.Now("one of the two fixtures did not open");
         }
 
-        const long iterations = 200000;
         // warm both — a tiered runtime measured before it settles measures
         // tier-up and not codegen — then interleave, so a machine that drifts
         // drifts under both arms
@@ -880,11 +879,13 @@ static unsafe class Program
                           ", paired, one sitting) — ratio " + ratio.ToString("F3"));
 
         // The bar is FLAT, and flat is stated as a band rather than as
-        // equality: a header match is tens of nanoseconds, where the scheduler
-        // and the cache are the whole variance. A walk of any shape over a
-        // hundred-megabyte region would be five orders of magnitude out, so
-        // this band cannot pass one by accident.
-        if (ratio > 2.0 || ratio < 0.5)
+        // equality: a header match is tens of nanoseconds, where one cache
+        // miss or one scheduler tick on a shared runner is a 2x by itself. The
+        // walk this gate refuses is at least 100x, by the two fixtures' size
+        // spread, so a band of 10 holds an order of magnitude of headroom on
+        // both sides: above what a certification runner's noise reaches, below
+        // the cheapest walk there is.
+        if (ratio > 10.0 || ratio < 0.1)
         {
             Fail.Now("open time is not flat across the two sizes: ratio " + ratio.ToString("F3"));
         }
@@ -1105,7 +1106,13 @@ static unsafe class Program
                     Console.WriteLine("FAILED: time wants two cooks");
                     return 1;
                 }
-                ModeTime(root, args[2], args[3]);
+                // ITERATIONS is the walk control's knob: an Open sabotaged to
+                // walk 100 MB cannot be opened 200000 times in a control's
+                // budget, and the gate is a ratio, which the count does not move
+                long iterations = 200000;
+                string it = Environment.GetEnvironmentVariable("ITERATIONS");
+                if (!string.IsNullOrEmpty(it)) { iterations = (long)ParseNumber(it); }
+                ModeTime(root, args[2], args[3], iterations);
                 break;
             case "accept": ModeOrder(root, args[2], true); break;
             case "refuse": ModeOrder(root, args[2], false); break;
