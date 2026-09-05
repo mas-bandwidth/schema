@@ -3574,7 +3574,7 @@ NODE_TYPE_NC := build/wire-fuzz-nc-node-type
 .PHONY: tables-wire-fuzz-node-type-negative-control
 tables-wire-fuzz-node-type-negative-control: build/conformance-harness build/wire-fuzz-cpp
 	@rm -rf $(NODE_TYPE_NC) && mkdir -p $(NODE_TYPE_NC)
-	@sed -e 's|ir.PointerReachable(m.Unit, inst.Def) {|ir.TableClosure(m.Unit) { // NEGATIVE CONTROL: every closure table is placeable again|' \
+	@sed -e 's|for name := range placeable {|for name := range ir.TableClosure(m.Unit) { // NEGATIVE CONTROL: every closure table is placeable again|' \
 		internal/tablewire/decodenodes.go > $(NODE_TYPE_NC)/decodenodes.go.txt
 	@cmp -s internal/tablewire/decodenodes.go $(NODE_TYPE_NC)/decodenodes.go.txt && \
 		{ echo "NEGATIVE CONTROL: the node-type sabotage patched nothing"; exit 1; } || true
@@ -3604,7 +3604,7 @@ BLOB_NODE_NC := build/wire-fuzz-nc-blob-node
 .PHONY: tables-wire-fuzz-blob-node-negative-control
 tables-wire-fuzz-blob-node-negative-control: build/conformance-harness build/wire-fuzz-cpp
 	@rm -rf $(BLOB_NODE_NC) && mkdir -p $(BLOB_NODE_NC)
-	@sed -e 's|ir.PointerReachableBlobs(m.Unit, inst.Def)|true, true // NEGATIVE CONTROL: both reserved ids are nameable at every root|' \
+	@sed -e 's|ir.PointerReachableBlobs(inst.Def)|true, true // NEGATIVE CONTROL: both reserved ids are nameable at every root|' \
 		internal/tablewire/decodenodes.go > $(BLOB_NODE_NC)/decodenodes.go.txt
 	@cmp -s internal/tablewire/decodenodes.go $(BLOB_NODE_NC)/decodenodes.go.txt && \
 		{ echo "NEGATIVE CONTROL: the blob-node sabotage patched nothing"; exit 1; } || true

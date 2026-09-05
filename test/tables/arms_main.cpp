@@ -1,12 +1,13 @@
 // THE UNION-ARM TRAVERSAL GATE (docs/SPEC-TABLES.md §2.6, §2.9, §3.1, §6.3,
 // §7.6). One binary over the `tables/arms` unit: five shapes where a union arm
 // hides a pointer or a collection extent, and the cross of two of them, each
-// crossed by every walk the reference has. Measure and Save, LoadMeasure and Load into an exact region,
-// the tool's path into a builder, Lock and a dereference after it, a plain
-// memcpy relocation of the locked region, and a cook from the arena and from
-// the region, opened and walked. Every reference a const form holds is shown
-// to resolve INSIDE the block that holds it before it is followed, so an
-// arena offset that survived a Lock is a red CHECK and not a crash.
+// crossed by every walk the reference has. Measure and Save, LoadMeasure and
+// Load into an exact region, the tool's path into a builder, Lock and a
+// dereference after it, a plain memcpy relocation of the locked region, and a
+// cook from the arena and from the region, opened and walked. Every reference
+// a const form holds is shown to resolve INSIDE the block that holds it before
+// it is followed, so an arena offset that survived a Lock is a red CHECK and
+// not a crash.
 //
 // Compiled WITHOUT the serialize include path: the Table headers stand alone.
 //
@@ -26,6 +27,7 @@
 using namespace armdemo;
 
 static int failures = 0;
+static int checks = 0; // every CHECK, CHECK_EQ and report line, counted for the record
 
 // the shape under test, named in every red line
 static const char * g_shape = "";
@@ -33,6 +35,7 @@ static const char * g_shape = "";
 #define CHECK( condition )                                                    \
     do                                                                        \
     {                                                                         \
+        checks++;                                                             \
         if ( !( condition ) )                                                 \
         {                                                                     \
             printf( "FAIL %s:%d: [%s] %s\n", __FILE__, __LINE__, g_shape, #condition ); \
@@ -44,6 +47,7 @@ static const char * g_shape = "";
 #define CHECK_EQ( actual, expected )                                          \
     do                                                                        \
     {                                                                         \
+        checks++;                                                             \
         const long long a_ = (long long) ( actual );                          \
         const long long e_ = (long long) ( expected );                        \
         if ( a_ != e_ )                                                       \
@@ -151,6 +155,7 @@ static void save_wire( const char * name, const void * data, int64_t bytes )
 
 static void report_silent( const TableReport & r, const char * where )
 {
+    checks++;
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 || r.malformed )
     {
         printf( "FAIL [%s] %s: the report is not silent (unknown %d, kind_mismatch %d, clamped %d, duplicate %d, malformed %d)\n",
@@ -620,6 +625,6 @@ int main()
         printf( "\n%d union-arm check(s) failed\n", failures );
         return 1;
     }
-    printf( "arms: all checks passed (docs/SPEC-TABLES.md §2.6, §2.9, §3.1, §7.6)\n" );
+    printf( "arms: all %d checks passed (docs/SPEC-TABLES.md §2.6, §2.9, §3.1, §7.6)\n", checks );
     return 0;
 }
