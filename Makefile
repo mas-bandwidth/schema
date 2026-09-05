@@ -38,6 +38,8 @@ SCHEMAS_TABLES_SCALARS := $(wildcard tables/scalars/*.schema)
 SCHEMAS_TABLES_MAPS := $(wildcard tables/maps/*.schema)
 # the UNBOUNDED ARRAY corpus (docs/SPEC-TABLES.md §2.9)
 SCHEMAS_TABLES_LISTS := $(wildcard tables/lists/*.schema)
+# the UNION-ARM TRAVERSAL corpus (docs/SPEC-TABLES.md §2.6, §2.9, §3.1)
+SCHEMAS_TABLES_ARMS := $(wildcard tables/arms/*.schema)
 # the MESSAGE FORM's corpora (docs/SPEC-TABLES.md §3.3): the three backend
 # messages the ruling measured, and the WIDE-VOCABULARY unit test/vocabgen
 # writes, whose vocabulary passes 127 ids so its message names slots on both
@@ -137,6 +139,7 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
 	$(1) generate --lang cpp --out $(2)/maps tables/maps
 	$(1) generate --lang cpp --out $(2)/lists tables/lists
+	$(1) generate --lang cpp --out $(2)/arms tables/arms
 	$(1) generate --lang cpp --out $(2)/scalars2 test/tables/Scalars2.schema
 	$(1) generate --lang cpp --out $(2)/backend tables/backend
 	$(1) generate --lang cpp --out $(2)/vocab tables/vocab
@@ -144,9 +147,9 @@ endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/backend -I$(1)/vocab -I$(SERIALIZE)
+	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -1014,7 +1017,8 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 	         testdata/golden/tables/block/*Table.* testdata/golden/tables/blockhome/*Table.* \
 	         testdata/golden/tables/messages/*Table.* testdata/golden/tables/stream/*Table.* \
 	         testdata/golden/tables/blobs/*Table.* testdata/golden/tables/scalars/*Table.* \
-	         testdata/golden/tables/maps/*Table.* testdata/golden/tables/lists/*Table.* ; do \
+	         testdata/golden/tables/maps/*Table.* testdata/golden/tables/lists/*Table.* \
+	         testdata/golden/tables/arms/*Table.* ; do \
 		dir=$$(basename $$(dirname $$f)); \
 		n=$$(( n + 1 )); \
 		cmp -s $$f build/tables-generated/$$dir/$$(basename $$f) || \
@@ -2075,6 +2079,12 @@ build/schema_test_lists_be: build/tables-generated/.stamp test/tables/lists_main
 	@mkdir -p build
 	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/lists_main.cpp $(LISTS_SOURCES) -o $@
 
+# and the UNION-ARM gate on the same host: the arrays an arm holds are laid by
+# the same walk, and a pointer arm's node is placed by the same numbering
+build/schema_test_arms_be: build/tables-generated/.stamp test/tables/arms_main.cpp
+	@mkdir -p build
+	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/arms_main.cpp $(ARMS_SOURCES) -o $@
+
 # The COOK's read side, for a BIG-ENDIAN target. A cook is produced in the byte
 # order of the build it is cooked for (docs/SPEC-TABLES.md §7), so this is where that
 # stops being a sentence: the big-endian build opens the big-endian cook
@@ -2097,11 +2107,12 @@ build/schema_test_block_endian_be: build/tables-generated/.stamp test/tables/blo
 	$(BE_CXX) $(BLOCK_CXXFLAGS) -static $(BLOCK_INCLUDES) test/tables/block_endian_main.cpp $(BLOCK_SOURCES) -o $@
 
 .PHONY: tables-big-endian
-tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/schema_test_lists_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
+tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
 	$(BE_RUN) ./build/schema_test_tables_be
 	$(BE_RUN) ./build/schema_test_maps_be
 	$(BE_RUN) ./build/schema_test_lists_be
-	@echo "big-endian leg: the wire crosses the byte order, a map's framing and its sorted entry array with it, and a list's element array"
+	$(BE_RUN) ./build/schema_test_arms_be
+	@echo "big-endian leg: the wire crosses the byte order, a map's framing and its sorted entry array with it, a list's element array and the arrays a union arm holds"
 	./build/schema_test_block_endian write build/block-host.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be write build/block-target.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be accept build/block-target.bin
@@ -2435,6 +2446,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-list-measure-refusals
 	$(MAKE) tables-json-list-walk
 	$(MAKE) tables-lists-negative-controls
+	$(MAKE) tables-arms
+	$(MAKE) tables-arms-negative-controls
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-graph-walk
 	$(MAKE) tables-json-negative-control
@@ -2915,10 +2928,54 @@ tables-lists-negative-controls: tables-lists-allocation-negative-control \
 	tables-lists-unreached-negative-control \
 	tables-lists-cook-check-negative-control
 
+# ---- THE UNION-ARM TRAVERSAL GATE (docs/SPEC-TABLES.md §2.6, §2.9, §3.1, §7.6) --
+#
+# One binary over the `tables/arms` corpus: five shapes where a union arm hides
+# a pointer or a collection extent (schema#565), each crossed by Measure and
+# Save, LoadMeasure and Load, the tool's path, Lock and a dereference after it,
+# a memcpy relocation, and a cook from the arena and from the region, opened
+# and walked. Its wire goldens are the reference's, pinned like every other
+# table golden, and the Go tool reads every wire it writes back into the text
+# form and writes it again: the tool re-derives the numbering from the graph
+# alone (internal/tablewire), so the bytes agreeing is the two walks numbering
+# the arms' nodes alike. The tool's COOK half does not carry a list-bearing
+# unit (schema#380), so the cooks are pinned and walked here and not crossed.
+#
+# THE SANITIZED TWIN rides beside it for the list gate's reason.
+
+ARMS_SOURCES = $$(ls build/tables-generated/arms/*Table.cpp)
+
+build/schema_test_arms: build/tables-generated/.stamp test/tables/arms_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/arms_main.cpp $(ARMS_SOURCES) -o $@
+
+build/schema_test_arms_asan: build/tables-generated/.stamp test/tables/arms_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+		$(TABLES_INCLUDES) test/tables/arms_main.cpp $(ARMS_SOURCES) -o $@
+
+# root table per pinned wire, for the tool's round trip
+ARMS_WIRE_ROOTS := arms_ring:Ring arms_holder:Holder arms_nest:Nest arms_hand:Hand arms_gate:Gate arms_gate_text:Gate
+
+.PHONY: tables-arms
+tables-arms: build/schema_test_arms build/schema_test_arms_asan
+	@rm -rf build/arms-files && mkdir -p build/arms-files
+	SCHEMA_ARMS_DIR=build/arms-files ./build/schema_test_arms
+	./build/schema_test_arms_asan
+	@for pair in $(ARMS_WIRE_ROOTS); do \
+		name=$${pair%%:*}; root=$${pair##*:}; \
+		rm -rf build/arms-files/$$name-text; \
+		./bin/schema unpack --root $$root --in build/arms-files/$$name.bin --one-file build/arms-files/$$name-text tables/arms || exit 1; \
+		./bin/schema pack --root $$root --out build/arms-files/$$name-again.bin build/arms-files/$$name-text tables/arms || exit 1; \
+		cmp -s build/arms-files/$$name.bin build/arms-files/$$name-again.bin || \
+			{ echo "ARMS GATE FAILED: the tool numbered $$name's nodes differently from the reference"; exit 1; }; \
+	done
+	@echo "arms gate: the tool reads every pinned wire silently and writes it back byte for byte, so the two walks number the arms' nodes alike"
+
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
-update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists
+update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms
 	@mkdir -p testdata/golden testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
@@ -2926,7 +2983,8 @@ update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_maps
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_lists
-	@for d in examples pointers block blockhome messages stream blobs scalars maps lists; do \
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_arms
+	@for d in examples pointers block blockhome messages stream blobs scalars maps lists arms; do \
 		mkdir -p testdata/golden/tables/$$d; \
 		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
 	done

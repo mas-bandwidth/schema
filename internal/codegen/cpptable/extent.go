@@ -238,6 +238,11 @@ func (g *tableGen) emitExtent(st *ir.Struct) {
 	if !g.hasExtent(st) {
 		g.pf("    (void) ctx; (void) value; (void) at; // no list or map below this record\n")
 		g.pf("    return true;\n}\n\n")
+		// a variable member with no extent of its own is still a root Lock and
+		// a cook size from, so its whole extent is spelled, and it is zero
+		g.pf("template <typename Ctx>\ninline int64_t %sExtent( const Ctx & ctx, const %s & value )\n{\n", st.Name, st.Name)
+		g.pf("    (void) ctx; (void) value; // no list or map below this record\n")
+		g.pf("    return 0;\n}\n\n")
 		return
 	}
 	g.emitExtentWalk(st, "value", extentVisitor{
