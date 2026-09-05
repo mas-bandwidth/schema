@@ -2599,6 +2599,48 @@ bench-table-check: build/schema_test_bench_table
 	./build/schema_test_bench_table verify
 
 
+# ---------------------------------------------------------------------------
+# THE PERF GATE (bench/PERF-PINS, bench/tools/perfgate) --------------------
+#
+# The owner's zero-cost-diagnostic law, issue #546: a diagnostic surface is
+# admitted at zero MEASURED cost on the read path and the write path of both
+# wires, or it is declined. The law is on the page (docs/SPEC-TABLES.md §13.2,
+# docs/PERFORMANCE.md). These four targets are the number half of it.
+#
+# `perf-gate` measures the C++ reference over the bench corpus on both wires
+# and compares four rows against bench/PERF-PINS. A CERTIFICATION instrument,
+# never an iteration one: it wants a quiet box, it takes minutes, and off the
+# box the pins name it refuses to render a verdict at all rather than divide
+# one machine's number by another's silicon.
+#
+# `perf-gate-control` is the negative control. It plants one added branch per
+# field on the READ path, in a scratch copy of the generated headers under
+# build/, and REQUIRES the gate to go red on round_trip while write holds. Its
+# verdict is a ratio inside one sitting, so it needs no pins and holds on any
+# box, which is what certification runs.
+#
+# `perf-gate-pin` re-cuts the numbers and fills in the sitting they came off.
+#
+# `perf-gate-pinlock` is the cheap half that rides every pull request, on the
+# model bench/LOCK's standing gate uses since the freeze lifted: a diff may
+# move the pins alongside the change that moved the reference, and must restate
+# the sitting when it does. It refuses pins that moved while the sitting did
+# not, and a sitting.commit the branch does not contain. No measurement, no
+# quiet box needed.
+.PHONY: perf-gate perf-gate-control perf-gate-pin perf-gate-pinlock
+perf-gate:
+	go run ./bench/tools/perfgate check
+
+perf-gate-control:
+	go run ./bench/tools/perfgate control
+
+perf-gate-pin:
+	go run ./bench/tools/perfgate pin -repeats 7
+
+perf-gate-pinlock:
+	go run ./bench/tools/perfgate pinlock -base origin/main
+
+
 # Prove the COMMITTED generated/ tree matches what the current compiler
 # emits (issue #30). `make test` regenerates every tracked generated file in
 # place, so staleness is precisely a dirty tree afterwards — a tracked file
