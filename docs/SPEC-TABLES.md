@@ -4106,8 +4106,10 @@ zero pad to the next byte boundary                 (verified zero)
   `bits_required(1, 256)` = 8 bits carrying `M - 1`. **256 IS A WIRE CONSTANT OF
   THIS FORM**, not a receiver's policy, because the count's WIDTH depends on it
   and two peers that disagreed on the width would not be reading the same wire.
-  A caller with more bodies writes more than one batch. **A BATCH OF ZERO IS NOT
-  SPELLABLE**, and a caller with nothing to send writes nothing at all.
+  A caller with more bodies writes more than one batch, and `SaveMessages`
+  refuses an `M` above 256 by name rather than concatenating batches on its
+  behalf (above). **A BATCH OF ZERO IS NOT SPELLABLE**, and a caller with
+  nothing to send writes nothing at all.
 - **A BODY ENDS AT ITS OWN ZERO REFERENCE**, which is what a body has always
   been, and the NEXT BODY BEGINS AT THE NEXT BIT. There is no per-message
   alignment and no per-message length. **THE BATCH ADDS NO TERMINATOR OF ITS
