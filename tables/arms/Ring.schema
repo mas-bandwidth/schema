@@ -1,0 +1,20 @@
+package armdemo
+
+// A LIST OF UNIONS WHOSE ARM IS A POINTER (docs/SPEC-TABLES.md §2.6, §2.9,
+// §3.1): an element's set arm is the pointer edge itself, visited where the
+// element sits, so two elements naming one node number it once and a node
+// reached from no other field is still this root's to number, place and cook.
+
+table Node { v int32 }
+
+union Slot
+{
+    node  *Node
+    plain int32
+}
+
+table Ring
+{
+    items []Slot
+    after int32
+}

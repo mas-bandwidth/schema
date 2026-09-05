@@ -1,0 +1,59 @@
+schema-tables-baseline 7
+package armdemo
+
+table Gate
+    field reach id=0x891da1f305deb858 kind=15 union=Reach
+    field after id=0xbf82010f6f71eae9 kind=4
+
+table Hand
+    field entries id=0xc5b2a72c0845a253 kind=14 elem=15 union=Carry array=bounded bound=2
+    field after id=0xbf82010f6f71eae9 kind=4
+
+table Holder
+    field carry id=0xafcd9a3b099f8ef0 kind=15 union=Carry
+    field tail id=0xd94c56ef0798d723 kind=14 elem=4 array=unbounded
+
+table Leaf
+    field items id=0x3e7884bf4f412c6f kind=14 elem=4 array=unbounded
+
+table Nest
+    field outer id=0x30e6ed678f5e1bd4 kind=15 union=Outer
+    field tail id=0xd94c56ef0798d723 kind=14 elem=4 array=unbounded
+
+table Node
+    field v id=0xaf63eb4c86020609 kind=4
+
+table Only
+    field w id=0xaf63ea4c86020456 kind=4
+
+table Ring
+    field items id=0x3e7884bf4f412c6f kind=14 elem=15 union=Slot array=unbounded
+    field after id=0xbf82010f6f71eae9 kind=4
+
+table Twig
+    field inner id=0x2d4c068f5f889287 kind=15 union=Inner
+
+union Carry
+    arm leaf id=0x24ad84ada20208d5 payload=Leaf
+    arm plain id=0xfd4d194e1652b207 kind=4
+
+union Inner
+    arm leaf id=0x24ad84ada20208d5 payload=Leaf
+    arm plain id=0xfd4d194e1652b207 kind=4
+
+union Outer
+    arm inner id=0x2d4c068f5f889287 kind=15 union=Inner
+    arm plain id=0xfd4d194e1652b207 kind=4
+
+union Reach
+    arm only id=0x072ddab46af04ab7 kind=17 type=Only
+    arm text id=0xfa04f4ef1995407e kind=17 type=string
+    arm plain id=0xfd4d194e1652b207 kind=4
+
+union Slot
+    arm node id=0x3c2f1bbad18642ad kind=17 type=Node
+    arm plain id=0xfd4d194e1652b207 kind=4
+
+## history
+### 2026-09-05 (UTC) — first baseline: the union-arm traversal corpus (schema#565)
+- baseline created over 9 tables — data written BEFORE this point is not covered by it
