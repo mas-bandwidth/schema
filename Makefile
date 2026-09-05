@@ -2429,6 +2429,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-zero-cost-negative-control
 	$(MAKE) tables-maps
+	$(MAKE) tables-maps-measure-refusals
 	$(MAKE) tables-json-map-walk
 	$(MAKE) tables-maps-negative-controls
 	$(MAKE) tables-lists
@@ -2538,6 +2539,14 @@ tables-maps: build/schema_test_maps build/schema_test_maps_asan
 	./build/schema_test_maps
 	./build/schema_test_maps_asan
 
+# THE LoadMeasure REFUSALS AT A MAP are a unit test and not a report row
+# (§2.8, §6.5): each wire is built in memory with a SYNTHETIC map count, and
+# the answer and the REASON are asserted by name, with a clean wire beside
+# them that must measure and load.
+.PHONY: tables-maps-measure-refusals
+tables-maps-measure-refusals: build/schema_test_maps
+	./build/schema_test_maps measure-refusals
+
 # THE MAP-WALK GATE (docs/SPEC-TABLES.md §2.8, §16): the map's half of the text
 # form is emitted only in a unit that declares one, and it is ONE half too —
 # the same bytes in every map-bearing .cpp of the corpus, on the walk's own
@@ -2634,12 +2643,22 @@ tables-maps-key-kind-negative-control: bin/schema build/tables-generated/.stamp
 tables-maps-clamp-negative-control: bin/schema build/tables-generated/.stamp
 	$(call map_negative_control,clamp,'s@out.over = key_len > %d;@out.over = ( key_len > %d ) \&\& false;@',internal/codegen/cpptable/maps.go,clamping an over-long key left the map gate GREEN)
 
-# N = 0xFFFFFFFF UNDER A SHORT L. A row of a few dozen bytes asking for
-# gigabytes meets it, and LoadMeasure's answer goes red if the fit check is
-# dropped.
+# N = 100000 UNDER A SHORT L. The measure-refusals row meets it: a Fleet of a
+# few dozen bytes whose map count the body cannot carry answers -1 with the
+# reason count_over_length, and that name goes red if the L check is dropped.
+# The count sits UNDER the int32 cap on purpose, because the cap is tested
+# first and a count past it never reaches the L check.
 .PHONY: tables-maps-fit-negative-control
 tables-maps-fit-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,fit,'s@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { return false; }@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) \&\& false ) { return false; }@',internal/codegen/cpptable/maps.go,an N the map L cannot carry left the map gate GREEN)
+	$(call map_negative_control,fit,'s@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { reason = count_over_length; return false; }@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) \&\& false ) { reason = count_over_length; return false; }@',internal/codegen/cpptable/maps.go,an N the map L cannot carry left the map gate GREEN)
+
+# N = 0x80000000, PAST THE INT32 CAP. The measure-refusals row meets it: the
+# cap is tested before the L, so the reason is count_over_extent_cap, and a
+# dropped cap check lets the L answer count_over_length instead, which the row
+# asserts by name.
+.PHONY: tables-maps-cap-negative-control
+tables-maps-cap-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,cap,'s@if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }@if ( n > (uint64_t) INT32_MAX \&\& false ) { reason = count_over_extent_cap; return false; }@',internal/codegen/cpptable/maps.go,an N past the int32 cap left the map gate GREEN)
 
 # LOADMEASURE OVER A MAP OF MAPS, summed at ONE DEPTH only. The instance whose
 # value is itself a map meets it, and the measure goes red against the region
@@ -2654,16 +2673,17 @@ tables-maps-depth-negative-control: bin/schema build/tables-generated/.stamp
 # goes red if the writer walks the entries any other way.
 .PHONY: tables-maps-text-order-negative-control
 tables-maps-text-order-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,textorder,'s@const void \* entry = f->map_at( slot, i );@const void * entry = f->map_at( slot, count - 1 - i );@',internal/codegen/cpptable/json.go,writing a map text out of key order left the map gate GREEN)
+	$(call map_negative_control,textorder,'s@const void \* entry = (const void \*) ( entries + (int64_t) i \* f->elem_size );@const void * entry = (const void *) ( entries + (int64_t) ( count - 1 - i ) * f->elem_size ); // SABOTAGED@',internal/codegen/cpptable/json.go,writing a map text out of key order left the map gate GREEN)
 
 # AN UNREACHED NON-EMPTY MAP SLOT IS REFUSED by Cook and by Lock, the same
 # refusal §7.6 gives a pointer in that position. The `Depth` instance whose
 # counted array holds a map PAST ITS LIVE COUNT meets it, and dropping the
 # refusal lets Lock write that map's entries into an extent nothing reserved
-# for them.
+# for them. The predicate is the one a list slot answers by (§2.9), so the
+# sabotage patches extent.go and each gate names its own red.
 .PHONY: tables-maps-unreached-negative-control
 tables-maps-unreached-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,unreached,'s@inline bool TableMapUnreachedEmpty( int64_t extent ) { return extent == 0; }@inline bool TableMapUnreachedEmpty( int64_t ) { return true; }@',internal/codegen/cpptable/maps.go,writing an unreached non-empty map left the map gate GREEN)
+	$(call map_negative_control,unreached,'s@inline bool TableExtentUnreachedEmpty( int64_t extent ) { return extent == 0; }@inline bool TableExtentUnreachedEmpty( int64_t ) { return true; }@',internal/codegen/cpptable/extent.go,writing an unreached non-empty map left the map gate GREEN)
 
 .PHONY: tables-maps-negative-controls
 tables-maps-negative-controls: tables-maps-sort-negative-control \
@@ -2673,6 +2693,7 @@ tables-maps-negative-controls: tables-maps-sort-negative-control \
 	tables-maps-key-kind-negative-control \
 	tables-maps-clamp-negative-control \
 	tables-maps-fit-negative-control \
+	tables-maps-cap-negative-control \
 	tables-maps-depth-negative-control \
 	tables-maps-text-order-negative-control \
 	tables-maps-unreached-negative-control
