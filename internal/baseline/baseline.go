@@ -34,6 +34,7 @@
 package baseline
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strconv"
@@ -88,8 +89,19 @@ type Unit struct {
 // keyword that declared it changes no byte — so the baseline spells both
 // `table`.
 type Table struct {
-	Name   string
+	Name   string // the WIRE name: the `was` alias of a renamed table, else its declared name (§5)
 	Fields []Field
+
+	// Declared is the table's declared name, rendered as `name=` on the table
+	// line only when a `was` makes it differ from the wire name above. It is
+	// recorded and judged on nothing: the line is the wire fact, and this is
+	// what lets the check name the spelling a second rename should have used.
+	Declared string
+
+	// Was is the live table's `was` alias, and it is the one fact here the FILE
+	// DOES NOT CARRY beyond `name=`: [Render] fills it on the live projection
+	// alone, where the chain refusal reads it (§18.2).
+	Was string
 }
 
 // A Field is one field of a closure member: its declared name, its EFFECTIVE
@@ -195,7 +207,10 @@ func Render(u *ir.Unit) *Unit {
 		// spelling, and a `was` rename moves that while moving no byte — so
 		// the entry is keyed by the holder's wire id and the field's, and a
 		// rename moves nothing in this file.
-		t := Table{Name: ir.ProjectionMemberName(u, name)}
+		t := Table{Name: ir.ProjectionMemberName(u, name), Declared: name, Was: st.WasName}
+		if st.MapEntryOf != "" {
+			t.Declared = t.Name
+		}
 		// DECLARATION ORDER: st.Fields is the flattened body, branch fields
 		// included. A guard removes a field from the bytes exactly as a
 		// default does, and both are absorbed by the reader's default — so
@@ -260,7 +275,7 @@ func renderUnion(un *ir.Union) Union {
 		arm := Field{Name: v.Name, Id: ir.TableWireId(v.Name)}
 		switch {
 		case v.Body():
-			arm.Tokens = []Token{{Key: "payload", Value: v.Type}}
+			arm.Tokens = []Token{{Key: "payload", Value: v.Ref.WireName()}} // the wire name, as a field's type= is
 		case v.Void():
 			arm.Tokens = []Token{{Key: "kind", Value: "none"}}
 		default:
@@ -297,13 +312,18 @@ func renderField(f *ir.Field) Field {
 		}
 	}
 	if f.Type.Kind == ir.TNamed {
-		switch f.Type.Ref.(type) {
+		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
 			add("enum", f.Type.Name)
 		case *ir.Flags:
 			add("flags", f.Type.Name)
 		case *ir.Union:
 			add("union", f.Type.Name)
+		case *ir.Struct:
+			// the WIRE name (docs/SPEC-TABLES.md §5): a table renamed under
+			// `was` keeps the name every stored record carries, so a rename
+			// moves nothing in this file
+			add("type", ref.WireName())
 		default:
 			add("type", f.Type.Name)
 		}
@@ -403,6 +423,10 @@ func DefaultText(f *ir.Field) string {
 	switch {
 	case f.DefVariant != "":
 		return f.DefVariant
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		// the bytes themselves, hex-spelled so a space in a default cannot
+		// split the token (SPEC §4.2)
+		return "bytes:" + hex.EncodeToString(f.DefBytes)
 	case f.DefInt != nil:
 		return f.DefInt.String()
 	case f.Type.Kind == ir.TBool:
@@ -431,7 +455,11 @@ func (u *Unit) Text() string {
 	fmt.Fprintf(&b, "package %s\n", u.Package)
 
 	for _, t := range u.Tables {
-		fmt.Fprintf(&b, "\ntable %s\n", t.Name)
+		if t.Declared != "" && t.Declared != t.Name {
+			fmt.Fprintf(&b, "\ntable %s name=%s\n", t.Name, t.Declared)
+		} else {
+			fmt.Fprintf(&b, "\ntable %s\n", t.Name)
+		}
 		for _, f := range t.Fields {
 			fmt.Fprintf(&b, "    field %s id=0x%016x", f.Name, f.Id)
 			for _, tok := range f.Tokens {
@@ -513,7 +541,13 @@ func Parse(path string, data []byte) (*Unit, error) {
 		}
 		fields := strings.Fields(line)
 		if !strings.HasPrefix(line, " ") {
-			// a section opener
+			// a section opener; a table line may carry `name=<declared>`, the
+			// declared name of a table renamed under `was` (§18.1)
+			declared := ""
+			if fields[0] == "table" && len(fields) == 3 && strings.HasPrefix(fields[2], "name=") {
+				declared = strings.TrimPrefix(fields[2], "name=")
+				fields = fields[:2]
+			}
 			if len(fields) != 2 {
 				return nil, fmt.Errorf("%s:%d: unreadable section line %q", path, i+1, line)
 			}
@@ -521,7 +555,7 @@ func Parse(path string, data []byte) (*Unit, error) {
 			case "package":
 				u.Package = fields[1]
 			case "table":
-				u.Tables = append(u.Tables, Table{Name: fields[1]})
+				u.Tables = append(u.Tables, Table{Name: fields[1], Declared: declared})
 			case "enum":
 				u.Enums = append(u.Enums, Enum{Name: fields[1]})
 			case "flags":

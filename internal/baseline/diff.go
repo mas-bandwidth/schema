@@ -43,6 +43,8 @@ import (
 	"math/big"
 	"sort"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // A Verdict is what a difference means for data already written.
@@ -518,6 +520,39 @@ func (d *differ) diffTables() []Finding {
 		}
 		out = append(out, d.wasChain(bt, lt)...)
 		out = append(out, d.renamePair(bt, lt, gone)...)
+	}
+	out = append(out, d.tableWasChain()...)
+	return out
+}
+
+// tableWasChain is [differ.wasChain] for a TABLE's own name (docs/SPEC-TABLES.md
+// §5): a table rides under the hash of its wire name, and `was` names the
+// FIRST one, forever. A second rename aimed at the intermediate declared name
+// hashes a name no record was ever written under, so every stored node of the
+// table becomes one the reader cannot name. The file records a renamed
+// table's declared name beside its wire name, which is what lets this
+// refusal say which spelling is right.
+func (d *differ) tableWasChain() []Finding {
+	if d.policy["was-chain"] != RuleFixed {
+		return nil
+	}
+	var out []Finding
+	for _, lt := range d.live.Tables {
+		if lt.Was == "" {
+			continue
+		}
+		for _, bt := range d.base.Tables {
+			declared := bt.Declared
+			if declared == "" {
+				declared = bt.Name
+			}
+			if declared != lt.Was || bt.Name == lt.Was {
+				continue
+			}
+			out = append(out, Finding{Refuse, "table " + lt.Declared, fmt.Sprintf(
+				"was = %q names %s, which itself rode under was = %q — `was` names the FIRST wire name, forever, so this table now rides under type id 0x%016x, an id no stored record was ever written under; write was = %q",
+				lt.Was, lt.Was, bt.Name, ir.TableWireId(lt.Was), bt.Name)})
+		}
 	}
 	return out
 }

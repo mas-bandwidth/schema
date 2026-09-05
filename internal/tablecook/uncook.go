@@ -34,7 +34,7 @@ func Uncook(m *tabletext.Model, root *ir.Struct, file []byte) (*tabletext.Instan
 		return nil, err
 	}
 	byTypeId := typeIdIndex(m)
-	if dir[0].TypeId != ir.TableTypeId(root.Name) {
+	if dir[0].TypeId != ir.TableTypeId(root.WireName()) {
 		return nil, fmt.Errorf("this cook's root is %s and --root names %s: the root is the directory's first entry and it is not guessed at", nameOf(byTypeId, dir[0].TypeId), root.Name)
 	}
 
@@ -304,7 +304,7 @@ func typeIdIndex(m *tabletext.Model) map[uint64]*ir.Struct {
 	out := map[uint64]*ir.Struct{}
 	for name := range ir.TableClosure(m.Unit) {
 		if st := m.Lookup(name); st != nil {
-			out[ir.TableTypeId(name)] = st
+			out[ir.TableTypeId(st.WireName())] = st
 		}
 	}
 	return out

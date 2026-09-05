@@ -1,0 +1,44 @@
+{
+  "title": "armada",
+  "flagship": {
+    "&node": 1,
+    "name": "Aurora",
+    "tag": "enpx",
+    "caps": [
+      "Crouch"
+    ],
+    "badge": {
+      "label": "vip"
+    },
+    "hull": 250
+  },
+  "escorts": [
+    {
+      "name": "untitled",
+      "tag": "YWI=",
+      "caps": [
+        "Jump",
+        "Fly"
+      ],
+      "badge": {
+        "label": "new"
+      },
+      "hull": 100
+    },
+    {
+      "&node": 1
+    }
+  ],
+  "home": {
+    "name": "untitled",
+    "tag": "YWI=",
+    "caps": [
+      "Jump",
+      "Fly"
+    ],
+    "badge": {
+      "label": "new"
+    },
+    "hull": 100
+  }
+}

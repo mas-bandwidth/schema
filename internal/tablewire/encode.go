@@ -9,6 +9,7 @@
 package tablewire
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -204,8 +205,8 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		return encodeKeyed(e, w, fv, id, kind)
 
 	case f.Type.Kind == ir.TString:
-		if fv.Count == 0 {
-			return nil
+		if bytes.Equal(fv.Cell.Str, f.DefBytes) {
+			return nil // at its default, empty when none is declared (§3, SPEC §4.2)
 		}
 		e.header(w, id, ir.TableKindString)
 		w.leb(uint64(len(fv.Cell.Str)))
@@ -213,8 +214,8 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		return nil
 
 	case f.Type.Kind == ir.TBytes:
-		if fv.Count == 0 {
-			return nil
+		if bytes.Equal(fv.Cell.Str, f.DefBytes) {
+			return nil // at its default, empty when none is declared (§3, SPEC §4.2)
 		}
 		e.header(w, id, ir.TableKindArray)
 		w.leb(uint64(2 + len(fv.Cell.Str)))

@@ -757,6 +757,12 @@ func fpExpr(e ast.Expr) string {
 		return e.Name
 	case *ast.StringLit:
 		return `"` + e.Value + `"`
+	case *ast.SetLit:
+		names := make([]string, len(e.Names))
+		for i, n := range e.Names {
+			names[i] = n.Text
+		}
+		return "{" + strings.Join(names, ",") + "}"
 	case *ast.MaxExpr:
 		return e.Enum + "." + e.Sel
 	case *ast.UnaryExpr:

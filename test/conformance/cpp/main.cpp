@@ -66,6 +66,8 @@
 #include "K1Table.h"
 #include "K2Table.h"
 #include "G1Table.h"
+#include "W1Table.h"
+#include "W2Table.h"
 // the BYTE BUFFER unit (docs/SPEC-TABLES.md §2.5): a blob at its used size,
 // pointed at — a variable root like any pointered one
 #include "AssetsTable.h"
@@ -349,6 +351,8 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "streamdemo", streamdemo, Feed ),
     VARCODEC( "blobdemo", blobdemo, Catalog ),
     VARCODEC( "tblg1", tblg1, Guarded ),
+    VARCODEC( "tblw1", tblw1, Fleet ),
+    VARCODEC( "tblw2", tblw2, Fleet ),
 };
 
 // ---------------------------------------------------------------------------

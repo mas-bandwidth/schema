@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
@@ -819,6 +820,12 @@ func (c *checker) resolveBodies() {
 							continue
 						}
 						st.CppInclude = lit.Value
+					case "was":
+						// a `type` has no node type id on the table wire: it
+						// is held by value, so a rename orphans no stored
+						// record and there is no identity for `was` to keep
+						// (docs/SPEC-TABLES.md §5)
+						c.errf(a.Pos, "type %s: was on a type declaration is refused — a type rides by value and has no node type id on the table wire, so a rename there orphans no stored record; was on a declaration is a table's (docs/SPEC-TABLES.md §5)", d.Name)
 					default:
 						if a.Value != nil {
 							c.errf(a.Pos, "a type tag is a bare identifier (SPEC §4.2 Type tags)")
@@ -835,7 +842,35 @@ func (c *checker) resolveBodies() {
 				// tables share the struct shape but live beside the packet
 				// decls, never among them (docs/SPEC-TABLES.md): the packet wire,
 				// the projection and the protocol id do not know they exist
-				c.tables[d.Name] = &ir.Struct{Name: d.Name, IsTable: true}
+				st := &ir.Struct{Name: d.Name, IsTable: true}
+				for _, a := range d.Attrs {
+					switch a.Key {
+					case "was":
+						// the table's RENAME (docs/SPEC-TABLES.md §5): its node
+						// type id stays the hash of the OLD name, so every
+						// stored record of that name still reads as this table
+						lit, ok := a.Value.(*ast.StringLit)
+						switch {
+						case a.Value == nil:
+							c.errf(a.Pos, "attribute was requires a value, as was = ... (SPEC §4.6)")
+						case !ok:
+							c.errf(a.Pos, `was takes the table's old name as a quoted string, e.g. was = "Vessel" (docs/SPEC-TABLES.md §5)`)
+						case lit.Value == "":
+							c.errf(a.Pos, "was = \"\" names nothing — was records the table's old name after a rename (docs/SPEC-TABLES.md §5)")
+						case lit.Value == d.Name:
+							c.errf(a.Pos, "table %s: was = %q names the table's own current name — was records the OLD name after a rename; drop the attribute until one happens (docs/SPEC-TABLES.md §5)", d.Name, lit.Value)
+						default:
+							st.WasName = lit.Value
+						}
+					default:
+						if a.Value != nil {
+							c.errf(a.Pos, "table %s: %s is not an attribute a table declaration takes — the valued vocabulary here is was alone, and a tag is a bare identifier (SPEC §4.2, docs/SPEC-TABLES.md §5)", d.Name, a.Key)
+							continue
+						}
+						st.Tags = append(st.Tags, a.Key)
+					}
+				}
+				c.tables[d.Name] = st
 			case *ast.UnionDecl:
 				// the shell first, so fields can reference the union in any
 				// order; variants resolve in the second pass below. Max and
@@ -1441,6 +1476,41 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 		return
 	}
 	out.DefExpr = f.Default
+	// A STRING or BYTES default is the literal's bytes (SPEC §4.2): the one
+	// literal the language has, at most N of them, and for a string valid
+	// UTF-8, because that is what the read accepts (§4.7). A FLAGS default is
+	// a brace list of the declaration's variant names, and the mask it
+	// spells is the fresh value (§4.2). Each literal stands only at its own
+	// kind, so a list on a scalar and a string on a mask are refused by name.
+	if lit, isSet := f.Default.(*ast.SetLit); isSet {
+		fl, isFlags := out.Type.Ref.(*ir.Flags)
+		if out.Type.Kind != ir.TNamed || !isFlags {
+			c.errf(lit.Pos, "field %s: a brace list is a FLAGS default, { Jump, Crouch } — this field is not a flags field (SPEC §4.2)", f.Name)
+			return
+		}
+		c.resolveFlagsDefault(f, out, fl, lit)
+		return
+	}
+	if lit, isStr := f.Default.(*ast.StringLit); isStr {
+		switch out.Type.Kind {
+		case ir.TString, ir.TBytes:
+			if int64(len(lit.Value)) > out.Type.Size {
+				c.errf(lit.Pos, "field %s: default %q is %d bytes, past the field's capacity of %d (SPEC §4.2)", f.Name, lit.Value, len(lit.Value), out.Type.Size)
+				return
+			}
+			if out.Type.Kind == ir.TString && !utf8.ValidString(lit.Value) {
+				c.errf(lit.Pos, "field %s: default %q is not valid UTF-8, which is what a string(N) holds (SPEC §4.2, §4.7)", f.Name, lit.Value)
+				return
+			}
+			out.HasDefault = true
+			out.DefBytes = []byte(lit.Value)
+		case ir.TWString:
+			c.errf(lit.Pos, "field %s: a wstring takes no specified default (SPEC §4.12)", f.Name)
+		default:
+			c.errf(lit.Pos, "field %s: a quoted string is a string(N) or bytes(N) default — this field is neither (SPEC §4.2)", f.Name)
+		}
+		return
+	}
 	switch out.Type.Kind {
 	case ir.TBool:
 		id, ok := f.Default.(*ast.IdentExpr)
@@ -1523,9 +1593,9 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 			out.DefVariant = id.Name
 			return
 		}
-		c.errf(f.Default.ExprPos(), "field %s: defaults in v1 cover bool, integer, float and enum fields", f.Name)
+		c.errf(f.Default.ExprPos(), "field %s: defaults cover bool, integer, float, enum, string, bytes and flags fields (SPEC §4.2)", f.Name)
 	default:
-		c.errf(f.Default.ExprPos(), "field %s: defaults in v1 cover bool, integer, float and enum fields", f.Name)
+		c.errf(f.Default.ExprPos(), "field %s: defaults cover bool, integer, float, enum, string, bytes and flags fields (SPEC §4.2)", f.Name)
 	}
 }
 
@@ -1981,14 +2051,17 @@ func (c *checker) checkReservedWireIds(names []string) {
 		if st.IsTable {
 			what = "table"
 		}
-		if id := ir.TableWireId(name); id == ir.TableNodeWireId || id == ir.TableBuildVersionWireId {
+		// THE EFFECTIVE NAME: a table renamed under `was` rides under the
+		// hash of its old name (docs/SPEC-TABLES.md §5), so that is the id
+		// the reserved check and the collision check see
+		if id := ir.TableWireId(st.WireName()); id == ir.TableNodeWireId || id == ir.TableBuildVersionWireId {
 			c.errf(at, "%s %s: its name takes one of the two ids the language holds back, 0x%016x — rename it (docs/SPEC-TABLES.md §3.1, §3.3, §5)",
-				what, name, id)
+				what, describeTableName(st), id)
 		} else if prev, dup := byId[id]; dup {
 			c.errf(at, "tables %s and %s collide on table-wire type id 0x%016x — a node record says what it is by that id alone, so the two would be indistinguishable in a save; rename one (docs/SPEC-TABLES.md §3.1, §5)",
-				prev, name, id)
+				prev, describeTableName(st), id)
 		} else {
-			byId[id] = name
+			byId[id] = describeTableName(st)
 		}
 		for _, f := range st.Fields {
 			// THE TWO RESERVED IDS (docs/SPEC-TABLES.md §3.1, §3.3, §5): the
@@ -2781,6 +2854,15 @@ func describeTableField(f *ir.Field) string {
 		return fmt.Sprintf("%s (was %q)", f.Name, f.WasName)
 	}
 	return f.Name
+}
+
+// describeTableName names a closure member for the type-id diagnostics,
+// showing the was alias when that is where the id comes from.
+func describeTableName(st *ir.Struct) string {
+	if st.WasName != "" {
+		return fmt.Sprintf("%s (was %q)", st.Name, st.WasName)
+	}
+	return st.Name
 }
 
 // describeTableJsonField names a field in a text-key diagnostic, showing the
@@ -3712,4 +3794,34 @@ func reservedEnumVariant(text string) bool {
 		return true
 	}
 	return false
+}
+
+// resolveFlagsDefault resolves a FLAGS default, `= { Jump, Crouch }` (SPEC
+// §4.2): every name is a variant of the field's own flags declaration, none
+// repeats, and the fresh value is the mask those bits spell, held in DefInt
+// exactly as an integer default is.
+func (c *checker) resolveFlagsDefault(f *ast.Field, out *ir.Field, fl *ir.Flags, lit *ast.SetLit) {
+	mask := new(big.Int)
+	seen := map[string]bool{}
+	for _, n := range lit.Names {
+		bit := -1
+		for i, v := range fl.Variants {
+			if v == n.Text {
+				bit = i
+				break
+			}
+		}
+		if bit < 0 {
+			c.errf(n.Pos, "field %s: %s is not a variant of flags %s (SPEC §4.2)", f.Name, n.Text, fl.Name)
+			return
+		}
+		if seen[n.Text] {
+			c.errf(n.Pos, "field %s: %s repeats in the default — a mask holds a bit once (SPEC §4.2)", f.Name, n.Text)
+			return
+		}
+		seen[n.Text] = true
+		mask.SetBit(mask, bit, 1)
+	}
+	out.HasDefault = true
+	out.DefInt = mask
 }

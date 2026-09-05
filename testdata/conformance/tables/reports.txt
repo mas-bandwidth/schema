@@ -56,3 +56,6 @@ v1_cfg_as_v2       1,1,1,0,false,read
 v1_seams_as_v2     2,2,0,0,false,read
 v2_cfg_as_v1       5,1,1,0,false,read
 v2_seams_as_v1     2,2,0,0,false,read
+w1_fleet_as_w2     0,0,0,0,false,read
+w1_fleet_default_as_w2 0,0,0,0,false,read
+w2_fleet_as_w1     0,0,0,0,false,read

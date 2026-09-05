@@ -180,7 +180,7 @@ func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
 			}
 			return f.Type.Name + "::None"
 		case *ir.Flags:
-			return "0"
+			return flagsDefaultExpr(f)
 		}
 	}
 	return "0"
@@ -259,9 +259,15 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		typ = "alignas( 16 ) " + typ
 	}
 	switch {
+	case f.Type.Kind == ir.TString && hasByteDefault(f):
+		g.pf("    char %s[%d + 1] = %s; // string(%d): max length, used length beside it; the declared default\n", f.Name, f.Type.Size, cStringLit(f.DefBytes), f.Type.Size)
+		g.pf("    int32_t %s_length = %d;\n", f.Name, len(f.DefBytes))
 	case f.Type.Kind == ir.TString:
 		g.pf("    char %s[%d + 1] = {}; // string(%d): max length, used length beside it\n", f.Name, f.Type.Size, f.Type.Size)
 		g.pf("    int32_t %s_length = 0;\n", f.Name)
+	case f.Type.Kind == ir.TBytes && hasByteDefault(f):
+		g.pf("    uint8_t %s[%d] = %s; // bytes(%d): fixed buffer, used length beside it; the declared default\n", f.Name, f.Type.Size, byteListLit(f.DefBytes), f.Type.Size)
+		g.pf("    int32_t %s_length = %d;\n", f.Name, len(f.DefBytes))
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    uint8_t %s[%d] = {}; // bytes(%d): fixed buffer, used length beside it\n", f.Name, f.Type.Size, f.Type.Size)
 		g.pf("    int32_t %s_length = 0;\n", f.Name)
@@ -382,6 +388,15 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 	}
 	typ, selfInit := g.cppFieldType(f.Type)
 	switch {
+	case f.Type.Kind == ir.TString && hasByteDefault(f):
+		g.pf("    memset( value.%s, 0, sizeof( value.%s ) );\n", f.Name, f.Name)
+		g.pf("    memcpy( value.%s, %s, %d ); // the declared default\n", f.Name, cStringLit(f.DefBytes), len(f.DefBytes))
+		g.pf("    value.%s_length = %d;\n", f.Name, len(f.DefBytes))
+	case f.Type.Kind == ir.TBytes && hasByteDefault(f):
+		g.emitBytesDefaultLocal(f)
+		g.pf("    memset( value.%s, 0, sizeof( value.%s ) );\n", f.Name, f.Name)
+		g.pf("    memcpy( value.%s, %s_default, %d ); // the declared default\n", f.Name, f.Name, len(f.DefBytes))
+		g.pf("    value.%s_length = %d;\n", f.Name, len(f.DefBytes))
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.pf("    memset( value.%s, 0, sizeof( value.%s ) );\n", f.Name, f.Name)
 		g.pf("    value.%s_length = 0;\n", f.Name)
@@ -852,10 +867,11 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        }\n    }\n")
 	case f.Type.Kind == ir.TString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
-		g.pf("    if ( value.%s_length > 0 ) { bytes += %s + %s; } // %s\n", f.Name, g.hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
+		g.pf("    if ( %s ) { bytes += %s + %s; } // %s\n", g.lengthRidesTest(f), g.hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
-		g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
+		g.emitBytesDefaultLocal(f)
+		g.pf("    if ( %s )\n    {\n", g.lengthRidesTest(f))
 		g.pf("        const int64_t body_%s = 1 + TableLebBytes( (uint64_t) value.%s_length ) + value.%s_length;\n", f.Name, f.Name, f.Name)
 		g.pf("        bytes += %s + %s; // %s\n", g.hdrBytes(id), framed("body_"+f.Name), f.Name)
 		g.pf("    }\n")
@@ -1260,13 +1276,14 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        }\n    }\n")
 	case f.Type.Kind == ir.TString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
-		g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
+		g.pf("    if ( %s )\n    {\n", g.lengthRidesTest(f))
 		g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", g.wireRef(id), tkString, f.Name)
 		g.pf("        w.putleb( (uint64_t) value.%s_length );\n", f.Name)
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
-		g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
+		g.emitBytesDefaultLocal(f)
+		g.pf("    if ( %s )\n    {\n", g.lengthRidesTest(f))
 		g.pf("        const int64_t body_%s = 1 + TableLebBytes( (uint64_t) value.%s_length ) + value.%s_length;\n", f.Name, f.Name, f.Name)
 		g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", g.wireRef(id), tkArray, f.Name)
 		g.pf("        w.putleb( (uint64_t) body_%s );\n", f.Name)
@@ -1569,7 +1586,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 // of the reference it frames, and anything else is that arm's own framing
 // damage (§3).
 func (g *tableGen) emitNodeIndexLoad(f *ir.Field, dst, ind, rdr, onBad, sfx string, exact bool) {
-	target := fmt.Sprintf("0x%016xull", ir.TableWireId(f.Type.Name))
+	target := fmt.Sprintf("0x%016xull", ir.TableWireId(ir.PointeeWireName(f)))
 	comment := "*" + f.Type.Name
 	if f.Type.Blob() {
 		target = blobTypeIdConst(f)
@@ -2329,4 +2346,91 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, fracBits, wide, enumMax, enumName, variantId,
 		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard)
+}
+
+// ---- string, bytes and flags defaults (SPEC §4.2) ----
+//
+// A string(N) or bytes(N) field may declare the bytes a fresh value holds,
+// and a flags field the mask. The storage initializer, Reset and the writer's
+// elision compare all read the same bytes, so a field holding its default is
+// elided exactly as a scalar at its default is, and an absent field reads as
+// it (docs/SPEC-TABLES.md §4). A field with no default keeps the empty and
+// zero forms it always had, emitted by the same lines as before.
+
+// cStringLit renders bytes as a C++ string literal: printable ASCII as
+// itself, a quote and a backslash escaped, and every other byte as a
+// three-digit octal escape, which no following digit can extend.
+func cStringLit(b []byte) string {
+	var sb strings.Builder
+	sb.WriteByte('"')
+	for _, c := range b {
+		switch {
+		case c == '"':
+			sb.WriteString(`\"`)
+		case c == '\\':
+			sb.WriteString(`\\`)
+		case c >= 0x20 && c < 0x7f:
+			sb.WriteByte(c)
+		default:
+			fmt.Fprintf(&sb, "\\%03o", c)
+		}
+	}
+	sb.WriteByte('"')
+	return sb.String()
+}
+
+// byteListLit renders bytes as a braced list of hex octets, the initializer
+// a uint8_t array takes.
+func byteListLit(b []byte) string {
+	parts := make([]string, len(b))
+	for i, c := range b {
+		parts[i] = fmt.Sprintf("0x%02x", c)
+	}
+	return "{ " + strings.Join(parts, ", ") + " }"
+}
+
+// flagsDefaultExpr renders a flags default as the declaration's own masks
+// ored together, `( Perks_Shielded | Perks_Turbo )`, and `0` for the empty
+// set.
+func flagsDefaultExpr(f *ir.Field) string {
+	fl, ok := f.Type.Ref.(*ir.Flags)
+	if !ok || !f.HasDefault || f.DefInt == nil || f.DefInt.Sign() == 0 {
+		return "0"
+	}
+	var names []string
+	for i, v := range fl.Variants {
+		if f.DefInt.Bit(i) == 1 {
+			names = append(names, fl.Name+"_"+v)
+		}
+	}
+	return "( " + strings.Join(names, " | ") + " )"
+}
+
+// lengthRidesTest is the condition under which whether a string or bytes
+// field RIDES: with no default, a non-empty value; with one, a value that is
+// not the default, length and bytes both.
+// hasByteDefault reports a string or bytes default with at least one byte: an
+// empty default is the zero form, and the zero form's lines already say it.
+func hasByteDefault(f *ir.Field) bool {
+	return f.HasDefault && len(f.DefBytes) > 0
+}
+
+func (g *tableGen) lengthRidesTest(f *ir.Field) string {
+	if !hasByteDefault(f) {
+		return fmt.Sprintf("value.%s_length > 0", f.Name)
+	}
+	lit := cStringLit(f.DefBytes)
+	if f.Type.Kind == ir.TBytes {
+		lit = fmt.Sprintf("%s_default", f.Name)
+	}
+	return fmt.Sprintf("!( value.%s_length == %d && memcmp( value.%s, %s, %d ) == 0 )", f.Name, len(f.DefBytes), f.Name, lit, len(f.DefBytes))
+}
+
+// emitBytesDefaultLocal declares the local a bytes default is compared
+// against, ahead of the test that reads it. A string compares against its
+// literal directly.
+func (g *tableGen) emitBytesDefaultLocal(f *ir.Field) {
+	if hasByteDefault(f) && f.Type.Kind == ir.TBytes {
+		g.pf("    static const uint8_t %s_default[%d] = %s;\n", f.Name, len(f.DefBytes), byteListLit(f.DefBytes))
+	}
 }
