@@ -1977,7 +1977,7 @@ wide-utf8-read-negative-control:
 projection-union-arm-order-negative-control:
 	@mkdir -p build
 	@sed -E -e 's|"  variant %d name=%s payload=|"  variant %d payload=|' \
-		-e 's|i\+1, v\.Name, v\.Type\)|i+1, v.Type) // SABOTAGED: the arm names removed|' \
+		-e 's|i\+1, v\.WireName\(\), v\.Type\)|i+1, v.Type) // SABOTAGED: the arm names removed|' \
 		ir/projection.go > build/projection-no-arm-names.gotext
 	@grep -q SABOTAGED build/projection-no-arm-names.gotext || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not remove the arm names"; exit 1; }

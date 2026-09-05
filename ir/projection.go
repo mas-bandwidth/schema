@@ -119,7 +119,8 @@ func WireProjection(u *Unit) string {
 		// projection exists to refuse — and a rename therefore moves the id.
 		fmt.Fprintf(&b, "enum %s max=%d storage=%d variants=%d\n", e.Name, e.Max, e.StorageBits, len(e.Variants))
 		for i := range e.Variants {
-			fmt.Fprintf(&b, "  variant %d name=%s\n", i+1, e.VariantWireName(i))
+			v := e.VariantWireName(i)
+			fmt.Fprintf(&b, "  variant %d name=%s\n", i+1, v)
 		}
 	}
 
