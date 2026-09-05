@@ -1894,7 +1894,7 @@ define wide-negative-control-body
 	@grep -q '$(EXPECT)' build/wide-$(SABOTAGE).log || \
 		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on $(EXPECT)"; \
 		  cat build/wide-$(SABOTAGE).log; exit 1; }
-	@echo "negative control ($(SABOTAGE)): the gate goes red —" \
+	@echo "negative control ($(SABOTAGE)): the gate goes red on" \
 		"$$(grep FAILED build/wide-$(SABOTAGE).log | head -1)"
 endef
 
@@ -1917,7 +1917,7 @@ wide-surrogate-negative-control:
 	$(wide-negative-control-body)
 
 # A successful read writes the zero unit at index length, always (SPEC §4.12).
-# Drop the store and the harness's terminator check goes red — which it can
+# Drop the store and the harness's terminator check goes red, which it can
 # only do because the harness poisons the buffer before the read.
 .PHONY: wide-terminator-negative-control
 wide-terminator-negative-control: SABOTAGE = wstring-drop-terminator

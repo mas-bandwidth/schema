@@ -140,8 +140,8 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { s string(1) }\n"},
 
 		// ---- wide text (SPEC §4.12, §4.6): every refusal the construct owes.
-		// The type itself compiles — examples-wide/ is the corpus that pins it
-		// — so what a case here breaks is one rule and never the construct.
+		// The type itself compiles, examples-wide/ being the corpus that pins
+		// it, so what a case here breaks is one rule and never the construct.
 		{name: "wstring below two", want: "wstring(1): N below 2",
 			src: "package t\ntype T { s wstring(1) }\n"},
 		{name: "wstring bound above int32", want: "lengths live in int32",
