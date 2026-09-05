@@ -2042,11 +2042,12 @@ func (c *checker) closureEdge(name string, st *ir.Struct, f *ir.Field) string {
 		return fmt.Sprintf("%s %s's field %s", what, name, f.Name)
 	}
 	owner, field, _ := strings.Cut(st.MapEntryOf, ".")
-	through := "its map value"
+	depth := 0
 	for entry := c.tables[owner]; entry != nil && entry.MapEntryOf != ""; entry = c.tables[owner] {
 		owner, field, _ = strings.Cut(entry.MapEntryOf, ".")
-		through += "'s map value"
+		depth++
 	}
+	through := "its map value" + strings.Repeat("'s map value", depth)
 	return fmt.Sprintf("table %s's field %s, through %s,", owner, field, through)
 }
 
