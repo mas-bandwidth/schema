@@ -543,6 +543,16 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	}
 	g.pf("        default: return false;\n")
 	g.pf("    }\n}\n")
+	// THE MESSAGE FORM's half: the SLOT, a literal, with no id table in sight
+	// (docs/SPEC-TABLES.md §3.3)
+	g.pf("inline bool TableEnumSlot( %s value, uint64_t & slot )\n{\n", e.Name)
+	g.pf("    switch ( value )\n    {\n")
+	g.pf("        case %s::None: slot = 0; return true;\n", e.Name)
+	for _, v := range e.Variants {
+		g.pf("        case %s::%s: slot = %d; return true;\n", e.Name, v, g.slots[ir.TableWireId(v)])
+	}
+	g.pf("        default: return false; // no variant names this value: no wire identity\n")
+	g.pf("    }\n}\n")
 	g.pf("inline bool TableEnumId( %s value, uint64_t & id )\n{\n", e.Name)
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %s::None: id = 0; return true;\n", e.Name)

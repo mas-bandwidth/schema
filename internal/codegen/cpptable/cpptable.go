@@ -105,6 +105,9 @@ type tableGen struct {
 	// has one, and the slot rides at the header as a LITERAL beside the id, so
 	// a form-`2` save does no lookup at all.
 	slots map[uint64]uint64
+	// records is the announcement's CANONICAL record per id (§3.3): the widths
+	// the bitpacked codec spends, all of them compile-time facts.
+	records map[uint64]ir.TableMessageDescriptor
 }
 
 // wireRef is a field header's id reference: the id and its MESSAGE-FORM SLOT,
@@ -983,12 +986,16 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// compiler settled for it. A generated field header carries the slot as a
 	// literal beside the id.
 	slots := map[uint64]uint64{}
-	for i, id := range ir.TableVocabulary(u) {
+	records := map[uint64]ir.TableMessageDescriptor{}
+	vocabulary := ir.TableVocabulary(u)
+	published := ir.TableVocabularyRecords(u)
+	for i, id := range vocabulary {
 		slots[id] = uint64(i + 1)
+		records[id] = published[i]
 	}
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets,
-			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots}
+			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots, records: records}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
 		for _, d := range f.Decls {
@@ -1028,6 +1035,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.emitTableReset(st)
 			}
 			g.emitCodecDeclarations(members)
+			g.emitMessageBodyDeclarations(members)
 			g.emitMapSurfaces(members)
 			for _, st := range members {
 				g.owner = st
@@ -1035,6 +1043,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.emitTableWrite(st)
 				g.emitTableSave(st)
 				g.emitTableRead(st)
+				g.emitMessageCodec(st)
 				g.emitMessageEntries(st)
 			}
 			g.emitVariableSurface(members)
