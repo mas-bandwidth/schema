@@ -226,6 +226,40 @@ tables-cook-open-cs-lengths-negative-control: build/cook-open/.stamp
 tables-cook-open-cs-root-negative-control: build/cook-open/.stamp
 	$(call cook_open_cs_sabotage,root,if (dataLength < %d) { return false; },if (dataLength == ulong.MaxValue) { return false; } // NEGATIVE CONTROL)
 
+# THE WALK CONTROL, the C# half of the Makefile's tables-cook-open-walk-negative-control:
+# the sabotage (tools/sabotage, cook-open-walk-cs) leaves every check in place
+# and makes Open sum every word of the region before it returns, and the
+# open-cost gate must go RED on its band over the two fixtures the certification
+# run times. ITERATIONS is low for the reason given there.
+.PHONY: tables-cook-open-cs-walk-negative-control
+tables-cook-open-cs-walk-negative-control: build/cook-open/.stamp
+	@rm -rf build/cook-open-cs-walk && mkdir -p build/cook-open-cs-walk
+	@go run ./tools/sabotage -name cook-open-walk-cs -out build/cook-open-cs-walk/cook.gotext internal/codegen/cstable/cook.go
+	@printf '{"Replace":{"%s/internal/codegen/cstable/cook.go":"%s/build/cook-open-cs-walk/cook.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cook-open-cs-walk/overlay.json
+	@go build -overlay=build/cook-open-cs-walk/overlay.json -o build/cook-open-cs-walk/schema ./cmd/schema
+	./build/cook-open-cs-walk/schema generate --lang cs --out build/cook-open-cs-walk/gen tables/pointers
+	@if ( cd test/cs-cook && dotnet build -v q --nologo \
+			-p:CookGeneratedDir=../../build/cook-open-cs-walk/gen \
+			-p:BaseOutputPath=../../build/cook-open-cs-walk/bin/ \
+			-p:BaseIntermediateOutputPath=../../build/cook-open-cs-walk/obj/ \
+			> ../../build/cook-open-cs-walk/build.log 2>&1 ); then :; else \
+		echo "NEGATIVE CONTROL FAILED: the sabotaged emitter's output does not compile"; \
+		cat build/cook-open-cs-walk/build.log; exit 1; \
+	fi
+	@if ( cd test/cs-cook && ITERATIONS=10 dotnet run --no-build \
+			-p:CookGeneratedDir=../../build/cook-open-cs-walk/gen \
+			-p:BaseOutputPath=../../build/cook-open-cs-walk/bin/ \
+			-p:BaseIntermediateOutputPath=../../build/cook-open-cs-walk/obj/ \
+			-- time Scene ../../build/cook-open/1mb.cook ../../build/cook-open/100mb.cook > ../../build/cook-open-cs-walk/log 2>&1 ); then \
+		echo "NEGATIVE CONTROL FAILED: the open-cost gate stayed green with a walk in Open"; cat build/cook-open-cs-walk/log; exit 1; \
+	fi
+	@grep -q "FAILED: open time is not flat" build/cook-open-cs-walk/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on its band"; cat build/cook-open-cs-walk/log; exit 1; }
+	@grep "cook open is O(1)" build/cook-open-cs-walk/log
+	@grep -m1 "FAILED" build/cook-open-cs-walk/log
+	@echo "negative control: a walk in Open turns the C# open-cost gate RED"
+
 generated/bench/tables/cs/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/cs
 	./bin/schema generate --lang cs --out generated/bench/tables/cs bench/corpus/BenchTable.schema
@@ -304,6 +338,7 @@ test-cs: build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp gener
 	$(MAKE) tables-cook-open-cs
 	$(MAKE) tables-cook-open-cs-lengths-negative-control
 	$(MAKE) tables-cook-open-cs-root-negative-control
+	$(MAKE) tables-cook-open-cs-walk-negative-control
 	dotnet build bench/tables/cs -c Release --nologo -v quiet
 	cd bench/cs && dotnet build -c Release --nologo -v quiet
 	cd test/cs && dotnet run

@@ -106,6 +106,32 @@ var sabotages = map[string][]edit{
 			g.pf("%sserialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( %s ), %s_length ) );\n", ind, name, name) // SABOTAGED: the write-only stance restored
 		}`,
 	}},
+
+	// SPEC-TABLES §7.5: Open is O(1) in the file's size, a header match and
+	// nothing per node. Put a walk in: every word of the region is summed
+	// before the base is returned, and the sum is kept live by a compare
+	// no file can satisfy. Every check stays, so the forgery battery keeps
+	// its answers and what goes red is the open-cost gate alone.
+	"cook-open-walk-cpp": {{
+		old: `    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return NULL; }
+    return base;
+`,
+		new: `    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return NULL; }
+    uint64_t walk = 0; // SABOTAGED: Open walks every word of the region
+    for ( uint64_t i = 0; i < length / 8; i++ ) { walk += ( (const uint64_t *) raw )[i]; }
+    if ( walk == UINT64_MAX ) { return NULL; }
+    return base;
+`,
+	}},
+
+	// the same walk on the C# leg's Open
+	"cook-open-walk-cs": {{
+		old: `	g.hf("        cook = new %sCook(at + dataOffset, (long) dataLength);\n", name)`,
+		new: `	g.hf("        ulong walk = 0; // SABOTAGED: Open walks every word of the region\n")
+	g.hf("        for (ulong i = 0; i < bytes / 8; i++) { walk += ((ulong*) at)[i]; }\n")
+	g.hf("        if (walk == ulong.MaxValue) { return false; }\n")
+	g.hf("        cook = new %sCook(at + dataOffset, (long) dataLength);\n", name)`,
+	}},
 }
 
 func main() {

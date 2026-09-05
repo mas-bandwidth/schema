@@ -922,6 +922,31 @@ tables-cook-open-lengths-negative-control: build/cook-open/.stamp
 tables-cook-open-root-negative-control: build/cook-open/.stamp
 	$(call cook_open_sabotage,root,data_length < root_size,if ( root_size == UINT64_MAX ) { return NULL; })
 
+# THE WALK CONTROL, for the OPEN-COST gate (§7.5) rather than the forgery
+# battery. The sabotage (tools/sabotage, cook-open-walk-cpp) leaves every check
+# in place and makes Open sum every word of the region before it returns, which
+# is the one thing the gate exists to refuse; the gate must go RED on its band
+# over the same two fixtures the certification run times. ITERATIONS is low
+# because an Open that walks 100 MB cannot be opened 200000 times in a
+# control's budget, and the gate is a ratio, which the count does not move.
+.PHONY: tables-cook-open-walk-negative-control
+tables-cook-open-walk-negative-control: build/cook-open/.stamp
+	@rm -rf build/cook-open-walk && mkdir -p build/cook-open-walk
+	@go run ./tools/sabotage -name cook-open-walk-cpp -out build/cook-open-walk/cook.gotext internal/codegen/cpptable/cook.go
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cook.go":"%s/build/cook-open-walk/cook.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cook-open-walk/overlay.json
+	@go build -overlay=build/cook-open-walk/overlay.json -o build/cook-open-walk/schema ./cmd/schema
+	./build/cook-open-walk/schema generate --lang cpp --out build/cook-open-walk/gen tables/pointers
+	$(CXX) $(COOK_CXXFLAGS) -Ibuild/cook-open-walk/gen -Itest/tables test/tables/cook_main.cpp -o build/cook-open-walk/test
+	@if ITERATIONS=20 ./build/cook-open-walk/test time Scene build/cook-open/1mb.cook build/cook-open/100mb.cook > build/cook-open-walk/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the open-cost gate stayed green with a walk in Open"; cat build/cook-open-walk/log; exit 1; \
+	fi
+	@grep -q "FAILED: open time is not flat" build/cook-open-walk/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on its band"; cat build/cook-open-walk/log; exit 1; }
+	@grep "cook open is O(1)" build/cook-open-walk/log
+	@grep -m1 "FAILED" build/cook-open-walk/log
+	@echo "negative control: a walk in Open turns the open-cost gate RED"
+
 # THE COOK ROUND TRIP THROUGH THE CLI (docs/SPEC-TABLES.md §7.5). The Go tests hold
 # the engine; this holds the three COMMANDS and their flags, over a pinned pack
 # tree, in both byte orders and with the attribution written both ways.
@@ -2439,6 +2464,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-cook-valued
 	$(MAKE) tables-cook-open-lengths-negative-control
 	$(MAKE) tables-cook-open-root-negative-control
+	$(MAKE) tables-cook-open-walk-negative-control
 	$(MAKE) tables-block-zero-cost
 	$(MAKE) tables-block-build-version
 	$(MAKE) tables-block-fill-refuser
