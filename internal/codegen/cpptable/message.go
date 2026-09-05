@@ -254,7 +254,7 @@ inline bool TableMessageFixedKind( uint8_t kind ) { return kind >= 20 && kind <=
 
 inline bool TableMessageKnownKind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 );
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -524,13 +524,19 @@ inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, 
     if ( seen_version != 1 || seen_vocabulary != 1 ) { to->refused = true; to->reason = no_vocabulary; return false; }
 
     // THE ENTRIES, parsed once: every width is checked here and never again
-    int64_t at = 0, count = 0;
+    int64_t at = 0, count = 0, node_table_slots = 0;
     while ( at < words_bytes )
     {
         if ( count >= vocabulary.max_entries ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
         const int64_t begin = at;
         TableMessageEntry parsed;
         if ( !TableMessageEntryRead( words, words_bytes, at, parsed ) ) { to->malformed = true; return false; }
+        // THE RESERVED IDS WHERE THEY DO NOT BELONG (§3.3): the announcement's
+        // own two never take a slot, and the node-table id takes exactly one,
+        // so a vocabulary carrying either of the first or a SECOND node-table
+        // id is malformed whole and sets nothing
+        if ( parsed.id == kTableBuildVersionFieldId || parsed.id == kTableMessageVocabularyFieldId ) { to->malformed = true; return false; }
+        if ( parsed.id == kTableNodeTableFieldId ) { if ( node_table_slots++ > 0 ) { to->malformed = true; return false; } }
         vocabulary.offsets[ count++ ] = (int32_t) begin;
     }
     vocabulary.vocabulary = words;
@@ -542,32 +548,78 @@ inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, 
     return true;
 }
 
+// TableMessageReserved is one of the three ids the language holds back (§3.1,
+// §3.3, §5): each is malformed anywhere but its own transport, and the rule
+// OUTRANKS the wrong-sort rule below.
+inline bool TableMessageReserved( uint64_t id )
+{
+    return id == kTableBuildVersionFieldId || id == kTableMessageVocabularyFieldId || id == kTableNodeTableFieldId;
+}
+
+// TableMessageNameEntry resolves a reference used as a VALUE — an enum's
+// variant, a keyed array's slot key, a node record's type id — which must
+// name a kind-0 entry (§3.3). A reference of 0 where an entry is required, one
+// above E, one naming a reserved id and one naming an entry that carries a
+// payload are each damage: the reader RESOLVED the entry and it contradicts
+// the position it was used in, so the next bit's meaning is what is in doubt.
+inline bool TableMessageNameEntry( const TableVocabulary & vocabulary, uint64_t ref, TableMessageEntry & entry )
+{
+    if ( ref == 0 || ref > (uint64_t) vocabulary.count ) { return false; }
+    entry = TableVocabularyEntryAt( vocabulary, ref );
+    return !TableMessageReserved( entry.id ) && entry.kind == 0;
+}
+
+// TableMessageArmEntry resolves a UNION's arm reference, which must name an
+// entry carrying the arm's own kind and shape: a kind-0 entry frames nothing,
+// and a reserved id belongs to no arm (§3.3).
+inline bool TableMessageArmEntry( const TableVocabulary & vocabulary, uint64_t ref, TableMessageEntry & entry )
+{
+    if ( ref == 0 || ref > (uint64_t) vocabulary.count ) { return false; }
+    entry = TableVocabularyEntryAt( vocabulary, ref );
+    return !TableMessageReserved( entry.id ) && entry.kind != 0;
+}
 // TableMessageSkip steps over one field's payload without decoding it, using
 // the announced ENTRY alone (§3.3). It is what makes an unknown entry
 // skippable on a body with no kind byte, and it is ONE function over every
 // table, because a shape says everything a skipper needs.
-inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary );
+inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits );
 
-inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, const TableMessageEntry & entry )
+inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry )
 {
     switch ( entry.kind )
     {
         case 0: case 32: return true;              // a name, and a payload-free arm
         case 30: return r.skip( vocabulary.ref_bits );
-        case 13: return TableMessageSkipBody( r, vocabulary );
-        case 17: return r.skip( vocabulary.ref_bits ); // a node index, whose width the node count settles
+        case 13: return TableMessageSkipBody( r, vocabulary, index_bits );
+        case 17: return index_bits > 0 && r.skip( index_bits ); // a node index, at the width the body's node count settled
         case 15:
         {
             uint64_t arm = 0;
             if ( !r.get( arm, vocabulary.ref_bits ) ) { return false; }
             if ( arm == 0 ) { return true; }
-            if ( arm > (uint64_t) vocabulary.count ) { return false; }
-            return TableMessageSkip( r, vocabulary, TableVocabularyEntryAt( vocabulary, arm ) );
+            TableMessageEntry arm_entry;
+            if ( !TableMessageArmEntry( vocabulary, arm, arm_entry ) ) { return false; }
+            return TableMessageSkip( r, vocabulary, index_bits, arm_entry );
         }
         case 12:
         {
             uint64_t n = 0;
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
+            return r.skip( (int64_t) n * 8 );
+        }
+        case 33:
+        {
+            // the length, NO align, then SIXTEEN bits a code unit (§3.3)
+            uint64_t n = 0;
+            if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) ) { return false; }
+            return r.skip( (int64_t) n * 16 );
+        }
+        case 31:
+        {
+            // THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque — the one
+            // path a later-major writer has on this form (§3.3)
+            uint64_t n = 0;
+            if ( !r.align() || !r.get( n, 32 ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
         }
         case 14: case 16:
@@ -588,13 +640,14 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
                 if ( entry.kind == 16 && !r.skip( vocabulary.ref_bits ) ) { return false; }
                 switch ( entry.elem_kind )
                 {
-                    case 13: if ( !TableMessageSkipBody( r, vocabulary ) ) { return false; } break;
-                    case 30: case 17: if ( !r.skip( vocabulary.ref_bits ) ) { return false; } break;
+                    case 13: if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { return false; } break;
+                    case 30: if ( !r.skip( vocabulary.ref_bits ) ) { return false; } break;
+                    case 17: if ( index_bits <= 0 || !r.skip( index_bits ) ) { return false; } break;
                     case 15:
                     {
                         TableMessageEntry inner;
                         inner.kind = 15;
-                        if ( !TableMessageSkip( r, vocabulary, inner ) ) { return false; }
+                        if ( !TableMessageSkip( r, vocabulary, index_bits, inner ) ) { return false; }
                         break;
                     }
                     default: if ( elem < 0 || !r.skip( elem ) ) { return false; } break;
@@ -607,7 +660,7 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
     return width >= 0 && r.skip( width );
 }
 
-inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary )
+inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits )
 {
     for ( ;; )
     {
@@ -615,10 +668,29 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
         if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
         if ( ref == 0 ) { return true; }
         if ( ref > (uint64_t) vocabulary.count ) { return false; }
-        if ( !TableMessageSkip( r, vocabulary, TableVocabularyEntryAt( vocabulary, ref ) ) ) { return false; }
+        if ( !TableMessageSkip( r, vocabulary, index_bits, TableVocabularyEntryAt( vocabulary, ref ) ) ) { return false; }
     }
 }
 
+// TableMessageNodeTableOpen reads the node table's opening when a body has
+// one: the reserved id's reference and the count at thirty-two raw bits. A
+// body whose first reference is anything else has no node table, and the
+// reader is left where it was. False is damage: a reference past E, or bits
+// that run out.
+inline bool TableMessageNodeTableOpen( TableBitReader & r, const TableVocabulary & vocabulary, int64_t & count )
+{
+    count = 0;
+    const int64_t at = r.offset;
+    uint64_t ref = 0;
+    if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
+    if ( ref == 0 ) { r.offset = at; return true; }
+    if ( ref > (uint64_t) vocabulary.count ) { return false; }
+    if ( TableVocabularyEntryAt( vocabulary, ref ).id != kTableNodeTableFieldId ) { r.offset = at; return true; }
+    uint64_t n = 0;
+    if ( !r.get( n, 32 ) ) { return false; }
+    count = (int64_t) n;
+    return true;
+}
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
 inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
@@ -705,12 +777,68 @@ inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableV
     return br.remaining;
 }
 
-// TableMessageBatchClose verifies the trailing pad, which is the last of the
-// three ways a batch is damaged (§3.3).
+// TableMessageRefuseBatch is the batch's own refusal (§3.3): M above 256 on the
+// write side, or above the caller's capacity on the read side. Nothing is
+// written or decoded, no counter moves, and the reason names it.
+inline void TableMessageRefuseBatch( TableReport * report )
+{
+    if ( report == NULL ) { return; }
+    report->refused = true;
+    report->reason = batch_too_large;
+}
+
+// TableMessageBatchClose verifies the trailing pad, and that NOTHING FOLLOWS
+// IT: the batch ends at the pad to the byte boundary, and a buffer with bytes
+// left over describes no batch this reader can name (§3.3).
 inline bool TableMessageBatchClose( TableMessageBatchReader & br )
 {
-    if ( br.remaining != 0 || !br.r.align() ) { br.report->malformed = true; return false; }
+    if ( br.remaining != 0 || !br.r.align() || br.r.offset != br.r.bits ) { br.report->malformed = true; return false; }
     return true;
+}
+
+`
+
+// cppMessageNodeRuntime is the node table on the MESSAGE wire, over the
+// numbering the arena runtime declares: emitted after it, into a unit that has
+// pointers at all.
+const cppMessageNodeRuntime = `// ---- the NODE TABLE on the message wire (docs/SPEC-TABLES.md §3.1, §3.3) ----
+//
+// THE NODE TABLE, WHEN A BODY HAS ONE, IS THE FIRST FIELD OF THE ROOT BODY: the
+// reserved id as a reference, the node count at THIRTY-TWO RAW BITS, then the
+// records back to back, each a type id reference and a body — a table's fields
+// ending at its own zero reference, a blob's length, align and bytes. A root
+// that reaches no node elides the field, like every other empty thing.
+//
+// Measure derives the numbering from the graph and save derives the same one,
+// and the two thunks stored at numbering time are what let one loop write a
+// table of mixed types.
+template <typename Ctx>
+inline int64_t TableMessageNodeTableMeasure( const Ctx & ctx, const TableNumbering & n, int64_t index_bits, int64_t at )
+{
+    if ( n.count == 0 ) { return 0; } // a root that reaches no nodes writes none of them
+    int64_t bits = kTableMessageRefBitsHere + 32;
+    for ( int64_t k = 0; k < n.count; k++ )
+    {
+        bits += kTableMessageRefBitsHere;
+        const int64_t body = n.entries[k].message_measure( (const void *) &ctx, n, index_bits, at + bits, n.entries[k].node );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return bits;
+}
+
+template <typename Ctx>
+inline bool TableMessageNodeTableSave( const Ctx & ctx, const TableNumbering & n, int64_t index_bits, TableBitWriter & w )
+{
+    if ( n.count == 0 ) { return true; }
+    w.put( kTableNodeTableFieldSlot, kTableMessageRefBitsHere );
+    w.put( (uint64_t) n.count, 32 );
+    for ( int64_t k = 0; k < n.count; k++ )
+    {
+        w.put( n.entries[k].type_slot, kTableMessageRefBitsHere );
+        if ( !n.entries[k].message_save( (const void *) &ctx, n, index_bits, w, n.entries[k].node ) ) { return false; }
+    }
+    return !w.overflow;
 }
 
 `

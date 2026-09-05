@@ -4603,8 +4603,8 @@ nameable: a receiver says which build's vocabulary it lacks.
 line an entry carrying the slot, the id, the name where this unit's own closure
 names it, the kind and the shape, because an announcement is an ordinary
 form-`1` file and a tool that could print its two fields as opaque bytes and
-stop would be hiding the only part anyone reads. It is OWED BY THE CODEC PR,
-with the rest of the form-`2` path.
+stop would be hiding the only part anyone reads: `schema unpack --in
+<announcement> <unit>`, with no `--root`, is that print.
 
 **WHAT DOES NOT MOVE.** The BUILD VERSION does not (§20.2 digests wire ids and
 kinds, and none move). The PROTOCOL ID does not (no type-wire fact is touched,
@@ -4627,11 +4627,9 @@ too, and those two are the whole list**: a mask rides at its declared W bits
 here rather than as a raw `uint64`, so a bit a newer build appended survives a
 file round trip and not a message one (above).
 
-**WHERE THE FORM IS CARRIED TODAY, and this section is ahead of it.** The
-BITPACKED body is specified ahead of its implementation, on the terms §6.6
-takes. What the C++ reference and the compiler's own engine carry today under
-form byte `2` is a BYTE-FRAMED body, and the codec change that lands this
-section replaces it in place and re-pins every form-`2` golden with it. The eight ports carry the FILE form alone: a port's
+**WHERE THE FORM IS CARRIED.** The C++ reference and the compiler's own engine
+carry the BITPACKED body under form byte `2`, and every form-`2` golden in the
+corpus is its. The eight ports carry the FILE form alone: a port's
 `LoadMessages`, `MeasureMessages` and `SaveMessages` are a named follow-on
 beside the wire-form work M20 already registers (test/conformance/README.md),
 and the harness's `message` surface prints ABSENT for each rather than failing

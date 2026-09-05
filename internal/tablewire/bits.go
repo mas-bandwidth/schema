@@ -20,7 +20,7 @@ func (w *bitWriter) bits() int { return w.n }
 
 // put writes the low `n` bits of v, low bit first.
 func (w *bitWriter) put(v uint64, n int) {
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if w.n%8 == 0 {
 			w.b = append(w.b, 0)
 		}
@@ -31,18 +31,10 @@ func (w *bitWriter) put(v uint64, n int) {
 	}
 }
 
-// putWide writes a 128-bit raw integer as its low half then its high half,
-// which is the order every 128-bit value takes on both of this project's
-// wires (docs/SPEC-TABLES.md §3, SPEC.md §4.3).
-func (w *bitWriter) putWide(lo, hi uint64) {
-	w.put(lo, 64)
-	w.put(hi, 64)
-}
-
 // putBig writes the low `n` bits of a wide value, which is what a 128-bit
 // kind's ranged offset takes.
 func (w *bitWriter) putBig(v *big.Int, n int) {
-	for i := 0; i < n; i++ {
+	for i := range n {
 		w.put(uint64(v.Bit(i)), 1)
 	}
 }
@@ -91,7 +83,7 @@ func (r *bitReader) get(n int) (uint64, bool) {
 		return 0, false
 	}
 	var v uint64
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if r.b[r.off/8]>>uint(r.off%8)&1 == 1 {
 			v |= 1 << uint(i)
 		}
@@ -103,7 +95,7 @@ func (r *bitReader) get(n int) (uint64, bool) {
 // getBig reads a wide value's low `n` bits.
 func (r *bitReader) getBig(n int) (*big.Int, bool) {
 	out := new(big.Int)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		bit, ok := r.get(1)
 		if !ok {
 			return nil, false

@@ -111,6 +111,10 @@ const (
 	TableKindEnum      = 30
 	TableKindEscape    = 31
 	TableKindNoPayload = 32
+	// kind 33 is WIDE TEXT, the table half of `wstring(N)` (docs/SPEC-TABLES.md
+	// §3): on the message form its length rides at bits_required(0, max), NO
+	// align, and SIXTEEN bits a code unit (§3.3).
+	TableKindWstring = 33
 )
 
 // TableWireScalarKind is [TableScalarKind] on this form: an ENUM answers its

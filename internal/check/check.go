@@ -1981,8 +1981,8 @@ func (c *checker) checkReservedWireIds(names []string) {
 		if st.IsTable {
 			what = "table"
 		}
-		if id := ir.TableWireId(name); id == ir.TableNodeWireId || id == ir.TableBuildVersionWireId {
-			c.errf(at, "%s %s: its name takes one of the two ids the language holds back, 0x%016x — rename it (docs/SPEC-TABLES.md §3.1, §3.3, §5)",
+		if id := ir.TableWireId(name); id == ir.TableNodeWireId || id == ir.TableBuildVersionWireId || id == ir.TableMessageVocabularyWireId {
+			c.errf(at, "%s %s: its name takes one of the three ids the language holds back, 0x%016x — rename it (docs/SPEC-TABLES.md §3.1, §3.3, §5)",
 				what, name, id)
 		} else if prev, dup := byId[id]; dup {
 			c.errf(at, "tables %s and %s collide on table-wire type id 0x%016x — a node record says what it is by that id alone, so the two would be indistinguishable in a save; rename one (docs/SPEC-TABLES.md §3.1, §5)",
@@ -1991,16 +1991,17 @@ func (c *checker) checkReservedWireIds(names []string) {
 			byId[id] = name
 		}
 		for _, f := range st.Fields {
-			// THE TWO RESERVED IDS (docs/SPEC-TABLES.md §3.1, §3.3, §5): the
-			// node table's 0xFFFFFFFFFFFFFFFF and the announcement's build
-			// version 0xFFFFFFFFFFFFFFFE. A reserved id in any body but the
-			// one whose transport it is, is malformed, so a declared name that
-			// takes one — a `was` included — is refused at the source.
+			// THE THREE RESERVED IDS (docs/SPEC-TABLES.md §3.1, §3.3, §5): the
+			// node table's 0xFFFFFFFFFFFFFFFF, the announcement's build
+			// version 0xFFFFFFFFFFFFFFFE and its vocabulary 0xFFFFFFFFFFFFFFFD.
+			// A reserved id in any body but the one whose transport it is, is
+			// malformed, so a declared name that takes one — a `was` included —
+			// is refused at the source.
 			id := ir.TableFieldWireId(f)
-			if id != ir.TableNodeWireId && id != ir.TableBuildVersionWireId {
+			if id != ir.TableNodeWireId && id != ir.TableBuildVersionWireId && id != ir.TableMessageVocabularyWireId {
 				continue
 			}
-			c.errf(at, "%s %s: field %s takes one of the two ids the language holds back, 0x%016x — rename it, or name another `was` (docs/SPEC-TABLES.md §3.1, §3.3, §5)",
+			c.errf(at, "%s %s: field %s takes one of the three ids the language holds back, 0x%016x — rename it, or name another `was` (docs/SPEC-TABLES.md §3.1, §3.3, §5)",
 				what, name, describeTableField(f), id)
 		}
 	}

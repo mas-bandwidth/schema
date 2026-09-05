@@ -71,7 +71,6 @@ type wireRoot struct {
 	// the build version, so both sides derive it and neither carries it.
 	message    bool
 	vocabulary *tablewire.Vocabulary
-	entries    []uint64
 	// the C ABI storage each node type commands (docs/SPEC-TABLES.md §6.5,
 	// §20.3), by wire type id, eight-aligned as a reader's LoadMeasure rounds it
 	storage     map[uint64]int64
@@ -104,9 +103,6 @@ func newWireRoot(u *units, unitKey, rootName string, message bool) (*wireRoot, e
 		r.vocabulary = &tablewire.Vocabulary{}
 		if err := r.vocabulary.AnnounceRead(ir.TableAnnouncement(unit), &tabletext.Report{}); err != nil {
 			return nil, fmt.Errorf("unit %s: its own announcement was refused: %w", unitKey, err)
-		}
-		for _, e := range r.vocabulary.Entries() {
-			r.entries = append(r.entries, e.Id)
 		}
 	}
 	r.rootStorage = alignUp8(ir.RecordLayout(unit, def).Size)
@@ -195,10 +191,29 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		ans.encoded = encoded
 	}
 	if r.variable {
-		types, whole := tablewire.NodeRecordTypes(data)
 		if r.message {
-			types, whole = tablewire.NodeRecordTypesMessage(data, r.entries)
+			// THE BATCH'S ONE REGION (§3.3): one directory a body, the root's
+			// storage, and each record's — a blob's is its header and its
+			// bytes, a string's terminator included, rounded as every node is
+			bodies, whole := tablewire.MessageNodeRecords(data, r.vocabulary)
+			ans.exact = whole
+			for _, records := range bodies {
+				ans.bytes += r.rootStorage + (int64(len(records))+1)*nodeDirEntryBytes
+				for _, rec := range records {
+					if rec.Blob {
+						terminator := int64(0)
+						if rec.TypeId == ir.StringWireTypeId {
+							terminator = 1
+						}
+						ans.bytes += alignUp8(8 + rec.Length + terminator)
+						continue
+					}
+					ans.bytes += r.storage[rec.TypeId] // a type id this build cannot name commands none
+				}
+			}
+			return ans, nil
 		}
+		types, whole := tablewire.NodeRecordTypes(data)
 		if whole {
 			ans.exact = true
 			ans.bytes = r.rootStorage + (int64(len(types))+1)*nodeDirEntryBytes
@@ -423,7 +438,15 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		if err != nil {
 			return err
 		}
-		s := &wireSeed{name: name, unit: unit, root: root, wire: wire, message: message, frame: frameWireForm(wire, roots[ri].entries)}
+		s := &wireSeed{name: name, unit: unit, root: root, wire: wire, message: message}
+		if message {
+			// A MESSAGE SEED IS FRAMED IN BITS (docs/SPEC-TABLES.md §3.3): its
+			// references and node indices, found by the engine's own read
+			s.spots = tablewire.MessageSpots(roots[ri].model, roots[ri].def, wire, roots[ri].vocabulary)
+			s.entries = len(roots[ri].vocabulary.Entries())
+		} else {
+			s.frame = frameWire(wire)
+		}
 		seeds = append(seeds, s)
 		seedRoot[s] = ri
 		return nil

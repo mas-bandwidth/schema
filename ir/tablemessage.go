@@ -17,6 +17,7 @@ package ir
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 	"math/big"
 	"math/bits"
@@ -127,7 +128,7 @@ func appendShape(out []byte, kind uint8, s TableMessageShape) []byte {
 			out = appendLebBytes(out, uint64(s.Bits))
 			out = appendWideBase(out, s.Base)
 		}
-	case kind == TableKindString:
+	case kind == TableKindString, kind == TableKindWstring:
 		out = appendLebBytes(out, uint64(s.Max))
 	case kind == TableKindArray:
 		out = appendLebBytes(out, uint64(s.Min))
@@ -206,7 +207,7 @@ func DecodeShape(in []byte, kind uint8) (TableMessageShape, int, bool) {
 		default:
 			return s, 0, false // a packing outside the closed set
 		}
-	case kind == TableKindString:
+	case kind == TableKindString, kind == TableKindWstring:
 		v, ok := leb()
 		if !ok {
 			return s, 0, false
@@ -253,7 +254,7 @@ func TableMessageKnownKind(kind uint8) bool {
 		return true
 	case kind >= TableKindI128 && kind <= TableKindUFixed128:
 		return true
-	case kind >= TableKindEnum && kind <= TableKindNoPayload:
+	case kind >= TableKindEnum && kind <= TableKindWstring:
 		return true
 	}
 	return false
@@ -341,7 +342,7 @@ func TableFieldShape(f *Field) TableMessageShape {
 			slots = f.KeyEnumRef.Max
 		}
 		return TableMessageShape{Max: slots, Elem: uint8(TableWireElemKind(f)), Inner: &inner}
-	case f.Type.Kind == TString && !f.Type.Blob():
+	case (f.Type.Kind == TString || f.Type.Kind == TWString) && !f.Type.Blob():
 		return TableMessageShape{Max: f.Type.Size}
 	case f.Type.Kind == TBytes && !f.Type.Blob():
 		inner := TableMessageShape{Packing: TableMessageRaw}
@@ -349,9 +350,10 @@ func TableFieldShape(f *Field) TableMessageShape {
 	case f.Array != ArrayNone:
 		inner := tableMessageElementShape(f)
 		min := int64(0)
-		if f.Array == ArrayFixed {
+		switch f.Array {
+		case ArrayFixed:
 			min = f.ArrayBound
-		} else if f.Array == ArrayCounted {
+		case ArrayCounted:
 			min = f.ArrayMin
 		}
 		return TableMessageShape{Min: min, Max: tableMessageArrayMax(f), Elem: uint8(TableWireElemKind(f)), Inner: &inner}
@@ -360,7 +362,9 @@ func TableFieldShape(f *Field) TableMessageShape {
 }
 
 func tableMessageArrayMax(f *Field) int64 {
-	if f.IsList() {
+	// AN UNBOUNDED ARRAY AND A MAP carry min 0 and max 2^32 - 1 (§3.3): a
+	// number the data decides, with no bound to size a width from
+	if f.IsList() || f.IsMap() {
 		return TableMessageListMax
 	}
 	return f.ArrayBound
@@ -462,4 +466,82 @@ func TableMessageCountBits(s TableMessageShape) int {
 // buys a memcpy on the largest payload on the wire.
 func TableMessageAligns(kind uint8, s TableMessageShape) bool {
 	return kind == TableKindString || (kind == TableKindArray && s.Elem == TableKindU8)
+}
+
+// TableVocabularyName is the name this unit's closure gives an announced id,
+// or "" where it names none: a field, a variant, an arm, a table, or one of
+// the reserved ids by its own word.
+func TableVocabularyName(u *Unit, id uint64) string {
+	switch id {
+	case TableNodeWireId:
+		return "(node table)"
+	case BytesWireTypeId:
+		return "bytes"
+	case StringWireTypeId:
+		return "string"
+	case WstringWireTypeId:
+		return "wstring"
+	}
+	for member := range TableClosure(u) {
+		if TableWireId(member) == id {
+			return member
+		}
+		st := memberStruct(u, member)
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if TableFieldWireId(f) == id {
+				return f.Name
+			}
+			if f.IsMap() {
+				for _, sub := range f.MapEntry.Fields {
+					if TableFieldWireId(sub) == id {
+						return sub.Name
+					}
+				}
+			}
+		}
+	}
+	for _, e := range u.Enums {
+		for _, v := range e.Variants {
+			if TableWireId(v) == id {
+				return v
+			}
+		}
+	}
+	for _, un := range u.Unions {
+		for _, v := range un.Variants {
+			if TableWireId(v.Name) == id {
+				return v.Name
+			}
+		}
+	}
+	return ""
+}
+
+// TableMessageShapeString spells one entry's shape for a reader: the facts
+// its kind gives it, in the page's own words.
+func TableMessageShapeString(kind uint8, s TableMessageShape) string {
+	switch {
+	case kind == 0:
+		return "name"
+	case tableMessageIntegerKind(kind), tableMessageFixedKind(kind):
+		if s.Packing == TableMessageRanged {
+			return fmt.Sprintf("ranged %d bits from %s", s.Bits, s.Base)
+		}
+		return "raw"
+	case kind == TableKindF32:
+		if s.Packing == TableMessageQuantized {
+			return fmt.Sprintf("quantized %d bits from %g by %g", s.Bits, s.QMin, s.QStep)
+		}
+		return "raw"
+	case kind == TableKindString, kind == TableKindWstring:
+		return fmt.Sprintf("max %d", s.Max)
+	case kind == TableKindArray:
+		return fmt.Sprintf("count %d..%d of kind %d %s", s.Min, s.Max, s.Elem, TableMessageShapeString(s.Elem, tableMessageInner(s)))
+	case kind == TableKindKeyed:
+		return fmt.Sprintf("%d slots of kind %d %s", s.Max, s.Elem, TableMessageShapeString(s.Elem, tableMessageInner(s)))
+	}
+	return ""
 }

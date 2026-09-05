@@ -291,14 +291,27 @@ func main() {
 		fs.Var(&batch, "batch", "with --announce, another message of the batch, as `Table=tree-dir` (repeatable)")
 		fs.BoolVar(&verbose, "verbose", false, "print the read report even when it is silent")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
-		dir, rest := packTree("unpack", fs.Args())
-		if *root == "" || *in == "" {
-			fatalf("unpack needs --root <Table> and --in <file>")
+		if *in == "" {
+			fatalf("unpack needs --in <file>, and --root <Table> for a wire that is not an announcement")
 		}
 		wire, err := os.ReadFile(*in)
 		if err != nil {
 			fatalf("%v", err)
 		}
+		if *root == "" {
+			unit := loadUnit(c, fs.Args())
+			// HANDED AN ANNOUNCEMENT, unpack prints the VOCABULARY DECODED
+			// (docs/SPEC-TABLES.md §3.3): one line an entry with its slot, its id,
+			// the name this unit's closure gives it, its kind and its shape
+			text, described, derr := c.DescribeAnnouncement(unit, wire)
+			if derr != nil {
+				fail(derr)
+			}
+			fmt.Print(text)
+			reportLine(described, verbose, *tolerate)
+			return
+		}
+		dir, rest := packTree("unpack", fs.Args())
 		unit := loadUnit(c, rest)
 		var report compiler.TableReport
 		if *announce != "" {

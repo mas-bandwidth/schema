@@ -50,6 +50,12 @@ const (
 	// message stored on its own is not readable, because its table is
 	// somewhere else.
 	ReasonMessageFormAsFile
+	// ReasonBatchTooLarge covers the batch's two bounds (docs/SPEC-TABLES.md
+	// §3.3): `M` above 256 on the WRITE side, where the count's width is a
+	// wire constant, and `M` above the caller's capacity on the READ side,
+	// where nothing is decoded and the returned count says what the wire
+	// carries. A caller reads the reason and then reads the two numbers.
+	ReasonBatchTooLarge
 )
 
 func (r MessageReason) String() string {
@@ -64,6 +70,8 @@ func (r MessageReason) String() string {
 		return "vocabulary_too_large"
 	case ReasonMessageFormAsFile:
 		return "message_form_as_file"
+	case ReasonBatchTooLarge:
+		return "batch_too_large"
 	}
 	return fmt.Sprintf("MessageReason(%d)", int(r))
 }
@@ -295,14 +303,29 @@ func announcementFields(body []byte, ids []uint64, byteBound int, report *tablet
 // kind names, until the bytes are consumed. A width no kind can hold, an array
 // whose `min` exceeds its `max`, an element kind outside the closed set and a
 // shape running past the field are each malformed here, once, and never again.
+//
+// SO ARE THE RESERVED IDS WHERE THEY DO NOT BELONG (§3.3): the announcement's
+// own two ids never take a slot, and the node-table id takes exactly one, so a
+// vocabulary carrying 0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFD or a SECOND
+// 0xFFFFFFFFFFFFFFFF is malformed whole and sets nothing.
 func decodeVocabulary(in []byte) ([]ir.TableVocabularyEntry, bool) {
 	var out []ir.TableVocabularyEntry
+	nodeTable := 0
 	for at := 0; at < len(in); {
 		if at+9 > len(in) {
 			return nil, false
 		}
 		e := ir.TableVocabularyEntry{Id: binary.LittleEndian.Uint64(in[at:]), Kind: in[at+8]}
 		at += 9
+		switch e.Id {
+		case ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId:
+			return nil, false
+		case ir.TableNodeWireId:
+			nodeTable++
+			if nodeTable > 1 {
+				return nil, false
+			}
+		}
 		if !ir.TableMessageKnownKind(e.Kind) {
 			return nil, false
 		}

@@ -1421,7 +1421,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("        const uint64_t field_id = r.ids->at( field_ref );\n")
 	g.pf("        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }\n")
 	g.pf("        uint8_t kind = r.get8();\n")
-	g.pf("        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )\n        {\n")
+	g.pf("        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )\n        {\n")
 	g.pf("            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,\n")
 	g.pf("            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node\n")
 	g.pf("            // table's is the ROOT body's alone, on the numbering's own\n")

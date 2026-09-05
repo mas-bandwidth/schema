@@ -97,11 +97,19 @@ func (c *Compiler) PackMessages(u *ir.Unit, trees []MessageTree) ([]byte, []stri
 	return bytes, skipped, publicReport(report), err
 }
 
-// Announce is the unit's ID TABLE MESSAGE, byte for byte (docs/SPEC-TABLES.md
-// §3.3): an ordinary form 1 file whose one field is the BUILD VERSION under
-// the reserved id, and whose trailer IS the connection's table. Every byte of
-// it is settled by the compiler.
+// Announce is the unit's ANNOUNCEMENT, byte for byte (docs/SPEC-TABLES.md
+// §3.3): an ordinary form 1 file whose body carries the BUILD VERSION and the
+// VOCABULARY under the two reserved ids, and whose trailer is those two ids.
+// Every byte of it is settled by the compiler.
 func (c *Compiler) Announce(u *ir.Unit) []byte { return ir.TableAnnouncement(u) }
+
+// DescribeAnnouncement prints an announcement's vocabulary decoded, one line
+// an entry with its slot, its id, the name this unit's closure gives it, its
+// kind and its shape (docs/SPEC-TABLES.md §3.3).
+func (c *Compiler) DescribeAnnouncement(u *ir.Unit, announcement []byte) (string, TableReport, error) {
+	text, report, err := tablepack.DescribeAnnouncement(tabletext.NewModel(u), announcement)
+	return text, publicReport(report), err
+}
 
 // UnpackMessage is the inverse over the MESSAGE FORM: the announcement is read
 // first, into the connection's table, and the message resolves against it.

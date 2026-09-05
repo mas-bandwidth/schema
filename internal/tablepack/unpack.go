@@ -118,12 +118,12 @@ func UnpackMessages(m *tabletext.Model, trees []MessageTree, announcement, messa
 	}
 	// the refusal comes back BEFORE anything is written: a batch this engine
 	// does not decode is not a tree half-written to disk
-	ok, err := tablewire.DecodeMessages(m, insts, message, &vocabulary, &report)
+	delivered, ok, err := tablewire.DecodeMessages(m, insts, message, &vocabulary, &report)
 	if err != nil {
 		return report, err
 	}
 	if !ok {
-		return report, fmt.Errorf("the bytes are not a batch of these roots — the framing is damaged past the point the walk could continue (docs/SPEC-TABLES.md §4)")
+		return report, fmt.Errorf("the bytes are not a batch of these roots — the framing is damaged inside body %d, and the %d before it stand (docs/SPEC-TABLES.md §3.3, §4)", delivered+1, delivered)
 	}
 	for i, tree := range trees {
 		if err := writeTree(m, insts[i], tree.Root, tree.Dir, oneFile || m.IsVariable(tree.Root)); err != nil {
@@ -269,4 +269,38 @@ func prune(dir string, owned, written map[string]bool) error {
 		}
 	}
 	return nil
+}
+
+// DescribeAnnouncement prints an announcement's VOCABULARY decoded
+// (docs/SPEC-TABLES.md §3.3): one line an entry carrying the slot, the id,
+// the name where this unit's own closure names it, the kind and the shape.
+// An announcement is an ordinary form-1 file, and a tool that printed its
+// two fields as opaque bytes and stopped would be hiding the only part
+// anyone reads.
+func DescribeAnnouncement(m *tabletext.Model, announcement []byte) (string, tabletext.Report, error) {
+	var vocabulary tablewire.Vocabulary
+	var report tabletext.Report
+	if err := vocabulary.AnnounceRead(announcement, &report); err != nil {
+		return "", report, err
+	}
+	if !vocabulary.Announced() {
+		return "", report, fmt.Errorf("the announcement is malformed and set no vocabulary (docs/SPEC-TABLES.md §3, §3.3)")
+	}
+	names := map[uint64]string{}
+	for _, e := range ir.TableVocabulary(m.Unit) {
+		if name := ir.TableVocabularyName(m.Unit, e.Id); name != "" {
+			names[e.Id] = name
+		}
+	}
+	var b strings.Builder
+	entries := vocabulary.Entries()
+	fmt.Fprintf(&b, "build version %016x, %d entries, references %d bits\n", vocabulary.BuildVersion(), len(entries), vocabulary.RefBits())
+	for i, e := range entries {
+		name := names[e.Id]
+		if name == "" {
+			name = "-"
+		}
+		fmt.Fprintf(&b, "%4d  %016x  %-24s  kind %-2d  %s\n", i+1, e.Id, name, e.Kind, ir.TableMessageShapeString(e.Kind, e.Shape))
+	}
+	return b.String(), report, nil
 }

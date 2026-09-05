@@ -47,6 +47,7 @@
 // on both sides of the one-byte boundary
 #include "BackendTable.h"
 #include "VocabTable.h"
+#include "Vocab9Table.h"
 // the POINTERED unit (docs/SPEC-TABLES.md §6.2): a region and a root pointer,
 // never a value, which is why it gets its own row shape below
 #include "GraphTable.h"
@@ -272,6 +273,8 @@ static const Codec codecs[] = {
     CODEC( "backenddemo", backenddemo, StorePurchase ),
     CODEC( "vocabdemo", vocabdemo, Wide00 ),
     CODEC( "vocabdemo", vocabdemo, Wide09 ),
+    CODEC( "vocab9demo", vocab9demo, Wide00 ),
+    CODEC( "vocab9demo", vocab9demo, Wide19 ),
 };
 
 // ---------------------------------------------------------------------------
@@ -379,12 +382,13 @@ struct MsgCodec
             if ( !ns::AnnounceRead( vocabulary, a, an, &inner ) ) { copy_report( inner, r ); return false; } \
             ns::type value;                                                                     \
             ns::type##Reset( value );                                                           \
-            if ( !ns::type##LoadMessage( value, vocabulary, b, n, &inner ) ) { copy_report( inner, r ); return false; } \
+            int64_t count = 1;                                                                  \
+            if ( !ns::type##LoadMessages( &value, &count, vocabulary, b, n, &inner ) ) { copy_report( inner, r ); return false; } \
             copy_report( inner, r );                                                            \
-            int64_t size = ns::type##MeasureMessage( value );                                   \
+            int64_t size = ns::type##MeasureMessages( &value, count, &inner );                  \
             if ( size < 0 ) return false;                                                       \
             out.assign( (size_t) size, 0 );                                                     \
-            return ns::type##SaveMessage( value, out.data(), size ) == size;                    \
+            return ns::type##SaveMessages( &value, count, out.data(), size, &inner ) == size;   \
         }                                                                                       \
     }
 
@@ -399,13 +403,14 @@ struct MsgCodec
             int64_t need = ns::type##LoadMeasure( vocabulary, b, n );                            \
             if ( need < 0 ) return false;                                                       \
             std::vector<uint8_t> region( (size_t) need, 0 );                                    \
-            const ns::type * root = ns::type##LoadMessage( region.data(), need, vocabulary, b, n, &inner ); \
+            const ns::type * roots[1] = { NULL };                                               \
+            int64_t count = 1;                                                                  \
+            if ( !ns::type##LoadMessages( roots, &count, region.data(), need, vocabulary, b, n, &inner ) ) { copy_report( inner, r ); return false; } \
             copy_report( inner, r );                                                            \
-            if ( root == NULL ) return false;                                                   \
-            int64_t size = ns::type##MeasureMessage( root );                                    \
+            int64_t size = ns::type##MeasureMessages( roots, count, &inner );                   \
             if ( size < 0 ) return false;                                                       \
             out.assign( (size_t) size, 0 );                                                     \
-            return ns::type##SaveMessage( root, out.data(), size ) == size;                     \
+            return ns::type##SaveMessages( roots, count, out.data(), size, &inner ) == size;    \
         }                                                                                       \
     }
 
@@ -415,6 +420,8 @@ static const MsgCodec msg_codecs[] = {
     MSGCODEC( "backenddemo", backenddemo, StorePurchase ),
     MSGCODEC( "vocabdemo", vocabdemo, Wide00 ),
     MSGCODEC( "vocabdemo", vocabdemo, Wide09 ),
+    MSGCODEC( "vocab9demo", vocab9demo, Wide00 ),
+    MSGCODEC( "vocab9demo", vocab9demo, Wide19 ),
     MSGVARCODEC( "graphdemo", graphdemo, Scene ),
 };
 

@@ -42,7 +42,8 @@ func MessageCount(data []byte, v *Vocabulary) (int, error) {
 }
 
 // DecodeMessages fills the caller's instances from a BATCH, resolving every
-// reference against the announced vocabulary (docs/SPEC-TABLES.md §3.3).
+// reference against the announced vocabulary (docs/SPEC-TABLES.md §3.3), and
+// answers HOW MANY BODIES IT DELIVERED.
 //
 // A BATCH IS OF ONE ROOT, and which root it is, is the APPLICATION's: a peer
 // that mixes roots puts a discriminator in front of the bytes or wraps its
@@ -50,56 +51,69 @@ func MessageCount(data []byte, v *Vocabulary) (int, error) {
 // wire this reader will not decode at all — and is returned rather than folded
 // into the report; false with a nil error is damage, which is terminal for the
 // batch.
-func DecodeMessages(m *tabletext.Model, insts []*tabletext.Instance, data []byte, v *Vocabulary, report *tabletext.Report) (bool, error) {
+//
+// THE BATCH SURFACE'S ANSWERS, each the page's (§3.3):
+//
+//   - `M` ABOVE THE CALLER'S STORAGE IS A REFUSAL BY NAME, `batch_too_large`,
+//     found from the count before any body is decoded: no counter moves and
+//     `malformed` does not fire. The returned count is the WIRE's `M`, so the
+//     caller holds the number it was short by and calls again with storage at
+//     or above it.
+//   - DAMAGE INSIDE BODY `k` DELIVERS BODIES 1 TO `k - 1`: the returned count
+//     says `k - 1`, one `malformed` counts, and nothing at or after body `k`
+//     is read. The storage for body `k` holds whatever the decode had put in
+//     it, and the COUNT is what says it is not a body.
+func DecodeMessages(m *tabletext.Model, insts []*tabletext.Instance, data []byte, v *Vocabulary, report *tabletext.Report) (int, bool, error) {
 	// THE FORM BYTE IS READ FIRST, before the count and before any body, so a
 	// wire that is both a form this reader does not carry and damaged is a
 	// refusal and never damage (§3).
 	if len(data) < 1 {
 		report.Malformed = true
-		return false, nil
+		return 0, false, nil
 	}
 	if data[0] != ir.TableWireMessageForm {
 		report.Refused = true
-		return false, &MessageRefusal{Reason: ReasonNewerForm}
+		return 0, false, &MessageRefusal{Reason: ReasonNewerForm}
 	}
 	// A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
 	// decoded, no counter moves and `malformed` does not fire.
 	if v == nil || !v.announced {
 		report.Refused = true
-		return false, &MessageRefusal{Reason: ReasonNoVocabulary}
+		return 0, false, &MessageRefusal{Reason: ReasonNoVocabulary}
 	}
 	r := newBitReader(data[1:])
 	raw, ok := r.get(8)
 	if !ok {
 		report.Malformed = true
-		return false, nil
+		return 0, false, nil
 	}
 	count := int(raw) + 1
 	if count > len(insts) {
-		// the caller's storage does not hold the batch, which is the caller's
-		// own bound and not a wire fact: a count of 256 over a two-body buffer
-		// is exhaustion and never an allocation
-		report.Malformed = true
-		return false, nil
+		report.Refused = true
+		return count, false, &MessageRefusal{Reason: ReasonBatchTooLarge, BuildVersion: v.buildVersion}
 	}
-	for i := 0; i < count; i++ {
-		d := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits()}
+	for i := range count {
+		d := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits(), indexBits: ir.TableMessageBitsRequired(0, 1)}
 		if !d.root(insts[i]) {
-			return false, nil
+			return i, false, nil
 		}
 	}
 	// THE TRAILING PAD IS VERIFIED ZERO, which is the packet wire's rule for
-	// the same reason (SPEC.md §4.3).
-	if !r.align() {
+	// the same reason (SPEC.md §4.3), and BYTES AFTER THE PAD ARE MALFORMED:
+	// the batch ends at the pad and a buffer with bytes left over describes no
+	// batch this reader can name. Both are damage AFTER the last body, so the
+	// count stands at `M` and the bodies stand with it.
+	if !r.align() || r.off != r.n {
 		report.Malformed = true
-		return false, nil
+		return count, false, nil
 	}
-	return true, nil
+	return count, true, nil
 }
 
 // DecodeMessage is the BATCH OF ONE.
 func DecodeMessage(m *tabletext.Model, inst *tabletext.Instance, data []byte, v *Vocabulary, report *tabletext.Report) (bool, error) {
-	return DecodeMessages(m, []*tabletext.Instance{inst}, data, v, report)
+	_, ok, err := DecodeMessages(m, []*tabletext.Instance{inst}, data, v, report)
+	return ok, err
 }
 
 // bitDecoder is one body's read: the announced vocabulary, the bit cursor the
@@ -112,6 +126,38 @@ type bitDecoder struct {
 	refBits   int
 	indexBits int
 	st        *decodeState
+	// spots, when set, collects the bit position and width of every
+	// REFERENCE and every NODE INDEX the read meets, which is what the wire
+	// fuzzer's reference pass mutates (§3.3, §4.2)
+	spots *[]BitSpot
+}
+
+// BitSpot is one number's place in a batch's bit stream: a reference at
+// `bits_required(0, E)` or a node index at the body's index width.
+type BitSpot struct {
+	Off, Width int
+	Value      uint64
+	Index      bool // a node index rather than a reference
+}
+
+// reference reads one reference at the vocabulary's width, recording it.
+func (d *bitDecoder) reference() (uint64, bool) {
+	at := d.r.off
+	v, ok := d.r.get(d.refBits)
+	if ok && d.spots != nil {
+		*d.spots = append(*d.spots, BitSpot{Off: at, Width: d.refBits, Value: v})
+	}
+	return v, ok
+}
+
+// index reads one node index at the body's width, recording it.
+func (d *bitDecoder) index() (uint64, bool) {
+	at := d.r.off
+	v, ok := d.r.get(d.indexBits)
+	if ok && d.spots != nil {
+		*d.spots = append(*d.spots, BitSpot{Off: at, Width: d.indexBits, Value: v, Index: true})
+	}
+	return v, ok
 }
 
 // entry is one slot's announced entry, and ok is false for a reference that
@@ -121,6 +167,42 @@ func (d *bitDecoder) entry(ref uint64) (ir.TableVocabularyEntry, bool) {
 		return ir.TableVocabularyEntry{}, false
 	}
 	return d.v.entries[ref-1], true
+}
+
+// reserved reports one of the three ids the language holds back
+// (docs/SPEC-TABLES.md §3.1, §3.3, §5): each is malformed anywhere but its own
+// transport, and the rule OUTRANKS the wrong-sort rule below.
+func reserved(id uint64) bool {
+	return id == ir.TableBuildVersionWireId || id == ir.TableMessageVocabularyWireId || id == ir.TableNodeWireId
+}
+
+// name resolves a reference used as a VALUE — an enum's variant, a keyed
+// array's slot key, a node record's type id — which must name a kind-0 entry
+// (docs/SPEC-TABLES.md §3.3). A reference of `0` where an entry is required,
+// one above `E`, one naming a reserved id, and one naming an entry that
+// carries a payload are each damage: the reader RESOLVED the entry and it
+// contradicts the position it was used in, so the next bit's meaning is what
+// is in doubt. ok is false with `malformed` set.
+func (d *bitDecoder) name(ref uint64) (ir.TableVocabularyEntry, bool) {
+	entry, named := d.entry(ref)
+	if !named || reserved(entry.Id) || entry.Kind != 0 {
+		d.report.Malformed = true
+		return ir.TableVocabularyEntry{}, false
+	}
+	return entry, true
+}
+
+// arm resolves a UNION's arm reference, which must name an entry carrying the
+// arm's own kind and shape: a kind-0 entry frames nothing, and a reserved id
+// belongs to no arm (docs/SPEC-TABLES.md §3.3). ok is false with `malformed`
+// set.
+func (d *bitDecoder) arm(ref uint64) (ir.TableVocabularyEntry, bool) {
+	entry, named := d.entry(ref)
+	if !named || reserved(entry.Id) || entry.Kind == 0 {
+		d.report.Malformed = true
+		return ir.TableVocabularyEntry{}, false
+	}
+	return entry, true
 }
 
 // root decodes one body of a batch. A VARIABLE-class root reads its NODE TABLE
@@ -142,7 +224,7 @@ func (d *bitDecoder) root(inst *tabletext.Instance) bool {
 // (§3.1): the numbering, whole, so an index resolves whichever way it points.
 func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 	at := d.r.off
-	ref, ok := d.r.get(d.refBits)
+	ref, ok := d.reference()
 	if !ok {
 		d.report.Malformed = true
 		return false
@@ -191,16 +273,16 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 		start, end int
 	}
 	records := make([]record, 0, count)
-	for i := uint64(0); i < count; i++ {
-		typeRef, ok := d.r.get(d.refBits)
+	for range count {
+		typeRef, ok := d.reference()
 		if !ok {
 			d.report.Malformed = true
 			return false
 		}
-		typeEntry, named := d.entry(typeRef)
+		// a type id REFERENCE of 0 is damage, and so is one naming anything
+		// but a kind-0 entry: a record must say what it is
+		typeEntry, named := d.name(typeRef)
 		if !named {
-			// a type id REFERENCE of 0 is damage: a record must say what it is
-			d.report.Malformed = true
 			return false
 		}
 		if _, isBlob := blobKind[typeEntry.Id]; isBlob {
@@ -242,7 +324,7 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 		if st.nodes[i].Inst == nil {
 			continue
 		}
-		sub := &bitDecoder{m: d.m, v: d.v, report: d.report, refBits: d.refBits, indexBits: d.indexBits, st: st,
+		sub := &bitDecoder{m: d.m, v: d.v, report: d.report, refBits: d.refBits, indexBits: d.indexBits, st: st, spots: d.spots,
 			r: &bitReader{b: d.r.b, n: rec.end, off: rec.start}}
 		if !sub.body(st.nodes[i].Inst, true) {
 			return false
@@ -259,7 +341,7 @@ func (d *bitDecoder) body(inst *tabletext.Instance, nested bool) bool {
 		index[ir.TableFieldWireId(inst.Fields[i].Def)] = i
 	}
 	for {
-		ref, ok := d.r.get(d.refBits)
+		ref, ok := d.reference()
 		if !ok {
 			d.report.Malformed = true
 			return false
@@ -321,7 +403,7 @@ func (d *bitDecoder) field(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	case f.IsMap():
 		return d.mapField(fv, entry)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
-		index, ok := d.r.get(d.indexBits)
+		index, ok := d.index()
 		if !ok {
 			d.report.Malformed = true
 			return false
@@ -393,14 +475,28 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	}
 	bound := uint64(f.ArrayBound)
 	kept := n
-	if kept > bound {
+	switch {
+	case f.Array == ir.ArrayList:
+		// AN UNBOUNDED ARRAY HAS NO BOUND TO CLAMP AGAINST (§2.9): its count
+		// is the thirty-two bits the data decides, and its slots are grown
+		// one at a time against the batch's own bits, so a count no batch can
+		// cover allocates nothing past the damage
+		if n > uint64(math.MaxInt32) {
+			d.report.Malformed = true
+			return false
+		}
+		fv.Elems = fv.Elems[:0]
+	case kept > bound:
 		kept = bound
 		d.report.Clamped++
 	}
 	for i := uint64(0); i < n; i++ {
 		var sink tabletext.Cell
 		cell := &sink
-		if i < kept {
+		if f.Array == ir.ArrayList {
+			fv.Elems = append(fv.Elems, d.m.ElementZero(f))
+			cell = &fv.Elems[i]
+		} else if i < kept {
 			cell = &fv.Elems[i]
 		}
 		if !d.element(cell, f, shape) {
@@ -427,7 +523,7 @@ func (d *bitDecoder) element(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 		cell.Tab = d.m.New(tabletext.StructOf(f))
 		return d.body(cell.Tab, true)
 	case ir.TableKindPointer:
-		index, ok := d.r.get(d.indexBits)
+		index, ok := d.index()
 		if !ok {
 			d.report.Malformed = true
 			return false
@@ -454,16 +550,16 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		d.report.Malformed = true
 		return false
 	}
-	for i := uint64(0); i < n; i++ {
-		ref, ok := d.r.get(d.refBits)
+	for range n {
+		ref, ok := d.reference()
 		if !ok {
 			d.report.Malformed = true
 			return false
 		}
-		key, named := d.entry(ref)
+		// a reference of `0` where an entry is REQUIRED is damage (§3.2), and
+		// a key naming an entry of the wrong sort is damage too (§3.3)
+		key, named := d.name(ref)
 		if !named {
-			// a reference of `0` where an entry is REQUIRED is damage (§3.2)
-			d.report.Malformed = true
 			return false
 		}
 		value := enumValueForId(f.KeyEnumRef, key.Id)
@@ -484,8 +580,13 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	return true
 }
 
-// mapField decodes one map (docs/SPEC-TABLES.md §2.8): the entry count, then
-// the generated `{ key, value }` bodies.
+// mapField decodes one map (docs/SPEC-TABLES.md §2.8, §3.3): the count at the
+// thirty-two bits the data decides, then the generated `{ key, value }`
+// bodies, each decoded whole and then placed by its key: ascending against
+// the key of the last entry that LANDED, a duplicate replacing the slot it
+// took, a key that does not fit dropped whole and counted `clamped`. A
+// DESCENDING key is damage the batch cannot recover from, because there is no
+// map L for the parent to read on past.
 func (d *bitDecoder) mapField(fv *tabletext.Field, entry ir.TableVocabularyEntry) bool {
 	f := fv.Def
 	n, ok := d.r.get(ir.TableMessageCountBits(entry.Shape))
@@ -493,17 +594,41 @@ func (d *bitDecoder) mapField(fv *tabletext.Field, entry ir.TableVocabularyEntry
 		d.report.Malformed = true
 		return false
 	}
+	n += uint64(entry.Shape.Min)
+	if n > uint64(math.MaxInt32) {
+		d.report.Malformed = true
+		return false
+	}
 	fv.Entries = nil
+	var last *tabletext.Instance
 	for i := uint64(0); i < n; i++ {
-		body := d.m.New(f.MapEntry)
-		if !d.body(body, true) {
+		decoded := d.m.NewMapEntry(f)
+		if !d.body(decoded, true) {
 			return false
 		}
-		if uint64(len(fv.Entries)) >= uint64(f.ArrayBound) && !f.IsList() {
+		key := tabletext.MapKeyOf(f, decoded)
+		if !tabletext.MapKeyFits(f, key) {
+			// KEYS NEVER CLAMP: the entry is dropped whole, one count per entry
 			d.report.Clamped++
 			continue
 		}
-		fv.Entries = append(fv.Entries, tabletext.Cell{Tab: body})
+		order := -1
+		if last != nil {
+			order = tabletext.MapKeyOrder(f, tabletext.MapKeyOf(f, last), key)
+		}
+		if order > 0 {
+			d.report.Malformed = true // DESCENDING: not a body any conforming writer produced
+			return false
+		}
+		if order == 0 {
+			// EQUAL: a DUPLICATE. Last wins WHOLE, and the count excludes it.
+			fv.Entries[len(fv.Entries)-1] = tabletext.Cell{Tab: decoded}
+			d.report.Duplicate++
+			last = decoded
+			continue
+		}
+		fv.Entries = append(fv.Entries, tabletext.Cell{Tab: decoded})
+		last = decoded
 	}
 	fv.Count = len(fv.Entries)
 	return true
@@ -515,7 +640,7 @@ func (d *bitDecoder) mapField(fv *tabletext.Field, entry ir.TableVocabularyEntry
 // arm's payload is skipped by the ARM's own announced entry.
 func (d *bitDecoder) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 	un := tabletext.UnionOf(f)
-	ref, ok := d.r.get(d.refBits)
+	ref, ok := d.reference()
 	if !ok {
 		d.report.Malformed = true
 		return false
@@ -524,9 +649,8 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 		cell.U = 0
 		return true
 	}
-	entry, named := d.entry(ref)
+	entry, named := d.arm(ref)
 	if !named {
-		d.report.Malformed = true
 		return false
 	}
 	tag := 0
@@ -561,7 +685,7 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 	af := arm.F
 	switch {
 	case af.Type.Pointer && af.Array == ir.ArrayNone:
-		index, ok := d.r.get(d.indexBits)
+		index, ok := d.index()
 		if !ok {
 			d.report.Malformed = true
 			return false
@@ -587,7 +711,7 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 // for None. A reference this reader's enum cannot name is §4's ordinary
 // `unknown`.
 func (d *bitDecoder) enumCell(cell *tabletext.Cell, f *ir.Field) bool {
-	ref, ok := d.r.get(d.refBits)
+	ref, ok := d.reference()
 	if !ok {
 		d.report.Malformed = true
 		return false
@@ -596,9 +720,8 @@ func (d *bitDecoder) enumCell(cell *tabletext.Cell, f *ir.Field) bool {
 		cell.U = 0
 		return true
 	}
-	entry, named := d.entry(ref)
+	entry, named := d.name(ref)
 	if !named {
-		d.report.Malformed = true
 		return false
 	}
 	v := enumValueForId(tabletext.EnumOf(f), entry.Id)
@@ -784,16 +907,17 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 	case 0, ir.TableKindNoPayload:
 		return true
 	case ir.TableKindEnum:
-		return d.r.skip(d.refBits)
+		_, ok := d.reference()
+		return ok
 	case ir.TableKindUnion:
-		ref, ok := d.r.get(d.refBits)
+		ref, ok := d.reference()
 		if !ok {
 			return false
 		}
 		if ref == 0 {
 			return true
 		}
-		arm, named := d.entry(ref)
+		arm, named := d.arm(ref)
 		if !named {
 			return false
 		}
@@ -801,10 +925,29 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 	case ir.TableKindTable:
 		return d.skipBody()
 	case ir.TableKindPointer:
-		return d.r.skip(d.indexBits)
+		_, ok := d.index()
+		return ok
 	case ir.TableKindString:
 		n, ok := d.r.get(ir.TableMessageBitsRequired(0, shape.Max))
 		if !ok || !d.r.align() {
+			return false
+		}
+		return d.r.skip(int(n) * 8)
+	case ir.TableKindWstring:
+		// the length, NO align, then SIXTEEN bits a code unit (§3.3)
+		n, ok := d.r.get(ir.TableMessageBitsRequired(0, shape.Max))
+		if !ok {
+			return false
+		}
+		return d.r.skip(int(n) * 16)
+	case ir.TableKindEscape:
+		// THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque — the
+		// one path a later-major writer has on this form (§3.3)
+		if !d.r.align() {
+			return false
+		}
+		n, ok := d.r.get(32)
+		if !ok {
 			return false
 		}
 		return d.r.skip(int(n) * 8)
@@ -832,8 +975,10 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 			inner = *shape.Inner
 		}
 		for i := uint64(0); i < n; i++ {
-			if entry.Kind == ir.TableKindKeyed && !d.r.skip(d.refBits) {
-				return false
+			if entry.Kind == ir.TableKindKeyed {
+				if _, ok := d.reference(); !ok {
+					return false
+				}
 			}
 			if !d.skip(ir.TableVocabularyEntry{Kind: shape.Elem, Shape: inner}) {
 				return false
@@ -852,7 +997,7 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 // same announced vocabulary its parent resolves through.
 func (d *bitDecoder) skipBody() bool {
 	for {
-		ref, ok := d.r.get(d.refBits)
+		ref, ok := d.reference()
 		if !ok {
 			return false
 		}

@@ -8766,13 +8766,18 @@ int main()
 
     // THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3)
     test_message_form_goldens();
+    test_message_form_batch();
     test_message_form_reload();
     test_message_form_wide_vocabulary();
     test_message_form_pointered();
     test_message_form_two_peers();
     test_message_form_refusals();
+    test_message_form_five_answers();
+    test_message_form_damage_terminal();
+    test_message_form_pad();
+    test_message_form_mask_width();
     test_message_form_announcement_check();
-    test_message_form_reserved_id_in_a_body();
+    test_message_form_reserved_ids();
     test_message_form_reference_bound();
 
     if ( failures > 0 )

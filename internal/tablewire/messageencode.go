@@ -39,7 +39,11 @@ func EncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, er
 		return nil, fmt.Errorf("a batch of zero bodies is not spellable — a caller with nothing to send writes nothing (docs/SPEC-TABLES.md §3.3)")
 	}
 	if len(insts) > TableMessageBatchMax {
-		return nil, fmt.Errorf("a batch carries at most %d bodies and %d were given — a caller with more writes more than one batch (docs/SPEC-TABLES.md §3.3)", TableMessageBatchMax, len(insts))
+		// `M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME (§3.3): nothing
+		// is written, no batch is concatenated on the caller's behalf, and the
+		// reason rides the message path's own refusal. A caller with more
+		// bodies calls again.
+		return nil, &MessageRefusal{Reason: ReasonBatchTooLarge}
 	}
 	vocabulary := ir.TableVocabulary(m.Unit)
 	slots := make(map[string]uint64, len(vocabulary))
@@ -53,7 +57,7 @@ func EncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, er
 		if err != nil {
 			return nil, err
 		}
-		e := &bitEncoder{m: m, g: g, slots: slots, refBits: ir.TableMessageRefBits(len(vocabulary))}
+		e := &bitEncoder{m: m, g: g, slots: slots, refBits: ir.TableMessageRefBits(len(vocabulary)), indexBits: ir.TableMessageBitsRequired(0, 1)}
 		if err := encodeBitBody(e, w, inst, true); err != nil {
 			return nil, err
 		}
