@@ -549,7 +549,7 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %s::None: slot = 0; return true;\n", e.Name)
 	for _, v := range e.Variants {
-		g.pf("        case %s::%s: slot = %d; return true;\n", e.Name, v, g.slots[ir.TableWireId(v)])
+		g.pf("        case %s::%s: slot = %d; return true;\n", e.Name, v, g.slots[ir.TableVocabularyEntry{Id: ir.TableWireId(v)}.Key()])
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")

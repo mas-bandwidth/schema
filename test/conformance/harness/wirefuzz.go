@@ -105,7 +105,9 @@ func newWireRoot(u *units, unitKey, rootName string, message bool) (*wireRoot, e
 		if err := r.vocabulary.AnnounceRead(ir.TableAnnouncement(unit), &tabletext.Report{}); err != nil {
 			return nil, fmt.Errorf("unit %s: its own announcement was refused: %w", unitKey, err)
 		}
-		r.entries = r.vocabulary.Entries()
+		for _, e := range r.vocabulary.Entries() {
+			r.entries = append(r.entries, e.Id)
+		}
 	}
 	r.rootStorage = alignUp8(ir.RecordLayout(unit, def).Size)
 	// THE STORAGE A RECORD COMMANDS is its type's, and only for a type THIS

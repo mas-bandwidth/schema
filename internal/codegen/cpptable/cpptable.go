@@ -104,10 +104,10 @@ type tableGen struct {
 	// (docs/SPEC-TABLES.md §3.3). Every id a generated field header can name
 	// has one, and the slot rides at the header as a LITERAL beside the id, so
 	// a form-`2` save does no lookup at all.
-	slots map[uint64]uint64
-	// records is the announcement's CANONICAL record per id (§3.3): the widths
-	// the bitpacked codec spends, all of them compile-time facts.
-	records map[uint64]ir.TableMessageDescriptor
+	// slots is the unit's MESSAGE-FORM vocabulary: the SLOT each announced
+	// entry takes, keyed by the triple (§3.3), so a generated field header
+	// carries its reference as a literal and a save does no lookup at all.
+	slots map[string]uint64
 }
 
 // wireRef is a field header's id reference: the id and its MESSAGE-FORM SLOT,
@@ -115,7 +115,7 @@ type tableGen struct {
 // reference; the MESSAGE form answers the slot and never touches the table
 // (docs/SPEC-TABLES.md §3, §3.3).
 func (g *tableGen) wireRef(id uint64) string {
-	return fmt.Sprintf("ids.ref( 0x%016xull, %d )", id, g.slots[id])
+	return fmt.Sprintf("ids.ref( 0x%016xull, %d )", id, g.slots[ir.TableVocabularyEntry{Id: id}.Key()])
 }
 
 // hdrBytes is a field header's cost: the id reference and the kind byte, which
@@ -125,7 +125,9 @@ func (g *tableGen) hdrBytes(id uint64) string {
 }
 
 // slotOf is one id's message-form slot as a C++ literal.
-func (g *tableGen) slotOf(id uint64) string { return strconv.FormatUint(g.slots[id], 10) }
+func (g *tableGen) slotOf(id uint64) string {
+	return strconv.FormatUint(g.slots[ir.TableVocabularyEntry{Id: id}.Key()], 10)
+}
 
 func (g *tableGen) pf(format string, args ...any) {
 	s := fmt.Sprintf(format, args...)
@@ -985,17 +987,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// for the unit: every id the closure can put on a wire, and the slot the
 	// compiler settled for it. A generated field header carries the slot as a
 	// literal beside the id.
-	slots := map[uint64]uint64{}
-	records := map[uint64]ir.TableMessageDescriptor{}
-	vocabulary := ir.TableVocabulary(u)
-	published := ir.TableVocabularyRecords(u)
-	for i, id := range vocabulary {
-		slots[id] = uint64(i + 1)
-		records[id] = published[i]
-	}
+	slots := ir.TableVocabularySlots(u)
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets,
-			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots, records: records}
+			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
 		for _, d := range f.Decls {

@@ -5,6 +5,8 @@
 // same places, and the two wires can be read beside each other.
 package tablewire
 
+import "math/big"
+
 // bitWriter accumulates a body's bits. Nothing here allocates per field: a
 // nested body is built in a writer of its own and spliced, exactly as the file
 // form's encoder builds a nested body in a byte buffer and copies it, and the
@@ -37,23 +39,11 @@ func (w *bitWriter) putWide(lo, hi uint64) {
 	w.put(hi, 64)
 }
 
-// leb writes one unbounded number as a BIT LEB128: seven-bit groups, low group
-// first, each preceded by a continuation bit, in its ONE canonical spelling.
-// It is the file form's LEB128 at bit granularity, and it is what carries a
-// number whose bound the declaration does not state — a message count, an
-// unbounded array's length, the node table's payload size.
-func (w *bitWriter) leb(v uint64) {
-	for {
-		group := v & 0x7F
-		v >>= 7
-		if v != 0 {
-			w.put(1, 1)
-			w.put(group, 7)
-			continue
-		}
-		w.put(0, 1)
-		w.put(group, 7)
-		return
+// putBig writes the low `n` bits of a wide value, which is what a 128-bit
+// kind's ranged offset takes.
+func (w *bitWriter) putBig(v *big.Int, n int) {
+	for i := 0; i < n; i++ {
+		w.put(uint64(v.Bit(i)), 1)
 	}
 }
 
@@ -74,8 +64,9 @@ func (w *bitWriter) splice(other *bitWriter) {
 	}
 }
 
-// align pads to the next byte boundary with zero bits. A batch pays this ONCE,
-// at its end, which is the whole of the alignment the message form spends.
+// align pads to the next byte boundary with zero bits. A batch pays this at
+// its end, and a `string(N)` or a `bytes(N)` payload pays it before its bytes,
+// which buys a memcpy on the largest payload on the wire.
 func (w *bitWriter) align() {
 	for w.n%8 != 0 {
 		w.put(0, 1)
@@ -109,32 +100,17 @@ func (r *bitReader) get(n int) (uint64, bool) {
 	return v, true
 }
 
-// leb reads a BIT LEB128 and refuses a NON-CANONICAL spelling, which is what
-// §3 already says of every length, count and index on the file form: one
-// number, one encoding, and a longer one is framing damage rather than a
-// larger number.
-func (r *bitReader) leb() (uint64, bool) {
-	var v uint64
-	for shift := 0; ; shift += 7 {
-		more, ok := r.get(1)
+// getBig reads a wide value's low `n` bits.
+func (r *bitReader) getBig(n int) (*big.Int, bool) {
+	out := new(big.Int)
+	for i := 0; i < n; i++ {
+		bit, ok := r.get(1)
 		if !ok {
-			return 0, false
+			return nil, false
 		}
-		group, ok := r.get(7)
-		if !ok {
-			return 0, false
-		}
-		if shift >= 64 || (shift == 63 && group > 1) {
-			return 0, false
-		}
-		v |= group << uint(shift)
-		if more == 0 {
-			if shift > 0 && group == 0 {
-				return 0, false // a trailing zero group is a longer spelling of the same number
-			}
-			return v, true
-		}
+		out.SetBit(out, i, uint(bit))
 	}
+	return out, true
 }
 
 // skip advances past n bits without reading them.
@@ -159,6 +135,14 @@ func (r *bitReader) bytes(n int) ([]byte, bool) {
 	return out, true
 }
 
-// alignedTo reports the stream position rounded up to the next byte, which is
-// where a batch ends.
-func (r *bitReader) alignedTo() int { return (r.off + 7) / 8 * 8 }
+// align steps past the pad to the next byte boundary and VERIFIES it is zero,
+// which is the packet wire's rule for the same reason (SPEC.md §4.3).
+func (r *bitReader) align() bool {
+	for r.off%8 != 0 {
+		bit, ok := r.get(1)
+		if !ok || bit != 0 {
+			return false
+		}
+	}
+	return true
+}
