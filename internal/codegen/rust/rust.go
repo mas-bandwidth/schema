@@ -245,7 +245,10 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 // emitTagEnum emits a tag newtype: variants live as associated constants so
 // the flat crate namespace stays clean, and headroom values remain
 // representable (SPEC §6.1 — the enum row's rationale).
-func (g *gen) emitTagEnum(name string, members []string, comment string) {
+// emitTagEnum emits a union's tag newtype. docs is each arm's doc comment
+// (SPEC §4.1), parallel to members: it reaches the tag's constant as a doc
+// comment, the one place the arm is a declaration of its own.
+func (g *gen) emitTagEnum(name string, members []string, docs []string, comment string) {
 	storage := rustUint(ir.StorageBitsFor(int64(len(members))))
 	g.pf("// %s: %s\n", name, comment)
 	g.pf("#[repr(transparent)]\n#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]\n")
@@ -253,6 +256,7 @@ func (g *gen) emitTagEnum(name string, members []string, comment string) {
 	g.pf("impl %s {\n", name)
 	g.pf("    pub const NONE: %s = %s(0);\n", name, name)
 	for i, m := range members {
+		g.pf("%s", ir.DocComment(docs[i], "    ", "///"))
 		g.pf("    pub const %s: %s = %s(%d);\n", ir.RustConstName(m), name, name, i+1)
 	}
 	g.pf("    pub const MAX: %s = %s(%d); // the exported extent (SPEC §4.2)\n", name, name, len(members))
@@ -272,6 +276,7 @@ func (g *gen) emitConst(d *ir.Const) {
 		typ = rustStorage(d.Storage)
 	}
 	name := ir.RustConstName(d.Name)
+	g.pf("%s", ir.DocComment(d.Doc, "", "///"))
 	if d.IsFloat {
 		g.pf("pub const %s: %s = %s;%s\n\n", name, typ, formatFloat(d.Float), g.foldComment(d.Expr))
 		return
@@ -305,18 +310,22 @@ func (g *gen) allowNonCamel(name string) {
 // guard.
 func (g *gen) emitUnion(d *ir.Union) {
 	members := make([]string, len(d.Variants))
+	docs := make([]string, len(d.Variants))
 	for i, v := range d.Variants {
 		members[i] = ir.GoExportName(v.Name)
+		docs[i] = v.Doc
 	}
-	g.emitTagEnum(d.Name+"Type", members,
+	g.emitTagEnum(d.Name+"Type", members, docs,
 		fmt.Sprintf("union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)", d.Name))
 
+	g.pf("%s", ir.DocComment(d.Doc, "", "///"))
 	g.pf("// %s — at most one of the arms. The default is None (the empty union);\n", d.Name)
 	g.pf("// a read replaces the whole value, so stale-arm semantics cannot arise here.\n")
 	g.pf("#[derive(Clone, Copy, PartialEq, Debug, Default)]\n")
 	g.pf("pub enum %s {\n", d.Name)
 	g.pf("    #[default]\n    None,\n")
 	for _, v := range d.Variants {
+		g.pf("%s", ir.DocComment(v.Doc, "    ", "///"))
 		if v.Void() {
 			// a PAYLOAD-FREE arm is a UNIT variant: no payload to hold (SPEC §4.8)
 			g.pf("    %s,\n", ir.GoExportName(v.Name))
@@ -328,6 +337,7 @@ func (g *gen) emitUnion(d *ir.Union) {
 }
 
 func (g *gen) emitEnum(d *ir.Enum) {
+	g.pf("%s", ir.DocComment(d.Doc, "", "///"))
 	g.pf("// %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
 	g.pf("// a newtype because | max = ... headroom makes non-variant values wire-legal\n")
 	g.allowNonCamel(d.Name)
@@ -336,6 +346,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.pf("impl %s {\n", d.Name)
 	g.pf("    pub const NONE: %s = %s(0);\n", d.Name, d.Name)
 	for i, v := range d.Variants {
+		g.pf("%s", ir.DocComment(d.VariantDocs[i], "    ", "///"))
 		g.pf("    pub const %s: %s = %s(%d);\n", ir.RustConstName(v), d.Name, d.Name, i+1)
 	}
 	g.pf("    pub const COUNT: %s = %s(%d); // the declared variant count (SPEC §4.2)\n", d.Name, d.Name, len(d.Variants))
@@ -357,11 +368,13 @@ func (g *gen) emitEnum(d *ir.Enum) {
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {
+	g.pf("%s", ir.DocComment(d.Doc, "", "///"))
 	g.pf("// %s — one bit per variant, consumed as masks; storage u64 in every\n", d.Name)
 	g.pf("// target, wire %d bits (SPEC §4.2)\n", d.WireBits)
 	g.allowNonCamel(d.Name)
 	g.pf("pub type %s = u64;\n\n", d.Name)
 	for i, v := range d.Variants {
+		g.pf("%s", ir.DocComment(d.VariantDocs[i], "", "///"))
 		g.pf("pub const %s_%s: %s = 1 << %d;\n", ir.RustConstName(d.Name), ir.RustConstName(v), d.Name, i)
 	}
 	g.pf("pub const %s: i64 = %d; // the declared variant count (SPEC §4.2)\n", ir.RustConstName(d.Name+"Count"), len(d.Variants))
@@ -395,6 +408,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 }
 
 func (g *gen) emitStruct(d *ir.Struct) {
+	g.pf("%s", ir.DocComment(d.Doc, "", "///"))
 	if len(d.Tags) > 0 {
 		g.pf("// type %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", d.Name, strings.Join(d.Tags, ", "))
 	} else {
@@ -570,6 +584,7 @@ func (g *gen) emitFields(fields []*ir.Field) {
 			}
 			prevGuard = f.Guard
 		}
+		g.pf("%s", ir.DocComment(f.Doc, "    ", "///"))
 		g.emitStorageField(f)
 	}
 }

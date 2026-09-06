@@ -55,6 +55,18 @@ type line struct {
 	blank   bool
 	tokens  []scanner.Token // code tokens (comments excluded)
 	comment string          // trailing or standalone comment text
+	// variant marks a line inside an enum or flags body that carries a
+	// variant, so the column pass can align the | column across the list
+	// (SPEC §7.4 rule 5)
+	variant bool
+}
+
+// isDocLine reports a standalone `///` DOC comment line (SPEC §4.1): it
+// belongs to the item under it rather than standing between two items, so it
+// never breaks an alignment group (SPEC §7.4 rule 2) and it makes a variant
+// list one-per-line (rule 5).
+func (l line) isDocLine() bool {
+	return len(l.tokens) == 0 && strings.HasPrefix(l.comment, "///")
 }
 
 func render(path string, src []byte) ([]byte, error) {
@@ -110,11 +122,12 @@ func render(path string, src []byte) ([]byte, error) {
 		}
 		normalized = append(normalized, work)
 	}
-	lines = normalized
+	lines = normalizeVariantLists(normalized)
 
 	// render each line at its depth, collapsing blank runs and dropping
 	// blanks at the file start, after an opener and before a closer
 	var rendered []string
+	var variants []bool // parallel to rendered: a variant line of an enum or flags body
 	depth := 0
 	pendingBlank := false
 	for _, l := range lines {
@@ -132,10 +145,12 @@ func render(path string, src []byte) ([]byte, error) {
 		}
 		if pendingBlank {
 			rendered = append(rendered, "")
+			variants = append(variants, false)
 			pendingBlank = false
 		}
 		text := renderLine(l)
 		rendered = append(rendered, indent(lineDepth)+text)
+		variants = append(variants, l.variant)
 		depth += opens - closes
 		if depth < 0 {
 			depth = 0
@@ -145,8 +160,111 @@ func render(path string, src []byte) ([]byte, error) {
 		}
 	}
 
-	aligned := alignColumns(rendered)
+	aligned := alignColumns(rendered, variants)
 	return []byte(strings.Join(aligned, "\n") + "\n"), nil
+}
+
+// normalizeVariantLists puts every MULTI-LINE enum or flags body into one of
+// the two canonical forms (SPEC §7.4 rule 5). A list in which any variant
+// carries a qualification or a doc comment is ONE VARIANT PER LINE WITH NO
+// COMMAS, the separator being the newline: that is the one form in which the
+// comma and the pipe would compete for the end of a line, and the formatter
+// answers it the same way at every list rather than mixing the two spellings
+// inside one. Every other multi-line list is the COMMA form, a comma after
+// each variant line but the last. A mixed list, accepted by the parser, is
+// normalized here. One-line lists pass through untouched.
+func normalizeVariantLists(lines []line) []line {
+	var out []line
+	for i := 0; i < len(lines); i++ {
+		l := lines[i]
+		if !opensVariantDecl(l) {
+			out = append(out, l)
+			continue
+		}
+		// a header line: the body opens on this line (`enum E {` before Allman
+		// moved it is already split, so a one-line `{ ... }` group is the
+		// only same-line case) or on the next
+		if containsKind(l.tokens, scanner.LBrace) {
+			out = append(out, l)
+			continue
+		}
+		out = append(out, l)
+		j := i + 1
+		for j < len(lines) && (lines[j].blank || (len(lines[j].tokens) == 0 && lines[j].comment != "")) {
+			out = append(out, lines[j])
+			j++
+		}
+		if j >= len(lines) || len(lines[j].tokens) != 1 || lines[j].tokens[0].Kind != scanner.LBrace {
+			i = j - 1
+			continue
+		}
+		out = append(out, lines[j]) // the opening brace on its own line
+		// the body: up to the closing brace
+		end := j + 1
+		for end < len(lines) && !(len(lines[end].tokens) > 0 && lines[end].tokens[0].Kind == scanner.RBrace) {
+			end++
+		}
+		body := lines[j+1 : end]
+		qualified := false
+		for _, b := range body {
+			if containsKind(b.tokens, scanner.Pipe) || b.isDocLine() {
+				qualified = true
+			}
+		}
+		var variantLines []int // indices into body of lines carrying variants
+		for k, b := range body {
+			if len(b.tokens) > 0 {
+				variantLines = append(variantLines, k)
+			}
+		}
+		for k, b := range body {
+			if len(b.tokens) == 0 {
+				out = append(out, b)
+				continue
+			}
+			if qualified {
+				// one variant per line, no commas. A qualification section
+				// claims the rest of its line, so only the names BEFORE the
+				// pipe split, and the section stays with the last of them.
+				head, section := b.tokens, []scanner.Token(nil)
+				for ti, tk := range b.tokens {
+					if tk.Kind == scanner.Pipe {
+						head, section = b.tokens[:ti], b.tokens[ti:]
+						break
+					}
+				}
+				groups := splitTop(head, scanner.Comma)
+				for gi, g := range groups {
+					nl := line{tokens: g, variant: true}
+					if gi == len(groups)-1 {
+						nl.tokens = append(append([]scanner.Token{}, g...), section...)
+						nl.comment = b.comment // a trailing comment stays with the line's last variant
+					}
+					out = append(out, nl)
+				}
+				continue
+			}
+			nl := b
+			nl.variant = true
+			last := variantLines[len(variantLines)-1] == k
+			if !last && nl.tokens[len(nl.tokens)-1].Kind != scanner.Comma {
+				nl.tokens = append(append([]scanner.Token{}, nl.tokens...), scanner.Token{Kind: scanner.Comma, Text: ","})
+			}
+			out = append(out, nl)
+		}
+		i = end - 1
+	}
+	return out
+}
+
+// opensVariantDecl reports a line that begins an enum or flags declaration
+// at file scope: `enum` is a keyword, and `flags` is contextual there.
+func opensVariantDecl(l line) bool {
+	if len(l.tokens) == 0 {
+		return false
+	}
+	t := l.tokens[0]
+	return t.Kind == scanner.KwEnum || (t.Kind == scanner.Ident && t.Text == "flags" && len(l.tokens) > 1 && l.tokens[1].Kind == scanner.Ident)
 }
 
 func indent(depth int) string {
@@ -398,10 +516,13 @@ func isUnary(tokens []scanner.Token, i int) bool {
 // ---- column alignment (SPEC §7.4 rule 2) ----
 
 // alignColumns pads names and types within contiguous runs of field lines
-// (broken by blank lines and comment lines), and aligns `=` within const
-// runs. Operates on the rendered lines; alignment is the only thing that
-// distinguishes these lines from their minimal one-space form.
-func alignColumns(lines []string) []string {
+// (broken by blank lines and comment lines — a `///` DOC comment line
+// excepted, which belongs to the field under it and breaks nothing, SPEC §7.4
+// rule 2), aligns `=` within const runs, and aligns the `|` column across a
+// qualified variant list (rule 5). variants marks the variant lines. Operates
+// on the rendered lines; alignment is the only thing that distinguishes these
+// lines from their minimal one-space form.
+func alignColumns(lines []string, variants []bool) []string {
 	out := make([]string, len(lines))
 	copy(out, lines)
 
@@ -462,12 +583,50 @@ func alignColumns(lines []string) []string {
 		}
 	}
 
-	inField, inConst := -1, -1
+	// a VARIANT run: names padded so the | column lines up, when any line in
+	// the run carries a qualification
+	flushVariant := func(r run) {
+		maxName := 0
+		anyTail := false
+		for i := r.start; i < r.end; i++ {
+			name, tail, ok := splitVariant(out[i], variants[i])
+			if !ok {
+				continue
+			}
+			if len(name) > maxName {
+				maxName = len(name)
+			}
+			if tail != "" {
+				anyTail = true
+			}
+		}
+		if !anyTail {
+			return
+		}
+		for i := r.start; i < r.end; i++ {
+			name, tail, ok := splitVariant(out[i], variants[i])
+			if !ok {
+				continue
+			}
+			ind := out[i][:len(out[i])-len(strings.TrimLeft(out[i], " "))]
+			if tail == "" {
+				out[i] = ind + name
+			} else {
+				out[i] = ind + pad(name, maxName) + " " + tail
+			}
+		}
+	}
+
+	inField, inConst, inVariant := -1, -1, -1
 	for i := 0; i <= len(out); i++ {
-		isF, isC := false, false
+		isF, isC, isV := false, false, false
 		if i < len(out) {
+			if isDocComment(out[i]) {
+				continue // a doc comment belongs to the line under it: it neither breaks nor joins a run
+			}
 			_, _, _, isF = splitField(out[i])
 			_, _, isC = splitConst(out[i])
+			_, _, isV = splitVariant(out[i], variants[i])
 		}
 		if !isF && inField >= 0 {
 			flushField(run{inField, i})
@@ -477,14 +636,45 @@ func alignColumns(lines []string) []string {
 			flushConst(run{inConst, i})
 			inConst = -1
 		}
+		if !isV && inVariant >= 0 {
+			flushVariant(run{inVariant, i})
+			inVariant = -1
+		}
 		if isF && inField < 0 {
 			inField = i
 		}
 		if isC && inConst < 0 {
 			inConst = i
 		}
+		if isV && inVariant < 0 {
+			inVariant = i
+		}
 	}
 	return out
+}
+
+// isDocComment reports a rendered line that is a standalone `///` doc comment.
+func isDocComment(s string) bool {
+	return strings.HasPrefix(strings.TrimLeft(s, " "), "///")
+}
+
+// splitVariant recognizes a variant line of an enum or flags body and splits
+// it into the name and its qualification tail (`| ...`, with any trailing
+// comment), which is empty when the line carries none.
+func splitVariant(s string, variant bool) (name, tail string, ok bool) {
+	if !variant {
+		return "", "", false
+	}
+	body := strings.TrimLeft(s, " ")
+	name, rest, _ := strings.Cut(body, " ")
+	rest = strings.TrimLeft(rest, " ")
+	if rest != "" && !strings.HasPrefix(rest, "|") {
+		return name, "", true // a trailing comment alone: left where it is
+	}
+	if rest == "" {
+		return name, "", true
+	}
+	return name, rest, true
 }
 
 func pad(s string, w int) string {
@@ -527,7 +717,12 @@ func splitField(s string) (name, typ, tail string, ok bool) {
 	// run (SPEC §7.4 rule 2)
 	typ = rest
 	tail = ""
-	if k := strings.Index(rest, " |"); k >= 0 {
+	if strings.HasPrefix(rest, "|") {
+		// a PAYLOAD-FREE ARM with a qualification section (SPEC §4.8): the
+		// name is the whole definition, and the section is the tail, so the
+		// pipes of a run line up
+		typ, tail = "", rest
+	} else if k := strings.Index(rest, " |"); k >= 0 {
 		typ, tail = rest[:k], strings.TrimLeft(rest[k:], " ")
 	}
 	if strings.HasSuffix(typ, "{") {
@@ -566,28 +761,38 @@ func fingerprint(f *ast.File) string {
 func fpDecl(b *strings.Builder, d ast.Decl) {
 	switch d := d.(type) {
 	case *ast.ConstDecl:
-		fmt.Fprintf(b, "const %s %s = %s\n", d.Name, d.Type, fpExpr(d.Expr))
+		fmt.Fprintf(b, "%sconst %s %s = %s %s\n", fpDoc(d.Doc), d.Name, d.Type, fpExpr(d.Expr), fpAttrs(d.Attrs))
 	case *ast.EnumDecl:
-		fmt.Fprintf(b, "enum %s %s {%s}\n", d.Name, fpAttrs(d.Attrs), fpNames(d.Variants))
+		fmt.Fprintf(b, "%senum %s %s {%s}\n", fpDoc(d.Doc), d.Name, fpAttrs(d.Attrs), fpNames(d.Variants))
 	case *ast.FlagsDecl:
-		fmt.Fprintf(b, "flags %s %s {%s}\n", d.Name, fpAttrs(d.Attrs), fpNames(d.Variants))
+		fmt.Fprintf(b, "%sflags %s %s {%s}\n", fpDoc(d.Doc), d.Name, fpAttrs(d.Attrs), fpNames(d.Variants))
 	case *ast.TypeDecl:
-		fmt.Fprintf(b, "type %s %s\n", d.Name, fpAttrs(d.Attrs))
+		fmt.Fprintf(b, "%stype %s %s\n", fpDoc(d.Doc), d.Name, fpAttrs(d.Attrs))
 		fpBlock(b, d.Body)
 	case *ast.TableDecl:
-		fmt.Fprintf(b, "table %s\n", d.Name)
+		fmt.Fprintf(b, "%stable %s %s\n", fpDoc(d.Doc), d.Name, fpAttrs(d.Attrs))
 		fpBlock(b, d.Body)
 	case *ast.UnionDecl:
 		// AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6), so an arm's
 		// fingerprint is a FIELD's: the type, the bound and the attributes,
 		// or the formatter could move one and the safety net would not see it
-		fmt.Fprintf(b, "union %s\n{\n", d.Name)
+		fmt.Fprintf(b, "%sunion %s %s\n{\n", fpDoc(d.Doc), d.Name, fpAttrs(d.Attrs))
 		for _, v := range d.Variants {
-			b.WriteString("variant ")
+			b.WriteString(fpDoc(v.Doc) + "variant " + v.Name + fpAttrs(v.Attrs) + " ")
 			fpField(b, v.Arm)
 		}
 		b.WriteString("}\n")
 	}
+}
+
+// fpDoc fingerprints a `///` doc comment (SPEC §4.1): the formatter never
+// moves a comment, and a doc comment that moved would bind to a different
+// item, which is a change of meaning the safety net must see.
+func fpDoc(doc string) string {
+	if doc == "" {
+		return ""
+	}
+	return fmt.Sprintf("doc %q\n", doc)
 }
 
 func fpBlock(b *strings.Builder, blk *ast.Block) {
@@ -740,7 +945,7 @@ func fpAttrs(attrs []ast.Attr) string {
 func fpNames(names []ast.Name) string {
 	var out []string
 	for _, n := range names {
-		out = append(out, n.Text)
+		out = append(out, fpDoc(n.Doc)+n.Text+fpAttrs(n.Attrs))
 	}
 	return strings.Join(out, ",")
 }
@@ -780,5 +985,5 @@ func fpField(b *strings.Builder, f *ast.Field) {
 	if f.Default != nil {
 		def = " = " + fpExpr(f.Default)
 	}
-	fmt.Fprintf(b, "%s %s %s%s\n", f.Name, fpFieldType(f), fpAttrs(f.Attrs), def)
+	fmt.Fprintf(b, "%s%s %s %s%s\n", fpDoc(f.Doc), f.Name, fpFieldType(f), fpAttrs(f.Attrs), def)
 }
