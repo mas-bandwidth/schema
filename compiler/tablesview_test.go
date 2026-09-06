@@ -107,7 +107,7 @@ func TestViewVariantIdsAreReservedOutsideTheClosure(t *testing.T) {
 // descriptorRow returns the generated line carrying one field's descriptor.
 func descriptorRow(t *testing.T, source, field string) string {
 	t.Helper()
-	for _, line := range strings.Split(source, "\n") {
+	for line := range strings.SplitSeq(source, "\n") {
 		if strings.Contains(line, `{ "`+field+`", `) {
 			return strings.TrimSpace(line)
 		}
