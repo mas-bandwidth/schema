@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <chrono>
 #include <new>
 
 #include "RT1Table.h"
@@ -502,6 +503,106 @@ static void damaged_inner_structure()
     CHECK( l.report.retain_lost == 1 );
 }
 
+// ---- THE WALK IS ONE PASS EACH WAY (docs/SPEC-TABLES.md §6.6) ----
+//
+// The resolving walk "cannot make a read fail, allocate, or take a path it
+// would not otherwise take", and a cost that doubles at every level of a
+// nesting THE FILE CHOOSES is such a path. Every framed length in the resolved
+// form is a fixed slot the capture writes after the content it frames, so a
+// record costs one pass in and one pass out, and its time is linear in its own
+// bytes.
+//
+// CONTROL: restore a probe walk at any framed length and the rows below run
+// for longer than anyone will wait.
+
+// one unknown field whose payload is `depth` nested table bodies, with a
+// scalar at the bottom
+static int64_t deep_wire( uint8_t * out, int32_t depth )
+{
+    WireBuilder b;
+    int64_t marks[ 128 ];
+    b.field( "future", 13 );
+    marks[0] = b.open_len();
+    for ( int32_t d = 1; d < depth; d++ )
+    {
+        b.field( "deeper", 13 );
+        marks[d] = b.open_len();
+    }
+    b.field( "hits", 4 );
+    b.u32( 9 );
+    for ( int32_t d = depth - 1; d >= 0; d-- ) { b.end(); b.close_len( marks[d] ); }
+    b.end();
+    return b.finish( out );
+}
+
+static void walk_is_linear()
+{
+    static const int32_t depths[] = { 8, 20, 40 };
+    for ( int32_t i = 0; i < 3; i++ )
+    {
+        uint8_t wire[ 4096 ];
+        const int64_t n = deep_wire( wire, depths[i] );
+        CHECK( n > 0 );
+        Region region;
+        region.size( tblrt1::NodeLoadMeasure( wire, n ) );
+        uint8_t storage[ 8192 ];
+        tblrt1::TableRetain::Id ids[ 64 ];
+        tblrt1::TableRetain retain;
+        retain.bytes = storage;
+        retain.capacity = sizeof( storage );
+        retain.ids = ids;
+        retain.id_capacity = 64;
+        tblrt1::TableReport report;
+        const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
+        const tblrt1::Node * root = tblrt1::NodeLoadRetain( region.base, region.bytes, wire, n, &retain, &report );
+        const double ms = std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - began ).count();
+        CHECK( root != NULL );
+        CHECK( !report.malformed );
+        CHECK( report.retained == 1 );
+        CHECK( report.retain_lost == 0 );
+        // AN ABSOLUTE BOUND, and not a ratio to noise: a walk linear in the
+        // record's bytes is microseconds at every depth the cap admits.
+        if ( ms > 50.0 )
+        {
+            printf( "FAIL walk depth %d: %.3f ms\n", depths[i], ms );
+            failures++;
+        }
+        printf( "retain: walk depth %d, %.3f ms\n", depths[i], ms );
+
+        // and the record rides back out, which is the save side's own pass
+        tblrt1::TableReport save_report;
+        uint8_t save[ 8192 ];
+        const int64_t m = tblrt1::NodeMeasureRetain( root, &retain );
+        const int64_t w = tblrt1::NodeSaveRetain( root, &retain, save, m, &save_report );
+        CHECK( w == m && w > 0 );
+        CHECK( save_report.retain_lost == 0 );
+    }
+
+    // THE CAP IS A SMALL STATED CONSTANT and it counts NESTED BODIES: a record
+    // one past it is dropped on the same rule as any other shape the walk
+    // cannot take, and the last depth it admits still rides.
+    {
+        uint8_t wire[ 4096 ];
+        const int64_t n = deep_wire( wire, 65 );
+        Loaded l;
+        l.load( wire, n );
+        CHECK( l.root != NULL );
+        CHECK( !l.report.malformed );
+        CHECK( l.report.retained == 0 );
+        CHECK( l.report.retain_lost == 1 );
+    }
+    {
+        uint8_t wire[ 4096 ];
+        const int64_t n = deep_wire( wire, 64 );
+        Loaded l;
+        l.load( wire, n );
+        CHECK( l.root != NULL );
+        CHECK( !l.report.malformed );
+        CHECK( l.report.retained == 1 );
+        CHECK( l.report.retain_lost == 0 );
+    }
+}
+
 // ---- THE TRAILER IS PERMUTED, AND EVERY REFERENCE MOVES WITH IT ----
 //
 // Moving a field changes the order ids are first used in, and the id table is
@@ -544,6 +645,7 @@ int main( int argc, char ** argv )
     capacities();
     record_lifetime();
     damaged_inner_structure();
+    walk_is_linear();
     trailer_is_permuted();
     if ( failures != 0 )
     {

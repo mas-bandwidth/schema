@@ -3106,6 +3106,10 @@ inline const uint8_t * TableRetainRecordPayload( const uint8_t * record )
 {
     return record + kTableRetainRecordHeader + 8 * (int64_t) TableRetainRecordDepth( record );
 }
+inline uint8_t * TableRetainRecordPayload( uint8_t * record )
+{
+    return record + kTableRetainRecordHeader + 8 * (int64_t) TableRetainRecordDepth( record );
+}
 
 // THE RECORD'S OWN BODY, resolved through the directory the buffer holds. A
 // node index names one node for the life of the region, so this is one add.
@@ -3242,10 +3246,18 @@ inline void TableRetainIdsWrite( TableWriter & w, const TableRetainIds & ids )
 // cannot frame DROPS THE RECORD, counts one retain_lost, and never raises
 // malformed on the plain read.
 //
+// THE WALK IS ONE PASS EACH WAY, and its cost is linear in the record's own
+// bytes. Every length that frames a content in the resolved form is a fixed
+// slot rather than a canonical LEB128, so the capture reserves it, writes the
+// content, and fills the slot in behind it. A spelling that had to know the
+// resolved size before writing it would have to walk each content twice, once
+// at every level, and the file chooses the nesting.
+//
 // A retained record's inner nesting is the WRITER's and not this build's, so
-// it is the one depth on this path a file can drive. The walk caps it and a
-// record that nests past the cap is dropped, on the same rule as any other
-// shape the walk cannot take.
+// it is the one depth on this path a file can drive. The cap counts NESTED
+// BODIES, and a record past it is dropped on the same rule as any other shape
+// the walk cannot take. Time no longer rests on it: it is a small stated
+// constant and nothing more.
 static const int32_t kTableRetainWalkDepthMax = 64;
 
 // the three RESERVED ids (§3.1, §3.3). One inside a retained record's payload
@@ -3329,15 +3341,39 @@ inline bool TableRetainInRef( TableRetainIn & s, bool zero_allowed )
 inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t depth );
 inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t length, int32_t depth );
 
-// the resolved byte count a framed CONTENT of kind takes, walked without
-// writing. It is what a length in the resolved form has to say before the
-// content it frames is written.
-inline int64_t TableRetainInContentBytes( const TableRetainIn & s, uint8_t kind, int64_t length, int32_t depth )
+// ONE FRAMED LENGTH in the resolved form: a pair of fixed u32. The first is
+// the RESOLVED byte count of the content it frames, reserved here and written
+// once the content is out. The second is the SAVE's scratch, left zero by the
+// capture and filled by the walk that emits.
+//
+// The record is the reader's own storage and nothing outside this family ever
+// reads it, so a length may be written after the bytes it measures. That is
+// the whole of what makes the walk one pass.
+static const int64_t kTableRetainSlotBytes = 8;
+
+inline int64_t TableRetainInSlot( TableRetainIn & s )
 {
-    TableRetainIn probe = s;
-    probe.out = NULL;
-    probe.out_at = 0;
-    return TableRetainInContent( probe, kind, length, depth );
+    const int64_t at = s.out_at;
+    const uint8_t zero[ kTableRetainSlotBytes ] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    TableRetainInRaw( s, zero, kTableRetainSlotBytes );
+    return at;
+}
+
+inline void TableRetainInPatch( TableRetainIn & s, int64_t slot, int64_t resolved )
+{
+    if ( s.out != NULL ) { TableRetainWrite32( s.out + slot, (uint32_t) resolved ); }
+}
+
+// one framed CONTENT: the slot, the content, and the slot filled in behind it.
+// The measuring pass takes the same path and reserves the same fixed width, so
+// the size it answers is the size the writing pass lays down.
+inline int64_t TableRetainInFramed( TableRetainIn & s, uint8_t kind, int64_t length, int32_t depth )
+{
+    const int64_t slot = TableRetainInSlot( s );
+    const int64_t resolved = TableRetainInContent( s, kind, length, depth );
+    if ( resolved < 0 || resolved > 0xFFFFFFFFll ) { return -1; }
+    TableRetainInPatch( s, slot, resolved );
+    return resolved;
 }
 
 inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t length, int32_t depth )
@@ -3355,13 +3391,16 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
                 uint64_t ref = 0;
                 const int64_t mark = s.at;
                 if ( !TableRetainInLebRead( s, ref ) ) { return -1; }
-                if ( ref == 0 ) { TableRetainInLeb( s, 0 ); break; }
+                // THE TERMINATOR IS A REFERENCE, and a reference in the
+                // resolved form is a fixed eight-byte id: the zero that ends a
+                // body rides at the width every other one does.
+                if ( ref == 0 ) { TableRetainInId( s, 0 ); break; }
                 s.at = mark;
                 if ( !TableRetainInRef( s, false ) ) { return -1; }
                 if ( s.at >= end ) { return -1; }
                 const uint8_t field_kind = s.in[ s.at++ ];
                 TableRetainInRaw( s, &field_kind, 1 );
-                if ( TableRetainInPayload( s, field_kind, depth + 1 ) < 0 ) { return -1; }
+                if ( TableRetainInPayload( s, field_kind, depth ) < 0 ) { return -1; }
                 if ( s.at > end ) { return -1; }
             }
             break;
@@ -3376,7 +3415,7 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
             TableRetainInLeb( s, n );
             for ( uint64_t i = 0; i < n; i++ )
             {
-                if ( TableRetainInPayload( s, elem_kind, depth + 1 ) < 0 ) { return -1; }
+                if ( TableRetainInPayload( s, elem_kind, depth ) < 0 ) { return -1; }
                 if ( s.at > end ) { return -1; }
             }
             break;
@@ -3396,10 +3435,7 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
                 uint64_t slot_bytes = 0;
                 if ( !TableRetainInLebRead( s, slot_bytes ) ) { return -1; }
                 if ( slot_bytes > (uint64_t) ( end - s.at ) ) { return -1; }
-                const int64_t resolved = TableRetainInContentBytes( s, elem_kind, (int64_t) slot_bytes, depth + 1 );
-                if ( resolved < 0 ) { return -1; }
-                TableRetainInLeb( s, (uint64_t) resolved );
-                if ( TableRetainInContent( s, elem_kind, (int64_t) slot_bytes, depth + 1 ) < 0 ) { return -1; }
+                if ( TableRetainInFramed( s, elem_kind, (int64_t) slot_bytes, depth + 1 ) < 0 ) { return -1; }
             }
             break;
         }
@@ -3415,9 +3451,10 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
     return s.out_at - began;
 }
 
+// the depth a payload carries is its enclosing body's: only a framed CONTENT
+// is a level, and TableRetainInContent is the one place the cap is read.
 inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t depth )
 {
-    if ( depth > kTableRetainWalkDepthMax ) { return -1; }
     const int64_t began = s.out_at;
     switch ( kind )
     {
@@ -3456,10 +3493,7 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
             if ( length > (uint64_t) ( s.size - s.at ) ) { return -1; }
-            const int64_t resolved = TableRetainInContentBytes( s, kind, (int64_t) length, depth + 1 );
-            if ( resolved < 0 ) { return -1; }
-            TableRetainInLeb( s, (uint64_t) resolved );
-            if ( TableRetainInContent( s, kind, (int64_t) length, depth + 1 ) < 0 ) { return -1; }
+            if ( TableRetainInFramed( s, kind, (int64_t) length, depth + 1 ) < 0 ) { return -1; }
             break;
         }
         case 15: // a UNION: the arm id reference, and when it is not zero its kind, L and payload
@@ -3476,10 +3510,7 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
             if ( length > (uint64_t) ( s.size - s.at ) ) { return -1; }
-            const int64_t resolved = TableRetainInContentBytes( s, arm_kind, (int64_t) length, depth + 1 );
-            if ( resolved < 0 ) { return -1; }
-            TableRetainInLeb( s, (uint64_t) resolved );
-            if ( TableRetainInContent( s, arm_kind, (int64_t) length, depth + 1 ) < 0 ) { return -1; }
+            if ( TableRetainInFramed( s, arm_kind, (int64_t) length, depth + 1 ) < 0 ) { return -1; }
             break;
         }
         case 30: // an ENUM's variant reference, zero for None
@@ -3641,13 +3672,21 @@ inline void TableRetainDiscardField( TableRetain * retain, const TableRetainPath
 // the references' new widths. The walk is the capture's mirror and the same
 // damage rules apply, except that damage cannot be met: these bytes are the
 // reader's own.
+//
+// A WIRE LENGTH IS CANONICAL LEB128 AND RIDES BEFORE ITS CONTENT, so this side
+// cannot fill a slot in behind the bytes the way the capture does. It takes
+// one POST-ORDER pass instead: measuring computes each content's wire size and
+// leaves it in that content's own scratch slot, and the emit reads the size
+// there rather than walking for it. Measuring runs immediately before the
+// emit, on the same record and the same id table, which is what makes the two
+// readings one walk.
 struct TableRetainOut
 {
-    const uint8_t * in;
+    uint8_t * in; // the record: only a framed length's scratch half is written
     int64_t size;
     int64_t at;
     TableRetainIds * ids;
-    TableWriter * w; // NULL: measuring
+    TableWriter * w; // NULL: measuring, and the scratch slots are being filled
     int64_t bytes;
 };
 
@@ -3693,16 +3732,36 @@ inline bool TableRetainOutRef( TableRetainOut & s )
 inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t depth );
 inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t length, int32_t depth );
 
-// the WIRE byte count a resolved CONTENT takes. The ids it names are interned
-// on the way past, which is what makes measure and save one walk in two
-// readings, exactly as every other body on this wire is.
-inline int64_t TableRetainOutContentBytes( const TableRetainOut & s, uint8_t kind, int64_t length, int32_t depth )
+// ONE FRAMED CONTENT, read out of the record's fixed slot and written with the
+// canonical LEB128 length this wire wants. The ids it names are interned on
+// the way past, which is what makes measure and save one walk in two readings,
+// exactly as every other body on this wire is.
+//
+// MEASURING walks the content, then leaves the wire size it found in the
+// scratch half of the slot. EMITTING reads that size, writes it, and CHECKS
+// the content against it: a size no measure of this save left there is a
+// record refused rather than a length that does not frame what follows.
+inline bool TableRetainOutFramed( TableRetainOut & s, uint8_t kind, int32_t depth )
 {
-    TableRetainOut probe = s;
-    probe.w = NULL;
-    probe.bytes = 0;
-    if ( !TableRetainOutContent( probe, kind, length, depth ) ) { return -1; }
-    return probe.bytes;
+    if ( s.at + kTableRetainSlotBytes > s.size ) { return false; }
+    uint8_t * const slot = s.in + s.at;
+    const int64_t resolved = (int64_t) TableRetainRead32( slot );
+    s.at += kTableRetainSlotBytes;
+    if ( s.w == NULL )
+    {
+        const int64_t began = s.bytes;
+        if ( !TableRetainOutContent( s, kind, resolved, depth ) ) { return false; }
+        const int64_t wire = s.bytes - began;
+        if ( wire > 0xFFFFFFFFll ) { return false; }
+        TableRetainWrite32( slot + 4, (uint32_t) wire );
+        s.bytes += TableLebBytes( (uint64_t) wire );
+        return true;
+    }
+    const int64_t wire = (int64_t) TableRetainRead32( slot + 4 );
+    TableRetainOutLeb( s, (uint64_t) wire );
+    const int64_t began = s.bytes;
+    if ( !TableRetainOutContent( s, kind, resolved, depth ) ) { return false; }
+    return s.bytes - began == wire;
 }
 
 inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t length, int32_t depth )
@@ -3723,7 +3782,7 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
                 if ( s.at >= end ) { return false; }
                 const uint8_t field_kind = s.in[ s.at++ ];
                 TableRetainOutRaw( s, &field_kind, 1 );
-                if ( !TableRetainOutPayload( s, field_kind, depth + 1 ) ) { return false; }
+                if ( !TableRetainOutPayload( s, field_kind, depth ) ) { return false; }
             }
             break;
         }
@@ -3737,7 +3796,7 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             TableRetainOutLeb( s, n );
             for ( uint64_t i = 0; i < n; i++ )
             {
-                if ( !TableRetainOutPayload( s, elem_kind, depth + 1 ) ) { return false; }
+                if ( !TableRetainOutPayload( s, elem_kind, depth ) ) { return false; }
             }
             break;
         }
@@ -3752,12 +3811,7 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             for ( uint64_t i = 0; i < n; i++ )
             {
                 if ( !TableRetainOutRef( s ) ) { return false; }
-                uint64_t slot_bytes = 0;
-                if ( !TableRetainOutLebRead( s, slot_bytes ) ) { return false; }
-                const int64_t wire = TableRetainOutContentBytes( s, elem_kind, (int64_t) slot_bytes, depth + 1 );
-                if ( wire < 0 ) { return false; }
-                TableRetainOutLeb( s, (uint64_t) wire );
-                if ( !TableRetainOutContent( s, elem_kind, (int64_t) slot_bytes, depth + 1 ) ) { return false; }
+                if ( !TableRetainOutFramed( s, elem_kind, depth + 1 ) ) { return false; }
             }
             break;
         }
@@ -3769,9 +3823,10 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
     return s.at == end;
 }
 
+// the depth a payload carries is its enclosing body's, exactly as on the
+// capture side: only a framed CONTENT is a level.
 inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t depth )
 {
-    if ( depth > kTableRetainWalkDepthMax ) { return false; }
     switch ( kind )
     {
         case 1: case 2: case 6: case 20: case 25:
@@ -3806,13 +3861,7 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
         }
         case 13: case 14: case 16:
         {
-            uint64_t length = 0;
-            if ( !TableRetainOutLebRead( s, length ) ) { return false; }
-            if ( length > (uint64_t) ( s.size - s.at ) ) { return false; }
-            const int64_t wire = TableRetainOutContentBytes( s, kind, (int64_t) length, depth + 1 );
-            if ( wire < 0 ) { return false; }
-            TableRetainOutLeb( s, (uint64_t) wire );
-            if ( !TableRetainOutContent( s, kind, (int64_t) length, depth + 1 ) ) { return false; }
+            if ( !TableRetainOutFramed( s, kind, depth + 1 ) ) { return false; }
             break;
         }
         case 15:
@@ -3824,13 +3873,7 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             if ( s.at >= s.size ) { return false; }
             const uint8_t arm_kind = s.in[ s.at++ ];
             TableRetainOutRaw( s, &arm_kind, 1 );
-            uint64_t length = 0;
-            if ( !TableRetainOutLebRead( s, length ) ) { return false; }
-            if ( length > (uint64_t) ( s.size - s.at ) ) { return false; }
-            const int64_t wire = TableRetainOutContentBytes( s, arm_kind, (int64_t) length, depth + 1 );
-            if ( wire < 0 ) { return false; }
-            TableRetainOutLeb( s, (uint64_t) wire );
-            if ( !TableRetainOutContent( s, arm_kind, (int64_t) length, depth + 1 ) ) { return false; }
+            if ( !TableRetainOutFramed( s, arm_kind, depth + 1 ) ) { return false; }
             break;
         }
         case 30:
@@ -3859,7 +3902,11 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
 // this save cannot place: an id the caller's list had no room for, or a
 // resolved form the walk cannot read back. The ids it names are interned on
 // the way past, which is what makes measure and save one rule read twice.
-inline int64_t TableRetainRecordWire( const uint8_t * record, TableRetainIds & ids, uint64_t & ref )
+//
+// THIS IS THE MEASURING PASS, and it leaves every framed content's wire size
+// in that content's own scratch slot. The record is the caller's buffer and
+// the pass writes nothing else into it.
+inline int64_t TableRetainRecordWire( uint8_t * record, TableRetainIds & ids, uint64_t & ref )
 {
     const int32_t mark = ids.count;
     ids.lost = false;
@@ -3886,14 +3933,14 @@ inline int64_t TableRetainRecordWire( const uint8_t * record, TableRetainIds & i
     return -1;
 }
 
-inline int64_t TableRetainTailMeasure( const TableRetain * retain, TableRetainIds & ids, const TableRetainPath & path )
+inline int64_t TableRetainTailMeasure( TableRetain * retain, TableRetainIds & ids, const TableRetainPath & path )
 {
     if ( retain == NULL || retain->bytes == NULL ) { return 0; }
     int64_t bytes = 0;
     int64_t at = 0;
     for ( int32_t k = 0; k < retain->count; k++ )
     {
-        const uint8_t * record = retain->bytes + at;
+        uint8_t * record = retain->bytes + at;
         at += TableRetainRecordBytes( record );
         if ( !TableRetainRecordHere( *retain, record, path ) ) { continue; }
         uint64_t ref = 0;
