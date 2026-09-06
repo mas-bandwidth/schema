@@ -53,7 +53,7 @@ func corpus(t *testing.T) []string {
 func viewCorpusEntries(makefile string) []string {
 	var entries []string
 	inside := false
-	for _, line := range strings.Split(makefile, "\n") {
+	for line := range strings.SplitSeq(makefile, "\n") {
 		if !inside {
 			rest, ok := strings.CutPrefix(line, "VIEW_CORPUS :=")
 			if !ok {
