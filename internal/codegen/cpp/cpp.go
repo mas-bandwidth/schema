@@ -305,9 +305,16 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 func (g *gen) emitUnion(d *ir.Union) {
 	members := make([]string, len(d.Variants))
 	docs := make([]string, len(d.Variants))
+	var firstPayload *ir.UnionVariant
+	hasVoid := false
 	for i, v := range d.Variants {
 		members[i] = ir.GoExportName(v.Name)
 		docs[i] = v.Doc
+		if v.Void() {
+			hasVoid = true
+		} else if firstPayload == nil {
+			firstPayload = &d.Variants[i]
+		}
 	}
 	g.emitTagEnum(d.Name+"Type",
 		members, docs,
@@ -317,19 +324,27 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.pf("// union %s — at most one of the arms; the tag says which. Construction is\n", d.Name)
 	g.pf("// None: the tag alone is initialized; an arm is freshly constructed with its defaults\n")
 	g.pf("// when selected, by Read%s before decoding (SPEC §4.8), or by application code.\n", d.Name)
-	if len(d.Variants) > 0 {
+	if hasVoid {
+		g.pf("// Payload-free arms select by assigning the tag alone; they have no storage.\n")
+	}
+	if firstPayload != nil {
 		g.pf("// Application code must include <new> before constructing an arm in place:\n")
 		g.pf("// ::new ( (void*) &value.%s ) %s{}; value.type = %sType::%s;\n",
-			unionExampleArm(d), unionExampleType(d), d.Name, ir.GoExportName(unionExampleArm(d)))
+			firstPayload.Name, firstPayload.Type, d.Name, ir.GoExportName(firstPayload.Name))
+	} else if len(d.Variants) > 0 {
+		g.pf("// For example: value.type = %sType::%s;\n", d.Name, ir.GoExportName(d.Variants[0].Name))
 	} else {
 		g.pf("// there is no payload to construct in this empty union.\n")
 	}
 	g.pf("// Bytes of unselected arms are indeterminate.\n")
 	g.pf("struct %s\n{\n", d.Name)
 	g.pf("    %sType type;\n", d.Name)
-	if len(d.Variants) > 0 {
+	if firstPayload != nil {
 		g.pf("\n    union\n    {\n")
 		for _, v := range d.Variants {
+			if v.Void() {
+				continue // a payload-free arm has only its tag (SPEC §4.8)
+			}
 			g.noteRef(v.Type)
 			g.pf("        %s %s;\n", v.Type, v.Name)
 		}
@@ -337,22 +352,6 @@ func (g *gen) emitUnion(d *ir.Union) {
 	}
 	g.pf("\n    %s() : type( %sType::None ) {} // the tag only — arms are freshly constructed at selection\n", d.Name, d.Name)
 	g.pf("};\n\n")
-}
-
-// unionExampleArm/Type name the first arm for the assignment example in the
-// generated comment; an empty union gets a placeholder that names the rule.
-func unionExampleArm(d *ir.Union) string {
-	if len(d.Variants) == 0 {
-		return "arm"
-	}
-	return d.Variants[0].Name
-}
-
-func unionExampleType(d *ir.Union) string {
-	if len(d.Variants) == 0 {
-		return "Arm"
-	}
-	return d.Variants[0].Type
 }
 
 func (g *gen) emitConst(d *ir.Const) {

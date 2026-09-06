@@ -19,9 +19,6 @@ func (cTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseUnported(u, "c"); err != nil {
 		return nil, err
 	}
-	if err := refusePacketVoidArms(u, "c"); err != nil {
-		return nil, err
-	}
 	if err := refuseOptionalArrays(u, "c"); err != nil {
 		return nil, err
 	}
@@ -57,4 +54,6 @@ func (cTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(cTarget{}, true, false, false, false) }
+func init() {
+	registerBuiltin(cTarget{}, true, false, false, false)
+}
