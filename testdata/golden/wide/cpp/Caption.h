@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package wide — protocol id 0xcd3b46b8e6e1a6d7
+// package wide — protocol id 0x4b9b89c718af5d5e
 
 #pragma once
 
@@ -12,7 +12,7 @@ namespace wide {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0xcd3b46b8e6e1a6d7ull;
+inline constexpr uint64_t ProtocolId = 0x4b9b89c718af5d5eull;
 
 // type Line
 struct Line {
