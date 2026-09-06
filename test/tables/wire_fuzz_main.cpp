@@ -56,6 +56,7 @@
 #include "Scalars2Table.h"
 #include "BackendTable.h"
 #include "VocabTable.h"
+#include "Vocab9Table.h"
 #include "W1Table.h"
 #include "W2Table.h"
 #include "R1Table.h"
@@ -164,18 +165,18 @@ struct Variable
 // receiver uses, and the mutant resolves against it: the vocabulary is a pure
 // function of the build version, so a leg that announces to itself holds the
 // table the harness's oracle holds.
-template <typename Vocabulary, typename Report>
-static const Vocabulary * announced_to_itself( int64_t ( *measure )(), int64_t ( *announce )( uint8_t *, int64_t ),
+template <typename Vocabulary, typename Entry, typename Report>
+static const Vocabulary * announced_to_itself( int64_t capacity, int64_t ( *measure )(), int64_t ( *announce )( uint8_t *, int64_t ),
                                                bool ( *read )( Vocabulary &, const uint8_t *, int64_t, Report * ) )
 {
     static Vocabulary * vocabulary = NULL;
     if ( vocabulary == NULL )
     {
-        Vocabulary * fresh = new Vocabulary();
+        // THE RESOLVED VOCABULARY'S STORAGE IS THE CALLER'S (§3.3): the leg
+        // holds one a unit for the life of the process, sized at the unit's
+        // own entry count because a leg announces to itself
+        Vocabulary * fresh = new Vocabulary( new Entry[ (size_t) capacity ], capacity );
         const int64_t bytes = measure();
-        // the buffer OUTLIVES the call: a TableVocabulary BORROWS the
-        // announcement's bytes rather than copying them, so a receiver holds
-        // one table a direction and the bytes it was announced from
         uint8_t * buffer = (uint8_t *) malloc( bytes > 0 ? (size_t) bytes : 1 );
         Report report;
         if ( announce( buffer, bytes ) != bytes || !read( *fresh, buffer, bytes, &report ) )
@@ -183,70 +184,82 @@ static const Vocabulary * announced_to_itself( int64_t ( *measure )(), int64_t (
             fprintf( stderr, "wire-fuzz leg: this unit's own announcement was refused\n" );
             exit( 1 );
         }
+        // the announcement is RESOLVED, so its bytes are free the moment
+        // AnnounceRead returns
+        free( buffer );
         vocabulary = fresh;
     }
     return vocabulary;
 }
 
-// one FIXED-class root under the message form: LoadMessage against the table,
-// MeasureMessage, SaveMessage
-template <typename T, typename Report, typename Vocabulary>
+// one FIXED-class root under the message form: LoadMessages against the
+// vocabulary as a batch of one, MeasureMessages, SaveMessages
+template <typename T, typename Report, typename Vocabulary, typename Entry, int64_t entries_here>
 struct FixedMessage
 {
     template <int64_t ( *announce_measure )(), int64_t ( *announce )( uint8_t *, int64_t ),
               bool ( *announce_read )( Vocabulary &, const uint8_t *, int64_t, Report * ),
-              bool ( *load )( T &, const Vocabulary &, const uint8_t *, int64_t, Report * ),
-              int64_t ( *measure )( const T & ),
-              int64_t ( *save )( const T &, uint8_t *, int64_t )>
+              bool ( *load )( T *, int64_t *, const Vocabulary &, const uint8_t *, int64_t, Report * ),
+              int64_t ( *measure )( const T *, int64_t, Report * ),
+              int64_t ( *save )( const T *, int64_t, uint8_t *, int64_t, Report * )>
     static void run( const uint8_t * wire, int64_t bytes, Reply & reply )
     {
-        const Vocabulary * vocabulary = announced_to_itself<Vocabulary, Report>( announce_measure, announce, announce_read );
-        static T * value = new T();
-        new ( value ) T();
+        const Vocabulary * vocabulary = announced_to_itself<Vocabulary, Entry, Report>( entries_here, announce_measure, announce, announce_read );
+        // THE WIRE MAY CARRY UP TO 256 BODIES, and a caller refused for capacity
+        // calls again with room for the wire's M (§3.3): the leg holds that room
+        static T * value = new T[256];
+        for ( int i = 0; i < 256; i++ ) { new ( value + i ) T(); }
         Report report;
-        bool ok = load( *value, *vocabulary, wire, bytes, &report );
+        int64_t count = 256;
+        bool ok = load( value, &count, *vocabulary, wire, bytes, &report );
         copy_report( report, reply );
         reply.malformed = reply.malformed || ( !ok && !reply.refused );
         reply.loaded = true;
         reply.measure = -1;
-        int64_t size = measure( *value );
+        Report ignored;
+        int64_t size = measure( value, 1, &ignored );
         if ( size < 0 ) { reply.saved = -1; return; }
         reply.bytes = (uint8_t *) malloc( size > 0 ? (size_t) size : 1 );
-        if ( save( *value, reply.bytes, size ) != size ) { free( reply.bytes ); reply.bytes = NULL; reply.saved = -1; return; }
+        if ( save( value, 1, reply.bytes, size, &ignored ) != size ) { free( reply.bytes ); reply.bytes = NULL; reply.saved = -1; return; }
         reply.saved = size;
     }
 };
 
-// one VARIABLE-class root under the message form: the region is sized from the
-// message and the table, exactly as a file's is sized from the file
-template <typename T, typename Report, typename Vocabulary, typename Allocator>
+// one VARIABLE-class root under the message form: the batch's ONE region is
+// sized from the wire and the vocabulary, exactly as a file's is sized from
+// the file
+template <typename T, typename Report, typename Vocabulary, typename Entry, int64_t entries_here, typename Allocator>
 struct VariableMessage
 {
     template <int64_t ( *announce_measure )(), int64_t ( *announce )( uint8_t *, int64_t ),
               bool ( *announce_read )( Vocabulary &, const uint8_t *, int64_t, Report * ),
               int64_t ( *load_measure )( const Vocabulary &, const uint8_t *, int64_t, int64_t * ),
-              const T * ( *load )( uint8_t *, int64_t, const Vocabulary &, const uint8_t *, int64_t, Report * ),
-              int64_t ( *measure )( const T *, Allocator ),
-              int64_t ( *save )( const T *, uint8_t *, int64_t, Allocator ),
+              bool ( *load )( const T **, int64_t *, uint8_t *, int64_t, const Vocabulary &, const uint8_t *, int64_t, Report * ),
+              int64_t ( *measure )( const T * const *, int64_t, Report *, Allocator ),
+              int64_t ( *save )( const T * const *, int64_t, uint8_t *, int64_t, Report *, Allocator ),
               Allocator ( *default_allocator )()>
     static void run( const uint8_t * wire, int64_t bytes, Reply & reply )
     {
-        const Vocabulary * vocabulary = announced_to_itself<Vocabulary, Report>( announce_measure, announce, announce_read );
+        const Vocabulary * vocabulary = announced_to_itself<Vocabulary, Entry, Report>( entries_here, announce_measure, announce, announce_read );
         int64_t need = load_measure( *vocabulary, wire, bytes, NULL );
         reply.measure = need;
         uint8_t * region = (uint8_t *) malloc( need > 0 ? (size_t) need : 1 );
         Report report;
-        const T * root = load( region, need, *vocabulary, wire, bytes, &report );
+        static const T * roots[256];
+        for ( int i = 0; i < 256; i++ ) { roots[i] = NULL; }
+        int64_t count = 256; // room for the wire's M: a batch is never refused for capacity here
+        load( roots, &count, region, need, *vocabulary, wire, bytes, &report );
         copy_report( report, reply );
-        reply.loaded = root != NULL;
+        reply.loaded = roots[0] != NULL;
         reply.saved = -1;
-        if ( root != NULL )
+        if ( roots[0] != NULL )
         {
-            int64_t size = measure( root, default_allocator() );
+            Report ignored;
+            int64_t size = measure( roots, 1, &ignored, default_allocator() );
             if ( size >= 0 )
             {
                 reply.bytes = (uint8_t *) malloc( size > 0 ? (size_t) size : 1 );
-                if ( save( root, reply.bytes, size, default_allocator() ) == size ) { reply.saved = size; }
+                if ( save( roots, 1, reply.bytes, size, &ignored, default_allocator() ) == size ) { reply.saved = size; }
                 else { free( reply.bytes ); reply.bytes = NULL; }
             }
         }
@@ -255,13 +268,13 @@ struct VariableMessage
 };
 
 #define MESSAGE( unit_key, ns, type ) \
-    { unit_key, #type, 2, FixedMessage<ns::type, ns::TableReport, ns::TableVocabulary>::run< \
+    { unit_key, #type, 2, FixedMessage<ns::type, ns::TableReport, ns::TableVocabulary, ns::TableMessageEntry, ns::kTableMessageEntriesHere>::run< \
         ns::AnnounceMeasure, ns::Announce, ns::AnnounceRead, \
-        ns::type##LoadMessage, ns::type##MeasureMessage, ns::type##SaveMessage> }
+        ns::type##LoadMessages, ns::type##MeasureMessages, ns::type##SaveMessages> }
 #define MESSAGE_VARIABLE( unit_key, ns, type ) \
-    { unit_key, #type, 2, VariableMessage<ns::type, ns::TableReport, ns::TableVocabulary, ns::TableAllocator>::run< \
+    { unit_key, #type, 2, VariableMessage<ns::type, ns::TableReport, ns::TableVocabulary, ns::TableMessageEntry, ns::kTableMessageEntriesHere, ns::TableAllocator>::run< \
         ns::AnnounceMeasure, ns::Announce, ns::AnnounceRead, \
-        ns::type##LoadMeasure, ns::type##LoadMessage, ns::type##MeasureMessage, ns::type##SaveMessage, ns::TableDefaultAllocator> }
+        ns::type##LoadMeasure, ns::type##LoadMessages, ns::type##MeasureMessages, ns::type##SaveMessages, ns::TableDefaultAllocator> }
 
 static const Codec codecs[] = {
     FIXED( "tabledemo", tabledemo, RootConfig ),
@@ -304,6 +317,8 @@ static const Codec codecs[] = {
     MESSAGE( "backenddemo", backenddemo, StorePurchase ),
     MESSAGE( "vocabdemo", vocabdemo, Wide00 ),
     MESSAGE( "vocabdemo", vocabdemo, Wide09 ),
+    MESSAGE( "vocab9demo", vocab9demo, Wide00 ),
+    MESSAGE( "vocab9demo", vocab9demo, Wide19 ),
     MESSAGE_VARIABLE( "graphdemo", graphdemo, Scene ),
 };
 

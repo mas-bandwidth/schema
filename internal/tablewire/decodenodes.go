@@ -114,8 +114,10 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 	// (§3.3). The two reserved blob ids sit beside them (§2.5).
 	//
 	// The PLACEABLE SET is named on its own line, before the id map is built
-	// from it, because it is the seam the node-type negative control replaces
-	// with the whole unit closure.
+	// from it, and messagedecode.go names its own the same way. The message
+	// reader's is the seam the node-type negative control replaces with the
+	// whole unit closure, because a FILE never carries the record this rule
+	// skips and no file vector can go red on it.
 	byTypeId := map[uint64]*ir.Struct{}
 	placeable := map[string]bool{}
 	for _, st := range ir.PointerReachable(inst.Def) {
