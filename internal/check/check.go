@@ -3638,6 +3638,16 @@ var tableGeneratedVerbs = []string{
 	// context-templated entries
 	"Cook", "CookMeasure", "CookBody", "CookLayout", "CookMeasureFrom", "CookFrom",
 	"Open", "TableFields", "TableInfo",
+	// RETAIN-UNKNOWN's own spellings (docs/SPEC-TABLES.md §6.6). Three are the
+	// SURFACE the page owes §11, which is LoadRetain, MeasureRetain and
+	// SaveRetain, and the rest are what carries them: the second family of
+	// body functions,
+	// the wire pair over a pointered root, the node dispatch that reaches each
+	// record's body, and the form 2 write, which is refused by name (§3.3).
+	// Every one is emitted, so every one is claimed on this list's own rule.
+	"LoadRetain", "MeasureRetain", "SaveRetain", "SaveRetainMessages",
+	"LoadBodyRetain", "MeasureBodyRetain", "SaveBodyRetain", "SaveBodyFieldsRetain",
+	"MeasureWireRetain", "SaveWireRetain", "NodeBodyRetain",
 	"FromJson", "ToJson", "ToJsonMeasure",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
 	// THE C BACKEND's own name-first spellings (internal/codegen/ctable). C++
@@ -3673,10 +3683,15 @@ var tableGeneratedVerbs = []string{
 //
 // The list is the whole per-member surface and nothing else: the descriptors
 // stay library-scope constants and the accessors stay on <Name>TableFields,
-// precisely so this list is nine names rather than twenty-two.
+// precisely so this list is twelve names rather than twenty-five.
 var dartTableMembers = []string{
 	"reset", "measure", "save", "saveBody", "load", "loadBody",
 	"fromJson", "toJson", "toJsonMeasure",
+	// RETAIN-UNKNOWN's three (docs/SPEC-TABLES.md §6.6), which take this
+	// backend's claimed verbs from nine to twelve. They are claimed with the
+	// feature and not with the port: a claim the page states and the checker
+	// does not make is a name a user may still take.
+	"loadRetain", "measureRetain", "saveRetain",
 }
 
 // tableBuilderMembers are the member names of a generated <Name>Builder. A

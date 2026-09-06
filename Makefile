@@ -159,6 +159,9 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/vocab tables/vocab
 	$(1) generate --lang cpp --out $(2)/vocab9 tables/vocab9
 	$(1) generate --lang cpp --out $(2)/bases test/tables/Bases.schema
+	$(1) generate --lang cpp --out $(2)/rt1 test/tables/RT1.schema
+	$(1) generate --lang cpp --out $(2)/rt2 test/tables/RT2.schema
+	$(1) generate --lang cpp --out $(2)/rt3 test/tables/RT3.schema
 	# the WIDE TEXT unit (docs/SPEC-TABLES.md §3, kind 33): its own directory,
 	# because examples/ pins gate 1 for all nine targets and eight of them
 	# refuse wide text on either wire (SPEC.md §4.12)
@@ -167,9 +170,9 @@ endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/wide -I$(SERIALIZE)
+	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/Scalars2.schema test/tables/Bases.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -2831,6 +2834,13 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-lists-negative-controls
 	$(MAKE) tables-arms
 	$(MAKE) tables-arms-negative-controls
+	# RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6): the round trip, the five
+	# excluded classes a wire can carry to the unknown arm, the two
+	# capacities, and the two refusals, each of which is a compile error that
+	# has to name itself
+	$(MAKE) tables-retain
+	$(MAKE) tables-retain-fixed-class-negative-control
+	$(MAKE) tables-retain-message-form-negative-control
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-graph-walk
 	$(MAKE) tables-json-negative-control
@@ -3175,6 +3185,48 @@ tables-maps-negative-controls: tables-maps-sort-negative-control \
 # bytes are lifetime and bounds questions -Werror cannot see.
 
 LISTS_SOURCES = $$(ls build/tables-generated/lists/*Table.cpp)
+
+# THE RETAIN-UNKNOWN GATE (docs/SPEC-TABLES.md §6.6): the RT1/RT2/RT3 set, the
+# round trip at every depth, the five excluded classes a wire can carry to the
+# unknown arm, the two capacities and the walk's verdict on damage inside sound
+# outer framing.
+build/schema_test_retain: build/tables-generated/.stamp test/tables/retain_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/retain_main.cpp -o $@
+
+build/schema_test_retain_asan: build/tables-generated/.stamp test/tables/retain_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+		$(TABLES_INCLUDES) test/tables/retain_main.cpp -o $@
+
+.PHONY: tables-retain
+tables-retain: build/schema_test_retain build/schema_test_retain_asan
+	./build/schema_test_retain
+	./build/schema_test_retain_asan
+
+# THE TWO REFUSALS ARE COMPILE ERRORS, and each must name itself (§6.6, §3.3).
+# A refusal that were a MISSING SYMBOL would be a linker error with no reason
+# in it, which is exactly what §11's rule for a surface a class does not carry
+# refuses, so the control asks for the name and greps for the sentence.
+.PHONY: tables-retain-fixed-class-negative-control
+tables-retain-fixed-class-negative-control: build/tables-generated/.stamp
+	@mkdir -p build
+	@printf '#include "RT1Table.h"\nint main()\n{\n    tblrt1::Inner value;\n    uint8_t storage[ 64 ];\n    tblrt1::TableRetain retain;\n    retain.bytes = storage;\n    tblrt1::TableReport report;\n    (void) tblrt1::InnerLoadRetain( value, storage, (int64_t) 0, &retain, &report );\n    return 0;\n}\n' > build/retain-fixed-class.cpp
+	@if $(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) -c build/retain-fixed-class.cpp -o build/retain-fixed-class.o > build/retain-fixed-class.log 2>&1; then \
+		echo "RETAIN GATE FAILED: LoadRetain compiled on a FIXED-class root"; exit 1; \
+	fi
+	@grep -q "FIXED-class root" build/retain-fixed-class.log || { echo "RETAIN GATE FAILED: the fixed-class refusal was not by name"; cat build/retain-fixed-class.log; exit 1; }
+	@echo "the fixed-class root refuses retention BY NAME (docs/SPEC-TABLES.md §6.6)"
+
+.PHONY: tables-retain-message-form-negative-control
+tables-retain-message-form-negative-control: build/tables-generated/.stamp
+	@mkdir -p build
+	@printf '#include "RT1Table.h"\nint main()\n{\n    const tblrt1::Node * roots[1] = { NULL };\n    uint8_t buffer[ 64 ];\n    tblrt1::TableRetain retain;\n    tblrt1::TableReport report;\n    return (int) tblrt1::NodeSaveRetainMessages( roots, (int64_t) 1, &retain, buffer, (int64_t) 64, &report );\n}\n' > build/retain-message-form.cpp
+	@if $(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) -c build/retain-message-form.cpp -o build/retain-message-form.o > build/retain-message-form.log 2>&1; then \
+		echo "RETAIN GATE FAILED: SaveRetain compiled on the MESSAGE form"; exit 1; \
+	fi
+	@grep -q "Retention writing the MESSAGE form is refused by name" build/retain-message-form.log || { echo "RETAIN GATE FAILED: the message-form refusal was not by name"; cat build/retain-message-form.log; exit 1; }
+	@echo "retention writing form 2 refuses BY NAME (docs/SPEC-TABLES.md §3.3)"
 
 build/schema_test_lists: build/tables-generated/.stamp test/tables/lists_main.cpp
 	@mkdir -p build

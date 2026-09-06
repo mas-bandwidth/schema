@@ -100,6 +100,13 @@ struct TableReport
     // was not refused has no reason, and this member is the one the caller
     // must not look at then (docs/SPEC-TABLES.md §3.3).
     TableMessageReason reason = newer_form;
+    // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
+    // the reason duplicate is: a caller has one report type and not two. Both
+    // are ZERO in every read that did not opt in, and retention moves no
+    // counter above. A retained field still counts unknown, because unknown
+    // says what a READER could not name and that stays true.
+    int32_t retained = 0;    // unknown fields whose bytes were kept
+    int32_t retain_lost = 0; // every unknown this load or save could not keep
 };
 
 
@@ -5402,6 +5409,107 @@ inline bool PackConfigLoadMessages( PackConfig * values, int64_t * count, const 
     *count = bodies;
     return TableMessageBatchClose( br );
 }
+
+// ---- retain-unknown on a FIXED-class root: refused by name (§6.6) ----
+//
+// A fixed-class root is a VALUE: no region, no node directory, and so no
+// anchor for a retained record's path. The three names are declared here so
+// that naming one is a refusal that says why, rather than a symbol a linker
+// could not find. The suffixes stay claimed on every closure member all the
+// same (§11): a table gains or loses pointers as an edit, and a name that is
+// free today must not become a collision tomorrow.
+//
+// NOTHING BETWEEN THESE TWO MARKERS IS MACHINERY. Each name is a function
+// template that defines nothing and instantiates nothing until it is called,
+// so this block lands in a value-only unit at no cost and §2.2's zero-cost
+// scan reads past it: the markers are what lets that scan say so exactly
+// rather than by the absence of the word "template".
+
+template <typename... Args>
+inline void GunnerSettingsLoadRetain( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "GunnerSettings is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void GunnerSettingsMeasureRetain( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "GunnerSettings is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void GunnerSettingsSaveRetain( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "GunnerSettings is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void ShipEntryLoadRetain( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "ShipEntry is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void ShipEntryMeasureRetain( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "ShipEntry is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void ShipEntrySaveRetain( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "ShipEntry is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void GlobalSettingsLoadRetain( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "GlobalSettings is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void GlobalSettingsMeasureRetain( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "GlobalSettings is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void GlobalSettingsSaveRetain( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "GlobalSettings is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void PackConfigLoadRetain( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "PackConfig is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void PackConfigMeasureRetain( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "PackConfig is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void PackConfigSaveRetain( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "PackConfig is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+// ---- end of the fixed-class retain refusal ----
 
 // ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
 

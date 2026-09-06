@@ -1,0 +1,88 @@
+// RT2.schema, the WRITER of the RETAIN-UNKNOWN pair (docs/SPEC-TABLES.md
+// §6.6). Every field RT1 has, at the same wire ids, plus what a newer build
+// adds: a scalar the reader cannot name at three depths, a third enum variant,
+// a third union arm, a third keyed slot, a field of kind 17, an array whose
+// element kind is 17, and an unknown table whose payload reaches a 17 three
+// bodies down beside an unknown scalar in that same field.
+//
+// `parcel` is what the RESOLVING WALK is measured on. It is a whole table RT1
+// cannot name, and its body reaches every kind the walk resolves rather than
+// copies: an enum's variant reference, a union's arm, an enum-keyed body's
+// keys, a nested table body and an array of table bodies. Nothing in it is an
+// excluded class, so it is retained, resolved, written back and read again by
+// the build that wrote it.
+package tblrt2
+
+const MaxItems = 4
+
+enum Slot { Low, High, Extra }
+
+table Leaf
+{
+    value int32 = 0 | min = 0, max = 1000
+    next  *Leaf
+}
+
+table Inner
+{
+    tag    string(8)
+    hits   int32 = 0 | min = 0, max = 100
+    future int32 = 0 | min = 0, max = 1000
+}
+
+table Deep  { link *Leaf }
+table Middle { deeper Deep }
+table Ghost
+{
+    plain int32 = 0 | min = 0, max = 1000
+    mid   Middle
+}
+
+union Pick
+{
+    alpha Inner
+    beta  int32
+    gamma int32
+}
+
+// ---- the field the RESOLVING WALK is measured on ----
+
+enum Grade { Bronze, Silver }
+
+table Bolt
+{
+    weight int32 = 0 | min = 0, max = 1000
+}
+
+union Fitting
+{
+    bolt  Bolt
+    count int32
+}
+
+table Parcel
+{
+    grade Grade
+    fit   Fitting
+    bins  [Grade]Bolt
+    core  Bolt
+    stack [..2]Bolt
+}
+
+table Node
+{
+    name    string(16)
+    tier    Slot
+    inner   Inner
+    items   [..MaxItems]Inner
+    banks   [Slot]Inner
+    pick    Pick
+    head    *Leaf
+    entries map[string(8)]Inner
+    list    []Inner
+    extra   int32 = 0 | min = 0, max = 1000
+    ghost   *Leaf
+    ghosts  [..2]*Leaf
+    outer   Ghost
+    parcel  Parcel
+}

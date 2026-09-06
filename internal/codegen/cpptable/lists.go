@@ -747,6 +747,7 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 	g.pf("%s        // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped\n", ind)
 	g.pf("%s        // cannot fire on it. A count above the int32 storage cap is the\n", ind)
 	g.pf("%s        // fill's refusal, and it moves no counter.\n", ind)
+	g.emitRetainReplaced(f, ind+"        ")
 	g.pf("%s        TableListFill<%s> fill = TableListFillBegin( nodes, value.%s, count );\n", ind, g.listTypeArg(f), f.Name)
 	g.pf("%s        if ( fill.refused ) { nodes.refused = true; return false; }\n", ind)
 	g.pf("%s        if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }\n", ind)
@@ -762,7 +763,9 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 	if widened {
 		g.emitWidenedScalar(f, elemKind, "elem_kind", "( *slot )", ind+"                ", "sub", "r.report->malformed = true; break;")
 	} else {
-		g.emitTableReadElementInto(f, elemKind, "( *slot )", ind+"                ", "sub", "_"+f.Name)
+		g.inStep("i", func() {
+			g.emitTableReadElementInto(f, elemKind, "( *slot )", ind+"                ", "sub", "_"+f.Name)
+		})
 	}
 	g.pf("%s                landed = true;\n", ind)
 	g.pf("%s            } while ( 0 );\n", ind)
