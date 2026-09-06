@@ -259,9 +259,20 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 	// id is the WIRE name's so a table renamed under `was` is the node type
 	// its old name numbers (§3.1, §5). It is the file form's map, built the
 	// same way over the same walk.
+	//
+	// The PLACEABLE SET is named on its own line, before the id map is built
+	// from it, because it is the seam the node-type negative control replaces
+	// with the whole unit closure. The MESSAGE form is where that control
+	// bites: a connection's table announces every table's name id whether or
+	// not a pointer names it (§3.3), so this is the only form whose wire can
+	// carry a record of a type no pointer below the root targets.
 	byTypeId := map[uint64]*ir.Struct{}
+	placeable := map[string]bool{}
 	for _, st := range ir.PointerReachable(inst.Def) {
-		if sd := d.m.Lookup(st.Name); sd != nil {
+		placeable[st.Name] = true
+	}
+	for name := range placeable {
+		if sd := d.m.Lookup(name); sd != nil {
 			byTypeId[ir.TableWireId(sd.WireName())] = sd
 		}
 	}
@@ -283,7 +294,14 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 		blob       []byte
 		start, end int
 	}
-	records := make([]record, 0, count)
+	// THE COUNT IS THE WIRE'S CLAIM, NOT A SIZE TO TRUST. It is a 32-bit
+	// number off hostile bytes, and reserving it outright lets a mutated
+	// message command gigabytes before a single record has been read. A record
+	// costs AT LEAST its type reference, so the bits left in the stream bound
+	// how many the wire can possibly carry, and the reservation is the smaller
+	// of the claim and that bound. The loop below is unchanged: it reads until
+	// the stream runs out, which is what settles the real count.
+	records := make([]record, 0, min(int64(count), d.r.left()/int64(max(d.refBits, 1))))
 	for range count {
 		typeRef, ok := d.reference()
 		if !ok {
