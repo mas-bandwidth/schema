@@ -1948,22 +1948,22 @@ inline void TablePickupEventReset( TablePickupEvent & value ) { value = TablePic
 
 inline int64_t TableEntityMeasureMessageBody( int64_t at, const TableEntity & value );
 inline bool TableEntitySaveMessageBody( TableBitWriter & w, const TableEntity & value );
-inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, TableEntity & value );
+inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TableEntity & value );
 inline int64_t TableStatMeasureMessageBody( int64_t at, const TableStat & value );
 inline bool TableStatSaveMessageBody( TableBitWriter & w, const TableStat & value );
-inline bool TableStatLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, TableStat & value );
+inline bool TableStatLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TableStat & value );
 inline int64_t TableMixedMeasureMessageBody( int64_t at, const TableMixed & value );
 inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & value );
-inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, TableMixed & value );
+inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TableMixed & value );
 inline int64_t TableHitEventMeasureMessageBody( int64_t at, const TableHitEvent & value );
 inline bool TableHitEventSaveMessageBody( TableBitWriter & w, const TableHitEvent & value );
-inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, TableHitEvent & value );
+inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TableHitEvent & value );
 inline int64_t TableChatEventMeasureMessageBody( int64_t at, const TableChatEvent & value );
 inline bool TableChatEventSaveMessageBody( TableBitWriter & w, const TableChatEvent & value );
-inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, TableChatEvent & value );
+inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TableChatEvent & value );
 inline int64_t TablePickupEventMeasureMessageBody( int64_t at, const TablePickupEvent & value );
 inline bool TablePickupEventSaveMessageBody( TableBitWriter & w, const TablePickupEvent & value );
-inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, TablePickupEvent & value );
+inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TablePickupEvent & value );
 
 // ---- codecs: measure/save/load per closure member ----
 
@@ -2598,9 +2598,8 @@ inline bool TableEntitySaveMessageBody( TableBitWriter & w, const TableEntity & 
 // defaults first, then whatever the wire says, field by field. An entry this
 // build cannot name is skipped by its SHAPE and counted; one whose kind is
 // not this field's is a kind mismatch and skipped the same way.
-inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, TableEntity & value )
+inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TableEntity & value )
 {
-    const int64_t index_bits = 0;
     TableEntityReset( value );
     for ( ;; )
     {
@@ -3036,7 +3035,7 @@ inline bool TableEntityLoadMessages( TableEntity * values, int64_t * count, cons
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !TableEntityLoadMessageBody( br.r, vocabulary, to, values[i] ) ) { *count = i; return false; }
+        if ( !TableEntityLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
         br.remaining--;
     }
     *count = bodies;
@@ -3248,9 +3247,8 @@ inline bool TableStatSaveMessageBody( TableBitWriter & w, const TableStat & valu
 // defaults first, then whatever the wire says, field by field. An entry this
 // build cannot name is skipped by its SHAPE and counted; one whose kind is
 // not this field's is a kind mismatch and skipped the same way.
-inline bool TableStatLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, TableStat & value )
+inline bool TableStatLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TableStat & value )
 {
-    const int64_t index_bits = 0;
     TableStatReset( value );
     for ( ;; )
     {
@@ -3392,7 +3390,7 @@ inline bool TableStatLoadMessages( TableStat * values, int64_t * count, const Ta
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !TableStatLoadMessageBody( br.r, vocabulary, to, values[i] ) ) { *count = i; return false; }
+        if ( !TableStatLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
         br.remaining--;
     }
     *count = bodies;
@@ -4954,9 +4952,8 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
 // defaults first, then whatever the wire says, field by field. An entry this
 // build cannot name is skipped by its SHAPE and counted; one whose kind is
 // not this field's is a kind mismatch and skipped the same way.
-inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, TableMixed & value )
+inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TableMixed & value )
 {
-    const int64_t index_bits = 0;
     TableMixedReset( value );
     for ( ;; )
     {
@@ -5250,7 +5247,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         const bool in_bounds = (int32_t) i < kept;
                         TableEntity scratch;
                         TableEntityReset( scratch );
-                        if ( !TableEntityLoadMessageBody( r, vocabulary, report, ( in_bounds ? value.entities[i] : scratch ) ) ) { return false; }
+                        if ( !TableEntityLoadMessageBody( r, vocabulary, report, index_bits, ( in_bounds ? value.entities[i] : scratch ) ) ) { return false; }
                     }
                     value.entities_count = kept;
                 }
@@ -5284,7 +5281,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         const bool in_bounds = (int32_t) i < kept;
                         TableStat scratch;
                         TableStatReset( scratch );
-                        if ( !TableStatLoadMessageBody( r, vocabulary, report, ( in_bounds ? value.stats[i] : scratch ) ) ) { return false; }
+                        if ( !TableStatLoadMessageBody( r, vocabulary, report, index_bits, ( in_bounds ? value.stats[i] : scratch ) ) ) { return false; }
                     }
                     value.stats_count = kept;
                 }
@@ -5320,7 +5317,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                     break;
                                 }
                                 value.game_event.type = TableEventType::Hit;
-                                if ( !TableHitEventLoadMessageBody( r, vocabulary, report, value.game_event.hit ) ) { return false; }
+                                if ( !TableHitEventLoadMessageBody( r, vocabulary, report, index_bits, value.game_event.hit ) ) { return false; }
                                 break;
                             }
                             case 0xf2a38d910b5b348bull: // chat
@@ -5332,7 +5329,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                     break;
                                 }
                                 value.game_event.type = TableEventType::Chat;
-                                if ( !TableChatEventLoadMessageBody( r, vocabulary, report, value.game_event.chat ) ) { return false; }
+                                if ( !TableChatEventLoadMessageBody( r, vocabulary, report, index_bits, value.game_event.chat ) ) { return false; }
                                 break;
                             }
                             case 0x9fa3a41c86ecb765ull: // pickup
@@ -5344,7 +5341,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                     break;
                                 }
                                 value.game_event.type = TableEventType::Pickup;
-                                if ( !TablePickupEventLoadMessageBody( r, vocabulary, report, value.game_event.pickup ) ) { return false; }
+                                if ( !TablePickupEventLoadMessageBody( r, vocabulary, report, index_bits, value.game_event.pickup ) ) { return false; }
                                 break;
                             }
                             default:
@@ -5839,7 +5836,7 @@ inline bool TableMixedLoadMessages( TableMixed * values, int64_t * count, const 
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !TableMixedLoadMessageBody( br.r, vocabulary, to, values[i] ) ) { *count = i; return false; }
+        if ( !TableMixedLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
         br.remaining--;
     }
     *count = bodies;
@@ -6115,9 +6112,8 @@ inline bool TableHitEventSaveMessageBody( TableBitWriter & w, const TableHitEven
 // defaults first, then whatever the wire says, field by field. An entry this
 // build cannot name is skipped by its SHAPE and counted; one whose kind is
 // not this field's is a kind mismatch and skipped the same way.
-inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, TableHitEvent & value )
+inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TableHitEvent & value )
 {
-    const int64_t index_bits = 0;
     TableHitEventReset( value );
     for ( ;; )
     {
@@ -6303,7 +6299,7 @@ inline bool TableHitEventLoadMessages( TableHitEvent * values, int64_t * count, 
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !TableHitEventLoadMessageBody( br.r, vocabulary, to, values[i] ) ) { *count = i; return false; }
+        if ( !TableHitEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
         br.remaining--;
     }
     *count = bodies;
@@ -6516,9 +6512,8 @@ inline bool TableChatEventSaveMessageBody( TableBitWriter & w, const TableChatEv
 // defaults first, then whatever the wire says, field by field. An entry this
 // build cannot name is skipped by its SHAPE and counted; one whose kind is
 // not this field's is a kind mismatch and skipped the same way.
-inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, TableChatEvent & value )
+inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TableChatEvent & value )
 {
-    const int64_t index_bits = 0;
     TableChatEventReset( value );
     for ( ;; )
     {
@@ -6661,7 +6656,7 @@ inline bool TableChatEventLoadMessages( TableChatEvent * values, int64_t * count
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !TableChatEventLoadMessageBody( br.r, vocabulary, to, values[i] ) ) { *count = i; return false; }
+        if ( !TableChatEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
         br.remaining--;
     }
     *count = bodies;
@@ -6874,9 +6869,8 @@ inline bool TablePickupEventSaveMessageBody( TableBitWriter & w, const TablePick
 // defaults first, then whatever the wire says, field by field. An entry this
 // build cannot name is skipped by its SHAPE and counted; one whose kind is
 // not this field's is a kind mismatch and skipped the same way.
-inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, TablePickupEvent & value )
+inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TablePickupEvent & value )
 {
-    const int64_t index_bits = 0;
     TablePickupEventReset( value );
     for ( ;; )
     {
@@ -7019,7 +7013,7 @@ inline bool TablePickupEventLoadMessages( TablePickupEvent * values, int64_t * c
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !TablePickupEventLoadMessageBody( br.r, vocabulary, to, values[i] ) ) { *count = i; return false; }
+        if ( !TablePickupEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
         br.remaining--;
     }
     *count = bodies;
