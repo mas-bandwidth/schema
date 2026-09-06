@@ -1120,7 +1120,6 @@ inline int32_t TableJsonEncodeUtf8( uint32_t code, char * unit )
     return 4;
 }
 
-
 // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
 // byte-transparent — the wire imposes no encoding (§3) and a string may hold
 // anything — so the WRITER is where that obligation is met: a byte that is
