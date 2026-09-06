@@ -541,9 +541,10 @@ final class TableFieldInfo {
   final TableUnionInfo? arms; // a union field's arms, or null
 
   // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
-  // block above it, verbatim (SPEC §4.1) — TableDocNone when there is none,
-  // never null — and its tags (SPEC §4.2) in declared order, 0 and a null list
-  // when there are none. Both are const data, allocating nothing.
+  // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
+  // none, never null. Its tags (SPEC §4.2) follow in declared order, and an
+  // untagged field is 0 beside a null list. Both are const data, allocating
+  // nothing.
   final String doc;
   final int numTags;
   final List<String>? tags;

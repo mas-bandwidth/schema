@@ -2546,7 +2546,7 @@ defmodule Benchtable.BenchTableTable do
   # block carries a doc column naming this one attribute, so absence costs the
   # module no string data and a printer concatenates doc columns with no nil
   # test. A module attribute is the unit-level shared constant an Elixir file
-  # has — it folds into every row at compile time and claims no module segment.
+  # has. It folds into every row at compile time and claims no module segment.
   @table_doc_none ""
 
   @table_type_table_entity %{

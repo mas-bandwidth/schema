@@ -9,7 +9,7 @@ package benchtable;
 // THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
 // block carries a doc column naming this one constant, so absence costs a unit
 // no string data and a printer concatenates doc columns with no null test. Every
-// absent doc in the unit — a field's and a type's alike — is this definition,
+// absent doc in the unit, a field's and a type's alike, is this definition,
 // and no descriptor row spells an empty literal of its own.
 public final class TableDocNone {
     private TableDocNone() {}

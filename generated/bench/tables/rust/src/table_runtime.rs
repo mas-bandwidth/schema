@@ -423,8 +423,11 @@ pub struct TableUnionInfo {
 // THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
 // block carries a doc column naming this one item, so absence costs a unit no
 // string data and a printer concatenates doc columns with no None test. One
-// definition for the whole unit: every absent doc compares equal by address.
-pub const TABLE_DOC_NONE: &str = "";
+// definition for the whole unit: a STATIC, so every absent doc column is the
+// same object and comparing two by address answers the shared-string claim.
+// A const would be a value copied into each row, which is the very thing the
+// claim rules out.
+pub static TABLE_DOC_NONE: &str = "";
 
 pub struct TableFieldInfo {
     pub name: &'static str,      // schema field name, e.g. "health"
@@ -468,13 +471,13 @@ pub struct TableFieldInfo {
     pub arms: Option<fn() -> &'static TableUnionInfo>,
     pub guard: &'static str, // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
     // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
-    // block above it, verbatim (SPEC §4.1) — TABLE_DOC_NONE when there is
-    // none, never None — and its tags (SPEC §4.2) in declared order, 0 and an
-    // empty slice when there are none. Static, constant data, allocating
-    // nothing.
+    // block above it, verbatim (SPEC §4.1), TABLE_DOC_NONE when there is
+    // none, never None, and its tags (SPEC §4.2) in declared order. An
+    // untagged field is 0 and None, the same absence every other absent
+    // column in a row spells. Static, constant data, allocating nothing.
     pub doc: &'static str,
     pub num_tags: i32,
-    pub tags: &'static [&'static str],
+    pub tags: Option<&'static [&'static str]>,
 }
 
 pub struct TableTypeInfo {
@@ -490,7 +493,7 @@ pub struct TableTypeInfo {
     // (docs/SPEC-TABLES.md §8.1)
     pub doc: &'static str,
     pub num_tags: i32,
-    pub tags: &'static [&'static str],
+    pub tags: Option<&'static [&'static str]>,
 }
 
 // ---- json walk: begin ----

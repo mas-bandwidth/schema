@@ -598,7 +598,7 @@ func (c *checker) qualification(where, kind string, attrs []ast.Attr, takes map[
 			case a.Key == "round":
 				c.errf(a.Pos, "%s: round is not part of the language. Rounding is the one fixed-point rule, half away from zero, everywhere (SPEC §4.3, §4.11)", where)
 			case valuedKeys[a.Key]:
-				c.errf(a.Pos, "%s: attribute %s requires a value, as %s = ... . A bare identifier right of | is a tag, and %s is a valued key, so it is refused by name rather than taken as one (SPEC §4.2, §4.6)", where, a.Key, a.Key, a.Key)
+				c.errf(a.Pos, "%s: attribute %s requires a value, spelled %s = value. A bare identifier right of | is a tag, and %s is a valued key, so it is refused by name rather than taken as one (SPEC §4.2, §4.6)", where, a.Key, a.Key, a.Key)
 			case seenTag[a.Key]:
 				c.errf(a.Pos, "%s: tag %s repeated. A tag is written once on a line (SPEC §4.2)", where, a.Key)
 			default:

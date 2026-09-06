@@ -61,7 +61,7 @@ table Ship
 		t.Fatal("the unit emitted no table module")
 	}
 	seen := map[string]int{}
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		rest, ok := strings.CutPrefix(line, "var ")
 		if !ok {
 			continue
