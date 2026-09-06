@@ -3729,9 +3729,12 @@ static void test_json_dialect()
     CHECK( tabledemo::AttachmentFromJson( value, repeated, (int64_t) strlen( repeated ), &duplicate ) );
     CHECK( value.slot == 2 && duplicate.duplicate == 2 );
 
-    // the wire imposes no encoding on a string (docs/SPEC-TABLES.md §3), so the
-    // text must not either: a stray lead byte rides as its own byte and does
-    // NOT swallow the character after it — including the closing quote
+    // A KIND 12 PAYLOAD IS WELL-FORMED UTF-8 (docs/SPEC-TABLES.md §3), so a
+    // byte in a string body that is not part of a well-formed sequence is not
+    // a code point either and READS as U+FFFD (§16.3), one per sequence,
+    // counted as nothing. It does NOT swallow the character after it —
+    // including the closing quote — and the storage it leaves is storage the
+    // wire can carry.
     {
         tabledemo::ProfileConfig stray;
         char text[64];
@@ -3739,14 +3742,14 @@ static void test_json_dialect()
         CHECK( n > 0 );
         tabledemo::TableReport raw;
         CHECK( tabledemo::ProfileConfigFromJson( stray, text, n, &raw ) );
-        CHECK( stray.name_length == 3 && (unsigned char) stray.name[2] == 0xc3 );
-        CHECK( !raw.malformed );
+        CHECK( stray.name_length == 5 );
+        CHECK( (unsigned char) stray.name[2] == 0xef && (unsigned char) stray.name[3] == 0xbf &&
+               (unsigned char) stray.name[4] == 0xbd );
+        CHECK( !raw.malformed && raw.clamped == 0 );
 
-        // ... but the WRITER owes a valid JSON text (RFC 8259 §8.1), so the
-        // byte it cannot spell is written as U+FFFD, one per bad byte. The
-        // round trip is therefore NOT byte-identical for invalid UTF-8, and
-        // that is the trade: a text a conforming parser can read, rather than
-        // one only this walk can (docs/SPEC-TABLES.md §16.2).
+        // and the WRITER owes a valid JSON text (RFC 8259 §8.1), which this
+        // storage already is: the trip is byte-identical from here on, because
+        // the replacement happened where the defect entered.
         int64_t size = tabledemo::ProfileConfigToJsonMeasure( stray );
         std::vector<char> out( (size_t) size + 1 );
         CHECK( tabledemo::ProfileConfigToJson( stray, out.data(), size ) == size );

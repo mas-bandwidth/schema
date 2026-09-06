@@ -566,12 +566,11 @@ func TestWriterEmitsValidUTF8(t *testing.T) {
 	if got := field(t, inst, "callsign").Cell.Str; !bytes.Equal(got, []byte("�x")) {
 		t.Fatalf("a lone trail surrogate must read as U+FFFD, got % x", got)
 	}
-	// a raw ill-formed byte rides to the wire as itself (§3 imposes no
-	// encoding) and is REPLACED on the way out, because a JSON text must be
-	// valid UTF-8
+	// a raw ill-formed byte is REPLACED WHERE IT ENTERS, on the same terms as
+	// the lone surrogate escape above (§3, §16.3), so storage never holds one
 	m, inst, _ := read(t, "GunnerSettings", "{ \"callsign\": \"a\xffb\" }")
-	if got := field(t, inst, "callsign").Cell.Str; !bytes.Equal(got, []byte{'a', 0xff, 'b'}) {
-		t.Fatalf("the read path is byte-transparent, got % x", got)
+	if got := field(t, inst, "callsign").Cell.Str; !bytes.Equal(got, []byte("a�b")) {
+		t.Fatalf("a raw ill-formed byte must read as U+FFFD, got % x", got)
 	}
 	text, err := m.Write(inst)
 	if err != nil {
@@ -602,21 +601,23 @@ func TestBitsImpliedBound(t *testing.T) {
 	}
 }
 
-// The one lap the text form is NOT byte-stable over, pinned rather than left
-// to a fuzz find: a raw ill-formed byte rides into storage as itself (§3
-// imposes no encoding), the writer replaces it with U+FFFD — three bytes where
-// one stood — and a `string(N)` therefore comes back clamped at its own bound.
-// It is the stated cost of emitting a text any conforming parser can read.
-func TestIllFormedByteCostsOneLap(t *testing.T) {
-	// build_note is string(48): 46 filler bytes plus one ill-formed byte fits,
+// A RAW ILL-FORMED BYTE IS REPLACED WHERE IT ENTERS (§3, §16.3): a kind 12
+// payload is well-formed UTF-8, so a byte in a string body that is not part of
+// a well-formed sequence is not a code point and READS as one U+FFFD. Three
+// bytes where one stood, so a `string(N)` clamps at its own bound, at a code
+// point boundary — and the text form is byte-stable from the FIRST lap,
+// because the storage it built is storage the wire can carry.
+func TestIllFormedByteIsReplacedOnRead(t *testing.T) {
+	// build_note is string(48): 47 filler bytes plus one ill-formed byte fits,
 	// and the U+FFFD that replaces it does not
 	body := strings.Repeat("a", 47) + "\xff"
 	m, inst, r := read(t, "GlobalSettings", "{ \"build_note\": \""+body+"\" }")
-	if !r.Silent() {
-		t.Fatalf("the read path is byte-transparent: %+v", r)
+	if r.Clamped != 1 || r.Malformed || r.Unknown != 0 || r.KindMismatch != 0 {
+		t.Fatalf("three bytes where one stood pass the bound: %+v", r)
 	}
-	if got := len(field(t, inst, "build_note").Cell.Str); got != 48 {
-		t.Fatalf("expected 48 stored bytes, got %d", got)
+	stored := field(t, inst, "build_note").Cell.Str
+	if len(stored) != 47 || !utf8.Valid(stored) {
+		t.Fatalf("expected 47 well-formed stored bytes, got %d: % x", len(stored), stored)
 	}
 	first, err := m.Write(inst)
 	if err != nil {
@@ -626,11 +627,8 @@ func TestIllFormedByteCostsOneLap(t *testing.T) {
 		t.Fatal("the writer emitted a text that is not valid UTF-8")
 	}
 	second := lap(t, m, m.Lookup("GlobalSettings"), first)
-	if bytes.Equal(first, second) {
-		t.Fatal("this case exists to pin the lap that is NOT byte-stable")
-	}
-	if third := lap(t, m, m.Lookup("GlobalSettings"), second); !bytes.Equal(second, third) {
-		t.Fatal("the text form did not settle after one lap")
+	if !bytes.Equal(first, second) {
+		t.Fatal("the text form is byte-stable once the replacement runs on read")
 	}
 }
 
