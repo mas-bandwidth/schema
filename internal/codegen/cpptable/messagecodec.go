@@ -934,13 +934,19 @@ func (g *tableGen) emitMessageExtentCases(st *ir.Struct) {
 			}
 			g.pf("            at = ( at + %d ) & ~(int64_t) %d; // at alignof( %s )\n", alignOfList(g.unit, f)-1, alignOfList(g.unit, f)-1, elem)
 			g.pf("            at += (int64_t) n * (int64_t) sizeof( %s ); // the whole array FIRST\n", elem)
-			g.pf("            for ( uint64_t i = 0; i < n; i++ ) // then, element by element in index order\n            {\n")
 			if ref := listElementStruct(f); ref != nil && g.hasExtent(ref) {
+				g.pf("            for ( uint64_t i = 0; i < n; i++ ) // then, element by element in index order\n            {\n")
 				g.pf("                if ( !%sMessageExtent( r, vocabulary, index_bits, at ) ) { return false; }\n", ref.Name)
+				g.pf("            }\n")
 			} else {
-				g.pf("                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry ) ) { return false; }\n")
+				// A RUN OF FIXED-WIDTH ELEMENTS IS ONE MULTIPLICATION (§3.3):
+				// the walk exists to find the bit the array ends at, and a
+				// zero-width element under a wide count would otherwise buy
+				// the framing pass two billion iterations
+				g.pf("            const int64_t run = TableMessageElementRunBits( vocabulary, index_bits, entry );\n")
+				g.pf("            if ( run >= 0 ) { if ( !TableMessageSkipRun( r, n, run ) ) { return false; } }\n")
+				g.pf("            else { for ( uint64_t i = 0; i < n; i++ ) { if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry ) ) { return false; } } }\n")
 			}
-			g.pf("            }\n")
 			g.pf("            continue;\n        }\n")
 			continue
 		}

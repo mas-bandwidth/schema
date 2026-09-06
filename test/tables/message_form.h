@@ -1828,3 +1828,116 @@ static void test_message_form_findings()
         }
     }
 }
+
+// ---- THE COLD READ'S ROWS (docs/SPEC-TABLES.md §3.3, schema#557) -----------
+//
+// A reader of the page against the engine found four rules the page states and
+// the reference did not hold: an announced max bounded by what its kind can
+// hold, a quantized index above `count` rejected rather than clamped, a count
+// bounded while it is still wide, and a fixed-width element's run stepped over
+// by arithmetic rather than by a loop.
+
+static bool is_wide_few( const basesdemo::TableMessageEntry & e )
+{
+    return e.kind == 14 && e.elem_kind == 8 && e.min == 2 && e.max == (int64_t) 0xFFFFFFFFull;
+}
+
+static void test_message_form_cold_read()
+{
+    static uint8_t announcement[8192];
+    const int64_t announced = basesdemo::Announce( announcement, sizeof( announcement ) );
+    VOCABULARY( basesdemo, own );
+    CHECK( basesdemo::AnnounceRead( own, announcement, announced, NULL ) );
+    int64_t own_bytes = 0;
+    const uint8_t * own_words = announcement_vocabulary( announcement, own_bytes );
+
+    // AN ANNOUNCED MAX IS BOUNDED BY WHAT THE KIND CAN HOLD. An array's
+    // ceiling is the thirty-two bit count an unbounded array announces, so a
+    // max of 2^32 is a hostile width and the ceiling's own value is not.
+    {
+        const uint8_t above[8] = { 0x00, 0x80, 0x80, 0x80, 0x80, 0x10, 0x08, 0x00 }; // min 0, max 2^32, element kind 8 raw
+        const uint8_t at_ceiling[8] = { 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F, 0x08, 0x00 }; // min 0, max 2^32 - 1
+        static uint8_t forged[8192];
+        int64_t bytes = forge_over_vocabulary( forged, sizeof( forged ), own_words, own_bytes, is_few, above, 8 );
+        CHECK( bytes > 0 );
+        VOCABULARY( basesdemo, vocabulary );
+        basesdemo::TableReport report;
+        CHECK( !basesdemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
+        CHECK( report.malformed && !vocabulary.announced );
+        bytes = forge_over_vocabulary( forged, sizeof( forged ), own_words, own_bytes, is_few, at_ceiling, 8 );
+        CHECK( bytes > 0 );
+        VOCABULARY( basesdemo, edge );
+        basesdemo::TableReport edge_report;
+        CHECK( basesdemo::AnnounceRead( edge, forged, bytes, &edge_report ) );
+        CHECK( edge.announced && !edge_report.malformed );
+    }
+
+    // A QUANTIZED INDEX ABOVE `count` IS REJECTED, as the packet wire rejects
+    // it, and is never reconstructed and clamped: ten bits spell 1023 over a
+    // count of 1000. `count` itself is the last index the wire names.
+    {
+        int64_t q_slot = 0;
+        for ( int64_t slot = 1; slot <= own.count; slot++ ) { if ( is_q( basesdemo::TableVocabularyEntryAt( own, slot ) ) ) { q_slot = slot; } }
+        CHECK( q_slot > 0 );
+        const uint32_t indices[2] = { 1023, 1000 };
+        for ( int i = 0; i < 2; i++ )
+        {
+            static uint8_t message[64];
+            basesdemo::TableBitWriter w( message, sizeof( message ) );
+            w.put( 2, 8 ); w.put( 0, 8 ); // the form byte and a count of one
+            w.put( (uint64_t) q_slot, own.ref_bits );
+            w.put( indices[i], 10 );
+            w.put( 0, own.ref_bits );
+            w.align();
+            const int64_t message_bytes = w.bits / 8;
+            basesdemo::Bases read;
+            int64_t count = 1;
+            basesdemo::TableReport report;
+            const bool ok = basesdemo::BasesLoadMessages( &read, &count, own, message, message_bytes, &report );
+            if ( indices[i] == 1023 )
+            {
+                CHECK( !ok && report.malformed && report.clamped == 0 );
+                CHECK( read.q == 0.0f ); // nothing decoded past the damage
+            }
+            else
+            {
+                CHECK( ok && !report.malformed && report.clamped == 0 );
+                CHECK( read.q == packet_float( 1000, 0.0f, 10.0f, 0.01f ) );
+            }
+        }
+    }
+
+    // A ZERO-WIDTH ELEMENT UNDER A WIDE COUNT. `few` announced over
+    // [2, 2^32 - 1] with a ranged uint32 element whose min equals its max
+    // rides NO BITS AT ALL, so a count of 2^31 + 1 is six bytes of wire. The
+    // read keeps five, counts ONE clamped, lands a count of five and never a
+    // negative one, and finds the array's end by arithmetic.
+    {
+        const uint8_t wide[10] = { 0x02, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F, 0x08, 0x01, 0x00, 0x00 }; // min 2, max 2^32 - 1, element kind 8 ranged at 0 bits over base 0
+        static uint8_t forged[8192];
+        const int64_t bytes = forge_over_vocabulary( forged, sizeof( forged ), own_words, own_bytes, is_few, wide, 10 );
+        CHECK( bytes > 0 );
+        VOCABULARY( basesdemo, vocabulary );
+        CHECK( basesdemo::AnnounceRead( vocabulary, forged, bytes, NULL ) );
+        int64_t few_slot = 0;
+        for ( int64_t slot = 1; slot <= vocabulary.count; slot++ ) { if ( is_wide_few( basesdemo::TableVocabularyEntryAt( vocabulary, slot ) ) ) { few_slot = slot; } }
+        CHECK( few_slot > 0 );
+        CHECK( basesdemo::TableVocabularyEntryAt( vocabulary, few_slot ).elem_value_bits == 0 );
+        static uint8_t message[64];
+        basesdemo::TableBitWriter w( message, sizeof( message ) );
+        w.put( 2, 8 ); w.put( 0, 8 );
+        w.put( (uint64_t) few_slot, vocabulary.ref_bits );
+        w.put( 0x7FFFFFFFull, 32 ); // the count rides as its offset from the minimum: 2^31 + 1 elements
+        w.put( 0, vocabulary.ref_bits );
+        w.align();
+        const int64_t message_bytes = w.bits / 8;
+        CHECK( message_bytes <= 8 ); // and the whole point is that the vector is small
+        basesdemo::Bases read;
+        int64_t count = 1;
+        basesdemo::TableReport report;
+        CHECK( basesdemo::BasesLoadMessages( &read, &count, vocabulary, message, message_bytes, &report ) );
+        CHECK( !report.malformed && report.clamped == 1 );
+        CHECK( read.few_count == 5 ); // never the negative a narrowed count lands
+        for ( int i = 0; i < 5; i++ ) { CHECK( read.few[i] == 0 ); }
+    }
+}

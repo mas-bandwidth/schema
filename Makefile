@@ -3546,10 +3546,13 @@ MESSAGE_FORM_CONTROLS := \
 	message-count-not-offset:internal/tablewire/messageencode.go:TestTheBasesTwoEncodings \
 	message-surplus-lands-on-zero:internal/tablewire/messagedecode.go:TestTheSixFindings \
 	message-wide-reads-raw:internal/tablewire/messagedecode.go:TestTheSixFindings \
-	message-narrow-before-clamp:internal/tablewire/messagedecode.go:TestTheSixFindings
+	message-narrow-before-clamp:internal/tablewire/messagedecode.go:TestTheSixFindings \
+	message-max-above-int32:ir/tablemessage.go:TestAHostileShape \
+	message-quantized-index-above-count:internal/tablewire/messagedecode.go:TestTheQuantizedIndexAcrossTheForms \
+	message-surplus-walked:internal/tablewire/messagedecode.go:TestAZeroWidthElementUnderAWideCount
 
 .PHONY: tables-message-form-negative-control
-tables-message-form-negative-control: tables-message-form-emitter-negative-control
+tables-message-form-negative-control: tables-message-form-emitter-negative-control tables-message-form-count-negative-control
 	@for row in $(MESSAGE_FORM_CONTROLS); do \
 		name=$${row%%:*}; rest=$${row#*:}; file=$${rest%%:*}; test=$${rest#*:}; \
 		$(MAKE) --no-print-directory tables-message-form-one-negative-control \
@@ -3593,6 +3596,40 @@ tables-message-form-emitter-negative-control: bin/schema test/tables/message_neg
 	./build/message-nc/slot-true
 	$(call message_form_emitter_control,message-emitter-slot-off-by-one,internal/codegen/cpptable/messagecodec.go)
 	$(call message_form_emitter_control,message-emitter-count-sixteen-bits,internal/codegen/cpptable/message.go)
+
+# AND THE COUNT'S OWN WIDTH, which no pinned vector reaches: an array count at
+# or above 2^31 narrowed to int32 before it is bounded is negative, passes a
+# signed test against the reader's bound untouched, and lands a negative count
+# in the caller's storage. Nothing about the body is ill-formed, so the
+# instrument is a program that forges the shape and reads the count back.
+# $(1) the sabotage, $(2) the emitter file.
+define message_form_count_control
+	@mkdir -p build/message-nc
+	@go run ./tools/sabotage -name $(1) -out build/message-nc/$(1).gotext $(2)
+	@printf '{"Replace":{"%s/$(2)":"%s/build/message-nc/$(1).gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/message-nc/$(1)-overlay.json
+	go build -overlay build/message-nc/$(1)-overlay.json -o build/message-nc/$(1)-schema ./cmd/schema
+	@rm -rf build/message-nc/$(1)-bases && mkdir -p build/message-nc/$(1)-bases
+	./build/message-nc/$(1)-schema generate --lang cpp --out build/message-nc/$(1)-bases test/tables/Bases.schema
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/message-nc/$(1)-bases -Itest/tables -I$(SERIALIZE) \
+		test/tables/message_count_main.cpp build/message-nc/$(1)-bases/BasesTable.cpp \
+		-o build/message-nc/$(1)-control
+	@if ./build/message-nc/$(1)-control > build/message-nc/$(1).log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) emitter sabotage landed and the wide count still clamped"; \
+		cat build/message-nc/$(1).log; exit 1; \
+	fi
+	@cat build/message-nc/$(1).log
+	@echo "negative control ($(1)): a count at or above 2^31 goes red"
+endef
+
+.PHONY: tables-message-form-count-negative-control
+tables-message-form-count-negative-control: bin/schema test/tables/message_count_main.cpp build/tables-generated/.stamp
+	@mkdir -p build/message-nc
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/bases -Itest/tables -I$(SERIALIZE) \
+		test/tables/message_count_main.cpp build/tables-generated/bases/BasesTable.cpp \
+		-o build/message-nc/count-true
+	./build/message-nc/count-true
+	$(call message_form_count_control,message-emitter-narrow-count-before-clamp,internal/codegen/cpptable/messageload.go)
 # THE NODE TYPE A ROOT CANNOT PLACE (docs/SPEC-TABLES.md §3.1, §6.5, §3.3), and
 # the vector message_node_type_unpointed is the red it closed. A node record is
 # a pointer's pointee, so a table no pointer below the root targets is a node

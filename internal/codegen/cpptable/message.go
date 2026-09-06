@@ -50,6 +50,12 @@ static const int64_t kTableMessageBatchMax = 256;
 static const uint64_t kTableBuildVersionFieldId = 0xFFFFFFFFFFFFFFFEull;
 static const uint64_t kTableMessageVocabularyFieldId = 0xFFFFFFFFFFFFFFFDull;
 
+// THE WIDEST COUNT THIS FORM SPELLS, which is the count an UNBOUNDED array
+// announces (§2.9): an unbounded array states no bound, so the announcement
+// states the widest one a batch could carry. It is the ceiling an array's or a
+// keyed entry's announced min and max are checked against.
+static const uint64_t kTableMessageListMax = 0xFFFFFFFFull;
+
 // THIS UNIT'S OWN REFERENCE WIDTH: the bits a writer spends on every reference
 // of every body it writes, which is a compile-time constant because the
 // vocabulary is. A READER spends the width the SENDER's vocabulary settles.
@@ -580,9 +586,16 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         }
         return false; // a packing outside the closed set
     }
+    // A MAX ABOVE WHAT THE KIND CAN HOLD IS A HOSTILE WIDTH (§3.3). A string
+    // and a wide string are bounded by the int32 storage cap the checker
+    // applies to every N (SPEC §4.3, §6.1), and an array and a keyed entry by
+    // the 32-bit count an unbounded array announces (§2.9), which is the
+    // widest count this form spells. A larger bound is a shape no conforming
+    // declaration can produce, and a reader that carried it would do its
+    // length arithmetic in a range that overflows.
     if ( kind == 12 || kind == 33 )
     {
-        if ( !TableMessageLeb( in, size, at, v ) ) { return false; }
+        if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) INT32_MAX ) { return false; }
         f.max = (int64_t) v;
         return true;
     }
@@ -590,10 +603,11 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
     {
         if ( kind == 14 )
         {
-            if ( !TableMessageLeb( in, size, at, v ) ) { return false; }
+            if ( !TableMessageLeb( in, size, at, v ) || v > kTableMessageListMax ) { return false; }
             f.min = (int64_t) v;
         }
-        if ( !TableMessageLeb( in, size, at, v ) || (int64_t) v < f.min ) { return false; }
+        if ( !TableMessageLeb( in, size, at, v ) || v > kTableMessageListMax ) { return false; }
+        if ( (int64_t) v < f.min ) { return false; }
         f.max = (int64_t) v;
         if ( at >= size ) { return false; }
         f.elem_kind = in[ at++ ];
@@ -866,6 +880,38 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
     }
 }
 
+// TableMessageElementRunBits is the bits ONE element of an array or a keyed
+// entry occupies on the SKIP path, where nothing is resolved and a run of them
+// is one multiplication, and -1 where the element's width is its own
+// content's. A ZERO is a real answer, and it is why this exists: a ranged
+// element whose min equals its max rides no bits at all (§3.3).
+inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry )
+{
+    int64_t elem = 0;
+    switch ( entry.elem_kind )
+    {
+        case 13: case 15: return -1; // a nested body and a union arm are walked
+        case 30: elem = vocabulary.ref_bits; break;
+        case 17: if ( index_bits <= 0 ) { return -1; } elem = index_bits; break;
+        default: elem = entry.elem_value_bits; break;
+    }
+    if ( elem < 0 ) { return -1; }
+    if ( entry.kind == 16 ) { elem += vocabulary.ref_bits; } // a keyed slot's own key reference
+    return elem;
+}
+
+// TableMessageSkipRun steps over n elements of one fixed width in a single
+// arithmetic step. A FIXED-WIDTH ELEMENT IS ARITHMETIC (§3.3), and a loop here
+// would be the one superlinear thing in this form: a zero-width element under
+// a count of 2^31 is six bytes of wire.
+inline bool TableMessageSkipRun( TableBitReader & r, uint64_t n, int64_t width )
+{
+    if ( width < 0 ) { return false; }
+    if ( width == 0 ) { return true; }
+    if ( n > (uint64_t) ( INT64_MAX / width ) ) { return false; }
+    return r.skip( (int64_t) ( n * (uint64_t) width ) );
+}
+
 inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry )
 {
     switch ( entry.kind )
@@ -916,6 +962,10 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
                 n = entry.kind == 16 ? raw : raw + (uint64_t) entry.min;
             }
             if ( entry.kind == 14 && entry.elem_kind == 6 && !r.align() ) { return false; }
+            // A RUN OF FIXED-WIDTH ELEMENTS IS ONE MULTIPLICATION (§3.3), and
+            // only an element whose width is its own content's is walked
+            const int64_t run = TableMessageElementRunBits( vocabulary, index_bits, entry );
+            if ( run >= 0 ) { return TableMessageSkipRun( r, n, run ); }
             for ( uint64_t i = 0; i < n; i++ )
             {
                 if ( entry.kind == 16 && !r.skip( vocabulary.ref_bits ) ) { return false; }

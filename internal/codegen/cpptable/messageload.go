@@ -148,8 +148,12 @@ func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from 
 	} else {
 		g.pf("%s    if ( !r.get( n%s, %s ) || !r.align() || !r.has( (int64_t) n%s * 8 ) ) { report->malformed = true; return false; }\n", ind, sfx, width, sfx)
 	}
-	g.pf("%s    int32_t kept%s = (int32_t) n%s;\n", ind, sfx, sfx)
-	g.pf("%s    if ( kept%s > %d ) { kept%s = %d; report->clamped++; }\n", ind, sfx, f.Type.Size, sfx, f.Type.Size)
+	// THE BOUND APPLIES WHILE THE COUNT IS WIDE (§3.3), which is M6's
+	// discipline over a count rather than a value: a length at or above 2^31
+	// narrowed FIRST is negative, passes a signed test against the bound
+	// untouched, and lands a negative length in the caller's storage
+	g.pf("%s    int32_t kept%s = 0;\n", ind, sfx)
+	g.pf("%s    if ( n%s > (uint64_t) %d ) { kept%s = %d; report->clamped++; } else { kept%s = (int32_t) n%s; }\n", ind, sfx, f.Type.Size, sfx, f.Type.Size, sfx, sfx)
 	g.pf("%s    for ( uint64_t %s = 0; %s < n%s; %s++ )\n%s    {\n", ind, idx, idx, sfx, idx, ind)
 	if f.Type.Kind == ir.TWString {
 		g.pf("%s        uint64_t unit%s = 0;\n%s        if ( !r.get( unit%s, 16 ) ) { report->malformed = true; return false; }\n", ind, sfx, ind, sfx)
@@ -171,21 +175,41 @@ func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from 
 
 // emitMessageReadArrayFrom reads a positional array. NO COUNT RIDES where the
 // sender's `min` equals its `max`. A count above this reader's own bound keeps
-// the first N and counts `clamped`: the elements past it are READ and dropped,
-// because the stream advances past them either way.
+// the first N and counts `clamped`: the surplus is stepped over, because the
+// stream advances past it either way, and how it is stepped over depends on
+// the element. A FIXED-WIDTH ELEMENT IS ARITHMETIC, the surplus count times
+// the element's width, and an element that RESOLVES something (a nested body,
+// a union arm, an enum's variant, a node index) is walked, because a resolve
+// that contradicts its position is damage this reader must still find (§3.3).
 func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from string) {
 	sfx := g.msgEnter()
 	defer g.msgLeave()
 	idx := "i" + sfx
+	kind := tableScalarKind(f)
+	fixedSurplus := !f.Type.Pointer && kind != tkTable && kind != tkEnum && kind != tkUnion
 	g.pf("%s{\n%s    uint64_t n%s = (uint64_t) %s.min;\n", ind, ind, sfx, from)
 	g.pf("%s    const int64_t count_bits%s = TableBitsRequired( %s.min, %s.max );\n", ind, sfx, from, from)
 	g.pf("%s    if ( count_bits%s > 0 )\n%s    {\n", ind, sfx, ind)
 	g.pf("%s        uint64_t raw%s = 0;\n%s        if ( !r.get( raw%s, count_bits%s ) ) { report->malformed = true; return false; }\n", ind, sfx, ind, sfx, sfx)
 	g.pf("%s        n%s = raw%s + (uint64_t) %s.min;\n%s    }\n", ind, sfx, sfx, from, ind)
 	g.pf("%s    if ( %s.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }\n", ind, from)
-	g.pf("%s    int32_t kept%s = (int32_t) n%s;\n", ind, sfx, sfx)
-	g.pf("%s    if ( kept%s > %d ) { kept%s = %d; report->clamped++; }\n", ind, sfx, f.ArrayBound, sfx, f.ArrayBound)
-	g.pf("%s    for ( uint64_t %s = 0; %s < n%s; %s++ )\n%s    {\n", ind, idx, idx, sfx, idx, ind)
+	// THE BOUND APPLIES WHILE THE COUNT IS WIDE (§3.3), M6's discipline over a
+	// count: a count at or above 2^31 narrowed FIRST is negative, passes a
+	// signed test against the bound untouched, and lands a negative count in
+	// the caller's storage
+	g.pf("%s    int32_t kept%s = 0;\n", ind, sfx)
+	g.pf("%s    if ( n%s > (uint64_t) %d ) { kept%s = %d; report->clamped++; } else { kept%s = (int32_t) n%s; }\n", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)
+	if fixedSurplus {
+		g.pf("%s    const int64_t surplus_bits%s = %s.elem_value_bits;\n", ind, sfx, from)
+		g.pf("%s    uint64_t walk%s = n%s;\n", ind, sfx, sfx)
+		// the walk's bound is this reader's OWN, a compile-time constant, and
+		// not the count narrowed above: the two agree, and a bound that
+		// cannot be moved by a number off the wire is the one to loop against
+		g.pf("%s    if ( surplus_bits%s >= 0 && walk%s > (uint64_t) %d ) { walk%s = (uint64_t) %d; } // the surplus is arithmetic\n", ind, sfx, sfx, f.ArrayBound, sfx, f.ArrayBound)
+	} else {
+		g.pf("%s    const uint64_t walk%s = n%s;\n", ind, sfx, sfx)
+	}
+	g.pf("%s    for ( uint64_t %s = 0; %s < walk%s; %s++ )\n%s    {\n", ind, idx, idx, sfx, idx, ind)
 	inner := ind + "        "
 	g.pf("%sconst bool in_bounds%s = (int32_t) %s < kept%s;\n", inner, sfx, idx, sfx)
 	elem := fmt.Sprintf("( in_bounds%s ? %s[%s] : scratch%s )", sfx, base, idx, sfx)
@@ -213,6 +237,9 @@ func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from 
 		g.pf("%sif ( in_bounds%s ) { %s[%s] = scratch%s; }\n", inner, sfx, base, idx, sfx)
 	}
 	g.pf("%s    }\n", ind)
+	if fixedSurplus {
+		g.pf("%s    if ( walk%s < n%s && !TableMessageSkipRun( r, n%s - walk%s, surplus_bits%s ) ) { report->malformed = true; return false; }\n", ind, sfx, sfx, sfx, sfx, sfx)
+	}
 	if f.CountedOnWire() {
 		g.pf("%s    %s = kept%s;\n", ind, count, sfx)
 	}
@@ -450,6 +477,11 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		g.pf("%s    if ( %s == 2 )\n%s    {\n", ind, packing, ind)
 		g.pf("%s        uint64_t index%s = 0;\n", ind, sfx)
 		g.pf("%s        if ( !r.get( index%s, %s ) ) { report->malformed = true; return false; }\n", ind, sfx, bits)
+		// AN INDEX ABOVE `count` IS REJECTED, as the packet wire rejects it,
+		// and is never reconstructed and clamped (§3.3, SPEC.md §4.3): the
+		// width spells one whenever `count` is not one less than a power of
+		// two, ten bits spelling 1023 over a count of 1000
+		g.pf("%s        if ( index%s > (uint64_t) %s ) { report->malformed = true; return false; } // above the step count: the packet wire's own refusal\n", ind, sfx, qcount)
 		g.pf("%s        decoded_f%s = TableMessageDequantize( (uint32_t) index%s, %s, %s, %s ); // SPEC.md §4.3's rule, in float32\n%s    }\n", ind, sfx, sfx, qmin, qdelta, qcount, ind)
 		g.pf("%s    else\n%s    {\n", ind, ind)
 		g.pf("%s        uint64_t raw%s = 0;\n", ind, sfx)

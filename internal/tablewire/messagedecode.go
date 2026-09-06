@@ -482,6 +482,40 @@ func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry i
 	return true
 }
 
+// elementRunBits is the bits ONE element of an ARRAY occupies where that is a
+// fixed number this reader can multiply, and -1 where the element has to be
+// stepped one at a time. A nested body, a union arm, an enum's variant and a
+// node index each RESOLVE something, and a resolve that contradicts its
+// position is damage this reader must still find, so they are walked however
+// many there are; a keyed entry's slot carries a key reference for the same
+// reason. A ZERO is a real answer, and it is why this exists: a ranged element
+// whose `min` equals its `max` rides no bits at all (§3.3).
+func elementRunBits(kind, elem uint8, inner ir.TableMessageShape) int64 {
+	if int(kind) != ir.TableKindArray {
+		return -1
+	}
+	switch int(elem) {
+	case ir.TableKindTable, ir.TableKindUnion, ir.TableKindEnum, ir.TableKindPointer:
+		return -1
+	}
+	return ir.TableMessageValueBits(elem, inner)
+}
+
+// skipRun steps over `n` elements of one fixed width in a single arithmetic
+// step, refusing where the product runs past what a bit position holds. It is
+// what keeps a wide count from buying a loop: a zero-width element under a
+// count of 2^31 is six bytes of wire, and nothing in this form is superlinear
+// in a batch's length (§3.3).
+func skipRun(r *bitReader, n uint64, width int64) bool {
+	if width == 0 {
+		return true
+	}
+	if n > uint64(math.MaxInt64)/uint64(width) {
+		return false
+	}
+	return r.skip(int(n * uint64(width)))
+}
+
 // array decodes a positional array. NO COUNT RIDES where the shape's `min`
 // equals its `max`, which is every fixed array. A count above the reader's own
 // bound keeps the first `N` elements and counts `clamped` — the elements past
@@ -504,6 +538,11 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	}
 	bound := uint64(f.ArrayBound)
 	kept := n
+	inner := ir.TableMessageShape{}
+	if shape.Inner != nil {
+		inner = *shape.Inner
+	}
+	run := elementRunBits(entry.Kind, shape.Elem, inner)
 	switch {
 	case f.Array == ir.ArrayList:
 		// AN UNBOUNDED ARRAY HAS NO BOUND TO CLAMP AGAINST (§2.9): its count
@@ -514,12 +553,33 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 			d.report.Malformed = true
 			return false
 		}
+		// AND THE BITS HAVE TO BACK THE COUNT, which the growth alone does
+		// not settle once an element can be free: a ranged element whose
+		// `min` equals its `max` rides no bits, so an element costs AT LEAST
+		// one bit for this bound and a count the batch cannot cover is damage
+		// rather than two billion slots bought with six bytes (§3.3)
+		floor := run
+		if floor < 1 {
+			floor = 1
+		}
+		if int64(n) > d.r.left()/floor {
+			d.report.Malformed = true
+			return false
+		}
 		fv.Elems = fv.Elems[:0]
 	case kept > bound:
 		kept = bound
 		d.report.Clamped++
 	}
-	for i := uint64(0); i < n; i++ {
+	// THE SURPLUS OF A FIXED-WIDTH ELEMENT IS ARITHMETIC (§3.3). The walk
+	// exists to find the bit the array ENDS at, and where the element's width
+	// is announced that bit is a multiplication rather than a loop, which is
+	// also what keeps a zero-width element under a wide count bounded.
+	walk := n
+	if run >= 0 && walk > kept {
+		walk = kept
+	}
+	for i := uint64(0); i < walk; i++ {
 		var sink tabletext.Cell
 		cell := &sink
 		if f.Array == ir.ArrayList {
@@ -531,6 +591,10 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		if !d.element(cell, f, shape) {
 			return false
 		}
+	}
+	if walk < n && !skipRun(d.r, n-walk, run) {
+		d.report.Malformed = true
+		return false
 	}
 	if f.CountedOnWire() {
 		fv.Count = int(kept)
@@ -886,6 +950,16 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 			d.report.Malformed = true
 			return false
 		}
+		// AN INDEX ABOVE `count` IS REJECTED, as the packet wire rejects it,
+		// and is never reconstructed and clamped (§3.3, SPEC.md §4.3). The
+		// width spells such an index whenever `count` is not one less than a
+		// power of two, ten bits spelling 1023 over a count of 1000, and the
+		// ranged offset's reconstruct-and-clamp rule does not reach here.
+		count, _, derived := ir.TableMessageQuantization(shape)
+		if !derived || index > uint64(count) {
+			d.report.Malformed = true
+			return false
+		}
 		// THE PACKET WIRE'S RULE, IN FLOAT32 (SPEC.md §4.3, §3.3): the float an
 		// index names is the float a packet's reader names for it
 		v := float64(ir.TableMessageDequantize(shape, uint32(index)))
@@ -1007,6 +1081,13 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 		inner := ir.TableMessageShape{}
 		if shape.Inner != nil {
 			inner = *shape.Inner
+		}
+		// A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3), and it has to
+		// be: a ranged element whose `min` equals its `max` rides no bits at
+		// all, so a count of 2^31 over one would otherwise buy 2^31 loop
+		// iterations for six bytes of wire.
+		if run := elementRunBits(entry.Kind, shape.Elem, inner); run >= 0 {
+			return skipRun(d.r, n, run)
 		}
 		for i := uint64(0); i < n; i++ {
 			if entry.Kind == ir.TableKindKeyed {

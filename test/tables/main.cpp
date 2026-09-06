@@ -9010,6 +9010,7 @@ int main()
     test_message_form_quantized();
     test_message_form_refused_first();
     test_message_form_findings();
+    test_message_form_cold_read();
 
     if ( failures > 0 )
     {

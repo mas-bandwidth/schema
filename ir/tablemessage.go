@@ -160,8 +160,16 @@ func tableMessageInner(s TableMessageShape) TableMessageShape {
 }
 
 // DecodeShape reads one shape back, and ok is false where the bytes run out or
-// a width is one no kind can hold — a HOSTILE SHAPE IS A HOSTILE WIDTH, and
+// a width is one no kind can hold. A HOSTILE SHAPE IS A HOSTILE WIDTH, and
 // every width is checked once, at AnnounceRead, and never again.
+//
+// A `min` or a `max` above what its kind can hold is one of those widths. A
+// string and a wide string are bounded by the int32 storage cap the checker
+// applies to every `N` (SPEC §4.3, §6.1), and an array and a keyed entry by
+// the 32-bit count an unbounded array announces (TableMessageListMax, §2.9),
+// which is the widest count this form spells. A larger bound is a shape no
+// conforming declaration can produce, and a reader that carried it would do
+// its length arithmetic in a range that overflows.
 func DecodeShape(in []byte, kind uint8) (TableMessageShape, int, bool) {
 	var s TableMessageShape
 	at := 0
@@ -228,20 +236,23 @@ func DecodeShape(in []byte, kind uint8) (TableMessageShape, int, bool) {
 		}
 	case kind == TableKindString, kind == TableKindWstring:
 		v, ok := leb()
-		if !ok {
-			return s, 0, false
+		if !ok || v > math.MaxInt32 {
+			return s, 0, false // A MAX ABOVE WHAT THE KIND CAN HOLD is a hostile width
 		}
 		s.Max = int64(v)
 	case kind == TableKindArray, kind == TableKindKeyed:
 		if kind == TableKindArray {
 			v, ok := leb()
-			if !ok {
+			if !ok || v > uint64(TableMessageListMax) {
 				return s, 0, false
 			}
 			s.Min = int64(v)
 		}
 		v, ok := leb()
-		if !ok || int64(v) < s.Min {
+		if !ok || v > uint64(TableMessageListMax) {
+			return s, 0, false
+		}
+		if int64(v) < s.Min {
 			return s, 0, false // an array whose min exceeds its max
 		}
 		s.Max = int64(v)

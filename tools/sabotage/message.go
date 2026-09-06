@@ -294,4 +294,42 @@ var messageRoundTwoSabotages = map[string][]edit{
 
 func init() {
 	maps.Copy(sabotages, messageRoundTwoSabotages)
+	maps.Copy(sabotages, messageColdReadSabotages)
+}
+
+// THE COLD READ'S ROWS (docs/SPEC-TABLES.md §3.3, schema#557): the rules a
+// reader of the page against the engine found unenforced, each with the one
+// rule its red clause names taken out.
+var messageColdReadSabotages = map[string][]edit{
+	// AN ANNOUNCED MAX IS BOUNDED BY WHAT THE KIND CAN HOLD: lift the ceiling
+	// and a string length bound of 2^31 is accepted, which is a bound no
+	// declaration this checker passes can produce.
+	"message-max-above-int32": {{
+		old: "\t\tif !ok || v > math.MaxInt32 {\n\t\t\treturn s, 0, false // A MAX ABOVE WHAT THE KIND CAN HOLD is a hostile width\n\t\t}\n",
+		new: "\t\tif !ok { // SABOTAGED: an announced max is unbounded\n\t\t\treturn s, 0, false\n\t\t}\n",
+	}},
+
+	// A QUANTIZED INDEX ABOVE `count` IS REJECTED as the packet wire rejects
+	// it: take the refusal out and the dequantize clamps it instead, which is
+	// the ranged offset's rule reaching a kind it does not govern.
+	"message-quantized-index-above-count": {{
+		old: "\t\tcount, _, derived := ir.TableMessageQuantization(shape)\n\t\tif !derived || index > uint64(count) {\n\t\t\td.report.Malformed = true\n\t\t\treturn false\n\t\t}\n",
+		new: "\t\t// SABOTAGED: an index above the step count is clamped, never rejected\n",
+	}},
+
+	// THE SURPLUS OF A FIXED-WIDTH ELEMENT IS ARITHMETIC: walk it instead and
+	// a zero-width element under a count of 2^31 is two billion iterations
+	// bought with six bytes of wire.
+	"message-surplus-walked": {{
+		old: "\twalk := n\n\tif run >= 0 && walk > kept {\n\t\twalk = kept\n\t}\n",
+		new: "\twalk := n // SABOTAGED: the surplus is walked, element by element\n",
+	}},
+
+	// THE BOUND APPLIES WHILE THE COUNT IS WIDE, in the C++ emitter's array
+	// read: narrow to int32 first and a count of 2^31 + 1 is negative, which
+	// passes the signed test against the bound and lands in caller storage.
+	"message-emitter-narrow-count-before-clamp": {{
+		old: "\tg.pf(\"%s    int32_t kept%s = 0;\\n\", ind, sfx)\n\tg.pf(\"%s    if ( n%s > (uint64_t) %d ) { kept%s = %d; report->clamped++; } else { kept%s = (int32_t) n%s; }\\n\", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)\n",
+		new: "\tg.pf(\"%s    int32_t kept%s = (int32_t) n%s;\\n\", ind, sfx, sfx) // SABOTAGED: narrowed before the bound\n\tg.pf(\"%s    if ( kept%s > %d ) { kept%s = %d; report->clamped++; }\\n\", ind, sfx, f.ArrayBound, sfx, f.ArrayBound)\n",
+	}},
 }

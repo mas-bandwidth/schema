@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -669,9 +670,10 @@ func trailingZeroBits(b []byte) int {
 }
 
 // TestAHostileShape: an announcement carrying `bits` above 128, an array
-// whose `min` exceeds its `max`, an element kind outside the closed set, and
-// a shape running past the vocabulary field's L. Each a refusal by name, and
-// red if a leg allocates or reads a body after one.
+// whose `min` exceeds its `max`, an element kind outside the closed set, a
+// string length bound and an array count bound above the int32 storage cap,
+// and a shape running past the vocabulary field's L. Each a refusal by name,
+// and red if a leg allocates or reads a body after one.
 func TestAHostileShape(t *testing.T) {
 	_, model, backendVocabulary := backend(t)
 	base := backendVocabulary.Entries()
@@ -685,6 +687,17 @@ func TestAHostileShape(t *testing.T) {
 		{"an array whose min exceeds its max", ir.TableVocabularyBytes(append(append([]ir.TableVocabularyEntry(nil), base...),
 			ir.TableVocabularyEntry{Id: ir.TableWireId("hostile"), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 9, Max: 3, Elem: ir.TableKindU8, Inner: &ir.TableMessageShape{}}}))},
 		{"an element kind outside the closed set", append(ir.TableVocabularyBytes(base), append(binary.LittleEndian.AppendUint64(nil, ir.TableWireId("hostile")), ir.TableKindArray, 0, 3, 99)...)},
+		// A MAX ABOVE WHAT THE KIND CAN HOLD is a hostile shape: a string is
+		// bounded by the int32 storage cap the checker applies to every N,
+		// and an array by the thirty-two bit count an unbounded array
+		// announces, so a larger bound is a width no conforming declaration
+		// can produce and the length arithmetic under it overflows
+		{"a string length bound above the int32 storage cap", ir.TableVocabularyBytes(append(append([]ir.TableVocabularyEntry(nil), base...),
+			ir.TableVocabularyEntry{Id: ir.TableWireId("hostile"), Kind: ir.TableKindString, Shape: ir.TableMessageShape{Max: math.MaxInt32 + 1}}))},
+		{"an array count bound above the widest count this form spells", ir.TableVocabularyBytes(append(append([]ir.TableVocabularyEntry(nil), base...),
+			ir.TableVocabularyEntry{Id: ir.TableWireId("hostile"), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: ir.TableMessageListMax + 1, Elem: ir.TableKindU8, Inner: &ir.TableMessageShape{}}}))},
+		{"an array count floor above the widest count this form spells", ir.TableVocabularyBytes(append(append([]ir.TableVocabularyEntry(nil), base...),
+			ir.TableVocabularyEntry{Id: ir.TableWireId("hostile"), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: ir.TableMessageListMax + 1, Max: ir.TableMessageListMax + 2, Elem: ir.TableKindU8, Inner: &ir.TableMessageShape{}}}))},
 		{"a shape running past the vocabulary's L", ir.TableVocabularyBytes(base)[:len(ir.TableVocabularyBytes(base))-3]},
 	}
 	for _, row := range rows {
@@ -700,6 +713,17 @@ func TestAHostileShape(t *testing.T) {
 		if ok || !asRefusal(derr, &refused) || refused.Reason != tablewire.ReasonNoVocabulary || !bodyReport.Refused || instU64(t, inst, "client_build") != 0 {
 			t.Errorf("%s: a body after the refused announcement was read: ok=%v err=%v", row.name, ok, derr)
 		}
+	}
+	// AND EACH CEILING'S OWN VALUE IS ACCEPTED, because an unbounded array
+	// announces the array one (§2.9) and a `string(N)` may declare the other
+	ceilings := ir.TableVocabularyBytes(append(append([]ir.TableVocabularyEntry(nil), base...),
+		ir.TableVocabularyEntry{Id: ir.TableWireId("edge_string"), Kind: ir.TableKindString, Shape: ir.TableMessageShape{Max: math.MaxInt32}},
+		ir.TableVocabularyEntry{Id: ir.TableWireId("edge_array"), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: ir.TableMessageListMax, Elem: ir.TableKindU8, Inner: &ir.TableMessageShape{}}}))
+	body := append(versionField(backendVocabulary.BuildVersion()), vocabularyField(ceilings)...)
+	body = append(body, 0)
+	v, report, err := readAnnouncement(forgeAnnouncement(body, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId))
+	if err != nil || report.Malformed || !v.Announced() || len(v.Entries()) != len(base)+2 {
+		t.Errorf("the ceilings' own values: err=%v report=%+v announced=%v entries=%d", err, report, v.Announced(), len(v.Entries()))
 	}
 }
 
@@ -1018,6 +1042,98 @@ func TestTheQuantizedIndexAcrossTheForms(t *testing.T) {
 	wide, _ := entryWhere(t, v, func(e ir.TableVocabularyEntry) bool { return e.Kind == ir.TableKindF32 && e.Shape.QMin == -100 })
 	if got := math.Float32bits(ir.TableMessageDequantize(wide.Shape, 6666)); got != 0xC2055C2A {
 		t.Errorf("index 6666 over [-100, 100] at 0.01 decodes to %08x, not C2055C2A", got)
+	}
+	// AN INDEX ABOVE `count` IS REJECTED, as the packet wire rejects it, and
+	// is never reconstructed and clamped: ten bits spell 1023 over a count of
+	// 1000, and that body is damage at the field and terminal for the batch
+	over := &bitw{}
+	over.put(qSlot, v.RefBits())
+	over.put(1023, 10)
+	over.put(0, v.RefBits())
+	inst, ok, report, derr := decodeOne(t, model, "Bases", v, batchOf(over))
+	if ok || derr != nil || !report.Malformed || report.Clamped != 0 {
+		t.Errorf("index 1023 over a count of 1000: ok=%v err=%v report=%+v", ok, derr, report)
+	}
+	if got := fieldOf(t, inst, "q").Cell.F; got != 0 {
+		t.Errorf("index 1023 over a count of 1000 landed %g in q", got)
+	}
+	// and `count` ITSELF is the last index the wire names, which reads
+	last := &bitw{}
+	last.put(qSlot, v.RefBits())
+	last.put(1000, 10)
+	last.put(0, v.RefBits())
+	inst, ok, report, derr = decodeOne(t, model, "Bases", v, batchOf(last))
+	if !ok || derr != nil || !report.Silent() {
+		t.Errorf("index 1000, the count's own value: ok=%v err=%v report=%+v", ok, derr, report)
+	}
+	if got := float32(fieldOf(t, inst, "q").Cell.F); got != 10.0 {
+		t.Errorf("index 1000 decodes to %g, not the range's top", got)
+	}
+}
+
+// TestAZeroWidthElementUnderAWideCount: `few` announced over [2, 2^32 - 1]
+// with a ranged uint32 element whose `min` equals its `max`, which rides NO
+// BITS AT ALL, under a count of 2^31 + 1. Six bytes of wire, and the read has
+// to stay bounded: the reader's own [2..5] keeps five, counts one clamped,
+// lands a count of five and never a negative one, and finds the bit the array
+// ends at by arithmetic rather than by walking two billion elements. Red if a
+// leg walks the surplus, narrows the count before it clamps, or does not
+// finish.
+func TestAZeroWidthElementUnderAWideCount(t *testing.T) {
+	model, own := basesUnit(t)
+	isFew := func(e ir.TableVocabularyEntry) bool {
+		return e.Kind == ir.TableKindArray && e.Shape.Elem == ir.TableKindU32
+	}
+	wide := ir.TableMessageShape{
+		Min: 2, Max: ir.TableMessageListMax, Elem: ir.TableKindU32,
+		Inner: &ir.TableMessageShape{Packing: ir.TableMessageRanged, Bits: 0, Base: big.NewInt(0)},
+	}
+	v, announceReport, err := readAnnouncement(forgedOver(own, isFew, wide))
+	if err != nil || announceReport.Malformed || !v.Announced() {
+		t.Fatalf("the forged announcement was refused: %v %+v", err, announceReport)
+	}
+	few, fewSlot := entryWhere(t, v, isFew)
+	bits := ir.TableMessageCountBits(few.Shape)
+	if bits != 32 {
+		t.Fatalf("the forged count rides at %d bits, not thirty-two", bits)
+	}
+	const n = uint64(1)<<31 + 1
+	body := &bitw{}
+	body.put(fewSlot, v.RefBits())
+	body.put(n-uint64(few.Shape.Min), bits) // the count rides as its offset from the minimum
+	body.put(0, v.RefBits())
+	batch := batchOf(body)
+	if len(batch) > 8 {
+		t.Fatalf("the vector is %d bytes, and the whole point is that it is small", len(batch))
+	}
+	type answer struct {
+		inst   *tabletext.Instance
+		ok     bool
+		report tabletext.Report
+		err    error
+	}
+	done := make(chan answer, 1)
+	go func() {
+		inst, ok, report, err := decodeOne(t, model, "Bases", v, batch)
+		done <- answer{inst, ok, report, err}
+	}()
+	var got answer
+	select {
+	case got = <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the read walked the surplus: a count of 2^31 + 1 over a zero-width element did not finish")
+	}
+	if !got.ok || got.err != nil || got.report.Malformed || got.report.Clamped != 1 {
+		t.Fatalf("the read answered ok=%v err=%v report=%+v", got.ok, got.err, got.report)
+	}
+	fv := fieldOf(t, got.inst, "few")
+	if fv.Count != 5 {
+		t.Errorf("the count landed as %d, not the reader's own bound of five", fv.Count)
+	}
+	for i := range 5 {
+		if fv.Elems[i].U != 0 {
+			t.Errorf("element %d is %d, and a zero-width element is its base", i, fv.Elems[i].U)
+		}
 	}
 }
 
