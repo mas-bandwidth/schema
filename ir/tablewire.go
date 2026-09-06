@@ -10,6 +10,7 @@ package ir
 
 import (
 	"encoding/binary"
+	"slices"
 	"sort"
 )
 
@@ -265,7 +266,7 @@ func TableWireIds(u *Unit) []uint64 {
 	for id := range ids {
 		out = append(out, id)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	slices.Sort(out)
 	return out
 }
 
