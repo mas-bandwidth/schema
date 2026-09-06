@@ -1335,6 +1335,18 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	g.pf("// %s's reflection descriptor (docs/SPEC-TABLES.md §8), built once and\n", st.Name)
 	g.pf("// published by class initialization — see the holder note in the emitter.\n")
 	g.pf("private static final class %s {\n", holder)
+	// the TAG lists (docs/SPEC-TABLES.md §8.1), one constant per tagged field
+	// and one for a tagged declaration, named from the descriptor row: a
+	// field's by its own member spelling, the declaration's by `tags`. They
+	// stand ahead of INFO, so class initialization fills them first.
+	var tagged bool
+	for _, f := range st.Fields {
+		tagged = g.emitTagsStatic(member(f)+"Tags", f.Tags) || tagged
+	}
+	tagged = g.emitTagsStatic("tags", st.Tags) || tagged
+	if tagged {
+		g.pf("\n")
+	}
 	g.pf("    static final TableTypeInfo INFO = build();\n\n")
 	g.pf("    private static TableTypeInfo build() {\n")
 	g.pf("        TableTypeInfo info = new TableTypeInfo();\n")
@@ -1355,8 +1367,39 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	// establishes an absent field's defaults through it, holding no type to
 	// spell. It is <name>Reset, the prefill the wire's read path already calls.
 	g.pf("        info.reset = (o) -> %s((%s) o);\n", g.call(st.Name, "Reset"), ref)
+	// the declaration's OWN doc and tags (docs/SPEC-TABLES.md §8.1), so a
+	// walker that entered a nested table through the table column reads that
+	// declaration's annotations there and looks nothing up
+	g.pf("        %s\n", annotationColumns("info", st.Doc, st.Tags, "tags"))
 	g.pf("        return info;\n    }\n}\n\n")
 	g.pf("public static TableTypeInfo %s() { return %s.INFO; }\n\n", method(st.Name, "TableType"), holder)
+}
+
+// emitTagsStatic emits one tag list as a constant array of string literals
+// (docs/SPEC-TABLES.md §8.1), and nothing at all for an item with no tags:
+// absence is 0 and null in the row, never a per-row empty array. It reports
+// whether it emitted anything.
+func (g *tableGen) emitTagsStatic(name string, tags []string) bool {
+	if len(tags) == 0 {
+		return false
+	}
+	g.pf("    static final String[] %s = { %s };\n", name, ir.QuotedTags(tags))
+	return true
+}
+
+// annotationColumns renders one row's doc, numTags and tags assignments, `row`
+// being the descriptor the columns land on: the SHARED empty doc and a null
+// list where the item carries none (docs/SPEC-TABLES.md §8.1).
+func annotationColumns(row, doc string, tags []string, tagsName string) string {
+	docColumn := "TableDocNone.value"
+	if doc != "" {
+		docColumn = ir.QuoteDoc(doc)
+	}
+	list := "null"
+	if len(tags) > 0 {
+		list = tagsName
+	}
+	return fmt.Sprintf("%s.doc = %s; %s.numTags = %d; %s.tags = %s;", row, docColumn, row, len(tags), row, list)
 }
 
 // ---- the storage columns: Java's spelling of C++'s offset and elem_size ----
@@ -1613,5 +1656,6 @@ func (g *tableGen) emitTableFieldDescriptor(index int, f *ir.Field, guard string
 		g.emitUnionArms(armsOf)
 		g.pf("    }\n")
 	}
+	g.pf("    %s\n", annotationColumns("f", f.Doc, f.Tags, member(f)+"Tags"))
 	g.pf("    fields[%d] = f;\n", index)
 }

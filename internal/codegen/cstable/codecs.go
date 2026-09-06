@@ -1175,6 +1175,13 @@ func bigToDouble(v *big.Int) string {
 // then one; nothing mutable is ever published.
 func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	guards := tableGuardStrings(st)
+	// the TAG lists (docs/SPEC-TABLES.md §8.1), one static per tagged field and
+	// one for a tagged declaration, named from the descriptor row the way the
+	// cached descriptor itself is
+	for _, f := range st.Fields {
+		g.emitTagsStatic(tagsSymbol(st.Name, f.Name), f.Tags)
+	}
+	g.emitTagsStatic(tagsSymbol(st.Name, ""), st.Tags)
 	g.pf("private static TableTypeInfo %sTableInfo;\n", st.Name)
 	g.pf("public static TableTypeInfo %sTableType()\n{\n", st.Name)
 	g.pf("    TableTypeInfo info = %sTableInfo;\n", st.Name)
@@ -1196,8 +1203,48 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	// establishes an absent field's defaults through it, holding no type to
 	// spell. It is TableReset, the prefill the wire's read path already calls.
 	g.pf("    info.Reset = delegate(object o) { TableReset((%s)o); };\n", st.Name)
+	// the declaration's own doc and tags (docs/SPEC-TABLES.md §8.1), on the same
+	// terms as a field's: the shared empty doc and a null list where the
+	// declaration carries none.
+	doc, numTags, tags := annotationColumns(st.Doc, st.Tags, tagsSymbol(st.Name, ""))
+	g.pf("    info.Doc = %s;\n", doc)
+	g.pf("    info.NumTags = %s;\n", numTags)
+	g.pf("    info.Tags = %s;\n", tags)
 	g.pf("    %sTableInfo = info;\n", st.Name)
 	g.pf("    return info;\n}\n\n")
+}
+
+// tagsSymbol names the tag-list static one descriptor row points at: a
+// table's own for the empty field name, a field's otherwise. Name-first, as
+// <Name>TableInfo beside it is, so the runtime's own namespace is untouched
+// (docs/SPEC-TABLES.md §11).
+func tagsSymbol(owner, field string) string {
+	return owner + "TableTags" + ir.GoExportName(field)
+}
+
+// emitTagsStatic emits one tag list as a static array of string literals
+// (docs/SPEC-TABLES.md §8.1), and nothing at all for an item with no tags:
+// absence is 0 and null in the row, never a per-row empty array. Built once
+// with the descriptor and never mutated, so a walk over it allocates nothing.
+func (g *tableGen) emitTagsStatic(name string, tags []string) {
+	if len(tags) == 0 {
+		return
+	}
+	g.pf("private static readonly string[] %s = { %s };\n", name, ir.QuotedTags(tags))
+}
+
+// annotationColumns renders a row's Doc, NumTags and Tags columns: the shared
+// empty doc and a null list where the item carries none.
+func annotationColumns(doc string, tags []string, tagsName string) (string, string, string) {
+	docColumn := "TableDocNone"
+	if doc != "" {
+		docColumn = ir.QuoteDoc(doc)
+	}
+	list := "null"
+	if len(tags) > 0 {
+		list = tagsName
+	}
+	return docColumn, fmt.Sprintf("%d", len(tags)), list
 }
 
 // ---- the storage columns: C#'s spelling of C++'s offset and elem_size ----
@@ -1440,8 +1487,13 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		}
 	}
 
-	g.pf("        new TableFieldInfo { Name = \"%s\", Json = \"%s\", TypeName = \"%s\", Id = 0x%04x, Kind = %d, IsArray = %v, Counted = %v, Optional = %v, ArrayBound = %s, ElemWidth = %d, HasRange = %s, RangeMin = %s, RangeMax = %s, EnumMax = %s, EnumName = %s, VariantId = %s, KeyTypeName = %s, KeyName = %s, KeyId = %s, Guard = \"%s\", TableRef = %s, Arms = %s%s },\n",
+	// what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): its ///
+	// block and its tags, the shared empty doc and a null list where it
+	// carries none.
+	doc, numTags, tags := annotationColumns(f.Doc, f.Tags, tagsSymbol(g.owner.Name, f.Name))
+
+	g.pf("        new TableFieldInfo { Name = \"%s\", Json = \"%s\", TypeName = \"%s\", Id = 0x%04x, Kind = %d, IsArray = %v, Counted = %v, Optional = %v, ArrayBound = %s, ElemWidth = %d, HasRange = %s, RangeMin = %s, RangeMax = %s, EnumMax = %s, EnumName = %s, VariantId = %s, KeyTypeName = %s, KeyName = %s, KeyId = %s, Guard = \"%s\", TableRef = %s, Arms = %s, Doc = %s, NumTags = %s, Tags = %s%s },\n",
 		f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, counted, f.Type.Optional, bound,
 		csElemWidth(f.Type), hasRange, rangeMin, rangeMax, enumMax, enumName, variantId,
-		keyTypeName, keyName, keyId, guard, tableRef, arms, g.tableStorageColumns(f))
+		keyTypeName, keyName, keyId, guard, tableRef, arms, doc, numTags, tags, g.tableStorageColumns(f))
 }

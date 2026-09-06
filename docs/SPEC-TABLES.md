@@ -8459,15 +8459,16 @@ doc comment is not a value. **The pack tree does not see them either**
 tree is ever spelled by a doc or a tag. Documenting and tagging a shipped
 schema is a free edit, and that is the property the open namespace rests on.
 
-**BACKEND STATUS: OWED, not emitted.** The `doc`, `num_tags` and `tags`
-columns are specified ahead of their implementation, on the terms §3.3 and
-§6.6 take. No target emits any of the three on `TableFieldInfo` or on
-`TableTypeInfo` today, no registry row (§8.3) carries them, and nothing
-upstream of the columns exists to fill one: the compiler reads no `///`
-block (SPEC.md §4.1) and carries a tag on a `type` declaration alone
-(SPEC.md §4.2). Owed as schema#523 ruling 4, which lands the front end and
-the columns together, and this line is deleted by the implementation PR that
-lands the behavior.
+**REGISTRY STATUS: the DECLARATION and FIELD columns are emitted, the
+REGISTRY rows are not.** All nine targets carry `doc`, `num_tags` and `tags`
+on `TableFieldInfo` and on `TableTypeInfo`, filled from the `///` block
+(SPEC.md §4.1) and the tags (SPEC.md §4.2) the compiler now reads at every
+line kind. What no target emits is the registry itself (§8.3), so an enum
+VARIANT's, a flags BIT's and a record-naming ARM's annotation ride the IR
+and the generated comments and reach no descriptor column — the placement
+rule above names those three, and they land with `UnitView()`. Owed as
+schema#523 ruling 4's registry half, and this line is deleted by the
+implementation PR that lands it.
 
 **A field carries WHERE IT LIVES, and the spelling is the language's.** C++
 carries an offset and a width, because its storage is one flat struct; a
@@ -8773,9 +8774,11 @@ function per unit, name-first in the unit's own namespace beside
 declared:
 
 **BACKEND STATUS: OWED, not emitted.** `UnitView()` is specified ahead of its
-implementation: no backend emits it in any of the nine targets today, and it is
-owed under #523 item 4 with the doc and tag descriptor columns of §8.1. The
-implementation PR that lands it deletes this paragraph.
+implementation: no backend emits it in any of the nine targets today. It is the
+remaining half of #523 item 4, whose §8.1 descriptor columns have landed, and
+it carries the `doc` and `tags` of an enum variant, a flags bit and a
+record-naming arm — the three rows the placement rule of §8.1 puts here and
+nowhere else. The implementation PR that lands it deletes this paragraph.
 
 ```cpp
 struct ViewConstant
@@ -9119,18 +9122,28 @@ also the sharpest form of the independence claim below.
 pinned** (SPEC §4.1), because a rule stated in prose and exercised only on
 `/// Hello` is a rule nothing holds: two leading spaces after the marker
 (one is dropped, one survives), a marker line with nothing after it (an
-empty line inside the text), trailing whitespace on a line (dropped), a
-double quote and a backslash (the target's own string-literal escape, and
-the one escaping rule there is). Its tags exercise the list: a declaration
-with one, an item with several in an order the listing must keep.
+empty line inside the text), and a double quote and a backslash (the
+target's own string-literal escape, and the one escaping rule there is). Its
+tags exercise the list: a declaration with one, an item with several in an
+order the listing must keep.
 
-**Its GOLDEN lands in the same commit as the columns.** `tabledemo` has no
-recorded source golden today — extending the source goldens to the two table
-corpora is the named follow-on §15 carries — so the commit that adds the
-columns records `tabledemo`'s first, and the exhibit is pinned from the
-moment it exists rather than described until the follow-on catches up. Until
-that commit there is no left-hand side for this gate and the section says so
-plainly instead of implying a pin that is not there.
+**TRAILING WHITESPACE IS THE ONE EXTRACTION CASE THE EXHIBIT CANNOT CARRY,
+and the reason is the formatter.** `schemafmt` is the one style (SPEC §7.4)
+and the corpus is written in it, so a `///` line ending in spaces is
+normalized away the next time `make fmt` runs — a corpus exhibit of trailing
+whitespace would be an exhibit the repo's own tooling deletes. The rule is
+real and it is pinned where it can hold still: the compiler's own extraction
+test, over a source the formatter never touches. Every other case rides in
+`tabledemo` where a reader meets it.
+
+**Its GOLDEN lands in the same commit as the columns.** `tabledemo`'s C++
+Table sources are pinned byte for byte under `testdata/golden/tables/`, so
+the commit that adds the columns re-pins them and the exhibit's descriptor
+rows and doc idioms have a left-hand side from the moment they exist.
+Extending the FULL source goldens — every backend's generated text with the
+protocol id beside it — to the two table corpora is the named follow-on §15
+carries, and until it lands the pin is over the C++ reference and the C#,
+C and block sources beside it rather than over all nine.
 
 **The COST claims are held by observables, not by inspection.** Two of them,
 and each has a failure a test can see:
@@ -9140,7 +9153,9 @@ and each has a failure a test can see:
   with no null test. A NULL column faults or throws there rather than
   printing a line that happens to look right, so the rule has a red state;
   the negative control is an emitter patched to write NULL for one absent
-  doc, and it must take the gate down.
+  doc, and it must take the gate down. The DESCRIPTOR half of that walk is
+  the tabledemo closure, reached from its roots through the `table` column,
+  and the REGISTRY half joins it with `UnitView()` (§8.3).
 - **ABSENCE IS ONE SHARED EMPTY STRING.** Where the language has address
   identity — C, C++, Rust — the gate asserts every absent `doc` in a unit
   compares equal BY ADDRESS, one static for the whole unit. Where it does
@@ -10658,6 +10673,21 @@ inspects everything in the schema built:
 
 ## 15. Named follow-ons
 
+- **THE UNIT REGISTRY, and the annotation rows only it carries** (§8.3, §8.7).
+  `UnitView()` is specified and no target emits it, so an enum VARIANT's, a
+  flags BIT's and a record-naming ARM's `doc` and `tags` reach the IR and the
+  generated comments and no descriptor column. Landing it lands
+  `ViewConstant`, `ViewVariant`, `ViewVocabulary` and `ViewType` with their
+  three annotation members, the corpus listing gate that byte-compares a
+  generated program's listing against the compiler's own, and the two
+  same-declaration pairs §8.7 checks there.
+- **THE GENERATED TAG-LIST NAMES ARE NOT CLAIMED** (§11). A tagged field emits
+  a per-row constant named from the declaration and the member, and
+  `internal/check`'s generated-verb set does not carry it, so a unit
+  declaring a table whose name collides with another table's tag-list
+  spelling generates a redeclaration with no refusal. Every backend's
+  spelling differs, and closing it is one pass that adds the verb for all
+  nine at once rather than nine separate edits.
 - **A DECLARED COMPATIBLE SET of build versions for the cooked form.** §7
   loads a cooked file at exactly one build version. The owner's "or a subset
   of versions AT MOST" is the only widening ever contemplated: a build

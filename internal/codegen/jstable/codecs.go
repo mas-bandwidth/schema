@@ -1362,6 +1362,12 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	// establishes an absent field's defaults through it, holding no type to
 	// spell. It is <Name>Reset, the prefill the wire's read path already calls.
 	g.pf("    Reset: %sReset,\n", st.Name)
+	// what a PERSON wrote about the declaration (docs/SPEC-TABLES.md §8.1): the
+	// /// block above it, verbatim (SPEC §4.1) — TableDocNone when there is
+	// none, never undefined — and its tags (SPEC §4.2) in declared order, 0 and
+	// null when there are none. Constant data, built once with the cached
+	// descriptor and frozen with it.
+	g.pf("    %s,\n", g.annotationColumns(st.Doc, st.Tags))
 	g.pf("  };\n")
 	g.pf("  Object.freeze(info.Fields);\n")
 	g.pf("  %sTableInfo = Object.freeze(info);\n", st.Name)
@@ -1544,6 +1550,32 @@ func (g *tableGen) unionArmsValue(un *ir.Union) string {
 	return b.String()
 }
 
+// annotationColumns renders a row's Doc, NumTags and Tags columns
+// (docs/SPEC-TABLES.md §8.1): the shared empty doc and a null list where the
+// item carries none, never a per-row empty literal of either.
+//
+// A tag list rides as a frozen array literal in the row, the way the doc
+// itself rides as a string literal. C and C++ hoist theirs to a named static
+// because neither language can write an array inside an aggregate
+// initializer; JavaScript can, and the descriptor is built once and cached, so
+// the literal is evaluated exactly once for the module's lifetime. Hoisting it
+// here would put a name derived from a DECLARATION at module or function
+// scope, and §11 claims no such spelling — one that collides with the
+// declaration's own binding.
+func (g *tableGen) annotationColumns(doc string, tags []string) string {
+	docColumn := "TableDocNone"
+	if doc != "" {
+		docColumn = ir.QuoteDoc(doc)
+	} else {
+		g.needRuntime("TableDocNone")
+	}
+	list := "null"
+	if len(tags) > 0 {
+		list = fmt.Sprintf("Object.freeze([%s])", ir.QuotedTags(tags))
+	}
+	return fmt.Sprintf("Doc: %s, NumTags: %d, Tags: %s", docColumn, len(tags), list)
+}
+
 func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	id := ir.TableFieldId(f)
 	kind := tableScalarKind(f)
@@ -1644,8 +1676,14 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		}
 	}
 
-	g.pf("      { Name: %q, Json: %q, TypeName: %q, Id: 0x%04x, Kind: %d, IsArray: %v, Counted: %v, Optional: %v, ArrayBound: %s, ElemWidth: %d, HasRange: %s, RangeMin: %s, RangeMax: %s, EnumMax: %s, EnumName: %s, VariantId: %s, KeyTypeName: %s, KeyName: %s, KeyId: %s, Guard: %q, TableRef: %s, Arms: %s%s },\n",
+	// what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+	// block above it, verbatim (SPEC §4.1) — TableDocNone when there is none,
+	// never undefined — and its tags (SPEC §4.2) in declared order, 0 and null
+	// when there are none. Constant data, built once with the cached descriptor
+	// and frozen with it.
+	g.pf("      { Name: %q, Json: %q, TypeName: %q, Id: 0x%04x, Kind: %d, IsArray: %v, Counted: %v, Optional: %v, ArrayBound: %s, ElemWidth: %d, HasRange: %s, RangeMin: %s, RangeMax: %s, EnumMax: %s, EnumName: %s, VariantId: %s, KeyTypeName: %s, KeyName: %s, KeyId: %s, Guard: %q, TableRef: %s, Arms: %s%s, %s },\n",
 		f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, counted, f.Type.Optional, bound,
 		jsElemWidth(f.Type), hasRange, rangeMin, rangeMax, enumMax, enumName, variantId,
-		keyTypeName, keyName, keyId, guard, tableRef, arms, g.tableStorageColumns(f))
+		keyTypeName, keyName, keyId, guard, tableRef, arms, g.tableStorageColumns(f),
+		g.annotationColumns(f.Doc, f.Tags))
 }

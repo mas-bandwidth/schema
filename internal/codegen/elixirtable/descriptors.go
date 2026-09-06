@@ -30,9 +30,38 @@ func (g *gen) emitDescriptors(members []*ir.Struct) {
 	g.pf("# diff or bind any table value at runtime with no schema files on hand.\n")
 	g.pf("# They are module attributes, so this costs a literal read rather than a\n")
 	g.pf("# parse, and they are immutable, so any process may read them.\n\n")
+	g.pf("# THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///\n")
+	g.pf("# block carries a doc column naming this one attribute, so absence costs the\n")
+	g.pf("# module no string data and a printer concatenates doc columns with no nil\n")
+	g.pf("# test. A module attribute is the unit-level shared constant an Elixir file\n")
+	g.pf("# has — it folds into every row at compile time and claims no module segment.\n")
+	g.pf("@%s \"\"\n\n", docNoneAttr)
 	for _, st := range members {
 		g.emitDescriptor(st)
 	}
+}
+
+// docNoneAttr is the module attribute every unannotated descriptor row names
+// for its doc column (docs/SPEC-TABLES.md §8.1).
+const docNoneAttr = "table_doc_none"
+
+// annotationColumns renders a row's doc, num_tags and tags columns: the shared
+// empty doc and a nil list where the item carries none, never a per-row empty
+// literal (docs/SPEC-TABLES.md §8.1). indent is the row's own indentation.
+func annotationColumns(doc string, tags []string, indent string) string {
+	docColumn := "@" + docNoneAttr
+	if doc != "" {
+		docColumn = ir.QuoteDocElixir(doc)
+	}
+	list := "nil"
+	if len(tags) > 0 {
+		q := make([]string, len(tags))
+		for i, t := range tags {
+			q[i] = ir.QuoteDocElixir(t)
+		}
+		list = "[" + strings.Join(q, ", ") + "]"
+	}
+	return fmt.Sprintf("%sdoc: %s,\n%snum_tags: %d,\n%stags: %s", indent, docColumn, indent, len(tags), indent, list)
 }
 
 func (g *gen) emitDescriptor(st *ir.Struct) {
@@ -46,7 +75,8 @@ func (g *gen) emitDescriptor(st *ir.Struct) {
 	for _, f := range st.Fields {
 		g.pf("    %s,\n", g.descriptorRow(st, f, guards[f.Name]))
 	}
-	g.pf("  ]\n")
+	g.pf("  ],\n")
+	g.pf("%s\n", annotationColumns(st.Doc, st.Tags, "  "))
 	g.pf("}\n")
 	g.pf("def %s, do: @%s\n\n", name, name)
 	g.owner = nil
@@ -140,7 +170,12 @@ func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
 	fmt.Fprintf(&b, "      key_enum: %s,\n", keyEnum)
 	fmt.Fprintf(&b, "      range: %s,\n", rng)
 	fmt.Fprintf(&b, "      storage_bytes: %d,\n", storageBytes(f))
-	fmt.Fprintf(&b, "      elem_default: %s\n", g.elementDefault(f))
+	fmt.Fprintf(&b, "      elem_default: %s,\n", g.elementDefault(f))
+	// what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+	// block above it, verbatim (SPEC §4.1), and its tags (SPEC §4.2) in
+	// declared order. Elixir carries the column ALONE for a field — a struct
+	// key has no attribute to hang a doc on (SPEC §4.1).
+	fmt.Fprintf(&b, "%s\n", annotationColumns(f.Doc, f.Tags, "      "))
 	fmt.Fprintf(&b, "    }")
 	return b.String()
 }

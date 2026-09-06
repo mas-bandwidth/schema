@@ -496,6 +496,7 @@ func (g *gen) emitFile() {
 // values past int64 render as bit-transparent hex (Dart's unsigned spelling).
 func (g *gen) emitConst(d *ir.Const) {
 	name := dartName(d.Name)
+	g.bpf("%s", ir.DocComment(d.Doc, "", "///"))
 	if d.IsFloat {
 		if d.Storage == "float32" {
 			g.bpf("const double %s = %s;%s\n\n", name, formatFloat32(d.Float), g.foldComment(d.Expr))
@@ -520,11 +521,15 @@ func (g *gen) foldComment(e ast.Expr) string {
 // the family's integer-backed enums: an abstract final class of static
 // consts, because storage must hold every wire-legal value and | max = ...
 // headroom values have no Dart enum member to be.
-func (g *gen) emitTagEnum(name string, members []string, max int64, comment string) {
+// docs is each arm's doc comment (SPEC §4.1), parallel to members: it reaches
+// the tag's constant as a doc comment, the one place the arm is a declaration
+// of its own.
+func (g *gen) emitTagEnum(name string, members, docs []string, max int64, comment string) {
 	g.bpf("// %s: %s\n", name, comment)
 	g.bpf("abstract final class %s {\n", name)
 	g.bpf("  static const int none = 0;\n")
 	for i, m := range members {
+		g.bpf("%s", ir.DocComment(docs[i], "  ", "///"))
 		g.bpf("  static const int %s = %d;\n", dartName(m), i+1)
 	}
 	g.bpf("  static const int max = %d; // the exported extent (SPEC §4.2)\n", max)
@@ -532,6 +537,7 @@ func (g *gen) emitTagEnum(name string, members []string, max int64, comment stri
 }
 
 func (g *gen) emitEnum(d *ir.Enum) {
+	g.bpf("%s", ir.DocComment(d.Doc, "", "///"))
 	g.bpf("// %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
 	g.bpf("// an int-constant namespace — the Dart translation of the family's integer-\n")
 	g.bpf("// backed enums: storage must hold every wire-legal value, and | max = ...\n")
@@ -539,6 +545,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.bpf("abstract final class %s {\n", d.Name)
 	g.bpf("  static const int none = 0;\n")
 	for i, v := range d.Variants {
+		g.bpf("%s", ir.DocComment(d.VariantDocs[i], "  ", "///"))
 		g.bpf("  static const int %s = %d;\n", dartName(v), i+1)
 	}
 	g.bpf("  static const int count = %d; // the declared variant count (SPEC §4.2)\n", len(d.Variants))
@@ -557,10 +564,12 @@ func (g *gen) emitEnum(d *ir.Enum) {
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {
+	g.bpf("%s", ir.DocComment(d.Doc, "", "///"))
 	g.bpf("// %s — one bit per variant, consumed as masks; flags-typed fields store\n", d.Name)
 	g.bpf("// uint64 in every target — a bit-transparent int here — wire %d bits\n", d.WireBits)
 	g.bpf("// (SPEC §4.2). Mask names are the family's flat spelling, lowerCamel.\n")
 	for i, v := range d.Variants {
+		g.bpf("%s", ir.DocComment(d.VariantDocs[i], "", "///"))
 		g.bpf("const int %s = 1 << %d;\n", dartName(d.Name+v), i)
 	}
 	g.bpf("// the declared variant count (SPEC §4.2)\n")
@@ -593,6 +602,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 }
 
 func (g *gen) emitClass(d *ir.Struct) {
+	g.bpf("%s", ir.DocComment(d.Doc, "", "///"))
 	if len(d.Tags) > 0 {
 		g.bpf("// type %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", d.Name, strings.Join(d.Tags, ", "))
 	} else {
@@ -613,6 +623,7 @@ func (g *gen) emitClass(d *ir.Struct) {
 			}
 			prevGuard = f.Guard
 		}
+		g.bpf("%s", ir.DocComment(f.Doc, "  ", "///"))
 		g.emitStorageField(f)
 	}
 	g.bpf("}\n\n")
@@ -826,9 +837,10 @@ func isClassRef(ref ir.Decl) bool {
 // namespace, then the class — the tag beside one pre-allocated arm per
 // variant; nothing allocates per value after construction.
 func (g *gen) emitUnion(d *ir.Union) {
-	g.emitTagEnum(d.Name+"Type", variantNames(d), d.Max,
+	g.emitTagEnum(d.Name+"Type", variantNames(d), variantDocs(d), d.Max,
 		fmt.Sprintf("union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)", d.Name))
 
+	g.bpf("%s", ir.DocComment(d.Doc, "", "///"))
 	g.bpf("// %s — at most one of the arms; type says which. Construction is the empty\n", d.Name)
 	g.bpf("// union (None). A read zero-establishes exactly the selected arm before\n")
 	g.bpf("// decoding it (SPEC §5); unselected arms keep what they last held — the\n")
@@ -843,6 +855,16 @@ func (g *gen) emitUnion(d *ir.Union) {
 		g.bpf("  final %s %s = %s();\n", v.Type, dartName(v.Name), v.Type)
 	}
 	g.bpf("}\n\n")
+}
+
+// variantDocs is each arm's `///` block (SPEC §4.1), parallel to
+// [variantNames].
+func variantDocs(d *ir.Union) []string {
+	docs := make([]string, len(d.Variants))
+	for i, v := range d.Variants {
+		docs[i] = v.Doc
+	}
+	return docs
 }
 
 func variantNames(d *ir.Union) []string {

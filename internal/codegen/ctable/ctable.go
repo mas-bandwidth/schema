@@ -375,6 +375,13 @@ typedef struct TableVariantInfo
     uint16_t id;
 } TableVariantInfo;
 
+/* THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+   block carries a doc column pointing at this one object, so absence costs a
+   unit no string data and a printer concatenates doc columns with no null
+   test. One definition per translation unit, and the descriptors of a unit
+   are one, so every absent doc compares equal by address. */
+static SCHEMA_UNUSED const char TableDocNone[1] = "";
+
 typedef struct TableFieldInfo
 {
     const char * name;      /* schema field name, e.g. "health" */
@@ -413,6 +420,13 @@ typedef struct TableFieldInfo
     /* union fields: the tag and its arms. NULL for every other kind. */
     const TableUnionInfo * arms;
     const char * guard;     /* branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded */
+    /* what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+       block above it, verbatim (SPEC §4.1) — TableDocNone when there is none,
+       never NULL — and its tags (SPEC §4.2) in declared order, 0 and NULL when
+       there are none. Static, constant-initialized, allocating nothing. */
+    const char * doc;
+    int32_t num_tags;
+    const char * const * tags;
 } TableFieldInfo;
 
 typedef struct TableTypeInfo
@@ -427,6 +441,11 @@ typedef struct TableTypeInfo
        thing the descriptors could not express without it. It is the void *
        form of <name>_reset and the same code. */
     void (*reset)( void * storage );` + pointerTypeMember + `
+    /* the declaration's own doc and tags, on the same terms as a field's
+       (docs/SPEC-TABLES.md §8.1) */
+    const char * doc;
+    int32_t num_tags;
+    const char * const * tags;
 } TableTypeInfo;
 
 typedef struct TableWriter

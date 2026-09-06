@@ -1117,13 +1117,21 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	guards := tableGuardStrings(st)
 	g.needsUnsafe()
 	if len(st.Fields) == 0 {
+		g.emitTagsStatic(tagsName(st.Name, ""), st.Tags)
 		g.pf("// %sTableInfo is %s's reflection descriptor (docs/SPEC-TABLES.md §8).\n", st.Name, st.Name)
-		g.pf("var %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: 0, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }}\n\n",
-			st.Name, st.Name, st.Name, st.Name, st.Name)
+		g.pf("var %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: 0, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s}\n\n",
+			st.Name, st.Name, st.Name, st.Name, st.Name, annotationColumns(st.Doc, st.Tags, tagsName(st.Name, "")))
 		g.pf("// %sTableType returns %s's reflection descriptor.\n", st.Name, st.Name)
 		g.pf("func %sTableType() *TableTypeInfo { return &%sTableInfo }\n\n", st.Name, st.Name)
 		return
 	}
+	// the TAG lists (docs/SPEC-TABLES.md §8.1), one slice per tagged field and
+	// one for a tagged declaration, named from the descriptor row as the field
+	// table itself is
+	for _, f := range st.Fields {
+		g.emitTagsStatic(tagsName(st.Name, member(f)), f.Tags)
+	}
+	g.emitTagsStatic(tagsName(st.Name, ""), st.Tags)
 	g.pf("// %sTableFields is %s's per-field reflection data (docs/SPEC-TABLES.md §8).\n", st.Name, st.Name)
 	g.pf("var %sTableFields = []TableFieldInfo{\n", st.Name)
 	for _, f := range st.Fields {
@@ -1131,10 +1139,46 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	}
 	g.pf("}\n\n")
 	g.pf("// %sTableInfo is %s's reflection descriptor (docs/SPEC-TABLES.md §8).\n", st.Name, st.Name)
-	g.pf("var %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: %d, Fields: %sTableFields, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }}\n\n",
-		st.Name, st.Name, st.Name, len(st.Fields), st.Name, st.Name, st.Name)
+	g.pf("var %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: %d, Fields: %sTableFields, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s}\n\n",
+		st.Name, st.Name, st.Name, len(st.Fields), st.Name, st.Name, st.Name,
+		annotationColumns(st.Doc, st.Tags, tagsName(st.Name, "")))
 	g.pf("// %sTableType returns %s's reflection descriptor.\n", st.Name, st.Name)
 	g.pf("func %sTableType() *TableTypeInfo { return &%sTableInfo }\n\n", st.Name, st.Name)
+}
+
+// tagsName names one tag list's package-level slice from the descriptor row it
+// belongs to, exactly as that row's own field table and descriptor are named:
+// a declaration's list carries the type's name alone, a field's carries the
+// type's and the field's member spelling (docs/SPEC-TABLES.md §8.1).
+func tagsName(owner, member string) string { return owner + member + "TableTags" }
+
+// emitTagsStatic emits one tag list as a package-level slice of string
+// literals (docs/SPEC-TABLES.md §8.1), and nothing at all for an item with no
+// tags: absence is 0 and a nil list in the row, never a per-row empty slice.
+// The elements are constants, so the slice is this build's static data and the
+// walk that reads it allocates nothing.
+func (g *tableGen) emitTagsStatic(name string, tags []string) {
+	if len(tags) == 0 {
+		return
+	}
+	g.pf("var %s = []string{%s}\n", name, ir.QuotedTags(tags))
+}
+
+// annotationColumns renders a row's Doc, NumTags and Tags columns: the shared
+// empty doc and a nil list where the item carries none. Go gives a string no
+// address identity, so the shared empty doc is shared in the EMITTED TEXT —
+// every unannotated row names TableDocNone rather than carrying an inline ""
+// of its own.
+func annotationColumns(doc string, tags []string, name string) string {
+	docColumn := "TableDocNone"
+	if doc != "" {
+		docColumn = ir.QuoteDoc(doc)
+	}
+	list := "nil"
+	if len(tags) > 0 {
+		list = name
+	}
+	return fmt.Sprintf("Doc: %s, NumTags: %d, Tags: %s", docColumn, len(tags), list)
 }
 
 func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard string) {
@@ -1254,7 +1298,8 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	g.pf("\t\tEnumName: %s,\n\t\tVariantId: %s,\n", enumName, variantId)
 	g.pf("\t\tKeyTypeName: %s, KeyName: %s, KeyId: %s,\n", keyTypeName, keyName, keyId)
 	g.pf("\t\tArms: %s,\n", arms)
-	g.pf("\t\tGuard: %q, Table: %s},\n", guard, table)
+	g.pf("\t\tGuard: %q, Table: %s,\n", guard, table)
+	g.pf("\t\t%s},\n", annotationColumns(f.Doc, f.Tags, tagsName(st.Name, name)))
 }
 
 // unionArmsFunc renders a union field's Arms column: a closure over ONE SLOT of

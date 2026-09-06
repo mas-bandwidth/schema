@@ -42,6 +42,7 @@ func wireRuntimeFiles(u *ir.Unit, anyKeyed bool) map[string][]byte {
 		"TableReader.java":       javaFile(u, "TableReader", "the TABLE wire's reader over the caller's array (docs/SPEC-TABLES.md §3).", tableReaderSource),
 		"TableTypeInfo.java":     javaFile(u, "TableTypeInfo", "a table's reflection descriptor (docs/SPEC-TABLES.md §8).", tableTypeInfoSource),
 		"TableFieldInfo.java":    javaFile(u, "TableFieldInfo", "a field's reflection descriptor (docs/SPEC-TABLES.md §8).", tableFieldInfoSource),
+		"TableDocNone.java":      javaFile(u, "TableDocNone", "the one shared empty doc (docs/SPEC-TABLES.md §8.1).", tableDocNoneSource),
 		"TableUnionInfo.java":    javaFile(u, "TableUnionInfo", "a union field's tag and its arms (docs/SPEC-TABLES.md §8.1).", tableUnionInfoSource),
 		"TableUnionArmInfo.java": javaFile(u, "TableUnionArmInfo", "one union arm's payload and descriptor (docs/SPEC-TABLES.md §8.1).", tableUnionArmInfoSource),
 	}
@@ -312,6 +313,21 @@ public final class TableKeyed {
 }
 `
 
+// tableDocNoneSource is the unit's ONE empty doc, and it is a class of its own
+// file because that is where this backend puts a unit-level constant —
+// BuildVersion's home is the same one, for the same package-scope reason.
+const tableDocNoneSource = `// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+// block carries a doc column naming this one constant, so absence costs a unit
+// no string data and a printer concatenates doc columns with no null test. Every
+// absent doc in the unit — a field's and a type's alike — is this definition,
+// and no descriptor row spells an empty literal of its own.
+public final class TableDocNone {
+    private TableDocNone() {}
+
+    public static final String value = "";
+}
+`
+
 // tableFieldInfoSource is §8's field descriptor, in Java's own currency.
 //
 // C++ locates a field with an offset and a width, because its storage is one
@@ -410,6 +426,15 @@ public final class TableFieldInfo {
     // both carry a value -> name function and a variant id.
     public TableUnionInfo arms;
 
+    // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+    // block above it, verbatim (SPEC §4.1) — TableDocNone.value when there is
+    // none, never null — and its tags (SPEC §4.2) in declared order, 0 and null
+    // when there are none. Constant data built with the descriptor, so a walk
+    // that prints every doc and every tag allocates nothing.
+    public String doc;
+    public int numTags;
+    public String[] tags;
+
     // ---- the storage location, in Java's own currency ----
     public RawGet getRaw;
     public RawSet setRaw;
@@ -460,5 +485,11 @@ public final class TableTypeInfo {
     public int numFields;
     public TableFieldInfo[] fields;
     public Reset reset;
+
+    // the declaration's own doc and tags, on the same terms as a field's
+    // (docs/SPEC-TABLES.md §8.1)
+    public String doc;
+    public int numTags;
+    public String[] tags;
 }
 `

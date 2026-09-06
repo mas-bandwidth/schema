@@ -42,6 +42,15 @@ final class TableUnionInfo {
   const TableUnionInfo(this.arms);
 }
 
+// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+// block carries a doc column naming this one definition, so absence costs a
+// unit no string data and a printer concatenates doc columns with no null
+// test. Dart gives a string no address identity, so what the rule is READ OFF
+// here is the emitted text: the unit defines the empty doc ONCE and every
+// unannotated row names that definition, rather than each row carrying an
+// inline '' of its own.
+const TableDocNone = '';
+
 final class TableFieldInfo {
   final String name; // schema field name, e.g. "health"
   // the TEXT form's key: the json = "key" attribute, else the field's name
@@ -87,6 +96,14 @@ final class TableFieldInfo {
   final TableTypeInfo? table; // the nested table's descriptor, or null
   final TableUnionInfo? arms; // a union field's arms, or null
 
+  // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+  // block above it, verbatim (SPEC §4.1) — TableDocNone when there is none,
+  // never null — and its tags (SPEC §4.2) in declared order, 0 and a null list
+  // when there are none. Both are const data, allocating nothing.
+  final String doc;
+  final int numTags;
+  final List<String>? tags;
+
   const TableFieldInfo({
     required this.name,
     required this.json,
@@ -108,6 +125,9 @@ final class TableFieldInfo {
     required this.guard,
     required this.table,
     required this.arms,
+    required this.doc,
+    required this.numTags,
+    required this.tags,
   });
 }
 
@@ -142,6 +162,12 @@ final class TableTypeInfo {
   final void Function(Object owner, int field, int tag) setTag;
   final Object Function(Object owner, int field, int arm) armPayload;
 
+  // the declaration's own doc and tags, on the same terms as a field's
+  // (docs/SPEC-TABLES.md §8.1, SPEC §4.1, §4.2)
+  final String doc;
+  final int numTags;
+  final List<String>? tags;
+
   const TableTypeInfo({
     required this.name,
     required this.fields,
@@ -157,6 +183,9 @@ final class TableTypeInfo {
     required this.getTag,
     required this.setTag,
     required this.armPayload,
+    required this.doc,
+    required this.numTags,
+    required this.tags,
   });
 
   int get numFields => fields.length;
