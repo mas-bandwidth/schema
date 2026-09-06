@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0xd093e62e6f907c36
+// package benchtable — protocol id 0x88cf953e975ace60
 
 use serialize::{ReadStream, Stream, WriteStream};
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-pub const PROTOCOL_ID: u64 = 0xd093e62e6f907c36;
+pub const PROTOCOL_ID: u64 = 0x88cf953e975ace60;
 
 /// The generated crate's error: the runtime's own errors pass through;
 /// Validation is a read rejecting the wire (SPEC §4.3, §4.7).

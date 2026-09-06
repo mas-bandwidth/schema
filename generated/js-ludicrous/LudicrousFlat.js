@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0x3a9a972a02c9e7ca
+// package ludicrous — protocol id 0x9660fa8c14d38d67
 //
 // THE FLAT TIER — the shipped JavaScript wire path: a single-word 32-bit
 // bitpacker inlined at every field (byte-identical wire to serialize.js),

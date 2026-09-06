@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package benchtable — protocol id 0xd093e62e6f907c36 */
+   package benchtable — protocol id 0x88cf953e975ace60 */
 
 #ifndef SCHEMA_BENCHTABLE_BENCH_TABLEWIRE_H
 #define SCHEMA_BENCHTABLE_BENCH_TABLEWIRE_H
