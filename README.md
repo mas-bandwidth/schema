@@ -21,10 +21,6 @@ without ever having to hand-code definitions in each language ever again.
 
 One system does it all, so you never end up with schema for the packets and something else for everything else.
 
-Schema is currently under active development. See **[ROADMAP.md](ROADMAP.md)** for details.
-
-If this work helps you, please support it: **[Become a supporter](https://www.patreon.com/MasBandwidth/membership)**
-
 ## Features
 
 1. Define constants, enums, flags, types and tables in one language.
@@ -34,6 +30,10 @@ If this work helps you, please support it: **[Become a supporter](https://www.pa
 5. _coming soon_ -- Cook tables to an efficient binary format for asset loading.
 
 Supported languages: C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust.
+
+Schema is currently under active development. See **[ROADMAP.md](ROADMAP.md)** for details.
+
+If this work helps you, please support it: **[Become a supporter](https://www.patreon.com/MasBandwidth/membership)**
 
 ## Example
 
