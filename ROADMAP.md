@@ -1,17 +1,5 @@
 # Schema roadmap
 
-## What we are building
-
-**Finishing the C++ reference.** Three features remain. Unknown fields kept
-through a round trip, so an old tool can edit a new file without silently
-dropping what it does not understand. Doc comments and tags carried into the
-reflection descriptors, so editors can show them. Integers widened on read,
-with a named reason whenever a read is refused. Beside them, the message form
-is in its second round: messages sent as batches, bodies bitpacked. Sized from
-that round's specification, a batch of the three backend messages we track is
-244 bytes against 285 for Protobuf. Small single messages come out a few bytes
-larger than Protobuf. The batch is what a backend sends.
-
 ### Packet wire
 
 | feature | cpp | c | rust | go | cs | java | js | dart | elixir | swift | ts | lua | clojure | python | ruby | kotlin | gdscript | zig | odin | haxe |
