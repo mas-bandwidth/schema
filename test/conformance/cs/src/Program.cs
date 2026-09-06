@@ -380,14 +380,16 @@ static class Program
     // what it was given walks into memory this process owns and nothing else's.
     static unsafe string OpenBlock(string name, byte[] bytes, long extent)
     {
-        long claim = extent < 0 || extent < bytes.Length ? bytes.Length : extent;
+        // A CLAIM SHORTER THAN THE IMAGE IS A TRUNCATION, so the allocation is
+        // the claim in that direction too and only what fits is copied.
+        long claim = extent < 0 ? bytes.Length : extent;
         IntPtr raw = Marshal.AllocHGlobal(new IntPtr(claim + 64));
         try
         {
             long aligned = ((long)raw + 63) & ~63L;
             IntPtr pointer = new IntPtr(aligned);
             new Span<byte>((void*)pointer, (int)Math.Min(claim, int.MaxValue)).Clear();
-            Marshal.Copy(bytes, 0, pointer, bytes.Length);
+            Marshal.Copy(bytes, 0, pointer, (int)Math.Min(claim, bytes.Length));
             bool opened;
             if (name.StartsWith("block_render", StringComparison.Ordinal))
             {

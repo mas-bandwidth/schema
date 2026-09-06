@@ -502,10 +502,13 @@ int surfaceJsonHostile(String outDir) {
 // only base this language holds; the driver places it as the pointer column
 // says and the reader checks its alignment.
 Uint8List blockBuffer(Uint8List image, int extent, int pointer) {
-  final claim = extent < 0 || extent < image.length ? image.length : extent;
+  // A CLAIM SHORTER THAN THE IMAGE IS A TRUNCATION, so the buffer is the claim
+  // in that direction too and only what fits is copied.
+  final claim = extent < 0 ? image.length : extent;
   final base = pointer < 0 ? 0 : pointer;
   final buffer = Uint8List(base + claim);
-  buffer.setRange(base, base + image.length, image);
+  final copy = claim < image.length ? claim : image.length;
+  buffer.setRange(base, base + copy, image);
   return buffer;
 }
 
@@ -513,7 +516,7 @@ String openBlock(String name, Uint8List image, int extent, int pointer) {
   if (pointer < 0) {
     return 'refuse\n'; // no buffer at all
   }
-  final claim = extent < 0 || extent < image.length ? image.length : extent;
+  final claim = extent < 0 ? image.length : extent;
   final buffer = blockBuffer(image, extent, pointer);
   final Object? block = name.startsWith('block_render')
       ? blk.RenderFrameBlock.open(buffer, pointer, claim)

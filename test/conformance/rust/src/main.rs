@@ -363,10 +363,10 @@ impl Aligned {
     // a reader that walks past what it was given walks off the end of a real
     // allocation rather than into a neighbour.
     fn new(data: &[u8], extent: i64) -> Aligned {
-        let mut bytes = if extent < 0 { data.len() as i64 } else { extent };
-        if bytes < data.len() as i64 {
-            bytes = data.len() as i64;
-        }
+        // A CLAIM SHORTER THAN THE IMAGE IS A TRUNCATION and is the caller's
+        // own answer: `placed` copies what fits and zeroes the rest, so the
+        // allocation stays the claim in that direction too.
+        let bytes = if extent < 0 { data.len() as i64 } else { extent };
         Aligned::placed(data, bytes, 0)
     }
 
