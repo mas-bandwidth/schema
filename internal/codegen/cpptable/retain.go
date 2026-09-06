@@ -1354,6 +1354,24 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("    if ( root == NULL || report == NULL ) { return -1; }\n")
 	g.pf("    TableRegionCtx ctx;\n")
 	g.pf("    return %sSaveWireRetain( ctx, *root, retain, buffer, capacity, report );\n}\n\n", n)
+
+	// RETENTION CROSSES THE FORMS IN ONE DIRECTION AND REFUSES IN THE OTHER
+	// (docs/SPEC-TABLES.md §3.3). A form-2 writer names entries through slots
+	// of a vocabulary the compiler settled, and a retained id is by definition
+	// one this build's closure does not contain, so it has no slot AND no
+	// announced shape. The caller's own retained-id list does not answer it
+	// either: that list names ids into a FILE's trailer, and a form-2 receiver
+	// reads slots and shapes from an announcement it never got.
+	g.pf("// %sSaveRetainMessages: RETENTION WRITING FORM 2 IS REFUSED BY NAME\n", n)
+	g.pf("// (docs/SPEC-TABLES.md §3.3). It is a MISUSE refusal on §6.6's own\n")
+	g.pf("// precedent and never a silent drop, and the two answers are named: a\n")
+	g.pf("// caller that must carry unknowns across a rewrite writes the FILE form,\n")
+	g.pf("// which carries its own table and takes §6.6 unchanged, and a RELAY\n")
+	g.pf("// forwards the sending peer's announcement and its batch bytes verbatim.\n")
+	g.pf("template <typename... Args>\ninline int64_t %sSaveRetainMessages( Args &&... )\n{\n", n)
+	g.pf("    static_assert( sizeof...( Args ) == (size_t) -1,\n")
+	g.pf("        \"%s: a form 2 writer names entries through slots of a vocabulary the compiler settled, and a retained id is one this build's closure does not contain, so it has neither a slot nor an announced shape. Retention writing the MESSAGE form is refused by name (docs/SPEC-TABLES.md §3.3). Write the FILE form, which carries its own table and takes §6.6 unchanged, or relay the sender's announcement and batch bytes verbatim.\" );\n", n)
+	g.pf("    return -1;\n}\n\n")
 }
 
 // emitRetainRefusals is RETENTION IS THE VARIABLE CLASS'S, AND A FIXED-CLASS
