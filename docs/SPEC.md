@@ -1317,7 +1317,11 @@ All compile errors with positions:
   must reach zero.
 
   **A count outside [A, B] is refused by the WRITE in every build, in all
-  nine targets.** It is the one write-side contract that is never a debug-only
+  nine targets.** That is not a compile error but the other half of the same
+  rule, and it is stated here because it is the rule generated code cites: the
+  refusal each target emits carries the comment "a count outside its wire
+  range is refused in every build (SPEC §4.6)". It is the one write-side
+  contract that is never a debug-only
   assert (§5). The count guards the element loop and the pack subtracts the
   low bound, so a count below A wraps to a large unsigned value and the write
   would otherwise report success on bytes no reader accepts. Each target
@@ -1819,8 +1823,8 @@ NAME rather than falling into a generic parse error:
   would define the member twice, which C++ and C# refuse outright as a
   redefinition. The refusal is over the EXPORTED spelling, so `count` is
   refused too, and the diagnostic names the tag enum that claims the name. It
-  is the reservation `None` and `Max` have carried since the tag enum had an
-  extent. A table-closure union's tag shape carries no `Count` member, so the
+  is the same reservation `None` and `Max` carry, for the same reason.
+  A table-closure union's tag shape carries no `Count` member, so the
   name is legal there
   ([#601](https://github.com/mas-bandwidth/schema/issues/601)).
 

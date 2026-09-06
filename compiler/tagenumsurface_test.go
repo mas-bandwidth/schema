@@ -215,13 +215,11 @@ func TestTagEnumDebugNameCoversNoneVariantsAndOutOfSet(t *testing.T) {
 			t.Errorf("%s: the tag enum has no name function, %q not emitted", target, claim.nameFunc)
 			continue
 		}
-		rest := text[open:]
-		end := strings.Index(rest, "???")
-		if end < 0 {
+		body, _, found := strings.Cut(text[open:], "???")
+		if !found {
 			t.Errorf("%s: the tag enum's name function has no out-of-set arm, \"???\" is absent from its body", target)
 			continue
 		}
-		body := rest[:end]
 		for _, want := range []string{"None", "Laser", "Missile"} {
 			if !strings.Contains(body, want) {
 				t.Errorf("%s: the tag enum's name function does not name %q in its body:\n%s", target, want, body)
