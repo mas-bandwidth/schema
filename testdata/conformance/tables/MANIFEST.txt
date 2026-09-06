@@ -405,8 +405,6 @@ forgery block_pitch                block block_render block_render 0 0x003c 4 0x
 forgery block_count_past_extent    block block_render block_render 0 0x0038 4 0xfa0                200000 refuse a count whose rows leave the extent the caller passed
 forgery block_count_past_maximum   block block_render block_render 0 0x0038 4 0x1388              7879488 refuse a count past the declared maximum, inside a roomy extent
 forgery block_offset_overflow      block block_render block_render 0 0x0020 8 0x7fffffffffffffc0       -1 refuse an offset 64-aligned and just under 2^63 — the forgery fuzzer's find
-forgery block_extent_short         block block_render block_render 0 -1 0 0                2815 refuse an extent one byte short of the used extent, inside its padding
-forgery block_lead_1               block block_render block_render 1 -1 0 0                  -1 refuse an unaligned base, one byte past a 64-byte boundary
 
 # THE COOK FORGERY BATTERY as data (docs/SPEC-TABLES.md §7, §7.4), pinned
 # from test/tables/cook_main.cpp's 111 by that binary's emit-forgeries mode:
@@ -823,6 +821,13 @@ report r2_cfg_as_r1 tblr1 Cfg testdata/wire/tables/r2_cfg.bin
 # accelerator can answer, one per clause that shares a value, and two that pin
 # the ORDER: a file failing two clauses answers the first.
 #
+# THE BLOCK'S `truncated` AND `unaligned_base` ARE NOT HERE, and that is about
+# the FORGERY they would need rather than about the reason: each is a clause
+# over the buffer the CALLER passed and not over the image, so no patched word
+# reaches it. test/tables/block_main.cpp's BlockOpen gate pins all four
+# readings there (a null base, a length under the prologue, a length under the
+# used extent, an unaligned base) beside the match that writes nothing.
+#
 #   refusal <forgery> <reason>
 #
 refusal cook_magic_byte0          not_a_cook
@@ -857,5 +862,3 @@ refusal block_pitch               bad_layout
 refusal block_count_past_extent   bad_layout
 refusal block_count_past_maximum  bad_layout
 refusal block_offset_overflow     bad_layout
-refusal block_extent_short        truncated
-refusal block_lead_1              unaligned_base

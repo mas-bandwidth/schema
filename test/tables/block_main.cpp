@@ -709,10 +709,27 @@ int main( int argc, char ** argv )
         check( opened.bytes == bytes, "BlockOpen reports the used extent" );
         check( opened.projection->version == RenderVersion, "the consumer reads the table's own declared field" );
 
-        check( !RenderFrameBlockOpen( opened, NULL, bytes ), "BlockOpen refuses a null base" );
-        check( !RenderFrameBlockOpen( opened, storage.base, 8 ), "BlockOpen refuses a length shorter than the projection" );
-        check( !RenderFrameBlockOpen( opened, storage.base, bytes - 64 ), "BlockOpen refuses a length shorter than the used extent" );
-        check( !RenderFrameBlockOpen( opened, storage.base + 8, bytes ), "BlockOpen refuses an unaligned base" );
+        // A REFUSAL NAMES ITSELF beside the false (docs/SPEC-TABLES.md §7,
+        // §19.2), and a MATCH writes nothing: the caller's own value stands,
+        // which is what makes the successful open cost nothing. The four
+        // clauses below are the ones no forgery of an IMAGE can reach, because
+        // each is about the buffer the CALLER passed and not about the block.
+        TableRefuseReason reason = ok;
+        check( RenderFrameBlockOpen( opened, storage.base, bytes, &reason ) && reason == ok,
+               "a match leaves the caller's own reason untouched" );
+
+        reason = ok;
+        check( !RenderFrameBlockOpen( opened, NULL, bytes, &reason ) && reason == unaligned_base,
+               "BlockOpen refuses a null base, which is the CALLER's own buffer and not a block" );
+        reason = ok;
+        check( !RenderFrameBlockOpen( opened, storage.base, 8, &reason ) && reason == truncated,
+               "BlockOpen refuses a length shorter than the projection: there is no prologue to read" );
+        reason = ok;
+        check( !RenderFrameBlockOpen( opened, storage.base, bytes - 64, &reason ) && reason == truncated,
+               "BlockOpen refuses a length shorter than the used extent" );
+        reason = ok;
+        check( !RenderFrameBlockOpen( opened, storage.base + 8, bytes, &reason ) && reason == unaligned_base,
+               "BlockOpen refuses an unaligned base, LAST, because it is the one clause that reads nothing out of the block" );
 
         // each prologue word in turn, restored after
         const uint64_t magic = block.projection->magic;

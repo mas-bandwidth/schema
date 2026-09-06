@@ -294,9 +294,9 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 const tableRefuseReasonEnum = `
 
 // WHY A FILE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5, §7, §19.2): the
-// one vocabulary a cook's Open, a block's BlockOpen and LoadMeasure's -1
-// share, because a caller asking "why can I not have this file" is asking one
-// question whichever call refused it. The FIRST failing clause names the
+// one vocabulary a cook's Open, a block's BlockOpen and a variable root's load
+// measure share, because a caller asking "why can I not have this file" is
+// asking one question whichever call refused it. The FIRST failing clause names the
 // reason, in the order §7 enumerates, so one file answers one value in every
 // language. A refusal moves no counter, and a match writes nothing: the
 // out-parameter is touched on the refusal path only.
@@ -315,7 +315,7 @@ enum TableRefuseReason
     truncated,             // the part lengths against the caller's length, or a data part too short to hold the root
     unaligned_base,        // the pointer the caller passed is not aligned for the region: the caller's defect, not the file's
     bad_layout,            // BlockOpen (§19.2): a pitch, a count, an offset or an extent that disagrees with this build's or leaves the block
-    unknown_form,          // LoadMeasure (§3, §6.5): a form byte this build does not carry, refused before any read
+    unknown_form,          // at a MEASURE (§3, §6.5): a form byte this build does not carry, refused before any read
     count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
     count_over_extent_cap, // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
     blob_over_size_cap,    // a blob whose length is past the derived-size cap (§3.1, §11)

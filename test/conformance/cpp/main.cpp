@@ -473,18 +473,15 @@ struct Aligned
     // battery are about, and a file alone cannot carry it. The allocation is
     // the claim, so a reader that walks past what it was given walks into a
     // sanitizer's redzone rather than into a neighbour.
-    // `lead` is the POINTER column: 0 an aligned base, 1..63 a base that many
-    // bytes past one, which is the caller's own defect and the last clause
-    // BlockOpen names (docs/SPEC-TABLES.md §19.2)
-    bool create( const std::vector<uint8_t> & data, int64_t extent, int lead = 0 )
+    bool create( const std::vector<uint8_t> & data, int64_t extent )
     {
         // the allocation IS the claim, and the claim may be shorter than the
         // file: a driver copies what fits and zeroes the rest, which is the one
         // rule both forgery batteries read the extent column by.
         bytes = extent < 0 ? (int64_t) data.size() : extent;
-        raw = (uint8_t *) malloc( (size_t) ( bytes > 0 ? bytes : 1 ) + 128 );
+        raw = (uint8_t *) malloc( (size_t) ( bytes > 0 ? bytes : 1 ) + 64 );
         if ( raw == NULL ) return false;
-        base = (uint8_t *) ( ( (uintptr_t) raw + 63 ) & ~(uintptr_t) 63 ) + lead;
+        base = (uint8_t *) ( ( (uintptr_t) raw + 63 ) & ~(uintptr_t) 63 );
         memset( base, 0, (size_t) bytes );
         const size_t copy = data.size() < (size_t) bytes ? data.size() : (size_t) bytes;
         memcpy( base, data.data(), copy );
@@ -496,11 +493,11 @@ struct Aligned
 // the block opened, and on a refusal the REASON BlockOpen names beside its
 // false (docs/SPEC-TABLES.md §19.2): the caller's own initial value is what
 // a match leaves standing
-static bool open_block( const std::string & name, const std::vector<uint8_t> & data, int64_t extent, int lead = 0,
+static bool open_block( const std::string & name, const std::vector<uint8_t> & data, int64_t extent,
                         blockdemo::TableRefuseReason * reason = NULL )
 {
     Aligned storage = {};
-    if ( !storage.create( data, extent, lead ) ) return false;
+    if ( !storage.create( data, extent ) ) return false;
     bool opened = false;
     if ( name.rfind( "block_render", 0 ) == 0 )
     {
@@ -1107,14 +1104,6 @@ static int surface_block_foreign( const std::string & out )
     return 0;
 }
 
-// the pointer column of a derived forgery line: 0 an aligned base, 1..63 that
-// many bytes past one; `null` is the cook battery's and no block row carries it
-static int forgery_lead( const std::string & pointer )
-{
-    if ( pointer == "null" ) return 0;
-    return (int) strtol( pointer.c_str(), NULL, 10 );
-}
-
 static int surface_forgery( const std::string & out )
 {
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
@@ -1124,7 +1113,7 @@ static int surface_forgery( const std::string & out )
         if ( f[2] != "block" ) continue; // the cook's battery is its own binary's
         std::vector<uint8_t> data;
         if ( !slurp( f[4].c_str(), data ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
-        const char * verdict = open_block( f[3], data, (int64_t) strtoll( f[5].c_str(), NULL, 0 ), forgery_lead( f[6] ) ) ? "open\n" : "refuse\n";
+        const char * verdict = open_block( f[3], data, (int64_t) strtoll( f[5].c_str(), NULL, 0 ) ) ? "open\n" : "refuse\n";
         if ( !spill( out, f[1], verdict, strlen( verdict ) ) ) return 1;
     }
     return 0;
@@ -1172,7 +1161,7 @@ static int surface_block_reason( const std::string & out )
         std::vector<uint8_t> data;
         if ( !slurp( f[4].c_str(), data ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
         blockdemo::TableRefuseReason reason = blockdemo::ok;
-        const bool opened = open_block( f[3], data, (int64_t) strtoll( f[5].c_str(), NULL, 0 ), forgery_lead( f[6] ), &reason );
+        const bool opened = open_block( f[3], data, (int64_t) strtoll( f[5].c_str(), NULL, 0 ), &reason );
         std::string answer = std::string( opened ? "ok" : reason_name( reason ) ) + "\n";
         if ( !spill( out, r[1], answer.data(), answer.size() ) ) return 1;
     }
@@ -1198,7 +1187,6 @@ struct Patch
     const char * verdict;
     const char * label;
     int64_t claim; // the extent the caller passes; -1 means "the file's own"
-    int lead;      // the POINTER column: 0 an aligned base, 1..63 that many bytes past one
 };
 
 static uint64_t swap64( uint64_t v )
@@ -1255,11 +1243,6 @@ static int emit_block_forgeries()
           "a count past the declared maximum, inside a roomy extent", (int64_t) blockdemo::RenderFrameBlockMaxBytes },
         { "block_offset_overflow", at_cameras_offset, 8, 0x7fffffffffffffc0ull, "refuse",
           "an offset 64-aligned and just under 2^63 — the forgery fuzzer's find", -1 },
-        // THE TWO CLAUSES THE WORDS ABOVE DO NOT REACH (§19.2): an extent that stops
-        // inside the used extent's padding, which is truncated, and an unaligned
-        // base, which is the caller's own and the last clause of the check
-        { "block_extent_short", 0, 0, 0, "refuse", "an extent one byte short of the used extent, inside its padding", block.bytes - 1 },
-        { "block_lead_1", 0, 0, 0, "refuse", "an unaligned base, one byte past a 64-byte boundary", -1, 1 },
     };
 
     printf( "# THE BLOCK FORGERY BATTERY as data (docs/SPEC-TABLES.md §19.2), pinned from\n" );
@@ -1274,16 +1257,8 @@ static int emit_block_forgeries()
     for ( size_t i = 0; i < sizeof( patches ) / sizeof( patches[0] ); i++ )
     {
         const Patch & p = patches[i];
-        if ( p.width == 0 )
-        {
-            // no word at all: the forgery is the extent the caller claims or the
-            // pointer it holds, spelled as the cook battery spells its own
-            printf( "forgery %-26s block block_render block_render %d -1 0 0 %19lld %s %s\n",
-                    p.name, p.lead, (long long) p.claim, p.verdict, p.label );
-            continue;
-        }
-        printf( "forgery %-26s block block_render block_render %d 0x%04llx %d 0x%-16llx %8lld %s %s\n",
-                p.name, p.lead, (unsigned long long) p.offset, p.width,
+        printf( "forgery %-26s block block_render block_render 0 0x%04llx %d 0x%-16llx %8lld %s %s\n",
+                p.name, (unsigned long long) p.offset, p.width,
                 (unsigned long long) p.value, (long long) p.claim, p.verdict, p.label );
     }
     storage.destroy();

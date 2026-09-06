@@ -175,10 +175,17 @@ build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POI
 # THE SCAN IS BY SYMBOL, not by line, and `TableNode` is matched with its whole
 # spelling so a node symbol nobody has written yet is still refused. Exactly one
 # of those spellings is ALLOWED in a pointer-free unit and it is named below.
-# TableRefuseReason is NOT in the list: it is the FORM's vocabulary and not the
-# map's or the list's, since every unit's cook Open names its refusal in it
-# (docs/SPEC-TABLES.md §7, §11), so every unit carries it.
-TABLES_ZERO_COST_SYMBOLS := TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|TablePack|[A-Za-z_]*TableNode[A-Za-z_]*|is_pointer|Builder|PackMeasure|LoadMeasure|TableBlob|TableBytesView|TableStringView|AllocBytes|AllocString|BytesEmplace|StringEmplace|TableMap|TableMapHead|TableMapSegment|TableMapOrder|TableMapCursor|TableEntryKey|TableKeyOrder|TableResetMapValue|TableEntrySetKey|kTableMapSegment|TableList|TableListHead|TableListSegment|TableListCursor|TableListElements|TableListPlace|kTableListSegment|TableExtentCarve|TableExtentUnreachedEmpty|TableWireExtent
+# TableRefuseReason IS SANCTIONED, and it is the FORM's vocabulary rather than
+# the map's or the list's: every unit's cook Open names its refusal in it
+# (docs/SPEC-TABLES.md §7, §11), so every unit carries it. It stays in the list
+# below BECAUSE `TableRef`, the pointer handle, is a PREFIX of it — the
+# extraction takes the longest alternative at a position, so naming the whole
+# spelling here is what makes the token that comes out `TableRefuseReason`
+# rather than `TableRef`, and the sanctioned list below is what then clears it.
+# Its two map-and-list values, count_over_length and count_over_extent_cap, are
+# out of the list for the same reason the enum is sanctioned: they are the
+# enum's members and every unit spells them.
+TABLES_ZERO_COST_SYMBOLS := TableArena|TableSlot|TableWorker|TableRef|TableRefuseReason|TableRegion|kTableSegment|kTableSlab|TablePack|[A-Za-z_]*TableNode[A-Za-z_]*|is_pointer|Builder|PackMeasure|LoadMeasure|TableBlob|TableBytesView|TableStringView|AllocBytes|AllocString|BytesEmplace|StringEmplace|TableMap|TableMapHead|TableMapSegment|TableMapOrder|TableMapCursor|TableEntryKey|TableKeyOrder|TableResetMapValue|TableEntrySetKey|kTableMapSegment|TableList|TableListHead|TableListSegment|TableListCursor|TableListElements|TableListPlace|kTableListSegment|TableExtentCarve|TableExtentUnreachedEmpty|TableWireExtent
 
 # THE ONE NODE SPELLING A POINTER-FREE UNIT CARRIES, and it is the FORM's and
 # not the pointer machinery's (docs/SPEC-TABLES.md §3, §3.1): the reserved
@@ -190,7 +197,11 @@ TABLES_ZERO_COST_SYMBOLS := TableArena|TableSlot|TableWorker|TableRef|TableRegio
 # no extra descriptor column, which is the claim this gate holds. Every other
 # TableNode spelling stays refused, and
 # tables-zero-cost-negative-control shows that it does.
-TABLES_ZERO_COST_ALLOWED := kTableNodeTableFieldId
+#
+# THE SECOND SANCTIONED SPELLING is the refusal enum, for the reason above it:
+# a pointer-free unit's Open answers a TableRefuseReason beside its null, which
+# costs the unit one enum and one out-parameter and no machinery at all.
+TABLES_ZERO_COST_ALLOWED := kTableNodeTableFieldId|TableRefuseReason
 
 TABLES_ZERO_COST_HEADERS := build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
 	build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
