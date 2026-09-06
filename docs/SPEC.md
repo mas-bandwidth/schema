@@ -454,7 +454,7 @@ from this projection rather than carried in it.
   element, and why a C# reader gets the text as comments rather than as XML
   documentation. **Elixir carries the descriptor column alone for a field and
   for a variant** — a struct field and an enum variant have no attribute to
-  hang a doc on — and emits `@moduledoc` / `@typedoc` for a declaration.
+  hang a doc on — and emits `@moduledoc` for a declaration.
 - **A doc comment moves nothing.** It is excluded from the wire shape
   projection (§3.1) and from the cook projection (SPEC-TABLES.md §20.2), so
   it moves neither the protocol id nor the build version; it enters no

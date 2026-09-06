@@ -8617,10 +8617,10 @@ schema is a free edit, and that is the property the open namespace rests on.
 **REGISTRY STATUS: the DECLARATION and FIELD columns are emitted, the
 REGISTRY rows are not.** All nine targets carry `doc`, `num_tags` and `tags`
 on `TableFieldInfo` and on `TableTypeInfo`, filled from the `///` block
-(SPEC.md §4.1) and the tags (SPEC.md §4.2) the compiler now reads at every
+(SPEC.md §4.1) and the tags (SPEC.md §4.2) the compiler reads at every
 line kind. What no target emits is the registry itself (§8.3), so an enum
 VARIANT's, a flags BIT's and a record-naming ARM's annotation ride the IR
-and the generated comments and reach no descriptor column — the placement
+and the generated comments and reach no descriptor column. The placement
 rule above names those three, and they land with `UnitView()`. Owed as
 schema#523 ruling 4's registry half, and this line is deleted by the
 implementation PR that lands it.
@@ -8929,11 +8929,12 @@ function per unit, name-first in the unit's own namespace beside
 declared:
 
 **BACKEND STATUS: OWED, not emitted.** `UnitView()` is specified ahead of its
-implementation: no backend emits it in any of the nine targets today. It is the
+implementation: no backend emits it in any of the nine targets. It is the
 remaining half of #523 item 4, whose §8.1 descriptor columns have landed, and
 it carries the `doc` and `tags` of an enum variant, a flags bit and a
-record-naming arm — the three rows the placement rule of §8.1 puts here and
-nowhere else. The implementation PR that lands it deletes this paragraph.
+record-naming arm, which are the three rows the placement rule of §8.1 puts
+here and nowhere else. The implementation PR that lands it deletes this
+paragraph.
 
 ```cpp
 struct ViewConstant
@@ -9285,7 +9286,7 @@ order the listing must keep.
 **TRAILING WHITESPACE IS THE ONE EXTRACTION CASE THE EXHIBIT CANNOT CARRY,
 and the reason is the formatter.** `schemafmt` is the one style (SPEC §7.4)
 and the corpus is written in it, so a `///` line ending in spaces is
-normalized away the next time `make fmt` runs — a corpus exhibit of trailing
+normalized away the next time `make fmt` runs, a corpus exhibit of trailing
 whitespace would be an exhibit the repo's own tooling deletes. The rule is
 real and it is pinned where it can hold still: the compiler's own extraction
 test, over a source the formatter never touches. Every other case rides in
@@ -9295,8 +9296,8 @@ test, over a source the formatter never touches. Every other case rides in
 Table sources are pinned byte for byte under `testdata/golden/tables/`, so
 the commit that adds the columns re-pins them and the exhibit's descriptor
 rows and doc idioms have a left-hand side from the moment they exist.
-Extending the FULL source goldens — every backend's generated text with the
-protocol id beside it — to the two table corpora is the named follow-on §15
+Extending the FULL source goldens, every backend's generated text with the
+protocol id beside it, to the two table corpora is the named follow-on §15
 carries, and until it lands the pin is over the C++ reference and the C#,
 C and block sources beside it rather than over all nine.
 
