@@ -1100,8 +1100,8 @@ Bad.schema:5:5: field a: its range [1, 4] excludes zero, so every element is bor
 schema: 1 error(s)
 ```
 
-The **count** bound is not held to that rule, and it is worth seeing why that
-matters. `window [2..8]uint32` compiles:
+The **count** bound is the stated exception to that rule, and it is worth
+seeing why. `window [2..8]uint32` compiles:
 
 ```
 $ schema check .
@@ -1111,21 +1111,40 @@ $ schema generate --lang cpp --out g .
 ```cpp
 struct T {
     uint32_t window[8] = {}; // used count beside it; wire count in [2, 8]
-    int32_t window_count = 0;
+    int32_t window_count = 2;
 };
 ```
 
 ```cpp
 SCHEMA_WRITE_INLINE bool WriteT( serialize::WriteStream & stream, const T & value )
 {
-    serialize_assert( int32_t( value.window_count ) >= int32_t( 2 ) && int32_t( value.window_count ) <= int32_t( 8 ) );
+    if ( int32_t( value.window_count ) < int32_t( 2 ) || int32_t( value.window_count ) > int32_t( 8 ) )
+    {
+        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
+    }
     write_bits( stream, uint32_t( value.window_count ) - uint32_t( 2 ), 3 );
 ```
 
-A freshly constructed `T` has `window_count = 0`, outside the count's own wire
-range, and the write subtracts the low bound before it packs. Reach for
-`[A..B]` with A above zero only where your code sets the count before the value
-is ever written.
+Two things are going on there, and they are the same rule from both ends.
+
+A freshly constructed `T` has `window_count = 2`, the declared minimum. Zero is
+outside the count's own wire range, so a fresh `T` would otherwise be born
+carrying a count no reader accepts, and an array takes no `= value` default to
+name a birth value another way. The bound names it instead. This is the one
+place in the language where storage starts at something other than zero without
+a declaration saying so, and `[..8]` is born at 0 like everything else.
+
+The write refuses an out-of-range count in **every build**, release included.
+It is not an assert and there is no build flag that removes it. The reason is
+the line under it: the pack subtracts the low bound, so `window_count = 0`
+would wrap `0 - 2` to a large unsigned value, and the loop below writes
+`window_count` elements. An unchecked write would report success on bytes no
+reader takes. Every one of the nine targets refuses it, each in its own
+convention: `false` here, `0` in C, `-1` in Dart and Java,
+`ErrValueOutOfRange` in Go, an `ArgumentError` in Elixir.
+
+Reach for `[A..B]` with A above zero wherever the count genuinely has a floor.
+The tool holds both ends of it for you.
 
 ### The odds and ends
 
@@ -1455,6 +1474,7 @@ enum class WeaponFireType : uint8_t {
     None = 0,
     Laser = 1,
     Missile = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
 
@@ -1476,9 +1496,13 @@ Like the enum, **every union has an implicit `None = 0`**, the empty union, in
 band. A zero-initialized union field carries "nothing" without a has-flag, and
 a stream of unions can end on `None`. The program below prints that tag.
 
-The tag enum is not a full enum. It carries `None` and `Max`, and it does not
-carry `Count` or a name function, so `EnumName( cmd.fire.type )` does not
-compile. Log the tag by switching on it, which the program below does.
+The tag enum is a full enum. It carries `None`, the variants, `Count` and
+`Max`, and the debug-name function beside them, so `EnumName( cmd.fire.type )`
+compiles and prints `"Laser"`. It is the same call a declared enum takes, found
+by lookup the same way. Log a tag with it. The switch the program below writes is
+there to reach the payload, which a name cannot do. Because the enum carries
+`Count`, `count` is a refused arm name on a packet union, alongside `none` and
+`max`.
 
 To select an arm in C++, set the tag and value-establish the arm, both, in that
 order of importance:

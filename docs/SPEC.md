@@ -681,7 +681,8 @@ FloatExpr   = float expression over float literals, int literals and const names
 - **Zero initialization is the rule, in every generated language, with an
   optional specified default overriding it.** Every generated type fully
   initializes to zero values on construction — 0, 0.0, false, `None` for an
-  enum, `None` for a union, 0 for a flags mask, zeroed buffers and counts,
+  enum, `None` for a union, 0 for a flags mask, zeroed buffers, zeroed counts
+  outside the one stated exception below,
   recursively for nested types — in every target (C++ emits default member initializers; the other
   languages get it from their own rules, stated so no target can silently be
   the odd one out). A field may override its zero with `= value` after the
@@ -696,7 +697,19 @@ FloatExpr   = float expression over float literals, int literals and const names
   list of the declaration's variant names, each at most once, whose bits are
   the fresh mask: `caps Caps = { Jump, Crouch }`, and `{}` the zero mask).
   Arrays, `wstring(N)`, composite and union fields zero-initialize with no
-  override. On the TABLE wire a field at its declared default elides and an
+  override.
+  **A counted array's COUNT is the one stated exception to zero
+  initialization.** A `[A..B]T` count with A above zero is BORN AT A, its
+  declared minimum, in every target. Zero is outside that count's own wire
+  range, so a freshly constructed value would otherwise carry a count no
+  reader accepts and no writer may send (§4.6). A is the one wire-legal count
+  a fresh value can hold, and an array takes no specified default to name
+  another one, so the bound itself is the birth value. `[..N]T` is `[0..N]T`,
+  whose range reaches zero, and it is born at 0 under the ordinary rule. The
+  elements are zeroed either way. The §5 zero form does not carry the birth
+  value, for the same reason it does not carry a specified default: it is the
+  all-zero form by rule.
+  On the TABLE wire a field at its declared default elides and an
   absent field reads as it, whatever the kind (SPEC-TABLES.md §4), so the
   string, bytes and flags defaults are part of that wire's contract exactly
   as a scalar's is. The C++ reference carries the three, and every other
@@ -1124,8 +1137,13 @@ flags declaration's `Count`: `E::Count` (C++), `E.Count` (C#), `ECount`
 Java), `E.count/0` (Elixir). `Count` is a reserved variant name for the same
 reason `Max` is, and it is a claimed name under §4.6 — a declaration whose
 generated symbol would collide with an enum's `Count` is refused, naming the
-enum. The generated `<Union>Type` tag enums carry `Max` alone: a tag set
-takes no headroom, so its count and its extent are one number.
+enum. A PACKET union's generated `<Union>Type` tag enum carries `Count`
+beside `Max` too, in the same nine spellings (§4.8), so a tag enum and a
+declared enum present one surface to a reader. A tag set takes no headroom, so
+its `Count` and its `Max` are one number, and the member is there because the
+surface is uniform rather than because the two numbers ever differ. A
+table-closure union's tag shape carries `Max` alone today
+([#601](https://github.com/mas-bandwidth/schema/issues/601)).
 
 ### 4.3 Field types and their wire encodings
 
@@ -1290,7 +1308,24 @@ All compile errors with positions:
   or ends below it would be born outside its own range —
   `x uint8 = 1 | min = 1, max = 255` is the fix, on integer, `int128`,
   `fixed`/`ufixed` and compressed-float ranges alike. An array takes no
-  specified default, so an array field's range must reach zero.
+  specified default, so an array field's ELEMENT range must reach zero.
+
+  **A counted array's COUNT bound is the stated exception, and it is legal.**
+  `[A..B]T` with A above zero compiles with no declared default, because the
+  count is born at A rather than at zero (§4.2) and so is never outside its
+  own range at rest. The element range above is a different bound and still
+  must reach zero.
+
+  **A count outside [A, B] is refused by the WRITE in every build, in all
+  nine targets.** It is the one write-side contract that is never a debug-only
+  assert (§5). The count guards the element loop and the pack subtracts the
+  low bound, so a count below A wraps to a large unsigned value and the write
+  would otherwise report success on bytes no reader accepts. Each target
+  refuses in its own convention: C `0`, C++ and C# `false`, Dart and Java
+  `-1`, Go `serialize.ErrValueOutOfRange`, Rust
+  `Err(serialize::Error::ValueOutOfRange)`, Elixir `ArgumentError`, and
+  JavaScript `false` from the stream writer and `-1` from BOTH tiers of the
+  flat writer, the production tier included.
 - **Attribute discipline:** an unknown attribute key, a key repeated, an
   attribute on a type that does not take it, `min` without `max` (or vice
   versa), and `resolution` without both bounds are compile errors, each
@@ -1548,12 +1583,19 @@ union Value
   disagree with the tag. **Reserved variant names are checked over the
   EXPORTED spelling**: any variant whose exported form (the field-name
   mapping) is `None` or `Max` is refused — `none` and `max` included, not
-  just the literal spellings.
+  just the literal spellings. **`Count` is refused the same way on a PACKET
+  union**, whose tag enum carries the member (below). The reservation is
+  scoped to where the member exists, so the name stays free on a
+  table-closure union until the follow-on gives that shape its `Count`
+  ([#601](https://github.com/mas-bandwidth/schema/issues/601)).
 - **The tag enum is generated, named `<Union>Type`**: `None = 0`, then
   each variant **in declared order**
-  (exported spelling per target, the field-name mapping), dense from 1, plus
-  the exported `Max` extent; storage per the enum storage rule, the
-  smallest unsigned integer fitting max. Declared order, not sorted: a
+  (exported spelling per target, the field-name mapping), dense from 1, then
+  the exported `Count` (the declared variant count, `None` excluded) and the
+  exported `Max` extent. Storage is per the enum storage rule, the
+  smallest unsigned integer fitting max. A tag enum carries the same four
+  parts a declared enum carries, so a reader logging which message arrived
+  reaches for the enum's own surface and finds it. Declared order, not sorted: a
   union is one declaration whose author states the order, exactly as an
   enum's variants do — and reordering variants is a wire change (see id,
   below), so the spelling of the source is the truth of the wire.
@@ -1567,6 +1609,32 @@ union Value
   names (§4.6): a variant named a target's reserved word is refused, and
   two variants whose exported spellings collide (`box_a`/`boxA`) are
   refused.
+- **The tag enum carries a DEBUG-NAME function in every target**, on the
+  declared enum's rule (§4.2's exported sets): it takes any wire value,
+  out-of-set included, and returns the variant's spelling or a fixed
+  unknown marker. It is for logs, tooling and diagnostics, it is on no read
+  path and no write path, and no generated code calls it. Each target spells
+  it its own way, for the tag enum `WeaponFireType`:
+
+  | target | count member | debug name |
+  |---|---|---|
+  | c | `WEAPON_FIRE_TYPE_COUNT` | `enum_name_weapon_fire_type` |
+  | cpp | `WeaponFireType::Count` | `EnumName`, overloaded on the enum |
+  | cs | `WeaponFireType.Count` | `EnumNameWeaponFireType(ulong)` |
+  | dart | `WeaponFireType.count` | `enumNameWeaponFireType(int)` |
+  | elixir | `count/0` on the tag module | `enum_name_weapon_fire_type/1` |
+  | go | `WeaponFireTypeCount` | `EnumNameWeaponFireType(uint64)` |
+  | java | `WeaponFireType.count` | `enumNameWeaponFireType(long)` |
+  | js | `WeaponFireType.Count` | `EnumNameWeaponFireType(value)` |
+  | rust | `WeaponFireType::COUNT` | `enum_name_weapon_fire_type` |
+
+- **A TABLE-CLOSURE union's tag shape carries `Max` alone today.** It is a
+  different emitter, written beside the tables, and it gets neither `Count`
+  nor the debug-name function. Giving it both, and extending the `Count`
+  reservation to reach it, is a named follow-on
+  ([#601](https://github.com/mas-bandwidth/schema/issues/601)). Until that
+  lands, `Count` is a legal arm name on a table-closure union and a compile
+  error on a packet union, and the split is what the checker enforces.
 - **The wire.** This bullet is the TYPE wire's, which a union of declared
   `type` arms rides and a table-closure union does not ride at all (above).
   The tag encodes in **minimal bits for `[0, variant
@@ -1746,6 +1814,15 @@ NAME rather than falling into a generic parse error:
 - **`doc`** (the attribute) — documentation is not an attribute: it is the
   `///` doc comment above the item (§4.1), and one text has one spelling.
   `| doc = "..."` is refused with the comment form named.
+- **`Count` as an arm name on a PACKET union.** The generated tag enum
+  carries the declared variant count as the member `Count` (§4.8), so the arm
+  would define the member twice, which C++ and C# refuse outright as a
+  redefinition. The refusal is over the EXPORTED spelling, so `count` is
+  refused too, and the diagnostic names the tag enum that claims the name. It
+  is the reservation `None` and `Max` have carried since the tag enum had an
+  extent. A table-closure union's tag shape carries no `Count` member, so the
+  name is legal there
+  ([#601](https://github.com/mas-bandwidth/schema/issues/601)).
 
 The projection (§3.1) keeps FROZEN tokens — `table=false message=false` on
 every type line, `round=nearest` on every compressed-float field line — so
@@ -2037,7 +2114,19 @@ language does not have: C `0`, C# and JavaScript `false`, Go
 — and JavaScript's flat tier, which forks checked/production at module load
 (§6.1), refuses with `-1` on the checked side and trusts the caller on the
 production one. **No target panics and none throws**: Elixir's raise is the
-only unwinding path in the nine, and it is the BEAM's own. The generated
+only unwinding path in the nine, and it is the BEAM's own.
+
+**The tier split has exactly one stated exception, and it is a counted
+array's COUNT.** A count outside its declared `[A, B]` is refused by the
+write IN EVERY BUILD in all nine targets, so C++, Dart and Java refuse it
+from the write rather than through the assert their other contracts ride,
+and JavaScript's flat production tier refuses it rather than trusting the
+caller. The count is not a diagnostic: it guards the element loop and the
+pack subtracts the low bound, so a count below A wraps and an unchecked
+write reports success on bytes no reader accepts (§4.6). Every other
+write-side contract in this section keeps the tiers above.
+
+The generated
 write code's job is to
 make misuse impossible by construction — bounds come from the schema. Costlier contracts
 assert in DEBUG ONLY, and only where a target carries one at all. Text
@@ -2096,7 +2185,7 @@ Per `type`, per target:
    | `bytes(N)` | `uint8_t[N]` + `int32_t` length | `byte[]` (capacity N, pre-allocated) + `int` length | `[N]byte` + `int32` length | `[u8; N]` + length |
    | `[N]T` | `T[N]` | `T[N]` (pre-allocated) | `[N]T` | `[T; N]` |
    | `[..N]T` | `T[N]` + `int32_t` count | `T[N]` (pre-allocated) + `int` count | `[N]T` + `int32` count | `[T; N]` + count |
-   | `[Min..N]T` | as `[..N]T` (count validated to [Min, N]) | as `[..N]T` | as `[..N]T` | as `[..N]T` |
+   | `[Min..N]T` | as `[..N]T`, count born at Min and validated to [Min, N] | as `[..N]T` | as `[..N]T` | as `[..N]T` |
    | `f Inner` (a named type) | `Inner` | `Inner` | `Inner` | `Inner` |
 
    The C target mirrors the C++ storage rules in C's own types; JavaScript
@@ -2133,7 +2222,8 @@ Per `type`, per target:
    every serialize runtime requires.**
 5. **`ProtocolId`** — one constant per unit (§3).
 6. **For a `union` declaration (§4.8):** the `<Union>Type` tag enum
-   (`None = 0`, then the variants in declared order), the value
+   (`None = 0`, then the variants in declared order, then `Count` and `Max`)
+   with its debug-name function, the value
    representation in each language's own idiom, and
    `Write<Union>`/`Read<Union>` with the tag framing — representation per
    target, behavior identical.
