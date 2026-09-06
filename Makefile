@@ -294,17 +294,33 @@ tables-json-negative-control: bin/schema test/tables/json_negative_main.cpp
 		-Ibuild/json-sabotage test/tables/json_negative_main.cpp build/json-sabotage/TablesTable.cpp -o build/schema_test_json_negative
 	./build/schema_test_json_negative
 
-# THE DOC AND TAGS COST OBSERVABLES (docs/SPEC-TABLES.md §8.7). The two cost
-# claims §8.1 makes about the annotation columns are held by observables, not
-# by inspection: a printer concatenates every doc with no null test, and every
-# absent doc in a unit compares equal by address to the unit's one
-# TableDocNone. The binary carries both and its own account of what it walked.
+# THE DOC AND TAGS COST OBSERVABLES, AND THE TWO SAME-DECLARATION PAIRS
+# (docs/SPEC-TABLES.md §8.7). The two cost claims §8.1 makes about the
+# annotation columns are held by observables, not by inspection: a printer
+# concatenates every doc with no null test, and every absent doc in a unit
+# compares equal by address to the unit's one TableDocNone. The walk has two
+# halves — the DESCRIPTOR half over each declaration's closure and the REGISTRY
+# half over every row UnitView() hands out (§8.3) — and it holds the general
+# ARM pair and the TYPE pair to each other where it meets them. The binary
+# carries all four and its own account of what it walked.
 .PHONY: tables-doctags
 tables-doctags: bin/schema test/tables/doctags_main.cpp
-	@rm -rf build/doctags && mkdir -p build/doctags
+	@rm -rf build/doctags build/doctags-arms && mkdir -p build/doctags
 	./bin/schema generate --lang cpp --out build/doctags tables/examples
-	$(CXX) $(CXXFLAGS) -Ibuild/doctags test/tables/doctags_main.cpp build/doctags/TablesTable.cpp -o build/schema_test_doctags
+	./bin/schema generate --lang cpp --out build/doctags-arms tables/arms
+	$(CXX) $(CXXFLAGS) -Ibuild/doctags -DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo -DVIEW_EXHIBIT \
+		test/tables/doctags_main.cpp build/doctags/TablesTable.cpp build/doctags/TabledemoView.cpp -o build/schema_test_doctags
 	./build/schema_test_doctags
+	# THE GENERAL ARM PAIR needs a general arm, and the exhibit declares none:
+	# adding one to tabledemo would move that unit's union tag range, its wire
+	# goldens and its protocol id, which the page forbids the exhibit doing
+	# (§8.7). armdemo declares one already, and its `plain` arm carries a doc
+	# comment and a tag, so both halves of the pair are non-empty there.
+	$(CXX) $(CXXFLAGS) -Ibuild/doctags-arms -Itest/tables -DVIEW_HEADER='"ArmdemoView.h"' -DVIEW_NAMESPACE=armdemo \
+		test/tables/doctags_main.cpp build/doctags-arms/CarryTable.cpp build/doctags-arms/GateTable.cpp \
+		build/doctags-arms/NestTable.cpp build/doctags-arms/RingTable.cpp build/doctags-arms/ArmdemoView.cpp \
+		-o build/schema_test_doctags_arms
+	./build/schema_test_doctags_arms
 
 # THE NEGATIVE CONTROLS for the pair above (docs/SPEC-TABLES.md §8.7): a gate
 # that cannot go red proves nothing, so each claim is broken in a throwaway
@@ -315,6 +331,12 @@ tables-doctags: bin/schema test/tables/doctags_main.cpp
 #   2. A per-row inline empty literal instead of the unit's one TableDocNone.
 #      The text is right and the address is not, which is exactly the failure
 #      the shared-string claim exists to have.
+#
+# Each of the two rides twice, once over the DESCRIPTOR rows in the table
+# header and once over the REGISTRY rows in the view file, and two more break
+# the two places one declaration's annotation is spelled twice: a ViewType
+# against the descriptor its `type` points at, and a general arm's ViewVariant
+# row against the field descriptor that row points at.
 .PHONY: tables-doctags-negative-controls
 tables-doctags-negative-controls: bin/schema test/tables/doctags_main.cpp
 	@rm -rf build/doctags-null && mkdir -p build/doctags-null
@@ -322,7 +344,8 @@ tables-doctags-negative-controls: bin/schema test/tables/doctags_main.cpp
 	@sed -i.bak 's|", TableDocNone, 0, NULL }|", NULL, 0, NULL }|' build/doctags-null/TablesTable.h
 	@grep -q '", NULL, 0, NULL }' build/doctags-null/TablesTable.h || \
 		{ echo "NEGATIVE CONTROL: the NULL-doc sabotage did not apply"; exit 1; }
-	$(CXX) $(CXXFLAGS) -Ibuild/doctags-null test/tables/doctags_main.cpp build/doctags-null/TablesTable.cpp -o build/schema_test_doctags_null
+	$(CXX) $(CXXFLAGS) -Ibuild/doctags-null -DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo \
+		test/tables/doctags_main.cpp build/doctags-null/TablesTable.cpp build/doctags-null/TabledemoView.cpp -o build/schema_test_doctags_null
 	@if ./build/schema_test_doctags_null > /dev/null 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a NULL doc column did not take the gate down"; exit 1; \
 	fi
@@ -332,11 +355,185 @@ tables-doctags-negative-controls: bin/schema test/tables/doctags_main.cpp
 	@sed -i.bak 's|, TableDocNone, 0, NULL }|, "", 0, NULL }|' build/doctags-inline/TablesTable.h
 	@grep -q ', "", 0, NULL }' build/doctags-inline/TablesTable.h || \
 		{ echo "NEGATIVE CONTROL: the inline-empty sabotage did not apply"; exit 1; }
-	$(CXX) $(CXXFLAGS) -Ibuild/doctags-inline test/tables/doctags_main.cpp build/doctags-inline/TablesTable.cpp -o build/schema_test_doctags_inline
+	$(CXX) $(CXXFLAGS) -Ibuild/doctags-inline -DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo \
+		test/tables/doctags_main.cpp build/doctags-inline/TablesTable.cpp build/doctags-inline/TabledemoView.cpp -o build/schema_test_doctags_inline
 	@if ./build/schema_test_doctags_inline > /dev/null 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a per-row empty literal did not take the shared-string gate down"; exit 1; \
 	fi
 	@echo "doc/tags negative control 2: a per-row empty literal takes the shared-string gate down"
+	@rm -rf build/doctags-registry && mkdir -p build/doctags-registry
+	./bin/schema generate --lang cpp --out build/doctags-registry tables/examples
+	@sed -i.bak 's|, TableDocNone, 0, NULL },|, NULL, 0, NULL },|' build/doctags-registry/TabledemoView.cpp
+	@grep -q ', NULL, 0, NULL },' build/doctags-registry/TabledemoView.cpp || \
+		{ echo "NEGATIVE CONTROL: the registry NULL-doc sabotage did not apply"; exit 1; }
+	$(CXX) $(CXXFLAGS) -Ibuild/doctags-registry -DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo \
+		test/tables/doctags_main.cpp build/doctags-registry/TablesTable.cpp build/doctags-registry/TabledemoView.cpp -o build/schema_test_doctags_registry
+	@if ./build/schema_test_doctags_registry > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a NULL doc column on a REGISTRY row did not take the gate down"; exit 1; \
+	fi
+	@echo "doc/tags negative control 3: a NULL doc column on a registry row takes the gate down"
+	@rm -rf build/doctags-registry-inline && mkdir -p build/doctags-registry-inline
+	./bin/schema generate --lang cpp --out build/doctags-registry-inline tables/examples
+	@sed -i.bak 's|, TableDocNone, 0, NULL },|, "", 0, NULL },|' build/doctags-registry-inline/TabledemoView.cpp
+	@grep -q ', "", 0, NULL },' build/doctags-registry-inline/TabledemoView.cpp || \
+		{ echo "NEGATIVE CONTROL: the registry inline-empty sabotage did not apply"; exit 1; }
+	$(CXX) $(CXXFLAGS) -Ibuild/doctags-registry-inline -DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo \
+		test/tables/doctags_main.cpp build/doctags-registry-inline/TablesTable.cpp build/doctags-registry-inline/TabledemoView.cpp \
+		-o build/schema_test_doctags_registry_inline
+	@if ./build/schema_test_doctags_registry_inline > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a per-row empty literal on a REGISTRY row did not take the shared-string gate down"; exit 1; \
+	fi
+	@echo "doc/tags negative control 4: a per-row empty literal on a registry row takes the shared-string gate down"
+	@rm -rf build/doctags-typepair && mkdir -p build/doctags-typepair
+	./bin/schema generate --lang cpp --out build/doctags-typepair tables/examples
+	@sed -i.bak 's|WeaponConfigTableType(), "One weapon|WeaponConfigTableType(), "Drifted weapon|' build/doctags-typepair/TabledemoView.cpp
+	@grep -q 'WeaponConfigTableType(), "Drifted weapon' build/doctags-typepair/TabledemoView.cpp || \
+		{ echo "NEGATIVE CONTROL: the type-pair sabotage did not apply"; exit 1; }
+	$(CXX) $(CXXFLAGS) -Ibuild/doctags-typepair -DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo \
+		test/tables/doctags_main.cpp build/doctags-typepair/TablesTable.cpp build/doctags-typepair/TabledemoView.cpp -o build/schema_test_doctags_typepair
+	@if ./build/schema_test_doctags_typepair > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a ViewType and its descriptor disagreeing about doc did not take the gate down"; exit 1; \
+	fi
+	@echo "doc/tags negative control 5: the TYPE pair disagreeing takes the gate down"
+	@rm -rf build/doctags-armpair && mkdir -p build/doctags-armpair
+	./bin/schema generate --lang cpp --out build/doctags-armpair tables/arms
+	@sed -i.bak 's|&Carry_view_arm_fields\[0\], "|\&Carry_view_arm_fields[0], "drifted |' build/doctags-armpair/ArmdemoView.cpp
+	@grep -q '&Carry_view_arm_fields\[0\], "drifted ' build/doctags-armpair/ArmdemoView.cpp || \
+		{ echo "NEGATIVE CONTROL: the arm-pair sabotage did not apply"; exit 1; }
+	$(CXX) $(CXXFLAGS) -Ibuild/doctags-armpair -Itest/tables -DVIEW_HEADER='"ArmdemoView.h"' -DVIEW_NAMESPACE=armdemo \
+		test/tables/doctags_main.cpp build/doctags-armpair/CarryTable.cpp build/doctags-armpair/GateTable.cpp \
+		build/doctags-armpair/NestTable.cpp build/doctags-armpair/RingTable.cpp build/doctags-armpair/ArmdemoView.cpp \
+		-o build/schema_test_doctags_armpair
+	@if ./build/schema_test_doctags_armpair > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a general arm's ViewVariant row and its field descriptor disagreeing did not take the gate down"; exit 1; \
+	fi
+	@echo "doc/tags negative control 6: the general ARM pair disagreeing takes the gate down"
+
+# ---------------------------------------------------------------------------
+# THE UNIT REGISTRY (docs/SPEC-TABLES.md §8.3), and its corpus gate (§8.7).
+#
+# THE EDITOR GATE is a dogfood: a program that has the generated view file and
+# NOTHING ELSE — no schema files on disk, no compiler, no knowledge of a single
+# declaration's name — calls UnitView() and prints the whole build. THE CORPUS
+# GATE makes that mechanical: for every unit in the corpus the listing that
+# program prints is byte-identical to the listing the compiler produces from
+# its own IR, which is the PIN.
+#
+# The scope is the units the C++ backend emits a view for. The units that are
+# ONE schema file under test/tables are the same shapes the corpus dirs carry,
+# so the gate reads the corpus dirs and the pin's own list says so.
+# ---------------------------------------------------------------------------
+
+# each entry is <generated dir>:<package>
+VIEW_CORPUS := examples:tabledemo pointers:graphdemo block:blockdemo blockhome:blockhome \
+	messages:messagedemo stream:streamdemo blobs:blobdemo scalars:scalardemo \
+	maps:mapdemo lists:listdemo arms:armdemo backend:backenddemo vocab:vocabdemo vocab9:vocab9demo
+
+.PHONY: tables-view
+tables-view: build/tables-generated/.stamp test/tables/view_main.cpp
+	@rm -rf build/view && mkdir -p build/view
+	@set -e; for entry in $(VIEW_CORPUS); do \
+		dir=$${entry%%:*}; pkg=$${entry##*:}; \
+		cap=$$(printf '%s' "$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' "$$pkg" | cut -c2-); \
+		$(CXX) $(CXXFLAGS) -Ibuild/tables-generated/$$dir -Itest/tables \
+			-DVIEW_HEADER="\"$${cap}View.h\"" -DVIEW_NAMESPACE=$$pkg \
+			test/tables/view_main.cpp build/tables-generated/$$dir/$${cap}View.cpp -o build/view/prog-$$pkg; \
+		./build/view/prog-$$pkg > build/view/$$pkg.listing; \
+	done
+	SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
+	@echo "unit registry corpus gate: $(words $(VIEW_CORPUS)) units listed from UnitView() and byte-identical to the compiler's own"
+
+# THE NEGATIVE CONTROLS for the corpus gate (docs/SPEC-TABLES.md §8.7). A gate
+# that cannot go red proves nothing, so each claim is broken in a throwaway
+# copy and the comparison must FAIL.
+#
+#   1. A MULTI-LINE doc printed unflattened. The listing is a line-oriented
+#      byte comparison, so a printer that writes the newline verbatim splits
+#      the exhibit's doc across lines.
+#   2. One declaration dropped from an emitter's registry. Completeness is the
+#      count the pin carries.
+#   3. A general arm's offset moved. Every arm overlays the union's payload
+#      base, so a moved offset prints an overlay the pin does not have.
+.PHONY: tables-view-negative-controls
+tables-view-negative-controls: build/tables-generated/.stamp test/tables/view_main.cpp
+	@rm -rf build/view-negative && mkdir -p build/view-negative
+	$(CXX) $(CXXFLAGS) -Ibuild/tables-generated/examples -Itest/tables \
+		-DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo -DVIEW_UNFLATTENED \
+		test/tables/view_main.cpp build/tables-generated/examples/TabledemoView.cpp -o build/view-negative/prog-unflattened
+	./build/view-negative/prog-unflattened > build/view-negative/tabledemo.listing
+	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-negative SCHEMA_VIEW_LISTING_UNITS=tabledemo go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: an unflattened multi-line doc did not take the corpus gate down"; exit 1; \
+	fi
+	@echo "unit registry negative control 1: a multi-line doc printed unflattened takes the corpus gate down"
+	@rm -rf build/view-dropped && mkdir -p build/view-dropped
+	./bin/schema generate --lang cpp --out build/view-dropped/examples tables/examples
+	@sed -i.bak 's|3, constants };|2, constants };|' build/view-dropped/examples/TabledemoView.cpp
+	@grep -q '2, constants };' build/view-dropped/examples/TabledemoView.cpp || \
+		{ echo "NEGATIVE CONTROL: the dropped-declaration sabotage did not apply"; exit 1; }
+	$(CXX) $(CXXFLAGS) -Ibuild/view-dropped/examples -Itest/tables \
+		-DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo \
+		test/tables/view_main.cpp build/view-dropped/examples/TabledemoView.cpp -o build/view-dropped/prog
+	./build/view-dropped/prog > build/view-negative/tabledemo.listing
+	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-negative SCHEMA_VIEW_LISTING_UNITS=tabledemo go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a declaration dropped from the registry did not take the corpus gate down"; exit 1; \
+	fi
+	@echo "unit registry negative control 2: one declaration dropped from the registry takes the corpus gate down"
+	@rm -rf build/view-armoffset && mkdir -p build/view-armoffset
+	./bin/schema generate --lang cpp --out build/view-armoffset/arms tables/arms
+	@sed -i.bak 's|(uint32_t) offsetof( Carry, plain )|( (uint32_t) offsetof( Carry, plain ) ^ 4 )|' build/view-armoffset/arms/ArmdemoView.cpp
+	@grep -q 'offsetof( Carry, plain ) ^ 4' build/view-armoffset/arms/ArmdemoView.cpp || \
+		{ echo "NEGATIVE CONTROL: the arm-offset sabotage did not apply"; exit 1; }
+	$(CXX) $(CXXFLAGS) -Ibuild/view-armoffset/arms -Itest/tables \
+		-DVIEW_HEADER='"ArmdemoView.h"' -DVIEW_NAMESPACE=armdemo \
+		test/tables/view_main.cpp build/view-armoffset/arms/ArmdemoView.cpp -o build/view-armoffset/prog
+	./build/view-armoffset/prog > build/view-negative/armdemo.listing
+	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-negative SCHEMA_VIEW_LISTING_UNITS=armdemo go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a general arm's moved offset did not take the corpus gate down"; exit 1; \
+	fi
+	@echo "unit registry negative control 3: a general arm's moved offset takes the corpus gate down"
+
+# THE CONTAINMENT GATE (docs/SPEC-TABLES.md §8.4, §8.7), in §2.2's shape: not
+# one of the six registry symbols appears in any generated file but the view
+# pair. Nothing selects the view, so what a build pays is what it compiles, and
+# that answer only holds while the registry stays inside its own file. The gate
+# asks "did the registry leak out of its file?" and never "is there a
+# descriptor here?". The descriptor vocabulary is §8.1's and rides where it
+# always did, which is why the pattern is the six names and nothing else.
+#
+# UnitView covers UnitViewInfo, being its prefix.
+#
+# The grep runs over the CODE, with every // comment stripped first, on the
+# same terms as the block zero-cost gate above: a comment naming the registry
+# is prose, not a symbol.
+VIEW_REGISTRY_SYMBOLS := UnitView|ViewType|ViewVocabulary|ViewVariant|ViewConstant
+
+.PHONY: tables-view-containment
+tables-view-containment: build/tables-generated/.stamp
+	@$(MAKE) --no-print-directory view-containment-scan VIEW_SCAN_DIR=build/tables-generated
+	@echo "unit registry containment gate: no generated file but the view pair carries one of the six registry symbols"
+
+# the scan itself, over one directory, so the gate and its negative control run
+# the SAME grep rather than two greps that agree today
+.PHONY: view-containment-scan
+view-containment-scan:
+	@for f in $(VIEW_SCAN_DIR)/*/*; do \
+		case $$f in *View.h|*View.cpp) continue;; esac; \
+		if sed -E 's://.*$$::' $$f | grep -nE "$(VIEW_REGISTRY_SYMBOLS)"; then \
+			echo "VIEW CONTAINMENT GATE FAILED: a registry symbol leaked into $$f"; exit 1; \
+		fi; \
+	done
+
+.PHONY: tables-view-containment-negative-control
+tables-view-containment-negative-control: build/tables-generated/.stamp
+	@rm -rf build/view-containment-negative && mkdir -p build/view-containment-negative/examples
+	@cp build/tables-generated/examples/*.h build/tables-generated/examples/*.cpp build/view-containment-negative/examples/
+	@printf 'const schema_view_leak::ViewVariant * leaked();\n' >> build/view-containment-negative/examples/TablesTable.h
+	@grep -q 'ViewVariant \* leaked' build/view-containment-negative/examples/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL: the planted registry symbol did not apply"; exit 1; }
+	@if $(MAKE) --no-print-directory view-containment-scan VIEW_SCAN_DIR=build/view-containment-negative > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a registry symbol in a Table header did not take the containment gate down"; exit 1; \
+	fi
+	@echo "unit registry containment negative control: a registry symbol planted in a non-view file takes the gate down"
 
 # ---------------------------------------------------------------------------
 # The BLOCK FORM (docs/SPEC-TABLES.md §19). Nothing declares it: every fixed table
@@ -2535,6 +2732,10 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-json-negative-control
 	$(MAKE) tables-doctags
 	$(MAKE) tables-doctags-negative-controls
+	$(MAKE) tables-view
+	$(MAKE) tables-view-negative-controls
+	$(MAKE) tables-view-containment
+	$(MAKE) tables-view-containment-negative-control
 	$(MAKE) tables-ports-refuse-wide-scalars
 	$(MAKE) tables-scalars-block-asserts
 	# THE CONFORMANCE HARNESS (test/conformance/README.md): the same corpus as
