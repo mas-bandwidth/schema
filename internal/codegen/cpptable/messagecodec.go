@@ -6,7 +6,7 @@
 // rather than a canonical LEB128, there is no kind byte and no length at all,
 // a value rides at the width its declaration states, a fixed array spends no
 // count, and a `string(N)` aligns before its bytes. What the two share is
-// every rule that is not framing — the elision, the declared defaults, the
+// every rule that is not framing: the elision, the declared defaults, the
 // order and §4's counters.
 //
 // EVERY WIDTH HERE IS A LITERAL, because the entry the announcement publishes
@@ -16,8 +16,8 @@
 // THE TWO CLASSES TAKE TWO SHAPES, exactly as the file form's codecs do: a
 // FIXED table's codec takes the value alone, and a VARIABLE table's takes the
 // resolution context, the numbering its pointers resolve through, and the
-// width of a node index — `bits_required(0, node count)`, settled once per
-// body by the node table that opens it (§3.1, §3.3). A pointer rides as an
+// width of a node index, which is `bits_required(0, node count)` settled once
+// per body by the node table that opens it (§3.1, §3.3). A pointer rides as an
 // index at that width, a byte buffer as an index too, and a map as its
 // thirty-two bit count and its entries in ascending key order.
 package cpptable
@@ -165,8 +165,8 @@ func (g *tableGen) emitMessageMeasureBody(st *ir.Struct) {
 
 func (g *tableGen) emitMessageSaveBody(st *ir.Struct) {
 	g.pf("// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No\n")
-	g.pf("// kind byte rides at all, and no length frames a nested body — a body is\n")
-	g.pf("// self-delimiting, so it is written where the file form put an L.\n")
+	g.pf("// kind byte rides at all, and no length frames a nested body, because a\n")
+	g.pf("// body is self-delimiting: it is written where the file form put an L.\n")
 	if g.isVar(st.Name) {
 		g.pf("template <typename Ctx>\ninline bool %sSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const %s & value )\n{\n", st.Name, st.Name)
 		g.pf("    (void) ctx; (void) numbering; (void) index_bits;\n")
@@ -454,7 +454,8 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 }
 
 // emitMessageEnumRef writes an enum value: the reference naming its VARIANT's
-// name, and the ZERO REFERENCE for None — the one value that names no entry.
+// name, and the ZERO REFERENCE for None, which is the one value that names no
+// entry.
 func (g *tableGen) emitMessageEnumRef(f *ir.Field, expr, ind string, pass messagePass) {
 	if pass == messagePassMeasure {
 		g.pf("%sbits += %s;\n", ind, msgRefBits)
@@ -523,8 +524,8 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 	}
 }
 
-// emitMessagePayload writes ONE optional field's payload — the value alone,
-// because presence has already decided.
+// emitMessagePayload writes ONE optional field's payload, which is the value
+// alone, because presence has already decided.
 func (g *tableGen) emitMessagePayload(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string, pass messagePass) {
 	switch {
 	case f.Array != ir.ArrayNone:
@@ -658,8 +659,8 @@ func (g *tableGen) emitMessageKeyed(f *ir.Field, entry ir.TableVocabularyEntry, 
 	} else {
 		g.pf("            w.put( (uint64_t) pairs_%s, %d );\n", f.Name, width)
 	}
-	g.pf("            // ASCENDING BY VARIANT ORDINAL, which is slot order — this\n")
-	g.pf("            // writer's choice, and a reader must not rely on it: every slot\n")
+	g.pf("            // ASCENDING BY VARIANT ORDINAL, which is slot order. It is\n")
+	g.pf("            // this writer's choice and a reader must not rely on it: every\n")
 	g.pf("            // is found by its key (docs/SPEC-TABLES.md §3.2)\n")
 	g.pf("            for ( int32_t %s = 0; %s < %d; %s++ )\n            {\n", idx, idx, f.ArrayBound, idx)
 	g.emitMessageKeyedRides(f, kind, idx, "                ", pass)
@@ -756,8 +757,8 @@ func (g *tableGen) emitMessageArrayRides(f *ir.Field, ind string) {
 // ---- maps (docs/SPEC-TABLES.md §2.8, §3.3) ----
 
 // emitMessageMap writes one map field: the reference, the count at the width
-// the announced shape states — thirty-two raw bits, because a map's count is
-// a number the data decides — then the generated `{ key, value }` bodies in
+// the announced shape states, which is thirty-two raw bits because a map's
+// count is a number the data decides, then the generated `{ key, value }` bodies in
 // ASCENDING key order with no key twice, dead entries dropped. An EMPTY map
 // elides, on the by-value rule.
 func (g *tableGen) emitMessageMap(f *ir.Field, entry ir.TableVocabularyEntry, pass messagePass) {
@@ -794,7 +795,7 @@ func (g *tableGen) emitMessageMap(f *ir.Field, entry ir.TableVocabularyEntry, pa
 // (docs/SPEC-TABLES.md §2.8, §3.3): the reader does not assume where the key
 // sits, so before an entry's slot is chosen it walks that entry's body by the
 // announced shapes, reads the key where it meets it, and answers where the
-// body ENDS — which is what lets the body be decoded into the slot afterwards
+// body ENDS, which is what lets the body be decoded into the slot afterwards
 // on a wire that frames nothing with a length.
 func (g *tableGen) emitMessageMapKeyReader(me *ir.Struct) {
 	key := me.Fields[0]
@@ -876,7 +877,7 @@ func (g *tableGen) emitMessageMapKeyReader(me *ir.Struct) {
 
 // emitMessageExtent emits `<T>MessageExtent`: the region bytes one record's
 // maps command, read off the bit stream by the announced shapes at every
-// depth, PRE-ORDER as the load carves them — a map's whole entry array first,
+// depth, PRE-ORDER as the load carves them: a map's whole entry array first,
 // then, entry by entry, the arrays any map an entry's value holds by value.
 // It reads no field value, so a caller can refuse a number it did not expect
 // before one byte is allocated. It walks the body to its own zero reference,

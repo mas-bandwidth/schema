@@ -36,7 +36,7 @@ func EncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, er
 	if len(insts) == 0 {
 		// A BATCH OF ZERO IS NOT SPELLABLE, and a caller with nothing to send
 		// writes nothing at all.
-		return nil, fmt.Errorf("a batch of zero bodies is not spellable — a caller with nothing to send writes nothing (docs/SPEC-TABLES.md §3.3)")
+		return nil, fmt.Errorf("a batch of zero bodies is not spellable: a caller with nothing to send writes nothing (docs/SPEC-TABLES.md §3.3)")
 	}
 	if len(insts) > TableMessageBatchMax {
 		// `M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME (§3.3): nothing
@@ -65,7 +65,7 @@ func EncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, er
 			// an entry the walk reached that the unit's own vocabulary does
 			// not spell is a compiler defect, never a wire one: the vocabulary
 			// is the closure's whole entry set by construction (§3.3)
-			return nil, fmt.Errorf("the unit's vocabulary names no slot for %s — the message form's vocabulary is the closure's whole entry set (docs/SPEC-TABLES.md §3.3)", e.missing)
+			return nil, fmt.Errorf("the unit's vocabulary names no slot for %s, and the message form's vocabulary is the closure's whole entry set (docs/SPEC-TABLES.md §3.3)", e.missing)
 		}
 	}
 	w.align() // THE FINAL FLUSH ZERO-FILLS to the next byte boundary
@@ -100,7 +100,7 @@ func (e *bitEncoder) ref(w *bitWriter, entry ir.TableVocabularyEntry) {
 	w.put(slot, e.refBits)
 }
 
-// name writes a reference to an entry that names no field shape — a variant
+// name writes a reference to an entry that names no field shape: a variant
 // name, an arm's own name where the arm is what is being named, a table's name
 // id (§3.3's kind 0 rows).
 func (e *bitEncoder) name(w *bitWriter, id uint64) {
@@ -232,10 +232,10 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 	case kind == ir.TableKindUnion:
 		un := tabletext.UnionOf(f)
 		if fv.Cell.U == 0 {
-			return nil // None elides — the absence of the field is the None
+			return nil // None elides, and the absence of the field is the None
 		}
 		if int(fv.Cell.U) > len(un.Variants) {
-			return fmt.Errorf("union %s: tag %d names no arm — save refuses it (docs/SPEC-TABLES.md §5)", un.Name, fv.Cell.U)
+			return fmt.Errorf("union %s: tag %d names no arm, and save refuses it (docs/SPEC-TABLES.md §5)", un.Name, fv.Cell.U)
 		}
 		e.ref(w, entry)
 		return encodeBitArm(e, w, un.Variants[fv.Cell.U-1], &fv.Cell)
@@ -271,7 +271,7 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 }
 
 // encodeBitEnum writes an enum value: the reference naming its VARIANT's name,
-// and the ZERO REFERENCE for None — the one value that names no entry (§3).
+// and the ZERO REFERENCE for None, the one value that names no entry (§3).
 func encodeBitEnum(e *bitEncoder, w *bitWriter, f *ir.Field, cell *tabletext.Cell) error {
 	en := tabletext.EnumOf(f)
 	vid, none, err := variantWireId(en, cell.U, f.Name)
@@ -329,7 +329,7 @@ func encodeBitElement(e *bitEncoder, w *bitWriter, f *ir.Field, shape ir.TableMe
 			return nil
 		}
 		if int(cell.U) > len(un.Variants) {
-			return fmt.Errorf("union %s: tag %d names no arm — save refuses it (docs/SPEC-TABLES.md §5)", un.Name, cell.U)
+			return fmt.Errorf("union %s: tag %d names no arm, and save refuses it (docs/SPEC-TABLES.md §5)", un.Name, cell.U)
 		}
 		return encodeBitArm(e, w, un.Variants[cell.U-1], cell)
 	}
@@ -455,7 +455,7 @@ func encodeBitArm(e *bitEncoder, w *bitWriter, arm ir.UnionVariant, cell *tablet
 			return nil
 		}
 		if int(fv.Cell.U) > len(inner.Variants) {
-			return fmt.Errorf("union %s: tag %d names no arm — save refuses it (docs/SPEC-TABLES.md §5)", inner.Name, fv.Cell.U)
+			return fmt.Errorf("union %s: tag %d names no arm, and save refuses it (docs/SPEC-TABLES.md §5)", inner.Name, fv.Cell.U)
 		}
 		return encodeBitArm(e, w, inner.Variants[fv.Cell.U-1], &fv.Cell)
 	case tabletext.EnumOf(f) != nil:

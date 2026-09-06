@@ -605,6 +605,12 @@ static const int64_t kTableMessageBatchMax = 256;
 static const uint64_t kTableBuildVersionFieldId = 0xFFFFFFFFFFFFFFFEull;
 static const uint64_t kTableMessageVocabularyFieldId = 0xFFFFFFFFFFFFFFFDull;
 
+// THE WIDEST COUNT THIS FORM SPELLS, which is the count an UNBOUNDED array
+// announces (§2.9): an unbounded array states no bound, so the announcement
+// states the widest one a batch could carry. It is the ceiling an array's or a
+// keyed entry's announced min and max are checked against.
+static const uint64_t kTableMessageListMax = 0xFFFFFFFFull;
+
 // THIS UNIT'S OWN REFERENCE WIDTH: the bits a writer spends on every reference
 // of every body it writes, which is a compile-time constant because the
 // vocabulary is. A READER spends the width the SENDER's vocabulary settles.
@@ -674,8 +680,8 @@ struct TableBitWriter
     // occupies are stored from that register with no read back. A sixty-four
     // bit field costs one shift rather than nine masked read-modify-writes.
     // The word is assembled little-end-first, so the BITS ON THE WIRE are the
-    // same bits in the same places — bit i in byte i/8 at position i%8, low
-    // bit first — which is what the pinned goldens hold. IT WRITES EXACTLY
+    // same bits in the same places, bit i in byte i/8 at position i%8 with the
+    // low bit first, which is what the pinned goldens hold. IT WRITES EXACTLY
     // THE BYTES THE VALUE OCCUPIES and never one past them, so a caller's
     // buffer beyond the batch is its own.
     void put( uint64_t value, int64_t n )
@@ -822,9 +828,9 @@ inline int64_t TableBitsRequired( int64_t min, int64_t max )
     return n;
 }
 
-// THE ANNOUNCED ENTRY (§3.3): an id, a kind, and a SHAPE — the width and range
-// facts a reader needs to SKIP a field exactly and to DECODE one whose own
-// declaration has moved. One name may take TWO entries, at two kinds or two
+// THE ANNOUNCED ENTRY (§3.3): an id, a kind, and a SHAPE, which is the width
+// and range facts a reader needs to SKIP a field exactly and to DECODE one
+// whose own declaration has moved. One name may take TWO entries, at two kinds or two
 // shapes, and a body names the one it means.
 //
 // The ELEMENT's own facts ride beside the field's because an array's element
@@ -864,6 +870,20 @@ struct TableMessageEntry
     uint8_t elem_kind = 0;
     uint8_t elem_packing = 0;
 };
+
+// TableMessageEntrySame reports whether two RESOLVED entries carry the same
+// shape, which is every fact of the entry but its id and its kind. It is what
+// the announcement's duplicate rule is asked in: two entries that agree on all
+// three parts are malformed (§3.3).
+inline bool TableMessageEntrySame( const TableMessageEntry & a, const TableMessageEntry & b )
+{
+    return a.min == b.min && a.max == b.max && a.base_lo == b.base_lo && a.base_hi == b.base_hi
+        && a.elem_max == b.elem_max && a.elem_base_lo == b.elem_base_lo && a.elem_base_hi == b.elem_base_hi
+        && a.qmin == b.qmin && a.qdelta == b.qdelta && a.qcount == b.qcount
+        && a.elem_qmin == b.elem_qmin && a.elem_qdelta == b.elem_qdelta && a.elem_qcount == b.elem_qcount
+        && a.value_bits == b.value_bits && a.elem_value_bits == b.elem_value_bits
+        && a.packing == b.packing && a.elem_kind == b.elem_kind && a.elem_packing == b.elem_packing;
+}
 
 // TableMessageKindBits is the widest RANGED value a kind can carry, its own
 // storage width: a width above it is a hostile width on the announcement.
@@ -1071,9 +1091,16 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         }
         return false; // a packing outside the closed set
     }
+    // A MAX ABOVE WHAT THE KIND CAN HOLD IS A HOSTILE WIDTH (§3.3). A string
+    // and a wide string are bounded by the int32 storage cap the checker
+    // applies to every N (SPEC §4.3, §6.1), and an array and a keyed entry by
+    // the 32-bit count an unbounded array announces (§2.9), which is the
+    // widest count this form spells. A larger bound is a shape no conforming
+    // declaration can produce, and a reader that carried it would do its
+    // length arithmetic in a range that overflows.
     if ( kind == 12 || kind == 33 )
     {
-        if ( !TableMessageLeb( in, size, at, v ) ) { return false; }
+        if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) INT32_MAX ) { return false; }
         f.max = (int64_t) v;
         return true;
     }
@@ -1081,14 +1108,21 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
     {
         if ( kind == 14 )
         {
-            if ( !TableMessageLeb( in, size, at, v ) ) { return false; }
+            if ( !TableMessageLeb( in, size, at, v ) || v > kTableMessageListMax ) { return false; }
             f.min = (int64_t) v;
         }
-        if ( !TableMessageLeb( in, size, at, v ) || (int64_t) v < f.min ) { return false; }
+        if ( !TableMessageLeb( in, size, at, v ) || v > kTableMessageListMax ) { return false; }
+        if ( (int64_t) v < f.min ) { return false; }
         f.max = (int64_t) v;
         if ( at >= size ) { return false; }
         f.elem_kind = in[ at++ ];
         if ( !TableMessageKnownKind( f.elem_kind ) ) { return false; }
+        // AND AN ELEMENT KIND OF 12 OR 33 IS REFUSED HERE, at the
+        // announcement, rather than at the skip that would meet it (§3.3): no
+        // declaration this language accepts is an array of string(N) or of
+        // wstring(N), so a shape announcing one is one rule's business and not
+        // two.
+        if ( f.elem_kind == 12 || f.elem_kind == 33 ) { return false; }
         return true;
     }
     return true;
@@ -1117,18 +1151,18 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 }
 
 // THE UNIT'S ANNOUNCEMENT, byte for byte: 51 entries and 536 bytes. It is an
-// ordinary form 1 FILE — the form byte, a body carrying the BUILD VERSION
-// under the reserved id at kind 9 and the VOCABULARY under the reserved id at
-// kind 14 over element kind 6, and a trailer of those two reserved ids.
+// ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
+// the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
+// over element kind 6, and a trailer of those two reserved ids.
 //
 // THE VOCABULARY IS A FIELD AND NOT THE TRAILER, and that buys three things:
 // §3's writer rule that an id no body references is never written is restored
 // unbroken, an entry can carry a KIND and a SHAPE which a trailer of bare ids
 // cannot, and one NAME can appear at two shapes.
 //
-// The order is the COOK PROJECTION's (§20.2) — each record in the order the
+// The order is the COOK PROJECTION's (§20.2): each record in the order the
 // projection renders it and each record's fields in the order the projection
-// renders them, then each enum's variants and each union's arms — followed by
+// renders them, then each enum's variants and each union's arms. Then comes
 // the tail the projection does not name: the reserved node-table id, the three
 // blob type ids as bytes, string and wstring, and every table's own name id in
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
@@ -1193,8 +1227,8 @@ static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
 // AnnounceRead returns.
 //
 // THE STORAGE IS THE CALLER'S and this library never allocates. The caller
-// declares an array of entries wherever it wants it — static, on a heap, in
-// an arena, beside its connection — and hands it here with its CAPACITY. The
+// declares an array of entries wherever it wants it, static, on a heap, in an
+// arena or beside its connection, and hands it here with its CAPACITY. The
 // announcement holds for the life of the connection (§3.3), so the array does
 // too, and a peer holds TWO for a connection, the one it writes with and the
 // one it reads with. A restart opens a fresh connection with an empty
@@ -1301,8 +1335,12 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         const uint8_t kind = r.get8();
         if ( id == kTableBuildVersionFieldId )
         {
-            if ( kind != 9 || !r.has( 8 ) ) { to->refused = true; to->reason = no_vocabulary; return false; }
+            if ( kind != 9 || !r.has( 8 ) ) { to->malformed = true; return false; }
             version = r.get64();
+            // THE BUILD VERSION IS KEPT THE MOMENT IT IS READ, refusal or not, so
+            // that a refusal on this connection NAMES IT (§3.3). It is not the
+            // vocabulary, and a refused announcement still sets none.
+            vocabulary.build_version = version;
             seen_version++;
             continue;
         }
@@ -1311,13 +1349,13 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
             // kind 14 over element kind 6, which is §3's spelling for an
             // opaque run of bytes
             uint64_t framed = 0;
-            if ( kind != 14 || !r.getleb( framed ) || !r.has( (int64_t) framed ) ) { to->refused = true; to->reason = no_vocabulary; return false; }
+            if ( kind != 14 || !r.getleb( framed ) || !r.has( (int64_t) framed ) ) { to->malformed = true; return false; }
             const int64_t begin = r.offset, end = r.offset + (int64_t) framed;
             r.offset = end;
-            if ( begin >= end || r.buffer[ begin ] != 6 ) { to->refused = true; to->reason = no_vocabulary; return false; }
+            if ( begin >= end || r.buffer[ begin ] != 6 ) { to->malformed = true; return false; }
             int64_t at = begin + 1;
             uint64_t length = 0;
-            if ( !TableMessageLeb( r.buffer, end, at, length ) || at + (int64_t) length != end ) { to->refused = true; to->reason = no_vocabulary; return false; }
+            if ( !TableMessageLeb( r.buffer, end, at, length ) || at + (int64_t) length != end ) { to->malformed = true; return false; }
             if ( (int64_t) length > vocabulary.max_bytes ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
             words = r.buffer + at;
             words_bytes = (int64_t) length;
@@ -1327,7 +1365,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         to->unknown++;
         if ( !r.skip( kind ) ) { to->malformed = true; return false; }
     }
-    if ( seen_version != 1 || seen_vocabulary != 1 ) { to->refused = true; to->reason = no_vocabulary; return false; }
+    if ( seen_version != 1 || seen_vocabulary != 1 ) { to->malformed = true; return false; }
 
     // THE ENTRIES, RESOLVED ONCE into the caller's storage (§3.3): every width
     // is checked here and never again, and no body after this parses a byte of
@@ -1345,6 +1383,18 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         // id is malformed whole and sets nothing
         if ( parsed.id == kTableBuildVersionFieldId || parsed.id == kTableMessageVocabularyFieldId ) { to->malformed = true; return false; }
         if ( parsed.id == kTableNodeTableFieldId ) { if ( node_table_slots++ > 0 ) { to->malformed = true; return false; } }
+        // A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE, so two entries that
+        // agree on the id, the kind and every fact of the shape are malformed
+        // (§3.3): no writer this wire has produces one, and a reader that took
+        // it would carry two slots naming one thing. The scan is quadratic in
+        // the entry count, and the entry count is bounded above at 4096, so it
+        // is at most eight million compares on a path that runs ONCE a
+        // connection and never again.
+        for ( int64_t seen = 0; seen < count; seen++ )
+        {
+            const TableMessageEntry & other = vocabulary.entries[ seen ];
+            if ( other.id == parsed.id && other.kind == parsed.kind && TableMessageEntrySame( other, parsed ) ) { to->malformed = true; return false; }
+        }
         count++;
     }
     vocabulary.count = count;
@@ -1366,9 +1416,9 @@ inline bool TableMessageReserved( uint64_t id )
     return id >= kTableMessageVocabularyFieldId;
 }
 
-// TableMessageNameEntry resolves a reference used as a VALUE — an enum's
-// variant, a keyed array's slot key, a node record's type id — which must
-// name a kind-0 entry (§3.3). A reference of 0 where an entry is required, one
+// TableMessageNameEntry resolves a reference used as a VALUE, which is an
+// enum's variant, a keyed array's slot key or a node record's type id, and
+// which must name a kind-0 entry (§3.3). A reference of 0 where an entry is required, one
 // above E, one naming a reserved id and one naming an entry that carries a
 // payload are each damage: the reader RESOLVED the entry and it contradicts
 // the position it was used in, so the next bit's meaning is what is in doubt.
@@ -1388,6 +1438,21 @@ inline bool TableMessageArmEntry( const TableVocabulary & vocabulary, uint64_t r
     entry = TableVocabularyEntryAt( vocabulary, ref );
     return !TableMessageReserved( entry.id ) && entry.kind != 0;
 }
+
+// TableMessageSkipVariant steps over an ENUM's variant reference on a SKIP
+// path and RESOLVES it while it is there: 0 is None and the whole payload, and
+// every other reference must name a kind-0 entry, because every reference
+// above E is damage and one naming an entry that carries a payload
+// contradicts the position it was used in, whether or not this reader was
+// going to keep the value (§3.3).
+inline bool TableMessageSkipVariant( TableBitReader & r, const TableVocabulary & vocabulary )
+{
+    uint64_t ref = 0;
+    if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
+    if ( ref == 0 ) { return true; }
+    TableMessageEntry named;
+    return TableMessageNameEntry( vocabulary, ref, named );
+}
 // TableMessageSkip steps over one field's payload without decoding it, using
 // the announced ENTRY alone (§3.3). It is what makes an unknown entry
 // skippable on a body with no kind byte, and it is ONE function over every
@@ -1404,7 +1469,7 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
     switch ( entry.elem_kind )
     {
         case 13: return TableMessageSkipBody( r, vocabulary, index_bits );
-        case 30: return r.skip( vocabulary.ref_bits );
+        case 30: return TableMessageSkipVariant( r, vocabulary );
         case 17: return index_bits > 0 && r.skip( index_bits );
         case 15:
         {
@@ -1420,12 +1485,45 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
     }
 }
 
+// TableMessageElementRunBits is the bits ONE element of an array or a keyed
+// entry occupies on the SKIP path, where nothing is resolved and a run of them
+// is one multiplication, and -1 where the element's width is its own
+// content's. A ZERO is a real answer, and it is why this exists: a ranged
+// element whose min equals its max rides no bits at all (§3.3).
+inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, const TableMessageEntry & entry )
+{
+    int64_t elem = 0;
+    switch ( entry.elem_kind )
+    {
+        // a nested body, a union arm, an enum's variant and a node index each
+        // RESOLVE something, and a resolve that contradicts its position is
+        // damage this reader must still find, so they are walked
+        case 13: case 15: case 30: case 17: return -1;
+        default: elem = entry.elem_value_bits; break;
+    }
+    if ( elem < 0 ) { return -1; }
+    if ( entry.kind == 16 ) { elem += vocabulary.ref_bits; } // a keyed slot's own key reference
+    return elem;
+}
+
+// TableMessageSkipRun steps over n elements of one fixed width in a single
+// arithmetic step. A FIXED-WIDTH ELEMENT IS ARITHMETIC (§3.3), and a loop here
+// would be the one superlinear thing in this form: a zero-width element under
+// a count of 2^31 is six bytes of wire.
+inline bool TableMessageSkipRun( TableBitReader & r, uint64_t n, int64_t width )
+{
+    if ( width < 0 ) { return false; }
+    if ( width == 0 ) { return true; }
+    if ( n > (uint64_t) ( INT64_MAX / width ) ) { return false; }
+    return r.skip( (int64_t) ( n * (uint64_t) width ) );
+}
+
 inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry )
 {
     switch ( entry.kind )
     {
         case 0: case 32: return true;              // a name, and a payload-free arm
-        case 30: return r.skip( vocabulary.ref_bits );
+        case 30: return TableMessageSkipVariant( r, vocabulary );
         case 13: return TableMessageSkipBody( r, vocabulary, index_bits );
         case 17: return index_bits > 0 && r.skip( index_bits ); // a node index, at the width the body's node count settled
         case 15:
@@ -1452,8 +1550,8 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
         }
         case 31:
         {
-            // THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque — the one
-            // path a later-major writer has on this form (§3.3)
+            // THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
+            // the one path a later-major writer has on this form (§3.3)
             uint64_t n = 0;
             if ( !r.align() || !r.get( n, 32 ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
@@ -1470,6 +1568,10 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
                 n = entry.kind == 16 ? raw : raw + (uint64_t) entry.min;
             }
             if ( entry.kind == 14 && entry.elem_kind == 6 && !r.align() ) { return false; }
+            // A RUN OF FIXED-WIDTH ELEMENTS IS ONE MULTIPLICATION (§3.3), and
+            // only an element whose width is its own content's is walked
+            const int64_t run = TableMessageElementRunBits( vocabulary, entry );
+            if ( run >= 0 ) { return TableMessageSkipRun( r, n, run ); }
             for ( uint64_t i = 0; i < n; i++ )
             {
                 if ( entry.kind == 16 && !r.skip( vocabulary.ref_bits ) ) { return false; }
@@ -1518,8 +1620,8 @@ inline bool TableMessageNodeTableOpen( TableBitReader & r, const TableVocabulary
 inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
 
 // Announce writes the announcement into the caller's buffer and answers the
-// bytes written — exactly AnnounceMeasure's answer — or -1 when the buffer is
-// too small. It allocates nothing and walks nothing.
+// bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
+// buffer is too small. It allocates nothing and walks nothing.
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
@@ -1552,8 +1654,8 @@ inline bool TableMessageBatchBegin( TableMessageBatch & batch, uint8_t * buffer,
     return true;
 }
 
-// TableMessageBatchEnd zero-fills to the next byte — the one alignment a batch
-// spends at its end — and answers the whole batch's byte count, or -1.
+// TableMessageBatchEnd zero-fills to the next byte, the one alignment a batch
+// spends at its end, and answers the whole batch's byte count, or -1.
 inline int64_t TableMessageBatchEnd( TableMessageBatch & batch )
 {
     if ( batch.written != batch.declared || batch.w.overflow ) { return -1; }
@@ -1579,6 +1681,11 @@ struct TableMessageBatchReader
     const TableVocabulary * vocabulary = NULL;
     TableReport * report = NULL;
     int64_t remaining = 0;
+    // THE SINK A CALLER THAT PASSED NO REPORT WRITES INTO IS THE READER'S OWN,
+    // not a static: a static is shared mutable state, and two threads reading
+    // two batches without reports would be writing one object. LoadMessages
+    // already keeps its sink locally, for the same reason.
+    TableReport ignored;
 };
 
 // TableMessageBatchOpen answers the batch's body count, or -1 with the refusal
@@ -1586,8 +1693,7 @@ struct TableMessageBatchReader
 // that never announced.
 inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    static TableReport ignored;
-    br.report = report != NULL ? report : &ignored;
+    br.report = report != NULL ? report : &br.ignored;
     br.vocabulary = &vocabulary;
     if ( bytes < 1 ) { br.report->malformed = true; return -1; }
     if ( buffer[0] != kTableWireMessageForm ) { br.report->refused = true; br.report->reason = newer_form; return -1; }
@@ -2771,8 +2877,9 @@ namespace graphdemo {
 //
 // THE NODE TABLE, WHEN A BODY HAS ONE, IS THE FIRST FIELD OF THE ROOT BODY: the
 // reserved id as a reference, the node count at THIRTY-TWO RAW BITS, then the
-// records back to back, each a type id reference and a body — a table's fields
-// ending at its own zero reference, a blob's length, align and bytes. A root
+// records back to back, each a type id reference and a body: a table's fields
+// end at their own zero reference, and a blob's body is a length, an align and
+// its bytes. A root
 // that reaches no node elides the field, like every other empty thing.
 //
 // Measure derives the numbering from the graph and save derives the same one,
@@ -3737,8 +3844,8 @@ inline int64_t MetaMeasureMessageBody( int64_t at, const Meta & value )
 }
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
-// kind byte rides at all, and no length frames a nested body — a body is
-// self-delimiting, so it is written where the file form put an L.
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
 inline bool MetaSaveMessageBody( TableBitWriter & w, const Meta & value )
 {
     if ( value.build != 1 )
@@ -3822,8 +3929,8 @@ inline bool MetaLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = (int32_t) n;
-                    if ( kept > 8 ) { kept = 8; report->clamped++; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 8 ) { kept = 8; report->clamped++; } else { kept = (int32_t) n; }
                     for ( uint64_t i = 0; i < n; i++ )
                     {
                         uint64_t by = 0;
@@ -4110,8 +4217,8 @@ inline int64_t SettingsMeasureMessageBody( int64_t at, const Settings & value )
 }
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
-// kind byte rides at all, and no length frames a nested body — a body is
-// self-delimiting, so it is written where the file form put an L.
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
 inline bool SettingsSaveMessageBody( TableBitWriter & w, const Settings & value )
 {
     if ( value.quality != 2 )
@@ -4195,8 +4302,8 @@ inline bool SettingsLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = (int32_t) n;
-                    if ( kept > 16 ) { kept = 16; report->clamped++; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 16 ) { kept = 16; report->clamped++; } else { kept = (int32_t) n; }
                     for ( uint64_t i = 0; i < n; i++ )
                     {
                         uint64_t by = 0;
@@ -4481,8 +4588,8 @@ inline int64_t ListNodeMeasureMessageBody( const Ctx & ctx, const TableNumbering
 }
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
-// kind byte rides at all, and no length frames a nested body — a body is
-// self-delimiting, so it is written where the file form put an L.
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
 template <typename Ctx>
 inline bool ListNodeSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const ListNode & value )
 {
@@ -4579,8 +4686,8 @@ inline bool ListNodeLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = (int32_t) n;
-                    if ( kept > 12 ) { kept = 12; report->clamped++; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 12 ) { kept = 12; report->clamped++; } else { kept = (int32_t) n; }
                     for ( uint64_t i = 0; i < n; i++ )
                     {
                         uint64_t by = 0;
@@ -4838,8 +4945,8 @@ inline int64_t TreeNodeMeasureMessageBody( const Ctx & ctx, const TableNumbering
 }
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
-// kind byte rides at all, and no length frames a nested body — a body is
-// self-delimiting, so it is written where the file form put an L.
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
 template <typename Ctx>
 inline bool TreeNodeSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const TreeNode & value )
 {
@@ -4912,8 +5019,8 @@ inline bool TreeNodeLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = (int32_t) n;
-                    if ( kept > 12 ) { kept = 12; report->clamped++; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 12 ) { kept = 12; report->clamped++; } else { kept = (int32_t) n; }
                     for ( uint64_t i = 0; i < n; i++ )
                     {
                         uint64_t by = 0;
@@ -5126,8 +5233,8 @@ inline int64_t LayerMeasureMessageBody( const Ctx & ctx, const TableNumbering & 
 }
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
-// kind byte rides at all, and no length frames a nested body — a body is
-// self-delimiting, so it is written where the file form put an L.
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
 template <typename Ctx>
 inline bool LayerSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Layer & value )
 {
@@ -5793,8 +5900,8 @@ inline int64_t SceneMeasureMessageBody( const Ctx & ctx, const TableNumbering & 
 }
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
-// kind byte rides at all, and no length frames a nested body — a body is
-// self-delimiting, so it is written where the file form put an L.
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
 template <typename Ctx>
 inline bool SceneSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Scene & value )
 {
@@ -5920,8 +6027,8 @@ inline bool SceneLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = (int32_t) n;
-                    if ( kept > 24 ) { kept = 24; report->clamped++; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 24 ) { kept = 24; report->clamped++; } else { kept = (int32_t) n; }
                     for ( uint64_t i = 0; i < n; i++ )
                     {
                         uint64_t by = 0;
@@ -6069,9 +6176,10 @@ inline bool SceneLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
-                    int32_t kept = (int32_t) n;
-                    if ( kept > 4 ) { kept = 4; report->clamped++; }
-                    for ( uint64_t i = 0; i < n; i++ )
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 4 ) { kept = 4; report->clamped++; } else { kept = (int32_t) n; }
+                    const uint64_t walk = n;
+                    for ( uint64_t i = 0; i < walk; i++ )
                     {
                         const bool in_bounds = (int32_t) i < kept;
                         Layer scratch;
@@ -6422,8 +6530,8 @@ inline int64_t DepotMeasureMessageBody( const Ctx & ctx, const TableNumbering & 
         {
             bits += kTableMessageRefBitsHere;
             bits += 2;
-            // ASCENDING BY VARIANT ORDINAL, which is slot order — this
-            // writer's choice, and a reader must not rely on it: every slot
+            // ASCENDING BY VARIANT ORDINAL, which is slot order. It is
+            // this writer's choice and a reader must not rely on it: every
             // is found by its key (docs/SPEC-TABLES.md §3.2)
             for ( int32_t i = 0; i < 2; i++ )
             {
@@ -6461,8 +6569,8 @@ inline int64_t DepotMeasureMessageBody( const Ctx & ctx, const TableNumbering & 
 }
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
-// kind byte rides at all, and no length frames a nested body — a body is
-// self-delimiting, so it is written where the file form put an L.
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
 template <typename Ctx>
 inline bool DepotSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Depot & value )
 {
@@ -6489,8 +6597,8 @@ inline bool DepotSaveMessageBody( const Ctx & ctx, const TableNumbering & number
         {
             w.put( 11, kTableMessageRefBitsHere );
             w.put( (uint64_t) pairs_banks, 2 );
-            // ASCENDING BY VARIANT ORDINAL, which is slot order — this
-            // writer's choice, and a reader must not rely on it: every slot
+            // ASCENDING BY VARIANT ORDINAL, which is slot order. It is
+            // this writer's choice and a reader must not rely on it: every
             // is found by its key (docs/SPEC-TABLES.md §3.2)
             for ( int32_t i = 0; i < 2; i++ )
             {
@@ -6560,8 +6668,8 @@ inline bool DepotLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = (int32_t) n;
-                    if ( kept > 12 ) { kept = 12; report->clamped++; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 12 ) { kept = 12; report->clamped++; } else { kept = (int32_t) n; }
                     for ( uint64_t i = 0; i < n; i++ )
                     {
                         uint64_t by = 0;
@@ -7025,8 +7133,8 @@ inline int64_t AlbumMeasureMessageBody( const Ctx & ctx, const TableNumbering & 
 }
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
-// kind byte rides at all, and no length frames a nested body — a body is
-// self-delimiting, so it is written where the file form put an L.
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
 template <typename Ctx>
 inline bool AlbumSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Album & value )
 {
@@ -7126,8 +7234,8 @@ inline bool AlbumLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = (int32_t) n;
-                    if ( kept > 16 ) { kept = 16; report->clamped++; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 16 ) { kept = 16; report->clamped++; } else { kept = (int32_t) n; }
                     for ( uint64_t i = 0; i < n; i++ )
                     {
                         uint64_t by = 0;
@@ -8568,7 +8676,7 @@ inline bool ListNodeNodeMessageExtent( uint64_t type_id, TableBitReader & r, con
     return TableMessageSkipBody( r, vocabulary, index_bits );
 }
 
-// ListNodeNodeMessageBody: PASS TWO's half — decode one record's body into the
+// ListNodeNodeMessageBody: PASS TWO's half, which decodes one record's body into
 // storage it already owns, its map entries carved from its own extent.
 inline bool ListNodeNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )
 {
@@ -8669,8 +8777,8 @@ inline int64_t ListNodeSave( const ListNodeBuilder & builder, uint8_t * buffer, 
 
 // ---- ListNode on the MESSAGE wire: the batch over a region (docs/SPEC-TABLES.md §3.3) ----
 
-// ListNodeMessageBodyBits: one root body's bits at bit position `at` of the batch —
-// the numbering derived from the graph, the node table FIRST, then the
+// ListNodeMessageBodyBits: one root body's bits at bit position `at` of the batch,
+// with the numbering derived from the graph, the node table FIRST, then the
 // fields, then the zero reference. Measure derives the numbering and save
 // derives the same one, and nothing passes between them (§3.1).
 template <typename Ctx>
@@ -8770,8 +8878,8 @@ inline bool ListNodeMessageRecordScan( TableBitReader & r, const TableVocabulary
 
 // ListNodeMessageBodyStorage: one body's node count and data bytes from the FRAMING
 // alone, the reader left at the next body. The node table is walked record
-// by record — a table record's body stepped over by its announced shapes, a
-// blob's by its length — and the root's own fields after it. False is a numbering
+// by record, a table record's body stepped over by its announced shapes and
+// a blob's by its length, then the root's own fields. False is a numbering
 // that could not be sized; `complete` false is a ROOT body whose own framing
 // gave out, which the load meets as damage inside this body after the
 // bodies before it were delivered, so the batch is sized through this body
@@ -9387,7 +9495,7 @@ inline bool TreeNodeNodeMessageExtent( uint64_t type_id, TableBitReader & r, con
     return TableMessageSkipBody( r, vocabulary, index_bits );
 }
 
-// TreeNodeNodeMessageBody: PASS TWO's half — decode one record's body into the
+// TreeNodeNodeMessageBody: PASS TWO's half, which decodes one record's body into
 // storage it already owns, its map entries carved from its own extent.
 inline bool TreeNodeNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )
 {
@@ -9488,8 +9596,8 @@ inline int64_t TreeNodeSave( const TreeNodeBuilder & builder, uint8_t * buffer, 
 
 // ---- TreeNode on the MESSAGE wire: the batch over a region (docs/SPEC-TABLES.md §3.3) ----
 
-// TreeNodeMessageBodyBits: one root body's bits at bit position `at` of the batch —
-// the numbering derived from the graph, the node table FIRST, then the
+// TreeNodeMessageBodyBits: one root body's bits at bit position `at` of the batch,
+// with the numbering derived from the graph, the node table FIRST, then the
 // fields, then the zero reference. Measure derives the numbering and save
 // derives the same one, and nothing passes between them (§3.1).
 template <typename Ctx>
@@ -9589,8 +9697,8 @@ inline bool TreeNodeMessageRecordScan( TableBitReader & r, const TableVocabulary
 
 // TreeNodeMessageBodyStorage: one body's node count and data bytes from the FRAMING
 // alone, the reader left at the next body. The node table is walked record
-// by record — a table record's body stepped over by its announced shapes, a
-// blob's by its length — and the root's own fields after it. False is a numbering
+// by record, a table record's body stepped over by its announced shapes and
+// a blob's by its length, then the root's own fields. False is a numbering
 // that could not be sized; `complete` false is a ROOT body whose own framing
 // gave out, which the load meets as damage inside this body after the
 // bodies before it were delivered, so the batch is sized through this body
@@ -10206,7 +10314,7 @@ inline bool LayerNodeMessageExtent( uint64_t type_id, TableBitReader & r, const 
     return TableMessageSkipBody( r, vocabulary, index_bits );
 }
 
-// LayerNodeMessageBody: PASS TWO's half — decode one record's body into the
+// LayerNodeMessageBody: PASS TWO's half, which decodes one record's body into
 // storage it already owns, its map entries carved from its own extent.
 inline bool LayerNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )
 {
@@ -10307,8 +10415,8 @@ inline int64_t LayerSave( const LayerBuilder & builder, uint8_t * buffer, int64_
 
 // ---- Layer on the MESSAGE wire: the batch over a region (docs/SPEC-TABLES.md §3.3) ----
 
-// LayerMessageBodyBits: one root body's bits at bit position `at` of the batch —
-// the numbering derived from the graph, the node table FIRST, then the
+// LayerMessageBodyBits: one root body's bits at bit position `at` of the batch,
+// with the numbering derived from the graph, the node table FIRST, then the
 // fields, then the zero reference. Measure derives the numbering and save
 // derives the same one, and nothing passes between them (§3.1).
 template <typename Ctx>
@@ -10408,8 +10516,8 @@ inline bool LayerMessageRecordScan( TableBitReader & r, const TableVocabulary & 
 
 // LayerMessageBodyStorage: one body's node count and data bytes from the FRAMING
 // alone, the reader left at the next body. The node table is walked record
-// by record — a table record's body stepped over by its announced shapes, a
-// blob's by its length — and the root's own fields after it. False is a numbering
+// by record, a table record's body stepped over by its announced shapes and
+// a blob's by its length, then the root's own fields. False is a numbering
 // that could not be sized; `complete` false is a ROOT body whose own framing
 // gave out, which the load meets as damage inside this body after the
 // bodies before it were delivered, so the batch is sized through this body
@@ -11035,7 +11143,7 @@ inline bool SceneNodeMessageExtent( uint64_t type_id, TableBitReader & r, const 
     return TableMessageSkipBody( r, vocabulary, index_bits );
 }
 
-// SceneNodeMessageBody: PASS TWO's half — decode one record's body into the
+// SceneNodeMessageBody: PASS TWO's half, which decodes one record's body into
 // storage it already owns, its map entries carved from its own extent.
 inline bool SceneNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )
 {
@@ -11138,8 +11246,8 @@ inline int64_t SceneSave( const SceneBuilder & builder, uint8_t * buffer, int64_
 
 // ---- Scene on the MESSAGE wire: the batch over a region (docs/SPEC-TABLES.md §3.3) ----
 
-// SceneMessageBodyBits: one root body's bits at bit position `at` of the batch —
-// the numbering derived from the graph, the node table FIRST, then the
+// SceneMessageBodyBits: one root body's bits at bit position `at` of the batch,
+// with the numbering derived from the graph, the node table FIRST, then the
 // fields, then the zero reference. Measure derives the numbering and save
 // derives the same one, and nothing passes between them (§3.1).
 template <typename Ctx>
@@ -11239,8 +11347,8 @@ inline bool SceneMessageRecordScan( TableBitReader & r, const TableVocabulary & 
 
 // SceneMessageBodyStorage: one body's node count and data bytes from the FRAMING
 // alone, the reader left at the next body. The node table is walked record
-// by record — a table record's body stepped over by its announced shapes, a
-// blob's by its length — and the root's own fields after it. False is a numbering
+// by record, a table record's body stepped over by its announced shapes and
+// a blob's by its length, then the root's own fields. False is a numbering
 // that could not be sized; `complete` false is a ROOT body whose own framing
 // gave out, which the load meets as damage inside this body after the
 // bodies before it were delivered, so the batch is sized through this body
@@ -11856,7 +11964,7 @@ inline bool DepotNodeMessageExtent( uint64_t type_id, TableBitReader & r, const 
     return TableMessageSkipBody( r, vocabulary, index_bits );
 }
 
-// DepotNodeMessageBody: PASS TWO's half — decode one record's body into the
+// DepotNodeMessageBody: PASS TWO's half, which decodes one record's body into
 // storage it already owns, its map entries carved from its own extent.
 inline bool DepotNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )
 {
@@ -11957,8 +12065,8 @@ inline int64_t DepotSave( const DepotBuilder & builder, uint8_t * buffer, int64_
 
 // ---- Depot on the MESSAGE wire: the batch over a region (docs/SPEC-TABLES.md §3.3) ----
 
-// DepotMessageBodyBits: one root body's bits at bit position `at` of the batch —
-// the numbering derived from the graph, the node table FIRST, then the
+// DepotMessageBodyBits: one root body's bits at bit position `at` of the batch,
+// with the numbering derived from the graph, the node table FIRST, then the
 // fields, then the zero reference. Measure derives the numbering and save
 // derives the same one, and nothing passes between them (§3.1).
 template <typename Ctx>
@@ -12058,8 +12166,8 @@ inline bool DepotMessageRecordScan( TableBitReader & r, const TableVocabulary & 
 
 // DepotMessageBodyStorage: one body's node count and data bytes from the FRAMING
 // alone, the reader left at the next body. The node table is walked record
-// by record — a table record's body stepped over by its announced shapes, a
-// blob's by its length — and the root's own fields after it. False is a numbering
+// by record, a table record's body stepped over by its announced shapes and
+// a blob's by its length, then the root's own fields. False is a numbering
 // that could not be sized; `complete` false is a ROOT body whose own framing
 // gave out, which the load meets as damage inside this body after the
 // bodies before it were delivered, so the batch is sized through this body
@@ -12685,7 +12793,7 @@ inline bool AlbumNodeMessageExtent( uint64_t type_id, TableBitReader & r, const 
     return TableMessageSkipBody( r, vocabulary, index_bits );
 }
 
-// AlbumNodeMessageBody: PASS TWO's half — decode one record's body into the
+// AlbumNodeMessageBody: PASS TWO's half, which decodes one record's body into
 // storage it already owns, its map entries carved from its own extent.
 inline bool AlbumNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )
 {
@@ -12788,8 +12896,8 @@ inline int64_t AlbumSave( const AlbumBuilder & builder, uint8_t * buffer, int64_
 
 // ---- Album on the MESSAGE wire: the batch over a region (docs/SPEC-TABLES.md §3.3) ----
 
-// AlbumMessageBodyBits: one root body's bits at bit position `at` of the batch —
-// the numbering derived from the graph, the node table FIRST, then the
+// AlbumMessageBodyBits: one root body's bits at bit position `at` of the batch,
+// with the numbering derived from the graph, the node table FIRST, then the
 // fields, then the zero reference. Measure derives the numbering and save
 // derives the same one, and nothing passes between them (§3.1).
 template <typename Ctx>
@@ -12889,8 +12997,8 @@ inline bool AlbumMessageRecordScan( TableBitReader & r, const TableVocabulary & 
 
 // AlbumMessageBodyStorage: one body's node count and data bytes from the FRAMING
 // alone, the reader left at the next body. The node table is walked record
-// by record — a table record's body stepped over by its announced shapes, a
-// blob's by its length — and the root's own fields after it. False is a numbering
+// by record, a table record's body stepped over by its announced shapes and
+// a blob's by its length, then the root's own fields. False is a numbering
 // that could not be sized; `complete` false is a ROOT body whose own framing
 // gave out, which the load meets as damage inside this body after the
 // bodies before it were delivered, so the batch is sized through this body

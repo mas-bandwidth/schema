@@ -290,10 +290,10 @@ const (
 )
 
 // TableVocabulary is the whole vocabulary a unit can put on a form-2 wire, in
-// the order §3.3 settles: the COOK PROJECTION's order (§20.2) — each record in
+// the order §3.3 settles: the COOK PROJECTION's order (§20.2), each record in
 // the order the projection renders it and each record's fields in the order
 // the projection renders them, then each enum's variants and each union's arms
-// in that same order — then the TAIL the projection does not name: the
+// in that same order, then the TAIL the projection does not name: the
 // reserved node-table id, the three blob type ids as `bytes`, `string`,
 // `wstring`, and every table's own name id in the projection's sorted record
 // order.

@@ -963,7 +963,7 @@ func randomStep(r *splitmix64, s *wireSeed, seeds []*wireSeed, data []byte) []by
 // messageEnumerated is the enumerated pass over a MESSAGE seed, whose numbers
 // are bits rather than bytes: every truncation, the form byte set to a file's
 // and to two values no reader carries, the body count moved, EVERY REFERENCE
-// set to `E` — the last legal slot, which must RESOLVE — to `E + 1` and to the
+// set to `E`, the last legal slot, which must RESOLVE, then to `E + 1` and to the
 // largest the width can spell, every node index to null, the root, the last
 // record and past it, and every bit of the batch flipped once.
 func messageEnumerated(seed *wireSeed, emit func(pass string, data []byte)) {

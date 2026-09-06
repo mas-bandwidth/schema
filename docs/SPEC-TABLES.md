@@ -4528,8 +4528,8 @@ well as about work, and this is where that memory lives.
 
 - **THE CALLER DECLARES AN ARRAY OF RESOLVED ENTRIES and hands it to
   `AnnounceRead` with its CAPACITY.** Where the array sits is the caller's
-  own business — static, on a heap, in an arena, inside the object that holds
-  the connection — and the library allocates nothing on the announce path, the
+  own business, static, on a heap, in an arena, or inside the object that holds
+  the connection, and the library allocates nothing on the announce path, the
   read path or the write path, which is this library's rule everywhere else
   and has no exception here.
 - **IT LIVES WITH THE CONNECTION, NOT WITH A CALL.** The announcement is
@@ -4705,8 +4705,8 @@ The alternative was to take `3` and leave `2` as a form no writer writes. It was
 declined because it costs forever what it saves once: every reader in nine
 languages would carry a byte-framed message path for a wire no peer sends, or
 refuse `2` by name and explain why in every page that names the kind space. The
-corpus's form-`2` goldens are re-pinned by the codec change that lands this
-section, which is what a golden is for.
+corpus's form-`2` goldens are the bitpacked bodies' own, re-pinned by the codec
+change this section landed, which is what a golden is for.
 
 **The form byte is exactly what made this safe**, and stating that is the point:
 a reader meets a byte it does not know, refuses by name, and never reports
@@ -5129,9 +5129,11 @@ free either.
 **THE FULL TABLE.** Bytes, every column hand-sized from its own wire model over
 the same six instances. The PACKET WIRE column is what a `type` of the same
 shape would cost (SPEC.md §4.3) and exists so the residual is a number. The BYTE
-BODY column is the byte-framed message body the tree carries today under form
-byte `2`, which this section replaces. The proto3 column is computed from its
-encoding spec over the same values.
+BODY column is the byte-framed message body that held form byte `2` before this
+section: it landed in #549, was never released, and the codec change this
+section lands removed it, so the column is the size it would have written and
+not a wire in the tree. The proto3 column is computed from its encoding spec
+over the same values.
 
   | instance | packet wire | file form | byte body | **bitpacked body** | proto3 |
   |---|---:|---:|---:|---:|---:|
@@ -5380,7 +5382,9 @@ entries announces about 5 KB once.
   checker accepts a planted name, or accepts it as a `was`.
 - **Retention across the forms.** A body loaded with retention and saved in form
   `2`, which must return `-1` and write nothing, and the same load saved in form
-  `1`, which must write every retained record under §6.6's rules.
+  `1`, which must write every retained record under §6.6's rules. The row lands
+  WITH retention, which is not built in any language (§6.6, schema#525), so the
+  suite carries no test for it yet and carries no skipped one either.
 - **The cost rows.** The twelve pinned wires, the batch vector and the
   announcement. A byte figure in the table above that drifts moves a pinned wire.
 

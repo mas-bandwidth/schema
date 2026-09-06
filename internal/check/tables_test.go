@@ -1191,9 +1191,9 @@ table Holder { history [..2]V }
 
 // THE THREE RESERVED-ID REFUSALS, AND THE COLLISION REFUSALS BESIDE THEM
 // (docs/SPEC-TABLES.md §3, §3.3, §5, §11). No declarable name hashes to either
-// id the language holds back — the node table's 0xFFFFFFFFFFFFFFFF, the
+// id the language holds back, the node table's 0xFFFFFFFFFFFFFFFF, the
 // announcement's build version 0xFFFFFFFFFFFFFFFE or its vocabulary
-// 0xFFFFFFFFFFFFFFFD — or to another name's id at sixty-four bits, so each control
+// 0xFFFFFFFFFFFFFFFD, or to another name's id at sixty-four bits, so each control
 // PLANTS THE COLLISION BELOW THE HASH — the compiler's test hook returns the
 // colliding value for one named spelling and nothing for any other. Without the
 // hook there is no input that could turn these refusals red, and a refusal no

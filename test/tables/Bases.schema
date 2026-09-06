@@ -1,4 +1,4 @@
-// Bases.schema — the announcement's two base encodings and the quantized
+// Bases.schema: the announcement's two base encodings and the quantized
 // index, held by the C++ tables test and the conformance harness
 // (docs/SPEC-TABLES.md §3.3). A RANGED BASE IS ENCODED BY ITS KIND'S
 // SIGNEDNESS: an unsigned kind's base is an unsigned LEB128, which spells the

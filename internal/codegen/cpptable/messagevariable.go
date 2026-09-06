@@ -6,7 +6,7 @@
 // `bits_required(0, node count)` wide and the node count rides in the node
 // table, so the table has to be read before an index can be. Its framing is
 // this wire's own: the reserved id as a reference, the count at thirty-two raw
-// bits, then the records back to back — a type id reference and a body that
+// bits, then the records back to back: a type id reference and a body that
 // ends at its own zero reference for a table, or a thirty-two bit length, an
 // align and the bytes for a blob. §3.1's numbering, its depth-first order and
 // every malformed rule of it are untouched.
@@ -31,8 +31,8 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 
 	// ONE BODY's bits and bytes: the numbering derived, the node table FIRST,
 	// then the root's own fields and its terminator.
-	g.pf("// %sMessageBodyBits: one root body's bits at bit position `at` of the batch —\n", n)
-	g.pf("// the numbering derived from the graph, the node table FIRST, then the\n")
+	g.pf("// %sMessageBodyBits: one root body's bits at bit position `at` of the batch,\n", n)
+	g.pf("// with the numbering derived from the graph, the node table FIRST, then the\n")
 	g.pf("// fields, then the zero reference. Measure derives the numbering and save\n")
 	g.pf("// derives the same one, and nothing passes between them (§3.1).\n")
 	g.pf("template <typename Ctx>\ninline int64_t %sMessageBodyBits( const Ctx & ctx, const %s & root, int64_t at, TableAllocator allocator )\n{\n", n, n)
@@ -113,8 +113,8 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 	// the per-body storage scan, shared by LoadMeasure and LoadMessages
 	g.pf("// %sMessageBodyStorage: one body's node count and data bytes from the FRAMING\n", n)
 	g.pf("// alone, the reader left at the next body. The node table is walked record\n")
-	g.pf("// by record — a table record's body stepped over by its announced shapes, a\n")
-	g.pf("// blob's by its length — and the root's own fields after it. False is a numbering\n")
+	g.pf("// by record, a table record's body stepped over by its announced shapes and\n")
+	g.pf("// a blob's by its length, then the root's own fields. False is a numbering\n")
 	g.pf("// that could not be sized; `complete` false is a ROOT body whose own framing\n")
 	g.pf("// gave out, which the load meets as damage inside this body after the\n")
 	g.pf("// bodies before it were delivered, so the batch is sized through this body\n")
@@ -222,7 +222,7 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 	g.pf("    %s * root = new ( region + used ) %s; // lifetime only: LoadMessageBody's first act is %sReset\n", n, n, n)
 	g.pf("    %sReset( *root );\n", n)
 	// THE ROOT IS HANDED BACK AS SOON AS IT IS PLACED, so a body damaged inside
-	// its own fields still answers where the decode put what it decoded — the
+	// its own fields still answers where the decode put what it decoded, and the
 	// COUNT is what says it is not a body (§3.3)
 	g.pf("    root_out = root;\n")
 	if g.anyExtent {
@@ -340,7 +340,7 @@ func (g *tableGen) emitRootNodeMessageDispatch(st *ir.Struct) {
 	}
 	g.pf("    return TableMessageSkipBody( r, vocabulary, index_bits );\n}\n\n")
 
-	g.pf("// %sNodeMessageBody: PASS TWO's half — decode one record's body into the\n", n)
+	g.pf("// %sNodeMessageBody: PASS TWO's half, which decodes one record's body into\n", n)
 	g.pf("// storage it already owns, its map entries carved from its own extent.\n")
 	g.pf("inline bool %sNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )\n{\n", n)
 	// A LIST CARVES FROM THE NODE'S EXTENT EXACTLY AS A MAP DOES

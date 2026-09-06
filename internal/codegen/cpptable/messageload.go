@@ -5,9 +5,9 @@
 // from the announcement instead: the ENTRY's shape says how wide each payload
 // is and how to step over one this build cannot name, and the KIND MISMATCH §4
 // already counts is found by comparing that kind against the reader's own
-// declaration rather than by reading a byte. Everything else — the prefill of
-// declared defaults, the overlay, the clamps and the counters — is the file
-// form's, unchanged.
+// declaration rather than by reading a byte. Everything else is the file
+// form's, unchanged: the prefill of declared defaults, the overlay, the clamps
+// and the counters.
 //
 // A VARIABLE table's read takes the node map its pointer slots resolve
 // through and the index width the body's node table settled (§3.1, §3.3): a
@@ -251,7 +251,7 @@ func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from 
 
 // emitMessageReadEnum reads an enum value: the reference naming its VARIANT's
 // name, `0` for None. A reference this reader's enum cannot name is §4's
-// ordinary `unknown` — the field reads None and one event counts. A VARIANT
+// ordinary `unknown`: the field reads None and one event counts. A VARIANT
 // REFERENCE NAMING AN ENTRY OF THE WRONG SORT IS MALFORMED, and the
 // reserved-id rule outranks it (§3.3).
 func (g *tableGen) emitMessageReadEnum(f *ir.Field, dst, ind string) {

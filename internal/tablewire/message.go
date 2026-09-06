@@ -1,12 +1,13 @@
 // THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): a file carries its own id
 // table and a MESSAGE STREAM announces one and then carries none.
 //
-// A form-`2` wire is TWO PARTS, the FORM BYTE and the ROOT BODY, and its
-// references resolve against the CONNECTION's table rather than a trailer of
-// its own. The table is the UNIT's whole vocabulary in a compiler-settled
-// order, announced once a connection per direction by an ordinary form-`1`
-// file, and everything else about the wire — the body's framing, the elision
-// rules, §4's tolerance and every malformed rule — is §3's unchanged.
+// A form-`2` wire is THREE PARTS, the FORM BYTE, the BODY COUNT and the
+// BODIES as one continuous bit stream, and its references resolve against the
+// CONNECTION's table rather than a trailer of its own. The table is the UNIT's
+// whole vocabulary in a compiler-settled order, announced once a connection
+// per direction by an ordinary form-`1` file, and everything else about the
+// wire, the elision rules, §4's tolerance and every malformed rule, is §3's
+// unchanged.
 package tablewire
 
 import (
@@ -18,9 +19,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// MessageReason is why a message or an announcement was REFUSED — a verdict
-// that decodes nothing, moves none of §4's five counters and never reports
-// damage, on the form byte's own terms (docs/SPEC-TABLES.md §3, §3.3).
+// MessageReason is why a message or an announcement was REFUSED. A refusal is
+// a verdict that decodes nothing, moves none of §4's five counters and never
+// reports damage, on the form byte's own terms (docs/SPEC-TABLES.md §3, §3.3).
 //
 // It is deliberately NOT the cooked form's `TableRefuseReason` vocabulary
 // (§7.4): a caller meeting one of those has been refused a FILE and falls back
@@ -38,13 +39,15 @@ const (
 	// reader holds no table for the connection, and `malformed` does not fire.
 	ReasonNoVocabulary
 	// ReasonSecondAnnouncement is a second announcement on a connection. It
-	// does not replace the table, does not amend it and changes nothing: the
-	// peer is not speaking this form and the receiver closes the connection.
+	// does not replace the table, does not amend it and changes nothing. The
+	// library returns the refusal and nothing more; whether the connection
+	// closes is the application's own call.
 	ReasonSecondAnnouncement
-	// ReasonVocabularyTooLarge is an announcement whose entry count is above
-	// the receiver's declared maximum. The count is a fixed little-endian u64
-	// at the end of the announcement, so it is read, compared and refused
-	// without touching an entry.
+	// ReasonVocabularyTooLarge covers the vocabulary's TWO bounds: an entry
+	// count above the receiver's declared capacity, and a vocabulary field
+	// longer than the byte bound. The byte bound is read off the field's own
+	// length before an entry is touched, and the entry bound refuses at the
+	// entry that passes it, so neither reads a vocabulary it has refused.
 	ReasonVocabularyTooLarge
 	// ReasonMessageFormAsFile is a form-`2` wire where a FILE was expected. A
 	// message stored on its own is not readable, because its table is
@@ -93,10 +96,11 @@ func (e *MessageRefusal) Error() string {
 }
 
 // Vocabulary is ONE ANNOUNCEMENT's id table (docs/SPEC-TABLES.md §3.3): the
-// entries it carried, whole, with slot `1` the reserved build-version id, slot
-// `2` the reserved records id, and slots `3` and up the peer's vocabulary,
-// under one numbering — beside the per-entry RECORDS that say what a field
-// header under each id spells.
+// entries it carried, whole, in the projection's order, slot `k` being
+// `Entries()[k-1]`. The announcement's own two reserved ids, the build version
+// and the vocabulary, are its transport and take NO slot; the reserved
+// node-table id takes exactly one, because a pointered body names the node
+// table through it.
 //
 // THE SCOPE IS THE ANNOUNCEMENT'S, and nothing here assumes a transport. The
 // announcement is delivered ONCE, reliably, before the first body, and is
@@ -158,7 +162,7 @@ func (v *Vocabulary) byteBound() int {
 	return ir.TableVocabularyMaxBytes
 }
 
-// Announce is the unit's own ID TABLE MESSAGE, byte for byte — a form-`1`
+// Announce is the unit's own ID TABLE MESSAGE, byte for byte. It is a form-`1`
 // file, so it needs no second form byte, no envelope and no rule of its own.
 // Every byte is settled by the compiler, which is why a backend may emit it as
 // a constant.
@@ -167,25 +171,30 @@ func Announce(u *ir.Unit) []byte { return ir.TableAnnouncement(u) }
 // AnnounceRead reads an announcement into this direction's vocabulary
 // (docs/SPEC-TABLES.md §3.3).
 //
-// THE TWO BOUNDS ARE CHECKED BEFORE ANYTHING IS ALLOCATED: the trailer's entry
-// count says the announcement is a file of two entries, and the vocabulary
+// THE TWO BOUNDS ARE CHECKED BEFORE ANYTHING IS ALLOCATED: the vocabulary
 // field's own length is compared against the byte bound before an entry is
-// touched. Everything else is §3's ordinary FILE read — every malformed rule
-// already covers the announcement, because it IS a file — with TWO STRICT
+// touched, and the entry count is refused at the entry that passes the
+// capacity. Everything else is §3's ordinary FILE read, since every malformed
+// rule already covers the announcement because it IS a file, with TWO STRICT
 // CHECKS over the body: the BUILD VERSION present, exactly once, under kind
 // `9`, eight bytes wide, and the VOCABULARY present, exactly once, under kind
 // `14` over element kind `6`. Every other field is ordinary and tolerant, so
 // an unknown one is skipped and counted and the announcement can GAIN a field
-// in a later minor without a lockstep redeploy.
+// in a later minor without a lockstep redeploy. A FAILED STRICT CHECK IS
+// MALFORMED: the two checks are the two facts the body must carry, so a body
+// without them is not an announcement.
 //
 // A HOSTILE SHAPE IS A HOSTILE WIDTH, and every width is checked here and
-// never again: a `bits` above 128, an array whose `min` exceeds its `max`, an
-// element kind outside the closed set and a shape running past the vocabulary
-// field's own length are each malformed on the announcement, which is a file
-// and takes §3's rule that a wire it cannot read whole is malformed whole.
+// never again: a `bits` above 128, a `min` or a `max` above what its kind can
+// hold, an array whose `min` exceeds its `max`, an element kind outside the
+// closed set, an element kind of `12` or `33`, two entries that agree on all
+// three parts, and a shape running past the vocabulary field's own length are
+// each malformed on the announcement, which is a file and takes §3's rule that
+// a wire it cannot read whole is malformed whole.
 //
 // A refused announcement sets NO VOCABULARY, and a malformed one sets none
-// either.
+// either. The BUILD VERSION is kept the moment it is read, refusal or not, so
+// that a refusal on this connection names it.
 func (v *Vocabulary) AnnounceRead(data []byte, report *tabletext.Report) error {
 	// THE FIRST ANNOUNCEMENT SETS THE VOCABULARY, AND IT IS THE ONLY ONE THAT
 	// CAN. A second does not replace it, does not amend it and changes nothing.

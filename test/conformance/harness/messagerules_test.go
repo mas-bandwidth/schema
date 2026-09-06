@@ -774,7 +774,6 @@ func TestAHostileShape(t *testing.T) {
 // refusal rather than damage, or if the tolerant row refuses.
 func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 	_, _, backendVocabulary := backend(t)
-	version := backendVocabulary.BuildVersion()
 	vocab := ir.TableVocabularyBytes(backendVocabulary.Entries())
 	ids := []uint64{ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId}
 	terminated := func(fields ...[]byte) []byte {
@@ -822,7 +821,6 @@ func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 	if report.Unknown != 1 || report.Malformed || report.Refused {
 		t.Errorf("the tolerant row's report is %+v", report)
 	}
-	_ = version
 }
 
 // TestTheTwoBounds: an announcement one entry above the entry bound, and one a
@@ -853,14 +851,6 @@ func TestTheTwoBounds(t *testing.T) {
 	if !asRefusal(err, &refused) || refused.Reason != tablewire.ReasonVocabularyTooLarge || v.Announced() || report.Malformed {
 		t.Errorf("one byte above the byte bound: err=%v announced=%v report=%+v", err, v.Announced(), report)
 	}
-}
-
-// TestRetentionAcrossTheForms is the page's row for a body loaded with
-// retention and saved in form 2, which must return -1 and write nothing.
-// Retention itself is not built in any language (§6.6, schema#525), so the
-// row waits on it and this test says so rather than passing over nothing.
-func TestRetentionAcrossTheForms(t *testing.T) {
-	t.Skip("retention (§6.6) is not built in any language, schema#525: the row lands with it")
 }
 
 // setI64 sets one signed scalar, both halves of the cell.

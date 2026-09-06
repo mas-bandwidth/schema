@@ -142,7 +142,7 @@ static void pin_message_vector( const char * name, const T & value,
         failures++;
     }
     // A BATCH IS THREE PARTS: the form byte, the count, and the bodies as one
-    // bit stream padded to a byte — there is no trailer at all
+    // bit stream padded to a byte, and there is no trailer at all
     CHECK( wrote_message >= 2 && message[0] == 2 && message[1] == 0 );
     CHECK( wrote_file >= 1 && file[0] == 1 );
     pin_table_golden( name, file, wrote_file );
@@ -1087,7 +1087,7 @@ static void test_message_form_mask_width()
 // ---- THE ANNOUNCEMENT'S TWO STRICT CHECKS, AND ITS TOLERANCE ---------------
 //
 // The build version present, exactly once, under kind 9, eight bytes wide, and
-// the vocabulary present, exactly once, under kind 14 over element kind 6 —
+// the vocabulary present, exactly once, under kind 14 over element kind 6.
 // and everything else in its body an ordinary field under §4's tolerance, so
 // an unknown one is skipped and counted and the announcement can GAIN a field
 // in a later minor without a lockstep redeploy.

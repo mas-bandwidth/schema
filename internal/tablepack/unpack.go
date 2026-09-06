@@ -123,7 +123,7 @@ func UnpackMessages(m *tabletext.Model, trees []MessageTree, announcement, messa
 		return report, err
 	}
 	if !ok {
-		return report, fmt.Errorf("the bytes are not a batch of these roots — the framing is damaged inside body %d, and the %d before it stand (docs/SPEC-TABLES.md §3.3, §4)", delivered+1, delivered)
+		return report, fmt.Errorf("the bytes are not a batch of these roots: the framing is damaged inside body %d, and the %d before it stand (docs/SPEC-TABLES.md §3.3, §4)", delivered+1, delivered)
 	}
 	for i, tree := range trees {
 		if err := writeTree(m, insts[i], tree.Root, tree.Dir, oneFile || m.IsVariable(tree.Root)); err != nil {

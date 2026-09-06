@@ -23,7 +23,7 @@ import (
 // of it is settled by the compiler, so a walk would compute at run time what
 // the emitter already knows. Announce is a copy and AnnounceMeasure is a
 // constant.
-func tableMessageForm(u *ir.Unit, forceInline string, anyVariable bool) string {
+func tableMessageForm(u *ir.Unit, anyVariable bool) string {
 	announcement := ir.TableAnnouncement(u)
 	entries := ir.TableVocabulary(u)
 
@@ -89,18 +89,18 @@ static const uint64_t kTableNodeTableFieldSlot = %d;
 	b.WriteString(cppMessageRuntime)
 
 	fmt.Fprintf(&b, `// THE UNIT'S ANNOUNCEMENT, byte for byte: %d entries and %d bytes. It is an
-// ordinary form 1 FILE — the form byte, a body carrying the BUILD VERSION
-// under the reserved id at kind 9 and the VOCABULARY under the reserved id at
-// kind 14 over element kind 6, and a trailer of those two reserved ids.
+// ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
+// the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
+// over element kind 6, and a trailer of those two reserved ids.
 //
 // THE VOCABULARY IS A FIELD AND NOT THE TRAILER, and that buys three things:
 // §3's writer rule that an id no body references is never written is restored
 // unbroken, an entry can carry a KIND and a SHAPE which a trailer of bare ids
 // cannot, and one NAME can appear at two shapes.
 //
-// The order is the COOK PROJECTION's (§20.2) — each record in the order the
+// The order is the COOK PROJECTION's (§20.2): each record in the order the
 // projection renders it and each record's fields in the order the projection
-// renders them, then each enum's variants and each union's arms — followed by
+// renders them, then each enum's variants and each union's arms. Then comes
 // the tail the projection does not name: the reserved node-table id, the three
 // blob type ids as bytes, string and wstring, and every table's own name id in
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
@@ -122,7 +122,6 @@ static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
 	}
 	b.WriteString("};\n\n")
 	b.WriteString(cppMessageAnnounce)
-	_ = forceInline
 	return b.String()
 }
 
@@ -189,8 +188,8 @@ struct TableBitWriter
     // occupies are stored from that register with no read back. A sixty-four
     // bit field costs one shift rather than nine masked read-modify-writes.
     // The word is assembled little-end-first, so the BITS ON THE WIRE are the
-    // same bits in the same places — bit i in byte i/8 at position i%8, low
-    // bit first — which is what the pinned goldens hold. IT WRITES EXACTLY
+    // same bits in the same places, bit i in byte i/8 at position i%8 with the
+    // low bit first, which is what the pinned goldens hold. IT WRITES EXACTLY
     // THE BYTES THE VALUE OCCUPIES and never one past them, so a caller's
     // buffer beyond the batch is its own.
     void put( uint64_t value, int64_t n )
@@ -337,9 +336,9 @@ inline int64_t TableBitsRequired( int64_t min, int64_t max )
     return n;
 }
 
-// THE ANNOUNCED ENTRY (§3.3): an id, a kind, and a SHAPE — the width and range
-// facts a reader needs to SKIP a field exactly and to DECODE one whose own
-// declaration has moved. One name may take TWO entries, at two kinds or two
+// THE ANNOUNCED ENTRY (§3.3): an id, a kind, and a SHAPE, which is the width
+// and range facts a reader needs to SKIP a field exactly and to DECODE one
+// whose own declaration has moved. One name may take TWO entries, at two kinds or two
 // shapes, and a body names the one it means.
 //
 // The ELEMENT's own facts ride beside the field's because an array's element
@@ -673,8 +672,8 @@ const cppMessageAnnounce = `// TableVocabulary is ONE DIRECTION's announced voca
 // AnnounceRead returns.
 //
 // THE STORAGE IS THE CALLER'S and this library never allocates. The caller
-// declares an array of entries wherever it wants it — static, on a heap, in
-// an arena, beside its connection — and hands it here with its CAPACITY. The
+// declares an array of entries wherever it wants it, static, on a heap, in an
+// arena or beside its connection, and hands it here with its CAPACITY. The
 // announcement holds for the life of the connection (§3.3), so the array does
 // too, and a peer holds TWO for a connection, the one it writes with and the
 // one it reads with. A restart opens a fresh connection with an empty
@@ -862,9 +861,9 @@ inline bool TableMessageReserved( uint64_t id )
     return id >= kTableMessageVocabularyFieldId;
 }
 
-// TableMessageNameEntry resolves a reference used as a VALUE — an enum's
-// variant, a keyed array's slot key, a node record's type id — which must
-// name a kind-0 entry (§3.3). A reference of 0 where an entry is required, one
+// TableMessageNameEntry resolves a reference used as a VALUE, which is an
+// enum's variant, a keyed array's slot key or a node record's type id, and
+// which must name a kind-0 entry (§3.3). A reference of 0 where an entry is required, one
 // above E, one naming a reserved id and one naming an entry that carries a
 // payload are each damage: the reader RESOLVED the entry and it contradicts
 // the position it was used in, so the next bit's meaning is what is in doubt.
@@ -996,8 +995,8 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
         }
         case 31:
         {
-            // THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque — the one
-            // path a later-major writer has on this form (§3.3)
+            // THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
+            // the one path a later-major writer has on this form (§3.3)
             uint64_t n = 0;
             if ( !r.align() || !r.get( n, 32 ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
@@ -1066,8 +1065,8 @@ inline bool TableMessageNodeTableOpen( TableBitReader & r, const TableVocabulary
 inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
 
 // Announce writes the announcement into the caller's buffer and answers the
-// bytes written — exactly AnnounceMeasure's answer — or -1 when the buffer is
-// too small. It allocates nothing and walks nothing.
+// bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
+// buffer is too small. It allocates nothing and walks nothing.
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
@@ -1100,8 +1099,8 @@ inline bool TableMessageBatchBegin( TableMessageBatch & batch, uint8_t * buffer,
     return true;
 }
 
-// TableMessageBatchEnd zero-fills to the next byte — the one alignment a batch
-// spends at its end — and answers the whole batch's byte count, or -1.
+// TableMessageBatchEnd zero-fills to the next byte, the one alignment a batch
+// spends at its end, and answers the whole batch's byte count, or -1.
 inline int64_t TableMessageBatchEnd( TableMessageBatch & batch )
 {
     if ( batch.written != batch.declared || batch.w.overflow ) { return -1; }
@@ -1179,8 +1178,9 @@ const cppMessageNodeRuntime = `// ---- the NODE TABLE on the message wire (docs/
 //
 // THE NODE TABLE, WHEN A BODY HAS ONE, IS THE FIRST FIELD OF THE ROOT BODY: the
 // reserved id as a reference, the node count at THIRTY-TWO RAW BITS, then the
-// records back to back, each a type id reference and a body — a table's fields
-// ending at its own zero reference, a blob's length, align and bytes. A root
+// records back to back, each a type id reference and a body: a table's fields
+// end at their own zero reference, and a blob's body is a length, an align and
+// its bytes. A root
 // that reaches no node elides the field, like every other empty thing.
 //
 // Measure derives the numbering from the graph and save derives the same one,

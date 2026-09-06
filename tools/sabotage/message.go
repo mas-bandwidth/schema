@@ -204,7 +204,7 @@ var messageSabotages = map[string][]edit{
 
 // THE SAME TWO IN THE C++ EMITTER, which is the one the reference reads and
 // writes: the instrument is the pinned wire, because the golden still LOADS
-// under a moved slot — the reader resolves whatever the writer named — so what
+// under a moved slot, because the reader resolves whatever the writer named, so what
 // goes red is the round trip against the corpus's own bytes.
 var messageEmitterSabotages = map[string][]edit{
 	// THE WRITER'S SLOT NUMBERS ARE COMPILE-TIME CONSTANTS: every emitted slot

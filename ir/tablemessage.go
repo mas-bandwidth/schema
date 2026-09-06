@@ -64,7 +64,7 @@ type TableVocabularyEntry struct {
 
 // TableMessageRefBits is the width of a REFERENCE on a bitpacked body: the
 // bits that spell every slot of a vocabulary of `entries` entries, and the
-// zero reference beside them — `bits_required(0, entries)`, the same function
+// zero reference beside them, which is `bits_required(0, entries)`, the same function
 // the packet wire uses for a ranged integer.
 func TableMessageRefBits(entries int) int {
 	if entries <= 0 {
@@ -347,7 +347,7 @@ func TableMessageKindBits(kind uint8) int64 {
 // one thing that stops it.
 
 // TableMessageQuantization is the triple's derivation: the step count and
-// `delta`, and ok false for a triple SPEC.md calls non-conforming — `min` not
+// `delta`, and ok false for a triple SPEC.md calls non-conforming: `min` not
 // below `max`, `res` not above zero, or a `delta` or `delta / res` not finite
 // in float32.
 func TableMessageQuantization(s TableMessageShape) (count uint32, delta float32, ok bool) {

@@ -47,10 +47,10 @@ func MessageCount(data []byte, v *Vocabulary) (int, error) {
 //
 // A BATCH IS OF ONE ROOT, and which root it is, is the APPLICATION's: a peer
 // that mixes roots puts a discriminator in front of the bytes or wraps its
-// message set in one root holding a union of them. The error is a REFUSAL — a
-// wire this reader will not decode at all — and is returned rather than folded
-// into the report; false with a nil error is damage, which is terminal for the
-// batch.
+// message set in one root holding a union of them. The error is a REFUSAL, a
+// wire this reader will not decode at all, and it is returned rather than
+// folded into the report. False with a nil error is damage, which is terminal
+// for the batch.
 //
 // THE BATCH SURFACE'S ANSWERS, each the page's (§3.3):
 //
@@ -179,9 +179,9 @@ func reserved(id uint64) bool {
 	return id == ir.TableBuildVersionWireId || id == ir.TableMessageVocabularyWireId || id == ir.TableNodeWireId
 }
 
-// name resolves a reference used as a VALUE — an enum's variant, a keyed
-// array's slot key, a node record's type id — which must name a kind-0 entry
-// (docs/SPEC-TABLES.md §3.3). A reference of `0` where an entry is required,
+// name resolves a reference used as a VALUE, which is an enum's variant, a
+// keyed array's slot key or a node record's type id, and which must name a
+// kind-0 entry (docs/SPEC-TABLES.md §3.3). A reference of `0` where an entry is required,
 // one above `E`, one naming a reserved id, and one naming an entry that
 // carries a payload are each damage: the reader RESOLVED the entry and it
 // contradicts the position it was used in, so the next bit's meaning is what
@@ -217,14 +217,14 @@ func (d *bitDecoder) root(inst *tabletext.Instance) bool {
 		// unknown entry of kind 17 inside one cannot be stepped over and is
 		// damage (§3.1, §3.3)
 		d.indexBits = 0
-		return d.body(inst, false)
+		return d.body(inst)
 	}
 	st := &decodeState{root: inst}
 	d.st = st
 	if !d.nodeTable(inst, st) {
 		return false
 	}
-	return d.body(inst, false)
+	return d.body(inst)
 }
 
 // nodeTable reads the ROOT body's first field when it is the node table
@@ -355,7 +355,7 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 		}
 		sub := &bitDecoder{m: d.m, v: d.v, report: d.report, refBits: d.refBits, indexBits: d.indexBits, st: st, spots: d.spots,
 			r: &bitReader{b: d.r.b, n: rec.end, off: rec.start}}
-		if !sub.body(st.nodes[i].Inst, true) {
+		if !sub.body(st.nodes[i].Inst) {
 			return false
 		}
 	}
@@ -364,7 +364,7 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 }
 
 // body decodes one table body: fields until the ZERO REFERENCE that ends it.
-func (d *bitDecoder) body(inst *tabletext.Instance, nested bool) bool {
+func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 	index := map[uint64]int{}
 	for i := range inst.Fields {
 		index[ir.TableFieldWireId(inst.Fields[i].Def)] = i
@@ -389,7 +389,6 @@ func (d *bitDecoder) body(inst *tabletext.Instance, nested bool) bool {
 			// MALFORMED (§3.1, §3.3). The node table is the ROOT body's first
 			// field and is read before this walk begins, so meeting one here
 			// is a second numbering wherever it sits.
-			_ = nested
 			d.report.Malformed = true
 			return false
 		}
@@ -451,7 +450,7 @@ func (d *bitDecoder) field(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		return d.enumCell(&fv.Cell, f)
 	case tabletext.StructOf(f) != nil:
 		fv.Cell.Tab = d.m.New(tabletext.StructOf(f))
-		return d.body(fv.Cell.Tab, true)
+		return d.body(fv.Cell.Tab)
 	}
 	return d.scalar(&fv.Cell, f, entry.Kind, shape)
 }
@@ -518,8 +517,8 @@ func skipRun(r *bitReader, n uint64, width int64) bool {
 
 // array decodes a positional array. NO COUNT RIDES where the shape's `min`
 // equals its `max`, which is every fixed array. A count above the reader's own
-// bound keeps the first `N` elements and counts `clamped` — the elements past
-// it are READ and dropped, because the stream advances past them either way.
+// bound keeps the first `N` elements and counts `clamped`: the elements past
+// it are stepped over, because the stream advances past them either way.
 func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) bool {
 	f := fv.Def
 	shape := entry.Shape
@@ -614,7 +613,7 @@ func (d *bitDecoder) element(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 	switch int(shape.Elem) {
 	case ir.TableKindTable:
 		cell.Tab = d.m.New(tabletext.StructOf(f))
-		return d.body(cell.Tab, true)
+		return d.body(cell.Tab)
 	case ir.TableKindPointer:
 		index, ok := d.index()
 		if !ok {
@@ -696,7 +695,7 @@ func (d *bitDecoder) mapField(fv *tabletext.Field, entry ir.TableVocabularyEntry
 	var last *tabletext.Instance
 	for i := uint64(0); i < n; i++ {
 		decoded := d.m.NewMapEntry(f)
-		if !d.body(decoded, true) {
+		if !d.body(decoded) {
 			return false
 		}
 		key := tabletext.MapKeyOf(f, decoded)
@@ -729,7 +728,7 @@ func (d *bitDecoder) mapField(fv *tabletext.Field, entry ir.TableVocabularyEntry
 
 // unionCell reads a union: the ARM's reference, and then the payload a FIELD
 // of the arm's type would carry. An arm this reader cannot name is §4's
-// ordinary `unknown` — the field reads None and one event counts — and the
+// ordinary `unknown`, so the field reads None and one event counts, and the
 // arm's payload is skipped by the ARM's own announced entry.
 func (d *bitDecoder) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 	un := tabletext.UnionOf(f)
@@ -771,7 +770,7 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 		return true
 	case arm.Body():
 		cell.Tab = d.m.New(arm.Ref)
-		return d.body(cell.Tab, true)
+		return d.body(cell.Tab)
 	}
 	fv := d.m.NewArm(arm)
 	cell.Arm = fv
@@ -795,7 +794,7 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 		return d.enumCell(&fv.Cell, af)
 	case tabletext.StructOf(af) != nil:
 		fv.Cell.Tab = d.m.New(tabletext.StructOf(af))
-		return d.body(fv.Cell.Tab, true)
+		return d.body(fv.Cell.Tab)
 	}
 	return d.scalar(&fv.Cell, af, entry.Kind, entry.Shape)
 }
@@ -998,7 +997,7 @@ func (d *bitDecoder) clampFloat(v float64, f *ir.Field) float64 {
 }
 
 // resolveCell places one node index in a pointer slot against the numbering,
-// under the file form's own rules — the resolution is the same walk, and only
+// under the file form's own rules: the resolution is the same walk, and only
 // where the index came from moved.
 func (d *bitDecoder) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint64) {
 	r := &wireReader{report: d.report, m: d.m, st: d.st}
@@ -1061,8 +1060,8 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 		}
 		return d.r.skip(int(n) * 16)
 	case ir.TableKindEscape:
-		// THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque — the
-		// one path a later-major writer has on this form (§3.3)
+		// THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
+		// the one path a later-major writer has on this form (§3.3)
 		if !d.r.align() {
 			return false
 		}

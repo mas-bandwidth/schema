@@ -71,7 +71,7 @@ func Pack(m *tabletext.Model, root, dir string) ([]byte, []string, tabletext.Rep
 
 // PackMessage is Pack over the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the
 // same tree, the same instance and the same walk, and a BATCH OF ONE comes out
-// — the form byte, the count, and one bitpacked body, whose ids live in the
+// the form byte, the count, and one bitpacked body, whose ids live in the
 // announced table rather than in a trailer of this wire's.
 //
 // The tree is unchanged, which is the text form's own claim: a message's text

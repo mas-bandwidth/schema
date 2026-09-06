@@ -1,8 +1,8 @@
 // THE BIT STREAM the message form's bodies ride on (docs/SPEC-TABLES.md
-// §3.3). It is the packet wire's own layout — bit `i` of the stream lives in
-// byte `i/8` at bit position `i%8`, low bit first — so a value written here
-// and a value written by a generated packet writer are the same bits in the
-// same places, and the two wires can be read beside each other.
+// §3.3). It is the packet wire's own layout, bit `i` of the stream living in
+// byte `i/8` at bit position `i%8` with the low bit first, so a value written
+// here and a value written by a generated packet writer are the same bits in
+// the same places, and the two wires can be read beside each other.
 package tablewire
 
 import "math/big"
@@ -39,7 +39,7 @@ func (w *bitWriter) putBig(v *big.Int, n int) {
 	}
 }
 
-// bytes writes raw payload bytes, eight bits each, low bit first — which is
+// bytes writes raw payload bytes, eight bits each, low bit first, which is
 // byte for byte the file form's bytes when the stream happens to be aligned,
 // and the same bytes shifted when it is not.
 func (w *bitWriter) bytes(p []byte) {
