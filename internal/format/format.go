@@ -201,7 +201,7 @@ func normalizeVariantLists(lines []line) []line {
 		out = append(out, lines[j]) // the opening brace on its own line
 		// the body: up to the closing brace
 		end := j + 1
-		for end < len(lines) && !(len(lines[end].tokens) > 0 && lines[end].tokens[0].Kind == scanner.RBrace) {
+		for end < len(lines) && (len(lines[end].tokens) == 0 || lines[end].tokens[0].Kind != scanner.RBrace) {
 			end++
 		}
 		body := lines[j+1 : end]
