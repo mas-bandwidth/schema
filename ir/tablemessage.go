@@ -362,10 +362,10 @@ func TableMessageQuantize(s TableMessageShape, value float32) uint32 {
 	}
 	scaled := float32(normalized * float32(count))
 	index := uint32(math.Floor(float64(float32(scaled + 0.5))))
-	if index > count {
-		index = count
-	}
-	return index
+	// AND THE INTEGER CLAMPS TO `count`, which is the packet wire's own last
+	// step (SPEC.md §4.3): the float clamp above already bounded the ratio, so
+	// this catches only the rounding at the top of the range.
+	return min(index, count)
 }
 
 // TableMessageDequantize is the reader's half: the float an index names.
