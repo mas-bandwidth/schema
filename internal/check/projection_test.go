@@ -862,3 +862,37 @@ table Bag {
 		t.Error("the enum survived in the projection with no type-side use left — the closure is not scoped")
 	}
 }
+
+// A BOUND MAY NAME A UNION'S GENERATED TAG SET, `<Union>Type.Max` (SPEC §4.2,
+// §4.8), and that is edge 3 through a name no declaration spells. The array is
+// positional over the arms, so slot i belongs to arm i + 1 and a reorder
+// changes what every element is — the union has to be in the closure, and a
+// walk that resolved only declared names would miss it.
+func TestAGeneratedSetBoundReachesItsUnion(t *testing.T) {
+	const source = `package probe
+
+type Arm { v uint8 }
+
+union Held
+{
+    left  Arm
+    right Arm
+}
+
+type Root
+{
+    slots [HeldType.Max]uint8
+}
+`
+	u := build(t, source)
+	if !strings.Contains(ir.WireProjection(u), "union Held") {
+		t.Fatal("a union named only by a [HeldType.Max] bound is out of the projection — a reorder of its arms would change what every slot means under one id")
+	}
+	reordered := strings.Replace(source, "    left  Arm\n    right Arm", "    right Arm\n    left  Arm", 1)
+	if reordered == source {
+		t.Fatal("the edit patched nothing — the fixture drifted")
+	}
+	if got := build(t, reordered).ProtocolId; got == u.ProtocolId {
+		t.Errorf("reordering the arms did NOT move the protocol id (0x%016x) — every slot of the positional array changed meaning", u.ProtocolId)
+	}
+}
