@@ -3459,14 +3459,22 @@ tables-wire-fuzz-oracle-negative-control: build/conformance-harness build/wire-f
 # nobody would review, and a golden a generator has to re-derive is not a
 # golden. So both are true at once, and this is what holds them together: the
 # generator runs into build/ and the committed file must be what it wrote.
+#
+# THE GENERATOR IS RUN FROM A SCRATCH ROOT, under the committed file's own
+# relative path, because the header it writes carries the `--out` it was given:
+# a run that wrote somewhere else would differ from the committed file on that
+# line whatever else it got right. Under build/vocabgen the path the generator
+# sees is the path the committed file has, so `cmp` compares the whole file,
+# header included, and the regenerate line in the committed header is checked
+# by the same comparison as the tables below it.
 .PHONY: tables-vocab-schema
 tables-vocab-schema:
-	@mkdir -p build/vocabgen
-	go run ./test/vocabgen --out build/vocabgen/Vocab.schema
-	@cmp build/vocabgen/Vocab.schema tables/vocab/Vocab.schema || \
+	@rm -rf build/vocabgen && mkdir -p build/vocabgen
+	cd build/vocabgen && go run ../../test/vocabgen --out tables/vocab/Vocab.schema
+	@cmp build/vocabgen/tables/vocab/Vocab.schema tables/vocab/Vocab.schema || \
 		{ echo "tables/vocab/Vocab.schema is not what test/vocabgen writes — run: go run ./test/vocabgen --out tables/vocab/Vocab.schema"; exit 1; }
-	go run ./test/vocabgen --package vocab9demo --tables 20 --out build/vocabgen/Vocab9.schema
-	@cmp build/vocabgen/Vocab9.schema tables/vocab9/Vocab9.schema || \
+	cd build/vocabgen && go run ../../test/vocabgen --package vocab9demo --tables 20 --out tables/vocab9/Vocab9.schema
+	@cmp build/vocabgen/tables/vocab9/Vocab9.schema tables/vocab9/Vocab9.schema || \
 		{ echo "tables/vocab9/Vocab9.schema is not what test/vocabgen writes — run: go run ./test/vocabgen --package vocab9demo --tables 20 --out tables/vocab9/Vocab9.schema"; exit 1; }
 	@echo "vocabdemo and vocab9demo: the committed schemas are the generator's, byte for byte"
 
