@@ -1961,9 +1961,9 @@ length-framed, so the same content is FRAMING-CLASS DAMAGE there: the field
 reads its declared default, one `malformed` counts, and the parent reads on
 past `L` (SPEC-TABLES.md §3, §4). **Neither reader accepts it**, which is what
 keeps the paragraph above true as written — every generated reader enforces
-these rules, in all nine targets, in every build mode — and what keeps the
-write side unrescoped, because ill-formed text never reaches storage from
-either wire. A group above `0xFFFF` has no case on the table wire at all, two
+these rules, in all nine targets, in every build mode — and what lets the table
+wire's `Save` check the used length alone, because ill-formed text never
+reaches storage from either wire. A group above `0xFFFF` has no case on the table wire at all, two
 bytes being unable to spell one. `string(N)` is held the same way on both
 wires for the same reason (§4.7).
 A `wstring(N)` MAP KEY is refused by name, the diagnostic naming `string(N)`,
@@ -1973,12 +1973,16 @@ have none (SPEC-TABLES.md §2.8, §11). The protocol id needs no
 capacity beside its kind (§3.1), and no unit could declare the construct
 before.
 
-**The write side** follows §5's doctrine and §4.7's precedent exactly. Two
-things are checked on every write, in every target, in that target's own
-idiom (§5): **the used length is within [0, N]**, because it guards the
-copy, and **a zero code unit among the used units is refused**, exactly as
-§4.7 refuses the interior null and symmetric with the reader's zero-group
-refusal. Surrogate pairing is NOT checked on write. It is a writer
+**The packet wire's write side** follows §5's doctrine and §4.7's precedent
+exactly. Two things are checked on every packet write, in every target, in
+that target's own idiom (§5): **the used length is within [0, N]**, because it
+guards the copy, and **a zero code unit among the used units is refused**,
+exactly as §4.7 refuses the interior null and symmetric with the reader's
+zero-group refusal. **The table wire's `Save` checks the used length and
+nothing about the content**, which is the shape kind `12` already has there:
+ill-formed text is a READ-side verdict on that wire, framing-class damage the
+reader answers with the declared default and one `malformed`
+(SPEC-TABLES.md §3). Surrogate pairing is NOT checked on write. It is a writer
 obligation whose enforcement is the reader on the other end, which refuses
 an unpaired surrogate under the rules above. A code unit above `0xFFFF`
 cannot be written at all, because the storage holds 16 bits per unit in

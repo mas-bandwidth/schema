@@ -474,7 +474,7 @@ static void element_site()
 // THE TEXT FORM's wide rows (§16.2, §16.5): the same text transcoded at the
 // boundary, a clamp at N code units that never splits a pair, storage BUILT IN
 // CODE holding an unpaired surrogate written as U+FFFD, and one holding a zero
-// unit written as  . The two storage rows are built in code deliberately:
+// unit written as \u0000. The two storage rows are built in code deliberately:
 // no wire can deliver either.
 
 static void text_form()
@@ -525,7 +525,7 @@ static void text_form()
 
     // §16.3's two rows, BUILT IN CODE: an unpaired surrogate is not a code
     // point at all and writes one U+FFFD, and a zero unit is U+0000, which
-    // JSON has an escape for, and writes  
+    // JSON has an escape for, and writes \u0000
     {
         Caption value;
         value.title[0] = (char16_t) 0x0041;
@@ -586,6 +586,22 @@ static void cook_layout()
         check( (uint16_t) mapped->label[1] == 0xFFFF );
         check( mapped->label[2] == 0 ); // the terminating zero unit
         check( mapped->seq == 7 );
+
+        // THE UNIT BYTES THEMSELVES. The difference check above is satisfied
+        // by the swapped `label_length` and `seq` alone, so a cook that left
+        // the units byte-identical would pass it. `label` is the record's
+        // first piece and the record sits at the region's base (§7.2), so the
+        // pointer Open returns is where the units begin, and each one is
+        // written at its OWN two-byte width in the cook's byte order: the
+        // asymmetric 0x0041 reads 41 00 little and 00 41 big, and the
+        // symmetric 0xFFFF reads the same in both, which is what pins the
+        // swap to the unit rather than to the run.
+        const uint8_t * const at_little = (const uint8_t *) mapped;
+        const uint8_t * const at_big = big.data() + ( at_little - little.data() );
+        static const uint8_t want_little[4] = { 0x41, 0x00, 0xFF, 0xFF };
+        static const uint8_t want_big[4] = { 0x00, 0x41, 0xFF, 0xFF };
+        check_vector( memcmp( at_little, want_little, 4 ) == 0, "wstring-table-cook-unit-byte-order" );
+        check_vector( memcmp( at_big, want_big, 4 ) == 0, "wstring-table-cook-unit-byte-order" );
     }
 }
 

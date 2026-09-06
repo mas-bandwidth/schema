@@ -21,9 +21,8 @@ package wide
 // units on the wire, four kept — and what puts a surrogate pair astride the
 // cut when the fifth unit is a pair's low half.
 
-// A `type` a table reaches, which is the closure edge #572 refused and kind 33
-// carries: its wide text is the packet emitter's storage read by the table
-// wire's codec.
+// A `type` a table reaches, which is a closure edge kind 33 carries: its wide
+// text is the packet emitter's storage read by the table wire's codec.
 type Line
 {
     text wstring(4)

@@ -1346,8 +1346,8 @@ func TestListQualificationBoundsTheElement(t *testing.T) {
 	}
 }
 
-// TestWideTextInEveryClosureEdgeIsAccepted is the inverse of the refusal
-// #572 wrote (docs/SPEC-TABLES.md §11, schema#522): wide text rides kind 33 on
+// TestWideTextInEveryClosureEdgeIsAccepted holds the ACCEPTING side of §11's
+// closure rule (docs/SPEC-TABLES.md §11, schema#522): wide text rides kind 33 on
 // the table wire, so a `type` body a table reaches through ANY wrapper carries
 // its wstring(N), and so does a table's own field and a union arm. Each
 // wrapper is its own case, and the two controls hold the other edges of the
