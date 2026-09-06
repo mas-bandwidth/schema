@@ -1,0 +1,17 @@
+{
+  "title": "fleet",
+  "flagship": null,
+  "escorts": [],
+  "home": {
+    "name": "untitled",
+    "tag": "YWI=",
+    "caps": [
+      "Jump",
+      "Fly"
+    ],
+    "badge": {
+      "label": "new"
+    },
+    "hull": 100
+  }
+}

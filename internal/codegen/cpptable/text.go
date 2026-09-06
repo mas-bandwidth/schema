@@ -59,7 +59,7 @@ inline int64_t TableUtf8Clamp( const uint8_t * bytes, int64_t length, int64_t bo
 // rootReachesStringBlob reports whether a root's numbering can name a *string
 // record, which is where the content rule meets a node (§3.1).
 func (g *tableGen) rootReachesStringBlob(root *ir.Struct) bool {
-	for _, b := range g.reachableBlobs(root) {
+	for _, b := range reachableBlobs(root) {
 		if b.constant == "kTableStringTypeId" {
 			return true
 		}

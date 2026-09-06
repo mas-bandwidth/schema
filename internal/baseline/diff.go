@@ -43,6 +43,8 @@ import (
 	"math/big"
 	"sort"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // A Verdict is what a difference means for data already written.
@@ -518,6 +520,39 @@ func (d *differ) diffTables() []Finding {
 		}
 		out = append(out, d.wasChain(bt, lt)...)
 		out = append(out, d.renamePair(bt, lt, gone)...)
+	}
+	out = append(out, d.tableWasChain()...)
+	return out
+}
+
+// tableWasChain is [differ.wasChain] for a TABLE's own name (docs/SPEC-TABLES.md
+// §5): a table rides under the hash of its wire name, and `was` names the
+// FIRST one, forever. A second rename aimed at the intermediate declared name
+// hashes a name no record was ever written under, so every stored node of the
+// table becomes one the reader cannot name. The file records a renamed
+// table's declared name beside its wire name, which is what lets this
+// refusal say which spelling is right.
+func (d *differ) tableWasChain() []Finding {
+	if d.policy["was-chain"] != RuleFixed {
+		return nil
+	}
+	var out []Finding
+	for _, lt := range d.live.Tables {
+		if lt.Was == "" {
+			continue
+		}
+		for _, bt := range d.base.Tables {
+			declared := bt.Declared
+			if declared == "" {
+				declared = bt.Name
+			}
+			if declared != lt.Was || bt.Name == lt.Was {
+				continue
+			}
+			out = append(out, Finding{Refuse, "table " + lt.Declared, fmt.Sprintf(
+				"was = %q names %s, which itself rode under was = %q — `was` names the FIRST wire name, forever, so this table now rides under type id 0x%016x, an id no stored record was ever written under; write was = %q",
+				lt.Was, lt.Was, bt.Name, ir.TableWireId(lt.Was), bt.Name)})
+		}
 	}
 	return out
 }
@@ -1028,16 +1063,47 @@ func (d *differ) diffEnums() []Finding {
 		if !ok {
 			continue
 		}
-		have := map[string]bool{}
+		// VARIANTS MATCH BY WIRE ID, as fields do: `was` keeps the id through
+		// a rename, so a renamed variant is the same variant here
+		have := map[uint64]bool{}
 		for _, v := range le.Variants {
-			have[v.Name] = true
+			have[v.Id] = true
 		}
 		for _, v := range be.Variants {
-			if !have[v.Name] {
+			if !have[v.Id] {
 				out = append(out, Finding{Warn, "enum " + le.Name,
 					fmt.Sprintf("variant %s removed — stored values naming it read as None and count unknown", v.Name)})
 			}
 		}
+		out = append(out, d.variantWasChain(be, le)...)
+	}
+	return out
+}
+
+// variantWasChain is [differ.wasChain] for an enum's variants
+// (docs/SPEC-TABLES.md §5): `was` names the FIRST wire name, forever, and a
+// second rename aimed at the intermediate spelling hashes a name no value was
+// ever written under.
+func (d *differ) variantWasChain(be, le Enum) []Finding {
+	if d.policy["was-chain"] != RuleFixed {
+		return nil
+	}
+	byName := map[string]Variant{}
+	for _, v := range be.Variants {
+		byName[v.Name] = v
+	}
+	var out []Finding
+	for _, lv := range le.Variants {
+		if lv.Was == "" {
+			continue
+		}
+		bv, known := byName[lv.Was]
+		if !known || bv.Was == "" || bv.Was == lv.Was {
+			continue
+		}
+		out = append(out, Finding{Refuse, "enum " + le.Name + "." + lv.Name, fmt.Sprintf(
+			"was = %q names %s, which itself rode under was = %q — `was` names the FIRST wire name, forever, so this variant now rides under id 0x%016x, an id no value was ever written under; write was = %q",
+			lv.Was, lv.Was, bv.Was, lv.Id, bv.Was)})
 	}
 	return out
 }
@@ -1071,12 +1137,13 @@ func (d *differ) diffUnions() []Finding {
 		if !ok {
 			continue
 		}
-		arms := map[string]Field{}
+		// ARMS MATCH BY WIRE ID, as fields do (§5)
+		arms := map[uint64]Field{}
 		for _, a := range lu.Arms {
-			arms[a.Name] = a
+			arms[a.Id] = a
 		}
 		for _, a := range bu.Arms {
-			la, still := arms[a.Name]
+			la, still := arms[a.Id]
 			if !still {
 				if d.policy["union-arm"] == RuleLoss {
 					out = append(out, Finding{Warn, "union " + lu.Name,
@@ -1093,8 +1160,41 @@ func (d *differ) diffUnions() []Finding {
 			// set, and an added or removed judged token refuses on the same
 			// rule a changed one does: no kind byte separates an arm's type
 			// on the wire (§4.1's fifth silent member).
-			out = append(out, d.diffTokens("union "+lu.Name+"."+a.Name, a, la)...)
+			out = append(out, d.diffTokens("union "+lu.Name+"."+la.Name, a, la)...)
 		}
+		out = append(out, d.armWasChain(bu, lu)...)
+	}
+	return out
+}
+
+// armWasChain is [differ.wasChain] for a union's arms (docs/SPEC-TABLES.md
+// §5): `was` names the FIRST wire name, forever, and a second rename aimed at
+// the intermediate spelling hashes a name no body was ever written under.
+func (d *differ) armWasChain(bu, lu Union) []Finding {
+	if d.policy["was-chain"] != RuleFixed {
+		return nil
+	}
+	byName := map[string]Field{}
+	for _, a := range bu.Arms {
+		byName[a.Name] = a
+	}
+	var out []Finding
+	for _, la := range lu.Arms {
+		now, has := la.Get("was")
+		if !has {
+			continue
+		}
+		ba, known := byName[now]
+		if !known {
+			continue
+		}
+		first, chained := ba.Get("was")
+		if !chained || first == now {
+			continue
+		}
+		out = append(out, Finding{Refuse, "union " + lu.Name + "." + la.Name, fmt.Sprintf(
+			"was = %q names %s, which itself rode under was = %q — `was` names the FIRST wire name, forever, so this arm now rides under id 0x%016x, an id no body was ever written under; write was = %q",
+			now, now, first, la.Id, first)})
 	}
 	return out
 }

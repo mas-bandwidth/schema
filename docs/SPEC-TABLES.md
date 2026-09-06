@@ -1328,28 +1328,37 @@ already spends what it would buy**, and each is refused by name (§11):
   nothing and a framing case the wire does not have (§2.3 refuses `?` on a
   union field for the same reason). What an optional arm's case actually
   wants is the payload-free arm above, which says "this arm, no value";
-- **`was` and `json`** — arms already evolve by name (§5), and the arm's
-  name is its key in the text form (§16.2); each is the field feature one
-  level down and waits for a case (§15);
+- **`json`**: the arm's name is its key in the text form (§16.2), so a
+  key that is not the name is the field feature one level down and waits
+  for a case (§15). `was` an arm DOES take, a payload-free arm included:
+  it is the arm's rename, and the arm's id is the old name's hash (§5);
 - **an enum-keyed array `[E]T`** — a keyed body elides slots by name (§3.2)
   and its `None` slot wants its rule stated before it is wire, exactly as
   `[E]*T` and `[E]Body` do (§15);
 - **an `if` guard** — a guard is a body construct, and a union body has no
   fields to guard;
-- **a MAP (§2.8) and an UNBOUNDED ARRAY, `[]T` or `[]*T` (§2.9)**, on one
-  ground, because an arm's storage is OVERLAID and neither construct's elements
-  are in the arm at all. Both are a reference and a count in the record, with
-  the entries or elements laid in the HOLDER'S NODE EXTENT by a placement walk
+- **an ARRAY OF TABLES, `[..N]T` or `[N]T` over a `table` T** — a union arm
+  is one table, not an array of tables: every walk descends a table arm as
+  ONE body (§3.1), so the shape is refused by name; declare a table holding
+  the array and make that table the arm. Whether to admit the shape is
+  schema#579;
+- **a MAP (§2.8) and an UNBOUNDED ARRAY, `[]T` or `[]*T` (§2.9)**, as a
+  SURFACE RULE. Both are a reference and a count in the record, with the
+  entries or elements laid in the HOLDER'S NODE EXTENT by a placement walk
   that visits every map and every list the record reaches BY VALUE, pre-order,
-  in declaration order (§2.8, §2.9). An arm is reached by value only when its
-  TAG SAYS SO, so an arm's array would make the extent's contents, and every
-  offset after it, depend on a discriminant. That is a layout no cook can be
-  byte-stable under and no `cook-check` clause can bound, since §7.4 checks
-  containment and no-overlap against arrays the declaration says are there.
-  **AN ARM HOLDING EITHER IS A TABLE ARM'S JOB**: name a `table` that declares
-  the map or the list, which costs the arm's own `L` and terminator and puts
-  the construct where the placement walk already reaches it, in a node whose
-  extent does not depend on anybody's tag.
+  in declaration order (§2.8, §2.9). A union's set arm is one of those
+  by-value edges, reached when its TAG SAYS SO: a table arm that declares a
+  map or a list already has its arrays placed in the holder's extent by the
+  selected tag, by the one walk that numbers, packs, cooks and measures the
+  record (§3.1), and the cook holds the extent it wrote to the extent it
+  measured before a header is written (§7.6). So a container directly in an
+  arm would add no dependence on a tag that a table arm's containers do not
+  already have. What the restriction keeps is ONE GRAMMAR for where a
+  container lives, a field of a record, which is the name every walk and the
+  text form (§16) reach it by. **AN ARM HOLDING EITHER IS A TABLE ARM'S JOB**:
+  name a `table` that declares the map or the list, which costs the arm's own
+  `L` and terminator and puts the construct where the placement walk already
+  reaches it.
 
 **Selection is presence, so a set arm ALWAYS rides, whatever it holds**
 (§3). A union FIELD holding `None` elides; a union holding a selected arm
@@ -5337,7 +5346,10 @@ tolerance is the versioning model:
 
 - **Unknown field** (newer writer): skipped by its length, counted.
 - **Absent field** (older writer): the reader's value takes the field's
-  default — the specified default, else zero. That fallback is always
+  default: the specified default, else zero. A `string(N)`, `bytes(N)`
+  or `flags` field's declared default is that default (SPEC §4.2): the writer elides such a field holding it exactly as it elides a
+  scalar holding its own, so an empty string rides when the default is not
+  empty. That fallback is always
   inside the field's declared range: a range excluding zero requires a
   declared default in range (SPEC §4.6), so an absent field never lands
   out of bounds and never clamps.
@@ -5655,7 +5667,7 @@ the one the committed baseline (§18) exists to refuse:
 
 Everything else is either reported or safe. Fields may be added, removed,
 reordered and renamed under `was`; enum variants and union arms may be
-added anywhere, removed and reordered; array bounds may move; a field may
+added anywhere, removed, reordered and renamed under `was`; array bounds may move; a field may
 change between `T` and `?T` — all of it either invisible to the wire or
 counted in the report. Moving a field to or from `*T` is a kind change and
 is counted (§3.1).
@@ -5753,7 +5765,13 @@ only.
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
 | a DECLARATION renamed — a `type`, or a table held BY VALUE | silent: a name held by value is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
 | a TABLE renamed where it is a POINTER TARGET | **not silent**: a table's own name is its node's type id on the wire (§5), so every node of the old name is unnameable — skipped by its length and counted `unknown`, with every pointer to it reading null (§3.1) | as the row above | **moves** |
-| a `type`'s FIELD renamed, where `was` is refused (SPEC.md §4.2) | `unknown` on the table wire, whose field id is the name's hash | passes in silence | **moves**, and through the protocol id as well (SPEC.md §3.1) |
+| a TABLE renamed under `was` (§5) | silent, and nothing is lost: the type id is the old name's hash | passes, and the file records the declared name beside the wire name | no: the record line and every referent carry the wire name |
+| a TABLE renamed a SECOND time, the new `was` naming the INTERMEDIATE spelling | `unknown` for every stored record of the table, and every pointer to it reads null | **refuses**: `was` names the first wire name, forever (§5) | **moves** |
+| a `type`'s FIELD renamed under `was`, the type reached by a table closure (§5) | silent, and nothing is lost: the field id is the old name's hash | passes, and the edit that adds the `was` hints the `json =` pairing | no, and the protocol id stands still too: the projection carries the wire name |
+| a `type`'s FIELD renamed BARE | `unknown` on the table wire, whose field id is the name's hash, and the field reads its default | **warns**: a removal and an addition in one body in one edit is the shape of a rename (§18.2) | **moves**, and through the protocol id as well (SPEC.md §3.1) |
+| an enum VARIANT or a union ARM renamed under `was` (§5) | silent, and nothing is lost: the id is the old name's hash | passes, and the file records the alias beside the id | no |
+| an enum VARIANT or a union ARM renamed BARE | `unknown`: a stored value reads `None`, a stored body reads `None`, a keyed slot is dropped | **warns** that the old name was removed | **moves** |
+| a VARIANT or an ARM renamed a SECOND time, the new `was` naming the INTERMEDIATE spelling | `unknown` for every stored value or body | **refuses**: `was` names the first wire name, forever (§5) | **moves** |
 
 ### 4.2 The read is the verifier: the wire fuzzer
 
@@ -6003,17 +6021,59 @@ at compile time:
   tag systems cannot see; the compiler sees every id in the closure and
   refuses once, forever.
 
+**A TABLE's own name is identity too, and takes the same attribute.** A
+node record says what it is by its type id, `fnv1a64( name )` (§3.1), so a
+bare rename of a pointer target leaves every stored record of the old name
+one the reader cannot name. The declaration carries the rename:
+
+```
+table Ship | was = "Vessel"
+{
+    ...
+}
+```
+
+The table's type id is the hash of the OLD name, so a fleet written under
+`Vessel` reads under `Ship` in silence, and a fleet written under `Ship`
+carries the old id for a `Vessel` reader. Every id derivation reads the
+alias: the node record, the cooked node directory, the connection's
+announced vocabulary (§3.3), the baseline and the build version, so a `was`
+rename of a table moves nothing anywhere (§20.4), the protocol id
+included. The refusals are the field's: `was` naming the table's own name,
+`was = ""`, an alias colliding with a live table's id or taking a held-back
+id, and `was` on a `type` declaration, which rides by value and has no
+node type id to keep (§11). A table held by value may carry one, and it is
+harmless there. `was` names the FIRST wire name, forever, for a table as
+for a field: the baseline records a renamed table's declared name beside
+its wire name and refuses a second rename aimed at the intermediate
+spelling (§18.2).
+
 **Variants carry the same identity, and the same refusals.** An enum's
 values and a union's arms ride under their own name hashes (§3), so:
 
 - **Variants may be added anywhere, removed, and reordered** — the edit
   §4's field rule always allowed, now true of a vocabulary too. What a
   reader cannot name reads as `None` (enum) or empty (union), counted.
-- **Renaming a variant is a wire change**, and there is no `was` for one.
-  Every other edit a vocabulary takes already rides by name, so a rename is
-  the one edit left to cover, and covering it is a named follow-on (§15).
-  A renamed variant is a NEW variant, and old data carrying the old name
-  reads as unknown. Rename a variant only when that is what you mean.
+- **A rename declares the old name with `was`, as a field's does.** An
+  enum variant and a union arm, a payload-free arm included, take the
+  attribute on their own line: `Argent | was = "Silver"`, `shield Ward | was
+  = "ward"`, `pong | was = "ping"`. The id is the hash of the OLD name, so a
+  stored value or body written under it reads in silence, and every id
+  derivation reads the alias: the enum identity tables, the arm switches,
+  the keyed slots of an enum-keyed array, the announced vocabulary (§3.3),
+  the baseline and both ids (§20.4). The refusals are the field's: `was`
+  naming the variant's own name, `was = ""`, an alias colliding with a live
+  variant's id, and `was` on a variant of an enum or an arm of a union that
+  no table closure reaches, which has no wire identity for it to keep. A
+  `flags` variant refuses it too: a mask is positional, its identity is its
+  bit, and a rename keeps every stored bit. A variant renamed BARE is a NEW
+  variant, and old data carrying the old name reads as unknown.
+- **A field of a `type` a table closure reaches takes `was` too.** Such a
+  type rides as a nested body whose fields carry ids (§2), so a bare rename
+  orphans every stored body exactly as a table field's rename does, and the
+  attribute keeps the id on the same terms, `json =` pairing included. A
+  field of a type NO table reaches refuses it naming the type: the packet
+  wire is positional and there is nothing to keep.
 - **Two variants of one enum, or two arms of one union, whose ids collide
   are a compile error naming both** — the field rule, applied to the
   vocabulary. Scoped to the TABLE CLOSURE: the packet wire identifies a
@@ -9223,9 +9283,17 @@ in build version (§20.5).
   and a wire body past it is refused at LOAD rather than at compile time
   (§3.1). It sits far below where an int64 size stops being exact.
 - Recursive nesting (§2 — the cycle is named).
-- A bare rename hazard: `was` naming the field's own name (§5).
-- Id collisions, hash or `was`-induced (§5).
-- `was` outside a table body (§5).
+- A bare rename hazard: `was` naming the field's own name, or the table's
+  own name (§5).
+- Id collisions, hash or `was`-induced, a table's alias colliding with a
+  live table's type id included (§5).
+- `was` outside a table closure, on a `flags` variant, and on a `type`
+  declaration (§5).
+- A string, bytes or flags default that is not the field's own literal: a
+  string past the capacity, a string that is not UTF-8, a brace list on a
+  field that is not `flags`, a name in it that is not a variant of the
+  field's declaration or that repeats, and a quoted string on any field but
+  `string(N)` and `bytes(N)` (SPEC §4.2).
 - **Variant id collisions** — two variants of one enum, or two arms of one
   union, whose name hashes collide, with both named (§5). An enum reaching
   the closure only as an ARRAY KEY is in scope, and the diagnostic names
@@ -10900,9 +10968,9 @@ inspects everything in the schema built:
   would both be `L = 0`. What it would take is one payload shape the wire
   does not have, a presence byte under the arm's length ahead of the value,
   and a case the payload-free arm does not already answer.
-- **`was` AND `json` ON AN ARM** (§2.6): an arm rename that keeps the arm
-  id, and an arm key in the text form that is not the arm's name — each is
-  the field feature one level down, and each waits for a case. `= default`
+- **`json` ON AN ARM** (§2.6): an arm key in the text form that is not the
+  arm's name is the field feature one level down, and it waits for a case.
+  `= default`
   ON AN ARM waits with SPEC §5's untaken-branch question: zero at selection
   is the pinned rule, and a default at selection would be its first
   exception.
@@ -10910,6 +10978,13 @@ inspects everything in the schema built:
   body elides slots by name (§3.2), so its empty end wants stating in arm
   position exactly as `[E]*T` and `[E]Body` want it in field position, and
   the three land together or not at all.
+- **AN ARRAY OF TABLES AS AN ARM — `[..N]T` or `[N]T` over a `table` T
+  inside a union** (§2.6). Refused: every walk descends a table arm as ONE
+  body (§3.1), the node extent asks that body for its own, and the tool's
+  edge walk has no element to step. The shape a schema writes today is a
+  table holding the array, made the arm. What admitting it would take is an
+  element step in each of the five walks and a framing that says where one
+  element's body ends, and that is schema#579.
 - **GENERAL ARMS ON THE PACKET WIRE** (SPEC §4.8, §2.6): the encoding is
   stated where the packet union is, and what waits is the nine backends'
   packet codecs. Until they land, a union whose arms do not all name
@@ -12025,8 +12100,11 @@ array the KEY enum it names, and for a map the KEY's kind and the KEY's
 capacity), string and bytes capacity, the declared
 RANGE (`min=` and `max=`), presence of an optional, a fixed field's `F`
 (`frac=`, the one wire-invisible fact a wide kind has, §4.1), the specified
-default as exact canonical text — a fixed default as the RAW integer its
-storage holds — and the `was` alias; then each enum's variants in order with their ids, each flags'
+default as exact canonical text (a fixed default as the RAW integer its
+storage holds, a string or bytes default as `bytes:` and its bytes in hex,
+so a space in a default cannot split the token, and a flags default as the
+mask its names spell), and the `was` alias; then each enum's variants in order with their ids and,
+on a renamed variant, `was=` and its alias, each flags'
 variants in positional order, and each union's arms in order with their ids
 and their own wire facts.
 
@@ -12040,8 +12118,11 @@ FIELD tokens for what it is, in the field line's own column order and judged
 by the field line's own rules: `kind=`, then where the fact exists `elem=`,
 the `enum=` / `flags=` / `union=` / `type=` that names its referent,
 `array=`, `bound=`, `frac=`, `size=`, `min=` and `max=`. A tightened arm
-range warns exactly as a field's does, and an arm records no default and no
-`was` because an arm takes neither (§2.6). The three spellings are DISJOINT,
+range warns exactly as a field's does, an arm records no default because an
+arm takes none (§2.6), and a renamed arm records `was=` and its alias on
+every spelling, judged on nothing: the id is the identity, and the alias is
+what lets the check name the spelling a second rename should have used
+(§18.2). The three spellings are DISJOINT,
 which is what makes an arm moved between a body and anything else a REFUSAL
 rather than a silence (§18.2): the token SET moves, and an added or removed
 judged token refuses on the same rule a changed one does.
@@ -12067,6 +12148,15 @@ baseline silences it.
 **A field that names a declaration records WHICH KIND of declaration it
 names** — a table, an `enum`, a `flags` or a `union` — because those four
 are judged by four different identity rules (§18.3).
+
+**A TABLE IS KEYED BY ITS WIRE NAME** (§5): the member line and every
+`type=` and `payload=` that names it carry the `was` alias of a renamed
+table, so a rename under `was` regenerates every line byte-identically. The
+declared name is recorded beside it, `table Vessel name=Ship`, on the
+renamed table's line only, and it is judged on nothing: it is what lets
+the check say which spelling a second rename should have used (§18.2). An
+untouched schema renders no `name=`, so the rendering version is
+unmoved.
 
 **A MAP's generated ENTRY is a member here, and it is ANONYMOUS** (§2.8). Its
 member line is keyed by the holder's wire id and the map field's wire id
@@ -12168,7 +12258,11 @@ committed file whenever one is there, and:
   ITSELF rode under a `was` — `was` names the FIRST wire name, forever (§5),
   so a second one aimed at the intermediate spelling hashes a name no byte
   was ever written under, and the refusal names both spellings and the one
-  that is correct.
+  that is correct. A TABLE's `was` is held to the same rule over the
+  declared name the file recorded beside its wire name (§18.1): a second
+  rename aimed at that name is refused, naming the first. A VARIANT's and
+  an ARM's `was` are held to it over the `was=` the file recorded on their
+  lines, and a field of a `type` a table reaches is a field here.
 - **WARNS** — an array bound or a string/bytes capacity shrunk, a map's KEY
   bound included, **and an unbounded `[]T` given a bound** (§2.9), which is a
   capacity shrunk from every count to N; a field changed between a map and the
@@ -12191,7 +12285,7 @@ committed file whenever one is there, and:
   and a field that already pairs its key is told nothing.
 - **PASSES, in silence** — everything the wire absorbs: fields added,
   removed, reordered or renamed under `was`; enum variants and union arms
-  added anywhere; flags variants APPENDED at the end; bounds, capacities and
+  added anywhere or renamed under `was`; flags variants APPENDED at the end; bounds, capacities and
   ranges grown, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
   which is the largest growth there is; a bounded array made fixed or the
   reverse; a field moved
@@ -13690,8 +13784,10 @@ wrong fails to build instead of degrading.
 - **a specified default changed, added or removed**, and **a declared range
   tightened, loosened, added or removed** — group 3, and the reason group 3
   exists;
-- **an `enum` variant inserted, removed, reordered or renamed**; a `union` arm
-  inserted, removed, reordered or renamed; **a `flags` variant inserted,
+- **an `enum` variant inserted, removed, reordered or renamed bare**; a
+  `union` arm inserted, removed, reordered or renamed bare, where a rename
+  under `was` moves nothing because the projection carries the wire name
+  (§5); **a `flags` variant inserted,
   removed, reordered or renamed in place**, because a variant's BIT POSITION
   is what a stored and a cooked mask mean and nothing on the wire can report a
   move (§20.1, §4.1). It is the one group-3 fact the read report cannot see,
@@ -13820,7 +13916,8 @@ a second digest.
   line sees: a specified default changed; **a declared range tightened**; **a
   `bits(N)` narrowed within one storage width** — the case where the implied
   range moves and the storage kind, the size and the wire id do not; an `enum`
-  variant renamed; two `enum` variants swapped; **a `union` arm RENAMED**;
+  variant renamed bare; two `enum` variants swapped; **a `union` arm RENAMED
+  bare**, a rename under `was` being the control that moves neither id;
   **a `flags` variant REORDERED, and one RENAMED**. **Whether a row also
   rides group 1 now depends on REACHABILITY, and that is the point of the
   scoping** (SPEC.md §3.1): a vocabulary a `type` reaches rides group 1 as

@@ -352,7 +352,7 @@ func (s *scan) ref(at int64, f *ir.Field) error {
 		}
 		return fmt.Errorf("the reference resolves to offset %d, which the directory does not name", target)
 	}
-	want, wantName := ir.TableTypeId(f.Type.Name), f.Type.Name
+	want, wantName := ir.TableTypeId(ir.PointeeWireName(f)), f.Type.Name
 	if f.Type.Blob() {
 		// a byte buffer's slot names a blob node under its reserved id (§2.5)
 		want = ir.BlobTypeId(f)

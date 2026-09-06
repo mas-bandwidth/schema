@@ -65,7 +65,7 @@ tending/
 /test/go/schematest
 
 # pinned toolchains unpacked locally (Dart SDK, JDK — see the Makefile DART and JAVA variables)
-/dist/
+/dist
 
 # a crashed BEAM run drops its dump wherever it ran
 erl_crash.dump

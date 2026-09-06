@@ -66,6 +66,10 @@
 #include "K1Table.h"
 #include "K2Table.h"
 #include "G1Table.h"
+#include "W1Table.h"
+#include "W2Table.h"
+#include "R1Table.h"
+#include "R2Table.h"
 // the BYTE BUFFER unit (docs/SPEC-TABLES.md §2.5): a blob at its used size,
 // pointed at — a variable root like any pointered one
 #include "AssetsTable.h"
@@ -264,6 +268,8 @@ static const Codec codecs[] = {
     CODEC( "tbla2", tbla2, Root ),
     CODEC( "tblk1", tblk1, Root ),
     CODEC( "tblk2", tblk2, Root ),
+    CODEC( "tblr1", tblr1, Cfg ),
+    CODEC( "tblr2", tblr2, Cfg ),
     CODEC( "scalars", scalardemo, SimState ),
     CODEC( "tblscalars2", scalardemo2, SimState ),
     // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): their FILE-form
@@ -350,6 +356,8 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "streamdemo", streamdemo, Feed ),
     VARCODEC( "blobdemo", blobdemo, Catalog ),
     VARCODEC( "tblg1", tblg1, Guarded ),
+    VARCODEC( "tblw1", tblw1, Fleet ),
+    VARCODEC( "tblw2", tblw2, Fleet ),
 };
 
 // ---------------------------------------------------------------------------

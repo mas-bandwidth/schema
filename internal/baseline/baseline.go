@@ -34,6 +34,7 @@
 package baseline
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strconv"
@@ -88,8 +89,19 @@ type Unit struct {
 // keyword that declared it changes no byte — so the baseline spells both
 // `table`.
 type Table struct {
-	Name   string
+	Name   string // the WIRE name: the `was` alias of a renamed table, else its declared name (§5)
 	Fields []Field
+
+	// Declared is the table's declared name, rendered as `name=` on the table
+	// line only when a `was` makes it differ from the wire name above. It is
+	// recorded and judged on nothing: the line is the wire fact, and this is
+	// what lets the check name the spelling a second rename should have used.
+	Declared string
+
+	// Was is the live table's `was` alias, and it is the one fact here the FILE
+	// DOES NOT CARRY beyond `name=`: [Render] fills it on the live projection
+	// alone, where the chain refusal reads it (§18.2).
+	Was string
 }
 
 // A Field is one field of a closure member: its declared name, its EFFECTIVE
@@ -138,6 +150,10 @@ type Variant struct {
 	Name    string
 	Id      uint64
 	Payload string // union arms only
+	// Was is the variant's `was` alias, rendered as `was=` on its line and
+	// judged on nothing: the id is the identity, and this is what lets the
+	// check name the spelling a second rename should have used (§18.2).
+	Was string
 }
 
 // A Flags is one flags declaration in the closure. The ORDER IS THE FACT:
@@ -195,7 +211,10 @@ func Render(u *ir.Unit) *Unit {
 		// spelling, and a `was` rename moves that while moving no byte — so
 		// the entry is keyed by the holder's wire id and the field's, and a
 		// rename moves nothing in this file.
-		t := Table{Name: ir.ProjectionMemberName(u, name)}
+		t := Table{Name: ir.ProjectionMemberName(u, name), Declared: name, Was: st.WasName}
+		if st.MapEntryOf != "" {
+			t.Declared = t.Name
+		}
 		// DECLARATION ORDER: st.Fields is the flattened body, branch fields
 		// included. A guard removes a field from the bytes exactly as a
 		// default does, and both are absorbed by the reader's default — so
@@ -237,8 +256,8 @@ func Render(u *ir.Unit) *Unit {
 
 func renderEnum(e *ir.Enum) Enum {
 	out := Enum{Name: e.Name}
-	for _, v := range e.Variants {
-		out.Variants = append(out.Variants, Variant{Name: v, Id: ir.TableWireId(v)})
+	for i, v := range e.Variants {
+		out.Variants = append(out.Variants, Variant{Name: v, Id: ir.TableWireId(e.VariantWireName(i)), Was: wasOf(e.Was, i)})
 	}
 	return out
 }
@@ -257,15 +276,23 @@ func renderUnion(un *ir.Union) Union {
 		// else still reads; an arm with NO PAYLOAD carries `kind=none`; every
 		// other arm carries the FIELD tokens for what it is, judged by the one
 		// policy table a field is judged by.
-		arm := Field{Name: v.Name, Id: ir.TableWireId(v.Name)}
+		// the id is the WIRE name's hash, the `was` alias after a rename (§5)
+		arm := Field{Name: v.Name, Id: ir.TableWireId(v.WireName())}
 		switch {
 		case v.Body():
-			arm.Tokens = []Token{{Key: "payload", Value: v.Type}}
+			arm.Tokens = []Token{{Key: "payload", Value: v.Ref.WireName()}} // the wire name, as a field's type= is
 		case v.Void():
 			arm.Tokens = []Token{{Key: "kind", Value: "none"}}
 		default:
 			arm.Tokens = renderField(v.F).Tokens
 		}
+		if v.WasName != "" && !arm.hasToken("was") {
+			arm.Tokens = append(arm.Tokens, Token{Key: "was", Value: v.WasName})
+		}
+		// AN ARM'S TEXT KEY IS ITS OWN NAME and takes no `json =` (§2.6, §16.2),
+		// so there is no pairing for the rename hint to offer: the key is
+		// recorded as already answered, and a renamed arm draws no hint
+		arm.JsonKey = v.Name
 		out.Arms = append(out.Arms, arm)
 	}
 	return out
@@ -297,13 +324,18 @@ func renderField(f *ir.Field) Field {
 		}
 	}
 	if f.Type.Kind == ir.TNamed {
-		switch f.Type.Ref.(type) {
+		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
 			add("enum", f.Type.Name)
 		case *ir.Flags:
 			add("flags", f.Type.Name)
 		case *ir.Union:
 			add("union", f.Type.Name)
+		case *ir.Struct:
+			// the WIRE name (docs/SPEC-TABLES.md §5): a table renamed under
+			// `was` keeps the name every stored record carries, so a rename
+			// moves nothing in this file
+			add("type", ref.WireName())
 		default:
 			add("type", f.Type.Name)
 		}
@@ -403,6 +435,10 @@ func DefaultText(f *ir.Field) string {
 	switch {
 	case f.DefVariant != "":
 		return f.DefVariant
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		// the bytes themselves, hex-spelled so a space in a default cannot
+		// split the token (SPEC §4.2)
+		return "bytes:" + hex.EncodeToString(f.DefBytes)
 	case f.DefInt != nil:
 		return f.DefInt.String()
 	case f.Type.Kind == ir.TBool:
@@ -431,7 +467,11 @@ func (u *Unit) Text() string {
 	fmt.Fprintf(&b, "package %s\n", u.Package)
 
 	for _, t := range u.Tables {
-		fmt.Fprintf(&b, "\ntable %s\n", t.Name)
+		if t.Declared != "" && t.Declared != t.Name {
+			fmt.Fprintf(&b, "\ntable %s name=%s\n", t.Name, t.Declared)
+		} else {
+			fmt.Fprintf(&b, "\ntable %s\n", t.Name)
+		}
 		for _, f := range t.Fields {
 			fmt.Fprintf(&b, "    field %s id=0x%016x", f.Name, f.Id)
 			for _, tok := range f.Tokens {
@@ -443,7 +483,11 @@ func (u *Unit) Text() string {
 	for _, e := range u.Enums {
 		fmt.Fprintf(&b, "\nenum %s\n", e.Name)
 		for _, v := range e.Variants {
-			fmt.Fprintf(&b, "    variant %s id=0x%016x\n", v.Name, v.Id)
+			if v.Was != "" {
+				fmt.Fprintf(&b, "    variant %s id=0x%016x was=%s\n", v.Name, v.Id, v.Was)
+			} else {
+				fmt.Fprintf(&b, "    variant %s id=0x%016x\n", v.Name, v.Id)
+			}
 		}
 	}
 	for _, f := range u.Flags {
@@ -513,7 +557,13 @@ func Parse(path string, data []byte) (*Unit, error) {
 		}
 		fields := strings.Fields(line)
 		if !strings.HasPrefix(line, " ") {
-			// a section opener
+			// a section opener; a table line may carry `name=<declared>`, the
+			// declared name of a table renamed under `was` (§18.1)
+			declared := ""
+			if fields[0] == "table" && len(fields) == 3 && strings.HasPrefix(fields[2], "name=") {
+				declared = strings.TrimPrefix(fields[2], "name=")
+				fields = fields[:2]
+			}
 			if len(fields) != 2 {
 				return nil, fmt.Errorf("%s:%d: unreadable section line %q", path, i+1, line)
 			}
@@ -521,7 +571,7 @@ func Parse(path string, data []byte) (*Unit, error) {
 			case "package":
 				u.Package = fields[1]
 			case "table":
-				u.Tables = append(u.Tables, Table{Name: fields[1]})
+				u.Tables = append(u.Tables, Table{Name: fields[1], Declared: declared})
 			case "enum":
 				u.Enums = append(u.Enums, Enum{Name: fields[1]})
 			case "flags":
@@ -585,6 +635,11 @@ func (u *Unit) parseMemberLine(path string, lineno int, section string, fields [
 		if section == "enum" {
 			if fields[0] != "variant" || len(u.Enums) == 0 {
 				return bad()
+			}
+			for _, tok := range fields[2:] {
+				if k, val, ok := strings.Cut(tok, "="); ok && k == "was" {
+					v.Was = val
+				}
 			}
 			e := &u.Enums[len(u.Enums)-1]
 			e.Variants = append(e.Variants, v)
@@ -673,4 +728,18 @@ func collectUnion(out *Unit, un *ir.Union, seenEnum, seenFlags, seenUnion map[st
 			collectUnion(out, ref, seenEnum, seenFlags, seenUnion)
 		}
 	}
+}
+
+// wasOf is the i-th alias of a parallel `was` list, "" past its end.
+func wasOf(was []string, i int) string {
+	if i < len(was) {
+		return was[i]
+	}
+	return ""
+}
+
+// hasToken reports whether the field's line carries the key.
+func (f Field) hasToken(key string) bool {
+	_, has := f.Get(key)
+	return has
 }

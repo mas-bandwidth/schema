@@ -552,10 +552,11 @@ UnionVariant = ident [ ArmType ] [ AttrSection ] NL .              // AN ARM IS 
                                                                    // that type takes. A BARE NAME is an
                                                                    // arm with NO PAYLOAD, and it takes a
                                                                    // qualification of its own — tags
-                                                                   // only, since it shapes no value.
-                                                                   // No "= Default", no "?", no
-                                                                   // was/json: each is refused at the
-                                                                   // arm (§4.8, SPEC-TABLES.md §2.6)
+                                                                   // and `was`, since it shapes no
+                                                                   // value. No "= Default", no "?", no
+                                                                   // json: each is refused at the arm
+                                                                   // (§4.8, SPEC-TABLES.md §2.6). `was`
+                                                                   // is the arm's rename (§4.2)
 ArmType     = [ "[" Bound "]" ] Scalar .                           // the field Type without its "?".
                                                                    // An arm that names neither a
                                                                    // declared `type` nor nothing at all
@@ -568,8 +569,10 @@ ConstExpr   = IntExpr | FloatExpr .
 Enum        = "enum" ident ( VariantList
             | AttrSection NL VariantList ) NL .
 VariantList = "{" [ Variant { VariantSep Variant } [ VariantSep ] ] "}" .
-Variant     = ident [ AttrSection ] .                              // the qualification carries TAGS
-                                                                   // and nothing else (§4.2)
+Variant     = ident [ AttrSection ] .                              // the qualification carries TAGS,
+                                                                   // and on an enum variant `was`,
+                                                                   // the rename (§4.2); a flags
+                                                                   // variant takes tags alone
 VariantSep  = "," | NL .                                           // a comma, or the newline that
                                                                    // ends a qualified variant's line;
                                                                    // a trailing separator is OK
@@ -580,14 +583,17 @@ TableDecl   = "table" ident ( Block
             | AttrSection NL Block ) NL .               // the TABLE wire, SPEC-TABLES.md —
                                                         // a type body, plus pointers and `was`.
                                                         // A table declaration's qualification
-                                                        // carries TAGS and nothing else (§4.2)
+                                                        // carries TAGS and `was` (§4.2)
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If .
 Field       = ident Type [ "=" Default ] [ AttrSection ] NL .   // the default DEFINES, so it
                                                                  // precedes the qualification
-Default     = ConstExpr | ident .                    // specified default (see below):
-                                                     // ident = true | false | an enum variant
+Default     = ConstExpr | ident | string
+            | "{" [ ident { "," ident } ] "}" .      // specified default (see below):
+                                                     // ident = true | false | an enum variant,
+                                                     // a string for string(N) and bytes(N),
+                                                     // a brace list of variant names for flags
 ConstField  = "const" "(" IntExpr "," IntExpr ")" NL .          // (value, bits)
 Reserved    = "reserved" "(" IntExpr ")" NL .
 Align       = "align" NL .
@@ -683,8 +689,19 @@ FloatExpr   = float expression over float literals, int literals and const names
   qualification: `active bool = true`. Defaults cover bool
   (`true`/`false`), integer and float fields (constant expressions,
   fit-checked like any use site), enum fields (a variant name), the 128-bit
-  integers, and `fixed` (§4.6); arrays, strings, bytes, composite and union
-  fields zero-initialize with no override. **The default is STORAGE initialization —
+  integers, `fixed` (§4.6), `string(N)` and `bytes(N)` fields (a quoted
+  string, at most N bytes, valid UTF-8 for a string: `name string(32) =
+  "untitled"`, `tag bytes(4) = "ab"`, the literal's bytes with no escapes,
+  as every quoted string in the language is), and `flags` fields (a brace
+  list of the declaration's variant names, each at most once, whose bits are
+  the fresh mask: `caps Caps = { Jump, Crouch }`, and `{}` the zero mask).
+  Arrays, `wstring(N)`, composite and union fields zero-initialize with no
+  override. On the TABLE wire a field at its declared default elides and an
+  absent field reads as it, whatever the kind (SPEC-TABLES.md §4), so the
+  string, bytes and flags defaults are part of that wire's contract exactly
+  as a scalar's is. The C++ reference carries the three, and every other
+  backend refuses a unit that declares one, naming the follow-on.
+  **The default is STORAGE initialization —
   what a freshly constructed object holds. It does not touch the wire**: per
   §5's read rule, fields in untaken branches read as ZERO values, not as
   defaults — the wire contract stays a pure function of the schema's
@@ -880,9 +897,11 @@ sequence    uint16
   IS the compressed float); `fixed`/`ufixed`/`int128` take `min`/`max`
   (required — §4.3); enum and flags declarations take `max`; type
   declarations take the `cpp_native`/`cpp_include` pair (below); a field of a
-  **table** body takes `was` (below) and `json` (SPEC-TABLES.md §16.4); and a
-  **table** declaration, a **union** declaration, a **constant**, an enum or
-  flags **variant** and a union **arm** take no valued key at all. **The
+  **table** body takes `was` (below) and `json` (SPEC-TABLES.md §16.4), a
+  field of a **type** that a table closure reaches takes `was` and `json`
+  on the same terms, a **table** declaration, an **enum variant** and a
+  union **arm** take `was` (below), and a **union** declaration, a
+  **constant** and a **flags variant** take no valued key at all. **The
   VALUELESS half is open at every one of them** — that is the tag, below.
 - **A bare identifier that spells a known valued key is refused by name**,
   never taken as a tag: `| min` draws "min takes a value: write min = 0". The
@@ -898,15 +917,34 @@ sequence    uint16
   word named, so `| table` draws "table is a reserved word" rather than
   becoming a tag. **A repeated tag on one line is refused by name** too, and
   so is a tag that repeats a valued key already on the line.
-- **`was = "old_name"` — the rename attribute, table bodies only**
+- **`was = "old_name"`, the rename attribute, table closures only**
   (SPEC-TABLES.md §5). A table field's wire id is the hash of its name, so a
   bare rename would orphan every byte ever written under the old one; `was`
   keeps the old identity through the rename: `speed float32 | was =
-  "velocity"`. It takes the old name as a QUOTED STRING. On a `type` field it
-  is refused by name: the packet wire is positional, so a rename orphans no
-  stored value and there is no identity for `was` to carry. It is not a free
-  edit — field NAMES ride in the projection (§3.1), so renaming a `type`
-  field moves the protocol id and both sides redeploy together.
+  "velocity"`. It takes the old name as a QUOTED STRING. **A field of a
+  `type` that a table closure reaches takes it on the same terms**: such a
+  type rides the table wire as a nested body whose fields carry ids
+  (SPEC-TABLES.md §2), so a rename there orphans stored data exactly as a
+  table field's does, and `was` keeps the id. On a field of a type NO table
+  reaches it is refused naming the type: the packet wire is positional, so
+  a rename there orphans no stored value and there is no identity for `was`
+  to carry. A bare rename is not a free edit on either wire: field NAMES
+  ride in the projection (§3.1), so renaming a `type` field bare moves the
+  protocol id and both sides redeploy together, where a rename under `was`
+  projects the wire name and moves nothing. **An enum variant and a union
+  arm take the same attribute**, `Argent | was = "Silver"` and `shield Ward
+  | was = "ward"`, a payload-free arm included, `pong | was = "ping"`: a
+  variant and an arm ride the table wire under the hash of their name
+  (SPEC-TABLES.md §3), and the alias keeps that id. A `flags` variant
+  refuses it by name: a mask is positional, a variant's identity is its
+  bit, and a rename there keeps every stored bit. **A `table`
+  declaration takes the same attribute**, `table Ship | was = "Vessel"`: a
+  table's name is its node type id on the table wire (SPEC-TABLES.md §3.1),
+  and the alias keeps that id through the rename, so every stored record of
+  the old name still reads as this table. A `type` declaration refuses it by
+  name, because a type rides by value and has no node type id. The alias
+  moves neither the protocol id nor the build version (SPEC-TABLES.md §5,
+  §20.4).
 
 ### Tags — the vocabulary is the user's; meaning is claimed later
 
@@ -991,17 +1029,19 @@ type Quat | quat4
   actions for those types on the other. v1 ships the types; each schema
   declares its own, and each application's actions bind to them by claiming.
 
-**Front-end status: ONE LINE KIND CARRIES A TAG TODAY.** The rule at every
+**Front-end status: TWO LINE KINDS CARRY A TAG TODAY.** The rule at every
 line kind is specified ahead of its implementation, on the terms
 SPEC-TABLES.md §3.3 and §6.6 take. What the tree carries is a tag on a
-`type` DECLARATION alone, gathered into `ir.Struct.Tags` and emitted as the
-inert comment above. Every other line kind refuses one, each under a
-diagnostic written for a different rule: a field's pipe draws "unknown
-attribute ... the vocabulary is typed and closed per compiler version", a
-`table` and a `union` declaration draw "takes no qualification", a `const`
-draws "a constant takes no qualification, and | is never an operator", a
-union arm's pipe draws "expected a field type", and an enum or flags variant
-carrying one does not parse at all. Owed as schema#523 ruling 4, together
+`type` declaration, gathered into `ir.Struct.Tags` and emitted as the inert
+comment above, and on a `table` declaration, gathered the same way and
+emitted nowhere yet. A field's pipe refuses one under "unknown
+attribute ... the vocabulary is typed and closed per compiler version", and
+an arm with a payload is a field line and refuses it the same way. A `union`
+declaration draws "takes no qualification", and a `const` draws "a constant
+takes no qualification, and | is never an operator". An enum variant, a
+flags variant and a payload-free arm parse a qualification section for `was`
+(a flags variant refuses `was` by ruling) and accept a bare tag in silence,
+carrying it nowhere. Owed as schema#523 ruling 4, together
 with the descriptor columns it feeds (SPEC-TABLES.md §8.1), and this line is
 deleted by the implementation PR that lands the behavior.
 
@@ -1475,8 +1515,9 @@ union Value
   lower_snake, unique within the union), then the arm's type, then the
   value-shaping attributes that type takes: `| min`, `| max`, a compressed
   float's range and resolution — plus TAGS, which every declared item takes
-  (§4.2), including a bare-name arm, whose qualification section can hold
-  nothing else. **A row that is a BARE NAME is an arm with no payload**
+  (§4.2), and `was`, the arm's rename (§4.2), including a bare-name arm,
+  whose qualification section can hold nothing else. **A row that is a BARE
+  NAME is an arm with no payload**
   (below). **What a row may not take is SPEC-TABLES.md §2.6's list**, each
   refused by name. A union FIELD likewise takes no valued
   attribute and no `= default` (it zero-initializes to None, joining

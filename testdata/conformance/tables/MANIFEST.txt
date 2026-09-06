@@ -57,6 +57,10 @@ unit tbla2     test/tables/A2.schema
 unit tblg1     test/tables/G1.schema
 unit tblk1     test/tables/K1.schema
 unit tblk2     test/tables/K2.schema
+unit tblw1     test/tables/W1.schema
+unit tblw2     test/tables/W2.schema
+unit tblr1     test/tables/R1.schema
+unit tblr2     test/tables/R2.schema
 
 instance root_full            tabledemo RootConfig    testdata/wire/tables/root_full.bin
 instance root_default         tabledemo RootConfig    testdata/wire/tables/root_default.bin
@@ -781,6 +785,35 @@ message vocab_low  vocab_conn   Wide00        testdata/wire/tables/vocab_low.bin
 message graph_tree graph_conn   Scene         testdata/wire/tables/graph_tree.bin testdata/wire/tables/graph_tree_message.bin
 message peer_a     backend_conn StorePurchase testdata/wire/tables/peer_a.bin     testdata/wire/tables/peer_a_message.bin
 message peer_b     vocab_conn   Wide00        testdata/wire/tables/peer_b.bin     testdata/wire/tables/peer_b_message.bin
+
+# THE `was` ROWS (docs/SPEC-TABLES.md §5, SPEC §4.2). w1_fleet carries string,
+# bytes and flags fields OFF their declared defaults beside a node holding every
+# default; w1_fleet_default is a fleet of nothing but defaults, which is the
+# empty wire, because a string, bytes or flags field at its declared default
+# elides as a scalar does. w2_fleet is the same value written by the unit that
+# renamed Vessel to Ship under `was`: byte-identical to w1_fleet, type id
+# included. The two cross reads are silent, and `make
+# tables-was-negative-control` strips the attribute and watches unknown count.
+instance w1_fleet             tblw1       Fleet       testdata/wire/tables/w1_fleet.bin
+instance w1_fleet_default     tblw1       Fleet       testdata/wire/tables/w1_fleet_default.bin
+instance w2_fleet             tblw2       Fleet       testdata/wire/tables/w2_fleet.bin
+report w1_fleet_as_w2 tblw2 Fleet testdata/wire/tables/w1_fleet.bin
+report w2_fleet_as_w1 tblw1 Fleet testdata/wire/tables/w2_fleet.bin
+report w1_fleet_default_as_w2 tblw2 Fleet testdata/wire/tables/w1_fleet_default.bin
+
+# THE VOCABULARY `was` ROWS (docs/SPEC-TABLES.md §5). r1_cfg holds an enum
+# value, a union arm with a payload, a keyed slot and a nested type's field
+# whose names R2 renames under `was`: Silver to Argent, ward to shield,
+# Buff.multiplier to mult. r1_ping selects the payload-free arm R2 renames
+# pong. r2_cfg is r1_cfg's value written by the renamed unit, byte-identical.
+# The cross reads are silent, and `make tables-wasrows-negative-control`
+# strips the four attributes and watches unknown count.
+instance r1_cfg               tblr1       Cfg         testdata/wire/tables/r1_cfg.bin
+instance r1_ping              tblr1       Cfg         testdata/wire/tables/r1_ping.bin
+instance r2_cfg               tblr2       Cfg         testdata/wire/tables/r2_cfg.bin
+report r1_cfg_as_r2 tblr2 Cfg testdata/wire/tables/r1_cfg.bin
+report r1_ping_as_r2 tblr2 Cfg testdata/wire/tables/r1_ping.bin
+report r2_cfg_as_r1 tblr1 Cfg testdata/wire/tables/r2_cfg.bin
 
 # THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §6.5, §7, §19.2): one
 # TableRefuseReason for a cook's Open, a block's BlockOpen and LoadMeasure's

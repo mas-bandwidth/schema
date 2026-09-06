@@ -112,10 +112,18 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 	// its own body used; a MESSAGE can, because a connection's table
 	// announces every table's name id whether or not a pointer names it
 	// (§3.3). The two reserved blob ids sit beside them (§2.5).
+	//
+	// The PLACEABLE SET is named on its own line, before the id map is built
+	// from it, because it is the seam the node-type negative control replaces
+	// with the whole unit closure.
 	byTypeId := map[uint64]*ir.Struct{}
-	for name := range ir.PointerReachable(m.Unit, inst.Def) {
+	placeable := map[string]bool{}
+	for _, st := range ir.PointerReachable(inst.Def) {
+		placeable[st.Name] = true
+	}
+	for name := range placeable {
 		if sd := m.Lookup(name); sd != nil {
-			byTypeId[ir.TableWireId(name)] = sd
+			byTypeId[ir.TableWireId(sd.WireName())] = sd
 		}
 	}
 
@@ -125,7 +133,7 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 	// missing from this map falls through to the table lookup, which never
 	// holds it, and is counted unknown there.
 	blobKind := map[uint64]ir.FieldTypeKind{}
-	bytesEdge, stringEdge := ir.PointerReachableBlobs(m.Unit, inst.Def)
+	bytesEdge, stringEdge := ir.PointerReachableBlobs(inst.Def)
 	if bytesEdge {
 		blobKind[ir.BytesWireTypeId] = ir.TBytes
 	}

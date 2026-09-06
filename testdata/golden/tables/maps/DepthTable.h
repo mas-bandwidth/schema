@@ -3996,6 +3996,9 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
     }
 }
 
+inline bool ForceWireArmExtent( TableReader & r, int64_t & at, TableRefuseReason & reason );
+inline bool ForceWireArmsExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason );
+
 // SquadWireExtent: the extent Squad's lists and maps command, from the FRAMING alone.
 // It reads no field value, so a caller can refuse a number it did not
 // expect before one byte is allocated (docs/SPEC-TABLES.md §6.5).
@@ -4121,22 +4124,7 @@ inline bool DepthWireExtent( const uint8_t * body, int64_t length, int64_t & at,
         }
         if ( field_id == 0xe756c0190570ccb5ull && field_kind == 15 ) // arm: a union arm that holds a list or a map
         {
-            uint64_t arm_ref = 0;
-            if ( !r.getleb( arm_ref ) ) { return true; }
-            if ( arm_ref == 0 ) { continue; } // None: the reference is the whole payload
-            if ( arm_ref > (uint64_t) ids->count ) { return true; }
-            const uint64_t arm_id = ids->at( arm_ref );
-            if ( !r.has( 1 ) ) { return true; }
-            r.offset += 1; // the arm's kind byte
-            uint64_t arm_len = 0;
-            if ( !r.getleb( arm_len ) || !r.room( arm_len ) ) { return true; }
-            const uint8_t * arm_body = r.buffer + r.offset;
-            r.offset += (int64_t) arm_len;
-            switch ( arm_id )
-            {
-                case 0xd5c2bb95d63e6331ull: if ( !SquadWireExtent( arm_body, (int64_t) arm_len, at, ids, reason ) ) { return false; } break; // squad
-                default: break; // an arm this reader cannot name reads None
-            }
+            if ( !ForceWireArmExtent( r, at, reason ) ) { return false; }
             continue;
         }
         if ( !r.skip( field_kind ) ) { return true; }
@@ -4214,6 +4202,44 @@ inline bool DepthExtentPack( const Ctx & ctx, const Depth & src, Depth & dst, ui
             break;
         }
         default: break;
+    }
+    return true;
+}
+
+// ForceWireArmExtent: the extent one Force value's set arm commands, from the FRAMING alone (§2.6, §6.5).
+inline bool ForceWireArmExtent( TableReader & r, int64_t & at, TableRefuseReason & reason )
+{
+    uint64_t arm_ref = 0;
+    if ( !r.getleb( arm_ref ) ) { r.offset = r.size; return true; }
+    if ( arm_ref == 0 ) { return true; } // None: the reference is the whole payload
+    if ( r.ids == NULL || arm_ref > (uint64_t) r.ids->count ) { r.offset = r.size; return true; }
+    const uint64_t arm_id = r.ids->at( arm_ref );
+    if ( !r.has( 1 ) ) { r.offset = r.size; return true; }
+    r.offset += 1; // the arm's kind byte
+    uint64_t arm_len = 0;
+    if ( !r.getleb( arm_len ) || !r.room( arm_len ) ) { r.offset = r.size; return true; }
+    const uint8_t * arm_body = r.buffer + r.offset;
+    r.offset += (int64_t) arm_len;
+    switch ( arm_id )
+    {
+        case 0xd5c2bb95d63e6331ull: if ( !SquadWireExtent( arm_body, (int64_t) arm_len, at, r.ids, reason ) ) { return false; } break; // squad
+        default: break; // an arm this reader cannot name reads None
+    }
+    return true;
+}
+
+// ForceWireArmsExtent: that walk over an ARRAY of Force values, one arm header per element in its place (§2.6, §3).
+inline bool ForceWireArmsExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, ids );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 15 ) { return true; } // another element kind: the field reads empty
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    for ( uint64_t i = 0; i < n && r.offset < r.size; i++ )
+    {
+        if ( !ForceWireArmExtent( r, at, reason ) ) { return false; }
     }
     return true;
 }
@@ -6138,14 +6164,29 @@ template <typename Ctx> inline bool SquadCookExtent( const Ctx & ctx, const Tabl
 template <typename Ctx> inline bool DepthCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Depth & value, TableByteOrder order )
 {
     (void) region; // a table element's and an entry's references resolve through their own bodies
-    if ( !SquadCookExtent( ctx, region, extent, at, record + 0, value.one, order ) ) { return false; } // one
-    for ( int32_t i = 0; i < ( value.many_count < 3 ? value.many_count : 3 ); i++ ) // many
+    { // one (nested by value)
+        if ( !SquadCookExtent( ctx, region, extent, at, record + 0, value.one, order ) ) { return false; }
+    }
+    for ( int32_t i = 0; i < value.many_count && i < 3; i++ ) // many
     {
         if ( !SquadCookExtent( ctx, region, extent, at, record + 16 + i * 16, value.many[i], order ) ) { return false; }
+    }
+    for ( int32_t i = value.many_count; i < 3; i++ ) // many: the slots the walk does not reach (§7.6)
+    {
+        if ( !TableExtentUnreachedEmpty( SquadExtent( ctx, value.many[i] ) ) ) { return false; }
     }
     for ( int32_t i = 0; i < 2; i++ ) // keyed
     {
         if ( !SquadCookExtent( ctx, region, extent, at, record + 72 + i * 16, value.keyed.slots[i], order ) ) { return false; }
+    }
+    switch ( value.arm.type ) // arm: the set arm is the edge
+    {
+        case ForceType::Squad:
+        {
+            if ( !SquadCookExtent( ctx, region, extent, at, record + 112, value.arm.squad, order ) ) { return false; }
+            break;
+        }
+        default: break;
     }
     return true;
 }
@@ -6163,7 +6204,8 @@ template <typename Ctx> inline bool SquadCookNode( const Ctx & ctx, const TableC
 {
     if ( !SquadCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return SquadCookExtent( ctx, region, at + 16, extent_at, at, value, order );
+    if ( !SquadCookExtent( ctx, region, at + 16, extent_at, at, value, order ) ) { return false; }
+    return extent_at == SquadExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // DepthCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -6171,7 +6213,8 @@ template <typename Ctx> inline bool DepthCookNode( const Ctx & ctx, const TableC
 {
     if ( !DepthCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return DepthCookExtent( ctx, region, at + 136, extent_at, at, value, order );
+    if ( !DepthCookExtent( ctx, region, at + 136, extent_at, at, value, order ) ) { return false; }
+    return extent_at == DepthExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // SquadCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one

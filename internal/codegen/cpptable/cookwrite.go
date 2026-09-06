@@ -501,7 +501,7 @@ func (g *tableGen) emitCookWriteRoot(st *ir.Struct) {
 	g.pf("    // for `schema cook-check` — one entry, the root at offset zero, and its type\n")
 	g.pf("    // id is the fnv1a64 of the table's name (§3.1)\n")
 	g.pf("    table_cook_put( raw + %d, 0, 8, order );\n", attribOffset)
-	g.pf("    table_cook_put( raw + %d, 0x%016xull, 8, order );\n", attribOffset+8, ir.TableWireId(st.Name))
+	g.pf("    table_cook_put( raw + %d, 0x%016xull, 8, order );\n", attribOffset+8, ir.TableWireId(st.WireName()))
 	g.pf("    return true;\n")
 	g.pf("}\n\n")
 }
@@ -521,8 +521,8 @@ func (g *tableGen) emitCookWriteRoot(st *ir.Struct) {
 func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	n := st.Name
 	ml := ir.RecordLayout(g.unit, st)
-	reachable := g.pointerReachable(st)
-	blobs := g.reachableBlobs(st)
+	reachable := ir.PointerReachable(st)
+	blobs := reachableBlobs(st)
 
 	g.pf("// %sCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one\n", n)
 	g.pf("// numbering — the root at zero, then every node in index order at\n")
@@ -548,6 +548,11 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	} else {
 		if g.anyExtent {
 			g.pf("    (void) root;\n")
+			if !g.rootHasExtent(st) {
+				// no node this root can name has an extent either, so the
+				// layout reads nothing through the context
+				g.pf("    (void) ctx;\n")
+			}
 		}
 		g.pf("    int64_t offset = %d; // the root, at zero\n", ml.Size)
 	}
@@ -560,12 +565,12 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	for _, t := range reachable {
 		tl := ir.RecordLayout(g.unit, t)
 		if g.anyExtent && g.hasExtent(t) {
-			g.pf("            case 0x%016xull: // %s\n", ir.TableWireId(t.Name), t.Name)
+			g.pf("            case 0x%016xull: // %s\n", ir.TableWireId(t.WireName()), t.Name)
 			g.emitCookNodeBytes(t, "                ", fmt.Sprintf("*(const %s *) numbering.entries[k].node", t.Name), "return false;")
 			g.pf("                break;\n")
 			continue
 		}
-		g.pf("            case 0x%016xull: size = %d; node_align = %d; break; // %s\n", ir.TableWireId(t.Name), tl.Size, tl.Align, t.Name)
+		g.pf("            case 0x%016xull: size = %d; node_align = %d; break; // %s\n", ir.TableWireId(t.WireName()), tl.Size, tl.Align, t.Name)
 	}
 	for _, b := range blobs {
 		// a byte buffer's node is its header and its bytes, at eight (§7.2)
@@ -661,13 +666,13 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	}
 	for _, t := range reachable {
 		if g.anyExtent {
-			g.pf("                    case 0x%016xull: ok = %sCookNode( ctx, region, at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.Name), t.Name, t.Name, t.Name)
+			g.pf("                    case 0x%016xull: ok = %sCookNode( ctx, region, at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 			continue
 		}
 		if g.isVar(t.Name) {
-			g.pf("                    case 0x%016xull: ok = %sCookBody( ctx, region, at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.Name), t.Name, t.Name, t.Name)
+			g.pf("                    case 0x%016xull: ok = %sCookBody( ctx, region, at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 		} else {
-			g.pf("                    case 0x%016xull: %sCookBody( at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.Name), t.Name, t.Name, t.Name)
+			g.pf("                    case 0x%016xull: %sCookBody( at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 		}
 	}
 	for _, b := range blobs {
@@ -687,7 +692,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("            // in index order, for `schema cook-check`\n")
 	g.pf("            uint8_t * entry = raw + data_offset + region.bytes;\n")
 	g.pf("            table_cook_put( entry, 0, 8, order );\n")
-	g.pf("            table_cook_put( entry + 8, 0x%016xull, 8, order ); // the root: fnv1a64( \"%s\" )\n", ir.TableWireId(st.Name), n)
+	g.pf("            table_cook_put( entry + 8, 0x%016xull, 8, order ); // the root: fnv1a64( \"%s\" )\n", ir.TableWireId(st.WireName()), n)
 	g.pf("            for ( int64_t k = 0; k < numbering.count; k++ )\n            {\n")
 	g.pf("                entry += sizeof( TableNodeDirEntry );\n")
 	g.pf("                table_cook_put( entry, (uint64_t) region.offsets[k + 1], 8, order );\n")

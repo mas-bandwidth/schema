@@ -150,10 +150,12 @@ func CookProjection(u *Unit) string {
 
 	for _, name := range sortedKeysOf(enums) {
 		fmt.Fprintf(&b, "enum %s\n", name)
-		for i, v := range enums[name].Variants {
+		for i := range enums[name].Variants {
 			// the STORED VALUE, not a positional index: None = 0 is implicit
-			// and never listed, so declared variants start at 1
-			fmt.Fprintf(&b, "    variant %d %s\n", i+1, v)
+			// and never listed, so declared variants start at 1. The name is
+			// the WIRE name (§5): a variant renamed under `was` keeps the id
+			// every stored value carries, so the rename moves nothing.
+			fmt.Fprintf(&b, "    variant %d %s\n", i+1, enums[name].VariantWireName(i))
 		}
 	}
 	// A `flags` DECLARATION TAKES A BLOCK OF ITS OWN, and it is the enum block
@@ -245,19 +247,19 @@ func cookArmLine(u *Unit, un *Union, tag int, v UnionVariant, enums map[string]*
 	if v.Void() {
 		// AN ARM WITH NO PAYLOAD carries `kind=none` (§20.2, §18.1): the kind
 		// token saying there is no kind to carry, and no storage to offset
-		return fmt.Sprintf("    arm %d %s kind=none\n", tag, v.Name)
+		return fmt.Sprintf("    arm %d %s kind=none\n", tag, v.WireName())
 	}
 	if v.Body() {
 		// an arm that names a declared `type` or `table` carries `payload=`
 		// and nothing else, exactly as it always did — so a unit whose arms
 		// all name declared types projects exactly as it did before arms
 		// could be anything else, and its build version does not move
-		return fmt.Sprintf("    arm %d %s payload=%s\n", tag, v.Name, v.Type)
+		return fmt.Sprintf("    arm %d %s payload=%s\n", tag, v.WireName(), v.Type)
 	}
 	size, align := ArmLayout(u, v)
 	fl := FieldLayout{Field: v.F, Offset: armOffset, Size: size, Align: align}
 	return fmt.Sprintf("    arm %d %s kind=%d offset=%d size=%d%s\n",
-		tag, v.Name, TableWireScalarKind(v.F), armOffset, size, cookFacts(u, fl, enums, flags, unions))
+		tag, v.WireName(), TableWireScalarKind(v.F), armOffset, size, cookFacts(u, fl, enums, flags, unions))
 }
 
 // cookFacts is the token tail a field line and an ARM line share: the scale,
@@ -289,7 +291,9 @@ func cookFacts(u *Unit, fl FieldLayout, enums map[string]*Enum, flags map[string
 	if f.Type.Kind == TNamed {
 		switch ref := f.Type.Ref.(type) {
 		case *Struct:
-			fmt.Fprintf(&b, " type=%s", ref.Name)
+			// the WIRE name (§5): a table renamed under `was` keeps the name
+			// every cooked node directory carries, so the rename moves nothing
+			fmt.Fprintf(&b, " type=%s", ref.WireName())
 		case *Enum:
 			fmt.Fprintf(&b, " enum=%s", ref.Name)
 			enums[ref.Name] = ref
@@ -383,6 +387,8 @@ func cookValue(f *Field) string {
 	switch {
 	case f.DefVariant != "":
 		return f.DefVariant
+	case f.Type.Kind == TString || f.Type.Kind == TBytes:
+		return fmt.Sprintf("bytes:%x", f.DefBytes)
 	case f.Type.Kind == TBool:
 		if f.DefBool {
 			return "true"

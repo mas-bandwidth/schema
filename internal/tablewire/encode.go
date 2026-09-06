@@ -9,6 +9,7 @@
 package tablewire
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -204,8 +205,8 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		return encodeKeyed(e, w, fv, id, kind)
 
 	case f.Type.Kind == ir.TString:
-		if fv.Count == 0 {
-			return nil
+		if bytes.Equal(fv.Cell.Str, f.DefBytes) {
+			return nil // at its default, empty when none is declared (§3, SPEC §4.2)
 		}
 		e.header(w, id, ir.TableKindString)
 		w.leb(uint64(len(fv.Cell.Str)))
@@ -213,8 +214,8 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		return nil
 
 	case f.Type.Kind == ir.TBytes:
-		if fv.Count == 0 {
-			return nil
+		if bytes.Equal(fv.Cell.Str, f.DefBytes) {
+			return nil // at its default, empty when none is declared (§3, SPEC §4.2)
 		}
 		e.header(w, id, ir.TableKindArray)
 		w.leb(uint64(2 + len(fv.Cell.Str)))
@@ -474,7 +475,7 @@ func encodeElement(e *encoder, w *buf, f *ir.Field, kind int, cell *tabletext.Ce
 // the arm's kind byte is what makes a retyped arm an ordinary kind mismatch
 // instead of a value read under the wrong rule.
 func encodeArmHeader(e *encoder, w *buf, arm ir.UnionVariant, cell *tabletext.Cell) error {
-	w.leb(e.ids.ref(ir.TableWireId(arm.Name)))
+	w.leb(e.ids.ref(ir.TableWireId(arm.WireName())))
 	w.u8(uint8(armWireKind(arm)))
 	body, err := encodeArm(e, arm, cell)
 	if err != nil {
@@ -608,7 +609,7 @@ func variantWireId(e *ir.Enum, value uint64, field string) (id uint64, none bool
 	if name == "None" {
 		return 0, true, nil
 	}
-	return ir.TableWireId(name), false, nil
+	return ir.TableWireId(e.VariantWireNameOf(name)), false, nil
 }
 
 // cellIsDefault is the writer's elision test: a field holding its declared

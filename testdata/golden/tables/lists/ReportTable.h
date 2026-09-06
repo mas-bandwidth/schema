@@ -6950,7 +6950,8 @@ template <typename Ctx> inline bool BytesCookNode( const Ctx & ctx, const TableC
 {
     if ( !BytesCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return BytesCookExtent( ctx, region, at + 24, extent_at, at, value, order );
+    if ( !BytesCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
+    return extent_at == BytesExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // IntsCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -6958,7 +6959,8 @@ template <typename Ctx> inline bool IntsCookNode( const Ctx & ctx, const TableCo
 {
     if ( !IntsCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return IntsCookExtent( ctx, region, at + 24, extent_at, at, value, order );
+    if ( !IntsCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
+    return extent_at == IntsExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // FloatsCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -6966,7 +6968,8 @@ template <typename Ctx> inline bool FloatsCookNode( const Ctx & ctx, const Table
 {
     if ( !FloatsCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return FloatsCookExtent( ctx, region, at + 24, extent_at, at, value, order );
+    if ( !FloatsCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
+    return extent_at == FloatsExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // BytesCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one

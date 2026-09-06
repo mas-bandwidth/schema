@@ -220,6 +220,13 @@ func (m *Model) reset(fv *Field) {
 	case f.IsMap():
 		return // an empty map: no entry, and the field elides (§3)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		// the declared default, when there is one, at its used length
+		// (SPEC §4.2): the same bytes the generated initializer carries and
+		// the same bytes the writer elides against
+		if len(f.DefBytes) > 0 {
+			fv.Cell.Str = append([]byte(nil), f.DefBytes...)
+			fv.Count = len(f.DefBytes)
+		}
 		return
 	case f.Array != ir.ArrayNone:
 		fv.Elems = make([]Cell, f.ArrayBound)
@@ -297,6 +304,9 @@ func (m *Model) fieldDefault(f *ir.Field) Cell {
 			}
 			return Cell{}
 		case *ir.Flags:
+			if f.HasDefault && f.DefInt != nil {
+				return Cell{U: f.DefInt.Uint64()} // the mask the brace list spells (SPEC §4.2)
+			}
 			return Cell{}
 		case *ir.Struct:
 			return Cell{Tab: m.New(ref)}

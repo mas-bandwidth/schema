@@ -146,7 +146,7 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { s wstring(1) }\n"},
 		{name: "wstring bound above int32", want: "lengths live in int32",
 			src: "package t\ntype T { s wstring(5000000000) }\n"},
-		{name: "wstring takes no default", want: "defaults in v1 cover bool, integer, float and enum fields",
+		{name: "wstring takes no default", want: "defaults cover bool, integer, float, enum, string, bytes and flags fields",
 			src: "package t\ntype T { s wstring(4) = 1 }\n"},
 		{name: "wstring takes no min/max", want: "min/max apply to integer fields",
 			src: "package t\ntype T { s wstring(4) | min = 0, max = 3 }\n"},
@@ -230,8 +230,8 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { x ufixed(64, 0) | min = 0, max = 18446744073709551615 }\n"},
 		{name: "ufixed default below its unsigned range", want: "outside its range",
 			src: "package t\ntype T { x ufixed(16, 16) = -1.0 | min = 0, max = 5 }\n"},
-		{name: "a table declaration takes no qualification", want: "takes no qualification",
-			src: "package t\ntable T | pinned\n{\n    x int32\n}\n"},
+		{name: "a table declaration takes tags and was and no other valued key", want: "is not an attribute a table declaration takes",
+			src: "package t\ntable T | pinned, min = 3\n{\n    x int32\n}\n"},
 		{name: "message is not part of the language", want: "messages are not part of the language",
 			src: "package t\nmessage M { x uint8 }\n"},
 		{name: "object is not part of the language", want: "objects are not part of the language",
@@ -305,8 +305,8 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\nunion U {\n    count int32 = 3\n}\ntable Root { u U }\n"},
 		{name: "an optional arm", want: "SELECTION IS THE ARM'S PRESENCE",
 			src: "package t\nunion U {\n    count ?int32\n}\ntable Root { u U }\n"},
-		{name: "was on an arm", want: "was on an arm is a named follow-on",
-			src: "package t\nunion U {\n    count int32 | was = \"tally\"\n}\ntable Root { u U }\n"},
+		{name: "was on an arm of a union no table reaches", want: "no table reaches",
+			src: "package t\ntype A { x int32 }\nunion U {\n    a A | was = \"z\"\n}\ntype Root { u U }\n"},
 		{name: "json on an arm", want: "json on an arm is a named follow-on",
 			src: "package t\nunion U {\n    count int32 | json = \"n\"\n}\ntable Root { u U }\n"},
 		{name: "an enum-keyed array arm", want: "an enum-keyed array is not an arm",
@@ -866,6 +866,38 @@ func TestConstValueDiagnosticsPointAtTheExpression(t *testing.T) {
 		}
 		if !strings.HasPrefix(got, fmt.Sprintf("Bad.schema:2:%d:", tc.col)) {
 			t.Errorf("%s: the caret is not on the value (want column %d): %s", tc.name, tc.col, got)
+		}
+	}
+}
+
+// AN ARRAY OF TABLES IS NOT AN ARM (docs/SPEC-TABLES.md §2.6, schema#579):
+// `[..N]T` and `[N]T` over a table T are refused at the arm by name, because
+// every walk descends a table arm as ONE body. A table arm and a scalar-array
+// arm beside them still pass. Reverting the refusal turns the first two red.
+func TestArrayOfTablesArmIsRefused(t *testing.T) {
+	const want = "a union arm is one table, not an array of tables"
+	for _, tc := range []struct{ name, src string }{
+		{"a bounded array of tables", "package t\ntable Leaf { items []int32 }\nunion U { few [..2]Leaf }\ntable Root { u U }\n"},
+		{"a fixed array of tables", "package t\ntable Leaf { x int32 }\nunion U { few [2]Leaf }\ntable Root { u U }\n"},
+	} {
+		errs := runUnit(t, map[string]string{"Bad.schema": tc.src})
+		var found bool
+		for _, e := range errs {
+			if strings.Contains(e.Error(), want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: the refusal went missing: %v", tc.name, errs)
+		}
+	}
+	for _, tc := range []struct{ name, src string }{
+		{"a table arm", "package t\ntable Leaf { items []int32 }\nunion U { one Leaf }\ntable Root { u U }\n"},
+		{"a scalar-array arm", "package t\nunion U { samples [..8]float32 }\ntable Root { u U }\n"},
+		{"a bounded array of pointers arm", "package t\ntable Leaf { x int32 }\nunion U { many [..2]*Leaf }\ntable Root { u U }\n"},
+	} {
+		if errs := runUnit(t, map[string]string{"Good.schema": tc.src}); len(errs) != 0 {
+			t.Errorf("%s: refused: %v", tc.name, errs)
 		}
 	}
 }
