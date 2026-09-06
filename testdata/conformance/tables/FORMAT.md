@@ -44,6 +44,7 @@ cook         <case> <unit> <root> <dump file>
 cook-write   <instance> <little-endian file> <big-endian file>
 block        <name> <unit> <block file> <dump file>
 forgery      <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>
+refusal      <forgery> <reason>
 ```
 
 - **`unit`** names a compilation unit by the key every other line uses.
@@ -111,6 +112,14 @@ forgery      <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <
   forgery may damage more than one word, and an `<offset>` of `-1` is a forgery
   that damages none. `<extent>` is the length the CALLER claims (`-1`: the
   file's own), and `<verdict>` is `refuse` or `open`.
+- **`refusal`** is the REASON one forgery's refusal names (docs/SPEC-TABLES.md
+  §7, §19.2): `refusal <forgery> <reason>`, where `<forgery>` is a `forgery`
+  line's name and `<reason>` the enum's own value name, `not_a_cook`,
+  `foreign_order`, `wrong_build_version`, `reserved_not_zero`, `bad_alignment`,
+  `truncated`, `unaligned_base` or, for a block, `bad_layout`. It takes its kind
+  from the forgery it names, and the `cook-reason` and `block-reason` surfaces
+  answer it with one word. A row per value, and a row per ORDER the check
+  states: a file that fails two clauses answers the first.
 
 A forgery is carried as a PATCH rather than as a whole file because a patch is
 what a person can review. The harness materialises the file and hands a driver a
@@ -127,16 +136,16 @@ what fits and zeroes the rest.
 ## reports.txt
 
 ```
-<case>  <unknown>,<kind_mismatch>,<clamped>,<duplicate>,<malformed>,<verdict>
+<case>  <unknown>,<kind_mismatch>,<widened>,<clamped>,<duplicate>,<malformed>,<verdict>
 ```
 
-The five counters of docs/SPEC-TABLES.md §4, `<malformed>` spelled `true` or
+The six counters of docs/SPEC-TABLES.md §4, `<malformed>` spelled `true` or
 `false`, and the VERDICT beside them: `read` or `refused`.
 
 **The verdict is distinct from a clean read, and that is why it exists** (§3). A
 reader that meets a FORM BYTE it does not carry refuses the wire by name: it
-decodes nothing, moves none of the five counters and reports no damage — so a
-refusal and a clean read print the same five zeros and the same false flag, and
+decodes nothing, moves none of the six counters and reports no damage — so a
+refusal and a clean read print the same six zeros and the same false flag, and
 only the verdict tells them apart. `form_zero`, `form_three` and `form_ff` are
 the three rows that say so, over the three forms no reader knows, and
 `message_as_file` is the fourth: form `2` is a form this build DOES carry

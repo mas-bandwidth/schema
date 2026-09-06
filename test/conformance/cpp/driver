@@ -21,6 +21,7 @@ list)
     echo cook
     echo cook-foreign
     echo cook-forgery
+    echo cook-reason
     ;;
 cook)
     # one line per cook, from the derived manifest:
@@ -34,8 +35,13 @@ cook-foreign)
     ./build/schema_test_cook foreign "$manifest" "$out"
     ;;
 cook-forgery)
-    # the whole 111-row battery in ONE process, over the derived manifest
+    # the whole battery in ONE process, over the derived manifest
     ./build/schema_test_cook conformance "$manifest" "$out"
+    ;;
+cook-reason)
+    # the reason Open names beside its null, one word per forgery the
+    # manifest's `refusal` lines ask for (docs/SPEC-TABLES.md §7)
+    ./build/schema_test_cook reasons "$manifest" "$out"
     ;;
 *)
     exec build/conformance-cpp "$manifest" "$surface" "$out"

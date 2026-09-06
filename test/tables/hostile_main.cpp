@@ -69,21 +69,21 @@ static uint8_t * slurp( const char * path, long & size )
     return bytes;
 }
 
-// the manifest's expected report for one case, "u,k,c,d,m"
+// the manifest's expected report for one case, "u,k,w,c,d,m,verdict"
 struct Expected
 {
-    int unknown, kind_mismatch, clamped, duplicate;
+    int unknown, kind_mismatch, widened, clamped, duplicate;
     bool malformed;
 };
 
 static bool parse_expected( const char * text, Expected & out )
 {
-    // the five counters and the VERDICT beside them (docs/SPEC-TABLES.md §3);
+    // the six counters and the VERDICT beside them (docs/SPEC-TABLES.md §3);
     // a text read never refuses, so only the flag is read here
     char flag[16] = {};
     char verdict[16] = {};
-    if ( sscanf( text, "%d,%d,%d,%d,%15[^,],%15s", &out.unknown, &out.kind_mismatch,
-                 &out.clamped, &out.duplicate, flag, verdict ) != 6 )
+    if ( sscanf( text, "%d,%d,%d,%d,%d,%15[^,],%15s", &out.unknown, &out.kind_mismatch,
+                 &out.widened, &out.clamped, &out.duplicate, flag, verdict ) != 7 )
     {
         return false;
     }
@@ -96,7 +96,7 @@ template <typename R>
 static bool same_report( const R & got, const Expected & want )
 {
     return got.unknown == want.unknown && got.kind_mismatch == want.kind_mismatch &&
-           got.clamped == want.clamped && got.duplicate == want.duplicate &&
+           got.widened == want.widened && got.clamped == want.clamped && got.duplicate == want.duplicate &&
            got.malformed == want.malformed;
 }
 
@@ -218,7 +218,7 @@ static void check_case( const char * name, const char * text, long text_size,
 static bool same_graph_report( const graphdemo::TableReport & got, const Expected & want )
 {
     return got.unknown == want.unknown && got.kind_mismatch == want.kind_mismatch &&
-           got.clamped == want.clamped && got.duplicate == want.duplicate &&
+           got.widened == want.widened && got.clamped == want.clamped && got.duplicate == want.duplicate &&
            got.malformed == want.malformed;
 }
 
@@ -407,7 +407,7 @@ static void check_feed_case( const char * name, const char * text, long text_siz
 static bool same_blob_report( const blobdemo::TableReport & got, const Expected & want )
 {
     return got.unknown == want.unknown && got.kind_mismatch == want.kind_mismatch &&
-           got.clamped == want.clamped && got.duplicate == want.duplicate &&
+           got.widened == want.widened && got.clamped == want.clamped && got.duplicate == want.duplicate &&
            got.malformed == want.malformed;
 }
 

@@ -12,7 +12,7 @@
 //        u8 form, the WIRE's own form byte (§3, §3.3): 1 a file, 2 a message
 //   out: one byte per root — 1 when this leg has a codec for it, else 0
 //   in:  per mutant: u32 roster index, u32 length, the bytes; EOF ends it
-//   out: per mutant: u8 loaded; i32 unknown, kind_mismatch, clamped,
+//   out: per mutant: u8 loaded; i32 unknown, kind_mismatch, widened, clamped,
 //        duplicate; u8 malformed; u8 refused; i64 measure; i64 saved length (-1 when Save
 //        refused the value), the saved bytes
 //
@@ -60,7 +60,7 @@
 struct Reply
 {
     bool loaded;
-    int32_t unknown, kind_mismatch, clamped, duplicate;
+    int32_t unknown, kind_mismatch, widened, clamped, duplicate;
     bool malformed;
     bool refused; // the VERDICT, not a counter (docs/SPEC-TABLES.md §3)
     int64_t measure;
@@ -73,6 +73,7 @@ static void copy_report( const T & from, Reply & to )
 {
     to.unknown = from.unknown;
     to.kind_mismatch = from.kind_mismatch;
+    to.widened = from.widened;
     to.clamped = from.clamped;
     to.duplicate = from.duplicate;
     to.malformed = from.malformed;
@@ -386,6 +387,7 @@ int main()
         fwrite( &loaded, 1, 1, stdout );
         write_i32( reply.unknown );
         write_i32( reply.kind_mismatch );
+        write_i32( reply.widened );
         write_i32( reply.clamped );
         write_i32( reply.duplicate );
         fwrite( &malformed, 1, 1, stdout );

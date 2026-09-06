@@ -46,6 +46,8 @@
                                         printed as manifest lines
       conformance <manifest> <outdir>   the `cook-forgery` surface: every row of
                                         the derived manifest, one verdict each
+      reasons <manifest> <outdir>       the `cook-reason` surface: the reason Open names
+                                        beside its null, one word per forgery the manifest asks for
 
     A COOK IS TRUSTED INPUT, LOADED FROM DISK (§7), so nothing here is a threat
     model. The battery and the fuzzer HARDEN THE REFUSAL PATH: `Open` runs on
@@ -84,6 +86,7 @@
 #include <cstdarg>
 #include <ctime>
 #include <vector>
+#include <string>
 
 // ---------------------------------------------------------------------------
 // the verdict
@@ -267,38 +270,50 @@ static File place( const uint8_t * source, uint64_t source_length, uint64_t clai
 // against, and neither of them knows what wrote the file.
 
 typedef const void * ( *OpenFn )( const void * bytes, uint64_t length );
+// the same entry point with its REASON (docs/SPEC-TABLES.md §7): the first
+// failing clause, written on the refusal path only
+typedef const void * ( *OpenReasonFn )( const void * bytes, uint64_t length, graphdemo::TableRefuseReason * reason );
 typedef const graphdemo::TableTypeInfo * ( *TypeFn )();
 
 struct Root
 {
     const char * name;
     OpenFn open;
+    OpenReasonFn open_reason;
     TypeFn type;
     uint64_t size;
 };
 
 static const void * open_scene( const void * b, uint64_t n ) { return graphdemo::SceneOpen( b, n ); }
+static const void * open_scene_reason( const void * b, uint64_t n, graphdemo::TableRefuseReason * r ) { return graphdemo::SceneOpen( b, n, r ); }
 static const void * open_depot( const void * b, uint64_t n ) { return graphdemo::DepotOpen( b, n ); }
+static const void * open_depot_reason( const void * b, uint64_t n, graphdemo::TableRefuseReason * r ) { return graphdemo::DepotOpen( b, n, r ); }
 static const void * open_album( const void * b, uint64_t n ) { return graphdemo::AlbumOpen( b, n ); }
+static const void * open_album_reason( const void * b, uint64_t n, graphdemo::TableRefuseReason * r ) { return graphdemo::AlbumOpen( b, n, r ); }
 static const void * open_tree( const void * b, uint64_t n ) { return graphdemo::TreeNodeOpen( b, n ); }
+static const void * open_tree_reason( const void * b, uint64_t n, graphdemo::TableRefuseReason * r ) { return graphdemo::TreeNodeOpen( b, n, r ); }
 static const void * open_list( const void * b, uint64_t n ) { return graphdemo::ListNodeOpen( b, n ); }
+static const void * open_list_reason( const void * b, uint64_t n, graphdemo::TableRefuseReason * r ) { return graphdemo::ListNodeOpen( b, n, r ); }
 static const void * open_marker( const void * b, uint64_t n ) { return graphdemo::MarkerOpen( b, n ); }
+static const void * open_marker_reason( const void * b, uint64_t n, graphdemo::TableRefuseReason * r ) { return graphdemo::MarkerOpen( b, n, r ); }
 // the FIXED class: a cook of one is ONE REGION OF ONE NODE (§7), and it is the
 // same header match. Settings is a fixed table something POINTS at; Stamp is a
 // fixed table nothing points at, declared in a file with no variable table of
 // its own — the shape a file-scoped emission rule forgets.
 static const void * open_settings( const void * b, uint64_t n ) { return graphdemo::SettingsOpen( b, n ); }
+static const void * open_settings_reason( const void * b, uint64_t n, graphdemo::TableRefuseReason * r ) { return graphdemo::SettingsOpen( b, n, r ); }
 static const void * open_stamp( const void * b, uint64_t n ) { return graphdemo::StampOpen( b, n ); }
+static const void * open_stamp_reason( const void * b, uint64_t n, graphdemo::TableRefuseReason * r ) { return graphdemo::StampOpen( b, n, r ); }
 
 static const Root roots[] = {
-    { "Scene", open_scene, graphdemo::SceneTableType, sizeof( graphdemo::Scene ) },
-    { "Depot", open_depot, graphdemo::DepotTableType, sizeof( graphdemo::Depot ) },
-    { "Album", open_album, graphdemo::AlbumTableType, sizeof( graphdemo::Album ) },
-    { "TreeNode", open_tree, graphdemo::TreeNodeTableType, sizeof( graphdemo::TreeNode ) },
-    { "ListNode", open_list, graphdemo::ListNodeTableType, sizeof( graphdemo::ListNode ) },
-    { "Marker", open_marker, graphdemo::MarkerTableType, sizeof( graphdemo::Marker ) },
-    { "Settings", open_settings, graphdemo::SettingsTableType, sizeof( graphdemo::Settings ) },
-    { "Stamp", open_stamp, graphdemo::StampTableType, sizeof( graphdemo::Stamp ) },
+    { "Scene", open_scene, open_scene_reason, graphdemo::SceneTableType, sizeof( graphdemo::Scene ) },
+    { "Depot", open_depot, open_depot_reason, graphdemo::DepotTableType, sizeof( graphdemo::Depot ) },
+    { "Album", open_album, open_album_reason, graphdemo::AlbumTableType, sizeof( graphdemo::Album ) },
+    { "TreeNode", open_tree, open_tree_reason, graphdemo::TreeNodeTableType, sizeof( graphdemo::TreeNode ) },
+    { "ListNode", open_list, open_list_reason, graphdemo::ListNodeTableType, sizeof( graphdemo::ListNode ) },
+    { "Marker", open_marker, open_marker_reason, graphdemo::MarkerTableType, sizeof( graphdemo::Marker ) },
+    { "Settings", open_settings, open_settings_reason, graphdemo::SettingsTableType, sizeof( graphdemo::Settings ) },
+    { "Stamp", open_stamp, open_stamp_reason, graphdemo::StampTableType, sizeof( graphdemo::Stamp ) },
 };
 
 static const Root * root_named( const char * name )
@@ -1813,6 +1828,25 @@ static void mode_emit_forgeries( const Root * root, const char * path )
     // A NULL POINTER, which is the caller's own error
     emit_claim( r, "cook_null_buffer", -1, -1, "a NULL buffer" );
 
+    // THE ORDER OF THE CHECK (§7): a file that fails two clauses answers the
+    // FIRST, so a wrong build version in a truncated file is the version, and a
+    // bad alignment word in a truncated file is the alignment, which precedes
+    // both truncated clauses because it is the word the arithmetic runs with
+    {
+        uint64_t off[1] = { WordBuildVersion };
+        int wid[1] = { 8 };
+        uint64_t val[1] = { 0 };
+        emit_cook_row( r, "cook_build_and_short", 0, off, wid, val, 1, (int64_t) length - 1, "refuse",
+                       "a zero build version in a file one byte short: the build version answers first (§7)" );
+    }
+    {
+        uint64_t off[1] = { WordAlignment };
+        int wid[1] = { 8 };
+        uint64_t val[1] = { 3 };
+        emit_cook_row( r, "cook_alignment_and_short", 0, off, wid, val, 1, (int64_t) length - 1, "refuse",
+                       "an alignment word that is not an alignment, in a file one byte short: bad_alignment precedes truncated (§7)" );
+    }
+
     // AND THE OTHER HALF: what §7 says Open does NOT check. Each of these
     // OPENS, and each is a refusal `schema cook-check` owns instead (§7.4).
     {
@@ -1882,6 +1916,103 @@ static int mode_conformance( const char * manifest_path, const char * outdir )
             return 1;
         }
         fwrite( verdict, 1, strlen( verdict ), out );
+        fclose( out );
+        placed.destroy();
+        free( source );
+    }
+    fclose( manifest );
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// mode: reasons — the harness's `cook-reason` surface
+// ---------------------------------------------------------------------------
+//
+// One process over the DERIVED manifest: every `refusal` line names a forgery
+// of the battery above, and the answer is the REASON Open names beside its
+// null (docs/SPEC-TABLES.md §7), spelled as the enum's own value name so the
+// manifest pins one word per clause. A forgery that OPENS answers `ok`.
+
+static const char * reason_name( graphdemo::TableRefuseReason reason )
+{
+    switch ( reason )
+    {
+        case graphdemo::ok: return "ok";
+        case graphdemo::not_a_cook: return "not_a_cook";
+        case graphdemo::foreign_order: return "foreign_order";
+        case graphdemo::wrong_build_version: return "wrong_build_version";
+        case graphdemo::reserved_not_zero: return "reserved_not_zero";
+        case graphdemo::bad_alignment: return "bad_alignment";
+        case graphdemo::truncated: return "truncated";
+        case graphdemo::unaligned_base: return "unaligned_base";
+        case graphdemo::bad_layout: return "bad_layout";
+        case graphdemo::unknown_form: return "unknown_form";
+        case graphdemo::count_over_length: return "count_over_length";
+        case graphdemo::count_over_extent_cap: return "count_over_extent_cap";
+        case graphdemo::blob_over_size_cap: return "blob_over_size_cap";
+        case graphdemo::data_cycle: return "data_cycle";
+    }
+    return "?";
+}
+
+static int mode_reasons( const char * manifest_path, const char * outdir )
+{
+    FILE * manifest = fopen( manifest_path, "r" );
+    if ( manifest == NULL )
+    {
+        fprintf( stderr, "cook: cannot open %s\n", manifest_path );
+        return 1;
+    }
+    // the refusal lines first: which forgeries this surface answers
+    std::vector<std::string> wanted;
+    char line[2048];
+    while ( fgets( line, sizeof( line ), manifest ) != NULL )
+    {
+        char tag[32], forgery_name[256], forgery_kind[32];
+        if ( sscanf( line, "%31s %255s %31s", tag, forgery_name, forgery_kind ) != 3 ) continue;
+        if ( strcmp( tag, "refusal" ) == 0 && strcmp( forgery_kind, "cook" ) == 0 )
+            wanted.push_back( forgery_name );
+    }
+    rewind( manifest );
+    while ( fgets( line, sizeof( line ), manifest ) != NULL )
+    {
+        if ( line[0] == '#' || line[0] == '\n' ) continue;
+        char tag[32], forgery_name[256], forgery_kind[32], forgery_subject[128];
+        char forgery_file[1024], forgery_pointer[32];
+        long long claim = 0;
+        if ( sscanf( line, "%31s %255s %31s %127s %1023s %lld %31s", tag, forgery_name, forgery_kind,
+                     forgery_subject, forgery_file, &claim, forgery_pointer ) != 7 )
+            continue;
+        if ( strcmp( tag, "forgery" ) != 0 || strcmp( forgery_kind, "cook" ) != 0 ) continue;
+        bool asked = false;
+        for ( size_t i = 0; i < wanted.size(); i++ )
+            if ( wanted[i] == forgery_name ) asked = true;
+        if ( !asked ) continue;
+
+        const Root * root = root_named( forgery_subject );
+        uint64_t length = 0;
+        uint8_t * source = whole_file( forgery_file, &length );
+        const uint64_t want = claim < 0 ? length : (uint64_t) claim;
+        const bool null_buffer = strcmp( forgery_pointer, "null" ) == 0;
+        const int lead = null_buffer ? 0 : (int) strtol( forgery_pointer, NULL, 10 );
+        File placed = place( source, length, want, lead );
+        // the caller's own initial value is what a match leaves standing (§7)
+        graphdemo::TableRefuseReason reason = graphdemo::ok;
+        const void * opened = null_buffer ? root->open_reason( NULL, want, &reason )
+                                          : root->open_reason( placed.base, placed.length, &reason );
+        const char * answer = opened != NULL ? "ok" : reason_name( reason );
+        char path[2048];
+        snprintf( path, sizeof( path ), "%s/%s", outdir, forgery_name );
+        FILE * out = fopen( path, "wb" );
+        if ( out == NULL )
+        {
+            fprintf( stderr, "cook: cannot write %s\n", path );
+            placed.destroy();
+            free( source );
+            fclose( manifest );
+            return 1;
+        }
+        fprintf( out, "%s\n", answer );
         fclose( out );
         placed.destroy();
         free( source );
@@ -2221,6 +2352,7 @@ int main( int argc, char ** argv )
         printf( "usage: %s golden|dump|write|cookwrite|fixedvalues|usage|forge|fuzz|time|accept|refuse <root> <file> [file]\n", argv[0] );
         printf( "       %s emit-forgeries <root> <cook>\n", argv[0] );
         printf( "       %s conformance <manifest> <outdir>\n", argv[0] );
+        printf( "       %s reasons <manifest> <outdir>\n", argv[0] );
         printf( "       %s foreign <manifest> <outdir>\n", argv[0] );
         return 1;
     }
@@ -2229,6 +2361,8 @@ int main( int argc, char ** argv )
     // and not a root, so it is dispatched before the root lookup
     if ( strcmp( mode, "conformance" ) == 0 )
         return mode_conformance( argv[2], argv[3] );
+    if ( strcmp( mode, "reasons" ) == 0 )
+        return mode_reasons( argv[2], argv[3] );
     if ( strcmp( mode, "foreign" ) == 0 )
         return mode_cook_foreign( argv[2], argv[3] );
     const Root * root = root_named( argv[2] );

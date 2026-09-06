@@ -198,6 +198,7 @@ func TestReportRowsDecodeThroughTheEngine(t *testing.T) {
 		got := Counts{
 			Unknown:      report.Unknown,
 			KindMismatch: report.KindMismatch,
+			Widened:      report.Widened,
 			Clamped:      report.Clamped,
 			Duplicate:    report.Duplicate,
 			Malformed:    report.Malformed,

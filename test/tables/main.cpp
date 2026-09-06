@@ -3630,12 +3630,65 @@ static void test_json_dialect()
     CHECK( tabledemo::LoadoutConfigFromJson( loadout, array_trailing, (int64_t) strlen( array_trailing ), &report ) );
     CHECK( loadout.grades_count == 2 && loadout.grades[0] == tabledemo::Grade::Gold );
 
-    // comments are not JSON, and a walk that guessed at one would be reading
-    // a dialect nobody wrote down
-    tabledemo::TableReport comment_report;
-    const char * comment = "{ // a note\n \"slot\": 3 }";
-    CHECK( !tabledemo::AttachmentFromJson( value, comment, (int64_t) strlen( comment ), &comment_report ) );
-    CHECK( comment_report.malformed );
+    // THE COMMENT ROWS (docs/SPEC-TABLES.md §16.2, §16.5): comments are accepted
+    // on read and never written. A `//` before the first key, after the last
+    // value and between two entries; a `/* */` inside an array between two
+    // elements and between a key and its value; a `//` as the last line with
+    // no trailing newline, which is accepted; an unclosed `/*` and a `/*/`,
+    // which are malformed on the terms an unclosed string is; and a text of
+    // comments and trailing commas whose instance equals the same text with
+    // both stripped.
+    {
+        tabledemo::TableReport comment_report;
+        const char * commented =
+            "// a note before the first key\n"
+            "{ \"slot\": 3, // after a value\n"
+            "  /* between a key and its value */ \"power\": /* here */ 1.5, }\n"
+            "// the last line, with no trailing newline";
+        CHECK( tabledemo::AttachmentFromJson( value, commented, (int64_t) strlen( commented ), &comment_report ) );
+        CHECK( value.slot == 3 && value.power == 1.5f );
+        CHECK( comment_report.unknown == 0 && !comment_report.malformed );
+        tabledemo::Attachment stripped;
+        tabledemo::TableReport stripped_report;
+        const char * plain = "{ \"slot\": 3, \"power\": 1.5 }";
+        CHECK( tabledemo::AttachmentFromJson( stripped, plain, (int64_t) strlen( plain ), &stripped_report ) );
+        CHECK( memcmp( &stripped, &value, sizeof( value ) ) == 0 );
+    }
+    {
+        tabledemo::LoadoutConfig commented_loadout;
+        tabledemo::TableReport comment_report;
+        const char * array_comment = "{ \"grades\": [ \"Gold\", /* between two elements */ \"Bronze\" ] }";
+        CHECK( tabledemo::LoadoutConfigFromJson( commented_loadout, array_comment, (int64_t) strlen( array_comment ), &comment_report ) );
+        CHECK( commented_loadout.grades_count == 2 && commented_loadout.grades[1] == tabledemo::Grade::Bronze );
+        CHECK( !comment_report.malformed );
+    }
+    {
+        // a `//` and a `/*` INSIDE a string value are ordinary text, and survive
+        // the round trip byte for byte
+        tabledemo::RootConfig noted;
+        tabledemo::TableReport text_report;
+        const char * inside = "{ \"version_note\": \"// not /*\" }";
+        CHECK( tabledemo::RootConfigFromJson( noted, inside, (int64_t) strlen( inside ), &text_report ) );
+        CHECK( !text_report.malformed );
+        CHECK( noted.version_note_length == 9 && memcmp( noted.version_note, "// not /*", 9 ) == 0 );
+        char back[4096];
+        const int64_t wrote = tabledemo::RootConfigToJson( noted, back, sizeof( back ) );
+        CHECK( wrote > 0 && strstr( back, "\"// not /*\"" ) != NULL );
+    }
+    {
+        tabledemo::TableReport unclosed_report;
+        const char * unclosed = "{ \"slot\": 3 /* open";
+        CHECK( !tabledemo::AttachmentFromJson( value, unclosed, (int64_t) strlen( unclosed ), &unclosed_report ) );
+        CHECK( unclosed_report.malformed );
+        tabledemo::TableReport slash_star_slash_report;
+        const char * slash_star_slash = "{ /*/ \"slot\": 3 }";
+        CHECK( !tabledemo::AttachmentFromJson( value, slash_star_slash, (int64_t) strlen( slash_star_slash ), &slash_star_slash_report ) );
+        CHECK( slash_star_slash_report.malformed );
+        tabledemo::TableReport lone_slash_report;
+        const char * lone = "{ / \"slot\": 3 }";
+        CHECK( !tabledemo::AttachmentFromJson( value, lone, (int64_t) strlen( lone ), &lone_slash_report ) );
+        CHECK( lone_slash_report.malformed );
+    }
 
     // whitespace anywhere, and a text that is not an object at all
     const char * spaced = "  \t\n { \n \"slot\" \t : \n 2 \n } \n ";
@@ -6087,10 +6140,10 @@ static void test_message_golden_reload()
 // same names at different types, so each of the reader's answers is named
 // once, by one edit, with the siblings beside it intact:
 //
-//   a  int32 -> int64    a moved width: the arm's L is not the declared one
-//   b  int32 -> float32  one width, one length: SILENT, and the value differs
-//   c  int32 -> string   any length is bytes: SILENT
-//   d  float32 -> Body   four bytes read as a body: framing damage
+//   a  int32 -> int64    a moved width up the signed ladder: WIDENED, the value exact (§4)
+//   b  int32 -> float32  one width, one length: a KIND MISMATCH, the union None
+//   c  int32 -> string   kind 4 against kind 12: a KIND MISMATCH, the union None
+//   d  float32 -> Body   four bytes read as a body: a KIND MISMATCH, the union None
 //   e  Body -> Body      the arm beside them, which still round-trips
 static int64_t save_a1_arm( uint8_t * buffer, int64_t capacity, tbla1::ValueType arm )
 {
@@ -6114,16 +6167,18 @@ static void test_arm_retype_controls()
 {
     uint8_t buffer[256];
 
-    // (1) a MOVED WIDTH is a kind mismatch: the arm skips by its L, the union
-    // reads None, the count fires once, and every sibling lands
+    // (1) a MOVED WIDTH up the signed ladder is WIDENED (§4): the arm's kind
+    // byte is read, its payload decoded at its own width, the value the
+    // writer's own, one widened counted, and every sibling lands
     {
         const int64_t wrote = save_a1_arm( buffer, sizeof( buffer ), tbla1::ValueType::A );
         CHECK( wrote > 0 );
         tbla2::Root got;
         tbla2::TableReport report;
         CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
-        CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
-        CHECK( got.value.type == tbla2::ValueType::None );
+        CHECK( report.widened == 1 && report.kind_mismatch == 0 && report.unknown == 0 && !report.malformed );
+        CHECK( got.value.type == tbla2::ValueType::A );
+        CHECK( got.value.a == 7 );
         CHECK( got.id == 11 && got.tail == 22 );
     }
 

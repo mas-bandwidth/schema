@@ -1,1 +1,1 @@
-{ /* not JSON */ "version_note": "a" }
+{ /* a note before the first key */ "version_note": "a" }

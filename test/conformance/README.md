@@ -155,10 +155,10 @@ One process per surface, so a runtime starts once rather than once per case.
 |---|---|---|---|
 | `wire` | `instance` | Load the wire file, Save, the bytes | the wire golden |
 | `message` | `message` | AnnounceRead the connection's announcement, LoadMessages the message-form batch against it, SaveMessages, the bytes | the message-form golden |
-| `report` | `report` | Load the wire file, the report as `u,k,c,d,m\n` | `reports.txt` |
+| `report` | `report` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n` | `reports.txt` |
 | `json-read` | `instance` | FromJson `json/<name>.json`, Save, the bytes | the wire golden |
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
-| `json-hostile` | `json-hostile` | FromJson `<tree>/<root>.json`, the report as `u,k,c,d,m\n`, or `refused\n` | the verdict in the manifest |
+| `json-hostile` | `json-hostile` | FromJson `<tree>/<root>.json`, the report as `u,k,w,c,d,m,verdict\n`, or `refused\n` | the verdict in the manifest |
 | `cook` | `cook` | Open the cook, the canonical node dump | `cook/<case>.dump` |
 | `cook-write` | `cook-write` | Load the instance's wire, `Cook` it in each byte order, the bytes, as `<instance>` and `<instance>-be` | the two files `schema cook` wrote |
 | `cook-foreign` | `cook` | byte-swap the file's MAGIC word, Open, `open\n` or `refuse\n` | `refuse\n` |
@@ -167,6 +167,8 @@ One process per surface, so a runtime starts once rather than once per case.
 | `block-dump` | `block` | Open the image, the canonical ROW dump | `block/<name>.dump` |
 | `forgery` | `forgery` (`block`) | Open the forged file at the claimed extent, `open\n` or `refuse\n` | the verdict in the manifest |
 | `cook-forgery` | `forgery` (`cook`) | the same, over the cook battery's 111 | the verdict in the manifest |
+| `cook-reason` | `refusal` (`cook`) | Open the forged cook, the reason beside the null as the enum's value name, or `ok` | the reason in the manifest |
+| `block-reason` | `refusal` (`block`) | Open the forged block, the reason beside the false as the enum's value name, or `ok` | the reason in the manifest |
 
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
@@ -327,7 +329,7 @@ driver is.
 | in | `u32` roster count, then per root: `u16 n`, the unit key, `u16 n`, the root table's name, `u8` the FORM | once, first |
 | out | one byte per roster entry: `1` when this leg has a codec for it, else `0` | once, in reply |
 | in | per mutant: `u32` roster index, `u32` length, the bytes | until EOF |
-| out | per mutant: `u8 loaded`; `i32 unknown, kind_mismatch, clamped, duplicate`; `u8 malformed`; `i64 measure`; `i64 saved`, then that many bytes | one reply per mutant, flushed before the next is read |
+| out | per mutant: `u8 loaded`; `i32 unknown, kind_mismatch, widened, clamped, duplicate`; `u8 malformed`; `u8 refused`; `i64 measure`; `i64 saved`, then that many bytes | one reply per mutant, flushed before the next is read |
 
 - **`loaded`** is whether a root came back. A FIXED root always loads — its
   `Load` fills a value and reports — so the byte is `1` and the report says the

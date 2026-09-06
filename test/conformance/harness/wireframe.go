@@ -16,6 +16,7 @@ package main
 
 import (
 	"encoding/binary"
+	"math"
 	"slices"
 	"sort"
 
@@ -41,7 +42,11 @@ const (
 )
 
 type wireSpot struct {
-	kind  wireSpotKind
+	kind wireSpotKind
+	// role says WHOSE kind byte a spotKind is: a field's, an arm's, a
+	// positional array's element kind or a keyed body's, which is what the
+	// widening pass needs to rewrite the payload behind it at another width
+	role  kindRole
 	off   int
 	width int
 	limit int // the end of the body the number is read inside
@@ -57,6 +62,10 @@ type wireSpot struct {
 	// arm whose payload is a body. A body's terminator is the end of its
 	// payload (§3), and the mutator writes one earlier.
 	body bool
+	// text marks a length that frames a KIND 12 payload: a string field, a
+	// string arm, a string element or a *string blob record. The text pass
+	// rewrites what sits under it with every ill-formed shape §3 refuses.
+	text bool
 	// enclosing is every length spot framing this one, outermost first, so a
 	// splice can keep the framing consistent
 	enclosing []int
@@ -193,9 +202,9 @@ func (s *frameScanner) spotLeb(kind wireSpotKind, off, end int) int {
 	return off + w
 }
 
-func (s *frameScanner) spotByte(kind wireSpotKind, off, end int) {
+func (s *frameScanner) spotByte(kind wireSpotKind, role kindRole, off, end int) {
 	s.f.spots = append(s.f.spots, wireSpot{
-		kind: kind, off: off, width: 1, limit: end, value: uint64(s.data[off]),
+		kind: kind, role: role, off: off, width: 1, limit: end, value: uint64(s.data[off]),
 		enclosing: append([]int(nil), s.chain...),
 	})
 }
@@ -247,7 +256,7 @@ func (s *frameScanner) body(start, end int, root bool) {
 			return
 		}
 		kind := s.data[off]
-		s.spotByte(spotKind, off, end)
+		s.spotByte(spotKind, roleField, off, end)
 		off++
 		off = s.payload(off, end, kind, root && named && id == ir.TableNodeWireId)
 		if off < 0 {
@@ -280,7 +289,10 @@ func (s *frameScanner) payload(off, end int, kind uint8, nodeTable bool) int {
 		if nodeTable {
 			inner = s.nodeTable
 		}
-		return s.framed(off, end, inner)
+		if nodeTable {
+			return s.framed(off, end, inner)
+		}
+		return s.framedText(off, end)
 	case ir.TableKindTable:
 		return s.framedAs(off, end, false, true, func(a, b int) { s.body(a, b, false) })
 	case ir.TableKindArray:
@@ -311,13 +323,23 @@ func (s *frameScanner) arm(off, end int) int {
 		return -1
 	}
 	kind := s.data[off]
-	s.spotByte(spotKind, off, end)
+	s.spotByte(spotKind, roleArm, off, end)
 	off++
 	// AN ARM HEADER IS A FIELD HEADER (§3), so the payload under its L is what
 	// a FIELD of the arm's type puts after its own prefix. Two of them are
 	// walkable: a body, and a NESTED UNION, whose payload is the union in its
 	// place and carries an arm reference of its own.
-	return s.framedAs(off, end, true, kind == ir.TableKindTable, func(a, b int) { s.framedPayload(int(kind), a, b) })
+	after = s.framedAs(off, end, true, kind == ir.TableKindTable, func(a, b int) { s.framedPayload(int(kind), a, b) })
+	if after >= 0 && kind == ir.TableKindString {
+		s.f.spots[s.lastSpot()].text = false
+		for i := len(s.f.spots) - 1; i >= 0; i-- {
+			if s.f.spots[i].kind == spotLength && s.f.spots[i].off == off {
+				s.f.spots[i].text = true
+				break
+			}
+		}
+	}
+	return after
 }
 
 // framedPayload walks what sits under an L once the kind is known: a body, a
@@ -361,7 +383,9 @@ func (s *frameScanner) nodeTable(off, end int) {
 		id, named := s.f.entryOf(s.f.spots[before].value)
 		blob := named && (id == ir.BytesWireTypeId || id == ir.StringWireTypeId)
 		s.f.records++
-		if blob {
+		if named && id == ir.StringWireTypeId {
+			off = s.framedText(off, end)
+		} else if blob {
 			off = s.framed(off, end, nil)
 		} else {
 			off = s.framed(off, end, func(a, b int) { s.body(a, b, false) })
@@ -379,7 +403,7 @@ func (s *frameScanner) array(off, end int) {
 		return
 	}
 	ek := int(s.data[off])
-	s.spotByte(spotKind, off, end)
+	s.spotByte(spotKind, roleElement, off, end)
 	off++
 	after := s.spotLeb(spotCount, off, end)
 	if after < 0 {
@@ -400,7 +424,7 @@ func (s *frameScanner) array(off, end int) {
 			// exactly as a union field's payload is
 			off = s.arm(off, end)
 		case ir.TableKindString:
-			off = s.framed(off, end, nil)
+			off = s.framedText(off, end)
 		default:
 			w := kindWidth(ek)
 			if w == 0 || off+w > end {
@@ -421,7 +445,7 @@ func (s *frameScanner) keyed(off, end int) {
 		return
 	}
 	ek := int(s.data[off])
-	s.spotByte(spotKind, off, end)
+	s.spotByte(spotKind, roleKeyedElement, off, end)
 	off++
 	after := s.spotLeb(spotCount, off, end)
 	if after < 0 {
@@ -458,9 +482,12 @@ func kindWidth(kind int) int {
 	return 0
 }
 
-// wireKindLast is the highest kind byte the wire defines; a swap to one past
-// it is the one outside the closed set on the high side.
-const wireKindLast = ir.TableKindUFixed128
+// wireKindLast is the last kind byte the swap pass plants: every kind of the
+// closed set, the escape kind 31 and the payload-free kind 32, kind 33, the
+// RESERVED kind 34, which no writer emits and a reader of this major cannot
+// skip, so it must land as framing damage and never as an escape (§3, §4.2),
+// and one past it, outside the set on the high side.
+const wireKindLast = ir.TableKindReservedFloat16
 
 // ---------------------------------------------------------------------------
 // the passes
@@ -511,30 +538,8 @@ func put(data []byte, off, width int, value uint64) {
 // aimed at (§4.2). A canonical LEB128 cannot be patched in place, which is why
 // every mutation of a number on this wire is a splice.
 func spliceSpot(seed *wireSeed, si int, newBytes []byte) []byte {
-	f := seed.frame
-	sp := f.spots[si]
-	type edit struct {
-		off, width int
-		bytes      []byte
-	}
-	edits := []edit{{sp.off, sp.width, newBytes}}
-	d := len(newBytes) - sp.width
-	for _, encl := range slices.Backward(sp.enclosing) {
-		e := f.spots[encl]
-		grown := max(int64(e.value)+int64(d), 0)
-		nb := lebBytes(uint64(grown))
-		d += len(nb) - e.width
-		edits = append(edits, edit{e.off, e.width, nb})
-	}
-	sort.Slice(edits, func(a, b int) bool { return edits[a].off < edits[b].off })
-	out := make([]byte, 0, len(seed.wire)+d)
-	at := 0
-	for _, e := range edits {
-		out = append(out, seed.wire[at:e.off]...)
-		out = append(out, e.bytes...)
-		at = e.off + e.width
-	}
-	return append(out, seed.wire[at:]...)
+	sp := seed.frame.spots[si]
+	return spliceRange(seed, sp.off, sp.width, sp.enclosing, newBytes)
 }
 
 // patched writes one value at one spot: a splice for the LEB128 numbers, and
@@ -686,12 +691,22 @@ func enumerated(seed *wireSeed, emit func(pass string, data []byte)) {
 				emit("form", patched(seed, si, v))
 			}
 		case spotKind:
-			// every kind byte swapped to every other value, the two outside
-			// the closed set included: 0 and one past the last are not
-			// skippable, and 31 and 32 are the escape and the payload-free kind
+			// every kind byte swapped to every other value: 0 and one past the
+			// last are outside the closed set, 31 and 32 are the escape and the
+			// payload-free kind, and 34 is the RESERVED kind, damage by name (§3)
 			for k := uint64(0); k <= uint64(wireKindLast)+1; k++ {
 				if k != sp.value {
 					emit("kind", patched(seed, si, k))
+				}
+			}
+			// A WIDENING AND ITS REVERSE at every integer and f32 position
+			// (§4, §4.2): a field, an arm, an array's element kind and a map's
+			// key kind, the payload rewritten at the other kind's width. Up
+			// the ladder must count `widened` with the value exact; down it,
+			// or across the two ladders, must count `kind_mismatch`.
+			for _, to := range widenTargets(int(sp.value)) {
+				if data, ok := rekind(seed, si, to); ok {
+					emit("widen", data)
 				}
 			}
 		case spotLength:
@@ -714,6 +729,11 @@ func enumerated(seed *wireSeed, emit func(pass string, data []byte)) {
 			if sp.body {
 				if data, ok := earlyTerminator(seed, sp); ok {
 					emit("terminator", data)
+				}
+			}
+			if sp.text {
+				for _, payload := range illFormedText {
+					emit("text", retext(seed, si, payload))
 				}
 			}
 		case spotCount:
@@ -965,3 +985,222 @@ func randomStep(r *splitmix64, s *wireSeed, seeds []*wireSeed, data []byte) []by
 // so the body ends inside its own `L` and the bytes after it are claimed by no
 // field (docs/SPEC-TABLES.md §3). It answers false where the payload is too
 // short to carry the move, or where the bytes it would write are already zero.
+
+// ---------------------------------------------------------------------------
+// the widening pass (docs/SPEC-TABLES.md §4, §4.2)
+// ---------------------------------------------------------------------------
+
+// kindRole says whose kind byte a spotKind is, which decides what payload
+// sits behind it and how a rewrite at another width has to reframe it.
+type kindRole int
+
+const (
+	roleField        kindRole = iota // a field's kind: the payload follows
+	roleArm                          // an arm's kind: its L and payload follow
+	roleElement                      // a positional array's element kind: N and the elements follow
+	roleKeyedElement                 // a keyed body's element kind: N triples follow
+)
+
+// the three ladders §4 states: an integer kind widens into every kind above
+// it on its own ladder, and f32 into f64. Across the two integer ladders at
+// one width is the pair the rule refuses, and the pass plants it too.
+var widenLadders = [][]int{
+	{ir.TableKindI8, ir.TableKindI16, ir.TableKindI32, ir.TableKindI64, ir.TableKindI128},
+	{ir.TableKindU8, ir.TableKindU16, ir.TableKindU32, ir.TableKindU64, ir.TableKindU128},
+	{ir.TableKindF32, ir.TableKindF64},
+}
+
+// widenTargets lists every kind a payload under `kind` is rewritten to: the
+// rest of its ladder, up and down, and the same rung of the sibling integer
+// ladder.
+func widenTargets(kind int) []int {
+	var out []int
+	for li, ladder := range widenLadders {
+		for i, k := range ladder {
+			if k != kind {
+				continue
+			}
+			for _, other := range ladder {
+				if other != kind {
+					out = append(out, other)
+				}
+			}
+			if li < 2 {
+				out = append(out, widenLadders[1-li][i])
+			}
+			return out
+		}
+	}
+	return nil
+}
+
+// rewriteScalar re-encodes one payload from kind `from` to kind `to`: an
+// integer is extended in its own signedness to 128 bits and written at the
+// target's width, so going up the ladder is exact and coming down truncates;
+// f32 and f64 convert through the float; across the two integer ladders at
+// one width the bytes are the same bytes.
+func rewriteScalar(payload []byte, from, to int) []byte {
+	if from == ir.TableKindF32 && to == ir.TableKindF64 {
+		v := math.Float32frombits(binary.LittleEndian.Uint32(payload))
+		out := make([]byte, 8)
+		binary.LittleEndian.PutUint64(out, math.Float64bits(float64(v)))
+		return out
+	}
+	if from == ir.TableKindF64 && to == ir.TableKindF32 {
+		v := math.Float64frombits(binary.LittleEndian.Uint64(payload))
+		out := make([]byte, 4)
+		binary.LittleEndian.PutUint32(out, math.Float32bits(float32(v)))
+		return out
+	}
+	var wide [16]byte
+	copy(wide[:], payload)
+	if ir.TableKindSigned(from) && len(payload) < 16 && payload[len(payload)-1]&0x80 != 0 {
+		for i := len(payload); i < 16; i++ {
+			wide[i] = 0xFF
+		}
+	}
+	return append([]byte(nil), wide[:kindWidth(to)]...)
+}
+
+// rekind rewrites the kind byte at spot si to `to` AND the payload behind it
+// at the new kind's width, reframing what the rewrite moves: an arm's L, the
+// L of every keyed triple. It answers false where the spot's payload is not
+// where the role says a pinned wire keeps it.
+func rekind(seed *wireSeed, si int, to int) ([]byte, bool) {
+	f := seed.frame
+	wire := seed.wire
+	sp := f.spots[si]
+	from := int(sp.value)
+	w := kindWidth(from)
+	if w == 0 {
+		return nil, false
+	}
+	switch sp.role {
+	case roleField:
+		off := sp.off + 1
+		if off+w > len(wire) {
+			return nil, false
+		}
+		out := append([]byte{uint8(to)}, rewriteScalar(wire[off:off+w], from, to)...)
+		return spliceRange(seed, sp.off, 1+w, sp.enclosing, out), true
+	case roleArm:
+		if si+1 >= len(f.spots) {
+			return nil, false
+		}
+		ls := f.spots[si+1]
+		if ls.kind != spotLength || ls.off != sp.off+1 || int(ls.value) != w {
+			return nil, false
+		}
+		off := ls.off + ls.width
+		if off+w > len(wire) {
+			return nil, false
+		}
+		out := append([]byte{uint8(to)}, lebBytes(uint64(kindWidth(to)))...)
+		out = append(out, rewriteScalar(wire[off:off+w], from, to)...)
+		return spliceRange(seed, sp.off, off+w-sp.off, sp.enclosing, out), true
+	case roleElement, roleKeyedElement:
+		if si+1 >= len(f.spots) {
+			return nil, false
+		}
+		cs := f.spots[si+1]
+		if cs.kind != spotCount || cs.off != sp.off+1 {
+			return nil, false
+		}
+		n := int(cs.value)
+		at := cs.off + cs.width
+		out := append([]byte{uint8(to)}, wire[cs.off:at]...)
+		for i := 0; i < n; i++ {
+			if sp.role == roleKeyedElement {
+				// a triple: the key reference, then an L that is the
+				// element's own width, then the element
+				_, kw := readLeb(wire, at, sp.limit)
+				if kw == 0 {
+					return nil, false
+				}
+				out = append(out, wire[at:at+kw]...)
+				at += kw
+				l, lw := readLeb(wire, at, sp.limit)
+				if lw == 0 || int(l) != w {
+					return nil, false
+				}
+				out = append(out, lebBytes(uint64(kindWidth(to)))...)
+				at += lw
+			}
+			if at+w > sp.limit {
+				return nil, false
+			}
+			out = append(out, rewriteScalar(wire[at:at+w], from, to)...)
+			at += w
+		}
+		return spliceRange(seed, sp.off, at-sp.off, sp.enclosing, out), true
+	}
+	return nil, false
+}
+
+// spliceRange replaces the bytes at [off, off+width) and grows or shrinks
+// every length in `enclosing` by the same delta, innermost first, exactly as
+// spliceSpot does for one spot.
+func spliceRange(seed *wireSeed, off, width int, enclosing []int, newBytes []byte) []byte {
+	f := seed.frame
+	type edit struct {
+		off, width int
+		bytes      []byte
+	}
+	edits := []edit{{off, width, newBytes}}
+	d := len(newBytes) - width
+	for _, encl := range slices.Backward(enclosing) {
+		e := f.spots[encl]
+		grown := max(int64(e.value)+int64(d), 0)
+		nb := lebBytes(uint64(grown))
+		d += len(nb) - e.width
+		edits = append(edits, edit{e.off, e.width, nb})
+	}
+	sort.Slice(edits, func(a, b int) bool { return edits[a].off < edits[b].off })
+	out := make([]byte, 0, len(seed.wire)+d)
+	at := 0
+	for _, e := range edits {
+		out = append(out, seed.wire[at:e.off]...)
+		out = append(out, e.bytes...)
+		at = e.off + e.width
+	}
+	return append(out, seed.wire[at:]...)
+}
+
+// framedText opens one KIND 12 payload's L and marks it as text, so the text
+// pass can aim at what sits under it (§3, §4.2).
+func (s *frameScanner) framedText(off, end int) int {
+	after := s.framed(off, end, nil)
+	if after >= 0 {
+		for i := len(s.f.spots) - 1; i >= 0; i-- {
+			if s.f.spots[i].kind == spotLength && s.f.spots[i].off == off {
+				s.f.spots[i].text = true
+				break
+			}
+		}
+	}
+	return after
+}
+
+// ILL-FORMED TEXT at every kind 12 position (§3, §4.2): a truncated UTF-8
+// sequence, an overlong encoding, a lone continuation byte, a surrogate
+// encoded in UTF-8, and a zero byte at the front, the middle and the end of
+// the payload. Each must count exactly one malformed, leave the field at its
+// declared default and let the parent read on past L.
+var illFormedText = [][]byte{
+	{0xE2, 0x82},                       // a truncated three-byte sequence
+	{0xC0, 0x80},                       // an overlong encoding of U+0000
+	{0x80},                             // a lone continuation byte
+	{0xED, 0xA0, 0x80},                 // U+D800, a surrogate
+	{0x00, 'a', 'b'},                   // a zero byte at the front
+	{'a', 0x00, 'b'},                   // a zero byte in the middle
+	{'a', 'b', 0x00},                   // a zero byte at the end
+	{'o', 'k', 0xF0, 0x9F, 0x98, 0x80}, // well formed, an astral code point: the clamp's boundary
+}
+
+// retext rewrites the payload under one text length spot with `payload`,
+// reframing the L and every length enclosing it.
+func retext(seed *wireSeed, si int, payload []byte) []byte {
+	sp := seed.frame.spots[si]
+	out := append(lebBytes(uint64(len(payload))), payload...)
+	return spliceRange(seed, sp.off, sp.width+int(sp.value), sp.enclosing, out)
+}

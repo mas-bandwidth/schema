@@ -47,6 +47,7 @@ type Instance struct {
 type Counts struct {
 	Unknown      int
 	KindMismatch int
+	Widened      int
 	Clamped      int
 	Duplicate    int
 	Malformed    bool
@@ -58,18 +59,18 @@ func (c Counts) String() string {
 	if c.Refused {
 		verdict = "refused"
 	}
-	return fmt.Sprintf("%d,%d,%d,%d,%t,%s", c.Unknown, c.KindMismatch, c.Clamped, c.Duplicate, c.Malformed, verdict)
+	return fmt.Sprintf("%d,%d,%d,%d,%d,%t,%s", c.Unknown, c.KindMismatch, c.Widened, c.Clamped, c.Duplicate, c.Malformed, verdict)
 }
 
-// ParseCounts reads the "u,k,c,d,m,verdict" spelling every leg of the harness
-// uses.
+// ParseCounts reads the "u,k,w,c,d,m,verdict" spelling every leg of the
+// harness uses.
 func ParseCounts(text string) (Counts, error) {
 	var c Counts
 	parts := strings.Split(strings.TrimSpace(text), ",")
-	if len(parts) != 6 {
-		return c, fmt.Errorf("a report is five counters and a verdict, not %d fields: %q", len(parts), text)
+	if len(parts) != 7 {
+		return c, fmt.Errorf("a report is six counters and a verdict, not %d fields: %q", len(parts), text)
 	}
-	nums := []*int{&c.Unknown, &c.KindMismatch, &c.Clamped, &c.Duplicate}
+	nums := []*int{&c.Unknown, &c.KindMismatch, &c.Widened, &c.Clamped, &c.Duplicate}
 	for i, p := range nums {
 		v, err := strconv.Atoi(parts[i])
 		if err != nil {
@@ -77,15 +78,15 @@ func ParseCounts(text string) (Counts, error) {
 		}
 		*p = v
 	}
-	switch parts[4] {
+	switch parts[5] {
 	case "true":
 		c.Malformed = true
 	case "false":
 		c.Malformed = false
 	default:
-		return c, fmt.Errorf("%q is not true or false", parts[4])
+		return c, fmt.Errorf("%q is not true or false", parts[5])
 	}
-	switch parts[5] {
+	switch parts[6] {
 	case "refused":
 		c.Refused = true
 	case "read":
@@ -276,6 +277,7 @@ type Manifest struct {
 	CookWrites  []CookWrite
 	Blocks      []Block
 	Forgeries   []Forgery
+	Refusals    []Refusal
 }
 
 // LookupConnection returns the connection a key names.
@@ -403,6 +405,12 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				return nil, fmt.Errorf("%s: block takes name, unit, file, dump", where)
 			}
 			m.Blocks = append(m.Blocks, Block{Name: f[1], Unit: f[2], File: f[3], Dump: f[4]})
+		case "refusal":
+			// refusal <forgery> <reason>
+			if len(f) != 3 {
+				return nil, fmt.Errorf("%s: refusal takes a forgery name and a reason", where)
+			}
+			m.Refusals = append(m.Refusals, Refusal{Forgery: f[1], Reason: f[2]})
 		case "forgery":
 			// forgery <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label...>
 			if len(f) < 12 {
@@ -441,6 +449,20 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 	if err := scan.Err(); err != nil {
 		return nil, err
 	}
+	// a refusal line REACHES a forgery, and takes its kind from it: a name that
+	// reaches nothing is a reason nobody would be asked for
+	for i := range m.Refusals {
+		found := false
+		for _, fg := range m.Forgeries {
+			if fg.Name == m.Refusals[i].Forgery {
+				m.Refusals[i].Kind = fg.Kind
+				found = true
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("%s: refusal %s names no forgery", path, m.Refusals[i].Forgery)
+		}
+	}
 	// a cook-write line REACHES an instance, and a name that reaches nothing is
 	// a case that would silently expect nothing
 	for _, cw := range m.CookWrites {
@@ -449,4 +471,13 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 		}
 	}
 	return m, nil
+}
+
+// Refusal is the REASON one forgery's refusal names (docs/SPEC-TABLES.md §7,
+// §19.2): the enum's own value name, the first failing clause of the check.
+// Kind is the forgery's, filled in when the manifest is read.
+type Refusal struct {
+	Forgery string
+	Reason  string
+	Kind    string
 }
