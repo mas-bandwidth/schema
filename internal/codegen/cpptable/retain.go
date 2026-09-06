@@ -1,8 +1,8 @@
 // RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6): the opt-in that keeps what this
 // build cannot name, across a REGION round trip and only that.
 //
-// It is a SECOND, PARALLEL FAMILY of body functions — <T>LoadBodyRetain,
-// <T>MeasureBodyRetain and <T>SaveBodyRetainFields — beside the three the
+// It is a SECOND, PARALLEL FAMILY of body functions, <T>LoadBodyRetain,
+// <T>MeasureBodyRetain and <T>SaveBodyRetainFields, beside the three the
 // wire already had. Load, Measure and Save are not touched and not read here:
 // a caller that does not ask keeps the codec it always had, to the byte, which
 // is what makes the whole feature free where it is not used.
@@ -110,7 +110,7 @@ func tableRetainDepth(u *ir.Unit, closure map[string]bool) int {
 // the count beside it. An id inside a retained record takes its trailer entry
 // from the GENERATED table when this build can name it and from the CALLER's
 // list otherwise (docs/SPEC-TABLES.md §6.6), and this array is what decides
-// which — the same set TableIds's capacity is derived from.
+// which, and it is the same set TableIds's capacity is derived from.
 func tableRetainKnownIds(u *ir.Unit) (string, int) {
 	ids := ir.TableWireIds(u)
 	var b strings.Builder
@@ -158,7 +158,7 @@ const cppRetainRuntime = `// ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) ---
 // is the node's index in the region's node directory, 1 for the root body and
 // k for the node at directory position k - 1. Every further step is the PAIR:
 // the field ordinal in the body the step descends from, in the READER's own
-// declaration order, and the element index inside that field — zero for a
+// declaration order, and the element index inside that field: zero for a
 // scalar body, the element's index for an array of any of the four kinds, the
 // ARM's OWN ORDINAL for a union, and the key's slot for a map.
 static const int32_t kTableRetainDepthMax = @DEPTH@;
@@ -330,8 +330,9 @@ inline bool TableRetainNameable( uint64_t id )
 }
 
 // THE TWO STORES, NUMBERED INTO ONE TRAILER in merged first-use order (§6.6).
-// It answers the surface TableIds answers — ref, count, truncate, overflow —
-// so the retain family's codec is the plain one with its names changed, and
+// It answers the surface TableIds answers, ref, count, truncate and
+// overflow, so the retain family's codec is the plain one with its names
+// changed, and
 // the GENERATED TABLE IS UNTOUCHED: its capacity, its overflow rule and its
 // -1 stand exactly as they are for every save.
 struct TableRetainIds
@@ -478,7 +479,7 @@ inline bool TableRetainInLebRead( TableRetainIn & s, uint64_t & value )
 }
 
 // one REFERENCE resolved to the id it names. A zero reference is the wire's
-// own "no id" — the enum's None and the union's empty arm — and rides as the
+// own "no id", the enum's None and the union's empty arm, and rides as the
 // id zero. A reference above the entry count, a reference at an id-table entry
 // of zero, and a reference at a reserved id are each damage the plain read
 // never looked at, and each drops the record.
@@ -746,7 +747,7 @@ inline void TableRetainReset( TableRetain * retain, const TableNodeMap & nodes, 
 // WITH IT. Legal input can carry a known child body twice, and the later
 // occurrence resets the child and wins whole (§3, §4): the records retained
 // under the earlier occurrence go with the values it held. The discard moves
-// NEITHER counter — the writer superseded the data, so nothing was lost that
+// NEITHER counter. The writer superseded the data, so nothing was lost that
 // the load could have kept, and retained counted the record when its bytes
 // were kept and does not fall when they are let go.
 //
@@ -812,7 +813,7 @@ inline void TableRetainDiscardField( TableRetain * retain, const TableRetainPath
 // The record read back the other way: every resolved id becomes the reference
 // the trailer being written gives it, and every length is recomputed against
 // the references' new widths. The walk is the capture's mirror and the same
-// damage rules apply, except that damage cannot be met — these bytes are the
+// damage rules apply, except that damage cannot be met: these bytes are the
 // reader's own.
 struct TableRetainOut
 {
@@ -1135,7 +1136,7 @@ inline void TableRetainCountLost( const TableRetain * retain, TableReport * repo
 // THE NODE TABLE under retention (§3.1, §6.6): the same fill rule the plain
 // pair derives, with the retain family's ids and each record's own body
 // reached through a dispatch the CALL supplies rather than a second pair of
-// thunks on the numbering — a store per node on the PLAIN save path would be a
+// thunks on the numbering. A store per node on the PLAIN save path would be a
 // cost this feature is not allowed to have.
 template <typename Ctx, typename Measure>
 inline int64_t TableNodeTablePayloadRetain( const Ctx & ctx, TableRetainIds & ids, const TableNumbering & n,
@@ -1385,7 +1386,7 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 //
 // It lands in a unit that CARRIES retention. A unit whose tables are all
 // fixed-class carries none of the machinery at all, which is §2.2's zero-cost
-// gate, so there the name is free rather than refused — and the CHECKER
+// gate, so there the name is free rather than refused. The CHECKER
 // claims the suffix in every unit either way (§11), which is what protects a
 // declaration from taking it.
 func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
@@ -1414,7 +1415,7 @@ func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
 }
 
 // fieldHoldsBodies reports whether a field can carry a retained record beneath
-// it — a nested table, an optional, a union, an array of any of those, a map,
+// it: a nested table, an optional, a union, an array of any of those, a map,
 // an unbounded array or an enum-keyed array. A scalar field holds no body and
 // nothing can be retained under it, so it takes no discard.
 func fieldHoldsBodies(f *ir.Field) bool {

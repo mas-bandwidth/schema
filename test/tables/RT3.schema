@@ -1,4 +1,4 @@
-// RT3.schema — the third writer of the RETAIN-UNKNOWN set
+// RT3.schema, the third writer of the RETAIN-UNKNOWN set
 // (docs/SPEC-TABLES.md §6.6): `head` is the field RT1 already has, at the same
 // wire id and the same kind, POINTING AT ANOTHER TABLE. RT1 reads the node
 // index and cannot name the record's type id, which is the excluded class a

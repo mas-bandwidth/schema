@@ -1,4 +1,4 @@
-// RT2.schema — the WRITER of the RETAIN-UNKNOWN pair (docs/SPEC-TABLES.md
+// RT2.schema, the WRITER of the RETAIN-UNKNOWN pair (docs/SPEC-TABLES.md
 // §6.6). Every field RT1 has, at the same wire ids, plus what a newer build
 // adds: a scalar the reader cannot name at three depths, a third enum variant,
 // a third union arm, a third keyed slot, a field of kind 17, an array whose

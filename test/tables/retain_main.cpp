@@ -1,6 +1,6 @@
 // THE RETAIN-UNKNOWN GATE (docs/SPEC-TABLES.md §6.6). One binary over the
 // RT1/RT2/RT3 set: RT2 and RT3 are newer builds, RT1 is the build that cannot
-// name what they wrote, and every row below is one of §6.6's own — the round
+// name what they wrote, and every row below is one of §6.6's own: the round
 // trip at three depths, idempotence, the six excluded classes, the two
 // capacities, the never-clobber condition, the step pair under a map, an
 // unbounded array element and a union arm, and the resolving walk's verdict on
@@ -150,9 +150,9 @@ static void round_trip()
     const tblrt1::Node * root = tblrt1::NodeLoadRetain( region.base, region.bytes, wire, n, &retain, &report );
     CHECK( root != NULL );
     CHECK( !report.malformed );
-    // EIGHT BODIES carry an unknown FIELD — the root, `inner`, two elements of
+    // EIGHT BODIES carry an unknown FIELD: the root, `inner`, two elements of
     // `items`, a slot of `banks`, the union's arm body, a map entry's value and
-    // a list element — and each is retained where it sat.
+    // a list element, and each is retained where it sat.
     CHECK( report.retained == 8 );
     // TWO MORE UNKNOWNS are vocabulary rather than fields: the enum variant
     // `tier` names and the keyed slot RT2's third variant writes. Each is an
@@ -507,7 +507,7 @@ static void damaged_inner_structure()
 // Moving a field changes the order ids are first used in, and the id table is
 // in FIRST-USE ORDER over the whole wire (§3), so the trailer's entries are
 // permuted and every reference in the body is renumbered with them. A retained
-// record that had been copied VERBATIM would point at other names, silently —
+// record that had been copied VERBATIM would point at other names, silently,
 // which is what the resolved form exists to prevent, and what RT2 reading its
 // own values back out of the permuted file proves.
 static void trailer_is_permuted()

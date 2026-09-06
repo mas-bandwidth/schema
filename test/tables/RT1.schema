@@ -1,9 +1,9 @@
-// RT1.schema — the READER of the RETAIN-UNKNOWN pair (docs/SPEC-TABLES.md
+// RT1.schema, the READER of the RETAIN-UNKNOWN pair (docs/SPEC-TABLES.md
 // §6.6). It is the older build: RT2 writes fields, an enum variant, a union
 // arm and a keyed slot this one cannot name, and RT3 writes a node record
 // whose type id it cannot name. Every construct a path step has a convention
-// for is here — a nested table, an array of tables, an enum-keyed array, a
-// union, a map and an unbounded array — so a retained record under each is
+// for is here: a nested table, an array of tables, an enum-keyed array, a
+// union, a map and an unbounded array, so a retained record under each is
 // addressed by the step pair rather than by one flat ordinal.
 package tblrt1
 
