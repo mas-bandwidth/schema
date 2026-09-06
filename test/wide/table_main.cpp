@@ -96,8 +96,8 @@ static Bytes frame( uint64_t id, uint8_t kind, const Bytes & payload )
 }
 
 // A kind 33 FIELD payload: `L`, a BYTE length, then the units two bytes each
-// little-endian (§3). `bytes` says what L claims, which is how an ODD L is
-// spelled without spelling half a unit.
+// little-endian (§3). `declared_bytes` says what L CLAIMS, which is how an
+// ODD L is spelled without spelling half a unit.
 static Bytes wide_payload( const uint16_t * units, int count, int64_t declared_bytes )
 {
     Bytes out;
