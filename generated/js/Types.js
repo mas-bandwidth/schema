@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 import { MaxHealth, MaxInputsPerPacket, MaxObjects, MaxPositionUnits, MaxVelocityUnits, RotationUnits, ShipMaxLasers, ShipMaxMissiles } from "./Constants.js";
 import { Pending, ShipType, Team } from "./Enums.js";
@@ -27,7 +27,14 @@ export class Vec3 {
 export const Vec3MaxBits = 192;
 export const Vec3MaxBytes = 24;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitVec3 restores fresh construction values in place, preserving storage.
+export function InitVec3(value) {
+  value.X = 0;
+  value.Y = 0;
+  value.Z = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroVec3(value) {
   value.X = 0;
   value.Y = 0;
@@ -81,7 +88,15 @@ export class Quat {
 export const QuatMaxBits = 256;
 export const QuatMaxBytes = 32;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitQuat restores fresh construction values in place, preserving storage.
+export function InitQuat(value) {
+  value.X = 0;
+  value.Y = 0;
+  value.Z = 0;
+  value.W = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroQuat(value) {
   value.X = 0;
   value.Y = 0;
@@ -142,7 +157,13 @@ export class Handle {
 export const HandleMaxBits = 22;
 export const HandleMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitHandle restores fresh construction values in place, preserving storage.
+export function InitHandle(value) {
+  value.ObjectId = 0;
+  value.ObjectSequence = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroHandle(value) {
   value.ObjectId = 0;
   value.ObjectSequence = 0;
@@ -189,7 +210,14 @@ export class QuantizedPosition {
 export const QuantizedPositionMaxBits = 75;
 export const QuantizedPositionMaxBytes = 16;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitQuantizedPosition restores fresh construction values in place, preserving storage.
+export function InitQuantizedPosition(value) {
+  value.X = 0;
+  value.Y = 0;
+  value.Z = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroQuantizedPosition(value) {
   value.X = 0;
   value.Y = 0;
@@ -251,7 +279,14 @@ export class QuantizedVelocity {
 export const QuantizedVelocityMaxBits = 69;
 export const QuantizedVelocityMaxBytes = 16;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitQuantizedVelocity restores fresh construction values in place, preserving storage.
+export function InitQuantizedVelocity(value) {
+  value.X = 0;
+  value.Y = 0;
+  value.Z = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroQuantizedVelocity(value) {
   value.X = 0;
   value.Y = 0;
@@ -314,7 +349,15 @@ export class QuantizedRotation {
 export const QuantizedRotationMaxBits = 48;
 export const QuantizedRotationMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitQuantizedRotation restores fresh construction values in place, preserving storage.
+export function InitQuantizedRotation(value) {
+  value.X = 0;
+  value.Y = 0;
+  value.Z = 0;
+  value.W = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroQuantizedRotation(value) {
   value.X = 0;
   value.Y = 0;
@@ -393,7 +436,16 @@ export class RigidBody {
 export const RigidBodyMaxBits = 833;
 export const RigidBodyMaxBytes = 112;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitRigidBody restores fresh construction values in place, preserving storage.
+export function InitRigidBody(value) {
+  InitVec3(value.Position);
+  InitQuat(value.Orientation);
+  value.AtRest = false;
+  InitVec3(value.LinearVelocity);
+  InitVec3(value.AngularVelocity);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroRigidBody(value) {
   ZeroVec3(value.Position);
   ZeroQuat(value.Orientation);
@@ -473,7 +525,24 @@ export class Input {
 export const InputMaxBits = 168;
 export const InputMaxBytes = 24;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitInput restores fresh construction values in place, preserving storage.
+export function InitInput(value) {
+  value.StickX = 0;
+  value.StickY = 0;
+  value.Throttle = 0;
+  value.Yaw = 0;
+  value.Pitch = 0;
+  value.Fire = false;
+  value.AltFire = false;
+  value.Boost = false;
+  value.Brake = false;
+  value.Aim = false;
+  value.LockOn = false;
+  value.Zoom = false;
+  value.Ping = false;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroInput(value) {
   value.StickX = 0;
   value.StickY = 0;
@@ -618,7 +687,19 @@ export class InputPacket {
 export const InputPacketMaxBits = 2837;
 export const InputPacketMaxBytes = 360;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitInputPacket restores fresh construction values in place, preserving storage.
+export function InitInputPacket(value) {
+  value.SynchronizeSequence = 0;
+  value.CurrentFrame = 0n;
+  value.StartFrame = 0n;
+  for (let initIndex0 = 0; initIndex0 < MaxInputsPerPacket; initIndex0++) {
+    const initValue0 = value.Inputs[initIndex0];
+    InitInput(initValue0);
+  }
+  value.InputsCount = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroInputPacket(value) {
   value.SynchronizeSequence = 0;
   value.CurrentFrame = 0n;
@@ -707,7 +788,21 @@ export class ShipCreate {
 export const ShipCreateMaxBits = 219;
 export const ShipCreateMaxBytes = 32;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitShipCreate restores fresh construction values in place, preserving storage.
+export function InitShipCreate(value) {
+  value.ShipType = ShipType.None;
+  InitQuantizedPosition(value.Position);
+  InitQuantizedRotation(value.Rotation);
+  InitQuantizedVelocity(value.LinearVelocity);
+  value.HasFlags = false;
+  value.Flags = 0n;
+  value.Team = Team.None;
+  value.Health = 0;
+  value.Thrust = 0;
+  value.Pending = Pending.None;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroShipCreate(value) {
   value.ShipType = ShipType.None;
   ZeroQuantizedPosition(value.Position);
@@ -839,7 +934,13 @@ export class ExpressionProbe {
 export const ExpressionProbeMaxBits = 16;
 export const ExpressionProbeMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitExpressionProbe restores fresh construction values in place, preserving storage.
+export function InitExpressionProbe(value) {
+  value.HardpointIndex = 0;
+  value.SpinRate = RotationUnits;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroExpressionProbe(value) {
   value.HardpointIndex = 0;
   value.SpinRate = 0;
@@ -895,7 +996,16 @@ export class ExtremeProbe {
 export const ExtremeProbeMaxBits = 320;
 export const ExtremeProbeMaxBytes = 40;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitExtremeProbe restores fresh construction values in place, preserving storage.
+export function InitExtremeProbe(value) {
+  value.FloorBound = 0n;
+  value.DoubledFloor = 0n;
+  value.CeilingRange = 1n;
+  value.FloorDefault = -9223372036854775808n;
+  value.CeilingDefault = 18446744073709551615n;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroExtremeProbe(value) {
   value.FloorBound = 0n;
   value.DoubledFloor = 0n;
@@ -979,7 +1089,15 @@ export class ExtremeRow {
 export const ExtremeRowMaxBits = 256;
 export const ExtremeRowMaxBytes = 32;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitExtremeRow restores fresh construction values in place, preserving storage.
+export function InitExtremeRow(value) {
+  value.ClampedFloor = 0n;
+  value.ClampedCeiling = 1n;
+  value.FloorDef = -9223372036854775808n;
+  value.CeilingDef = 18446744073709551615n;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroExtremeRow(value) {
   value.ClampedFloor = 0n;
   value.ClampedCeiling = 0n;

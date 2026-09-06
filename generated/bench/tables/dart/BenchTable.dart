@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0x88cf953e975ace60
+// package benchtable — protocol id 0x0926221bcb6f475f
 //
 // The shipped Dart wire path (issue #155): the serialize.dart bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -33,7 +33,7 @@ String _hex64(int value) => value < 0
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const int protocolId = 0x88cf953e975ace60;
+const int protocolId = 0x0926221bcb6f475f;
 
 // TableWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
 // an int-constant namespace — the Dart translation of the family's integer-
@@ -198,6 +198,14 @@ void zeroTableHitEvent(TableHitEvent value) {
   value.crit = false;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initTableHitEvent(TableHitEvent value) {
+  value.targetId = 0;
+  value.damage = 0;
+  value.hitKind = 0;
+  value.crit = false;
+}
+
 // writeTableHitEvent packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // tableHitEventMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -300,6 +308,12 @@ void zeroTableChatEvent(TableChatEvent value) {
   value.speaker = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initTableChatEvent(TableChatEvent value) {
+  value.channel = 0;
+  value.speaker = 0;
+}
+
 // writeTableChatEvent packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // tableChatEventMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -386,6 +400,12 @@ const int tablePickupEventMaxBytes = 8;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroTablePickupEvent(TablePickupEvent value) {
+  value.itemId = 0;
+  value.amount = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initTablePickupEvent(TablePickupEvent value) {
   value.itemId = 0;
   value.amount = 0;
 }
@@ -489,8 +509,8 @@ String enumNameTableEventType(int value) {
 }
 
 // TableEvent — at most one of the arms; type says which. Construction is the empty
-// union (None). A read zero-establishes exactly the selected arm before
-// decoding it (SPEC §5); unselected arms keep what they last held — the
+// union (None). Every read selection initializes the chosen payload from
+// construction defaults; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 final class TableEvent {
   int type = TableEventType.none;
@@ -506,7 +526,7 @@ const int tableEventMaxBytes = 8;
 
 // zeroTableEvent resets value to the §5 zero form — the empty union. The tag alone
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-// is unselected at None; an arm re-zeroes at its next selection.
+// is unselected at None; an arm initializes at its next selection.
 void zeroTableEvent(TableEvent value) {
   value.type = TableEventType.none;
 }

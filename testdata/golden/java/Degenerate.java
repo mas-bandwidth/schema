@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 package example;
 
@@ -32,6 +32,12 @@ public final class Degenerate {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroVec2(Vec2 value) {
+        value.x = 0.0;
+        value.y = 0.0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initVec2(Vec2 value) {
         value.x = 0.0;
         value.y = 0.0;
     }
@@ -197,6 +203,11 @@ public final class Degenerate {
         java.util.Arrays.fill(value.values, 0.0);
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initSpanF64(SpanF64 value) {
+        java.util.Arrays.fill(value.values, 0.0);
+    }
+
     // checkWriteSpanF64 is writeSpanF64's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -320,6 +331,11 @@ public final class Degenerate {
         java.util.Arrays.fill(value.values, 0L);
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initSpanU64(SpanU64 value) {
+        java.util.Arrays.fill(value.values, 0L);
+    }
+
     // checkWriteSpanU64 is writeSpanU64's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -437,6 +453,11 @@ public final class Degenerate {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroSpanI64(SpanI64 value) {
+        java.util.Arrays.fill(value.values, 0L);
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initSpanI64(SpanI64 value) {
         java.util.Arrays.fill(value.values, 0L);
     }
 
@@ -560,6 +581,11 @@ public final class Degenerate {
         java.util.Arrays.fill(value.values, 0L);
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initSpanOne(SpanOne value) {
+        java.util.Arrays.fill(value.values, 0L);
+    }
+
     // checkWriteSpanOne is writeSpanOne's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -680,6 +706,11 @@ public final class Degenerate {
         java.util.Arrays.fill(value.values, (short) 0);
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initSpanChunk(SpanChunk value) {
+        java.util.Arrays.fill(value.values, (short) 0);
+    }
+
     // checkWriteSpanChunk is writeSpanChunk's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -777,6 +808,12 @@ public final class Degenerate {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroSpanTail(SpanTail value) {
+        java.util.Arrays.fill(value.values, 0.0);
+        value.tail = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initSpanTail(SpanTail value) {
         java.util.Arrays.fill(value.values, 0.0);
         value.tail = 0;
     }
@@ -921,6 +958,12 @@ public final class Degenerate {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroSpanTwice(SpanTwice value) {
+        java.util.Arrays.fill(value.a, 0.0);
+        java.util.Arrays.fill(value.b, 0.0);
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initSpanTwice(SpanTwice value) {
         java.util.Arrays.fill(value.a, 0.0);
         java.util.Arrays.fill(value.b, 0.0);
     }
@@ -1098,6 +1141,13 @@ public final class Degenerate {
         value.c = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initTrio(Trio value) {
+        value.a = 0;
+        value.b = 0;
+        value.c = 0;
+    }
+
     // checkWriteTrio is writeTrio's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -1229,6 +1279,11 @@ public final class Degenerate {
     // construction.
     public static void zeroTrioSole(TrioSole value) {
         zeroTrio(value.inner);
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initTrioSole(TrioSole value) {
+        initTrio(value.inner);
     }
 
     // checkWriteTrioSole is writeTrioSole's contract walk, called once through assert —
@@ -1363,6 +1418,12 @@ public final class Degenerate {
     // construction.
     public static void zeroTrioFirst(TrioFirst value) {
         zeroTrio(value.inner);
+        value.trailer = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initTrioFirst(TrioFirst value) {
+        initTrio(value.inner);
         value.trailer = 0;
     }
 
@@ -1528,6 +1589,17 @@ public final class Degenerate {
         value.pad4 = 0;
         value.pad5 = 0;
         zeroTrio(value.inner);
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initTrioStraddle(TrioStraddle value) {
+        value.pad0 = 0;
+        value.pad1 = 0;
+        value.pad2 = 0;
+        value.pad3 = 0;
+        value.pad4 = 0;
+        value.pad5 = 0;
+        initTrio(value.inner);
     }
 
     // checkWriteTrioStraddle is writeTrioStraddle's contract walk, called once through assert —

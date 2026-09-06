@@ -218,7 +218,7 @@ func (g *gen) emitUnion(d *ir.Union) {
 
 	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("// %s — at most one of the arms; Type says which. The zero value is the\n", d.Name)
-	g.pf("// empty union (None). A read zero-establishes exactly the selected arm before\n")
+	g.pf("// empty union (None). A read constructs the selected arm with its defaults before\n")
 	g.pf("// decoding it (SPEC §5); unselected arms keep what they last held — the\n")
 	g.pf("// reused-storage discipline. Consumers read the selected arm only.\n")
 	g.pf("type %s struct {\n", d.Name)

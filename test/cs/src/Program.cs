@@ -264,9 +264,148 @@ static class Program
         return input;
     }
 
+    static void TestSelectedArmDefaults()
+    {
+        // tag First=1 (2 bits), count=0 (2 bits), marker=5 (3 bits): 0x51.
+        DefaultChoice input = new DefaultChoice();
+        input.Type = DefaultChoiceType.First;
+        for (int phase = 0; phase < 2; phase++)
+        {
+            if (phase == 1)
+            {
+                input.First.EntriesCount = 2;
+                input.First.Entries[0].Retries = 99;
+                InitDefaultArm(input.First);
+                Check(input.First.EntriesCount == 0 && input.First.Marker == 0 &&
+                      input.First.Entries[0].Retries == -1 && input.First.Entries[1].Retries == -1,
+                      "InitDefaultArm restores construction defaults");
+            }
+            input.First.Marker = 5;
+            WriteStream ws = NewWriteStream();
+            Check(WriteDefaultChoice(ws, input), "write fresh/initialized DefaultChoice");
+            Check(ws.BitsProcessed == 7, "DefaultChoice uses seven independent bits");
+            byte[] bytes = Data(ws);
+            Check(bytes.Length == 1 && bytes[0] == 0x51, "DefaultChoice independent wire is 0x51");
+        }
+
+        DefaultChoice output = new DefaultChoice();
+        DefaultArm first = output.First, second = output.Second;
+        ProbeConfig[] firstEntries = first.Entries, secondEntries = second.Entries;
+        ProbeConfig first0 = first.Entries[0], first1 = first.Entries[1];
+        ProbeConfig second0 = second.Entries[0], second1 = second.Entries[1];
+        second.Marker = 7;
+        second.EntriesCount = 2;
+        for (int i = 0; i < 2; i++)
+        {
+            second.Entries[i].Retries = 41 + i;
+            second.Entries[i].Preferred = Weapon.Missile;
+        }
+        output.Type = DefaultChoiceType.Second;
+        for (int pass = 0; pass < 2; pass++)
+        {
+            first.EntriesCount = 2;
+            first.Marker = 1;
+            for (int i = 0; i < 2; i++)
+            {
+                first.Entries[i].Retries = 99;
+                first.Entries[i].Preferred = Weapon.Missile;
+            }
+            ReadStream rs = new ReadStream(new byte[] { 0x51 });
+            // This scalar-only union's public entry runs its batch core.
+            bool readOK = ReadDefaultChoice(rs, output);
+            Check(readOK, "decode DefaultChoice, same tag included");
+            bool selectedOK = rs.BitsProcessed == 7 && output.Type == DefaultChoiceType.First &&
+                              first.EntriesCount == 0 && first.Marker == 5;
+            Check(selectedOK, "DefaultChoice selected fields and bit count");
+            // The control's backing-default marker requires a successful oracle decode.
+            if (!readOK || !selectedOK)
+                return;
+            for (int i = 0; i < 2; i++)
+            {
+                Check(first.Entries[i].Retries == -1 && first.Entries[i].Preferred == Weapon.Railgun,
+                      "selected unused backing entry receives its defaults");
+                Check(second.Entries[i].Retries == 41 + i && second.Entries[i].Preferred == Weapon.Missile,
+                      "unselected backing entry retains its value");
+            }
+            Check(ReferenceEquals(output.First, first) && ReferenceEquals(output.Second, second) &&
+                  ReferenceEquals(first.Entries, firstEntries) && ReferenceEquals(second.Entries, secondEntries) &&
+                  ReferenceEquals(first.Entries[0], first0) && ReferenceEquals(first.Entries[1], first1) &&
+                  ReferenceEquals(second.Entries[0], second0) && ReferenceEquals(second.Entries[1], second1),
+                  "selection preserves all preallocated identities");
+            Check(second.Marker == 7 && second.EntriesCount == 2, "unselected payload remains untouched");
+        }
+    }
+
+    static void TestSelectedArmDefaultsStream()
+    {
+        // The bulk-bearing arm keeps this union on the ordinary stream path.
+        DefaultBulkChoice input = new DefaultBulkChoice();
+        input.Type = DefaultBulkChoiceType.First;
+        input.First.Payload.Marker = 5;
+        WriteStream ws = NewWriteStream();
+        Check(WriteDefaultBulkChoice(ws, input), "write ordinary DefaultBulkChoice");
+        Check(ws.BitsProcessed == 16, "bulk choice: seven payload bits, two length bits, seven alignment bits");
+        byte[] wire = Data(ws);
+        Check(wire.Length == 2 && wire[0] == 0x51 && wire[1] == 0,
+              "bulk choice empty-data wire is 0x51 0x00");
+
+        DefaultBulkChoice output = new DefaultBulkChoice();
+        DefaultBulkArm first = output.First, second = output.Second;
+        DefaultArm payload = first.Payload, otherPayload = second.Payload;
+        ProbeConfig[] entries = payload.Entries, otherEntries = otherPayload.Entries;
+        ProbeConfig first0 = entries[0], first1 = entries[1];
+        ProbeConfig second0 = otherEntries[0], second1 = otherEntries[1];
+        byte[] data = first.Data, otherData = second.Data;
+        otherPayload.Marker = 7;
+        otherPayload.EntriesCount = 2;
+        second.DataLength = 2;
+        for (int i = 0; i < 2; i++)
+        {
+            otherEntries[i].Retries = 41 + i;
+            otherEntries[i].Preferred = Weapon.Missile;
+            otherData[i] = 0x5a;
+        }
+        output.Type = DefaultBulkChoiceType.Second;
+        for (int pass = 0; pass < 2; pass++)
+        {
+            payload.EntriesCount = 2;
+            payload.Marker = 1;
+            first.DataLength = 2;
+            for (int i = 0; i < 2; i++)
+            {
+                entries[i].Retries = 99;
+                entries[i].Preferred = Weapon.Missile;
+                data[i] = 0xa5;
+            }
+            ReadStream rs = new ReadStream(new byte[] { 0x51, 0x00 });
+            Check(ReadDefaultBulkChoice(rs, output), "ordinary decoder initializes selected payload on every read");
+            Check(rs.BitsProcessed == 16 && output.Type == DefaultBulkChoiceType.First &&
+                  payload.EntriesCount == 0 && payload.Marker == 5 && first.DataLength == 0,
+                  "ordinary decoder overlays selected fields and empty data");
+            for (int i = 0; i < 2; i++)
+            {
+                Check(entries[i].Retries == -1 && entries[i].Preferred == Weapon.Railgun && data[i] == 0,
+                      "ordinary decoder initializes selected backing entries and buffer");
+                Check(otherEntries[i].Retries == 41 + i && otherEntries[i].Preferred == Weapon.Missile && otherData[i] == 0x5a,
+                      "ordinary decoder preserves unselected backing storage");
+            }
+            Check(ReferenceEquals(output.First, first) && ReferenceEquals(output.Second, second) &&
+                  ReferenceEquals(first.Payload, payload) && ReferenceEquals(second.Payload, otherPayload) &&
+                  ReferenceEquals(payload.Entries, entries) && ReferenceEquals(otherPayload.Entries, otherEntries) &&
+                  ReferenceEquals(entries[0], first0) && ReferenceEquals(entries[1], first1) &&
+                  ReferenceEquals(otherEntries[0], second0) && ReferenceEquals(otherEntries[1], second1) &&
+                  ReferenceEquals(first.Data, data) && ReferenceEquals(second.Data, otherData),
+                  "ordinary decoder retains every preallocated object and buffer");
+            Check(otherPayload.Marker == 7 && otherPayload.EntriesCount == 2 && second.DataLength == 2,
+                  "ordinary decoder leaves unselected metadata untouched");
+        }
+    }
+
     static int Main()
     {
         wireDir = FindTestDataDir("wire");
+        TestSelectedArmDefaults();
+        TestSelectedArmDefaultsStream();
 
         // ---- ShipCreate: the bool-gated flags branch, both ways ----
         {

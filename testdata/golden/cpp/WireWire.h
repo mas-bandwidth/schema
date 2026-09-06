@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 #pragma once
 
 #include <cstdint>
+#include <new>
 
 #include "serialize.h"
 
@@ -381,10 +382,10 @@ SCHEMA_READ_INLINE bool ReadProbeShape( serialize::ReadStream & stream, ProbeSha
         case ProbeShapeType::None:
             return true;
         case ProbeShapeType::Ring:
-            value.ring = ProbeRing{};
+            ::new ( (void*) &value.ring ) ProbeRing{};
             return ReadProbeRing( stream, value.ring );
         case ProbeShapeType::Slab:
-            value.slab = ProbeSlab{};
+            ::new ( (void*) &value.slab ) ProbeSlab{};
             return ReadProbeSlab( stream, value.slab );
     }
     return false;

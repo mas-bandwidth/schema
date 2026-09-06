@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0x9660fa8c14d38d67
+// package ludicrous — protocol id 0xf4a226f4166d919b
 
 #pragma once
 
@@ -14,7 +14,7 @@ namespace ludicrous {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0x9660fa8c14d38d67ull;
+inline constexpr uint64_t ProtocolId = 0xf4a226f4166d919bull;
 
 inline constexpr int64_t MaxWorldUnits = 30000;
 // enum DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)

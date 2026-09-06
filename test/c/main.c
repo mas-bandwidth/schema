@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "ArmDefaultsWire.h"
 #include "ClausesWire.h"
 #include "DegenerateWire.h"
 #include "JoinsWire.h"
@@ -101,11 +102,78 @@ static void fill_test_data( TestData * in )
 }
 
 
+static void test_default_arm_initialization( void )
+{
+    /* Independent oracle: First=1 in 2 bits, count=0 in 2, marker=5 in 3.
+       The logical packet is one byte; the allocations provide read slack. */
+    uint64_t oracle_words[2] = { 0, 0 };
+    uint64_t write_words[2] = { 0, 0 };
+    unsigned char * oracle = (unsigned char *) oracle_words;
+    unsigned char * buffer = (unsigned char *) write_words;
+    DefaultChoice input, output;
+    serialize_write_stream_t ws;
+    serialize_read_stream_t rs;
+    int attempt, i;
+    oracle[0] = 0x51;
+
+    memset( &input, 0, sizeof( input ) );
+    input.type = DEFAULT_CHOICE_TYPE_FIRST;
+    input.as.first = new_default_arm();
+    check( input.as.first.entries_count == 0, "DefaultArm constructor count is zero" );
+    for ( i = 0; i < 2; i++ )
+        check( input.as.first.entries[i].retries == -1 && input.as.first.entries[i].preferred == WEAPON_RAILGUN,
+               "DefaultArm constructor initializes both backing entries" );
+    input.as.first.marker = 5;
+    serialize_write_stream_init( &ws, buffer, sizeof( write_words ) );
+    if ( !write_default_choice( &ws, &input ) )
+    {
+        check( 0, "write constructed DefaultChoice" );
+        return;
+    }
+    check( serialize_write_bits_processed( &ws ) == 7, "DefaultChoice writes the independent 7-bit oracle" );
+    serialize_write_flush( &ws );
+    check( serialize_write_bytes_processed( &ws ) == 1 && buffer[0] == 0x51,
+           "DefaultChoice writes the independent 0x51 oracle" );
+
+    memset( &output, 0, sizeof( output ) );
+    output.type = DEFAULT_CHOICE_TYPE_SECOND;
+    for ( attempt = 0; attempt < 2; attempt++ )
+    {
+        /* The second pass leaves the decoded First tag in place. Both reads
+           must construct afresh; an unchanged-tag shortcut retains poison. */
+        output.as.first.entries_count = 2;
+        output.as.first.marker = 7;
+        for ( i = 0; i < 2; i++ )
+        {
+            output.as.first.entries[i].retries = 123;
+            output.as.first.entries[i].preferred = WEAPON_LASER;
+        }
+        serialize_read_stream_init( &rs, oracle, 1 );
+        if ( !read_default_choice( &rs, &output ) )
+        {
+            check( 0, "read independent DefaultChoice oracle" );
+            return;
+        }
+        const int consumed_ok = serialize_read_bits_processed( &rs ) == 7;
+        const int selected_ok = output.type == DEFAULT_CHOICE_TYPE_FIRST && output.as.first.entries_count == 0 && output.as.first.marker == 5;
+        check( consumed_ok, "DefaultChoice consumes exactly 7 bits" );
+        check( selected_ok, "DefaultChoice selects First and reads count zero, marker five" );
+        /* The control's backing-default marker requires a successful oracle decode. */
+        if ( !consumed_ok || !selected_ok )
+            return;
+        for ( i = 0; i < 2; i++ )
+            check( output.as.first.entries[i].retries == -1 && output.as.first.entries[i].preferred == WEAPON_RAILGUN,
+                   "DefaultChoice reconstructs both backing entries, including repeated tags" );
+    }
+}
+
 int main( void )
 {
     static unsigned char buffer[8192 + 8];      /* + 8: read buffer allocations extend 8 bytes past the data (serialize.c loads 64-bit windows) */
     serialize_write_stream_t w;
     serialize_read_stream_t r;
+
+    test_default_arm_initialization();
 
     /* ---- ShipCreate: the bool-gated flags branch, both ways ---- */
     {

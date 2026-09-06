@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 package example;
 
@@ -33,6 +33,12 @@ public final class Clauses {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroW13(W13 value) {
+        java.util.Arrays.fill(value.items, (short) 0);
+        value.itemsCount = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initW13(W13 value) {
         java.util.Arrays.fill(value.items, (short) 0);
         value.itemsCount = 0;
     }
@@ -174,6 +180,12 @@ public final class Clauses {
         value.itemsCount = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initW17(W17 value) {
+        java.util.Arrays.fill(value.items, 0);
+        value.itemsCount = 0;
+    }
+
     // checkWriteW17 is writeW17's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -307,6 +319,12 @@ public final class Clauses {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroW26(W26 value) {
+        java.util.Arrays.fill(value.items, 0);
+        value.itemsCount = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initW26(W26 value) {
         java.util.Arrays.fill(value.items, 0);
         value.itemsCount = 0;
     }
@@ -448,6 +466,12 @@ public final class Clauses {
         value.itemsCount = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initW1(W1 value) {
+        java.util.Arrays.fill(value.items, (byte) 0);
+        value.itemsCount = 0;
+    }
+
     // checkWriteW1 is writeW1's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -581,6 +605,12 @@ public final class Clauses {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroW52(W52 value) {
+        java.util.Arrays.fill(value.items, 0L);
+        value.itemsCount = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initW52(W52 value) {
         java.util.Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
@@ -740,6 +770,12 @@ public final class Clauses {
         value.itemsCount = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initW50(W50 value) {
+        java.util.Arrays.fill(value.items, 0L);
+        value.itemsCount = 0;
+    }
+
     // checkWriteW50 is writeW50's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -893,6 +929,11 @@ public final class Clauses {
         java.util.Arrays.fill(value.items, (short) 0);
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initF13(F13 value) {
+        java.util.Arrays.fill(value.items, (short) 0);
+    }
+
     // checkWriteF13 is writeF13's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -994,6 +1035,12 @@ public final class Clauses {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroTri3(Tri3 value) {
+        value.a = 0;
+        value.b = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initTri3(Tri3 value) {
         value.a = 0;
         value.b = 0;
     }
@@ -1120,6 +1167,14 @@ public final class Clauses {
     public static void zeroArrTri3(ArrTri3 value) {
         for (int i0 = 0; i0 < 10; i0++) {
             zeroTri3(value.items[i0]);
+        }
+        value.itemsCount = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initArrTri3(ArrTri3 value) {
+        for (int i0 = 0; i0 < 10; i0++) {
+            initTri3(value.items[i0]);
         }
         value.itemsCount = 0;
     }
@@ -1277,6 +1332,12 @@ public final class Clauses {
         value.b = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initEleven(Eleven value) {
+        value.a = 0;
+        value.b = 0;
+    }
+
     // checkWriteEleven is writeEleven's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -1401,6 +1462,13 @@ public final class Clauses {
         }
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initArrEleven(ArrEleven value) {
+        for (int i0 = 0; i0 < 9; i0++) {
+            initEleven(value.items[i0]);
+        }
+    }
+
     // checkWriteArrEleven is writeArrEleven's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -1521,6 +1589,11 @@ public final class Clauses {
         // empty body — nothing to reset (SPEC §4.6)
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initEmptyA(EmptyA value) {
+        // empty body — nothing to initialize
+    }
+
     // checkWriteEmptyA is writeEmptyA's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -1573,6 +1646,11 @@ public final class Clauses {
     // construction.
     public static void zeroEmptyB(EmptyB value) {
         // empty body — nothing to reset (SPEC §4.6)
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initEmptyB(EmptyB value) {
+        // empty body — nothing to initialize
     }
 
     // checkWriteEmptyB is writeEmptyB's contract walk, called once through assert —
@@ -1642,8 +1720,8 @@ public final class Clauses {
     }
 
     // EmptyUnion — at most one of the arms; type says which. Construction is the empty
-    // union (None). A read zero-establishes exactly the selected arm before
-    // decoding it (SPEC §5); unselected arms keep what they last held — the
+    // union (None). Every read selection initializes the chosen payload from
+    // construction defaults; unselected arms keep what they last held — the
     // reused-storage discipline. Consumers read the selected arm only.
     public static final class EmptyUnion {
         public byte type = EmptyUnionType.none;
@@ -1658,7 +1736,7 @@ public final class Clauses {
 
     // zeroEmptyUnion resets value to the §5 zero form — the empty union. The tag alone
     // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-    // is unselected at None; an arm re-zeroes at its next selection.
+    // is unselected at None; an arm initializes at its next selection.
     public static void zeroEmptyUnion(EmptyUnion value) {
         value.type = EmptyUnionType.none;
     }
@@ -1782,6 +1860,13 @@ public final class Clauses {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroHoldsEmptyUnion(HoldsEmptyUnion value) {
+        value.lead = 0;
+        value.u.type = 0;
+        value.tail = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initHoldsEmptyUnion(HoldsEmptyUnion value) {
         value.lead = 0;
         value.u.type = 0;
         value.tail = 0;
@@ -1957,6 +2042,16 @@ public final class Clauses {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroStrs(Strs value) {
+        value.lead = 0;
+        java.util.Arrays.fill(value.s, (byte) 0);
+        value.sLength = 0;
+        java.util.Arrays.fill(value.b, (byte) 0);
+        value.bLength = 0;
+        value.tail = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initStrs(Strs value) {
         value.lead = 0;
         java.util.Arrays.fill(value.s, (byte) 0);
         value.sLength = 0;
@@ -2251,6 +2346,16 @@ public final class Clauses {
         value.tail = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initArrNested(ArrNested value) {
+        value.lead = 0;
+        for (int i0 = 0; i0 < 4; i0++) {
+            initEleven(value.items[i0]);
+        }
+        value.itemsCount = 0;
+        value.tail = 0;
+    }
+
     // checkWriteArrNested is writeArrNested's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -2444,6 +2549,11 @@ public final class Clauses {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroSole(Sole value) {
+        value.only = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initSole(Sole value) {
         value.only = 0;
     }
 

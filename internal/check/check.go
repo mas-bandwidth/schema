@@ -164,6 +164,28 @@ func (c *checker) collectPackage() {
 				f.AST.Package, c.unit.Package)
 		}
 	}
+	c.checkViewFileName()
+}
+
+// checkViewFileName refuses a schema file whose generated name would be the
+// VIEW FILE's (docs/SPEC-TABLES.md §8.5, §11). The view is one generated pair
+// per unit, named capitalize(package) followed by View, and it is the one
+// generated name that is not derived from a schema file's own — so a file
+// named TabledemoView.schema in package tabledemo would emit TabledemoView.h
+// from two sources at once. It is a file-name collision rather than a
+// declaration collision, so it is refused naming the FILE.
+func (c *checker) checkViewFileName() {
+	if c.unit.Package == "" {
+		return
+	}
+	view := strings.ToUpper(c.unit.Package[:1]) + c.unit.Package[1:] + "View"
+	for _, f := range c.files {
+		if f.Base == view {
+			c.errf(f.AST.PkgPos, "schema file %s.schema generates the same name as the unit's view file %s.h "+
+				"(the registry is one pair per unit, named for the package — docs/SPEC-TABLES.md §8.5) — rename the file",
+				view, view)
+		}
+	}
 }
 
 // checkPackageName refuses package names that generate uncompilable code —
@@ -3244,6 +3266,14 @@ func (c *checker) checkClaimedNames() {
 	// unit-level symbols first, so every collision reports at the DECL side
 	unitPos := ast.Pos{}
 	add("ProtocolId", "the unit's generated ProtocolId", unitPos)
+	// THE VIEW'S OWN UNIT-SCOPE SPELLINGS (docs/SPEC-TABLES.md §8.3, §11),
+	// refused as declaration names in EVERY unit, always. They belong to the
+	// unit rather than to a declaration, so they are claimed once at unit
+	// scope, as ProtocolId is (SPEC §6.1), and a unit that grows its first
+	// table must not find a name that was free yesterday taken today.
+	for _, gen := range []string{"UnitView", "UnitViewInfo", "ViewType", "ViewVocabulary", "ViewVariant", "ViewConstant"} {
+		add(gen, "the generated unit registry (docs/SPEC-TABLES.md §8.3)", unitPos)
+	}
 	// names the generated Rust references unqualified: the serialize imports
 	// (use serialize::{Stream, ReadStream, WriteStream}) and the prelude
 	// items its emitted impls and expressions resolve through — a declaration
@@ -3328,6 +3358,15 @@ func (c *checker) checkClaimedNames() {
 		c.reserveCPrefix(name, pos)
 		add(name, what, pos)
 	}
+	// Dart's explicit constants and flags masks use the shared member-name
+	// mapping; type names stay verbatim. Claim the emitted spelling in this same
+	// registry so initChat and init_chat both meet Chat's initChat helper.
+	addDart := func(name, what string, pos ast.Pos, siblings ...string) {
+		mapped := ir.DartMemberName(name)
+		if !slices.Contains(siblings, mapped) {
+			add(mapped, what, pos)
+		}
+	}
 
 	for _, name := range declNames {
 		d := c.astDecls[name]
@@ -3338,6 +3377,7 @@ func (c *checker) checkClaimedNames() {
 			// the Rust target spells constants SCREAMING_SNAKE in the flat
 			// crate namespace
 			addRust(ir.RustConstName(name), fmt.Sprintf("const %s's generated constant (Rust/C form)", name), d.DeclPos(), name)
+			addDart(name, fmt.Sprintf("const %s's generated constant (Dart form)", name), d.DeclPos(), name, ir.RustConstName(name))
 		case *ast.EnumDecl:
 			// the Go target flattens variants into the package namespace;
 			// the Rust target scopes them as associated consts, so their
@@ -3459,11 +3499,25 @@ func (c *checker) checkClaimedNames() {
 				addRust(ir.RustConstName(name)+"_"+ir.RustConstName(v.Text),
 					fmt.Sprintf("flags %s's generated mask constant (Rust/C form)", name), v.Pos,
 					name+v.Text, name+"_"+v.Text)
+				addDart(name+v.Text, fmt.Sprintf("flags %s's generated mask constant (Dart form)", name), v.Pos,
+					name+v.Text, name+"_"+v.Text, ir.RustConstName(name)+"_"+ir.RustConstName(v.Text))
 			}
 		case *ast.TypeDecl:
 			c.addStructSymbols(add, addRust, name, d.DeclPos())
-			if c.tableClosure[name] {
+			switch {
+			case c.tableClosure[name]:
 				c.addTableSymbols(add, name, d.DeclPos())
+			case len(c.tables) > 0:
+				// EVERY TYPE IN THE UNIT HAS A VIEW (docs/SPEC-TABLES.md
+				// §8.2), and a `type` no table reaches carries its descriptor
+				// and its prefill in the view file rather than beside the
+				// table runtime (§8.5). The four spellings that emission
+				// takes are claimed together: widening one of them would
+				// leave the others open (§11).
+				why := fmt.Sprintf("%s's generated view descriptor (docs/SPEC-TABLES.md §8.2, §8.5)", name)
+				for _, verb := range []string{"Reset", "TableType", "TableFields", "TableInfo"} {
+					add(name+verb, why, d.DeclPos())
+				}
 			}
 		case *ast.TableDecl:
 			// a table generates its storage struct plus the Table codec and
@@ -3646,6 +3700,8 @@ func (c *checker) addStructSymbols(add func(name, what string, pos ast.Pos), add
 	add("Read"+name, why, pos)
 	add("New"+name, why, pos)
 	add("Zero"+name, why, pos) // the C# §5 zero-form helper (branch zeroing, storage reset)
+	add("Init"+name, why, pos) // construction defaults applied to existing managed storage
+	add("init"+name, why+" (Dart form)", pos)
 	add(name+"MaxBits", why, pos)
 	add(name+"MaxBytes", why, pos)
 	whyRust := fmt.Sprintf("type %s's generated functions and constants (Rust/C form)", name)

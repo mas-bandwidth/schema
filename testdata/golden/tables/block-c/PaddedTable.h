@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package blockdemo — protocol id 0xd2cfe60de8e0e0ed (packets only: tables version by field id, not by protocol id)
+   package blockdemo — protocol id 0x802d031e1b4cdb0c (packets only: tables version by field id, not by protocol id)
    The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
    dependency — includable from any TU. Compile the .c beside this header
    to use the reflection descriptors or the text form. */
@@ -407,7 +407,7 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE 0xb1bb90bcc5a063f3ull
+#define SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE 0xabef66a085fb8fc0ull
 
 #endif /* SCHEMA_BLOCKDEMO_BUILD_VERSION */
 

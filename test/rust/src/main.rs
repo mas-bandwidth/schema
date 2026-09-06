@@ -50,7 +50,77 @@ fn golden_wire(name: &str, data: &[u8]) {
     }
 }
 
+fn test_default_arm_initialization() {
+    // Independent oracle: First=1 in 2 bits, count=0 in 2, marker=5 in 3.
+    let mut oracle = [0u8; 16];
+    oracle[0] = 0x51;
+    let mut arm = DefaultArm::new();
+    check(arm.entries_count == 0, "DefaultArm constructor count is zero");
+    for entry in &arm.entries {
+        check(
+            entry.retries == -1 && entry.preferred == Weapon::RAILGUN,
+            "DefaultArm constructor initializes both backing entries",
+        );
+    }
+    arm.marker = 5;
+    let input = DefaultChoice::First(arm);
+    let mut buffer = [0u8; 16];
+    let mut ws = WriteStream::new(&mut buffer);
+    check_err(write_default_choice(&mut ws, &input), "write constructed DefaultChoice");
+    check(ws.bits_processed() == 7, "DefaultChoice writes the independent 7-bit oracle");
+    ws.flush();
+    check(ws.data() == &oracle[..1], "DefaultChoice writes the independent 0x51 oracle");
+
+    let mut output = DefaultChoice::Second(DefaultArm::default());
+    for _ in 0..2 {
+        // Poison the active payload without changing its tag. After the first
+        // read this is First, so the next read also tests repeated selection.
+        match &mut output {
+            DefaultChoice::First(arm) | DefaultChoice::Second(arm) => {
+                arm.entries_count = 2;
+                arm.marker = 7;
+                for entry in &mut arm.entries {
+                    entry.retries = 123;
+                    entry.preferred = Weapon::LASER;
+                }
+            }
+            DefaultChoice::None => {
+                check(false, "DefaultChoice unexpectedly became None");
+                return;
+            }
+        }
+        let mut rs = ReadStream::new(&oracle, 1);
+        let result = read_default_choice(&mut rs, &mut output);
+        let read_ok = result.is_ok();
+        check_err(result, "read independent DefaultChoice oracle");
+        let consumed_ok = rs.bits_processed() == 7;
+        check(consumed_ok, "DefaultChoice consumes exactly 7 bits");
+        // The control's backing-default marker requires a successful oracle decode.
+        if !read_ok || !consumed_ok {
+            return;
+        }
+        match &output {
+            DefaultChoice::First(arm) => {
+                let selected_ok = arm.entries_count == 0 && arm.marker == 5;
+                check(selected_ok, "DefaultChoice reads count zero, marker five");
+                if !selected_ok {
+                    return;
+                }
+                for entry in &arm.entries {
+                    check(
+                        entry.retries == -1 && entry.preferred == Weapon::RAILGUN,
+                        "DefaultChoice reconstructs both backing entries, including repeated tags",
+                    );
+                }
+            }
+            _ => check(false, "DefaultChoice selects First"),
+        }
+    }
+}
+
 fn main() {
+    test_default_arm_initialization();
+
     // ---- ShipCreate: the bool-gated flags branch, both ways ----
     {
         let mut input = ShipCreate::default();

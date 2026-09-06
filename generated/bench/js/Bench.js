@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x06845f749d2417b4
+// package bench — protocol id 0x8d12c3149393f40f
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an out-of-contract
@@ -22,7 +22,7 @@ const BOOL_SCRATCH = { value: false };
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-export const ProtocolId = 0x06845f749d2417b4n;
+export const ProtocolId = 0x8d12c3149393f40fn;
 
 // type BenchPacket
 export class BenchPacket {
@@ -47,7 +47,23 @@ export class BenchPacket {
 export const BenchPacketMaxBits = 392;
 export const BenchPacketMaxBytes = 56;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitBenchPacket restores fresh construction values in place, preserving storage.
+export function InitBenchPacket(value) {
+  value.A = 0;
+  value.B = 0;
+  value.C = 0;
+  value.Bits7 = 0;
+  value.Bits13 = 0;
+  value.Bits23 = 0;
+  value.Flag = false;
+  value.X = 0;
+  value.Y = 0;
+  value.Z = 0;
+  value.Big = 0n;
+  value.Blob.fill(0);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroBenchPacket(value) {
   value.A = 0;
   value.B = 0;
@@ -201,7 +217,21 @@ export class BenchInts {
 export const BenchIntsMaxBits = 110;
 export const BenchIntsMaxBytes = 16;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitBenchInts restores fresh construction values in place, preserving storage.
+export function InitBenchInts(value) {
+  value.F0 = 0;
+  value.F1 = 0;
+  value.F2 = 0;
+  value.F3 = 0;
+  value.F4 = 0;
+  value.F5 = 0;
+  value.F6 = 0;
+  value.F7 = 0;
+  value.F8 = 0;
+  value.F9 = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroBenchInts(value) {
   value.F0 = 0;
   value.F1 = 0;
@@ -352,7 +382,19 @@ export class BenchBits {
 export const BenchBitsMaxBits = 156;
 export const BenchBitsMaxBytes = 24;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitBenchBits restores fresh construction values in place, preserving storage.
+export function InitBenchBits(value) {
+  value.B7 = 0;
+  value.B13 = 0;
+  value.B23 = 0;
+  value.B3 = 0;
+  value.B32 = 0;
+  value.B11 = 0;
+  value.B19 = 0;
+  value.B48 = 0n;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroBenchBits(value) {
   value.B7 = 0;
   value.B13 = 0;
@@ -590,7 +632,25 @@ export class MixedEntity {
 export const MixedEntityMaxBits = 135;
 export const MixedEntityMaxBytes = 24;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitMixedEntity restores fresh construction values in place, preserving storage.
+export function InitMixedEntity(value) {
+  value.EntityId = 0;
+  value.PosX = 0;
+  value.PosY = 0;
+  value.PosZ = 0;
+  value.Yaw = 0;
+  value.Pitch = 0;
+  value.VelX = 0;
+  value.VelY = 0;
+  value.VelZ = 0;
+  value.Health = 0;
+  value.Weapon = MixedWeapon.None;
+  value.Damage = 0n;
+  value.Moving = false;
+  value.Firing = false;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroMixedEntity(value) {
   value.EntityId = 0;
   value.PosX = 0;
@@ -771,7 +831,13 @@ export class MixedStat {
 export const MixedStatMaxBits = 18;
 export const MixedStatMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitMixedStat restores fresh construction values in place, preserving storage.
+export function InitMixedStat(value) {
+  value.StatId = 0;
+  value.Delta = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroMixedStat(value) {
   value.StatId = 0;
   value.Delta = 0;
@@ -819,7 +885,15 @@ export class MixedHitEvent {
 export const MixedHitEventMaxBits = 28;
 export const MixedHitEventMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitMixedHitEvent restores fresh construction values in place, preserving storage.
+export function InitMixedHitEvent(value) {
+  value.TargetId = 0;
+  value.Damage = 0;
+  value.HitKind = 0;
+  value.Crit = false;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroMixedHitEvent(value) {
   value.TargetId = 0;
   value.Damage = 0;
@@ -886,7 +960,13 @@ export class MixedChatEvent {
 export const MixedChatEventMaxBits = 14;
 export const MixedChatEventMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitMixedChatEvent restores fresh construction values in place, preserving storage.
+export function InitMixedChatEvent(value) {
+  value.Channel = 0;
+  value.Speaker = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroMixedChatEvent(value) {
   value.Channel = 0;
   value.Speaker = 0;
@@ -932,7 +1012,13 @@ export class MixedPickupEvent {
 export const MixedPickupEventMaxBits = 18;
 export const MixedPickupEventMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitMixedPickupEvent restores fresh construction values in place, preserving storage.
+export function InitMixedPickupEvent(value) {
+  value.ItemId = 0;
+  value.Amount = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroMixedPickupEvent(value) {
   value.ItemId = 0;
   value.Amount = 0;
@@ -993,8 +1079,8 @@ export function EnumNameMixedEventType(value) {
 }
 
 // MixedEvent — at most one of the arms; Type says which. Construction is the empty
-// union (None). A read zero-establishes exactly the selected arm before
-// decoding it (SPEC §5); unselected arms keep what they last held — the
+// union (None). Every read initializes the selected arm as a fresh value
+// before decoding it; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 export class MixedEvent {
   constructor() {
@@ -1012,7 +1098,7 @@ export const MixedEventMaxBytes = 8;
 
 // ZeroMixedEvent resets value to the §5 zero form — the empty union. The tag alone
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-// is unselected at None; an arm re-zeroes at its next selection.
+// is unselected at None; an arm is initialized at its next selection.
 export function ZeroMixedEvent(value) {
   value.Type = MixedEventType.None;
 }
@@ -1043,13 +1129,13 @@ export function ReadMixedEvent(stream, value) {
   value.Type = NUMBER_SCRATCH.value;
   switch (value.Type) {
     case MixedEventType.Hit:
-      ZeroMixedHitEvent(value.Hit); // the selected arm starts from the zero form (SPEC §5)
+      InitMixedHitEvent(value.Hit); // fresh declared defaults on every selection
       return ReadMixedHitEvent(stream, value.Hit);
     case MixedEventType.Chat:
-      ZeroMixedChatEvent(value.Chat); // the selected arm starts from the zero form (SPEC §5)
+      InitMixedChatEvent(value.Chat); // fresh declared defaults on every selection
       return ReadMixedChatEvent(stream, value.Chat);
     case MixedEventType.Pickup:
-      ZeroMixedPickupEvent(value.Pickup); // the selected arm starts from the zero form (SPEC §5)
+      InitMixedPickupEvent(value.Pickup); // fresh declared defaults on every selection
       return ReadMixedPickupEvent(stream, value.Pickup);
   }
   return true; // None
@@ -1103,7 +1189,48 @@ export class BenchMixed {
 export const BenchMixedMaxBits = 3626;
 export const BenchMixedMaxBytes = 456;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitBenchMixed restores fresh construction values in place, preserving storage.
+export function InitBenchMixed(value) {
+  value.Sequence = 0;
+  value.AckSequence = 0;
+  value.AckBits = 0;
+  value.SessionId = 0n;
+  value.ClientId = 0;
+  value.Nonce = 0n;
+  value.WorldTime = 0n;
+  value.FrameTick = 0n;
+  value.ServerTime = 0;
+  for (let initIndex0 = 0; initIndex0 < 8; initIndex0++) {
+    const initValue0 = value.Entities[initIndex0];
+    InitMixedEntity(initValue0);
+  }
+  value.EntitiesCount = 1;
+  for (let initIndex0 = 0; initIndex0 < 80; initIndex0++) {
+    const initValue0 = value.Stats[initIndex0];
+    InitMixedStat(initValue0);
+  }
+  value.StatsCount = 0;
+  value.GameEvent.Type = 0; // None; dormant arms keep their storage
+  value.Loadout.fill(0);
+  value.PlayerName.fill(0);
+  value.PlayerNameLength = 0;
+  value.Payload.fill(0);
+  value.PayloadLength = 0;
+  value.AimX = 0;
+  value.AimY = 0;
+  value.AimZ = 0;
+  value.Recoil = 0;
+  value.Drift = 0;
+  value.WideKey = 0n;
+  value.Flux = 0n;
+  value.Ping = 0;
+  value.CrcHint = 0;
+  value.HasExtra = true;
+  value.Extra = 0;
+  value.IdleTicks = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroBenchMixed(value) {
   value.Sequence = 0;
   value.AckSequence = 0;

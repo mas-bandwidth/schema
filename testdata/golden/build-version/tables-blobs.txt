@@ -1,6 +1,6 @@
-0xe5a5889cc03235d2
+0xb003052c0ddd7685
 schema-build-version 3
-protocol 9f9c23137277dcc8
+protocol a844824278770488
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record Asset sizeof=72 alignof=8

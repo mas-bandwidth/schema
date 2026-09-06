@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x06845f749d2417b4
+// package bench — protocol id 0x8d12c3149393f40f
 //
 // The shipped Java wire path (issue #156): the serialize.java bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -39,7 +39,7 @@ public final class Bench {
 
     // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
     // sides at the same id speak identical bits; there is no other versioning.
-    public static final long protocolId = 0x06845f749d2417b4L;
+    public static final long protocolId = 0x8d12c3149393f40fL;
 
     // type BenchPacket
     public static final class BenchPacket {
@@ -68,6 +68,22 @@ public final class Bench {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroBenchPacket(BenchPacket value) {
+        value.a = 0;
+        value.b = 0;
+        value.c = 0;
+        value.bits7 = 0;
+        value.bits13 = 0;
+        value.bits23 = 0;
+        value.flag = false;
+        value.x = 0.0f;
+        value.y = 0.0f;
+        value.z = 0.0f;
+        value.big = 0;
+        java.util.Arrays.fill(value.blob, (byte) 0);
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initBenchPacket(BenchPacket value) {
         value.a = 0;
         value.b = 0;
         value.c = 0;
@@ -475,6 +491,20 @@ public final class Bench {
         value.f9 = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initBenchInts(BenchInts value) {
+        value.f0 = 0;
+        value.f1 = 0;
+        value.f2 = 0;
+        value.f3 = 0;
+        value.f4 = 0;
+        value.f5 = 0;
+        value.f6 = 0;
+        value.f7 = 0;
+        value.f8 = 0;
+        value.f9 = 0;
+    }
+
     // checkWriteBenchInts is writeBenchInts's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -783,6 +813,18 @@ public final class Bench {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroBenchBits(BenchBits value) {
+        value.b7 = 0;
+        value.b13 = 0;
+        value.b23 = 0;
+        value.b3 = 0;
+        value.b32 = 0;
+        value.b11 = 0;
+        value.b19 = 0;
+        value.b48 = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initBenchBits(BenchBits value) {
         value.b7 = 0;
         value.b13 = 0;
         value.b23 = 0;
@@ -1260,6 +1302,24 @@ public final class Bench {
         value.firing = false;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initMixedEntity(MixedEntity value) {
+        value.entityId = 0;
+        value.posX = 0;
+        value.posY = 0;
+        value.posZ = 0;
+        value.yaw = 0;
+        value.pitch = 0;
+        value.velX = 0;
+        value.velY = 0;
+        value.velZ = 0;
+        value.health = 0;
+        value.weapon = 0;
+        value.damage = 0;
+        value.moving = false;
+        value.firing = false;
+    }
+
     // checkWriteMixedEntity is writeMixedEntity's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -1634,6 +1694,12 @@ public final class Bench {
         value.delta = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initMixedStat(MixedStat value) {
+        value.statId = 0;
+        value.delta = 0;
+    }
+
     // checkWriteMixedStat is writeMixedStat's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -1752,6 +1818,14 @@ public final class Bench {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroMixedHitEvent(MixedHitEvent value) {
+        value.targetId = 0;
+        value.damage = 0;
+        value.hitKind = 0;
+        value.crit = false;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initMixedHitEvent(MixedHitEvent value) {
         value.targetId = 0;
         value.damage = 0;
         value.hitKind = 0;
@@ -1917,6 +1991,12 @@ public final class Bench {
         value.speaker = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initMixedChatEvent(MixedChatEvent value) {
+        value.channel = 0;
+        value.speaker = 0;
+    }
+
     // checkWriteMixedChatEvent is writeMixedChatEvent's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -2032,6 +2112,12 @@ public final class Bench {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroMixedPickupEvent(MixedPickupEvent value) {
+        value.itemId = 0;
+        value.amount = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initMixedPickupEvent(MixedPickupEvent value) {
         value.itemId = 0;
         value.amount = 0;
     }
@@ -2169,8 +2255,8 @@ public final class Bench {
     }
 
     // MixedEvent — at most one of the arms; type says which. Construction is the empty
-    // union (None). A read zero-establishes exactly the selected arm before
-    // decoding it (SPEC §5); unselected arms keep what they last held — the
+    // union (None). Every read selection initializes the chosen payload from
+    // construction defaults; unselected arms keep what they last held — the
     // reused-storage discipline. Consumers read the selected arm only.
     public static final class MixedEvent {
         public byte type = MixedEventType.none;
@@ -2186,7 +2272,7 @@ public final class Bench {
 
     // zeroMixedEvent resets value to the §5 zero form — the empty union. The tag alone
     // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-    // is unselected at None; an arm re-zeroes at its next selection.
+    // is unselected at None; an arm initializes at its next selection.
     public static void zeroMixedEvent(MixedEvent value) {
         value.type = MixedEventType.none;
     }
@@ -2593,6 +2679,45 @@ public final class Bench {
         value.ping = 0;
         value.crcHint = 0;
         value.hasExtra = false;
+        value.extra = 0;
+        value.idleTicks = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initBenchMixed(BenchMixed value) {
+        value.sequence = 0;
+        value.ackSequence = 0;
+        value.ackBits = 0;
+        value.sessionId = 0;
+        value.clientId = 0;
+        value.nonce = 0;
+        value.worldTime = 0;
+        value.frameTick = 0;
+        value.serverTime = 0;
+        for (int i0 = 0; i0 < 8; i0++) {
+            initMixedEntity(value.entities[i0]);
+        }
+        value.entitiesCount = 1;
+        for (int i0 = 0; i0 < 80; i0++) {
+            initMixedStat(value.stats[i0]);
+        }
+        value.statsCount = 0;
+        value.gameEvent.type = 0;
+        java.util.Arrays.fill(value.loadout, (byte) 0);
+        java.util.Arrays.fill(value.playerName, (byte) 0);
+        value.playerNameLength = 0;
+        java.util.Arrays.fill(value.payload, (byte) 0);
+        value.payloadLength = 0;
+        value.aimX = 0.0f;
+        value.aimY = 0.0f;
+        value.aimZ = 0.0f;
+        value.recoil = 0.0f;
+        value.drift = 0.0;
+        value.wideKey = UInt128.zero;
+        value.flux = Int128.zero;
+        value.ping = 0;
+        value.crcHint = 0;
+        value.hasExtra = true;
         value.extra = 0;
         value.idleTicks = 0;
     }

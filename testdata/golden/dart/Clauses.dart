@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 import 'dart:typed_data';
 
@@ -21,6 +21,12 @@ const int w13MaxBytes = 24;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroW13(W13 value) {
+  value.items.fillRange(0, value.items.length, 0);
+  value.itemsCount = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initW13(W13 value) {
   value.items.fillRange(0, value.items.length, 0);
   value.itemsCount = 0;
 }
@@ -197,6 +203,12 @@ void zeroW17(W17 value) {
   value.itemsCount = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initW17(W17 value) {
+  value.items.fillRange(0, value.items.length, 0);
+  value.itemsCount = 0;
+}
+
 // writeW17 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // w17MaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -363,6 +375,12 @@ void zeroW26(W26 value) {
   value.itemsCount = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initW26(W26 value) {
+  value.items.fillRange(0, value.items.length, 0);
+  value.itemsCount = 0;
+}
+
 // writeW26 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // w26MaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -519,6 +537,12 @@ const int w1MaxBytes = 8;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroW1(W1 value) {
+  value.items.fillRange(0, value.items.length, 0);
+  value.itemsCount = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initW1(W1 value) {
   value.items.fillRange(0, value.items.length, 0);
   value.itemsCount = 0;
 }
@@ -1034,6 +1058,12 @@ void zeroW52(W52 value) {
   value.itemsCount = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initW52(W52 value) {
+  value.items.fillRange(0, value.items.length, 0);
+  value.itemsCount = 0;
+}
+
 // writeW52 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // w52MaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -1150,6 +1180,12 @@ const int w50MaxBytes = 24;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroW50(W50 value) {
+  value.items.fillRange(0, value.items.length, 0);
+  value.itemsCount = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initW50(W50 value) {
   value.items.fillRange(0, value.items.length, 0);
   value.itemsCount = 0;
 }
@@ -1272,6 +1308,11 @@ void zeroF13(F13 value) {
   value.items.fillRange(0, value.items.length, 0);
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initF13(F13 value) {
+  value.items.fillRange(0, value.items.length, 0);
+}
+
 // writeF13 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // f13MaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -1362,6 +1403,12 @@ void zeroTri3(Tri3 value) {
   value.b = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initTri3(Tri3 value) {
+  value.a = 0;
+  value.b = 0;
+}
+
 // writeTri3 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // tri3MaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -1447,6 +1494,14 @@ const int arrTri3MaxBytes = 8;
 void zeroArrTri3(ArrTri3 value) {
   for (var i0 = 0; i0 < 10; i0++) {
     zeroTri3(value.items[i0]);
+  }
+  value.itemsCount = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initArrTri3(ArrTri3 value) {
+  for (var i0 = 0; i0 < 10; i0++) {
+    initTri3(value.items[i0]);
   }
   value.itemsCount = 0;
 }
@@ -1797,6 +1852,12 @@ void zeroEleven(Eleven value) {
   value.b = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initEleven(Eleven value) {
+  value.a = 0;
+  value.b = 0;
+}
+
 // writeEleven packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // elevenMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -1881,6 +1942,13 @@ const int arrElevenMaxBytes = 16;
 void zeroArrEleven(ArrEleven value) {
   for (var i0 = 0; i0 < 9; i0++) {
     zeroEleven(value.items[i0]);
+  }
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initArrEleven(ArrEleven value) {
+  for (var i0 = 0; i0 < 9; i0++) {
+    initEleven(value.items[i0]);
   }
 }
 
@@ -1975,6 +2043,11 @@ void zeroEmptyA(EmptyA value) {
   // empty body — nothing to reset (SPEC §4.6)
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initEmptyA(EmptyA value) {
+  // empty body — nothing to initialize
+}
+
 // writeEmptyA packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // emptyAMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -2017,6 +2090,11 @@ const int emptyBMaxBytes = 0;
 // construction.
 void zeroEmptyB(EmptyB value) {
   // empty body — nothing to reset (SPEC §4.6)
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initEmptyB(EmptyB value) {
+  // empty body — nothing to initialize
 }
 
 // writeEmptyB packs value into view — the trusted writer (contracts asserted,
@@ -2072,8 +2150,8 @@ String enumNameEmptyUnionType(int value) {
 }
 
 // EmptyUnion — at most one of the arms; type says which. Construction is the empty
-// union (None). A read zero-establishes exactly the selected arm before
-// decoding it (SPEC §5); unselected arms keep what they last held — the
+// union (None). Every read selection initializes the chosen payload from
+// construction defaults; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 final class EmptyUnion {
   int type = EmptyUnionType.none;
@@ -2088,7 +2166,7 @@ const int emptyUnionMaxBytes = 8;
 
 // zeroEmptyUnion resets value to the §5 zero form — the empty union. The tag alone
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-// is unselected at None; an arm re-zeroes at its next selection.
+// is unselected at None; an arm initializes at its next selection.
 void zeroEmptyUnion(EmptyUnion value) {
   value.type = EmptyUnionType.none;
 }
@@ -2201,6 +2279,13 @@ const int holdsEmptyUnionMaxBytes = 8;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroHoldsEmptyUnion(HoldsEmptyUnion value) {
+  value.lead = 0;
+  value.u.type = 0;
+  value.tail = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initHoldsEmptyUnion(HoldsEmptyUnion value) {
   value.lead = 0;
   value.u.type = 0;
   value.tail = 0;
@@ -2347,6 +2432,16 @@ const int strsMaxBytes = 24;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroStrs(Strs value) {
+  value.lead = 0;
+  value.s.fillRange(0, value.s.length, 0);
+  value.sLength = 0;
+  value.b.fillRange(0, value.b.length, 0);
+  value.bLength = 0;
+  value.tail = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initStrs(Strs value) {
   value.lead = 0;
   value.s.fillRange(0, value.s.length, 0);
   value.sLength = 0;
@@ -2642,6 +2737,16 @@ void zeroArrNested(ArrNested value) {
   value.tail = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initArrNested(ArrNested value) {
+  value.lead = 0;
+  for (var i0 = 0; i0 < 4; i0++) {
+    initEleven(value.items[i0]);
+  }
+  value.itemsCount = 0;
+  value.tail = 0;
+}
+
 // writeArrNested packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // arrNestedMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -2864,6 +2969,11 @@ const int soleMaxBytes = 8;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroSole(Sole value) {
+  value.only = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initSole(Sole value) {
   value.only = 0;
 }
 

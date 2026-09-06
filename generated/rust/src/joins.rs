@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
@@ -712,7 +712,8 @@ pub fn enum_name_uneven_type(value: UnevenType) -> &'static str {
 }
 
 // Uneven — at most one of the arms. The default is None (the empty union);
-// a read replaces the whole value, so stale-arm semantics cannot arise here.
+// every read reconstructs the selected payload with its declared initial
+// values, even at the same tag, and replaces the whole value on success.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub enum Uneven {
     #[default]

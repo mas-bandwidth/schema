@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 using System.Runtime.CompilerServices;
 using Serialize;
@@ -171,6 +171,14 @@ namespace Example
             value.Z = 0.0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitVec3(Vec3 value)
+        {
+            value.X = 0.0;
+            value.Y = 0.0;
+            value.Z = 0.0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteVec3(WriteStream stream, Vec3 value)
@@ -234,6 +242,15 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroQuat(Quat value)
+        {
+            value.X = 0.0;
+            value.Y = 0.0;
+            value.Z = 0.0;
+            value.W = 0.0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitQuat(Quat value)
         {
             value.X = 0.0;
             value.Y = 0.0;
@@ -317,6 +334,13 @@ namespace Example
             value.ObjectSequence = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitHandle(Handle value)
+        {
+            value.ObjectId = 0;
+            value.ObjectSequence = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteHandle(WriteStream stream, Handle value)
@@ -382,6 +406,14 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroQuantizedPosition(QuantizedPosition value)
+        {
+            value.X = 0;
+            value.Y = 0;
+            value.Z = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitQuantizedPosition(QuantizedPosition value)
         {
             value.X = 0;
             value.Y = 0;
@@ -473,6 +505,14 @@ namespace Example
             value.Z = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitQuantizedVelocity(QuantizedVelocity value)
+        {
+            value.X = 0;
+            value.Y = 0;
+            value.Z = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteQuantizedVelocity(WriteStream stream, QuantizedVelocity value)
@@ -552,6 +592,15 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroQuantizedRotation(QuantizedRotation value)
+        {
+            value.X = 0;
+            value.Y = 0;
+            value.Z = 0;
+            value.W = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitQuantizedRotation(QuantizedRotation value)
         {
             value.X = 0;
             value.Y = 0;
@@ -666,6 +715,16 @@ namespace Example
             ZeroVec3(value.AngularVelocity);
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitRigidBody(RigidBody value)
+        {
+            InitVec3(value.Position);
+            InitQuat(value.Orientation);
+            value.AtRest = false;
+            InitVec3(value.LinearVelocity);
+            InitVec3(value.AngularVelocity);
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteRigidBody(WriteStream stream, RigidBody value)
@@ -756,6 +815,24 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroInput(Input value)
+        {
+            value.StickX = 0.0f;
+            value.StickY = 0.0f;
+            value.Throttle = 0.0f;
+            value.Yaw = 0.0f;
+            value.Pitch = 0.0f;
+            value.Fire = false;
+            value.AltFire = false;
+            value.Boost = false;
+            value.Brake = false;
+            value.Aim = false;
+            value.LockOn = false;
+            value.Zoom = false;
+            value.Ping = false;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitInput(Input value)
         {
             value.StickX = 0.0f;
             value.StickY = 0.0f;
@@ -904,6 +981,19 @@ namespace Example
             value.InputsCount = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitInputPacket(InputPacket value)
+        {
+            value.SynchronizeSequence = 0;
+            value.CurrentFrame = 0;
+            value.StartFrame = 0;
+            for (int i = 0; i < (int)MaxInputsPerPacket; i++)
+            {
+                InitInput(value.Inputs[i]);
+            }
+            value.InputsCount = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteInputPacket(WriteStream stream, InputPacket value)
@@ -1008,6 +1098,21 @@ namespace Example
             ZeroQuantizedPosition(value.Position);
             ZeroQuantizedRotation(value.Rotation);
             ZeroQuantizedVelocity(value.LinearVelocity);
+            value.HasFlags = false;
+            value.Flags = 0;
+            value.Team = Team.None;
+            value.Health = 0;
+            value.Thrust = 0;
+            value.Pending = Pending.None;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitShipCreate(ShipCreate value)
+        {
+            value.ShipType = ShipType.None;
+            InitQuantizedPosition(value.Position);
+            InitQuantizedRotation(value.Rotation);
+            InitQuantizedVelocity(value.LinearVelocity);
             value.HasFlags = false;
             value.Flags = 0;
             value.Team = Team.None;
@@ -1199,6 +1304,13 @@ namespace Example
             value.SpinRate = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitExpressionProbe(ExpressionProbe value)
+        {
+            value.HardpointIndex = 0;
+            value.SpinRate = (int)RotationUnits;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteExpressionProbe(WriteStream stream, ExpressionProbe value)
@@ -1274,6 +1386,16 @@ namespace Example
             value.CeilingRange = 0;
             value.FloorDefault = 0;
             value.CeilingDefault = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitExtremeProbe(ExtremeProbe value)
+        {
+            value.FloorBound = 0;
+            value.DoubledFloor = 0;
+            value.CeilingRange = 1;
+            value.FloorDefault = -9223372036854775808;
+            value.CeilingDefault = 18446744073709551615;
         }
 
         // batch form: stream state stays in registers across the body and End
@@ -1396,6 +1518,15 @@ namespace Example
             value.ClampedCeiling = 0;
             value.FloorDef = 0;
             value.CeilingDef = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitExtremeRow(ExtremeRow value)
+        {
+            value.ClampedFloor = 0;
+            value.ClampedCeiling = 1;
+            value.FloorDef = -9223372036854775808;
+            value.CeilingDef = 18446744073709551615;
         }
 
         // batch form: stream state stays in registers across the body and End

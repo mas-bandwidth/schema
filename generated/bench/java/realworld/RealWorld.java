@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package realworld — protocol id 0x11a7ba9416ba6b58
+// package realworld — protocol id 0x1922430092518648
 //
 // The shipped Java wire path (issue #156): the serialize.java bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -39,7 +39,7 @@ public final class RealWorld {
 
     // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
     // sides at the same id speak identical bits; there is no other versioning.
-    public static final long protocolId = 0x11a7ba9416ba6b58L;
+    public static final long protocolId = 0x1922430092518648L;
 
     // PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
     // an int-constant namespace — the Java translation of the family's integer-
@@ -383,6 +383,107 @@ public final class RealWorld {
         value.f048F64 = 0.0;
         value.f049Ufixed = 0;
         value.f050Bool = false;
+        value.f051Bool = false;
+        value.f052Int = 0;
+        value.f053F32 = 0.0f;
+        value.f054Int = 0;
+        value.f055Bool = false;
+        value.f056Int = 0;
+        value.f057Int = 0;
+        value.f058F32 = 0.0f;
+        value.f059F64 = 0.0;
+        value.f060Bits = 0;
+        value.f061Cf32 = 0.0f;
+        value.f062Uint = 0;
+        value.f063I64 = 0;
+        value.f064Uint = 0;
+        value.f065Cf32 = 0.0f;
+        value.f066Ufixed = 0;
+        value.f067Cf32 = 0.0f;
+        value.f068Cf32 = 0.0f;
+        value.f069Bits = 0;
+        value.f070Uint = 0;
+        value.f071Cf32 = 0.0f;
+        value.f072Cf32 = 0.0f;
+        value.f073Int = 0;
+        value.f074Bool = false;
+        value.f075U64 = 0;
+        value.f076Int = 0;
+        value.f077Int = 0;
+        value.f078Bits = 0;
+        value.f079Uint = 0;
+        value.f080Bool = false;
+        value.f081Bits = 0;
+        value.f082Bits = 0;
+        value.f083Enum = 0;
+        value.f084Ufixed = 0;
+        value.f085Bits = 0;
+        value.f086Uint = 0;
+        value.f087F64 = 0.0;
+        value.f088Int = 0;
+        value.f089Bits = 0;
+        value.f090Uint = 0;
+        value.f091Flags = 0;
+        value.f092Bool = false;
+        value.f093Bits = 0;
+        value.f094Bool = false;
+        value.f095Fixed = 0;
+        value.f096Bits = 0;
+        value.f097Bits = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initRealPacket(RealPacket value) {
+        value.f001Int = 0;
+        value.f002F64 = 0.0;
+        value.f003Int = 0;
+        value.f004Cf32 = 0.0f;
+        value.f005Uint = 0;
+        value.f006Int = 0;
+        value.f007F32 = 0.0f;
+        value.f008U64 = 0;
+        value.f009Int = 0;
+        value.f010F32 = 0.0f;
+        value.f011Bits = 0;
+        value.f012Bool = true;
+        value.f013F32 = 0.0f;
+        value.f014Uint = 0;
+        value.f015Int = 0;
+        value.f016Fixed = 0;
+        value.f017Uint = 0;
+        value.f018Int = 0;
+        value.f019F64 = 0.0;
+        value.f020F32 = 0.0f;
+        value.f021Ufixed = 0;
+        value.f022F32 = 0.0f;
+        value.f023Bits = 0;
+        value.f024F32 = 0.0f;
+        value.f025Fixed = 0;
+        value.f026Bits = 0;
+        value.f027Cf32 = 0.0f;
+        value.f028Bits = 0;
+        value.f029I64 = 0;
+        value.f030F32 = 0.0f;
+        value.f031Bits = 0;
+        value.f032Int = 0;
+        value.f033Uint = 0;
+        value.f034Uint = 0;
+        value.f035Bits = 0;
+        value.f036Enum = 0;
+        value.f037Bool = false;
+        value.f038Bool = false;
+        value.f039Bits = 0;
+        value.f040Fixed = 0;
+        value.f041Int = 0;
+        value.f042Bits = 0;
+        value.f043Bool = false;
+        value.f044F32 = 0.0f;
+        value.f045Bits = 0;
+        value.f046Uint = 0;
+        value.f047Int = 0;
+        value.f048F64 = 0.0;
+        value.f049Ufixed = 0;
+        value.f050Bool = true;
         value.f051Bool = false;
         value.f052Int = 0;
         value.f053F32 = 0.0f;

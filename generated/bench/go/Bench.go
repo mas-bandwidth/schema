@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x06845f749d2417b4
+// package bench — protocol id 0x8d12c3149393f40f
 
 package bench
 
@@ -16,7 +16,7 @@ import (
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const ProtocolId uint64 = 0x06845f749d2417b4
+const ProtocolId uint64 = 0x8d12c3149393f40f
 
 // ErrValidation is returned when a read rejects the wire: a wrong constant,
 // nonzero reserved bits, or an interior null in a string (SPEC §4.3, §4.7).
@@ -845,7 +845,7 @@ func EnumNameMixedEventType(value uint64) string {
 }
 
 // MixedEvent — at most one of the arms; Type says which. The zero value is the
-// empty union (None). A read zero-establishes exactly the selected arm before
+// empty union (None). A read constructs the selected arm with its defaults before
 // decoding it (SPEC §5); unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 type MixedEvent struct {
@@ -891,13 +891,13 @@ func ReadMixedEvent(stream *serialize.ReadStream, value *MixedEvent) error {
 	}
 	switch value.Type {
 	case MixedEventTypeHit:
-		value.Hit = MixedHitEvent{} // the selected arm starts from the zero form (SPEC §5)
+		value.Hit = MixedHitEvent{} // fresh payload on every selection (SPEC §4.8)
 		return ReadMixedHitEvent(stream, &value.Hit)
 	case MixedEventTypeChat:
-		value.Chat = MixedChatEvent{} // the selected arm starts from the zero form (SPEC §5)
+		value.Chat = MixedChatEvent{} // fresh payload on every selection (SPEC §4.8)
 		return ReadMixedChatEvent(stream, &value.Chat)
 	case MixedEventTypePickup:
-		value.Pickup = MixedPickupEvent{} // the selected arm starts from the zero form (SPEC §5)
+		value.Pickup = MixedPickupEvent{} // fresh payload on every selection (SPEC §4.8)
 		return ReadMixedPickupEvent(stream, &value.Pickup)
 	}
 	return stream.Err() // None

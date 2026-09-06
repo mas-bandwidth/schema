@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0x9660fa8c14d38d67
+// package ludicrous — protocol id 0xf4a226f4166d919b
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an interior null)
@@ -109,7 +109,7 @@ namespace Ludicrous
     {
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
-        public const ulong ProtocolId = 0x9660fa8c14d38d67;
+        public const ulong ProtocolId = 0xf4a226f4166d919b;
 
         public const long MaxWorldUnits = 30000;
 
@@ -139,6 +139,16 @@ namespace Ludicrous
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroFixedProbe(FixedProbe value)
+        {
+            value.Angle = 0;
+            value.Position = 0;
+            value.Reach = 0;
+            value.Ticks = 0;
+            Array.Clear(value.Samples, 0, 2);
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitFixedProbe(FixedProbe value)
         {
             value.Angle = 0;
             value.Position = 0;
@@ -217,6 +227,18 @@ namespace Ludicrous
             value.Ticks = 0;
             Array.Clear(value.Samples, 0, 2);
             value.Locked = 0;
+            value.Tail = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitUnsignedProbe(UnsignedProbe value)
+        {
+            value.Angle = 0;
+            value.Span = 0;
+            value.Reach = 0;
+            value.Ticks = 0;
+            Array.Clear(value.Samples, 0, 2);
+            value.Locked = 196608;
             value.Tail = 0;
         }
 
@@ -311,6 +333,16 @@ namespace Ludicrous
             value.Seed = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitWideProbe(WideProbe value)
+        {
+            value.EntityId = 0;
+            value.Energy = 0;
+            value.Flux = 0;
+            value.Bias = -250;
+            value.Seed = new UInt128Value(0x2ul, 0x0ul);
+        }
+
         public static bool WriteWideProbe(WriteStream stream, WideProbe value)
         {
             if (!stream.SerializeUInt128(ref value.EntityId))
@@ -372,6 +404,18 @@ namespace Ludicrous
             value.Mode = DriveMode.None;
             ZeroFixedProbe(value.Probe);
             ZeroWideProbe(value.Wide);
+            Array.Clear(value.Keys, 0, 4);
+            value.KeysCount = 0;
+            value.HasTarget = false;
+            value.TargetId = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitLudicrousState(LudicrousState value)
+        {
+            value.Mode = DriveMode.None;
+            InitFixedProbe(value.Probe);
+            InitWideProbe(value.Wide);
             Array.Clear(value.Keys, 0, 4);
             value.KeysCount = 0;
             value.HasTarget = false;
@@ -492,6 +536,15 @@ namespace Ludicrous
             value.Tail = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitDegenerateProbe(DegenerateProbe value)
+        {
+            value.LockedFixed = -196608;
+            value.LockedInt = 7;
+            value.LockedWide = -12345678901234L;
+            value.Tail = 0;
+        }
+
         public static bool WriteDegenerateProbe(WriteStream stream, DegenerateProbe value)
         {
             if ((long)value.LockedFixed != -196608L)
@@ -545,6 +598,14 @@ namespace Ludicrous
             value.Z = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitFixedVec(FixedVec value)
+        {
+            value.X = 0;
+            value.Y = 0;
+            value.Z = 0;
+        }
+
         public static bool WriteFixedVec(WriteStream stream, FixedVec value)
         {
             if (!stream.SerializeFixed(ref value.X, 48, 16, -100000, 100000))
@@ -591,6 +652,15 @@ namespace Ludicrous
             value.Y = 0;
             value.Z = 0;
             value.W = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitFixedQuat(FixedQuat value)
+        {
+            value.X = 0;
+            value.Y = 0;
+            value.Z = 0;
+            value.W = 1073741824;
         }
 
         public static bool WriteFixedQuat(WriteStream stream, FixedQuat value)

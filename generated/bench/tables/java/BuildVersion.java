@@ -19,5 +19,5 @@ package benchtable;
 public final class BuildVersion {
     private BuildVersion() {}
 
-    public static final long value = 0xbee10aff8f660e35L;
+    public static final long value = 0xa9aa850e9c82a97fL;
 }

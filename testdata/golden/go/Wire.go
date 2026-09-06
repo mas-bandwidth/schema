@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 package example
 
@@ -484,7 +484,7 @@ func EnumNameProbeShapeType(value uint64) string {
 }
 
 // ProbeShape — at most one of the arms; Type says which. The zero value is the
-// empty union (None). A read zero-establishes exactly the selected arm before
+// empty union (None). A read constructs the selected arm with its defaults before
 // decoding it (SPEC §5); unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 type ProbeShape struct {
@@ -530,10 +530,10 @@ func ReadProbeShape(stream *serialize.ReadStream, value *ProbeShape) error {
 	}
 	switch value.Type {
 	case ProbeShapeTypeRing:
-		value.Ring = ProbeRing{} // the selected arm starts from the zero form (SPEC §5)
+		value.Ring = ProbeRing{} // fresh payload on every selection (SPEC §4.8)
 		return ReadProbeRing(stream, &value.Ring)
 	case ProbeShapeTypeSlab:
-		value.Slab = ProbeSlab{} // the selected arm starts from the zero form (SPEC §5)
+		value.Slab = ProbeSlab{} // fresh payload on every selection (SPEC §4.8)
 		return ReadProbeSlab(stream, &value.Slab)
 	}
 	return stream.Err() // None

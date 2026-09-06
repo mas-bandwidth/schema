@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x06845f749d2417b4
+// package bench — protocol id 0x8d12c3149393f40f
 
 #pragma once
 
@@ -14,7 +14,7 @@ namespace bench {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0x06845f749d2417b4ull;
+inline constexpr uint64_t ProtocolId = 0x8d12c3149393f40full;
 
 // type BenchPacket
 struct BenchPacket {
@@ -315,9 +315,11 @@ inline const char * EnumName( MixedEventType value )
 }
 
 // union MixedEvent — at most one of the arms; the tag says which. Construction is
-// None: the tag alone is initialized; an arm's storage is established ZEROED
-// when the arm is selected — by ReadMixedEvent before it decodes (SPEC §5), or by
-// assigning it: value.hit = MixedHitEvent{}. Bytes of unselected arms are indeterminate.
+// None: the tag alone is initialized; an arm is freshly constructed with its defaults
+// when selected, by ReadMixedEvent before decoding (SPEC §4.8), or by application code.
+// Application code must include <new> before constructing an arm in place:
+// ::new ( (void*) &value.hit ) MixedHitEvent{}; value.type = MixedEventType::Hit;
+// Bytes of unselected arms are indeterminate.
 struct MixedEvent
 {
     MixedEventType type;
@@ -329,7 +331,7 @@ struct MixedEvent
         MixedPickupEvent pickup;
     };
 
-    MixedEvent() : type( MixedEventType::None ) {} // the tag only — arms are zero-established at selection
+    MixedEvent() : type( MixedEventType::None ) {} // the tag only — arms are freshly constructed at selection
 };
 
 inline constexpr int64_t MixedEventMaxBits = 30; // tag + the largest arm; None costs the tag only (SPEC §4.8)

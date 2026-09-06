@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
@@ -22,7 +22,13 @@ export class Vec2 {
 export const Vec2MaxBits = 128;
 export const Vec2MaxBytes = 16;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitVec2 restores fresh construction values in place, preserving storage.
+export function InitVec2(value) {
+  value.X = 0;
+  value.Y = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroVec2(value) {
   value.X = 0;
   value.Y = 0;
@@ -64,7 +70,12 @@ export class SpanF64 {
 export const SpanF64MaxBits = 128;
 export const SpanF64MaxBytes = 16;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitSpanF64 restores fresh construction values in place, preserving storage.
+export function InitSpanF64(value) {
+  value.Values.fill(0);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSpanF64(value) {
   value.Values.fill(0);
 }
@@ -101,7 +112,12 @@ export class SpanU64 {
 export const SpanU64MaxBits = 128;
 export const SpanU64MaxBytes = 16;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitSpanU64 restores fresh construction values in place, preserving storage.
+export function InitSpanU64(value) {
+  value.Values.fill(0n);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSpanU64(value) {
   value.Values.fill(0n);
 }
@@ -138,7 +154,12 @@ export class SpanI64 {
 export const SpanI64MaxBits = 128;
 export const SpanI64MaxBytes = 16;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitSpanI64 restores fresh construction values in place, preserving storage.
+export function InitSpanI64(value) {
+  value.Values.fill(0n);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSpanI64(value) {
   value.Values.fill(0n);
 }
@@ -175,7 +196,12 @@ export class SpanOne {
 export const SpanOneMaxBits = 64;
 export const SpanOneMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitSpanOne restores fresh construction values in place, preserving storage.
+export function InitSpanOne(value) {
+  value.Values.fill(0n);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSpanOne(value) {
   value.Values.fill(0n);
 }
@@ -212,7 +238,12 @@ export class SpanChunk {
 export const SpanChunkMaxBits = 64;
 export const SpanChunkMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitSpanChunk restores fresh construction values in place, preserving storage.
+export function InitSpanChunk(value) {
+  value.Values.fill(0);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSpanChunk(value) {
   value.Values.fill(0);
 }
@@ -250,7 +281,13 @@ export class SpanTail {
 export const SpanTailMaxBits = 160;
 export const SpanTailMaxBytes = 24;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitSpanTail restores fresh construction values in place, preserving storage.
+export function InitSpanTail(value) {
+  value.Values.fill(0);
+  value.Tail = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSpanTail(value) {
   value.Values.fill(0);
   value.Tail = 0;
@@ -297,7 +334,13 @@ export class SpanTwice {
 export const SpanTwiceMaxBits = 256;
 export const SpanTwiceMaxBytes = 32;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitSpanTwice restores fresh construction values in place, preserving storage.
+export function InitSpanTwice(value) {
+  value.A.fill(0);
+  value.B.fill(0);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSpanTwice(value) {
   value.A.fill(0);
   value.B.fill(0);
@@ -349,7 +392,14 @@ export class Trio {
 export const TrioMaxBits = 64;
 export const TrioMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitTrio restores fresh construction values in place, preserving storage.
+export function InitTrio(value) {
+  value.A = 0;
+  value.B = 0;
+  value.C = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTrio(value) {
   value.A = 0;
   value.B = 0;
@@ -400,7 +450,12 @@ export class TrioSole {
 export const TrioSoleMaxBits = 64;
 export const TrioSoleMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitTrioSole restores fresh construction values in place, preserving storage.
+export function InitTrioSole(value) {
+  InitTrio(value.Inner);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTrioSole(value) {
   ZeroTrio(value.Inner);
 }
@@ -432,7 +487,13 @@ export class TrioFirst {
 export const TrioFirstMaxBits = 80;
 export const TrioFirstMaxBytes = 16;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitTrioFirst restores fresh construction values in place, preserving storage.
+export function InitTrioFirst(value) {
+  InitTrio(value.Inner);
+  value.Trailer = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTrioFirst(value) {
   ZeroTrio(value.Inner);
   value.Trailer = 0;
@@ -478,7 +539,18 @@ export class TrioStraddle {
 export const TrioStraddleMaxBits = 408;
 export const TrioStraddleMaxBytes = 56;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitTrioStraddle restores fresh construction values in place, preserving storage.
+export function InitTrioStraddle(value) {
+  value.Pad0 = 0n;
+  value.Pad1 = 0n;
+  value.Pad2 = 0n;
+  value.Pad3 = 0n;
+  value.Pad4 = 0n;
+  value.Pad5 = 0;
+  InitTrio(value.Inner);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTrioStraddle(value) {
   value.Pad0 = 0n;
   value.Pad1 = 0n;

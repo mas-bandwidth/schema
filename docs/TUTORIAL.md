@@ -183,7 +183,7 @@ Open `gen/Game.h`:
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package starlight — protocol id 0xff86e6e5b9a15fa5
+// package starlight — protocol id 0xead34ae7a8da1280
 
 #pragma once
 
@@ -193,7 +193,7 @@ namespace starlight {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0xff86e6e5b9a15fa5ull;
+inline constexpr uint64_t ProtocolId = 0xead34ae7a8da1280ull;
 
 inline constexpr int64_t MaxPlayers = 64;
 inline constexpr int64_t TickRate = 60;
@@ -224,7 +224,7 @@ why are:
 
 ```
 $ schema id .
-0xff86e6e5b9a15fa5
+0xead34ae7a8da1280
 ```
 
 and `schema projection .`, which prints the exact text the id hashes. Diff
@@ -608,7 +608,7 @@ The unit's id moved when you added those declarations, as promised in Part 1:
 
 ```
 $ schema id .
-0x4864d311d2321f9f
+0x6cf8f673fb5b6972
 ```
 
 **You now have** named ship types and system masks, with logging names, in
@@ -850,7 +850,7 @@ whose rest state is not zero.
 
 ```
 $ schema id .
-0xf1e2edc1eb4168d8
+0x4cba7275991924f6
 ```
 
 **You now have** a real network message, three bytes on the wire, hostile input
@@ -1295,7 +1295,7 @@ own `operator+=`.
 
 ```
 $ schema id .
-0xd795780496e81500
+0xf5e372aa2e4e3a2a
 ```
 
 **You now have** the full vocabulary of scalar and buffer fields, a ship state
@@ -1488,12 +1488,12 @@ struct WeaponFire
         MissileFire missile;
     };
 
-    WeaponFire() : type( WeaponFireType::None ) {} // the tag only — arms are zero-established at selection
+    WeaponFire() : type( WeaponFireType::None ) {} // the tag only; construct an arm when selecting it
 };
 ```
 
 Like the enum, **every union has an implicit `None = 0`**, the empty union, in
-band. A zero-initialized union field carries "nothing" without a has-flag, and
+band. A default-constructed union carries "nothing" without a has-flag, and
 a stream of unions can end on `None`. The program below prints that tag.
 
 The tag enum is a full enum. It carries `None`, the variants, `Count` and
@@ -1504,19 +1504,20 @@ there to reach the payload, which a name cannot do. Because the enum carries
 `Count`, `count` is a refused arm name on a packet union, alongside `none` and
 `max`.
 
-To select an arm in C++, set the tag and value-establish the arm, both, in that
-order of importance:
+To select an arm in C++, construct the payload and set its tag:
 
 ```cpp
+    ::new ( (void*) &first.fire ) FireCommand{}; // start its lifetime with construction defaults
     first.type = PayloadType::Fire;
-    first.fire = FireCommand{};            // zero-establish the arm
-    first.fire.ship_id = 7;                // then fill it
+    first.fire.ship_id = 7;                     // then fill it
 ```
 
 Forget the tag and the write emits `None`, tag only, with your payload silently
 absent, because tag `None` is a legal value and nothing asserts. Forget the
-establishment and the arm's bytes are whatever was there. Treat the pair as one
-motion. Rust ties the two together by construction with a real
+construction and the payload has no established lifetime or defaults. Treat
+the pair as one motion. Decoding constructs the selected payload with its
+defaults on every selection, including a repeated tag, before reading its
+fields. Rust ties the tag and payload together by construction with a real
 `enum WeaponFire { None, Laser(LaserFire), ... }`.
 
 The wire is the tag in minimal bits for `[0, variant count]`, two bits here,
@@ -1642,6 +1643,7 @@ length, align, then the raw bytes.
 #include "NetWire.h"
 #include <cstdio>
 #include <cstring>
+#include <new>
 
 int main()
 {
@@ -1653,17 +1655,17 @@ int main()
     packet.payloads_count = 2;
 
     Payload & first = packet.payloads[0];
+    ::new ( (void*) &first.fire ) FireCommand{};
     first.type = PayloadType::Fire;
-    first.fire = FireCommand{};
     first.fire.ship_id = 7;
+    ::new ( (void*) &first.fire.fire.laser ) LaserFire{};
     first.fire.fire.type = WeaponFireType::Laser;
-    first.fire.fire.laser = LaserFire{};
     first.fire.fire.laser.target_id = 12;
     first.fire.fire.laser.power = 0.75f;
 
     Payload & second = packet.payloads[1];
+    ::new ( (void*) &second.chat ) ChatLine{};
     second.type = PayloadType::Chat;
-    second.chat = ChatLine{};
     second.chat.speaker = 7;
     strcpy( second.chat.text, "on my way" );
     second.chat.text_length = 9;
@@ -1747,20 +1749,20 @@ Now the promise from Part 1 comes due. Look at the id, then add one arm to
 
 ```
 $ schema id .
-0x60d7cbad6bb296f2
+0xc08f66a810e84fcd
 $ # add:  railgun LaserFire  to union WeaponFire, then schema fmt .
 $ schema id .
-0x31c8d2175ac80ef7
+0x92191b984bf56ee5
 ```
 
-Take the arm back out and the id returns to `0x60d7cbad6bb296f2`, because the
+Take the arm back out and the id returns to `0xc08f66a810e84fcd`, because the
 id is a pure function of the unit's text. `schema projection` prints the exact
 text that gets hashed:
 
 ```
 $ schema projection .
 schema-wire-projection 3
-schema-wire-law 1
+schema-wire-law 2
 package starlight
 enum ShipType max=3 storage=8 variants=3
   variant 1 name=Fighter
@@ -1893,13 +1895,13 @@ Part 12, so ignore it until then. The table header is includable from any
 translation unit and depends on nothing but the C standard headers:
 
 ```cpp
-// package starlight — protocol id 0x60d7cbad6bb296f2 (packets only: tables version by field id, not by protocol id)
+// package starlight — protocol id 0xc08f66a810e84fcd (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 ```
 
 Note that banner. Adding a whole table to the unit did **not** move the
-protocol id: it is still `0x60d7cbad6bb296f2`, the number Part 5 printed. The
+protocol id: it is still `0xc08f66a810e84fcd`, the number Part 5 printed. The
 id covers what the packet wire reaches, and a table is not on it.
 
 The storage struct lives in the table header, and it looks exactly like a
@@ -3976,6 +3978,9 @@ errors with recorded reasons.
 
 ## Part 11: The cook: point at a file instead of parsing it
 
+For the examples that follow, restore `ShipConfig.max_health` to its original
+default of `100.0` after Part 10's default-change experiment.
+
 ### The problem
 
 `GameConfigLoad` walks the wire, matches ids, and applies defaults. It is
@@ -3995,7 +4000,7 @@ of Part 9 or from a wire file, one command either way:
 $ schema cook --root GameConfig --in tree --out Game.cook --verbose .
 report: silent — the data matched the schema exactly
 report: silent — the data matched the schema exactly
-cooked Game.cook: 464 bytes, build version 0x8a4897ed86a715f6, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
+cooked Game.cook: 464 bytes, build version 0x2a6da3e6d7889a61, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
 ```
 
 And the game opens it. `cook.cpp`, entire:
@@ -4105,9 +4110,9 @@ $ schema check .
 $ echo $?
 0
 $ schema id .
-0x60d7cbad6bb296f2
+0xc08f66a810e84fcd
 $ schema build-version .
-0x8272fb7f3068abdf
+0x779449d8f015c68c
 $ ./cook Game.cook
 not this build's cook
 ```
@@ -4124,7 +4129,7 @@ A big-endian cook refuses on a little-endian build the same way:
 
 ```
 $ schema cook --root GameConfig --in tree --out GameBig.cook --byte-order big --verbose .
-cooked GameBig.cook: 464 bytes, build version 0x8a4897ed86a715f6, big-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
+cooked GameBig.cook: 464 bytes, build version 0x2a6da3e6d7889a61, big-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
 $ ./cook GameBig.cook
 not this build's cook
 ```
@@ -4140,7 +4145,7 @@ offline, once, on purpose:
 
 ```
 $ schema cook-check --root GameConfig --verbose Game.cook .
-ok: build version 0x8a4897ed86a715f6, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes, 0 reference slots
+ok: build version 0x2a6da3e6d7889a61, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes, 0 reference slots
 ```
 
 `cook-check` verifies every reference and count against the attribution, a
@@ -4174,7 +4179,7 @@ file to diff when you want to know **why** the version moved:
 ```
 $ schema build-version --facts .
 schema-build-version 3
-protocol 60d7cbad6bb296f2
+protocol c08f66a810e84fcd
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record GameConfig sizeof=384 alignof=8
@@ -4193,7 +4198,7 @@ header and block prologue.
 The store contract is one line: your pipeline stores assets under the triple
 **(asset hash, build version, byte order)**. The asset hash is the hash of the
 wire file you cooked from. The build version is target neutral, which the
-big-endian cook above shows by stamping the same `0x8a4897ed86a715f6`, and
+big-endian cook above shows by stamping the same `0x2a6da3e6d7889a61`, and
 `byteorder little` appearing in the facts is a generation input that never
 varies. Byte order is the third coordinate, carried in the header and refused
 by `Open` on a mismatch. Your game asks for exactly that triple, anything that
@@ -4340,7 +4345,7 @@ int main()
 $ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o produce produce.cpp gen/RenderBlock.cpp gen/RenderTable.cpp
 $ ./produce
 block: 56064 bytes of 196672 max (frame 1207, 3000 ships)
-build version 0x5042e348da4b84ea
+build version 0xb837cbad7d9fd592
 wrote frame.block
 refused: array ships count 5000 max 4096
 ```
@@ -4413,10 +4418,10 @@ $ schema generate --lang c --out genc .
 $ cc -std=c99 -Wall -Wextra -Werror -I genc -o consume consume.c genc/RenderBlock.c genc/RenderTable.c
 $ ./consume
 c read: frame=1207 ships=3000 ships[2999]=(2999, -2999)
-c build version 0x5042e348da4b84ea
+c build version 0xb837cbad7d9fd592
 ```
 
-The two builds carry the same build version, `0x5042e348da4b84ea` in the C++
+The two builds carry the same build version, `0xb837cbad7d9fd592` in the C++
 header and the C source alike. `BlockOpen` checks the prologue, which is the
 magic, the byte order, the **build version**, the base's 64-byte alignment,
 every count against its declared maximum, and every extent, and then you index.
@@ -4583,7 +4588,7 @@ re-cook before crossing:
 
 ```
 $ schema cook --root GameConfig --in tree --out Game.cook --verbose .
-cooked Game.cook: 464 bytes, build version 0x5042e348da4b84ea, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
+cooked Game.cook: 464 bytes, build version 0xb837cbad7d9fd592, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
 ```
 
 `opencook.c`, entire:
@@ -4798,7 +4803,7 @@ func main() {
 ```
 $ go build -o docsgen . && ./docsgen
 [c cpp cs dart docs elixir go java js rust]
-package starlight, protocol id 0x60d7cbad6bb296f2
+package starlight, protocol id 0xc08f66a810e84fcd
 ## ChatLine — 990 bits max
 ## Contact — 34 bits max
 ## FireCommand — 41 bits max
@@ -4961,11 +4966,13 @@ Four errors for one missing `(N)`, because the parser keeps trying. Read the
 first. For a buffer whose size is a runtime fact, point at it: `*bytes` and
 `*string` are the Part 7 spellings, in the second unit.
 
-### One thing the specification describes and no backend emits
+### The unit registry, and where it is not yet
 
 SPEC-TABLES §8.3 describes a **unit registry**, `UnitView()`, one entry point
 listing every declaration in the build. The per-table and per-type descriptors
-Part 13 walked are in every target. The unit-wide root is in none:
+Part 13 walked are in every target. The unit-wide root is in C++, for a unit
+that declares a table — this one does, so the pair is right there in the
+listing:
 
 ```
 $ schema generate --lang cpp --out gen --verbose .
@@ -4988,11 +4995,16 @@ wrote gen/RenderTable.h
 wrote gen/RenderWire.h
 wrote gen/Scene.h
 ...
-$ grep -rn UnitView gen/
-$
+wrote gen/StarlightView.cpp
+wrote gen/StarlightView.h
 ```
 
-Build your tool on the per-type descriptors and hold the type list yourself.
+One pair for the whole unit, named for the package. Nothing includes it and
+nothing asks for it: compile `StarlightView.cpp` in a tool and it walks the
+build; leave it out of the game and the binary carries none of it.
+
+The other eight targets have no view file yet. A C++ unit that declares no
+table has neither a registry nor per-type descriptors yet.
 
 ### Where to go next
 

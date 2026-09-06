@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package bench — protocol id 0x06845f749d2417b4 */
+   package bench — protocol id 0x8d12c3149393f40f */
 
 #ifndef SCHEMA_BENCH_BENCHWIRE_H
 #define SCHEMA_BENCH_BENCHWIRE_H
@@ -26,8 +26,8 @@ extern "C" {
 /* Every write_x/read_x returns 1 on success, 0 on failure — the stream
    latches the error, so a caller may check once at the end of a message.
    Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE
-   it rides, and a read zero-establishes the selected arm before decoding
-   it (SPEC §4.8, §5). */
+   it rides, and every read reconstructs the selected arm with its declared
+   initial values before decoding it (SPEC §4.8, §5). */
 
 #ifndef SCHEMA_C_SPINE_INLINE_DEFINED
 #define SCHEMA_C_SPINE_INLINE_DEFINED

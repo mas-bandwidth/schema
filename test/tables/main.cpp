@@ -935,6 +935,32 @@ static void test_clamping()
     CHECK( report4.clamped == 1 && out4.name_length == 32 && out4.name[32] == 0 );
 }
 
+// A LENGTH IS A 64-BIT NUMBER (docs/SPEC-TABLES.md §3), and the clamp takes it
+// as one: the caller turns the answer straight back into the size of the
+// field's copy, so the answer has to be within the bound for EVERY length the
+// wire can spell, including the ones only a broken reader would still be
+// holding. Read as a signed count, 0xFFFFFFFFFFFFFFFF is -1, -1 is under every
+// bound, and the copy runs at SIZE_MAX.
+
+static void test_text_clamp_is_bounded()
+{
+    // The forged-length clamp reads text[32] to choose the UTF-8 boundary.
+    const uint8_t text[33] = "golden-v1";
+
+    // a payload within the bound is kept whole, and one over it cuts at a code
+    // point boundary — "é" is two bytes, so a bound of 9 cuts back to 8
+    CHECK( tabledemo::TableUtf8Clamp( text, 9, 32 ) == 9 );
+    const uint8_t two_byte[] = { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 0xC3, 0xA9 };
+    CHECK( tabledemo::TableUtf8Clamp( two_byte, 10, 9 ) == 8 );
+
+    // the field read's own three lines, over the length the wire fuzzer's
+    // length pass plants: the size that reaches memcpy is within the bound
+    const uint64_t forged = 0xFFFFFFFFFFFFFFFFull;
+    uint64_t keep = forged;
+    if ( keep > 32 ) { keep = (uint64_t) tabledemo::TableUtf8Clamp( text, forged, 32 ); }
+    CHECK( keep <= 32 );
+}
+
 // ---- malformed framing: decode stops, partial result kept, flag raised ----
 
 static void test_malformed()
@@ -9047,6 +9073,7 @@ int main()
     test_flags_are_positional();
     test_wide_extents();
     test_clamping();
+    test_text_clamp_is_bounded();
     test_malformed();
     test_reflection();
     test_cross_file();

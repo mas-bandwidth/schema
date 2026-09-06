@@ -26,10 +26,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// emitUnionFunctions emits the union's bounds, Zero helper and wire pair
-// (SPEC §4.8): the write validates the tag BEFORE it rides (the union tag
-// rule), the read rejects a tag above the count and zero-establishes exactly
-// the selected arm.
+// emitUnionFunctions emits the union's bounds, Zero helper and wire pair.
+// Each read initializes the selected payload as a fresh value, including
+// repeated reads selecting the same tag. Other arms retain their storage.
 func (g *gen) emitUnionFunctions(d *ir.Union) {
 	maxBits := ir.MaxBitsUnion(d)
 	g.pf("// %sMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).\n", d.Name)
@@ -39,7 +38,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 
 	g.pf("// Zero%s resets value to the §5 zero form — the empty union. The tag alone\n", d.Name)
 	g.pf("// resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm\n")
-	g.pf("// is unselected at None; an arm re-zeroes at its next selection.\n")
+	g.pf("// is unselected at None; an arm is initialized at its next selection.\n")
 	g.pf("export function Zero%s(value) {\n", d.Name)
 	g.pf("  value.Type = %sType.None;\n}\n\n", d.Name)
 
@@ -85,8 +84,8 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 			g.pf("      return true; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n")
 			continue
 		}
-		g.addRef(v.Type, "Zero"+v.Type, "Read"+v.Type)
-		g.pf("      Zero%s(value.%s); // the selected arm starts from the zero form (SPEC §5)\n", v.Type, ir.GoExportName(v.Name))
+		g.addRef(v.Type, "Init"+v.Type, "Read"+v.Type)
+		g.pf("      Init%s(value.%s); // fresh declared defaults on every selection\n", v.Type, ir.GoExportName(v.Name))
 		g.pf("      return Read%s(stream, value.%s);\n", v.Type, ir.GoExportName(v.Name))
 	}
 	g.pf("  }\n  return true; // None\n}\n\n")
@@ -104,6 +103,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.pf("export const %sMaxBits = %d;\n", st.Name, maxBits)
 	g.pf("export const %sMaxBytes = %d;\n\n", st.Name, ir.MaxBytes(maxBits))
 
+	g.emitInitFunction(st)
 	g.emitZeroFunction(st)
 
 	g.pf("export function Write%s(stream, value) {\n", st.Name)
@@ -121,13 +121,73 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.pf("  return true;\n}\n\n")
 }
 
-// emitZeroFunction emits the §5 ZERO form for a class — all-zero storage,
-// specified defaults NOT reapplied (those live in construction only; the
-// wire contract stays a pure function of the encodings). JS classes are
-// reference types, so this is the C# in-place-zero idiom: branch zeroing
-// and the union arm reset both go through here.
+// emitInitFunction restores construction values while preserving every
+// preallocated object and buffer. Callers can also use it before explicitly
+// selecting a reused payload; changing a public tag alone does not call it.
+func (g *gen) emitInitFunction(st *ir.Struct) {
+	g.pf("// Init%s restores fresh construction values in place, preserving storage.\n", st.Name)
+	g.pf("export function Init%s(value) {\n", st.Name)
+	for _, f := range st.Fields {
+		g.emitInitField(f, "value", "  ")
+	}
+	g.pf("}\n\n")
+}
+
+// emitInitField is shared by Init* helpers and the flat tier's inline
+// selected-arm initialization. Scalars use the constructor's value renderer;
+// nested unions return to None without touching their dormant payloads.
+func (g *gen) emitInitField(f *ir.Field, path, ind string) {
+	name := path + "." + ir.GoExportName(f.Name)
+	switch {
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		g.pf("%s%s.fill(0);\n%s%sLength = 0;\n", ind, name, ind, name)
+	case f.Array != ir.ArrayNone:
+		if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
+			index := fmt.Sprintf("initIndex%d", g.initDepth)
+			element := fmt.Sprintf("initValue%d", g.initDepth)
+			g.initDepth++
+			g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, index, index,
+				g.renderNum(f.ArrayExpr, big.NewInt(f.ArrayBound)), index)
+			g.pf("%s  const %s = %s[%s];\n", ind, element, name, index)
+			g.emitInitComposite(f.Type, element, ind+"  ")
+			g.pf("%s}\n", ind)
+			g.initDepth--
+		} else {
+			g.pf("%s%s.fill(%s);\n", ind, name, g.zeroValue(f.Type))
+		}
+		if f.Array == ir.ArrayCounted {
+			g.pf("%s%sCount = %d;\n", ind, name, f.BornCount())
+		}
+	case f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref):
+		g.emitInitComposite(f.Type, name, ind)
+	default:
+		initial := g.zeroValue(f.Type)
+		if f.HasDefault {
+			initial = g.defaultValue(f)
+		}
+		g.pf("%s%s = %s;\n", ind, name, initial)
+	}
+}
+
+func (g *gen) emitInitComposite(typ ir.FieldType, path, ind string) {
+	if _, union := typ.Ref.(*ir.Union); union {
+		g.pf("%s%s.Type = 0; // None; dormant arms keep their storage\n", ind, path)
+		return
+	}
+	if g.inlineInit {
+		for _, f := range typ.Ref.(*ir.Struct).Fields {
+			g.emitInitField(f, path, ind)
+		}
+		return
+	}
+	g.addRef(typ.Name, "Init"+typ.Name)
+	g.pf("%sInit%s(%s);\n", ind, typ.Name, path)
+}
+
+// emitZeroFunction emits the §5 ZERO form for a class: all-zero storage,
+// without declared defaults or birth counts. Untaken branches still use it.
 func (g *gen) emitZeroFunction(st *ir.Struct) {
-	g.pf("// The §5 zero form: all-zero storage; specified defaults live only in construction.\n")
+	g.pf("// The §5 zero form: all-zero storage, without declared defaults or birth counts.\n")
 	g.pf("export function Zero%s(value) {\n", st.Name)
 	if len(st.Fields) == 0 {
 		g.pf("  // empty body — nothing to reset (SPEC §4.6)\n")
