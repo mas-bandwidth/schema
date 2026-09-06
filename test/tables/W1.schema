@@ -1,0 +1,32 @@
+// W1.schema: the OLD side of the `was` rows' evolution pair
+// (docs/SPEC-TABLES.md §5, SPEC §4.2): string, bytes and flags DEFAULTS on the
+// table wire, and a POINTER TARGET whose name W2 changes under `was`. Every
+// node record of Vessel carries fnv1a64( "Vessel" ) as its type id, so a
+// bare rename would leave every stored fleet unreadable; W2's `was` keeps the
+// id. Distinct packages so both generations compile into one test binary.
+package tblw1
+
+flags Caps { Jump, Crouch, Fly }
+
+// a `type` a table reaches: its default rides in the nested body's elision
+type Badge
+{
+    label string(8) = "new"
+}
+
+table Vessel
+{
+    name  string(32) = "untitled"
+    tag   bytes(4) = "ab"
+    caps  Caps = { Jump, Fly }
+    badge Badge
+    hull  int32 = 100             | min = 0, max = 1000
+}
+
+table Fleet
+{
+    title    string(16) = "fleet"
+    flagship *Vessel
+    escorts  [..4]*Vessel
+    home     Vessel
+}

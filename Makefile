@@ -135,6 +135,10 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/k1 test/tables/K1.schema
 	$(1) generate --lang cpp --out $(2)/k2 test/tables/K2.schema
 	$(1) generate --lang cpp --out $(2)/a2 test/tables/A2.schema
+	$(1) generate --lang cpp --out $(2)/w1 test/tables/W1.schema
+	$(1) generate --lang cpp --out $(2)/w2 test/tables/W2.schema
+	$(1) generate --lang cpp --out $(2)/r1 test/tables/R1.schema
+	$(1) generate --lang cpp --out $(2)/r2 test/tables/R2.schema
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
 	$(1) generate --lang cpp --out $(2)/maps tables/maps
 	$(1) generate --lang cpp --out $(2)/lists tables/lists
@@ -147,9 +151,9 @@ endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(SERIALIZE)
+	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/Bases.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/Scalars2.schema test/tables/Bases.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -1976,7 +1980,7 @@ wide-utf8-read-negative-control:
 projection-union-arm-order-negative-control:
 	@mkdir -p build
 	@sed -E -e 's|"  variant %d name=%s payload=|"  variant %d payload=|' \
-		-e 's|i\+1, v\.Name, v\.Type\)|i+1, v.Type) // SABOTAGED: the arm names removed|' \
+		-e 's|i\+1, v\.WireName\(\), v\.Type\)|i+1, v.Type) // SABOTAGED: the arm names removed|' \
 		ir/projection.go > build/projection-no-arm-names.gotext
 	@grep -q SABOTAGED build/projection-no-arm-names.gotext || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not remove the arm names"; exit 1; }
@@ -2456,6 +2460,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-flat-wire
 	$(MAKE) tables-flat-wire-negative-control
+	$(MAKE) tables-was-negative-control
+	$(MAKE) tables-wasrows-negative-control
 	$(MAKE) tables-shared-node-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
 	$(MAKE) tables-hooks
@@ -3113,8 +3119,10 @@ CONFORMANCE_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generat
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
-	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -I$(SERIALIZE)
+	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -I$(SERIALIZE)
 CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
+	build/tables-generated/w1/W1Table.cpp build/tables-generated/w2/W2Table.cpp \
+	build/tables-generated/r1/R1Table.cpp build/tables-generated/r2/R2Table.cpp \
 	build/tables-generated/scalars/ScalarsTable.cpp build/tables-generated/scalars2/Scalars2Table.cpp \
 	build/tables-generated/examples/WideTable.cpp build/tables-generated/examples/NestedTable.cpp \
 	build/tables-generated/examples/KeyedTable.cpp build/tables-generated/examples/PackTable.cpp build/tables-generated/v1/V1Table.cpp \
@@ -3643,3 +3651,65 @@ registry:
 	@echo "conformance: $(CONFORMANCE_LEGS)"
 	@echo "bench-tables: $(BENCH_TABLES_LEGS)"
 	@echo "goldens: $(GOLDENS_LEGS)"
+
+# THE `was` CONTROL (docs/SPEC-TABLES.md §5). A table renamed under `was` keeps
+# the node type id every stored record carries, so W1's fleet reads under W2's
+# Ship in silence, which is what the conformance rows w1_fleet_as_w2 and
+# w2_fleet_as_w1 pin, and what a green run cannot be read for. The control
+# strips `| was = "Vessel"` from W2 in a build copy, regenerates that unit with
+# the SHIPPED compiler, and reads the same golden through the same program:
+# every node record is now one the reader cannot name, `unknown` counts, the
+# pointers read null, and the home vessel holds its declared default. The
+# positive half runs first, against the shipped W2, so the two answers are
+# read side by side.
+.PHONY: tables-was-negative-control
+tables-was-negative-control: build/tables-generated/.stamp test/tables/was_control_main.cpp
+	@mkdir -p build/tables-was-nc
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/w2 -I$(SERIALIZE) test/tables/was_control_main.cpp \
+		build/tables-generated/w2/W2Table.cpp -o build/tables-was-nc/with-was
+	@./build/tables-was-nc/with-was > build/tables-was-nc/with-was.log
+	@cat build/tables-was-nc/with-was.log
+	@grep -q '^unknown=0 kind_mismatch=0 malformed=0 flagship=Aurora escorts=2 home_name=untitled$$' build/tables-was-nc/with-was.log || \
+		{ echo "CONTROL FAILED: with was, the W1 fleet did not read in silence under W2"; exit 1; }
+	@sed -e 's/^table Ship | was = "Vessel"$$/table Ship/' test/tables/W2.schema > build/tables-was-nc/W2.schema
+	@cmp -s test/tables/W2.schema build/tables-was-nc/W2.schema && \
+		{ echo "NEGATIVE CONTROL: the was sabotage patched nothing"; exit 1; } || true
+	@rm -rf build/tables-was-nc/w2 && ./bin/schema generate --lang cpp --out build/tables-was-nc/w2 build/tables-was-nc/W2.schema
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-was-nc/w2 -I$(SERIALIZE) test/tables/was_control_main.cpp \
+		build/tables-was-nc/w2/W2Table.cpp -o build/tables-was-nc/without-was
+	@./build/tables-was-nc/without-was > build/tables-was-nc/without-was.log
+	@cat build/tables-was-nc/without-was.log
+	@grep -q '^unknown=2 kind_mismatch=0 malformed=0 flagship=null escorts=2 home_name=untitled$$' build/tables-was-nc/without-was.log || \
+		{ echo "NEGATIVE CONTROL FAILED: without was, the W1 fleet did not read as unknown records under W2"; exit 1; }
+	@echo "negative control: stripping was from the renamed table turns the cross read RED (unknown counted, the pointers null, the value at its default)"
+
+# THE VOCABULARY `was` CONTROL (docs/SPEC-TABLES.md §5). R1's config, whose
+# enum value, union arm, keyed slot and nested type field ride under the
+# hashes of Silver, ward, Silver and multiplier, read under R2, where each is
+# renamed under `was`. The control strips the four attributes from R2 in a
+# build copy, regenerates that unit with the SHIPPED compiler, and reads the
+# same golden through the same program: the value reads None, the union
+# reads None, the slot is dropped, the field holds its default, and `unknown`
+# counts five: the value, the array element that carries the same value, the
+# slot, the arm and the field. The positive half runs first, against the
+# shipped R2.
+.PHONY: tables-wasrows-negative-control
+tables-wasrows-negative-control: build/tables-generated/.stamp test/tables/wasrows_control_main.cpp
+	@mkdir -p build/tables-wasrows-nc
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/r2 -I$(SERIALIZE) test/tables/wasrows_control_main.cpp \
+		build/tables-generated/r2/R2Table.cpp -o build/tables-wasrows-nc/with-was
+	@./build/tables-wasrows-nc/with-was > build/tables-wasrows-nc/with-was.log
+	@cat build/tables-wasrows-nc/with-was.log
+	@grep -q '^unknown=0 kind_mismatch=0 malformed=0 grade=Argent effect=shield charge=2.5 mult=1.5 tally_argent=7$$' build/tables-wasrows-nc/with-was.log || \
+		{ echo "CONTROL FAILED: with was, the R1 config did not read in silence under R2"; exit 1; }
+	@sed -e 's/^\(    [A-Z][A-Za-z]*\) | was = "[A-Za-z]*"$$/\1,/' -e 's/ *| was = "[A-Za-z]*"$$//' test/tables/R2.schema > build/tables-wasrows-nc/R2.schema
+	@test $$(grep -c 'was' build/tables-wasrows-nc/R2.schema) -eq $$(grep -c 'was' test/tables/R2.schema | awk '{print $$1 - 4}') || \
+		{ echo "NEGATIVE CONTROL: the was sabotage did not strip exactly four attributes"; exit 1; }
+	@rm -rf build/tables-wasrows-nc/r2 && ./bin/schema generate --lang cpp --out build/tables-wasrows-nc/r2 build/tables-wasrows-nc/R2.schema
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-wasrows-nc/r2 -I$(SERIALIZE) test/tables/wasrows_control_main.cpp \
+		build/tables-wasrows-nc/r2/R2Table.cpp -o build/tables-wasrows-nc/without-was
+	@./build/tables-wasrows-nc/without-was > build/tables-wasrows-nc/without-was.log
+	@cat build/tables-wasrows-nc/without-was.log
+	@grep -q '^unknown=5 kind_mismatch=0 malformed=0 grade=None effect=None charge=0 mult=1 tally_argent=0$$' build/tables-wasrows-nc/without-was.log || \
+		{ echo "NEGATIVE CONTROL FAILED: without was, the R1 config did not read as unknown names under R2"; exit 1; }
+	@echo "negative control: stripping was from the variant, the arms and the type's field turns the cross read RED (unknown counted, the value at its default)"

@@ -206,8 +206,8 @@ func TableWireIdCapacity(u *Unit) int {
 			ids[MapValueWireId] = true
 		}
 		if f.KeyEnumRef != nil {
-			for _, v := range f.KeyEnumRef.Variants {
-				ids[TableWireId(v)] = true
+			for i := range f.KeyEnumRef.Variants {
+				ids[TableWireId(f.KeyEnumRef.VariantWireName(i))] = true
 			}
 		}
 		if f.Type.Kind != TNamed {
@@ -215,8 +215,8 @@ func TableWireIdCapacity(u *Unit) int {
 		}
 		switch ref := f.Type.Ref.(type) {
 		case *Enum:
-			for _, v := range ref.Variants {
-				ids[TableWireId(v)] = true
+			for i := range ref.Variants {
+				ids[TableWireId(ref.VariantWireName(i))] = true
 			}
 		case *Union:
 			noteUnion(ref)
@@ -229,14 +229,13 @@ func TableWireIdCapacity(u *Unit) int {
 		}
 		seen[un] = true
 		for _, v := range un.Variants {
-			ids[TableWireId(v.Name)] = true
+			ids[TableWireId(v.WireName())] = true
 			if v.F != nil {
 				noteField(v.F)
 			}
 		}
 	}
 	for name := range TableClosure(u) {
-		ids[TableWireId(name)] = true
 		st := u.Tables[name]
 		if st == nil {
 			st = u.Structs[name]
@@ -244,6 +243,7 @@ func TableWireIdCapacity(u *Unit) int {
 		if st == nil {
 			continue
 		}
+		ids[TableWireId(st.WireName())] = true
 		for _, f := range st.Fields {
 			noteField(f)
 		}
@@ -362,10 +362,11 @@ func TableVocabulary(u *Unit) []TableVocabularyEntry {
 	}
 	collectArmRefs(enums, flags, unions)
 	for _, member := range sortedKeysOf(enums) {
-		for _, v := range enums[member].Variants {
+		for i := range enums[member].Variants {
 			// A VARIANT NAME IS REFERENCED AS A VALUE and carries no payload,
-			// so its framing is not an entry's to give: kind 0, no shape.
-			name(TableWireId(v))
+			// so its framing is not an entry's to give: kind 0, no shape. The
+			// id is the wire name's, so a `was` rename moves no slot (§5).
+			name(TableWireId(enums[member].VariantWireName(i)))
 		}
 	}
 	// A `flags` DECLARATION NAMES NOTHING ON THIS WIRE: a mask rides raw, so
@@ -396,7 +397,8 @@ func TableVocabulary(u *Unit) []TableVocabularyEntry {
 		if u.Tables[member] == nil {
 			continue // a `type` in the closure is nested by value and never pointed at
 		}
-		name(TableWireId(member))
+		// The id is the table's WIRE name, so a `was` rename moves no slot (§5).
+		name(TableWireId(u.Tables[member].WireName()))
 	}
 	return entries
 }

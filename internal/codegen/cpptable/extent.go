@@ -511,7 +511,7 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 					continue
 				}
 				g.pf("                case 0x%016xull: if ( !%sWireExtent( arm_body, (int64_t) arm_len, at, ids, reason ) ) { return false; } break; // %s\n",
-					ir.TableWireId(v.Name), v.Type, v.Name)
+					ir.TableWireId(v.WireName()), v.Type, v.Name)
 			}
 			g.pf("                default: break; // an arm this reader cannot name reads None\n")
 			g.pf("            }\n")

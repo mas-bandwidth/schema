@@ -115,7 +115,7 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 	byTypeId := map[uint64]*ir.Struct{}
 	for name := range ir.PointerReachable(m.Unit, inst.Def) {
 		if sd := m.Lookup(name); sd != nil {
-			byTypeId[ir.TableWireId(name)] = sd
+			byTypeId[ir.TableWireId(sd.WireName())] = sd
 		}
 	}
 

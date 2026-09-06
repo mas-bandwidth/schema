@@ -1,0 +1,43 @@
+// R1.schema: the OLD side of the vocabulary rename pair (docs/SPEC-TABLES.md
+// §5): an enum variant, two union arms and a field of a `type` a table reaches
+// by value, each renamed in R2 under `was`. Every one of them rides the table
+// wire under the hash of its name, so a bare rename would leave every stored
+// value, body and field one the reader cannot name. Distinct packages so both
+// generations compile into one test binary. The union's scalar arm keeps it a
+// table-closure construct with no packet wire, which is where a payload-free
+// arm is C++'s (SPEC §4.8).
+package tblr1
+
+enum Grade { Bronze, Silver, Gold }
+
+type Buff
+{
+    multiplier float32 = 1.0
+}
+
+type Boost
+{
+    power int32 = 0
+}
+
+type Ward
+{
+    charge float32 = 0.0
+}
+
+union Effect
+{
+    boost Boost
+    ward  Ward
+    ping
+    count int32
+}
+
+table Cfg
+{
+    grade  Grade
+    effect Effect
+    buff   Buff
+    grades [..4]Grade
+    tally  [Grade]int32
+}

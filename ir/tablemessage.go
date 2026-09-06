@@ -523,7 +523,9 @@ func tableMessageElementShape(f *Field) TableMessageShape {
 // an arm header is a field header (§2.6), so an arm this reader cannot name is
 // skipped exactly as an unknown field is.
 func TableArmEntry(v UnionVariant) TableVocabularyEntry {
-	id := TableWireId(v.Name)
+	// AN ARM RENAMED UNDER `was` RIDES UNDER ITS OLD NAME'S HASH (§5), so the
+	// entry's id is the wire name's and a rename moves no slot.
+	id := TableWireId(v.WireName())
 	switch {
 	case v.Void():
 		return TableVocabularyEntry{Id: id, Kind: TableKindNoPayload}
