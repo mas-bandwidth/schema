@@ -478,7 +478,7 @@ func TestFrozenTableToken(t *testing.T) {
 // pinned as literals. Every declaration in it is REACHED, which is what makes
 // the pin a rendering pin rather than a scoping one. Any rendering change that
 // moves this unit's id is a compatibility break for every protocol-free unit
-// in the wild and must be a deliberate ProjectionVersion bump.
+// in the wild and must be a deliberate ProjectionVersion or WireLaw bump.
 func TestProtocolFreeUnitIdPinned(t *testing.T) {
 	u := build(t, `package probe
 
@@ -507,12 +507,12 @@ type Holder {
     team  Team
 }
 `)
-	const pinnedId = uint64(0xe1efac76426db8d2)
+	const pinnedId = uint64(0x973fe01026957464) // WireLaw 2: selected payloads start at construction defaults
 	if u.ProtocolId != pinnedId {
 		t.Fatalf("the neutrality probe's id moved: 0x%016x, pinned 0x%016x", u.ProtocolId, pinnedId)
 	}
 	const pinnedProjection = `schema-wire-projection 3
-schema-wire-law 1
+schema-wire-law 2
 package probe
 enum Team max=2 storage=8 variants=2
   variant 1 name=Red

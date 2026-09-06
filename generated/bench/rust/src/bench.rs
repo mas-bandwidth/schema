@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x06845f749d2417b4
+// package bench — protocol id 0x8d12c3149393f40f
 
 use serialize::{ReadStream, Stream, WriteStream};
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-pub const PROTOCOL_ID: u64 = 0x06845f749d2417b4;
+pub const PROTOCOL_ID: u64 = 0x8d12c3149393f40f;
 
 /// The generated crate's error: the runtime's own errors pass through;
 /// Validation is a read rejecting the wire (SPEC §4.3, §4.7).
@@ -987,7 +987,8 @@ pub fn enum_name_mixed_event_type(value: MixedEventType) -> &'static str {
 }
 
 // MixedEvent — at most one of the arms. The default is None (the empty union);
-// a read replaces the whole value, so stale-arm semantics cannot arise here.
+// every read reconstructs the selected payload with its declared initial
+// values, even at the same tag, and replaces the whole value on success.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub enum MixedEvent {
     #[default]

@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 #pragma once
 
 #include <cstdint>
+#include <new>
 
 #include "serialize.h"
 
@@ -483,10 +484,10 @@ SCHEMA_READ_INLINE bool ReadEmptyUnion( serialize::ReadStream & stream, EmptyUni
         case EmptyUnionType::None:
             return true;
         case EmptyUnionType::A:
-            value.a = EmptyA{};
+            ::new ( (void*) &value.a ) EmptyA{};
             return ReadEmptyA( stream, value.a );
         case EmptyUnionType::B:
-            value.b = EmptyB{};
+            ::new ( (void*) &value.b ) EmptyB{};
             return ReadEmptyB( stream, value.b );
     }
     return false;

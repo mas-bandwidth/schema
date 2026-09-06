@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0x88cf953e975ace60
+// package benchtable — protocol id 0x0926221bcb6f475f
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an out-of-contract
@@ -21,7 +21,7 @@ const BOOL_SCRATCH = { value: false };
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-export const ProtocolId = 0x88cf953e975ace60n;
+export const ProtocolId = 0x0926221bcb6f475fn;
 
 // TableWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
@@ -167,7 +167,15 @@ export class TableHitEvent {
 export const TableHitEventMaxBits = 28;
 export const TableHitEventMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitTableHitEvent restores fresh construction values in place, preserving storage.
+export function InitTableHitEvent(value) {
+  value.TargetId = 0;
+  value.Damage = 0;
+  value.HitKind = 0;
+  value.Crit = false;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTableHitEvent(value) {
   value.TargetId = 0;
   value.Damage = 0;
@@ -234,7 +242,13 @@ export class TableChatEvent {
 export const TableChatEventMaxBits = 14;
 export const TableChatEventMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitTableChatEvent restores fresh construction values in place, preserving storage.
+export function InitTableChatEvent(value) {
+  value.Channel = 0;
+  value.Speaker = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTableChatEvent(value) {
   value.Channel = 0;
   value.Speaker = 0;
@@ -280,7 +294,13 @@ export class TablePickupEvent {
 export const TablePickupEventMaxBits = 18;
 export const TablePickupEventMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitTablePickupEvent restores fresh construction values in place, preserving storage.
+export function InitTablePickupEvent(value) {
+  value.ItemId = 0;
+  value.Amount = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTablePickupEvent(value) {
   value.ItemId = 0;
   value.Amount = 0;
@@ -341,8 +361,8 @@ export function EnumNameTableEventType(value) {
 }
 
 // TableEvent — at most one of the arms; Type says which. Construction is the empty
-// union (None). A read zero-establishes exactly the selected arm before
-// decoding it (SPEC §5); unselected arms keep what they last held — the
+// union (None). Every read initializes the selected arm as a fresh value
+// before decoding it; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 export class TableEvent {
   constructor() {
@@ -360,7 +380,7 @@ export const TableEventMaxBytes = 8;
 
 // ZeroTableEvent resets value to the §5 zero form — the empty union. The tag alone
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-// is unselected at None; an arm re-zeroes at its next selection.
+// is unselected at None; an arm is initialized at its next selection.
 export function ZeroTableEvent(value) {
   value.Type = TableEventType.None;
 }
@@ -391,13 +411,13 @@ export function ReadTableEvent(stream, value) {
   value.Type = NUMBER_SCRATCH.value;
   switch (value.Type) {
     case TableEventType.Hit:
-      ZeroTableHitEvent(value.Hit); // the selected arm starts from the zero form (SPEC §5)
+      InitTableHitEvent(value.Hit); // fresh declared defaults on every selection
       return ReadTableHitEvent(stream, value.Hit);
     case TableEventType.Chat:
-      ZeroTableChatEvent(value.Chat); // the selected arm starts from the zero form (SPEC §5)
+      InitTableChatEvent(value.Chat); // fresh declared defaults on every selection
       return ReadTableChatEvent(stream, value.Chat);
     case TableEventType.Pickup:
-      ZeroTablePickupEvent(value.Pickup); // the selected arm starts from the zero form (SPEC §5)
+      InitTablePickupEvent(value.Pickup); // fresh declared defaults on every selection
       return ReadTablePickupEvent(stream, value.Pickup);
   }
   return true; // None

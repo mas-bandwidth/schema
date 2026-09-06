@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 using System;
 using System.Runtime.CompilerServices;
@@ -112,6 +112,13 @@ namespace Example
             value.Y = 0.0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitVec2(Vec2 value)
+        {
+            value.X = 0.0;
+            value.Y = 0.0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteVec2(WriteStream stream, Vec2 value)
@@ -167,6 +174,12 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroSpanF64(SpanF64 value)
+        {
+            Array.Clear(value.Values, 0, 2);
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitSpanF64(SpanF64 value)
         {
             Array.Clear(value.Values, 0, 2);
         }
@@ -228,6 +241,12 @@ namespace Example
             Array.Clear(value.Values, 0, 2);
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitSpanU64(SpanU64 value)
+        {
+            Array.Clear(value.Values, 0, 2);
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteSpanU64(WriteStream stream, SpanU64 value)
@@ -281,6 +300,12 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroSpanI64(SpanI64 value)
+        {
+            Array.Clear(value.Values, 0, 2);
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitSpanI64(SpanI64 value)
         {
             Array.Clear(value.Values, 0, 2);
         }
@@ -349,6 +374,12 @@ namespace Example
             Array.Clear(value.Values, 0, 1);
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitSpanOne(SpanOne value)
+        {
+            Array.Clear(value.Values, 0, 1);
+        }
+
         public static bool WriteSpanOne(WriteStream stream, SpanOne value)
         {
             for (int i = 0; i < 1; i++)
@@ -380,6 +411,12 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroSpanChunk(SpanChunk value)
+        {
+            Array.Clear(value.Values, 0, 4);
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitSpanChunk(SpanChunk value)
         {
             Array.Clear(value.Values, 0, 4);
         }
@@ -449,6 +486,13 @@ namespace Example
             value.Tail = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitSpanTail(SpanTail value)
+        {
+            Array.Clear(value.Values, 0, 2);
+            value.Tail = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteSpanTail(WriteStream stream, SpanTail value)
@@ -510,6 +554,13 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroSpanTwice(SpanTwice value)
+        {
+            Array.Clear(value.A, 0, 2);
+            Array.Clear(value.B, 0, 2);
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitSpanTwice(SpanTwice value)
         {
             Array.Clear(value.A, 0, 2);
             Array.Clear(value.B, 0, 2);
@@ -588,6 +639,14 @@ namespace Example
             value.C = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitTrio(Trio value)
+        {
+            value.A = 0;
+            value.B = 0;
+            value.C = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteTrio(WriteStream stream, Trio value)
@@ -658,6 +717,12 @@ namespace Example
             ZeroTrio(value.Inner);
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitTrioSole(TrioSole value)
+        {
+            InitTrio(value.Inner);
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteTrioSole(WriteStream stream, TrioSole value)
@@ -707,6 +772,13 @@ namespace Example
         public static void ZeroTrioFirst(TrioFirst value)
         {
             ZeroTrio(value.Inner);
+            value.Trailer = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitTrioFirst(TrioFirst value)
+        {
+            InitTrio(value.Inner);
             value.Trailer = 0;
         }
 
@@ -773,6 +845,18 @@ namespace Example
             value.Pad4 = 0;
             value.Pad5 = 0;
             ZeroTrio(value.Inner);
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitTrioStraddle(TrioStraddle value)
+        {
+            value.Pad0 = 0;
+            value.Pad1 = 0;
+            value.Pad2 = 0;
+            value.Pad3 = 0;
+            value.Pad4 = 0;
+            value.Pad5 = 0;
+            InitTrio(value.Inner);
         }
 
         // batch form: stream state stays in registers across the body and End

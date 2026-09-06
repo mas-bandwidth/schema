@@ -15,7 +15,7 @@ import (
 // emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8): the
 // write validates the tag BEFORE it rides (an
 // out-of-set tag writes nothing), the read rejects a tag above the count and
-// zero-establishes exactly the selected arm before decoding it.
+// constructs exactly the selected arm with its defaults before decoding it.
 func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.needsSerialize = true
 	maxBits := ir.MaxBitsUnion(d)
@@ -66,7 +66,11 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 			g.pf("\t\treturn stream.Err() // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n")
 			continue
 		}
-		g.pf("\t\tvalue.%s = %s{} // the selected arm starts from the zero form (SPEC §5)\n", ir.GoExportName(v.Name), v.Type)
+		if g.hasDefaults(v.Ref) {
+			g.pf("\t\tvalue.%s = New%s() // fresh payload on every selection (SPEC §4.8)\n", ir.GoExportName(v.Name), v.Type)
+		} else {
+			g.pf("\t\tvalue.%s = %s{} // fresh payload on every selection (SPEC §4.8)\n", ir.GoExportName(v.Name), v.Type)
+		}
 		g.pf("\t\treturn Read%s(stream, &value.%s)\n", v.Type, ir.GoExportName(v.Name))
 	}
 	g.pf("\t}\n\treturn stream.Err() // None\n}\n\n")

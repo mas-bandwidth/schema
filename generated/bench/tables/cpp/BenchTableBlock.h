@@ -50,7 +50,7 @@ namespace benchtable {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xbee10aff8f660e35ull;
+static const uint64_t BuildVersion = 0xa9aa850e9c82a97full;
 
 } // namespace benchtable
 

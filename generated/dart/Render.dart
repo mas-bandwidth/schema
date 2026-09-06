@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 import 'dart:typed_data';
 
@@ -27,6 +27,15 @@ const int renderSpriteMaxBytes = 24;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroRenderSprite(RenderSprite value) {
+  value.sortKey = 0;
+  value.meshId = 0;
+  value.materialId = 0;
+  value.layer = 0;
+  value.team = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initRenderSprite(RenderSprite value) {
   value.sortKey = 0;
   value.meshId = 0;
   value.materialId = 0;
@@ -178,6 +187,16 @@ void zeroRenderBlock(RenderBlock value) {
   value.spriteCountHint = 0;
   for (var i0 = 0; i0 < 64; i0++) {
     zeroRenderSprite(value.sprites[i0]);
+  }
+  value.spritesCount = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initRenderBlock(RenderBlock value) {
+  value.workerIndex = 0;
+  value.spriteCountHint = 0;
+  for (var i0 = 0; i0 < 64; i0++) {
+    initRenderSprite(value.sprites[i0]);
   }
   value.spritesCount = 0;
 }

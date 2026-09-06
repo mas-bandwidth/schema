@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0x88cf953e975ace60
+// package benchtable — protocol id 0x0926221bcb6f475f
 //
 // The shipped Java wire path (issue #156): the serialize.java bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -39,7 +39,7 @@ public final class BenchTable {
 
     // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
     // sides at the same id speak identical bits; there is no other versioning.
-    public static final long protocolId = 0x88cf953e975ace60L;
+    public static final long protocolId = 0x0926221bcb6f475fL;
 
     // TableWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
     // an int-constant namespace — the Java translation of the family's integer-
@@ -249,6 +249,14 @@ public final class BenchTable {
         value.crit = false;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initTableHitEvent(TableHitEvent value) {
+        value.targetId = 0;
+        value.damage = 0;
+        value.hitKind = 0;
+        value.crit = false;
+    }
+
     // checkWriteTableHitEvent is writeTableHitEvent's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -408,6 +416,12 @@ public final class BenchTable {
         value.speaker = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initTableChatEvent(TableChatEvent value) {
+        value.channel = 0;
+        value.speaker = 0;
+    }
+
     // checkWriteTableChatEvent is writeTableChatEvent's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -523,6 +537,12 @@ public final class BenchTable {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroTablePickupEvent(TablePickupEvent value) {
+        value.itemId = 0;
+        value.amount = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initTablePickupEvent(TablePickupEvent value) {
         value.itemId = 0;
         value.amount = 0;
     }
@@ -660,8 +680,8 @@ public final class BenchTable {
     }
 
     // TableEvent — at most one of the arms; type says which. Construction is the empty
-    // union (None). A read zero-establishes exactly the selected arm before
-    // decoding it (SPEC §5); unselected arms keep what they last held — the
+    // union (None). Every read selection initializes the chosen payload from
+    // construction defaults; unselected arms keep what they last held — the
     // reused-storage discipline. Consumers read the selected arm only.
     public static final class TableEvent {
         public byte type = TableEventType.none;
@@ -677,7 +697,7 @@ public final class BenchTable {
 
     // zeroTableEvent resets value to the §5 zero form — the empty union. The tag alone
     // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-    // is unselected at None; an arm re-zeroes at its next selection.
+    // is unselected at None; an arm initializes at its next selection.
     public static void zeroTableEvent(TableEvent value) {
         value.type = TableEventType.none;
     }

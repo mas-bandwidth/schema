@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 import { MaxBlockSize, MaxChatLength } from "./Constants.js";
 
@@ -101,7 +101,13 @@ export class ProbeHeader {
 export const ProbeHeaderMaxBits = 87;
 export const ProbeHeaderMaxBytes = 16;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitProbeHeader restores fresh construction values in place, preserving storage.
+export function InitProbeHeader(value) {
+  value.Version = 0;
+  value.ProbeId = 0n;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeHeader(value) {
   value.Version = 0;
   value.ProbeId = 0n;
@@ -173,7 +179,16 @@ export class ProbeBits {
 export const ProbeBitsMaxBits = 202;
 export const ProbeBitsMaxBytes = 32;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitProbeBits restores fresh construction values in place, preserving storage.
+export function InitProbeBits(value) {
+  value.Small = 0;
+  value.Boundary = 0n;
+  value.Wide = 0n;
+  value.Sensor = 0;
+  value.Nonce = 0n;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeBits(value) {
   value.Small = 0;
   value.Boundary = 0n;
@@ -264,7 +279,21 @@ export class ProbeSample {
 export const ProbeSampleMaxBits = 276;
 export const ProbeSampleMaxBytes = 40;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitProbeSample restores fresh construction values in place, preserving storage.
+export function InitProbeSample(value) {
+  value.Active = true;
+  value.Orientation = 0;
+  value.RawDelta = 0;
+  value.BigDelta = 0n;
+  value.Weapon = Weapon.None;
+  value.HasTarget = false;
+  value.TargetId = 0;
+  value.IdleTicks = 0;
+  value.Samples.fill(0);
+  value.SamplesCount = 1;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeSample(value) {
   value.Active = false;
   value.Orientation = 0;
@@ -404,7 +433,12 @@ export class ProbeRing {
 export const ProbeRingMaxBits = 16;
 export const ProbeRingMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitProbeRing restores fresh construction values in place, preserving storage.
+export function InitProbeRing(value) {
+  value.Radius = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeRing(value) {
   value.Radius = 0;
 }
@@ -438,7 +472,13 @@ export class ProbeSlab {
 export const ProbeSlabMaxBits = 15;
 export const ProbeSlabMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitProbeSlab restores fresh construction values in place, preserving storage.
+export function InitProbeSlab(value) {
+  value.Width = 0;
+  value.Height = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeSlab(value) {
   value.Width = 0;
   value.Height = 0;
@@ -496,8 +536,8 @@ export function EnumNameProbeShapeType(value) {
 }
 
 // ProbeShape — at most one of the arms; Type says which. Construction is the empty
-// union (None). A read zero-establishes exactly the selected arm before
-// decoding it (SPEC §5); unselected arms keep what they last held — the
+// union (None). Every read initializes the selected arm as a fresh value
+// before decoding it; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 export class ProbeShape {
   constructor() {
@@ -514,7 +554,7 @@ export const ProbeShapeMaxBytes = 8;
 
 // ZeroProbeShape resets value to the §5 zero form — the empty union. The tag alone
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-// is unselected at None; an arm re-zeroes at its next selection.
+// is unselected at None; an arm is initialized at its next selection.
 export function ZeroProbeShape(value) {
   value.Type = ProbeShapeType.None;
 }
@@ -543,10 +583,10 @@ export function ReadProbeShape(stream, value) {
   value.Type = NUMBER_SCRATCH.value;
   switch (value.Type) {
     case ProbeShapeType.Ring:
-      ZeroProbeRing(value.Ring); // the selected arm starts from the zero form (SPEC §5)
+      InitProbeRing(value.Ring); // fresh declared defaults on every selection
       return ReadProbeRing(stream, value.Ring);
     case ProbeShapeType.Slab:
-      ZeroProbeSlab(value.Slab); // the selected arm starts from the zero form (SPEC §5)
+      InitProbeSlab(value.Slab); // fresh declared defaults on every selection
       return ReadProbeSlab(stream, value.Slab);
   }
   return true; // None
@@ -568,7 +608,19 @@ export class ProbeCollider {
 export const ProbeColliderMaxBits = 82;
 export const ProbeColliderMaxBytes = 16;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitProbeCollider restores fresh construction values in place, preserving storage.
+export function InitProbeCollider(value) {
+  value.Armor = 0;
+  value.Shape.Type = 0; // None; dormant arms keep their storage
+  value.Backup.Type = 0; // None; dormant arms keep their storage
+  for (let initIndex0 = 0; initIndex0 < 2; initIndex0++) {
+    const initValue0 = value.Extras[initIndex0];
+    initValue0.Type = 0; // None; dormant arms keep their storage
+  }
+  value.ExtrasCount = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeCollider(value) {
   value.Armor = 0;
   ZeroProbeShape(value.Shape);
@@ -641,7 +693,13 @@ export class ProbeConfig {
 export const ProbeConfigMaxBits = 36;
 export const ProbeConfigMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitProbeConfig restores fresh construction values in place, preserving storage.
+export function InitProbeConfig(value) {
+  value.Retries = -1;
+  value.Preferred = Weapon.Railgun;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeConfig(value) {
   value.Retries = 0;
   value.Preferred = Weapon.None;
@@ -687,7 +745,16 @@ export class ProbeArray {
 export const ProbeArrayMaxBits = 588;
 export const ProbeArrayMaxBytes = 80;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitProbeArray restores fresh construction values in place, preserving storage.
+export function InitProbeArray(value) {
+  for (let initIndex0 = 0; initIndex0 < 2; initIndex0++) {
+    const initValue0 = value.Samples[initIndex0];
+    InitProbeSample(initValue0);
+  }
+  InitProbeConfig(value.Config);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeArray(value) {
   for (let i = 0; i < 2; i++) {
     ZeroProbeSample(value.Samples[i]);
@@ -731,7 +798,11 @@ export class Heartbeat {
 export const HeartbeatMaxBits = 0;
 export const HeartbeatMaxBytes = 0;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitHeartbeat restores fresh construction values in place, preserving storage.
+export function InitHeartbeat(value) {
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroHeartbeat(value) {
   // empty body — nothing to reset (SPEC §4.6)
 }
@@ -760,7 +831,15 @@ export class Test {
 export const TestMaxBits = 46;
 export const TestMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitTest restores fresh construction values in place, preserving storage.
+export function InitTest(value) {
+  value.TestA = 0;
+  value.TestB = 0;
+  value.TestC = 0;
+  value.TestD = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTest(value) {
   value.TestA = 0;
   value.TestB = 0;
@@ -830,7 +909,13 @@ export class Block {
 export const BlockMaxBits = 16018;
 export const BlockMaxBytes = 2008;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitBlock restores fresh construction values in place, preserving storage.
+export function InitBlock(value) {
+  value.Data.fill(0);
+  value.DataLength = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroBlock(value) {
   value.Data.fill(0);
   value.DataLength = 0;
@@ -874,7 +959,13 @@ export class Chat {
 export const ChatMaxBits = 2064;
 export const ChatMaxBytes = 264;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitChat restores fresh construction values in place, preserving storage.
+export function InitChat(value) {
+  value.Text.fill(0);
+  value.TextLength = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroChat(value) {
   value.Text.fill(0);
   value.TextLength = 0;
@@ -924,7 +1015,14 @@ export class ProbeReport {
 export const ProbeReportMaxBits = 141;
 export const ProbeReportMaxBytes = 24;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitProbeReport restores fresh construction values in place, preserving storage.
+export function InitProbeReport(value) {
+  InitProbeHeader(value.Header);
+  value.Flags = 0n;
+  InitTest(value.Echo);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeReport(value) {
   ZeroProbeHeader(value.Header);
   value.Flags = 0n;
@@ -999,7 +1097,34 @@ export class TestData {
 export const TestDataMaxBits = 2735;
 export const TestDataMaxBytes = 344;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitTestData restores fresh construction values in place, preserving storage.
+export function InitTestData(value) {
+  value.A = 0;
+  value.B = 0;
+  value.C = 0;
+  value.D = 0;
+  value.E = 0;
+  value.F = 0;
+  value.G = false;
+  value.Items.fill(0);
+  value.ItemsCount = 0;
+  value.FloatValue = 0;
+  value.CompressedFloatValue = 0;
+  value.DoubleValue = 0;
+  value.Int8Value = 0;
+  value.Int16Value = 0;
+  value.Uint8Value = 0;
+  value.Uint16Value = 0;
+  value.Uint32Value = 0;
+  value.Uint64Value = 0n;
+  value.Int64Full = 0n;
+  value.Int64Range = 0n;
+  value.FixedBytes.fill(0);
+  value.Text.fill(0);
+  value.TextLength = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTestData(value) {
   value.A = 0;
   value.B = 0;
@@ -1263,7 +1388,13 @@ export class CompressedProbe {
 export const CompressedProbeMaxBits = 24;
 export const CompressedProbeMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitCompressedProbe restores fresh construction values in place, preserving storage.
+export function InitCompressedProbe(value) {
+  value.Boundary = 0;
+  value.Offset = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroCompressedProbe(value) {
   value.Boundary = 0;
   value.Offset = 0;

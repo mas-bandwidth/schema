@@ -207,6 +207,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.bpf("    public static final int %sMaxBytes = %d;\n\n", low, ir.MaxBytes(maxBits))
 
 	g.emitZeroFunction(st.Name, st.Fields)
+	g.emitInitFunction(st.Name, st.Fields)
 	g.emitCheckFunction(st.Name, low, st.Items)
 	g.emitWriteFunction(st.Name, low, st.Items)
 	g.emitReadFunction(st.Name, st.Items)
@@ -227,7 +228,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 
 	g.bpf("    // zero%s resets value to the §5 zero form — the empty union. The tag alone\n", d.Name)
 	g.bpf("    // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm\n")
-	g.bpf("    // is unselected at None; an arm re-zeroes at its next selection.\n")
+	g.bpf("    // is unselected at None; an arm initializes at its next selection.\n")
 	g.bpf("    public static void zero%s(%s value) {\n", d.Name, d.Name)
 	g.bpf("        value.type = %sType.none;\n    }\n\n", d.Name)
 
@@ -338,6 +339,22 @@ func (g *gen) emitZeroFunction(name string, fields []*ir.Field) {
 	g.resetFn()
 	for _, f := range fields {
 		g.emitZeroField(f, "value", bodyInd, true)
+	}
+	g.body.WriteString(g.fn.String())
+	g.bpf("    }\n\n")
+}
+
+// emitInitFunction restores construction defaults without replacing any
+// preallocated objects or buffers; applications may call it before reuse.
+func (g *gen) emitInitFunction(name string, fields []*ir.Field) {
+	g.bpf("    // Restore construction defaults in place; buffers and objects are retained.\n")
+	g.bpf("    public static void init%s(%s value) {\n", name, name)
+	if len(fields) == 0 {
+		g.bpf("        // empty body — nothing to initialize\n")
+	}
+	g.resetFn()
+	for _, f := range fields {
+		g.emitInitializeField(f, "value", "        ", true, true)
 	}
 	g.body.WriteString(g.fn.String())
 	g.bpf("    }\n\n")
@@ -1597,7 +1614,7 @@ func (g *gen) emitAssign128(assign string, signed bool, min *big.Int, hiExpr, lo
 
 // emitReadUnion is the union read half: the tag reads in minimal bits and a
 // value above the count is refused (SPEC §4.8); the selected arm
-// zero-establishes, then its items inline.
+// starts from construction defaults, then its items inline.
 func (g *gen) emitReadUnion(u *ir.Union, expr, ind string, bounded bool) {
 	if u.Max == 0 {
 		g.pf("%s%s.type = 0; // zero wire bits — only None exists (SPEC §4.8)\n", ind, expr)
@@ -1621,10 +1638,10 @@ func (g *gen) emitReadUnion(u *ir.Union, expr, ind string, bounded bool) {
 			g.pf("%s        break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
 			continue
 		}
-		// the selected arm starts from the zero form (SPEC §5)
+		// every selection starts from construction defaults
 		empty := true
 		for _, nf := range vr.Ref.Fields {
-			g.emitZeroField(nf, arm, ind+"        ", false)
+			g.emitInitializeField(nf, arm, ind+"        ", false, true)
 			empty = false
 		}
 		before := g.fn.Len()
@@ -1659,6 +1676,16 @@ func (g *gen) emitZeroItems(items []ir.Item, path, ind string) {
 // helper for named types (the standalone zero functions); the wire bodies
 // inline recursively instead, keeping read paths call-free.
 func (g *gen) emitZeroField(f *ir.Field, path, ind string, viaCalls bool) {
+	g.emitInitializeField(f, path, ind, viaCalls, false)
+}
+
+// emitInitializeField shares the recursive storage walk between explicit zero
+// resets and construction initialization. Nested unions reset only their tags.
+func (g *gen) emitInitializeField(f *ir.Field, path, ind string, viaCalls, defaults bool) {
+	structInit := "zero"
+	if defaults {
+		structInit = "init"
+	}
 	name := path + "." + javaName(f.Name)
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
@@ -1671,12 +1698,12 @@ func (g *gen) emitZeroField(f *ir.Field, path, ind string, viaCalls bool) {
 			g.loopDepth++
 			g.pf("%sfor (int %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
 			if viaCalls {
-				g.pf("%s    %s(%s[%s]);\n", ind, g.qualify(f.Type.Name, "zero"+f.Type.Name), name, iv)
+				g.pf("%s    %s(%s[%s]);\n", ind, g.qualify(f.Type.Name, structInit+f.Type.Name), name, iv)
 			} else {
 				ev := fmt.Sprintf("e%d", g.loopDepth-1)
 				g.pf("%s    final %s %s = %s[%s];\n", ind, g.qualifyType(f.Type.Name), ev, name, iv)
 				for _, nf := range ref.Fields {
-					g.emitZeroField(nf, ev, ind+"    ", false)
+					g.emitInitializeField(nf, ev, ind+"    ", false, defaults)
 				}
 			}
 			g.pf("%s}\n", ind)
@@ -1694,17 +1721,28 @@ func (g *gen) emitZeroField(f *ir.Field, path, ind string, viaCalls bool) {
 			g.pf("%sjava.util.Arrays.fill(%s, %s);\n", ind, name, zeroElem(f.Type))
 		}
 		if f.Array == ir.ArrayCounted {
-			g.pf("%s%sCount = 0;\n", ind, name)
+			count := int64(0)
+			if defaults {
+				count = f.BornCount()
+			}
+			g.pf("%s%sCount = %d;\n", ind, name, count)
 		}
 	default:
+		if defaults && f.HasDefault {
+			_, init := g.scalarStorage(f)
+			if init != "" {
+				g.pf("%s%s = %s;\n", ind, name, init)
+				return
+			}
+		}
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
 			if f.Type.Kind == ir.TNamed {
 				if viaCalls {
-					g.pf("%s%s(%s);\n", ind, g.qualify(f.Type.Name, "zero"+f.Type.Name), name)
+					g.pf("%s%s(%s);\n", ind, g.qualify(f.Type.Name, structInit+f.Type.Name), name)
 				} else {
 					for _, nf := range ref.Fields {
-						g.emitZeroField(nf, name, ind, false)
+						g.emitInitializeField(nf, name, ind, false, defaults)
 					}
 				}
 				return

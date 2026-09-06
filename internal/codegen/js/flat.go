@@ -1772,8 +1772,8 @@ func (g *fgen) emitWriteUnionFlat(u *ir.Union, expr, ind string) {
 }
 
 // emitReadUnionFlat is the read half: the tag reads in minimal bits and a
-// value above the count is refused (SPEC §4.8); the selected arm
-// zero-establishes field by field, then its items inline — byte- and
+// value above the count is refused (SPEC §4.8); the selected arm receives
+// fresh construction values in place, then its items inline — byte- and
 // acceptance-identical to the runtime tier's Read<Union>.
 func (g *fgen) emitReadUnionFlat(u *ir.Union, expr, ind string, bounded bool) {
 	if u.Max == 0 {
@@ -1797,11 +1797,14 @@ func (g *fgen) emitReadUnionFlat(u *ir.Union, expr, ind string, bounded bool) {
 			g.pf("%s    break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n%s  }\n", ind, ind)
 			continue
 		}
-		// the selected arm starts from the zero form (SPEC §5); the arm's
-		// own runs re-check bounds — the tag's proof does not extend to it
+		// Use the runtime helper's initialization emitter, inlined with
+		// resolved values so this module needs no schema-constant imports.
+		init := &gen{unit: g.unit, file: g.file, inlineInit: true}
 		for _, nf := range vr.Ref.Fields {
-			g.emitZeroFieldFlat(nf, arm, ind+"    ")
+			init.emitInitField(nf, arm, ind+"    ")
 		}
+		g.pf("%s", init.body.String())
+		// The arm's runs re-check bounds; the tag's proof does not extend to it.
 		g.emitReadItems(vr.Ref.Items, arm, ind+"    ", false)
 		g.pf("%s    break;\n%s  }\n", ind, ind)
 	}

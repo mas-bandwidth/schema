@@ -3464,6 +3464,15 @@ func (c *checker) checkClaimedNames() {
 		c.reserveCPrefix(name, pos)
 		add(name, what, pos)
 	}
+	// Dart's explicit constants and flags masks use the shared member-name
+	// mapping; type names stay verbatim. Claim the emitted spelling in this same
+	// registry so initChat and init_chat both meet Chat's initChat helper.
+	addDart := func(name, what string, pos ast.Pos, siblings ...string) {
+		mapped := ir.DartMemberName(name)
+		if !slices.Contains(siblings, mapped) {
+			add(mapped, what, pos)
+		}
+	}
 
 	for _, name := range declNames {
 		d := c.astDecls[name]
@@ -3474,6 +3483,7 @@ func (c *checker) checkClaimedNames() {
 			// the Rust target spells constants SCREAMING_SNAKE in the flat
 			// crate namespace
 			addRust(ir.RustConstName(name), fmt.Sprintf("const %s's generated constant (Rust/C form)", name), d.DeclPos(), name)
+			addDart(name, fmt.Sprintf("const %s's generated constant (Dart form)", name), d.DeclPos(), name, ir.RustConstName(name))
 		case *ast.EnumDecl:
 			// the Go target flattens variants into the package namespace;
 			// the Rust target scopes them as associated consts, so their
@@ -3595,6 +3605,8 @@ func (c *checker) checkClaimedNames() {
 				addRust(ir.RustConstName(name)+"_"+ir.RustConstName(v.Text),
 					fmt.Sprintf("flags %s's generated mask constant (Rust/C form)", name), v.Pos,
 					name+v.Text, name+"_"+v.Text)
+				addDart(name+v.Text, fmt.Sprintf("flags %s's generated mask constant (Dart form)", name), v.Pos,
+					name+v.Text, name+"_"+v.Text, ir.RustConstName(name)+"_"+ir.RustConstName(v.Text))
 			}
 		case *ast.TypeDecl:
 			c.addStructSymbols(add, addRust, name, d.DeclPos())
@@ -3794,6 +3806,8 @@ func (c *checker) addStructSymbols(add func(name, what string, pos ast.Pos), add
 	add("Read"+name, why, pos)
 	add("New"+name, why, pos)
 	add("Zero"+name, why, pos) // the C# §5 zero-form helper (branch zeroing, storage reset)
+	add("Init"+name, why, pos) // construction defaults applied to existing managed storage
+	add("init"+name, why+" (Dart form)", pos)
 	add(name+"MaxBits", why, pos)
 	add(name+"MaxBytes", why, pos)
 	whyRust := fmt.Sprintf("type %s's generated functions and constants (Rust/C form)", name)

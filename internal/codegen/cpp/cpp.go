@@ -116,6 +116,7 @@ type gen struct {
 	saidReadSlack  bool               // the read-slack buffer contract is stated once per file, on its first MaxBytes
 	saidFlagAppend bool               // the FlagNames append helpers are emitted once per file
 	needsSerialize bool               // the file emits wire functions -> include "serialize.h"
+	needsNew       bool               // placement construction of selected union arms
 	needsCstring   bool               // the file emits memset -> include <cstring>
 	needsCmath     bool               // the file emits floor() -> include <cmath>
 }
@@ -137,6 +138,9 @@ func (g *gen) assemble() []byte {
 	}
 	if g.needsCstring {
 		h.WriteString("#include <cstring>\n")
+	}
+	if g.needsNew {
+		h.WriteString("#include <new>\n")
 	}
 	if g.needsSerialize {
 		h.WriteString("\n#include \"serialize.h\"\n")
@@ -296,8 +300,8 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 // emitUnion emits a first-class one-of (SPEC §4.8): the generated <Name>Type
 // tag enum, then the tagged-union shape — a struct holding the tag
 // over an anonymous union of the arms, constructed as None, trivially
-// copyable. An arm's storage is established ZEROED when the arm is selected
-// (by Read<Name> before it decodes, or by a writer assigning the arm).
+// copyable. Selection constructs a fresh arm with its declared defaults,
+// both in Read<Name> and when application code constructs a payload.
 func (g *gen) emitUnion(d *ir.Union) {
 	members := make([]string, len(d.Variants))
 	docs := make([]string, len(d.Variants))
@@ -311,10 +315,16 @@ func (g *gen) emitUnion(d *ir.Union) {
 
 	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("// union %s — at most one of the arms; the tag says which. Construction is\n", d.Name)
-	g.pf("// None: the tag alone is initialized; an arm's storage is established ZEROED\n")
-	g.pf("// when the arm is selected — by Read%s before it decodes (SPEC §5), or by\n", d.Name)
-	g.pf("// assigning it: value.%s = %s{}. Bytes of unselected arms are indeterminate.\n",
-		unionExampleArm(d), unionExampleType(d))
+	g.pf("// None: the tag alone is initialized; an arm is freshly constructed with its defaults\n")
+	g.pf("// when selected, by Read%s before decoding (SPEC §4.8), or by application code.\n", d.Name)
+	if len(d.Variants) > 0 {
+		g.pf("// Application code must include <new> before constructing an arm in place:\n")
+		g.pf("// ::new ( (void*) &value.%s ) %s{}; value.type = %sType::%s;\n",
+			unionExampleArm(d), unionExampleType(d), d.Name, ir.GoExportName(unionExampleArm(d)))
+	} else {
+		g.pf("// there is no payload to construct in this empty union.\n")
+	}
+	g.pf("// Bytes of unselected arms are indeterminate.\n")
 	g.pf("struct %s\n{\n", d.Name)
 	g.pf("    %sType type;\n", d.Name)
 	if len(d.Variants) > 0 {
@@ -325,7 +335,7 @@ func (g *gen) emitUnion(d *ir.Union) {
 		}
 		g.pf("    };\n")
 	}
-	g.pf("\n    %s() : type( %sType::None ) {} // the tag only — arms are zero-established at selection\n", d.Name, d.Name)
+	g.pf("\n    %s() : type( %sType::None ) {} // the tag only — arms are freshly constructed at selection\n", d.Name, d.Name)
 	g.pf("};\n\n")
 }
 

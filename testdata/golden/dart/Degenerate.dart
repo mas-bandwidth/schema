@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 import 'dart:typed_data';
 
@@ -40,6 +40,12 @@ const int vec2MaxBytes = 16;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroVec2(Vec2 value) {
+  value.x = 0.0;
+  value.y = 0.0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initVec2(Vec2 value) {
   value.x = 0.0;
   value.y = 0.0;
 }
@@ -162,6 +168,11 @@ void zeroSpanF64(SpanF64 value) {
   value.values.fillRange(0, value.values.length, 0.0);
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initSpanF64(SpanF64 value) {
+  value.values.fillRange(0, value.values.length, 0.0);
+}
+
 // writeSpanF64 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // spanF64MaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -255,6 +266,11 @@ const int spanU64MaxBytes = 16;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroSpanU64(SpanU64 value) {
+  value.values.fillRange(0, value.values.length, 0);
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initSpanU64(SpanU64 value) {
   value.values.fillRange(0, value.values.length, 0);
 }
 
@@ -354,6 +370,11 @@ void zeroSpanI64(SpanI64 value) {
   value.values.fillRange(0, value.values.length, 0);
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initSpanI64(SpanI64 value) {
+  value.values.fillRange(0, value.values.length, 0);
+}
+
 // writeSpanI64 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // spanI64MaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -447,6 +468,11 @@ const int spanOneMaxBytes = 8;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroSpanOne(SpanOne value) {
+  value.values.fillRange(0, value.values.length, 0);
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initSpanOne(SpanOne value) {
   value.values.fillRange(0, value.values.length, 0);
 }
 
@@ -546,6 +572,11 @@ void zeroSpanChunk(SpanChunk value) {
   value.values.fillRange(0, value.values.length, 0);
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initSpanChunk(SpanChunk value) {
+  value.values.fillRange(0, value.values.length, 0);
+}
+
 // writeSpanChunk packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // spanChunkMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -630,6 +661,12 @@ const int spanTailMaxBytes = 24;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroSpanTail(SpanTail value) {
+  value.values.fillRange(0, value.values.length, 0.0);
+  value.tail = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initSpanTail(SpanTail value) {
   value.values.fillRange(0, value.values.length, 0.0);
   value.tail = 0;
 }
@@ -745,6 +782,12 @@ const int spanTwiceMaxBytes = 32;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroSpanTwice(SpanTwice value) {
+  value.a.fillRange(0, value.a.length, 0.0);
+  value.b.fillRange(0, value.b.length, 0.0);
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initSpanTwice(SpanTwice value) {
   value.a.fillRange(0, value.a.length, 0.0);
   value.b.fillRange(0, value.b.length, 0.0);
 }
@@ -879,6 +922,13 @@ void zeroTrio(Trio value) {
   value.c = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initTrio(Trio value) {
+  value.a = 0;
+  value.b = 0;
+  value.c = 0;
+}
+
 // writeTrio packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // trioMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -973,6 +1023,11 @@ const int trioSoleMaxBytes = 8;
 // construction.
 void zeroTrioSole(TrioSole value) {
   zeroTrio(value.inner);
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initTrioSole(TrioSole value) {
+  initTrio(value.inner);
 }
 
 // writeTrioSole packs value into view — the trusted writer (contracts asserted,
@@ -1070,6 +1125,12 @@ const int trioFirstMaxBytes = 16;
 // construction.
 void zeroTrioFirst(TrioFirst value) {
   zeroTrio(value.inner);
+  value.trailer = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initTrioFirst(TrioFirst value) {
+  initTrio(value.inner);
   value.trailer = 0;
 }
 
@@ -1191,6 +1252,17 @@ void zeroTrioStraddle(TrioStraddle value) {
   value.pad4 = 0;
   value.pad5 = 0;
   zeroTrio(value.inner);
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initTrioStraddle(TrioStraddle value) {
+  value.pad0 = 0;
+  value.pad1 = 0;
+  value.pad2 = 0;
+  value.pad3 = 0;
+  value.pad4 = 0;
+  value.pad5 = 0;
+  initTrio(value.inner);
 }
 
 // writeTrioStraddle packs value into view — the trusted writer (contracts asserted,

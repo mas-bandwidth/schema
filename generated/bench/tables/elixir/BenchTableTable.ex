@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package benchtable — the TABLE wire (docs/SPEC-TABLES.md); protocol id 0x88CF953E975ACE60 names packets only, and a table versions by field id
+# package benchtable — the TABLE wire (docs/SPEC-TABLES.md); protocol id 0x0926221BCB6F475F names packets only, and a table versions by field id
 
 # table TableEntity — TABLE-wire storage (docs/SPEC-TABLES.md): every field carries
 # its declared default at construction, so %Benchtable.TableEntity{} IS the value a read

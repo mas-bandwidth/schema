@@ -411,9 +411,9 @@ func (g *gen) emitStruct(d *ir.Struct) {
 // emitUnion emits a first-class one-of (SPEC §4.8): the flat <NAME>_TYPE
 // tag family (typedef + defines + debug-name function, the MessageType
 // shape), then the tag-plus-named-union struct — the same shape the message
-// dispatch uses. The selected arm is established ZEROED at selection
-// (read_<name> memsets before decoding); bytes of unselected arms are
-// indeterminate.
+// dispatch uses. Every read reconstructs the selected arm with its declared
+// initial values before decoding, even when the tag is unchanged. Bytes of
+// unselected arms are indeterminate.
 func (g *gen) emitUnion(d *ir.Union) {
 	tag := d.Name + "Type"
 	g.pf("\n%s", ir.DocComment(d.Doc, "", "//"))
@@ -595,8 +595,8 @@ func (g *gen) emitWireHeader() {
 		g.pf("/* Every write_x/read_x returns 1 on success, 0 on failure — the stream\n")
 		g.pf("   latches the error, so a caller may check once at the end of a message.\n")
 		g.pf("   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE\n")
-		g.pf("   it rides, and a read zero-establishes the selected arm before decoding\n")
-		g.pf("   it (SPEC §4.8, §5). */\n\n")
+		g.pf("   it rides, and every read reconstructs the selected arm with its declared\n")
+		g.pf("   initial values before decoding it (SPEC §4.8, §5). */\n\n")
 		g.emitSpineInlineMacros()
 	}
 	if fileHasStrings(g.file) {
@@ -619,7 +619,8 @@ func (g *gen) emitWireHeader() {
 // emitUnionWire emits the union's write/read pair (SPEC §4.8): the write
 // validates the tag BEFORE it rides (the message dispatch rule — an
 // out-of-set tag writes nothing), the read rejects a tag above the count and
-// memsets exactly the selected arm before decoding it (§5).
+// reconstructs exactly the selected arm with its declared initial values before
+// decoding it, including when the tag is unchanged (§5).
 func (g *gen) emitUnionWire(d *ir.Union) {
 	tag := d.Name + "Type"
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
@@ -654,7 +655,11 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 	g.pf("    switch ( value->type )\n    {\n")
 	for i, v := range d.Variants {
 		g.pf("        case %d:\n", i+1)
-		g.pf("            memset( &value->as.%s, 0, sizeof( value->as.%s ) );\n", v.Name, v.Name)
+		if v.Ref != nil && structHasDefaults(v.Ref) {
+			g.pf("            value->as.%s = new_%s();\n", v.Name, snake(v.Type))
+		} else {
+			g.pf("            memset( &value->as.%s, 0, sizeof( value->as.%s ) );\n", v.Name, v.Name)
+		}
 		g.pf("            return read_%s( stream, &value->as.%s );\n", snake(v.Type), v.Name)
 	}
 	g.pf("        default:\n            return 1; /* None */\n")

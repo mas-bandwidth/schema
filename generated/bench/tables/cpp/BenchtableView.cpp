@@ -67,7 +67,7 @@ const UnitViewInfo * UnitView()
         { "TableMixed", "BenchTable.schema", true, TableMixedTableType(), TableDocNone, 0, NULL },
         { "TableStat", "BenchTable.schema", true, TableStatTableType(), TableDocNone, 0, NULL },
     };
-    static const UnitViewInfo info = { "benchtable", 0x88cf953e975ace60ull,
+    static const UnitViewInfo info = { "benchtable", 0x0926221bcb6f475full,
         3, types,
         3, tables,
         1, enums,

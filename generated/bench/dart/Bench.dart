@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x06845f749d2417b4
+// package bench — protocol id 0x8d12c3149393f40f
 //
 // The shipped Dart wire path (issue #155): the serialize.dart bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -98,7 +98,7 @@ String _hex64(int value) => value < 0
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const int protocolId = 0x06845f749d2417b4;
+const int protocolId = 0x8d12c3149393f40f;
 
 // type BenchPacket
 final class BenchPacket {
@@ -127,6 +127,22 @@ const int benchPacketMaxBytes = 56;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroBenchPacket(BenchPacket value) {
+  value.a = 0;
+  value.b = 0;
+  value.c = 0;
+  value.bits7 = 0;
+  value.bits13 = 0;
+  value.bits23 = 0;
+  value.flag = false;
+  value.x = 0.0;
+  value.y = 0.0;
+  value.z = 0.0;
+  value.big = 0;
+  value.blob.fillRange(0, value.blob.length, 0);
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initBenchPacket(BenchPacket value) {
   value.a = 0;
   value.b = 0;
   value.c = 0;
@@ -441,6 +457,20 @@ void zeroBenchInts(BenchInts value) {
   value.f9 = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initBenchInts(BenchInts value) {
+  value.f0 = 0;
+  value.f1 = 0;
+  value.f2 = 0;
+  value.f3 = 0;
+  value.f4 = 0;
+  value.f5 = 0;
+  value.f6 = 0;
+  value.f7 = 0;
+  value.f8 = 0;
+  value.f9 = 0;
+}
+
 // writeBenchInts packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // benchIntsMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -621,6 +651,18 @@ const int benchBitsMaxBytes = 24;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroBenchBits(BenchBits value) {
+  value.b7 = 0;
+  value.b13 = 0;
+  value.b23 = 0;
+  value.b3 = 0;
+  value.b32 = 0;
+  value.b11 = 0;
+  value.b19 = 0;
+  value.b48 = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initBenchBits(BenchBits value) {
   value.b7 = 0;
   value.b13 = 0;
   value.b23 = 0;
@@ -948,6 +990,24 @@ void zeroMixedEntity(MixedEntity value) {
   value.firing = false;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initMixedEntity(MixedEntity value) {
+  value.entityId = 0;
+  value.posX = 0;
+  value.posY = 0;
+  value.posZ = 0;
+  value.yaw = 0;
+  value.pitch = 0;
+  value.velX = 0;
+  value.velY = 0;
+  value.velZ = 0;
+  value.health = 0;
+  value.weapon = 0;
+  value.damage = 0;
+  value.moving = false;
+  value.firing = false;
+}
+
 // writeMixedEntity packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // mixedEntityMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -1143,6 +1203,12 @@ void zeroMixedStat(MixedStat value) {
   value.delta = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initMixedStat(MixedStat value) {
+  value.statId = 0;
+  value.delta = 0;
+}
+
 // writeMixedStat packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // mixedStatMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -1232,6 +1298,14 @@ const int mixedHitEventMaxBytes = 8;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroMixedHitEvent(MixedHitEvent value) {
+  value.targetId = 0;
+  value.damage = 0;
+  value.hitKind = 0;
+  value.crit = false;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initMixedHitEvent(MixedHitEvent value) {
   value.targetId = 0;
   value.damage = 0;
   value.hitKind = 0;
@@ -1340,6 +1414,12 @@ void zeroMixedChatEvent(MixedChatEvent value) {
   value.speaker = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initMixedChatEvent(MixedChatEvent value) {
+  value.channel = 0;
+  value.speaker = 0;
+}
+
 // writeMixedChatEvent packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // mixedChatEventMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -1426,6 +1506,12 @@ const int mixedPickupEventMaxBytes = 8;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroMixedPickupEvent(MixedPickupEvent value) {
+  value.itemId = 0;
+  value.amount = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initMixedPickupEvent(MixedPickupEvent value) {
   value.itemId = 0;
   value.amount = 0;
 }
@@ -1529,8 +1615,8 @@ String enumNameMixedEventType(int value) {
 }
 
 // MixedEvent — at most one of the arms; type says which. Construction is the empty
-// union (None). A read zero-establishes exactly the selected arm before
-// decoding it (SPEC §5); unselected arms keep what they last held — the
+// union (None). Every read selection initializes the chosen payload from
+// construction defaults; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 final class MixedEvent {
   int type = MixedEventType.none;
@@ -1546,7 +1632,7 @@ const int mixedEventMaxBytes = 8;
 
 // zeroMixedEvent resets value to the §5 zero form — the empty union. The tag alone
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-// is unselected at None; an arm re-zeroes at its next selection.
+// is unselected at None; an arm initializes at its next selection.
 void zeroMixedEvent(MixedEvent value) {
   value.type = MixedEventType.none;
 }
@@ -1837,6 +1923,45 @@ void zeroBenchMixed(BenchMixed value) {
   value.ping = 0;
   value.crcHint = 0;
   value.hasExtra = false;
+  value.extra = 0;
+  value.idleTicks = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initBenchMixed(BenchMixed value) {
+  value.sequence = 0;
+  value.ackSequence = 0;
+  value.ackBits = 0;
+  value.sessionId = 0;
+  value.clientId = 0;
+  value.nonce = 0;
+  value.worldTime = 0;
+  value.frameTick = 0;
+  value.serverTime = 0;
+  for (var i0 = 0; i0 < 8; i0++) {
+    initMixedEntity(value.entities[i0]);
+  }
+  value.entitiesCount = 1;
+  for (var i0 = 0; i0 < 80; i0++) {
+    initMixedStat(value.stats[i0]);
+  }
+  value.statsCount = 0;
+  value.gameEvent.type = 0;
+  value.loadout.fillRange(0, value.loadout.length, 0);
+  value.playerName.fillRange(0, value.playerName.length, 0);
+  value.playerNameLength = 0;
+  value.payload.fillRange(0, value.payload.length, 0);
+  value.payloadLength = 0;
+  value.aimX = 0.0;
+  value.aimY = 0.0;
+  value.aimZ = 0.0;
+  value.recoil = 0.0;
+  value.drift = 0.0;
+  value.wideKey = UInt128.zero;
+  value.flux = Int128.zero;
+  value.ping = 0;
+  value.crcHint = 0;
+  value.hasExtra = true;
   value.extra = 0;
   value.idleTicks = 0;
 }

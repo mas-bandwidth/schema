@@ -224,8 +224,8 @@ func (g *gen) emitUnion(d *ir.Union) {
 
 	g.tf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.tf("// %s — at most one of the arms; Type says which. Construction is the empty\n", d.Name)
-	g.tf("// union (None). A read zero-establishes exactly the selected arm before\n")
-	g.tf("// decoding it (SPEC §5); unselected arms keep what they last held — the\n")
+	g.tf("// union (None). Every read selection initializes the chosen payload from\n")
+	g.tf("// construction defaults; unselected arms keep what they last held — the\n")
 	g.tf("// MessageStorage reuse discipline. Consumers read the selected arm only.\n")
 	g.tf("public sealed class %s\n{\n", d.Name)
 	g.tf("    public %sType Type;\n", d.Name)

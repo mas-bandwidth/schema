@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
@@ -33,7 +33,16 @@ export class ArmsAgree {
 export const ArmsAgreeMaxBits = 24;
 export const ArmsAgreeMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitArmsAgree restores fresh construction values in place, preserving storage.
+export function InitArmsAgree(value) {
+  value.Lead = 0;
+  value.Flag = false;
+  value.A = 0;
+  value.B = 0;
+  value.Tail = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArmsAgree(value) {
   value.Lead = 0;
   value.Flag = false;
@@ -121,7 +130,16 @@ export class ArmsDisagree {
 export const ArmsDisagreeMaxBits = 24;
 export const ArmsDisagreeMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitArmsDisagree restores fresh construction values in place, preserving storage.
+export function InitArmsDisagree(value) {
+  value.Lead = 0;
+  value.Flag = false;
+  value.A = 0;
+  value.B = 0;
+  value.Tail = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArmsDisagree(value) {
   value.Lead = 0;
   value.Flag = false;
@@ -205,7 +223,15 @@ export class ArmEmpty {
 export const ArmEmptyMaxBits = 32;
 export const ArmEmptyMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitArmEmpty restores fresh construction values in place, preserving storage.
+export function InitArmEmpty(value) {
+  value.Lead = 0;
+  value.Flag = false;
+  value.A = 0;
+  value.Tail = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArmEmpty(value) {
   value.Lead = 0;
   value.Flag = false;
@@ -290,7 +316,18 @@ export class ArmsNested {
 export const ArmsNestedMaxBits = 40;
 export const ArmsNestedMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitArmsNested restores fresh construction values in place, preserving storage.
+export function InitArmsNested(value) {
+  value.Lead = 0;
+  value.Outer = false;
+  value.Inner = false;
+  value.X = 0;
+  value.Y = 0;
+  value.Z = 0;
+  value.Tail = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArmsNested(value) {
   value.Lead = 0;
   value.Outer = false;
@@ -407,7 +444,17 @@ export class ArmAlign {
 export const ArmAlignMaxBits = 55;
 export const ArmAlignMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitArmAlign restores fresh construction values in place, preserving storage.
+export function InitArmAlign(value) {
+  value.Lead = 0;
+  value.Flag = false;
+  value.S.fill(0);
+  value.SLength = 0;
+  value.B = 0;
+  value.Tail = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArmAlign(value) {
   value.Lead = 0;
   value.Flag = false;
@@ -512,7 +559,17 @@ export class ArmArray {
 export const ArmArrayMaxBits = 54;
 export const ArmArrayMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitArmArray restores fresh construction values in place, preserving storage.
+export function InitArmArray(value) {
+  value.Lead = 0;
+  value.Flag = false;
+  value.Items.fill(0);
+  value.ItemsCount = 0;
+  value.B = 0;
+  value.Tail = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArmArray(value) {
   value.Lead = 0;
   value.Flag = false;
@@ -609,7 +666,12 @@ export class Narrow {
 export const NarrowMaxBits = 3;
 export const NarrowMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitNarrow restores fresh construction values in place, preserving storage.
+export function InitNarrow(value) {
+  value.N = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroNarrow(value) {
   value.N = 0;
 }
@@ -642,7 +704,12 @@ export class Wide {
 export const WideMaxBits = 37;
 export const WideMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitWide restores fresh construction values in place, preserving storage.
+export function InitWide(value) {
+  value.W = 0n;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroWide(value) {
   value.W = 0n;
 }
@@ -688,8 +755,8 @@ export function EnumNameUnevenType(value) {
 }
 
 // Uneven — at most one of the arms; Type says which. Construction is the empty
-// union (None). A read zero-establishes exactly the selected arm before
-// decoding it (SPEC §5); unselected arms keep what they last held — the
+// union (None). Every read initializes the selected arm as a fresh value
+// before decoding it; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 export class Uneven {
   constructor() {
@@ -706,7 +773,7 @@ export const UnevenMaxBytes = 8;
 
 // ZeroUneven resets value to the §5 zero form — the empty union. The tag alone
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-// is unselected at None; an arm re-zeroes at its next selection.
+// is unselected at None; an arm is initialized at its next selection.
 export function ZeroUneven(value) {
   value.Type = UnevenType.None;
 }
@@ -735,10 +802,10 @@ export function ReadUneven(stream, value) {
   value.Type = NUMBER_SCRATCH.value;
   switch (value.Type) {
     case UnevenType.Narrow:
-      ZeroNarrow(value.Narrow); // the selected arm starts from the zero form (SPEC §5)
+      InitNarrow(value.Narrow); // fresh declared defaults on every selection
       return ReadNarrow(stream, value.Narrow);
     case UnevenType.Wide:
-      ZeroWide(value.Wide); // the selected arm starts from the zero form (SPEC §5)
+      InitWide(value.Wide); // fresh declared defaults on every selection
       return ReadWide(stream, value.Wide);
   }
   return true; // None
@@ -758,7 +825,14 @@ export class HoldsUneven {
 export const HoldsUnevenMaxBits = 55;
 export const HoldsUnevenMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitHoldsUneven restores fresh construction values in place, preserving storage.
+export function InitHoldsUneven(value) {
+  value.Lead = 0;
+  value.U.Type = 0; // None; dormant arms keep their storage
+  value.Tail = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroHoldsUneven(value) {
   value.Lead = 0;
   ZeroUneven(value.U);
@@ -810,7 +884,18 @@ export class ArrUneven {
 export const ArrUnevenMaxBits = 127;
 export const ArrUnevenMaxBytes = 16;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitArrUneven restores fresh construction values in place, preserving storage.
+export function InitArrUneven(value) {
+  value.Lead = 0;
+  for (let initIndex0 = 0; initIndex0 < 3; initIndex0++) {
+    const initValue0 = value.Items[initIndex0];
+    initValue0.Type = 0; // None; dormant arms keep their storage
+  }
+  value.ItemsCount = 0;
+  value.Tail = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArrUneven(value) {
   value.Lead = 0;
   for (let i = 0; i < 3; i++) {
@@ -885,7 +970,20 @@ export class RegainAfterAlign {
 export const RegainAfterAlignMaxBits = 172;
 export const RegainAfterAlignMaxBytes = 24;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitRegainAfterAlign restores fresh construction values in place, preserving storage.
+export function InitRegainAfterAlign(value) {
+  value.Lead = 0;
+  value.Items.fill(0);
+  value.ItemsCount = 0;
+  value.S.fill(0);
+  value.SLength = 0;
+  value.P = 0;
+  value.Q = 0;
+  value.R = 0;
+  value.Tail = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroRegainAfterAlign(value) {
   value.Lead = 0;
   value.Items.fill(0);

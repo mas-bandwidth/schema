@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 using System;
 using System.Runtime.CompilerServices;
@@ -142,8 +142,8 @@ namespace Example
     }
 
     // Uneven — at most one of the arms; Type says which. Construction is the empty
-    // union (None). A read zero-establishes exactly the selected arm before
-    // decoding it (SPEC §5); unselected arms keep what they last held — the
+    // union (None). Every read selection initializes the chosen payload from
+    // construction defaults; unselected arms keep what they last held — the
     // MessageStorage reuse discipline. Consumers read the selected arm only.
     public sealed class Uneven
     {
@@ -203,6 +203,16 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroArmsAgree(ArmsAgree value)
+        {
+            value.Lead = 0;
+            value.Flag = false;
+            value.A = 0;
+            value.B = 0;
+            value.Tail = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitArmsAgree(ArmsAgree value)
         {
             value.Lead = 0;
             value.Flag = false;
@@ -320,6 +330,16 @@ namespace Example
             value.Tail = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitArmsDisagree(ArmsDisagree value)
+        {
+            value.Lead = 0;
+            value.Flag = false;
+            value.A = 0;
+            value.B = 0;
+            value.Tail = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteArmsDisagree(WriteStream stream, ArmsDisagree value)
@@ -428,6 +448,15 @@ namespace Example
             value.Tail = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitArmEmpty(ArmEmpty value)
+        {
+            value.Lead = 0;
+            value.Flag = false;
+            value.A = 0;
+            value.Tail = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteArmEmpty(WriteStream stream, ArmEmpty value)
@@ -517,6 +546,18 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroArmsNested(ArmsNested value)
+        {
+            value.Lead = 0;
+            value.Outer = false;
+            value.Inner = false;
+            value.X = 0;
+            value.Y = 0;
+            value.Z = 0;
+            value.Tail = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitArmsNested(ArmsNested value)
         {
             value.Lead = 0;
             value.Outer = false;
@@ -669,6 +710,17 @@ namespace Example
             value.Tail = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitArmAlign(ArmAlign value)
+        {
+            value.Lead = 0;
+            value.Flag = false;
+            Array.Clear(value.S, 0, 4);
+            value.SLength = 0;
+            value.B = 0;
+            value.Tail = 0;
+        }
+
         public static bool WriteArmAlign(WriteStream stream, ArmAlign value)
         {
             {
@@ -771,6 +823,17 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroArmArray(ArmArray value)
+        {
+            value.Lead = 0;
+            value.Flag = false;
+            Array.Clear(value.Items, 0, 3);
+            value.ItemsCount = 0;
+            value.B = 0;
+            value.Tail = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitArmArray(ArmArray value)
         {
             value.Lead = 0;
             value.Flag = false;
@@ -918,6 +981,12 @@ namespace Example
             value.N = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitNarrow(Narrow value)
+        {
+            value.N = 0;
+        }
+
         public static bool WriteNarrow(WriteStream stream, Narrow value)
         {
             if (!stream.SerializeBits(ref value.N, 3))
@@ -965,6 +1034,12 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroWide(Wide value)
+        {
+            value.W = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitWide(Wide value)
         {
             value.W = 0;
         }
@@ -1033,7 +1108,7 @@ namespace Example
 
         // ZeroUneven resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-        // is unselected at None; an arm re-zeroes at its next selection.
+        // is unselected at None; an arm initializes at its next selection.
         public static void ZeroUneven(Uneven value)
         {
             value.Type = UnevenType.None;
@@ -1093,10 +1168,10 @@ namespace Example
             switch (value.Type)
             {
                 case UnevenType.Narrow:
-                    ZeroNarrow(value.Narrow); // the selected arm starts from the zero form (SPEC §5)
+                    InitNarrow(value.Narrow); // every selection starts from construction defaults
                     return ReadNarrowBatch(ref batch, value.Narrow);
                 case UnevenType.Wide:
-                    ZeroWide(value.Wide); // the selected arm starts from the zero form (SPEC §5)
+                    InitWide(value.Wide); // every selection starts from construction defaults
                     return ReadWideBatch(ref batch, value.Wide);
             }
             return true; // None
@@ -1109,6 +1184,14 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroHoldsUneven(HoldsUneven value)
+        {
+            value.Lead = 0;
+            ZeroUneven(value.U);
+            value.Tail = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitHoldsUneven(HoldsUneven value)
         {
             value.Lead = 0;
             ZeroUneven(value.U);
@@ -1178,6 +1261,18 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroArrUneven(ArrUneven value)
+        {
+            value.Lead = 0;
+            for (int i = 0; i < 3; i++)
+            {
+                ZeroUneven(value.Items[i]);
+            }
+            value.ItemsCount = 0;
+            value.Tail = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitArrUneven(ArrUneven value)
         {
             value.Lead = 0;
             for (int i = 0; i < 3; i++)
@@ -1272,6 +1367,20 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroRegainAfterAlign(RegainAfterAlign value)
+        {
+            value.Lead = 0;
+            Array.Clear(value.Items, 0, 3);
+            value.ItemsCount = 0;
+            Array.Clear(value.S, 0, 4);
+            value.SLength = 0;
+            value.P = 0;
+            value.Q = 0;
+            value.R = 0;
+            value.Tail = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitRegainAfterAlign(RegainAfterAlign value)
         {
             value.Lead = 0;
             Array.Clear(value.Items, 0, 3);

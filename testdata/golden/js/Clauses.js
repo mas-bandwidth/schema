@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
@@ -22,7 +22,13 @@ export class W13 {
 export const W13MaxBits = 160;
 export const W13MaxBytes = 24;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitW13 restores fresh construction values in place, preserving storage.
+export function InitW13(value) {
+  value.Items.fill(0);
+  value.ItemsCount = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroW13(value) {
   value.Items.fill(0);
   value.ItemsCount = 0;
@@ -75,7 +81,13 @@ export class W17 {
 export const W17MaxBits = 157;
 export const W17MaxBytes = 24;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitW17 restores fresh construction values in place, preserving storage.
+export function InitW17(value) {
+  value.Items.fill(0);
+  value.ItemsCount = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroW17(value) {
   value.Items.fill(0);
   value.ItemsCount = 0;
@@ -128,7 +140,13 @@ export class W26 {
 export const W26MaxBits = 159;
 export const W26MaxBytes = 24;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitW26 restores fresh construction values in place, preserving storage.
+export function InitW26(value) {
+  value.Items.fill(0);
+  value.ItemsCount = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroW26(value) {
   value.Items.fill(0);
   value.ItemsCount = 0;
@@ -181,7 +199,13 @@ export class W1 {
 export const W1MaxBits = 25;
 export const W1MaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitW1 restores fresh construction values in place, preserving storage.
+export function InitW1(value) {
+  value.Items.fill(0);
+  value.ItemsCount = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroW1(value) {
   value.Items.fill(0);
   value.ItemsCount = 0;
@@ -234,7 +258,13 @@ export class W52 {
 export const W52MaxBits = 158;
 export const W52MaxBytes = 24;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitW52 restores fresh construction values in place, preserving storage.
+export function InitW52(value) {
+  value.Items.fill(0n);
+  value.ItemsCount = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroW52(value) {
   value.Items.fill(0n);
   value.ItemsCount = 0;
@@ -287,7 +317,13 @@ export class W50 {
 export const W50MaxBits = 152;
 export const W50MaxBytes = 24;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitW50 restores fresh construction values in place, preserving storage.
+export function InitW50(value) {
+  value.Items.fill(0n);
+  value.ItemsCount = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroW50(value) {
   value.Items.fill(0n);
   value.ItemsCount = 0;
@@ -339,7 +375,12 @@ export class F13 {
 export const F13MaxBits = 91;
 export const F13MaxBytes = 16;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitF13 restores fresh construction values in place, preserving storage.
+export function InitF13(value) {
+  value.Items.fill(0);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroF13(value) {
   value.Items.fill(0);
 }
@@ -380,7 +421,13 @@ export class Tri3 {
 export const Tri3MaxBits = 3;
 export const Tri3MaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitTri3 restores fresh construction values in place, preserving storage.
+export function InitTri3(value) {
+  value.A = 0;
+  value.B = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTri3(value) {
   value.A = 0;
   value.B = 0;
@@ -423,7 +470,16 @@ export class ArrTri3 {
 export const ArrTri3MaxBits = 34;
 export const ArrTri3MaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitArrTri3 restores fresh construction values in place, preserving storage.
+export function InitArrTri3(value) {
+  for (let initIndex0 = 0; initIndex0 < 10; initIndex0++) {
+    const initValue0 = value.Items[initIndex0];
+    InitTri3(initValue0);
+  }
+  value.ItemsCount = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArrTri3(value) {
   for (let i = 0; i < 10; i++) {
     ZeroTri3(value.Items[i]);
@@ -473,7 +529,13 @@ export class Eleven {
 export const ElevenMaxBits = 11;
 export const ElevenMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitEleven restores fresh construction values in place, preserving storage.
+export function InitEleven(value) {
+  value.A = 0;
+  value.B = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroEleven(value) {
   value.A = 0;
   value.B = 0;
@@ -515,7 +577,15 @@ export class ArrEleven {
 export const ArrElevenMaxBits = 99;
 export const ArrElevenMaxBytes = 16;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitArrEleven restores fresh construction values in place, preserving storage.
+export function InitArrEleven(value) {
+  for (let initIndex0 = 0; initIndex0 < 9; initIndex0++) {
+    const initValue0 = value.Items[initIndex0];
+    InitEleven(initValue0);
+  }
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArrEleven(value) {
   for (let i = 0; i < 9; i++) {
     ZeroEleven(value.Items[i]);
@@ -552,7 +622,11 @@ export class EmptyA {
 export const EmptyAMaxBits = 0;
 export const EmptyAMaxBytes = 0;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitEmptyA restores fresh construction values in place, preserving storage.
+export function InitEmptyA(value) {
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroEmptyA(value) {
   // empty body — nothing to reset (SPEC §4.6)
 }
@@ -578,7 +652,11 @@ export class EmptyB {
 export const EmptyBMaxBits = 0;
 export const EmptyBMaxBytes = 0;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitEmptyB restores fresh construction values in place, preserving storage.
+export function InitEmptyB(value) {
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroEmptyB(value) {
   // empty body — nothing to reset (SPEC §4.6)
 }
@@ -617,8 +695,8 @@ export function EnumNameEmptyUnionType(value) {
 }
 
 // EmptyUnion — at most one of the arms; Type says which. Construction is the empty
-// union (None). A read zero-establishes exactly the selected arm before
-// decoding it (SPEC §5); unselected arms keep what they last held — the
+// union (None). Every read initializes the selected arm as a fresh value
+// before decoding it; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 export class EmptyUnion {
   constructor() {
@@ -635,7 +713,7 @@ export const EmptyUnionMaxBytes = 8;
 
 // ZeroEmptyUnion resets value to the §5 zero form — the empty union. The tag alone
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-// is unselected at None; an arm re-zeroes at its next selection.
+// is unselected at None; an arm is initialized at its next selection.
 export function ZeroEmptyUnion(value) {
   value.Type = EmptyUnionType.None;
 }
@@ -664,10 +742,10 @@ export function ReadEmptyUnion(stream, value) {
   value.Type = NUMBER_SCRATCH.value;
   switch (value.Type) {
     case EmptyUnionType.A:
-      ZeroEmptyA(value.A); // the selected arm starts from the zero form (SPEC §5)
+      InitEmptyA(value.A); // fresh declared defaults on every selection
       return ReadEmptyA(stream, value.A);
     case EmptyUnionType.B:
-      ZeroEmptyB(value.B); // the selected arm starts from the zero form (SPEC §5)
+      InitEmptyB(value.B); // fresh declared defaults on every selection
       return ReadEmptyB(stream, value.B);
   }
   return true; // None
@@ -687,7 +765,14 @@ export class HoldsEmptyUnion {
 export const HoldsEmptyUnionMaxBits = 14;
 export const HoldsEmptyUnionMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitHoldsEmptyUnion restores fresh construction values in place, preserving storage.
+export function InitHoldsEmptyUnion(value) {
+  value.Lead = 0;
+  value.U.Type = 0; // None; dormant arms keep their storage
+  value.Tail = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroHoldsEmptyUnion(value) {
   value.Lead = 0;
   ZeroEmptyUnion(value.U);
@@ -741,7 +826,17 @@ export class Strs {
 export const StrsMaxBits = 158;
 export const StrsMaxBytes = 24;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitStrs restores fresh construction values in place, preserving storage.
+export function InitStrs(value) {
+  value.Lead = 0;
+  value.S.fill(0);
+  value.SLength = 0;
+  value.B.fill(0);
+  value.BLength = 0;
+  value.Tail = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroStrs(value) {
   value.Lead = 0;
   value.S.fill(0);
@@ -829,7 +924,18 @@ export class ArrNested {
 export const ArrNestedMaxBits = 55;
 export const ArrNestedMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitArrNested restores fresh construction values in place, preserving storage.
+export function InitArrNested(value) {
+  value.Lead = 0;
+  for (let initIndex0 = 0; initIndex0 < 4; initIndex0++) {
+    const initValue0 = value.Items[initIndex0];
+    InitEleven(initValue0);
+  }
+  value.ItemsCount = 0;
+  value.Tail = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArrNested(value) {
   value.Lead = 0;
   for (let i = 0; i < 4; i++) {
@@ -896,7 +1002,12 @@ export class Sole {
 export const SoleMaxBits = 13;
 export const SoleMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitSole restores fresh construction values in place, preserving storage.
+export function InitSole(value) {
+  value.Only = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSole(value) {
   value.Only = 0;
 }

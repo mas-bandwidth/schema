@@ -944,7 +944,8 @@ static void test_clamping()
 
 static void test_text_clamp_is_bounded()
 {
-    const uint8_t text[] = "golden-v1";
+    // The forged-length clamp reads text[32] to choose the UTF-8 boundary.
+    const uint8_t text[33] = "golden-v1";
 
     // a payload within the bound is kept whole, and one over it cuts at a code
     // point boundary — "é" is two bytes, so a bound of 9 cuts back to 8
