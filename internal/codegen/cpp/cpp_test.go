@@ -85,3 +85,38 @@ const MinReserve = 3
 		t.Errorf("data header folded a renderable const reference: %q present\n%s", folded, h)
 	}
 }
+
+func TestUnionPlacementIncludeStaysInWireHeader(t *testing.T) {
+	u := unitFromSources(t, map[string]string{
+		"Payload.schema": `package t
+type Payload {
+    value int32 = -1
+}
+`,
+		"Choice.schema": `package t
+union Choice {
+    payload Payload
+}
+`,
+		"Empty.schema": `package t
+union Empty {}
+`,
+	})
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, contents := range files {
+		got := strings.Contains(string(contents), "\n#include <new>\n")
+		want := name == "ChoiceWire.h"
+		if got != want {
+			t.Errorf("%s: direct <new> include = %v, want %v; only the wire header constructs a payload", name, got, want)
+		}
+	}
+	if !strings.Contains(string(files["ChoiceWire.h"]), "::new ( (void*) &value.payload ) Payload{};") {
+		t.Error("ChoiceWire.h lost selected-payload placement construction")
+	}
+	if !strings.Contains(string(files["Choice.h"]), "Application code must include <new>") {
+		t.Error("Choice.h must tell applications to include <new> for its placement-construction example")
+	}
+}

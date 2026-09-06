@@ -326,6 +326,25 @@ defmodule SchemaTestElixir do
       "ProbeBits round-trips — 9/33/64-bit and full-range paths"
     )
 
+    # The same independently specified seven-bit packet as every other port.
+    arm_choice = %Example.DefaultChoice{
+      type: Example.DefaultChoiceType.first(),
+      first: %Example.DefaultArm{marker: 5}
+    }
+    check(Example.ArmDefaults.write_default_choice(arm_choice) == <<0x51>>,
+      "selected-arm defaults: independent byte oracle")
+    check(Example.ArmDefaults.measure_default_choice(arm_choice) == 7,
+      "selected-arm defaults: seven written bits")
+    check(%Example.ProbeConfig{}.retries == -1 and
+      %Example.ProbeConfig{}.preferred == Example.Weapon.railgun(),
+      "selected-arm defaults: fresh element construction")
+    for _ <- 1..2 do
+      {:ok, arm_out} = Example.ArmDefaults.read_default_choice(<<0x51>>, 7)
+      check(arm_out.type == Example.DefaultChoiceType.first() and
+        arm_out.first.entries == [] and arm_out.first.marker == 5,
+        "selected-arm defaults: each immutable read constructs a fresh payload")
+    end
+
     # ---- ProbeCollider: first-class one-of (SPEC §4.8) — C++-pinned wire,
     # round trip, the None arm, an array of unions, and the refusal negative
     # controls ----

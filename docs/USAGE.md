@@ -245,7 +245,7 @@ type Collider
 ```
 
 **Every union has an implicit `None = 0`** — the empty union, in band, so a
-zero-initialized union field carries "no shape" without a has-flag. The
+default-constructed union carries "no shape" without a has-flag. The
 compiler generates the tag enum `ColliderShapeType` (`None = 0`, variants in
 declared order, then `Count` and `Max`), and the wire is the tag in minimal
 bits for `[0, variant count]` followed by **the selected payload only**:
@@ -274,9 +274,21 @@ BoxCollider }` repeated per shape — which spends a bit per absent arm and
 lets illegal states (two shapes at once) exist for every consumer to police.
 A read **rejects a tag above the count**, and a write validates the tag
 before it rides. The representation is per target, all nine covered: C++ and
-C generate the tagged union above; Go, C#, JS, Dart, Java and Elixir lay the
-tag beside one pre-allocated arm per variant; Rust gets a real
+C generate the tagged union above; Go, C#, JS, Dart and Java lay the
+tag beside one pre-allocated arm per variant; Elixir uses immutable structs
+with a tag and arm fields; Rust gets a real
 `enum ColliderShape { None, Box(BoxCollider), ... }`.
+
+Selecting an arm initializes its payload with its declared defaults, just
+like a fresh value of that type. Initialize the payload before populating it
+and setting the tag; assigning the tag alone does not initialize storage.
+Use the generated constructor where available, or `Init<Type>` / `init<Type>`
+in C#, JavaScript, Java and Dart to initialize an existing payload in place.
+For C++, construct the member in place, for example
+`::new ( (void*) &shape.sphere ) SphereCollider{}`. Decoding performs the same
+initialization on every selection, even when the tag repeats, before reading
+the payload. Mutable managed targets keep their existing arm objects and
+leave unselected arms unchanged.
 
 An arm is a field line: its type is any type a field's is, and an arm may
 name no type at all, which is an arm that selects and carries nothing. A
@@ -1116,7 +1128,7 @@ follow-on rather than part of this construct.
 `<Name>TableType()` returns the reflection descriptor: field names, wire ids
 and kinds, bounds, ranges, guards, `Optional`, the enum/union vocabulary, and
 an enum-keyed array's `KeyTypeName`/`KeyName`/`KeyId`, which are functions of
-the KEY — `KeyId(0)` is `0`, the reserved id that says `None` names no slot.
+the KEY — `KeyId(0)` is `0`, the id that says `None` names no slot.
 `ArrayBound` is the storage extent, `E.Max`, and the key at index `i` is
 `i + 1`.
 
@@ -1286,7 +1298,7 @@ Generated code walks `.slots` directly and never pays for it.
 `<name>_table_type()` returns the reflection descriptor: field names, wire ids
 and kinds, storage offsets, bounds, ranges, guards, `optional`, the enum/union
 vocabulary, and an enum-keyed array's `key_type_name`/`key_name`/`key_id`,
-which are functions of the KEY — `key_id(0)` is `0`, the reserved id that says
+which are functions of the KEY — `key_id(0)` is `0`, the id that says
 `None` names no slot. `array_bound` is the storage extent, `E.Max`, and the key
 at index `i` is `i + 1`. It is `static` data, so any thread may read it and it
 costs a lookup rather than a parse.
@@ -2972,7 +2984,7 @@ cook's own header, and the third coordinate of the key below.
 
 ```
 $ schema build-version tables/block/
-0xb1bb90bcc5a063f3
+0xabef66a085fb8fc0
 ```
 
 ```cpp
@@ -3286,13 +3298,11 @@ language's own int32 storage cap.
 
 ### Inspecting a whole build: the view
 
-*Specified, not yet implemented — no backend emits the view file yet
-(SPEC-TABLES.md §8). The per-table descriptors above are live today.*
-
 The descriptors above answer "what is in this table". The **view** answers
 "what is in this build" — every declaration the schema made, walkable by a
 tool that has the generated code and no schema files at all. Nothing asks
-for it: every unit generates one more pair of files beside the rest,
+for it: every unit that declares a table generates one more pair of files
+beside the rest,
 
 ```
 generated/TabledemoView.h
@@ -3350,8 +3360,9 @@ for ( int32_t i = 0; i < unit->num_tables; i++ )   // then unit->types, the same
 
 `unit->tables` is every table in the unit and `unit->types` every type —
 both complete, and every entry points at the same `TableTypeInfo` the
-section above walks, so one printer serves both. C# is the same registry
-through `Schema.UnitView()`.
+section above walks, so one printer serves both. C++ carries the registry
+today; the other eight targets emit no view file yet, and a unit that
+declares no table gets none in C++ either (SPEC-TABLES.md §8.3, §15).
 
 Each set is ordered by declaration name, so a listing does not churn when a
 file is renamed or a declaration moves between files.

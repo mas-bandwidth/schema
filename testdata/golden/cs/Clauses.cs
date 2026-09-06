@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 using System;
 using System.Runtime.CompilerServices;
@@ -123,8 +123,8 @@ namespace Example
     }
 
     // EmptyUnion — at most one of the arms; Type says which. Construction is the empty
-    // union (None). A read zero-establishes exactly the selected arm before
-    // decoding it (SPEC §5); unselected arms keep what they last held — the
+    // union (None). Every read selection initializes the chosen payload from
+    // construction defaults; unselected arms keep what they last held — the
     // MessageStorage reuse discipline. Consumers read the selected arm only.
     public sealed class EmptyUnion
     {
@@ -187,6 +187,13 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroW13(W13 value)
+        {
+            Array.Clear(value.Items, 0, 12);
+            value.ItemsCount = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitW13(W13 value)
         {
             Array.Clear(value.Items, 0, 12);
             value.ItemsCount = 0;
@@ -276,6 +283,13 @@ namespace Example
             value.ItemsCount = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitW17(W17 value)
+        {
+            Array.Clear(value.Items, 0, 9);
+            value.ItemsCount = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteW17(WriteStream stream, W17 value)
@@ -355,6 +369,13 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroW26(W26 value)
+        {
+            Array.Clear(value.Items, 0, 6);
+            value.ItemsCount = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitW26(W26 value)
         {
             Array.Clear(value.Items, 0, 6);
             value.ItemsCount = 0;
@@ -444,6 +465,13 @@ namespace Example
             value.ItemsCount = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitW1(W1 value)
+        {
+            Array.Clear(value.Items, 0, 20);
+            value.ItemsCount = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteW1(WriteStream stream, W1 value)
@@ -523,6 +551,13 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroW52(W52 value)
+        {
+            Array.Clear(value.Items, 0, 3);
+            value.ItemsCount = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitW52(W52 value)
         {
             Array.Clear(value.Items, 0, 3);
             value.ItemsCount = 0;
@@ -612,6 +647,13 @@ namespace Example
             value.ItemsCount = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitW50(W50 value)
+        {
+            Array.Clear(value.Items, 0, 3);
+            value.ItemsCount = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteW50(WriteStream stream, W50 value)
@@ -695,6 +737,12 @@ namespace Example
             Array.Clear(value.Items, 0, 7);
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitF13(F13 value)
+        {
+            Array.Clear(value.Items, 0, 7);
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteF13(WriteStream stream, F13 value)
@@ -759,6 +807,13 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroTri3(Tri3 value)
+        {
+            value.A = 0;
+            value.B = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitTri3(Tri3 value)
         {
             value.A = 0;
             value.B = 0;
@@ -831,6 +886,16 @@ namespace Example
             for (int i = 0; i < 10; i++)
             {
                 ZeroTri3(value.Items[i]);
+            }
+            value.ItemsCount = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitArrTri3(ArrTri3 value)
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                InitTri3(value.Items[i]);
             }
             value.ItemsCount = 0;
         }
@@ -908,6 +973,13 @@ namespace Example
             value.B = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitEleven(Eleven value)
+        {
+            value.A = 0;
+            value.B = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteEleven(WriteStream stream, Eleven value)
@@ -978,6 +1050,15 @@ namespace Example
             }
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitArrEleven(ArrEleven value)
+        {
+            for (int i = 0; i < 9; i++)
+            {
+                InitEleven(value.Items[i]);
+            }
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteArrEleven(WriteStream stream, ArrEleven value)
@@ -1035,6 +1116,12 @@ namespace Example
             _ = value; // empty body — nothing to reset (SPEC §4.6)
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitEmptyA(EmptyA value)
+        {
+            _ = value; // empty body — nothing to initialize
+        }
+
         public static bool WriteEmptyA(WriteStream stream, EmptyA value)
         {
             // empty body — presence is the payload (SPEC §4.6)
@@ -1070,6 +1157,12 @@ namespace Example
         public static void ZeroEmptyB(EmptyB value)
         {
             _ = value; // empty body — nothing to reset (SPEC §4.6)
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitEmptyB(EmptyB value)
+        {
+            _ = value; // empty body — nothing to initialize
         }
 
         public static bool WriteEmptyB(WriteStream stream, EmptyB value)
@@ -1122,7 +1215,7 @@ namespace Example
 
         // ZeroEmptyUnion resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-        // is unselected at None; an arm re-zeroes at its next selection.
+        // is unselected at None; an arm initializes at its next selection.
         public static void ZeroEmptyUnion(EmptyUnion value)
         {
             value.Type = EmptyUnionType.None;
@@ -1183,10 +1276,10 @@ namespace Example
             switch (value.Type)
             {
                 case EmptyUnionType.A:
-                    ZeroEmptyA(value.A); // the selected arm starts from the zero form (SPEC §5)
+                    InitEmptyA(value.A); // every selection starts from construction defaults
                     return ReadEmptyA(stream, value.A);
                 case EmptyUnionType.B:
-                    ZeroEmptyB(value.B); // the selected arm starts from the zero form (SPEC §5)
+                    InitEmptyB(value.B); // every selection starts from construction defaults
                     return ReadEmptyB(stream, value.B);
             }
             return true; // None
@@ -1205,10 +1298,10 @@ namespace Example
             switch (value.Type)
             {
                 case EmptyUnionType.A:
-                    ZeroEmptyA(value.A); // the selected arm starts from the zero form (SPEC §5)
+                    InitEmptyA(value.A); // every selection starts from construction defaults
                     return ReadEmptyABatch(ref batch, value.A);
                 case EmptyUnionType.B:
-                    ZeroEmptyB(value.B); // the selected arm starts from the zero form (SPEC §5)
+                    InitEmptyB(value.B); // every selection starts from construction defaults
                     return ReadEmptyBBatch(ref batch, value.B);
             }
             return true; // None
@@ -1221,6 +1314,14 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroHoldsEmptyUnion(HoldsEmptyUnion value)
+        {
+            value.Lead = 0;
+            ZeroEmptyUnion(value.U);
+            value.Tail = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitHoldsEmptyUnion(HoldsEmptyUnion value)
         {
             value.Lead = 0;
             ZeroEmptyUnion(value.U);
@@ -1290,6 +1391,17 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroStrs(Strs value)
+        {
+            value.Lead = 0;
+            Array.Clear(value.S, 0, 8);
+            value.SLength = 0;
+            Array.Clear(value.B, 0, 8);
+            value.BLength = 0;
+            value.Tail = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitStrs(Strs value)
         {
             value.Lead = 0;
             Array.Clear(value.S, 0, 8);
@@ -1395,6 +1507,18 @@ namespace Example
             value.Tail = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitArrNested(ArrNested value)
+        {
+            value.Lead = 0;
+            for (int i = 0; i < 4; i++)
+            {
+                InitEleven(value.Items[i]);
+            }
+            value.ItemsCount = 0;
+            value.Tail = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteArrNested(WriteStream stream, ArrNested value)
@@ -1479,6 +1603,12 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroSole(Sole value)
+        {
+            value.Only = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitSole(Sole value)
         {
             value.Only = 0;
         }

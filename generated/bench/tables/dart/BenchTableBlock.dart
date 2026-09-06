@@ -26,7 +26,7 @@ import 'dart:typed_data';
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-const int tableBuildVersion = 0xbee10aff8f660e35;
+const int tableBuildVersion = 0xa9aa850e9c82a97f;
 
 // The block's magic (docs/SPEC-TABLES.md §19.1), read BYTEWISE: it is the one field
 // read without assuming the order the rest of the block is in. A consumer that

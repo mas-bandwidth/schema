@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package tabledemo — protocol id 0xceef9ce015dd2543 (packets only: tables version by field id, not by protocol id)
+// package tabledemo — protocol id 0xba7b344f28584d33 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -620,13 +620,17 @@ inline double TableWidenF32( uint32_t bits )
 // and a code point past U+10FFFF, which is SPEC.md §4.7's rule in this wire's
 // idiom: the field reads its declared default, one malformed counts, and the
 // parent reads on past L.
-inline bool TableUtf8Valid( const uint8_t * bytes, int64_t length )
+//
+// A LENGTH IS A 64-BIT NUMBER (§3), so it arrives as one: a payload length is
+// whatever the wire spelled, and narrowing it to a signed count would read
+// 0xFFFFFFFFFFFFFFFF as an empty payload.
+inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
 {
-    int64_t i = 0;
+    uint64_t i = 0;
     while ( i < length )
     {
         const uint8_t lead = bytes[i];
-        int64_t continuations;
+        uint64_t continuations;
         uint32_t code_point;
         if ( lead == 0 ) { return false; }
         if ( lead < 0x80 ) { i++; continue; }
@@ -635,7 +639,7 @@ inline bool TableUtf8Valid( const uint8_t * bytes, int64_t length )
         else if ( ( lead & 0xF8 ) == 0xF0 ) { continuations = 3; code_point = lead & 0x07; }
         else { return false; }
         if ( i + continuations >= length ) { return false; }
-        for ( int64_t k = 1; k <= continuations; k++ )
+        for ( uint64_t k = 1; k <= continuations; k++ )
         {
             if ( ( bytes[i + k] & 0xC0 ) != 0x80 ) { return false; }
             code_point = ( code_point << 6 ) | uint32_t( bytes[i + k] & 0x3F );
@@ -651,9 +655,15 @@ inline bool TableUtf8Valid( const uint8_t * bytes, int64_t length )
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
-inline int64_t TableUtf8Clamp( const uint8_t * bytes, int64_t length, int64_t bound )
+//
+// THE ANSWER IS NEVER ABOVE THE BOUND. The length arrives as the wire's own
+// 64-bit number and the caller turns the answer back into the size of a copy,
+// so a length no reader could have bounded has to leave here bounded: taken as
+// a signed count, 0xFFFFFFFFFFFFFFFF is -1, -1 is under every bound, and the
+// copy would run at SIZE_MAX.
+inline int64_t TableUtf8Clamp( const uint8_t * bytes, uint64_t length, int64_t bound )
 {
-    if ( length <= bound ) { return length; }
+    if ( length <= (uint64_t) bound ) { return (int64_t) length; }
     int64_t cut = bound;
     while ( cut > 0 && ( bytes[cut] & 0xC0 ) == 0x80 ) { cut--; }
     return cut;
@@ -1317,7 +1327,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // generated field header carries as a literal.
 static const int64_t kTableAnnounceBytes = 1727;
 static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x6e, 0xd7, 0x80, 0x52, 0x80, 0xef, 0x81, 0x26, 0x02,
+    0x01, 0x01, 0x09, 0x4e, 0x0a, 0x10, 0xd9, 0x0e, 0x0f, 0x49, 0x31, 0x02,
     0x0e, 0x97, 0x0d, 0x06, 0x94, 0x0d, 0xc5, 0x67, 0xc4, 0xf0, 0x1f, 0xfd,
     0x54, 0xa3, 0x0d, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04,
     0x01, 0x07, 0x00, 0xd1, 0x31, 0xfe, 0xf6, 0x18, 0x16, 0x77, 0x6a, 0x04,
@@ -2100,7 +2110,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x2681ef805280d76eull;
+static const uint64_t BuildVersion = 0x31490f0ed9100a4eull;
 
 } // namespace tabledemo
 
@@ -2776,9 +2786,9 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigLoadBody( TableReader & r, TeamConfig & va
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.banner[0] = 0; value.banner_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.banner[0] = 0; value.banner_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.banner, r.buffer + r.offset, (size_t) keep );
                 value.banner[keep] = 0;
                 value.banner_length = (int32_t) keep;

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0x9660fa8c14d38d67
+// package ludicrous — protocol id 0xf4a226f4166d919b
 //
 // The shipped Dart wire path (issue #155): the serialize.dart bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -34,7 +34,7 @@ bool _unsignedLessThan(int a, int b) =>
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const int protocolId = 0x9660fa8c14d38d67;
+const int protocolId = 0xf4a226f4166d919b;
 
 const int maxWorldUnits = 30000;
 
@@ -90,6 +90,15 @@ const int fixedProbeMaxBytes = 24;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroFixedProbe(FixedProbe value) {
+  value.angle = 0;
+  value.position = 0;
+  value.reach = Int128.zero;
+  value.ticks = 0;
+  value.samples.fillRange(0, value.samples.length, 0);
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initFixedProbe(FixedProbe value) {
   value.angle = 0;
   value.position = 0;
   value.reach = Int128.zero;
@@ -283,6 +292,17 @@ void zeroUnsignedProbe(UnsignedProbe value) {
   value.ticks = 0;
   value.samples.fillRange(0, value.samples.length, 0);
   value.locked = 0;
+  value.tail = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initUnsignedProbe(UnsignedProbe value) {
+  value.angle = 0;
+  value.span = 0;
+  value.reach = UInt128.zero;
+  value.ticks = 0;
+  value.samples.fillRange(0, value.samples.length, 0);
+  value.locked = 196608;
   value.tail = 0;
 }
 
@@ -495,6 +515,15 @@ void zeroWideProbe(WideProbe value) {
   value.flux = Int128.zero;
   value.bias = Int128.zero;
   value.seed = UInt128.zero;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initWideProbe(WideProbe value) {
+  value.entityId = UInt128.zero;
+  value.energy = Int128.zero;
+  value.flux = Int128.zero;
+  value.bias = const Int128(0xffffffffffffffff, 0xffffffffffffff06);
+  value.seed = const UInt128(2, 0);
 }
 
 // writeWideProbe packs value into view — the trusted writer (contracts asserted,
@@ -792,6 +821,17 @@ void zeroLudicrousState(LudicrousState value) {
   value.mode = 0;
   zeroFixedProbe(value.probe);
   zeroWideProbe(value.wide);
+  value.keys.fillRange(0, value.keys.length, UInt128.zero);
+  value.keysCount = 0;
+  value.hasTarget = false;
+  value.targetId = UInt128.zero;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initLudicrousState(LudicrousState value) {
+  value.mode = 0;
+  initFixedProbe(value.probe);
+  initWideProbe(value.wide);
   value.keys.fillRange(0, value.keys.length, UInt128.zero);
   value.keysCount = 0;
   value.hasTarget = false;
@@ -1377,6 +1417,14 @@ void zeroDegenerateProbe(DegenerateProbe value) {
   value.tail = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initDegenerateProbe(DegenerateProbe value) {
+  value.lockedFixed = -196608;
+  value.lockedInt = 7;
+  value.lockedWide = const Int128(0xffffffffffffffff, 0xfffff4c58c31d00e);
+  value.tail = 0;
+}
+
 // writeDegenerateProbe packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // degenerateProbeMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -1473,6 +1521,13 @@ const int fixedVecMaxBytes = 16;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroFixedVec(FixedVec value) {
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initFixedVec(FixedVec value) {
   value.x = 0;
   value.y = 0;
   value.z = 0;
@@ -1617,6 +1672,14 @@ void zeroFixedQuat(FixedQuat value) {
   value.y = 0;
   value.z = 0;
   value.w = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initFixedQuat(FixedQuat value) {
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+  value.w = 1073741824;
 }
 
 // writeFixedQuat packs value into view — the trusted writer (contracts asserted,

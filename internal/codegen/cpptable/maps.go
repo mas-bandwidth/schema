@@ -1039,7 +1039,7 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 		g.pf("                uint64_t key_len = 0;\n")
 		g.pf("                if ( !r.getleb( key_len ) || !r.room( key_len ) ) { out.malformed = true; return out; }\n")
 		g.pf("                // a key a string value would refuse as malformed makes the MAP malformed (§2.8, §3)\n")
-		g.pf("                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) key_len ) ) { out.malformed = true; return out; }\n")
+		g.pf("                if ( !TableUtf8Valid( r.buffer + r.offset, key_len ) ) { out.malformed = true; return out; }\n")
 		g.pf("                out.key = (const char *) ( r.buffer + r.offset );\n")
 		g.pf("                out.length = (int32_t) key_len;\n")
 		g.pf("                out.over = key_len > %d; // KEYS NEVER CLAMP: the entry is dropped whole\n", key.Type.Size)

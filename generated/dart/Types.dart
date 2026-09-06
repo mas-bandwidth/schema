@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 import 'dart:typed_data';
 
@@ -85,6 +85,13 @@ const int vec3MaxBytes = 24;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroVec3(Vec3 value) {
+  value.x = 0.0;
+  value.y = 0.0;
+  value.z = 0.0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initVec3(Vec3 value) {
   value.x = 0.0;
   value.y = 0.0;
   value.z = 0.0;
@@ -234,6 +241,14 @@ const int quatMaxBytes = 32;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroQuat(Quat value) {
+  value.x = 0.0;
+  value.y = 0.0;
+  value.z = 0.0;
+  value.w = 0.0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initQuat(Quat value) {
   value.x = 0.0;
   value.y = 0.0;
   value.z = 0.0;
@@ -413,6 +428,12 @@ void zeroHandle(Handle value) {
   value.objectSequence = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initHandle(Handle value) {
+  value.objectId = 0;
+  value.objectSequence = 0;
+}
+
 // writeHandle packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // handleMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -505,6 +526,13 @@ const int quantizedPositionMaxBytes = 16;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroQuantizedPosition(QuantizedPosition value) {
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initQuantizedPosition(QuantizedPosition value) {
   value.x = 0;
   value.y = 0;
   value.z = 0;
@@ -635,6 +663,13 @@ const int quantizedVelocityMaxBytes = 16;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroQuantizedVelocity(QuantizedVelocity value) {
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initQuantizedVelocity(QuantizedVelocity value) {
   value.x = 0;
   value.y = 0;
   value.z = 0;
@@ -773,6 +808,14 @@ void zeroQuantizedRotation(QuantizedRotation value) {
   value.w = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initQuantizedRotation(QuantizedRotation value) {
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+  value.w = 0;
+}
+
 // writeQuantizedRotation packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // quantizedRotationMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -901,6 +944,15 @@ void zeroRigidBody(RigidBody value) {
   value.atRest = false;
   zeroVec3(value.linearVelocity);
   zeroVec3(value.angularVelocity);
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initRigidBody(RigidBody value) {
+  initVec3(value.position);
+  initQuat(value.orientation);
+  value.atRest = false;
+  initVec3(value.linearVelocity);
+  initVec3(value.angularVelocity);
 }
 
 // writeRigidBody packs value into view — the trusted writer (contracts asserted,
@@ -1364,6 +1416,23 @@ void zeroInput(Input value) {
   value.ping = false;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initInput(Input value) {
+  value.stickX = 0.0;
+  value.stickY = 0.0;
+  value.throttle = 0.0;
+  value.yaw = 0.0;
+  value.pitch = 0.0;
+  value.fire = false;
+  value.altFire = false;
+  value.boost = false;
+  value.brake = false;
+  value.aim = false;
+  value.lockOn = false;
+  value.zoom = false;
+  value.ping = false;
+}
+
 // writeInput packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // inputMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -1539,6 +1608,17 @@ void zeroInputPacket(InputPacket value) {
   value.startFrame = 0;
   for (var i0 = 0; i0 < 16; i0++) {
     zeroInput(value.inputs[i0]);
+  }
+  value.inputsCount = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initInputPacket(InputPacket value) {
+  value.synchronizeSequence = 0;
+  value.currentFrame = 0;
+  value.startFrame = 0;
+  for (var i0 = 0; i0 < 16; i0++) {
+    initInput(value.inputs[i0]);
   }
   value.inputsCount = 0;
 }
@@ -1829,6 +1909,20 @@ void zeroShipCreate(ShipCreate value) {
   zeroQuantizedPosition(value.position);
   zeroQuantizedRotation(value.rotation);
   zeroQuantizedVelocity(value.linearVelocity);
+  value.hasFlags = false;
+  value.flags = 0;
+  value.team = 0;
+  value.health = 0;
+  value.thrust = 0;
+  value.pending = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initShipCreate(ShipCreate value) {
+  value.shipType = 0;
+  initQuantizedPosition(value.position);
+  initQuantizedRotation(value.rotation);
+  initQuantizedVelocity(value.linearVelocity);
   value.hasFlags = false;
   value.flags = 0;
   value.team = 0;
@@ -2147,6 +2241,12 @@ void zeroExpressionProbe(ExpressionProbe value) {
   value.spinRate = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initExpressionProbe(ExpressionProbe value) {
+  value.hardpointIndex = 0;
+  value.spinRate = rotationUnits;
+}
+
 // writeExpressionProbe packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // expressionProbeMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -2256,6 +2356,15 @@ void zeroExtremeProbe(ExtremeProbe value) {
   value.ceilingRange = 0;
   value.floorDefault = 0;
   value.ceilingDefault = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initExtremeProbe(ExtremeProbe value) {
+  value.floorBound = 0;
+  value.doubledFloor = 0;
+  value.ceilingRange = 1;
+  value.floorDefault = 0x8000000000000000;
+  value.ceilingDefault = 0xffffffffffffffff;
 }
 
 // writeExtremeProbe packs value into view — the trusted writer (contracts asserted,
@@ -2474,6 +2583,14 @@ void zeroExtremeRow(ExtremeRow value) {
   value.clampedCeiling = 0;
   value.floorDef = 0;
   value.ceilingDef = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initExtremeRow(ExtremeRow value) {
+  value.clampedFloor = 0;
+  value.clampedCeiling = 1;
+  value.floorDef = 0x8000000000000000;
+  value.ceilingDef = 0xffffffffffffffff;
 }
 
 // writeExtremeRow packs value into view — the trusted writer (contracts asserted,

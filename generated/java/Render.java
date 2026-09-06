@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 package example;
 
@@ -37,6 +37,15 @@ public final class Render {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroRenderSprite(RenderSprite value) {
+        value.sortKey = 0;
+        value.meshId = 0;
+        value.materialId = 0;
+        value.layer = 0;
+        value.team = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initRenderSprite(RenderSprite value) {
         value.sortKey = 0;
         value.meshId = 0;
         value.materialId = 0;
@@ -253,6 +262,16 @@ public final class Render {
         value.spriteCountHint = 0;
         for (int i0 = 0; i0 < 64; i0++) {
             zeroRenderSprite(value.sprites[i0]);
+        }
+        value.spritesCount = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initRenderBlock(RenderBlock value) {
+        value.workerIndex = 0;
+        value.spriteCountHint = 0;
+        for (int i0 = 0; i0 < 64; i0++) {
+            initRenderSprite(value.sprites[i0]);
         }
         value.spritesCount = 0;
     }

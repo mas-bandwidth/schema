@@ -24,6 +24,7 @@ for f <- [
       "Types.ex",
       "Render.ex",
       "Wire.ex",
+      "ArmDefaults.ex",
       "Degenerate.ex",
       "Clauses.ex",
       "Joins.ex"

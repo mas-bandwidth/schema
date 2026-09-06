@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0x88cf953e975ace60
+// package benchtable — protocol id 0x0926221bcb6f475f
 
 #pragma once
 
 #include <cstdint>
+#include <new>
 
 #include "serialize.h"
 
@@ -134,13 +135,13 @@ SCHEMA_READ_INLINE bool ReadTableEvent( serialize::ReadStream & stream, TableEve
         case TableEventType::None:
             return true;
         case TableEventType::Hit:
-            value.hit = TableHitEvent{};
+            ::new ( (void*) &value.hit ) TableHitEvent{};
             return ReadTableHitEvent( stream, value.hit );
         case TableEventType::Chat:
-            value.chat = TableChatEvent{};
+            ::new ( (void*) &value.chat ) TableChatEvent{};
             return ReadTableChatEvent( stream, value.chat );
         case TableEventType::Pickup:
-            value.pickup = TablePickupEvent{};
+            ::new ( (void*) &value.pickup ) TablePickupEvent{};
             return ReadTablePickupEvent( stream, value.pickup );
     }
     return false;

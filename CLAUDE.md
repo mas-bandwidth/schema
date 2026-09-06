@@ -142,9 +142,10 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   0.09 s vs variant 0.13 s — the variant surface alone costs +44% header compile
   time; Glenn's ruling on the earlier, cruder number stands as the principle ("0.17
   -> 0.27 is not trivial for me... you almost always pay through the nose for it at
-  compile time"). The union arm-zeroing shape (zero at arm selection, not
-  whole-union memset at construction — the memset measured 60.6% of batch-read
-  self-cycles) is pinned by the stale-leak test.
+  compile time"). The earlier zeroing rule established only the selected arm;
+  whole-union memset at construction measured 60.6% of batch-read self-cycles.
+  Packet selection now constructs the chosen payload with its defaults
+  (SPEC §4.8), pinned by the arm-default oracle.
 - **The tables JSON walk, header vs translation unit — the paired before/after**
   (schema#283, owner: *"It would be best if it were written to a corresponding cpp
   file so it doesn't need to be included every time."*). Same instrument as the
@@ -193,8 +194,8 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   (`-gcflags=-m`). Re-convict per language; never port a win on faith.
 - **Emitter levers live in the IR for reuse**: `ir.AlignedFixedByteArrays` (bulk-bytes —
   only where alignment is PROVEN; the wire is law, never a silent re-pin), generation-time
-  folded bounds, union tag-only construction (an arm zero-establishes at selection —
-  SPEC §5 semantics, guarded by the stale-leak pinned test). C# batch emission: cores are
+  folded bounds, union tag-only construction (selected packet payloads receive construction
+  defaults on every selection — SPEC §4.8, guarded by the arm-default oracle). C# batch emission: cores are
   INLINE-ONLY (an address-exposed ref-struct measured WORSE than no batch) and OPT-IN by
   scalar density (bulk-dominated types lose; rule in `internal/codegen/csharp/batch.go`).
 - **A generated codec must not depend on the compiler's INLINING BUDGET.** A

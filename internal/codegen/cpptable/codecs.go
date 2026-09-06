@@ -1804,9 +1804,9 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%suint64_t len = 0;\n", ind)
 		g.pf("%sif ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%s// ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared\n%s// default, one malformed counts, and the parent reads on past L\n", ind, ind)
-		g.pf("%sif ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.%s[0] = 0; value.%s_length = 0; r.offset += (int64_t) len; break; }\n", ind, f.Name, f.Name)
+		g.pf("%sif ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.%s[0] = 0; value.%s_length = 0; r.offset += (int64_t) len; break; }\n", ind, f.Name, f.Name)
 		g.pf("%suint64_t keep = len;\n", ind)
-		g.pf("%sif ( keep > %d ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, %d ); r.report->clamped++; } // at a code point boundary (§3)\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%sif ( keep > %d ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, %d ); r.report->clamped++; } // at a code point boundary (§3)\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%smemcpy( value.%s, r.buffer + r.offset, (size_t) keep );\n", ind, f.Name)
 		g.pf("%svalue.%s[keep] = 0;\n", ind, f.Name)
 		g.pf("%svalue.%s_length = (int32_t) keep;\n", ind, f.Name)
@@ -2125,9 +2125,10 @@ func (g *tableGen) unionArmsLambda(un *ir.Union, hoisted bool) string {
 		}
 	}
 	if general {
-		// the rows are emitted through the ONE field-row emitter and captured,
-		// so an arm's descriptor can never drift from a field's
 		saved := g.body.String()
+		// AN ARM'S TAG LIST IS A DECLARATION, so it is emitted BEFORE the row
+		// array and not inside its braced initializer. It is captured
+		// separately for that reason alone.
 		g.body.Reset()
 		for _, v := range un.Variants {
 			if v.Body() || v.Void() {
@@ -2135,6 +2136,10 @@ func (g *tableGen) unionArmsLambda(un *ir.Union, hoisted bool) string {
 			}
 			g.emitTagsStatic(fieldSpelling{owner: un.Name}.tagsName(v.F), v.F.Tags, "static const", "")
 		}
+		tags := oneLine(g.body.String())
+		// the rows are emitted through the ONE field-row emitter and captured,
+		// so an arm's descriptor can never drift from a field's
+		g.body.Reset()
 		for _, v := range un.Variants {
 			if v.Body() || v.Void() {
 				continue
@@ -2144,6 +2149,9 @@ func (g *tableGen) unionArmsLambda(un *ir.Union, hoisted bool) string {
 		rows := oneLine(g.body.String())
 		g.body.Reset()
 		g.body.WriteString(saved)
+		if tags != "" {
+			fmt.Fprintf(&b, " %s", tags)
+		}
 		// the array is named for its UNION: a NESTED-union arm's own rows are
 		// emitted inside this initializer, where this name is already in scope,
 		// so one name for both would shadow (-Wshadow is an error here)
@@ -2297,6 +2305,13 @@ type fieldSpelling struct {
 	member string // the member path within it
 	indent string
 	guard  string
+	// outside marks a field of a `type` NO TABLE CLOSURE REACHES
+	// (docs/SPEC-TABLES.md §8.2). The two columns that describe the TABLE
+	// WIRE are empty there — such a type has none, and its field ids were
+	// never checked for collisions (§5's refusal is scoped to the closure, as
+	// §16.4's key refusal is), so filling them would hand a tool two fields
+	// under one id and a text-form key for a text form that does not exist.
+	outside bool
 }
 
 // wideName is the name of the TableWideRange static a wide-kind row points at.
@@ -2329,11 +2344,19 @@ func annotationColumns(doc string, tags []string, tagsName string) string {
 	return fmt.Sprintf("%s, %d, %s", docColumn, len(tags), list)
 }
 
+// tableZeroId is the id function a descriptor outside a table closure carries:
+// present, and answering 0 for every value (docs/SPEC-TABLES.md §8.2).
+const tableZeroId = "+[]( uint64_t ) -> uint64_t { return 0; }"
+
 // emitFieldInfo emits ONE TableFieldInfo row (docs/SPEC-TABLES.md §8.1). It is
 // the whole descriptor vocabulary in one place: a field of a table and an arm
 // of a union are the same row, differing only in how the storage is spelled.
 func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	id := tableFieldWireId(f)
+	jsonKey := fmt.Sprintf("\"%s\"", ir.TableFieldJsonKey(f))
+	if sp.outside {
+		id, jsonKey = 0, "NULL"
+	}
 	kind := tableScalarKind(f)
 	if f.Type.Kind == ir.TBytes && !f.Type.Blob() {
 		kind = tkU8
@@ -2497,6 +2520,15 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 			}
 		}
 	}
+	if sp.outside && variantId != "NULL" {
+		// OUTSIDE A TABLE CLOSURE THE FUNCTION ANSWERS 0
+		// (docs/SPEC-TABLES.md §8.2), the same answer the registry's
+		// ViewVariant rows give: §5's refusals are scoped to the closure, so
+		// nothing ever checked these ids. It stays a FUNCTION rather than
+		// becoming NULL, because a null id function beside a non-null name
+		// function is what identifies a flags field (§8.1).
+		variantId = tableZeroId
+	}
 
 	presentOffset := "0xffffffffu"
 	if f.Type.Optional {
@@ -2512,6 +2544,9 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		keyTypeName = fmt.Sprintf("%q", f.KeyEnum)
 		keyName = fmt.Sprintf("+[]( uint64_t v ) { return EnumName( %s( v ) ); }", f.KeyEnum)
 		keyId = fmt.Sprintf("+[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( %s( v ), id ); return id; }", f.KeyEnum)
+		if sp.outside {
+			keyId = tableZeroId // §8.2, exactly as variant_id above
+		}
 		g.noteRef(f.KeyEnum)
 	}
 
@@ -2543,8 +2578,8 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	if _, _, ok := ir.TableRawRange(f); ok && ir.TableKindWide(tableScalarKind(f)) {
 		wide = "&" + sp.wideName(f)
 	}
-	g.pf("%s    { \"%s\", \"%s\", \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s },\n",
-		sp.indent, f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
+	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s },\n",
+		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, fracBits, wide, enumMax, enumName, variantId,
 		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)))

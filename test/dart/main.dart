@@ -19,6 +19,7 @@ import 'dart:typed_data';
 import '../../generated/bench/dart/Bench.dart' as bench;
 import '../../generated/bench/dart/Int128.dart';
 import '../../generated/bench/dart/realworld/RealWorld.dart' as rw;
+import '../../generated/dart/ArmDefaults.dart';
 import '../../generated/dart/Clauses.dart';
 import '../../generated/dart/Degenerate.dart';
 import '../../generated/dart/Enums.dart';
@@ -207,7 +208,90 @@ TestData testDataInstance() {
   return inp;
 }
 
+void testSelectedArmDefaults() {
+  // tag First=1 (2 bits), count=0 (2 bits), marker=5 (3 bits): 0x51.
+  final input = DefaultChoice()..type = DefaultChoiceType.first;
+  for (var phase = 0; phase < 2; phase++) {
+    if (phase == 1) {
+      input.first.entriesCount = 2;
+      input.first.entries[0].retries = 99;
+      initDefaultArm(input.first);
+      check(
+        input.first.entriesCount == 0 &&
+            input.first.marker == 0 &&
+            input.first.entries[0].retries == -1 &&
+            input.first.entries[1].retries == -1,
+        'initDefaultArm restores construction defaults',
+      );
+    }
+    input.first.marker = 5;
+    final count = writeDefaultChoice(input, writeView);
+    check(count == 1 && writeBuf[0] == 0x51, 'DefaultChoice wire is 0x51');
+    check(measureDefaultChoice(input) == 7, 'DefaultChoice uses seven bits');
+  }
+
+  final output = DefaultChoice();
+  final first = output.first, second = output.second;
+  final firstEntries = first.entries, secondEntries = second.entries;
+  final first0 = first.entries[0], first1 = first.entries[1];
+  final second0 = second.entries[0], second1 = second.entries[1];
+  second.marker = 7;
+  second.entriesCount = 2;
+  for (var i = 0; i < 2; i++) {
+    second.entries[i].retries = 41 + i;
+    second.entries[i].preferred = Weapon.missile;
+  }
+  output.type = DefaultChoiceType.second;
+  final wire = ByteData.sublistView(Uint8List.fromList([0x51]));
+  for (var pass = 0; pass < 2; pass++) {
+    first.entriesCount = 2;
+    first.marker = 1;
+    for (var i = 0; i < 2; i++) {
+      first.entries[i].retries = 99;
+      first.entries[i].preferred = Weapon.missile;
+    }
+    final readOK = readDefaultChoice(output, wire, 7);
+    check(readOK, 'decode DefaultChoice, same tag included');
+    final selectedOK = output.type == DefaultChoiceType.first &&
+        first.entriesCount == 0 &&
+        first.marker == 5;
+    check(selectedOK, 'DefaultChoice selected fields');
+    // The control's backing-default marker requires a successful oracle decode.
+    if (!readOK || !selectedOK) {
+      return;
+    }
+    for (var i = 0; i < 2; i++) {
+      check(
+        first.entries[i].retries == -1 &&
+            first.entries[i].preferred == Weapon.railgun,
+        'selected unused backing entry receives its defaults',
+      );
+      check(
+        second.entries[i].retries == 41 + i &&
+            second.entries[i].preferred == Weapon.missile,
+        'unselected backing entry retains its value',
+      );
+    }
+    check(
+      identical(output.first, first) &&
+          identical(output.second, second) &&
+          identical(first.entries, firstEntries) &&
+          identical(second.entries, secondEntries) &&
+          identical(first.entries[0], first0) &&
+          identical(first.entries[1], first1) &&
+          identical(second.entries[0], second0) &&
+          identical(second.entries[1], second1),
+      'selection preserves all preallocated identities',
+    );
+    check(
+      second.marker == 7 && second.entriesCount == 2,
+      'unselected payload remains untouched',
+    );
+  }
+}
+
 void main() {
+  testSelectedArmDefaults();
   // ---- ShipCreate: the bool-gated flags branch, both ways ----
   {
     final inp = makeShipCreate();

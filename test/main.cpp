@@ -11,6 +11,7 @@
 #include <thread>
 #include <new> // placement new — the raw-struct scatter constructs in place
 
+#include "ArmDefaultsWire.h"
 #include "ClausesWire.h"
 #include "ConstantsWire.h"
 #include "DegenerateWire.h"
@@ -165,9 +166,75 @@ static bool golden_wire( const char * name, const uint8_t * data, int64_t bytes,
     return true;
 }
 
+static bool selected_arm_defaults( const example::DefaultArm & arm )
+{
+    if ( arm.entries_count != 0 || arm.marker != 5 )
+        return false;
+    for ( const auto & entry : arm.entries )
+        if ( entry.retries != -1 || entry.preferred != example::Weapon::Railgun )
+            return false;
+    return true;
+}
+
+static int test_selected_arm_defaults()
+{
+    using namespace example;
+    // Independent bit oracle: tag 1 in two bits, count 0 in two, marker 5 in three.
+    alignas(8) const uint8_t wire[8] = { 0x51 };
+    DefaultChoice in;
+    ::new ( (void*) &in.first ) DefaultArm{};
+    in.type = DefaultChoiceType::First;
+    in.first.marker = 5;
+    check( selected_arm_defaults( in.first ) );
+    alignas(8) uint8_t buffer[64] = {};
+    serialize::WriteStream writer( buffer, sizeof(buffer) );
+    check( WriteDefaultChoice( writer, in ) );
+    check( writer.GetBitsProcessed() == 7 );
+    writer.Flush();
+    check( writer.GetBytesProcessed() == 1 && buffer[0] == 0x51 );
+
+    DefaultChoice out;
+    ::new ( (void*) &out.second ) DefaultArm{};
+    out.type = DefaultChoiceType::Second;
+    for ( int repeat = 0; repeat < 2; ++repeat )
+    {
+        auto & prior = repeat == 0 ? out.second : out.first;
+        prior.entries_count = 2;
+        for ( auto & entry : prior.entries )
+        {
+            entry.retries = 99;
+            entry.preferred = Weapon::Laser;
+        }
+        serialize::ReadStream reader( wire, 1 );
+        check( ReadDefaultChoice( reader, out ) );
+        check( reader.GetBitsProcessed() == 7 );
+        check( out.type == DefaultChoiceType::First );
+        check( selected_arm_defaults( out.first ) );
+    }
+
+    // A bulk field selects the ordinary read path in targets with scalar batching.
+    DefaultBulkChoice bulk;
+    ::new ( (void*) &bulk.first ) DefaultBulkArm{};
+    bulk.type = DefaultBulkChoiceType::First;
+    bulk.first.payload.marker = 5;
+    serialize::WriteStream bulk_writer( buffer, sizeof(buffer) );
+    check( WriteDefaultBulkChoice( bulk_writer, bulk ) );
+    check( bulk_writer.GetBitsProcessed() == 16 );
+    bulk_writer.Flush();
+    check( bulk_writer.GetBytesProcessed() == 2 && buffer[0] == 0x51 && buffer[1] == 0 );
+    bulk.first.payload.entries[0].retries = 99;
+    bulk.first.payload.entries[1].retries = 98;
+    serialize::ReadStream bulk_reader( buffer, 2 );
+    check( ReadDefaultBulkChoice( bulk_reader, bulk ) );
+    check( bulk_reader.GetBitsProcessed() == 16 );
+    check( selected_arm_defaults( bulk.first.payload ) );
+    return 0;
+}
+
 int main()
 {
     using namespace example;
+    check( test_selected_arm_defaults() == 0 );
 
     // constants fold and export (SPEC §4.2)
     static_assert(MaxPositionUnits == MaxWorldMeters * PositionUnits, "constants compose");

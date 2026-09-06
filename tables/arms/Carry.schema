@@ -11,7 +11,8 @@ table Leaf { items []int32 }
 union Carry
 {
     leaf  Leaf
-    plain int32
+    /// The arm that names no record: a scalar in the union's own overlay.
+    plain int32 | overlay
 }
 
 table Holder

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x06845f749d2417b4
+// package bench — protocol id 0x8d12c3149393f40f
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an interior null)
@@ -148,8 +148,8 @@ namespace Bench
     }
 
     // MixedEvent — at most one of the arms; Type says which. Construction is the empty
-    // union (None). A read zero-establishes exactly the selected arm before
-    // decoding it (SPEC §5); unselected arms keep what they last held — the
+    // union (None). Every read selection initializes the chosen payload from
+    // construction defaults; unselected arms keep what they last held — the
     // MessageStorage reuse discipline. Consumers read the selected arm only.
     public sealed class MixedEvent
     {
@@ -220,7 +220,7 @@ namespace Bench
     {
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
-        public const ulong ProtocolId = 0x06845f749d2417b4;
+        public const ulong ProtocolId = 0x8d12c3149393f40f;
 
         // BenchPacketMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // BenchPacketMaxBytes is rounded up to the 8-byte write-buffer granularity.
@@ -229,6 +229,23 @@ namespace Bench
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroBenchPacket(BenchPacket value)
+        {
+            value.A = 0;
+            value.B = 0;
+            value.C = 0;
+            value.Bits7 = 0;
+            value.Bits13 = 0;
+            value.Bits23 = 0;
+            value.Flag = false;
+            value.X = 0.0f;
+            value.Y = 0.0f;
+            value.Z = 0.0f;
+            value.Big = 0;
+            Array.Clear(value.Blob, 0, 17);
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitBenchPacket(BenchPacket value)
         {
             value.A = 0;
             value.B = 0;
@@ -371,6 +388,21 @@ namespace Bench
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroBenchInts(BenchInts value)
+        {
+            value.F0 = 0;
+            value.F1 = 0;
+            value.F2 = 0;
+            value.F3 = 0;
+            value.F4 = 0;
+            value.F5 = 0;
+            value.F6 = 0;
+            value.F7 = 0;
+            value.F8 = 0;
+            value.F9 = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitBenchInts(BenchInts value)
         {
             value.F0 = 0;
             value.F1 = 0;
@@ -532,6 +564,19 @@ namespace Bench
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroBenchBits(BenchBits value)
+        {
+            value.B7 = 0;
+            value.B13 = 0;
+            value.B23 = 0;
+            value.B3 = 0;
+            value.B32 = 0;
+            value.B11 = 0;
+            value.B19 = 0;
+            value.B48 = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitBenchBits(BenchBits value)
         {
             value.B7 = 0;
             value.B13 = 0;
@@ -773,6 +818,25 @@ namespace Bench
             value.Firing = false;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitMixedEntity(MixedEntity value)
+        {
+            value.EntityId = 0;
+            value.PosX = 0;
+            value.PosY = 0;
+            value.PosZ = 0;
+            value.Yaw = 0;
+            value.Pitch = 0;
+            value.VelX = 0;
+            value.VelY = 0;
+            value.VelZ = 0;
+            value.Health = 0;
+            value.Weapon = MixedWeapon.None;
+            value.Damage = 0;
+            value.Moving = false;
+            value.Firing = false;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteMixedEntity(WriteStream stream, MixedEntity value)
@@ -943,6 +1007,13 @@ namespace Bench
             value.Delta = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitMixedStat(MixedStat value)
+        {
+            value.StatId = 0;
+            value.Delta = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteMixedStat(WriteStream stream, MixedStat value)
@@ -1010,6 +1081,15 @@ namespace Bench
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroMixedHitEvent(MixedHitEvent value)
+        {
+            value.TargetId = 0;
+            value.Damage = 0;
+            value.HitKind = 0;
+            value.Crit = false;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitMixedHitEvent(MixedHitEvent value)
         {
             value.TargetId = 0;
             value.Damage = 0;
@@ -1099,6 +1179,13 @@ namespace Bench
             value.Speaker = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitMixedChatEvent(MixedChatEvent value)
+        {
+            value.Channel = 0;
+            value.Speaker = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteMixedChatEvent(WriteStream stream, MixedChatEvent value)
@@ -1166,6 +1253,13 @@ namespace Bench
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroMixedPickupEvent(MixedPickupEvent value)
+        {
+            value.ItemId = 0;
+            value.Amount = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitMixedPickupEvent(MixedPickupEvent value)
         {
             value.ItemId = 0;
             value.Amount = 0;
@@ -1257,7 +1351,7 @@ namespace Bench
 
         // ZeroMixedEvent resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-        // is unselected at None; an arm re-zeroes at its next selection.
+        // is unselected at None; an arm initializes at its next selection.
         public static void ZeroMixedEvent(MixedEvent value)
         {
             value.Type = MixedEventType.None;
@@ -1319,13 +1413,13 @@ namespace Bench
             switch (value.Type)
             {
                 case MixedEventType.Hit:
-                    ZeroMixedHitEvent(value.Hit); // the selected arm starts from the zero form (SPEC §5)
+                    InitMixedHitEvent(value.Hit); // every selection starts from construction defaults
                     return ReadMixedHitEventBatch(ref batch, value.Hit);
                 case MixedEventType.Chat:
-                    ZeroMixedChatEvent(value.Chat); // the selected arm starts from the zero form (SPEC §5)
+                    InitMixedChatEvent(value.Chat); // every selection starts from construction defaults
                     return ReadMixedChatEventBatch(ref batch, value.Chat);
                 case MixedEventType.Pickup:
-                    ZeroMixedPickupEvent(value.Pickup); // the selected arm starts from the zero form (SPEC §5)
+                    InitMixedPickupEvent(value.Pickup); // every selection starts from construction defaults
                     return ReadMixedPickupEventBatch(ref batch, value.Pickup);
             }
             return true; // None
@@ -1374,6 +1468,48 @@ namespace Bench
             value.Ping = 0;
             value.CrcHint = 0;
             value.HasExtra = false;
+            value.Extra = 0;
+            value.IdleTicks = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitBenchMixed(BenchMixed value)
+        {
+            value.Sequence = 0;
+            value.AckSequence = 0;
+            value.AckBits = 0;
+            value.SessionId = 0;
+            value.ClientId = 0;
+            value.Nonce = 0;
+            value.WorldTime = 0;
+            value.FrameTick = 0;
+            value.ServerTime = 0;
+            for (int i = 0; i < 8; i++)
+            {
+                InitMixedEntity(value.Entities[i]);
+            }
+            value.EntitiesCount = 1;
+            for (int i = 0; i < 80; i++)
+            {
+                InitMixedStat(value.Stats[i]);
+            }
+            value.StatsCount = 0;
+            ZeroMixedEvent(value.GameEvent);
+            Array.Clear(value.Loadout, 0, 4);
+            Array.Clear(value.PlayerName, 0, 15);
+            value.PlayerNameLength = 0;
+            Array.Clear(value.Payload, 0, 16);
+            value.PayloadLength = 0;
+            value.AimX = 0.0f;
+            value.AimY = 0.0f;
+            value.AimZ = 0.0f;
+            value.Recoil = 0.0f;
+            value.Drift = 0.0;
+            value.WideKey = 0;
+            value.Flux = 0;
+            value.Ping = 0;
+            value.CrcHint = 0;
+            value.HasExtra = true;
             value.Extra = 0;
             value.IdleTicks = 0;
         }

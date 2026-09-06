@@ -66,10 +66,10 @@
 | bitpacked table message form | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | retain-unknown | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | doc comments and tags in the descriptors | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| the unit registry, UnitView | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| the unit registry, UnitView | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-311 of 1180 cells are done. That is a count of features, not of effort, since the
+312 of 1180 cells are done. That is a count of features, not of effort, since the
 cells are not equal in size. The table will be printed as it stands with every
 release from here.
 
@@ -84,7 +84,7 @@ Each language is in one of three states, applied to each wire on its own.
 
 On the packet wire as released in 2.4.0, C, C++, Rust, C# and Go are
 performant and production ready, and Java, JavaScript, Dart and Elixir are
-done but not yet mature. On the table wire every language is coming, C++ at 28
+done but not yet mature. On the table wire every language is coming, C++ at 29
 of 31 and the rest as the table shows.
 
 ## How the work is done

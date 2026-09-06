@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 using System.Runtime.CompilerServices;
 using Serialize;
@@ -51,6 +51,16 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroRenderSprite(RenderSprite value)
+        {
+            value.SortKey = 0;
+            value.MeshId = 0;
+            value.MaterialId = 0;
+            value.Layer = 0;
+            value.Team = Team.None;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitRenderSprite(RenderSprite value)
         {
             value.SortKey = 0;
             value.MeshId = 0;
@@ -161,6 +171,18 @@ namespace Example
             for (int i = 0; i < (int)RenderBlockMaxSprites; i++)
             {
                 ZeroRenderSprite(value.Sprites[i]);
+            }
+            value.SpritesCount = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitRenderBlock(RenderBlock value)
+        {
+            value.WorkerIndex = 0;
+            value.SpriteCountHint = 0;
+            for (int i = 0; i < (int)RenderBlockMaxSprites; i++)
+            {
+                InitRenderSprite(value.Sprites[i]);
             }
             value.SpritesCount = 0;
         }

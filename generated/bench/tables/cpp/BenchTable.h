@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0x88cf953e975ace60
+// package benchtable — protocol id 0x0926221bcb6f475f
 
 #pragma once
 
@@ -12,7 +12,7 @@ namespace benchtable {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0x88cf953e975ace60ull;
+inline constexpr uint64_t ProtocolId = 0x0926221bcb6f475full;
 
 // enum TableWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2)
 enum class TableWeapon : uint8_t {
@@ -232,9 +232,11 @@ inline const char * EnumName( TableEventType value )
 }
 
 // union TableEvent — at most one of the arms; the tag says which. Construction is
-// None: the tag alone is initialized; an arm's storage is established ZEROED
-// when the arm is selected — by ReadTableEvent before it decodes (SPEC §5), or by
-// assigning it: value.hit = TableHitEvent{}. Bytes of unselected arms are indeterminate.
+// None: the tag alone is initialized; an arm is freshly constructed with its defaults
+// when selected, by ReadTableEvent before decoding (SPEC §4.8), or by application code.
+// Application code must include <new> before constructing an arm in place:
+// ::new ( (void*) &value.hit ) TableHitEvent{}; value.type = TableEventType::Hit;
+// Bytes of unselected arms are indeterminate.
 struct TableEvent
 {
     TableEventType type;
@@ -246,7 +248,7 @@ struct TableEvent
         TablePickupEvent pickup;
     };
 
-    TableEvent() : type( TableEventType::None ) {} // the tag only — arms are zero-established at selection
+    TableEvent() : type( TableEventType::None ) {} // the tag only — arms are freshly constructed at selection
 };
 
 inline constexpr int64_t TableEventMaxBits = 30; // tag + the largest arm; None costs the tag only (SPEC §4.8)

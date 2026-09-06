@@ -1,6 +1,7 @@
 // The second translation unit: includes every generated header again, so the
 // link step proves the headers define no duplicate symbols across TUs.
 
+#include "ArmDefaultsWire.h"
 #include "ClausesWire.h"
 #include "ConstantsWire.h"
 #include "DegenerateWire.h"
