@@ -116,6 +116,11 @@ type gen struct {
 	needNumScratch  bool
 	needBigScratch  bool
 	needBoolScratch bool
+
+	// The flat tier uses the same in-place initialization emitter with
+	// nested fields inlined and schema references resolved to literals.
+	inlineInit bool
+	initDepth  int
 }
 
 func (g *gen) pf(format string, args ...any) {
@@ -480,8 +485,8 @@ func (g *gen) emitUnion(d *ir.Union) {
 
 	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("// %s — at most one of the arms; Type says which. Construction is the empty\n", d.Name)
-	g.pf("// union (None). A read zero-establishes exactly the selected arm before\n")
-	g.pf("// decoding it (SPEC §5); unselected arms keep what they last held — the\n")
+	g.pf("// union (None). Every read initializes the selected arm as a fresh value\n")
+	g.pf("// before decoding it; unselected arms keep what they last held — the\n")
 	g.pf("// reused-storage discipline. Consumers read the selected arm only.\n")
 	g.pf("export class %s {\n", d.Name)
 	g.pf("  constructor() {\n")
@@ -504,6 +509,9 @@ func (g *gen) zeroValue(t ir.FieldType) string {
 	case ir.TNamed:
 		switch t.Ref.(type) {
 		case *ir.Enum:
+			if g.inlineInit {
+				return "0"
+			}
 			g.addRef(t.Name, t.Name)
 			return t.Name + ".None"
 		case *ir.Flags:
@@ -564,6 +572,14 @@ func (g *gen) defaultValue(f *ir.Field) string {
 	case f.Type.Kind == ir.TBool:
 		return fmt.Sprintf("%v", f.DefBool)
 	case f.DefVariant != "":
+		if g.inlineInit {
+			for i, variant := range f.Type.Ref.(*ir.Enum).Variants {
+				if variant == f.DefVariant {
+					return strconv.Itoa(i + 1)
+				}
+			}
+			return "0" // the implicit None variant
+		}
 		g.addRef(f.Type.Name, f.Type.Name)
 		return f.Type.Name + "." + f.DefVariant
 	case f.Type.Kind == ir.TFloat32:
@@ -592,7 +608,7 @@ func bigLit(v *big.Int) string {
 // non-exact division subtree must fold); the computed literal otherwise.
 // Folding is always correct.
 func (g *gen) renderNum(e ast.Expr, folded *big.Int) string {
-	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !g.numExact(e) {
+	if g.inlineInit || e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !g.numExact(e) {
 		return folded.String()
 	}
 	return g.renderExpr(e)

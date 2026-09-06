@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 import 'dart:typed_data';
 
@@ -30,6 +30,15 @@ const int armsAgreeMaxBytes = 8;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroArmsAgree(ArmsAgree value) {
+  value.lead = 0;
+  value.flag = false;
+  value.a = 0;
+  value.b = 0;
+  value.tail = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initArmsAgree(ArmsAgree value) {
   value.lead = 0;
   value.flag = false;
   value.a = 0;
@@ -189,6 +198,15 @@ const int armsDisagreeMaxBytes = 8;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroArmsDisagree(ArmsDisagree value) {
+  value.lead = 0;
+  value.flag = false;
+  value.a = 0;
+  value.b = 0;
+  value.tail = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initArmsDisagree(ArmsDisagree value) {
   value.lead = 0;
   value.flag = false;
   value.a = 0;
@@ -369,6 +387,14 @@ void zeroArmEmpty(ArmEmpty value) {
   value.tail = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initArmEmpty(ArmEmpty value) {
+  value.lead = 0;
+  value.flag = false;
+  value.a = 0;
+  value.tail = 0;
+}
+
 // writeArmEmpty packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // armEmptyMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -524,6 +550,17 @@ const int armsNestedMaxBytes = 8;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroArmsNested(ArmsNested value) {
+  value.lead = 0;
+  value.outer = false;
+  value.inner = false;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+  value.tail = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initArmsNested(ArmsNested value) {
   value.lead = 0;
   value.outer = false;
   value.inner = false;
@@ -763,6 +800,16 @@ const int armAlignMaxBytes = 8;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroArmAlign(ArmAlign value) {
+  value.lead = 0;
+  value.flag = false;
+  value.s.fillRange(0, value.s.length, 0);
+  value.sLength = 0;
+  value.b = 0;
+  value.tail = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initArmAlign(ArmAlign value) {
   value.lead = 0;
   value.flag = false;
   value.s.fillRange(0, value.s.length, 0);
@@ -1028,6 +1075,16 @@ void zeroArmArray(ArmArray value) {
   value.tail = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initArmArray(ArmArray value) {
+  value.lead = 0;
+  value.flag = false;
+  value.items.fillRange(0, value.items.length, 0);
+  value.itemsCount = 0;
+  value.b = 0;
+  value.tail = 0;
+}
+
 // writeArmArray packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // armArrayMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -1272,6 +1329,11 @@ void zeroNarrow(Narrow value) {
   value.n = 0;
 }
 
+// Restore construction defaults in place; buffers and objects are retained.
+void initNarrow(Narrow value) {
+  value.n = 0;
+}
+
 // writeNarrow packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // narrowMaxBytes. Returns the bytes written, or -1 when a count is outside its
@@ -1351,6 +1413,11 @@ const int wideMaxBytes = 8;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroWide(Wide value) {
+  value.w = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initWide(Wide value) {
   value.w = 0;
 }
 
@@ -1445,8 +1512,8 @@ String enumNameUnevenType(int value) {
 }
 
 // Uneven — at most one of the arms; type says which. Construction is the empty
-// union (None). A read zero-establishes exactly the selected arm before
-// decoding it (SPEC §5); unselected arms keep what they last held — the
+// union (None). Every read selection initializes the chosen payload from
+// construction defaults; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 final class Uneven {
   int type = UnevenType.none;
@@ -1461,7 +1528,7 @@ const int unevenMaxBytes = 8;
 
 // zeroUneven resets value to the §5 zero form — the empty union. The tag alone
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-// is unselected at None; an arm re-zeroes at its next selection.
+// is unselected at None; an arm initializes at its next selection.
 void zeroUneven(Uneven value) {
   value.type = UnevenType.none;
 }
@@ -1615,6 +1682,13 @@ const int holdsUnevenMaxBytes = 8;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroHoldsUneven(HoldsUneven value) {
+  value.lead = 0;
+  value.u.type = 0;
+  value.tail = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initHoldsUneven(HoldsUneven value) {
   value.lead = 0;
   value.u.type = 0;
   value.tail = 0;
@@ -1798,6 +1872,16 @@ const int arrUnevenMaxBytes = 16;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroArrUneven(ArrUneven value) {
+  value.lead = 0;
+  for (var i0 = 0; i0 < 3; i0++) {
+    value.items[i0].type = 0;
+  }
+  value.itemsCount = 0;
+  value.tail = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initArrUneven(ArrUneven value) {
   value.lead = 0;
   for (var i0 = 0; i0 < 3; i0++) {
     value.items[i0].type = 0;
@@ -2023,6 +2107,19 @@ const int regainAfterAlignMaxBytes = 24;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroRegainAfterAlign(RegainAfterAlign value) {
+  value.lead = 0;
+  value.items.fillRange(0, value.items.length, 0);
+  value.itemsCount = 0;
+  value.s.fillRange(0, value.s.length, 0);
+  value.sLength = 0;
+  value.p = 0;
+  value.q = 0;
+  value.r = 0;
+  value.tail = 0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initRegainAfterAlign(RegainAfterAlign value) {
   value.lead = 0;
   value.items.fillRange(0, value.items.length, 0);
   value.itemsCount = 0;

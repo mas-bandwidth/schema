@@ -14,6 +14,7 @@
 // #156's target — asserts dormant). The wire must be identical in both,
 // and the goldens prove it.
 
+import example.ArmDefaults;
 import example.Clauses;
 import example.Constants;
 import example.Degenerate;
@@ -672,7 +673,65 @@ public final class Main {
         check(realworld.RealWorld.measureRealPacket(real) == 1629, "RealPacket is 1629 bits");
     }
 
+    static void testSelectedArmDefaults() {
+        // tag First=1 (2 bits), count=0 (2 bits), marker=5 (3 bits): 0x51.
+        final ArmDefaults.DefaultChoice input = new ArmDefaults.DefaultChoice();
+        input.type = ArmDefaults.DefaultChoiceType.first;
+        for (int phase = 0; phase < 2; phase++) {
+            if (phase == 1) {
+                input.first.entriesCount = 2;
+                input.first.entries[0].retries = 99;
+                ArmDefaults.initDefaultArm(input.first);
+                check(input.first.entriesCount == 0 && input.first.marker == 0
+                        && input.first.entries[0].retries == -1 && input.first.entries[1].retries == -1,
+                        "initDefaultArm restores construction defaults");
+            }
+            input.first.marker = 5;
+            final int count = ArmDefaults.writeDefaultChoice(input, writeBuf);
+            check(count == 1 && (writeBuf[0] & 255) == 0x51, "DefaultChoice independent wire is 0x51");
+            check(ArmDefaults.measureDefaultChoice(input) == 7, "DefaultChoice uses seven independent bits");
+        }
+
+        final ArmDefaults.DefaultChoice output = new ArmDefaults.DefaultChoice();
+        final ArmDefaults.DefaultArm first = output.first, second = output.second;
+        final Wire.ProbeConfig[] firstEntries = first.entries, secondEntries = second.entries;
+        final Wire.ProbeConfig first0 = first.entries[0], first1 = first.entries[1];
+        final Wire.ProbeConfig second0 = second.entries[0], second1 = second.entries[1];
+        second.marker = 7;
+        second.entriesCount = 2;
+        for (int i = 0; i < 2; i++) {
+            second.entries[i].retries = 41 + i;
+            second.entries[i].preferred = Wire.Weapon.missile;
+        }
+        output.type = ArmDefaults.DefaultChoiceType.second;
+        for (int pass = 0; pass < 2; pass++) {
+            first.entriesCount = 2;
+            first.marker = 1;
+            for (int i = 0; i < 2; i++) {
+                first.entries[i].retries = 99;
+                first.entries[i].preferred = Wire.Weapon.missile;
+            }
+            check(ArmDefaults.readDefaultChoice(output, new byte[] { 0x51 }, 7),
+                    "decode DefaultChoice, same tag included");
+            check(output.type == ArmDefaults.DefaultChoiceType.first && first.entriesCount == 0 && first.marker == 5,
+                    "DefaultChoice selected fields");
+            for (int i = 0; i < 2; i++) {
+                check(first.entries[i].retries == -1 && first.entries[i].preferred == Wire.Weapon.railgun,
+                        "selected unused backing entry receives its defaults");
+                check(second.entries[i].retries == 41 + i && second.entries[i].preferred == Wire.Weapon.missile,
+                        "unselected backing entry retains its value");
+            }
+            check(output.first == first && output.second == second
+                    && first.entries == firstEntries && second.entries == secondEntries
+                    && first.entries[0] == first0 && first.entries[1] == first1
+                    && second.entries[0] == second0 && second.entries[1] == second1,
+                    "selection preserves all preallocated identities");
+            check(second.marker == 7 && second.entriesCount == 2, "unselected payload remains untouched");
+        }
+    }
+
     public static void main(String[] args) {
+        testSelectedArmDefaults();
         check(Constants.maxHealth == 1000, "constants fold");
         testShipCreate();
         testRigidBody();

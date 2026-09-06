@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 package example;
 
@@ -33,6 +33,13 @@ public final class Types {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroVec3(Vec3 value) {
+        value.x = 0.0;
+        value.y = 0.0;
+        value.z = 0.0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initVec3(Vec3 value) {
         value.x = 0.0;
         value.y = 0.0;
         value.z = 0.0;
@@ -241,6 +248,14 @@ public final class Types {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroQuat(Quat value) {
+        value.x = 0.0;
+        value.y = 0.0;
+        value.z = 0.0;
+        value.w = 0.0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initQuat(Quat value) {
         value.x = 0.0;
         value.y = 0.0;
         value.z = 0.0;
@@ -495,6 +510,12 @@ public final class Types {
         value.objectSequence = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initHandle(Handle value) {
+        value.objectId = 0;
+        value.objectSequence = 0;
+    }
+
     // checkWriteHandle is writeHandle's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -616,6 +637,13 @@ public final class Types {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroQuantizedPosition(QuantizedPosition value) {
+        value.x = 0;
+        value.y = 0;
+        value.z = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initQuantizedPosition(QuantizedPosition value) {
         value.x = 0;
         value.y = 0;
         value.z = 0;
@@ -776,6 +804,13 @@ public final class Types {
         value.z = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initQuantizedVelocity(QuantizedVelocity value) {
+        value.x = 0;
+        value.y = 0;
+        value.z = 0;
+    }
+
     // checkWriteQuantizedVelocity is writeQuantizedVelocity's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -928,6 +963,14 @@ public final class Types {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroQuantizedRotation(QuantizedRotation value) {
+        value.x = 0;
+        value.y = 0;
+        value.z = 0;
+        value.w = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initQuantizedRotation(QuantizedRotation value) {
         value.x = 0;
         value.y = 0;
         value.z = 0;
@@ -1115,6 +1158,15 @@ public final class Types {
         value.atRest = false;
         zeroVec3(value.linearVelocity);
         zeroVec3(value.angularVelocity);
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initRigidBody(RigidBody value) {
+        initVec3(value.position);
+        initQuat(value.orientation);
+        value.atRest = false;
+        initVec3(value.linearVelocity);
+        initVec3(value.angularVelocity);
     }
 
     // checkWriteRigidBody is writeRigidBody's contract walk, called once through assert —
@@ -1802,6 +1854,23 @@ public final class Types {
         value.ping = false;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initInput(Input value) {
+        value.stickX = 0.0f;
+        value.stickY = 0.0f;
+        value.throttle = 0.0f;
+        value.yaw = 0.0f;
+        value.pitch = 0.0f;
+        value.fire = false;
+        value.altFire = false;
+        value.boost = false;
+        value.brake = false;
+        value.aim = false;
+        value.lockOn = false;
+        value.zoom = false;
+        value.ping = false;
+    }
+
     // checkWriteInput is writeInput's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -2139,6 +2208,17 @@ public final class Types {
         value.startFrame = 0;
         for (int i0 = 0; i0 < 16; i0++) {
             zeroInput(value.inputs[i0]);
+        }
+        value.inputsCount = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initInputPacket(InputPacket value) {
+        value.synchronizeSequence = 0;
+        value.currentFrame = 0;
+        value.startFrame = 0;
+        for (int i0 = 0; i0 < 16; i0++) {
+            initInput(value.inputs[i0]);
         }
         value.inputsCount = 0;
     }
@@ -2629,6 +2709,20 @@ public final class Types {
         value.pending = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initShipCreate(ShipCreate value) {
+        value.shipType = 0;
+        initQuantizedPosition(value.position);
+        initQuantizedRotation(value.rotation);
+        initQuantizedVelocity(value.linearVelocity);
+        value.hasFlags = false;
+        value.flags = 0;
+        value.team = 0;
+        value.health = 0;
+        value.thrust = 0;
+        value.pending = 0;
+    }
+
     // checkWriteShipCreate is writeShipCreate's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -3107,6 +3201,12 @@ public final class Types {
         value.spinRate = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initExpressionProbe(ExpressionProbe value) {
+        value.hardpointIndex = 0;
+        value.spinRate = Constants.rotationUnits;
+    }
+
     // checkWriteExpressionProbe is writeExpressionProbe's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -3243,6 +3343,15 @@ public final class Types {
         value.ceilingRange = 0;
         value.floorDefault = 0;
         value.ceilingDefault = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initExtremeProbe(ExtremeProbe value) {
+        value.floorBound = 0;
+        value.doubledFloor = 0;
+        value.ceilingRange = 1;
+        value.floorDefault = 0x8000000000000000L;
+        value.ceilingDefault = 0xffffffffffffffffL;
     }
 
     // checkWriteExtremeProbe is writeExtremeProbe's contract walk, called once through assert —
@@ -3546,6 +3655,14 @@ public final class Types {
         value.clampedCeiling = 0;
         value.floorDef = 0;
         value.ceilingDef = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initExtremeRow(ExtremeRow value) {
+        value.clampedFloor = 0;
+        value.clampedCeiling = 1;
+        value.floorDef = 0x8000000000000000L;
+        value.ceilingDef = 0xffffffffffffffffL;
     }
 
     // checkWriteExtremeRow is writeExtremeRow's contract walk, called once through assert —

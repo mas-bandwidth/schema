@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 import { Team } from "./Enums.js";
 
@@ -29,7 +29,16 @@ export class RenderSprite {
 export const RenderSpriteMaxBits = 138;
 export const RenderSpriteMaxBytes = 24;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitRenderSprite restores fresh construction values in place, preserving storage.
+export function InitRenderSprite(value) {
+  value.SortKey = 0n;
+  value.MeshId = 0;
+  value.MaterialId = 0;
+  value.Layer = 0;
+  value.Team = Team.None;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroRenderSprite(value) {
   value.SortKey = 0n;
   value.MeshId = 0;
@@ -104,7 +113,18 @@ export class RenderBlock {
 export const RenderBlockMaxBits = 8903;
 export const RenderBlockMaxBytes = 1120;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitRenderBlock restores fresh construction values in place, preserving storage.
+export function InitRenderBlock(value) {
+  value.WorkerIndex = 0;
+  value.SpriteCountHint = 0;
+  for (let initIndex0 = 0; initIndex0 < RenderBlockMaxSprites; initIndex0++) {
+    const initValue0 = value.Sprites[initIndex0];
+    InitRenderSprite(initValue0);
+  }
+  value.SpritesCount = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroRenderBlock(value) {
   value.WorkerIndex = 0;
   value.SpriteCountHint = 0;

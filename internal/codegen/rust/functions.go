@@ -27,8 +27,8 @@ import (
 
 // emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8). The
 // tag rides in minimal bits for [0, count]; the read rejects a tag above the
-// count (serialize_int's own refusal) and builds the selected arm from its
-// zero form before decoding it.
+// count (serialize_int's own refusal) and reconstructs the selected arm with its
+// declared initial values before decoding it, even when the tag is unchanged.
 func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.needsStreams = true
 	snake := ir.RustSnake(d.Name)
@@ -80,7 +80,11 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 			continue
 		}
 		g.pf("        %d => {\n", i+1)
-		g.pf("            let mut arm = %s::default();\n", v.Type)
+		if v.Ref != nil && g.hasDefaults(v.Ref) {
+			g.pf("            let mut arm = %s::new();\n", v.Type)
+		} else {
+			g.pf("            let mut arm = %s::default();\n", v.Type)
+		}
 		g.pf("            read_%s(stream, &mut arm)?;\n", ir.RustSnake(v.Type))
 		g.pf("            *value = %s::%s(arm);\n        }\n", d.Name, ir.GoExportName(v.Name))
 	}

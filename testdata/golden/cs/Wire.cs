@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 using System;
 using System.Runtime.CompilerServices;
@@ -90,8 +90,8 @@ namespace Example
     }
 
     // ProbeShape — at most one of the arms; Type says which. Construction is the empty
-    // union (None). A read zero-establishes exactly the selected arm before
-    // decoding it (SPEC §5); unselected arms keep what they last held — the
+    // union (None). Every read selection initializes the chosen payload from
+    // construction defaults; unselected arms keep what they last held — the
     // MessageStorage reuse discipline. Consumers read the selected arm only.
     public sealed class ProbeShape
     {
@@ -300,6 +300,13 @@ namespace Example
             value.ProbeId = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitProbeHeader(ProbeHeader value)
+        {
+            value.Version = 0;
+            value.ProbeId = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteProbeHeader(WriteStream stream, ProbeHeader value)
@@ -388,6 +395,16 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroProbeBits(ProbeBits value)
+        {
+            value.Small = 0;
+            value.Boundary = 0;
+            value.Wide = 0;
+            value.Sensor = 0;
+            value.Nonce = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitProbeBits(ProbeBits value)
         {
             value.Small = 0;
             value.Boundary = 0;
@@ -500,6 +517,21 @@ namespace Example
             value.IdleTicks = 0;
             Array.Clear(value.Samples, 0, 8);
             value.SamplesCount = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitProbeSample(ProbeSample value)
+        {
+            value.Active = true;
+            value.Orientation = 0.0f;
+            value.RawDelta = 0;
+            value.BigDelta = 0;
+            value.Weapon = Weapon.None;
+            value.HasTarget = false;
+            value.TargetId = 0;
+            value.IdleTicks = 0;
+            Array.Clear(value.Samples, 0, 8);
+            value.SamplesCount = 1;
         }
 
         // batch form: stream state stays in registers across the body and End
@@ -707,6 +739,12 @@ namespace Example
             value.Radius = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitProbeRing(ProbeRing value)
+        {
+            value.Radius = 0;
+        }
+
         public static bool WriteProbeRing(WriteStream stream, ProbeRing value)
         {
             {
@@ -768,6 +806,13 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroProbeSlab(ProbeSlab value)
+        {
+            value.Width = 0;
+            value.Height = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitProbeSlab(ProbeSlab value)
         {
             value.Width = 0;
             value.Height = 0;
@@ -859,7 +904,7 @@ namespace Example
 
         // ZeroProbeShape resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-        // is unselected at None; an arm re-zeroes at its next selection.
+        // is unselected at None; an arm initializes at its next selection.
         public static void ZeroProbeShape(ProbeShape value)
         {
             value.Type = ProbeShapeType.None;
@@ -919,10 +964,10 @@ namespace Example
             switch (value.Type)
             {
                 case ProbeShapeType.Ring:
-                    ZeroProbeRing(value.Ring); // the selected arm starts from the zero form (SPEC §5)
+                    InitProbeRing(value.Ring); // every selection starts from construction defaults
                     return ReadProbeRingBatch(ref batch, value.Ring);
                 case ProbeShapeType.Slab:
-                    ZeroProbeSlab(value.Slab); // the selected arm starts from the zero form (SPEC §5)
+                    InitProbeSlab(value.Slab); // every selection starts from construction defaults
                     return ReadProbeSlabBatch(ref batch, value.Slab);
             }
             return true; // None
@@ -935,6 +980,19 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroProbeCollider(ProbeCollider value)
+        {
+            value.Armor = 0;
+            ZeroProbeShape(value.Shape);
+            ZeroProbeShape(value.Backup);
+            for (int i = 0; i < 2; i++)
+            {
+                ZeroProbeShape(value.Extras[i]);
+            }
+            value.ExtrasCount = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitProbeCollider(ProbeCollider value)
         {
             value.Armor = 0;
             ZeroProbeShape(value.Shape);
@@ -1050,6 +1108,13 @@ namespace Example
             value.Preferred = Weapon.None;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitProbeConfig(ProbeConfig value)
+        {
+            value.Retries = -1;
+            value.Preferred = Weapon.Railgun;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteProbeConfig(WriteStream stream, ProbeConfig value)
@@ -1125,6 +1190,16 @@ namespace Example
             ZeroProbeConfig(value.Config);
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitProbeArray(ProbeArray value)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                InitProbeSample(value.Samples[i]);
+            }
+            InitProbeConfig(value.Config);
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteProbeArray(WriteStream stream, ProbeArray value)
@@ -1190,6 +1265,12 @@ namespace Example
             _ = value; // empty body — nothing to reset (SPEC §4.6)
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitHeartbeat(Heartbeat value)
+        {
+            _ = value; // empty body — nothing to initialize
+        }
+
         public static bool WriteHeartbeat(WriteStream stream, Heartbeat value)
         {
             // empty body — presence is the payload (SPEC §4.6)
@@ -1208,6 +1289,15 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroTest(Test value)
+        {
+            value.TestA = 0;
+            value.TestB = 0;
+            value.TestC = 0;
+            value.TestD = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitTest(Test value)
         {
             value.TestA = 0;
             value.TestB = 0;
@@ -1315,6 +1405,13 @@ namespace Example
             value.DataLength = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitBlock(Block value)
+        {
+            Array.Clear(value.Data, 0, (int)MaxBlockSize);
+            value.DataLength = 0;
+        }
+
         public static bool WriteBlock(WriteStream stream, Block value)
         {
             if (value.DataLength < 0 || value.DataLength > (int)MaxBlockSize) // the length guards the slice (§6.3); out-of-contract writes are refused
@@ -1355,6 +1452,13 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroChat(Chat value)
+        {
+            Array.Clear(value.Text, 0, (int)MaxChatLength);
+            value.TextLength = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitChat(Chat value)
         {
             Array.Clear(value.Text, 0, (int)MaxChatLength);
             value.TextLength = 0;
@@ -1411,6 +1515,14 @@ namespace Example
             ZeroProbeHeader(value.Header);
             value.Flags = 0;
             ZeroTest(value.Echo);
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitProbeReport(ProbeReport value)
+        {
+            InitProbeHeader(value.Header);
+            value.Flags = 0;
+            InitTest(value.Echo);
         }
 
         // batch form: stream state stays in registers across the body and End
@@ -1487,6 +1599,34 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroTestData(TestData value)
+        {
+            value.A = 0;
+            value.B = 0;
+            value.C = 0;
+            value.D = 0;
+            value.E = 0;
+            value.F = 0;
+            value.G = false;
+            Array.Clear(value.Items, 0, 16);
+            value.ItemsCount = 0;
+            value.FloatValue = 0.0f;
+            value.CompressedFloatValue = 0.0f;
+            value.DoubleValue = 0.0;
+            value.Int8Value = 0;
+            value.Int16Value = 0;
+            value.Uint8Value = 0;
+            value.Uint16Value = 0;
+            value.Uint32Value = 0;
+            value.Uint64Value = 0;
+            value.Int64Full = 0;
+            value.Int64Range = 0;
+            Array.Clear(value.FixedBytes, 0, 17);
+            Array.Clear(value.Text, 0, 255);
+            value.TextLength = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitTestData(TestData value)
         {
             value.A = 0;
             value.B = 0;
@@ -1765,6 +1905,13 @@ namespace Example
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroCompressedProbe(CompressedProbe value)
+        {
+            value.Boundary = 0.0f;
+            value.Offset = 0.0f;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitCompressedProbe(CompressedProbe value)
         {
             value.Boundary = 0.0f;
             value.Offset = 0.0f;

@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 #pragma once
 
 #include <cstdint>
+#include <new>
 
 namespace example {
 
@@ -168,9 +169,10 @@ inline const char * EnumName( UnevenType value )
 }
 
 // union Uneven — at most one of the arms; the tag says which. Construction is
-// None: the tag alone is initialized; an arm's storage is established ZEROED
-// when the arm is selected — by ReadUneven before it decodes (SPEC §5), or by
-// assigning it: value.narrow = Narrow{}. Bytes of unselected arms are indeterminate.
+// None: the tag alone is initialized; an arm is freshly constructed with its defaults
+// when selected, by ReadUneven before decoding (SPEC §4.8), or explicitly:
+// ::new ( (void*) &value.narrow ) Narrow{}; value.type = UnevenType::Narrow;
+// Bytes of unselected arms are indeterminate.
 struct Uneven
 {
     UnevenType type;
@@ -181,7 +183,7 @@ struct Uneven
         Wide wide;
     };
 
-    Uneven() : type( UnevenType::None ) {} // the tag only — arms are zero-established at selection
+    Uneven() : type( UnevenType::None ) {} // the tag only — arms are freshly constructed at selection
 };
 
 inline constexpr int64_t UnevenMaxBits = 39; // tag + the largest arm; None costs the tag only (SPEC §4.8)

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package messagedemo — protocol id 0x6d58c77758910f2c (packets only: tables version by field id, not by protocol id)
+// package messagedemo — protocol id 0x3ccb5473a568b8ef (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -1292,7 +1292,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // generated field header carries as a literal.
 static const int64_t kTableAnnounceBytes = 633;
 static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x5e, 0x0e, 0xa2, 0x94, 0x0b, 0xfa, 0xdc, 0xfc, 0x02,
+    0x01, 0x01, 0x09, 0xce, 0xd8, 0x75, 0x94, 0x5c, 0xb1, 0x45, 0x9e, 0x02,
     0x0e, 0xd1, 0x04, 0x06, 0xce, 0x04, 0x07, 0x59, 0x4f, 0x69, 0xad, 0xa5,
     0x4b, 0xbf, 0x08, 0x00, 0x87, 0xf2, 0x8b, 0x62, 0x87, 0x12, 0x53, 0x5f,
     0x08, 0x00, 0x58, 0x86, 0x8e, 0x6c, 0xc4, 0xdb, 0xa4, 0xd6, 0x08, 0x00,
@@ -1880,7 +1880,7 @@ namespace messagedemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xfcdcfa0b94a20e5eull;
+static const uint64_t BuildVersion = 0x9e45b15c9475d8ceull;
 
 } // namespace messagedemo
 

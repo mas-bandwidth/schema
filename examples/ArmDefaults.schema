@@ -1,0 +1,33 @@
+// Every selection constructs a fresh payload, including its unused capacity.
+package example
+
+type DefaultArm
+{
+    entries [..2]ProbeConfig
+    marker  uint8            | min = 0, max = 7
+}
+
+union DefaultChoice
+{
+    first  DefaultArm
+    second DefaultArm
+}
+
+// The flat codecs expose struct entry points, with the same union wire inside.
+type DefaultChoicePacket
+{
+    choice DefaultChoice
+}
+
+// A bulk-bearing payload also exercises readers that cannot use scalar batching.
+type DefaultBulkArm
+{
+    payload DefaultArm
+    data    bytes(2)
+}
+
+union DefaultBulkChoice
+{
+    first  DefaultBulkArm
+    second DefaultBulkArm
+}

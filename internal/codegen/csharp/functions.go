@@ -37,6 +37,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.sf("public const long %sMaxBytes = %d;\n\n", st.Name, ir.MaxBytes(maxBits))
 
 	g.emitZeroFunction(st)
+	g.emitInitFunction(st)
 
 	g.emitPair(st.Name, st.Name,
 		func() {
@@ -192,8 +193,7 @@ func (g *gen) emitBatchScope(writing bool, f *ir.Field, child, ind string) {
 // emitZeroFunction emits the §5 ZERO form for a class — all-zero storage,
 // specified defaults NOT reapplied (those live in construction only; the wire
 // contract stays a pure function of the encodings). It is the C# twin of the
-// C++ target's memset: branch zeroing and the union arm reset both go
-// through here.
+// C++ target's memset: branch zeroing and explicit zero resets go through here.
 func (g *gen) emitZeroFunction(st *ir.Struct) {
 	g.sf("// The §5 zero form: all-zero storage; specified defaults live only in construction.\n")
 	g.sf("public static void Zero%s(%s value)\n{\n", st.Name, st.Name)
@@ -202,6 +202,20 @@ func (g *gen) emitZeroFunction(st *ir.Struct) {
 	}
 	for _, f := range st.Fields {
 		g.emitZeroField(f, "    ")
+	}
+	g.sf("}\n\n")
+}
+
+// emitInitFunction restores the construction form in existing storage. It is
+// also the application entry point for reusing a selected union payload.
+func (g *gen) emitInitFunction(st *ir.Struct) {
+	g.sf("// Restore construction defaults in place; buffers and objects are retained.\n")
+	g.sf("public static void Init%s(%s value)\n{\n", st.Name, st.Name)
+	if len(st.Fields) == 0 {
+		g.sf("    _ = value; // empty body — nothing to initialize\n")
+	}
+	for _, f := range st.Fields {
+		g.emitInitializeField(f, "    ", true)
 	}
 	g.sf("}\n\n")
 }
@@ -347,7 +361,7 @@ func (g *gen) emitReadItem(item ir.Item, ind string) {
 // stream signature, and a *Batch core is emitted whenever the union is
 // batched or composed under something that is. The write validates the tag
 // BEFORE it rides; the read rejects a tag above the count and
-// zero-establishes exactly the selected arm.
+// initializes exactly the selected arm from construction defaults.
 func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.needsSerialize = true
 	g.owner = d.Name
@@ -359,7 +373,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 
 	g.sf("// Zero%s resets value to the §5 zero form — the empty union. The tag alone\n", d.Name)
 	g.sf("// resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm\n")
-	g.sf("// is unselected at None; an arm re-zeroes at its next selection.\n")
+	g.sf("// is unselected at None; an arm initializes at its next selection.\n")
 	g.sf("public static void Zero%s(%s value)\n{\n", d.Name, d.Name)
 	g.sf("    value.Type = %sType.None;\n}\n\n", d.Name)
 
@@ -404,7 +418,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 					g.sf("            return true; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n")
 					continue
 				}
-				g.sf("            Zero%s(value.%s); // the selected arm starts from the zero form (SPEC §5)\n", v.Type, ir.GoExportName(v.Name))
+				g.sf("            Init%s(value.%s); // every selection starts from construction defaults\n", v.Type, ir.GoExportName(v.Name))
 				g.sf("            return %s;\n", g.armCall("Read", v))
 			}
 			g.sf("    }\n    return true; // None\n")
@@ -481,6 +495,16 @@ func (g *gen) emitZeroItems(items []ir.Item, ind string) {
 }
 
 func (g *gen) emitZeroField(f *ir.Field, ind string) {
+	g.emitInitializeField(f, ind, false)
+}
+
+// emitInitializeField is the common storage walk for Zero and Init. Only
+// construction initialization reapplies scalar defaults and born counts.
+func (g *gen) emitInitializeField(f *ir.Field, ind string, defaults bool) {
+	structInit := "Zero"
+	if defaults {
+		structInit = "Init"
+	}
 	base := g.fieldBase(f)
 	name := "value." + base
 	switch {
@@ -491,16 +515,28 @@ func (g *gen) emitZeroField(f *ir.Field, ind string) {
 		if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
 			// clearing a class array would null the pre-allocated elements —
 			// zero through them instead (the SCHEMA bound, like the wire loops)
+			init := structInit
+			if _, union := f.Type.Ref.(*ir.Union); union {
+				init = "Zero"
+			}
 			g.sf("%sfor (int i = 0; i < %s; i++)\n%s{\n", ind, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "int", false), ind)
-			g.sf("%s    Zero%s(%s[i]);\n%s}\n", ind, f.Type.Name, name, ind)
+			g.sf("%s    %s%s(%s[i]);\n%s}\n", ind, init, f.Type.Name, name, ind)
 		} else {
 			g.needsSystem = true
 			g.sf("%sArray.Clear(%s, 0, %s);\n", ind, name, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "int", false))
 		}
 		if f.Array == ir.ArrayCounted {
-			g.sf("%svalue.%s = 0;\n", ind, g.m(base+"Count"))
+			count := int64(0)
+			if defaults {
+				count = f.BornCount()
+			}
+			g.sf("%svalue.%s = %d;\n", ind, g.m(base+"Count"), count)
 		}
 	default:
+		if defaults && f.HasDefault {
+			g.sf("%s%s = %s;\n", ind, name, g.defaultValue(f, false))
+			return
+		}
 		switch f.Type.Kind {
 		case ir.TBool:
 			g.sf("%s%s = false;\n", ind, name)
@@ -515,12 +551,11 @@ func (g *gen) emitZeroField(f *ir.Field, ind string) {
 			case *ir.Flags:
 				g.sf("%s%s = 0;\n", ind, name)
 			case *ir.Struct:
-				// through the nested Zero — §5 wants ZERO values recursively,
-				// and re-newing would restore specified defaults instead
-				g.sf("%sZero%s(%s);\n", ind, f.Type.Name, name)
+				// Initialize the existing object in the same mode as its parent.
+				g.sf("%s%s%s(%s);\n", ind, structInit, f.Type.Name, name)
 			case *ir.Union:
 				// through Zero<Union> — the tag resets to None; arms are
-				// re-zeroed at their next selection (SPEC §4.8)
+				// initialized at their next selection (SPEC §4.8)
 				g.sf("%sZero%s(%s);\n", ind, f.Type.Name, name)
 			}
 		default:

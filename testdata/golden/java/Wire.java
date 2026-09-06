@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 package example;
 
@@ -131,6 +131,12 @@ public final class Wire {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroProbeHeader(ProbeHeader value) {
+        value.version = 0;
+        value.probeId = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initProbeHeader(ProbeHeader value) {
         value.version = 0;
         value.probeId = 0;
     }
@@ -346,6 +352,15 @@ public final class Wire {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroProbeBits(ProbeBits value) {
+        value.small = 0;
+        value.boundary = 0;
+        value.wide = 0;
+        value.sensor = 0;
+        value.nonce = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initProbeBits(ProbeBits value) {
         value.small = 0;
         value.boundary = 0;
         value.wide = 0;
@@ -615,6 +630,20 @@ public final class Wire {
         value.idleTicks = 0;
         java.util.Arrays.fill(value.samples, (short) 0);
         value.samplesCount = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initProbeSample(ProbeSample value) {
+        value.active = true;
+        value.orientation = 0.0f;
+        value.rawDelta = 0;
+        value.bigDelta = 0;
+        value.weapon = 0;
+        value.hasTarget = false;
+        value.targetId = 0;
+        value.idleTicks = 0;
+        java.util.Arrays.fill(value.samples, (short) 0);
+        value.samplesCount = 1;
     }
 
     // checkWriteProbeSample is writeProbeSample's contract walk, called once through assert —
@@ -972,6 +1001,11 @@ public final class Wire {
         value.radius = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initProbeRing(ProbeRing value) {
+        value.radius = 0;
+    }
+
     // checkWriteProbeRing is writeProbeRing's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -1066,6 +1100,12 @@ public final class Wire {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroProbeSlab(ProbeSlab value) {
+        value.width = 0;
+        value.height = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initProbeSlab(ProbeSlab value) {
         value.width = 0;
         value.height = 0;
     }
@@ -1202,8 +1242,8 @@ public final class Wire {
     }
 
     // ProbeShape — at most one of the arms; type says which. Construction is the empty
-    // union (None). A read zero-establishes exactly the selected arm before
-    // decoding it (SPEC §5); unselected arms keep what they last held — the
+    // union (None). Every read selection initializes the chosen payload from
+    // construction defaults; unselected arms keep what they last held — the
     // reused-storage discipline. Consumers read the selected arm only.
     public static final class ProbeShape {
         public byte type = ProbeShapeType.none;
@@ -1218,7 +1258,7 @@ public final class Wire {
 
     // zeroProbeShape resets value to the §5 zero form — the empty union. The tag alone
     // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-    // is unselected at None; an arm re-zeroes at its next selection.
+    // is unselected at None; an arm initializes at its next selection.
     public static void zeroProbeShape(ProbeShape value) {
         value.type = ProbeShapeType.none;
     }
@@ -1429,6 +1469,17 @@ public final class Wire {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroProbeCollider(ProbeCollider value) {
+        value.armor = 0;
+        value.shape.type = 0;
+        value.backup.type = 0;
+        for (int i0 = 0; i0 < 2; i0++) {
+            value.extras[i0].type = 0;
+        }
+        value.extrasCount = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initProbeCollider(ProbeCollider value) {
         value.armor = 0;
         value.shape.type = 0;
         value.backup.type = 0;
@@ -1949,6 +2000,12 @@ public final class Wire {
         value.preferred = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initProbeConfig(ProbeConfig value) {
+        value.retries = -1;
+        value.preferred = Weapon.railgun;
+    }
+
     // checkWriteProbeConfig is writeProbeConfig's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -2075,6 +2132,14 @@ public final class Wire {
             zeroProbeSample(value.samples[i0]);
         }
         zeroProbeConfig(value.config);
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initProbeArray(ProbeArray value) {
+        for (int i0 = 0; i0 < 2; i0++) {
+            initProbeSample(value.samples[i0]);
+        }
+        initProbeConfig(value.config);
     }
 
     // checkWriteProbeArray is writeProbeArray's contract walk, called once through assert —
@@ -2488,6 +2553,11 @@ public final class Wire {
         // empty body — nothing to reset (SPEC §4.6)
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initHeartbeat(Heartbeat value) {
+        // empty body — nothing to initialize
+    }
+
     // checkWriteHeartbeat is writeHeartbeat's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -2545,6 +2615,14 @@ public final class Wire {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroTest(Test value) {
+        value.testA = 0;
+        value.testB = 0;
+        value.testC = 0;
+        value.testD = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initTest(Test value) {
         value.testA = 0;
         value.testB = 0;
         value.testC = 0;
@@ -2721,6 +2799,12 @@ public final class Wire {
         value.dataLength = 0;
     }
 
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initBlock(Block value) {
+        java.util.Arrays.fill(value.data, (byte) 0);
+        value.dataLength = 0;
+    }
+
     // checkWriteBlock is writeBlock's contract walk, called once through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
@@ -2867,6 +2951,12 @@ public final class Wire {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroChat(Chat value) {
+        java.util.Arrays.fill(value.text, (byte) 0);
+        value.textLength = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initChat(Chat value) {
         java.util.Arrays.fill(value.text, (byte) 0);
         value.textLength = 0;
     }
@@ -3026,6 +3116,13 @@ public final class Wire {
         zeroProbeHeader(value.header);
         value.flags = 0;
         zeroTest(value.echo);
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initProbeReport(ProbeReport value) {
+        initProbeHeader(value.header);
+        value.flags = 0;
+        initTest(value.echo);
     }
 
     // checkWriteProbeReport is writeProbeReport's contract walk, called once through assert —
@@ -3376,6 +3473,33 @@ public final class Wire {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroTestData(TestData value) {
+        value.a = 0;
+        value.b = 0;
+        value.c = 0;
+        value.d = 0;
+        value.e = 0;
+        value.f = 0;
+        value.g = false;
+        java.util.Arrays.fill(value.items, 0);
+        value.itemsCount = 0;
+        value.floatValue = 0.0f;
+        value.compressedFloatValue = 0.0f;
+        value.doubleValue = 0.0;
+        value.int8Value = 0;
+        value.int16Value = 0;
+        value.uint8Value = 0;
+        value.uint16Value = 0;
+        value.uint32Value = 0;
+        value.uint64Value = 0;
+        value.int64Full = 0;
+        value.int64Range = 0;
+        java.util.Arrays.fill(value.fixedBytes, (byte) 0);
+        java.util.Arrays.fill(value.text, (byte) 0);
+        value.textLength = 0;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initTestData(TestData value) {
         value.a = 0;
         value.b = 0;
         value.c = 0;
@@ -4124,6 +4248,12 @@ public final class Wire {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroCompressedProbe(CompressedProbe value) {
+        value.boundary = 0.0f;
+        value.offset = 0.0f;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initCompressedProbe(CompressedProbe value) {
         value.boundary = 0.0f;
         value.offset = 0.0f;
     }

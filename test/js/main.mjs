@@ -20,6 +20,8 @@ import { WriteStream, ReadStream } from "../../../serialize.js/src/index.js";
 import * as enums from "../../generated/js/Enums.js";
 import * as types from "../../generated/js/Types.js";
 import * as wire from "../../generated/js/Wire.js";
+import * as armDefaults from "../../generated/js/ArmDefaults.js";
+import * as armDefaultsFlat from "../../generated/js/ArmDefaultsFlat.js";
 import * as bench from "../../generated/bench/js/Bench.js";
 import * as realworld from "../../generated/bench/js/realworld/RealWorld.js";
 
@@ -166,6 +168,90 @@ function textBytes(s) {
 }
 
 // ---- ShipCreate: the bool-gated flags branch, both ways ----
+// Every selection, including a repeated tag, restores the payload's
+// construction values in place. The independent packet is tag 1, count 0,
+// marker 5: 2 + 2 + 3 bits, low bit first, giving 0x51.
+{
+  const expected = Uint8Array.of(0x51);
+  const fresh = new armDefaults.DefaultChoicePacket();
+  fresh.Choice.Type = armDefaults.DefaultChoiceType.First;
+  fresh.Choice.First.Marker = 5;
+  check(fresh.Choice.First.Entries.every((entry) =>
+    entry.Retries === -1 && entry.Preferred === ex.Weapon.Railgun),
+    "default arm construction initializes all backing entries");
+
+  // Explicit initialization is also available when the application reuses
+  // a selected payload; assigning its public tag does not call a helper.
+  const first = fresh.Choice.First;
+  const entries = first.Entries;
+  const entry0 = entries[0];
+  entries[0].Retries = 45;
+  entries[1].Preferred = ex.Weapon.Laser;
+  armDefaults.InitDefaultArm(first);
+  check(fresh.Choice.First === first && first.Entries === entries && entries[0] === entry0,
+    "InitDefaultArm preserves preallocated objects and arrays");
+  check(first.EntriesCount === 0 && first.Marker === 0 &&
+    entries.every((entry) => entry.Retries === -1 && entry.Preferred === ex.Weapon.Railgun),
+    "InitDefaultArm restores ordinary construction values");
+  first.Marker = 5;
+
+  const ws = newWriteStream();
+  check(armDefaults.WriteDefaultChoicePacket(ws, fresh), "runtime write initialized arm");
+  check(ws.bitsProcessed() === 7, "initialized arm writes exactly seven bits");
+  ws.flush();
+  check(bytesEqual(ws.data(), expected), "runtime initialized arm writes independent 0x51 packet");
+  const flatBuffer = new Uint8Array(armDefaults.DefaultChoicePacketMaxBytes);
+  check(armDefaultsFlat.WriteDefaultChoicePacketFlat(fresh, new DataView(flatBuffer.buffer)) === 1 &&
+    flatBuffer[0] === 0x51, "flat initialized arm writes independent 0x51 packet");
+
+  for (const tier of ["runtime", "flat"]) {
+    const out = new armDefaults.DefaultChoicePacket();
+    const selected = out.Choice.First;
+    const selectedEntries = selected.Entries;
+    const selectedObjects = [...selectedEntries];
+    const unselected = out.Choice.Second;
+    unselected.EntriesCount = 1;
+    unselected.Marker = 6;
+    unselected.Entries[0].Retries = 81;
+    unselected.Entries[1].Preferred = ex.Weapon.Missile;
+    const unselectedSnapshot = JSON.stringify(unselected);
+    out.Choice.Type = armDefaults.DefaultChoiceType.Second;
+    for (let pass = 0; pass < 2; pass++) {
+      selected.EntriesCount = 2;
+      selected.Marker = 7;
+      for (const entry of selectedEntries) {
+        entry.Retries = 37 + pass;
+        entry.Preferred = ex.Weapon.None;
+      }
+      if (tier === "runtime") {
+        const rs = new ReadStream(expected);
+        check(armDefaults.ReadDefaultChoicePacket(rs, out), `${tier} default arm read ${pass}`);
+        check(rs.bitsProcessed() === 7, `${tier} default arm consumes seven bits ${pass}`);
+      } else {
+        const buffer = new Uint8Array(expected.length + 8);
+        buffer.set(expected);
+        check(armDefaultsFlat.ReadDefaultChoicePacketFlat(out, new DataView(buffer.buffer), 7),
+          `${tier} default arm accepts exactly seven bits ${pass}`);
+      }
+      check(out.Choice.Type === armDefaults.DefaultChoiceType.First &&
+        selected.EntriesCount === 0 && selected.Marker === 5,
+        `${tier} default arm receives count and marker ${pass}`);
+      check(selectedEntries.every((entry) =>
+        entry.Retries === -1 && entry.Preferred === ex.Weapon.Railgun),
+        `${tier} default arm restores both unused entries on every selection ${pass}`);
+      check(out.Choice.First === selected && selected.Entries === selectedEntries &&
+        selectedEntries.every((entry, i) => entry === selectedObjects[i]),
+        `${tier} default arm preserves selected storage ${pass}`);
+      check(out.Choice.Second === unselected && JSON.stringify(unselected) === unselectedSnapshot,
+        `${tier} default arm leaves unselected storage untouched ${pass}`);
+    }
+  }
+  const truncated = new Uint8Array(9);
+  truncated[0] = 0x51;
+  check(!armDefaultsFlat.ReadDefaultChoicePacketFlat(new armDefaults.DefaultChoicePacket(),
+    new DataView(truncated.buffer), 6), "flat default arm refuses a six-bit packet");
+}
+
 {
   const inp = new ex.ShipCreate();
   inp.ShipType = ex.ShipType.Bomber;

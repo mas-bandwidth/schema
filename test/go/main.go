@@ -50,7 +50,53 @@ func newWriteStream() (*serialize.WriteStream, []byte) {
 	return serialize.NewWriteStream(buffer), buffer
 }
 
+func testDefaultArmInitialization() {
+	// Independent oracle: First=1 in 2 bits, count=0 in 2, marker=5 in 3.
+	oracle := []byte{0x51}
+	in := example.DefaultChoice{Type: example.DefaultChoiceTypeFirst, First: example.NewDefaultArm()}
+	check(in.First.EntriesCount == 0, "DefaultArm constructor count is zero")
+	for _, entry := range in.First.Entries {
+		check(entry.Retries == -1 && entry.Preferred == example.WeaponRailgun,
+			"DefaultArm constructor initializes both backing entries")
+	}
+	in.First.Marker = 5
+	ws := serialize.NewWriteStream(make([]byte, 16))
+	checkErr(example.WriteDefaultChoice(ws, &in), "write constructed DefaultChoice")
+	check(ws.BitsProcessed() == 7, "DefaultChoice writes the independent 7-bit oracle")
+	ws.Flush()
+	check(bytes.Equal(ws.Data(), oracle), "DefaultChoice writes the independent 0x51 oracle")
+
+	out := example.DefaultChoice{Type: example.DefaultChoiceTypeSecond}
+	out.Second.EntriesCount = 1
+	out.Second.Marker = 3
+	for i := range out.Second.Entries {
+		out.Second.Entries[i] = example.ProbeConfig{Retries: 91, Preferred: example.WeaponMissile}
+	}
+	second := out.Second
+	for attempt := 0; attempt < 2; attempt++ {
+		// The second pass keeps the decoded First tag. Both reads must restore
+		// its whole backing array while the unselected Second remains intact.
+		out.First.EntriesCount = 2
+		out.First.Marker = 7
+		for i := range out.First.Entries {
+			out.First.Entries[i] = example.ProbeConfig{Retries: 123, Preferred: example.WeaponLaser}
+		}
+		rs := serialize.NewReadStream(oracle)
+		checkErr(example.ReadDefaultChoice(rs, &out), "read independent DefaultChoice oracle")
+		check(rs.BitsProcessed() == 7, "DefaultChoice consumes exactly 7 bits")
+		check(out.Type == example.DefaultChoiceTypeFirst && out.First.EntriesCount == 0 && out.First.Marker == 5,
+			"DefaultChoice selects First and reads count zero, marker five")
+		for _, entry := range out.First.Entries {
+			check(entry.Retries == -1 && entry.Preferred == example.WeaponRailgun,
+				"DefaultChoice reconstructs both backing entries, including repeated tags")
+		}
+		check(out.Second == second, "DefaultChoice preserves the unselected arm and its backing storage")
+	}
+}
+
 func main() {
+	testDefaultArmInitialization()
+
 	// ---- ShipCreate: the bool-gated flags branch, both ways ----
 	{
 		in := example.ShipCreate{}

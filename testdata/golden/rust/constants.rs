@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-pub const PROTOCOL_ID: u64 = 0x3d5823781128b414;
+pub const PROTOCOL_ID: u64 = 0x8656ae68c06b97a7;
 
 /// The generated crate's error: the runtime's own errors pass through;
 /// Validation is a read rejecting the wire (SPEC §4.3, §4.7).

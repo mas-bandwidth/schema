@@ -335,7 +335,8 @@ func (g *gen) emitUnion(d *ir.Union) {
 
 	g.pf("%s", ir.DocComment(d.Doc, "", "///"))
 	g.pf("// %s — at most one of the arms. The default is None (the empty union);\n", d.Name)
-	g.pf("// a read replaces the whole value, so stale-arm semantics cannot arise here.\n")
+	g.pf("// every read reconstructs the selected payload with its declared initial\n")
+	g.pf("// values, even at the same tag, and replaces the whole value on success.\n")
 	g.pf("#[derive(Clone, Copy, PartialEq, Debug, Default)]\n")
 	g.pf("pub enum %s {\n", d.Name)
 	g.pf("    #[default]\n    None,\n")

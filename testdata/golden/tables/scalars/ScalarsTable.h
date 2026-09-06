@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package scalardemo — protocol id 0x0bd1a1dffc795d14 (packets only: tables version by field id, not by protocol id)
+// package scalardemo — protocol id 0x6fcb9e6f374ae3ca (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): includable from
 // any TU — the one thing taken from serialize.h is the 128-bit storage type.
 
@@ -1311,7 +1311,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // generated field header carries as a literal.
 static const int64_t kTableAnnounceBytes = 677;
 static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0xa5, 0x2e, 0x5a, 0xbe, 0xa8, 0xbc, 0x4a, 0xf1, 0x02,
+    0x01, 0x01, 0x09, 0x3a, 0xfc, 0x1e, 0xc2, 0x35, 0x48, 0x20, 0x01, 0x02,
     0x0e, 0xfd, 0x04, 0x06, 0xfa, 0x04, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
     0x63, 0xaf, 0x17, 0x01, 0x20, 0x00, 0x00, 0xd0, 0x8a, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x54, 0x15, 0x02,
@@ -2007,7 +2007,7 @@ namespace scalardemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xf14abca8be5a2ea5ull;
+static const uint64_t BuildVersion = 0x01204835c21efc3aull;
 
 } // namespace scalardemo
 

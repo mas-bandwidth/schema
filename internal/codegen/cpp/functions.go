@@ -54,8 +54,8 @@ func (g *gen) emitUnionMaxBits(d *ir.Union) {
 // emitUnionWire is the message dispatch pair scaled down to a field type
 // (SPEC §4.8): the write validates the tag BEFORE it rides — an out-of-set
 // tag writes nothing, it never desyncs the stream — and the read rejects a
-// tag above the count inside read_int, then zero-establishes exactly the
-// selected arm before decoding it.
+// tag above the count inside read_int, then constructs the selected arm
+// with its defaults before decoding it.
 func (g *gen) emitUnionWire(d *ir.Union) {
 	g.needsSerialize = true
 	tag := d.Name + "Type"
@@ -96,7 +96,8 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 	g.pf("        case %s::None:\n            return true;\n", tag)
 	for _, v := range d.Variants {
 		g.pf("        case %s::%s:\n", tag, ir.GoExportName(v.Name))
-		g.pf("            value.%s = %s{};\n", v.Name, v.Type)
+		g.needsNew = true
+		g.pf("            ::new ( (void*) &value.%s ) %s{};\n", v.Name, v.Type)
 		g.pf("            return Read%s( stream, value.%s );\n", v.Type, v.Name)
 	}
 	g.pf("    }\n    return false;\n}\n\n")

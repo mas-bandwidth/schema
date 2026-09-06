@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0x9660fa8c14d38d67
+// package ludicrous — protocol id 0xf4a226f4166d919b
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an out-of-contract
@@ -22,7 +22,7 @@ const BOOL_SCRATCH = { value: false };
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-export const ProtocolId = 0x9660fa8c14d38d67n;
+export const ProtocolId = 0xf4a226f4166d919bn;
 
 export const MaxWorldUnits = 30000;
 
@@ -71,7 +71,16 @@ export class FixedProbe {
 export const FixedProbeMaxBits = 156;
 export const FixedProbeMaxBytes = 24;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitFixedProbe restores fresh construction values in place, preserving storage.
+export function InitFixedProbe(value) {
+  value.Angle = 0;
+  value.Position = 0n;
+  value.Reach = 0n;
+  value.Ticks = 0;
+  value.Samples.fill(0);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroFixedProbe(value) {
   value.Angle = 0;
   value.Position = 0n;
@@ -150,7 +159,18 @@ export class UnsignedProbe {
 export const UnsignedProbeMaxBits = 196;
 export const UnsignedProbeMaxBytes = 32;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitUnsignedProbe restores fresh construction values in place, preserving storage.
+export function InitUnsignedProbe(value) {
+  value.Angle = 0;
+  value.Span = 0n;
+  value.Reach = 0n;
+  value.Ticks = 0;
+  value.Samples.fill(0);
+  value.Locked = 196608;
+  value.Tail = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroUnsignedProbe(value) {
   value.Angle = 0;
   value.Span = 0n;
@@ -241,7 +261,16 @@ export class WideProbe {
 export const WideProbeMaxBits = 403;
 export const WideProbeMaxBytes = 56;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitWideProbe restores fresh construction values in place, preserving storage.
+export function InitWideProbe(value) {
+  value.EntityId = 0n;
+  value.Energy = 0n;
+  value.Flux = 0n;
+  value.Bias = -250n;
+  value.Seed = 36893488147419103232n;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroWideProbe(value) {
   value.EntityId = 0n;
   value.Energy = 0n;
@@ -319,7 +348,18 @@ export class LudicrousState {
 export const LudicrousStateMaxBits = 1205;
 export const LudicrousStateMaxBytes = 152;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitLudicrousState restores fresh construction values in place, preserving storage.
+export function InitLudicrousState(value) {
+  value.Mode = DriveMode.None;
+  InitFixedProbe(value.Probe);
+  InitWideProbe(value.Wide);
+  value.Keys.fill(0n);
+  value.KeysCount = 0;
+  value.HasTarget = false;
+  value.TargetId = 0n;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroLudicrousState(value) {
   value.Mode = DriveMode.None;
   ZeroFixedProbe(value.Probe);
@@ -421,7 +461,15 @@ export class DegenerateProbe {
 export const DegenerateProbeMaxBits = 8;
 export const DegenerateProbeMaxBytes = 8;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitDegenerateProbe restores fresh construction values in place, preserving storage.
+export function InitDegenerateProbe(value) {
+  value.LockedFixed = -196608;
+  value.LockedInt = 7;
+  value.LockedWide = -12345678901234n;
+  value.Tail = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroDegenerateProbe(value) {
   value.LockedFixed = 0;
   value.LockedInt = 0;
@@ -471,7 +519,14 @@ export class FixedVec {
 export const FixedVecMaxBits = 102;
 export const FixedVecMaxBytes = 16;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitFixedVec restores fresh construction values in place, preserving storage.
+export function InitFixedVec(value) {
+  value.X = 0n;
+  value.Y = 0n;
+  value.Z = 0n;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroFixedVec(value) {
   value.X = 0n;
   value.Y = 0n;
@@ -525,7 +580,15 @@ export class FixedQuat {
 export const FixedQuatMaxBits = 128;
 export const FixedQuatMaxBytes = 16;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitFixedQuat restores fresh construction values in place, preserving storage.
+export function InitFixedQuat(value) {
+  value.X = 0;
+  value.Y = 0;
+  value.Z = 0;
+  value.W = 1073741824;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroFixedQuat(value) {
   value.X = 0;
   value.Y = 0;

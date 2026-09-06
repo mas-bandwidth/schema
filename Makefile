@@ -3914,6 +3914,7 @@ tables-scalars-block-asserts: build/tables-generated/.stamp
 	@echo "tables wide-scalar layout asserts: the scalars block form compiles, every sizeof, alignof and offsetof asserted"
 
 include $(wildcard make/*.mk)
+include make/checks/packet-arm-defaults.mk
 
 # THE CONFORMANCE MATRIX (test/conformance/README.md): every discovered driver
 # over every surface it lists. The reference leg is C++ and is built here; the

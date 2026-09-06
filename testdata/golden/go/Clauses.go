@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x3d5823781128b414
+// package example — protocol id 0x8656ae68c06b97a7
 
 package example
 
@@ -804,7 +804,7 @@ func EnumNameEmptyUnionType(value uint64) string {
 }
 
 // EmptyUnion — at most one of the arms; Type says which. The zero value is the
-// empty union (None). A read zero-establishes exactly the selected arm before
+// empty union (None). A read constructs the selected arm with its defaults before
 // decoding it (SPEC §5); unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 type EmptyUnion struct {
@@ -850,10 +850,10 @@ func ReadEmptyUnion(stream *serialize.ReadStream, value *EmptyUnion) error {
 	}
 	switch value.Type {
 	case EmptyUnionTypeA:
-		value.A = EmptyA{} // the selected arm starts from the zero form (SPEC §5)
+		value.A = EmptyA{} // fresh payload on every selection (SPEC §4.8)
 		return ReadEmptyA(stream, &value.A)
 	case EmptyUnionTypeB:
-		value.B = EmptyB{} // the selected arm starts from the zero form (SPEC §5)
+		value.B = EmptyB{} // fresh payload on every selection (SPEC §4.8)
 		return ReadEmptyB(stream, &value.B)
 	}
 	return stream.Err() // None

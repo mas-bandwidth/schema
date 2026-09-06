@@ -278,6 +278,16 @@ C generate the tagged union above; Go, C#, JS, Dart, Java and Elixir lay the
 tag beside one pre-allocated arm per variant; Rust gets a real
 `enum ColliderShape { None, Box(BoxCollider), ... }`.
 
+Selecting an arm initializes its payload with its declared defaults, just
+like a fresh value of that type. Initialize the payload before populating it
+and setting the tag; assigning the tag alone does not initialize storage.
+Use the generated constructor where available, or `Init<Type>` / `init<Type>`
+in C#, JavaScript, Java and Dart to initialize an existing payload in place.
+For C++, construct the member in place, for example
+`::new ( (void*) &shape.sphere ) SphereCollider{}`. Decoding performs the same
+initialization on every selection, even when the tag repeats, before reading
+the payload. It does not allocate new managed arm objects or clear other arms.
+
 An arm is a field line: its type is any type a field's is, and an arm may
 name no type at all, which is an arm that selects and carries nothing. A
 union inside a `type` body takes arms that name declared types, plus arms
@@ -2961,7 +2971,7 @@ cook's own header, and the third coordinate of the key below.
 
 ```
 $ schema build-version tables/block/
-0xb1bb90bcc5a063f3
+0xabef66a085fb8fc0
 ```
 
 ```cpp

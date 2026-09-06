@@ -858,8 +858,8 @@ func (g *gen) emitUnion(d *ir.Union) {
 
 	g.bpf("%s", ir.DocComment(d.Doc, "", "///"))
 	g.bpf("// %s — at most one of the arms; type says which. Construction is the empty\n", d.Name)
-	g.bpf("// union (None). A read zero-establishes exactly the selected arm before\n")
-	g.bpf("// decoding it (SPEC §5); unselected arms keep what they last held — the\n")
+	g.bpf("// union (None). Every read selection initializes the chosen payload from\n")
+	g.bpf("// construction defaults; unselected arms keep what they last held — the\n")
 	g.bpf("// reused-storage discipline. Consumers read the selected arm only.\n")
 	g.bpf("final class %s {\n", d.Name)
 	g.bpf("  int type = %sType.none;\n", d.Name)

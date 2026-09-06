@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0x88cf953e975ace60 (packets only: tables version by field id, not by protocol id)
+// package benchtable — protocol id 0x0926221bcb6f475f (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -1292,7 +1292,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // generated field header carries as a literal.
 static const int64_t kTableAnnounceBytes = 934;
 static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x35, 0x0e, 0x66, 0x8f, 0xff, 0x0a, 0xe1, 0xbe, 0x02,
+    0x01, 0x01, 0x09, 0x7f, 0xa9, 0x82, 0x9c, 0x0e, 0x85, 0xaa, 0xa9, 0x02,
     0x0e, 0xfe, 0x06, 0x06, 0xfb, 0x06, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e,
     0x01, 0xa5, 0x04, 0x01, 0x02, 0x00, 0x22, 0xd0, 0xeb, 0x96, 0x4d, 0xac,
     0xf1, 0xfb, 0x07, 0x01, 0x0c, 0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd,
@@ -1905,7 +1905,7 @@ namespace benchtable {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xbee10aff8f660e35ull;
+static const uint64_t BuildVersion = 0xa9aa850e9c82a97full;
 
 } // namespace benchtable
 
