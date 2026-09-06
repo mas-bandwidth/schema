@@ -1,6 +1,6 @@
 // The variant list's separators (SPEC §4.1, §4.2): a comma or a newline, a
 // trailing separator allowed, and the newline earning its place at the one
-// line kind that needs it — a qualified variant, whose section claims the
+// line kind that needs it, a qualified variant, whose section claims the
 // rest of the line.
 package parser
 

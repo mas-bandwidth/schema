@@ -18,10 +18,11 @@ func init() {
 		Name{Name: "TableReader", What: "the wire reader over the caller's buffer"},
 		Name{Name: "TableTypeInfo", What: "a table's reflection descriptor"},
 		Name{Name: "TableFieldInfo", What: "a field's reflection descriptor"},
-		// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every descriptor row
-		// and registry record with no `///` block names this ONE definition, so
-		// absence costs a unit no string data and a printer concatenates doc
-		// columns with no null test. Claimed wherever a unit declares a table.
+		// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every field row
+		// and every declaration row with no `///` block names this ONE
+		// definition, so absence costs a unit no string data and a printer
+		// concatenates doc columns with no null test. Claimed wherever a unit
+		// declares a table.
 		Name{Name: "TableDocNone", What: "the one shared empty doc every unannotated descriptor row names"},
 		Name{Name: "TableUnionInfo", What: "a union field's tag and its arms"},
 		Name{Name: "TableKeyed", What: "an enum-keyed array's slot storage"},

@@ -585,9 +585,10 @@ type TableFieldInfo struct {
 	Table func() *TableTypeInfo
 
 	// what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
-	// block above it, verbatim (SPEC §4.1) — TableDocNone when there is none,
-	// never nil — and its tags (SPEC §4.2) in declared order, 0 and a nil list
-	// when there are none. Static package data, allocating nothing.
+	// block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
+	// none, never nil. Its tags (SPEC §4.2) follow in declared order, and an
+	// untagged field is 0 beside a nil list. Static package data, allocating
+	// nothing.
 	Doc     string
 	NumTags int32
 	Tags    []string

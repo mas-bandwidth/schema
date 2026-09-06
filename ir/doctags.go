@@ -33,15 +33,6 @@ func DocComment(doc, indent, marker string) string {
 	return b.String()
 }
 
-// DocListing flattens a doc comment to ONE LINE for the view listing
-// (docs/SPEC-TABLES.md §8.7): the escape's own backslash is written `\\` and
-// each newline `\n`, so a line-oriented byte comparison sees a multi-line doc
-// as one line on both halves.
-func DocListing(doc string) string {
-	doc = strings.ReplaceAll(doc, `\`, `\\`)
-	return strings.ReplaceAll(doc, "\n", `\n`)
-}
-
 // QuoteDoc renders a doc comment as a double-quoted string literal under the
 // C family's escape rule (SPEC §4.1): a quote, a backslash and the newline
 // that joins the lines are what it covers, and printable text passes as
@@ -64,7 +55,7 @@ func QuoteDocElixir(doc string) string {
 }
 
 // QuotedTags renders a tag list as quoted literals joined by ", " under the
-// C family's rule; the empty string for no tags.
+// C family's rule. The empty string for no tags.
 func QuotedTags(tags []string) string {
 	q := make([]string, len(tags))
 	for i, t := range tags {

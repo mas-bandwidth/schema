@@ -29,7 +29,7 @@ type ConstDecl struct {
 	Type  string // "" for an untyped (kind-inferred) constant; else e.g. "uint64"
 	Expr  Expr
 	Attrs []Attr // the qualification section: TAGS and nothing else (SPEC §4.2)
-	Doc   string // the `///` block above it, verbatim (SPEC §4.1); "" when none
+	Doc   string // the `///` block above it, verbatim (SPEC §4.1), "" when none
 }
 
 type EnumDecl struct {
@@ -37,7 +37,7 @@ type EnumDecl struct {
 	Pos      Pos
 	Attrs    []Attr
 	Variants []Name
-	Doc      string // the `///` block above it (SPEC §4.1); "" when none
+	Doc      string // the `///` block above it (SPEC §4.1), "" when none
 }
 
 type FlagsDecl struct {
@@ -45,7 +45,7 @@ type FlagsDecl struct {
 	Pos      Pos
 	Attrs    []Attr
 	Variants []Name
-	Doc      string // the `///` block above it (SPEC §4.1); "" when none
+	Doc      string // the `///` block above it (SPEC §4.1), "" when none
 }
 
 type TypeDecl struct {
@@ -53,7 +53,7 @@ type TypeDecl struct {
 	Pos   Pos
 	Attrs []Attr // type TAGS, and the cpp_native/cpp_include pair (SPEC §4.2)
 	Body  *Block
-	Doc   string // the `///` block above it (SPEC §4.1); "" when none
+	Doc   string // the `///` block above it (SPEC §4.1), "" when none
 }
 
 // TableDecl is a `table` declaration: a data type on the evolution-tolerant
@@ -65,7 +65,7 @@ type TableDecl struct {
 	Pos   Pos
 	Attrs []Attr
 	Body  *Block
-	Doc   string // the `///` block above it (SPEC §4.1); "" when none
+	Doc   string // the `///` block above it (SPEC §4.1), "" when none
 }
 
 // UnionDecl is a first-class one-of type (SPEC §4.8): an implicit None row,
@@ -76,7 +76,7 @@ type UnionDecl struct {
 	Pos      Pos
 	Attrs    []Attr // the qualification section: TAGS and nothing else (SPEC §4.2)
 	Variants []UnionVariant
-	Doc      string // the `///` block above it (SPEC §4.1); "" when none
+	Doc      string // the `///` block above it (SPEC §4.1), "" when none
 }
 
 // UnionVariant is one arm. An arm IS a field line (SPEC §4.8,
@@ -94,7 +94,7 @@ type UnionVariant struct {
 	// Attrs is a PAYLOAD-FREE arm's qualification section: a bare name
 	// followed by `|`. An arm with a payload carries its section on Arm.
 	Attrs []Attr
-	// Doc is the `///` block above the arm (SPEC §4.1); "" when none. An
+	// Doc is the `///` block above the arm (SPEC §4.1), and "" when none. An
 	// arm with a payload carries the same text on Arm, since an arm is a
 	// field line.
 	Doc string
@@ -121,7 +121,7 @@ type Name struct {
 	// an enum variant the `was` rename (docs/SPEC-TABLES.md §5). The section
 	// runs to the end of the line, so a qualified variant ends its line.
 	Attrs []Attr
-	Doc   string // the `///` block above the variant (SPEC §4.1); "" when none
+	Doc   string // the `///` block above the variant (SPEC §4.1), "" when none
 }
 
 // Block is a { ... } body.
@@ -138,7 +138,7 @@ type Field struct {
 	Type    ScalarType
 	Attrs   []Attr
 	Default Expr   // optional "= expr" after the attributes (zero init otherwise)
-	Doc     string // the `///` block above the field (SPEC §4.1); "" when none
+	Doc     string // the `///` block above the field (SPEC §4.1), "" when none
 
 	// Map is the `map[K]V` spelling (docs/SPEC-TABLES.md §2.8): a lookup over
 	// entries the wire carries as a sorted array of one generated

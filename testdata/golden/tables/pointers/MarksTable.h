@@ -234,9 +234,10 @@ struct TableFieldInfo
     const TableUnionInfo * (*arms)();
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
     // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
-    // block above it, verbatim (SPEC §4.1) — TableDocNone when there is none,
-    // never NULL — and its tags (SPEC §4.2) in declared order, 0 and NULL when
-    // there are none. Static, constant-initialized, allocating nothing.
+    // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
+    // none, never NULL. Its tags (SPEC §4.2) follow in declared order, and an
+    // untagged field is 0 beside NULL. Static, constant-initialized,
+    // allocating nothing.
     const char * doc;
     int32_t num_tags;
     const char * const * tags;

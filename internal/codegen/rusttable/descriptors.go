@@ -69,7 +69,7 @@ func fieldTagsName(f *ir.Field) string { return ir.RustConstName(f.Name) + "_TAG
 
 // emitTagsStatic emits one tag list as a static array of string literals
 // (docs/SPEC-TABLES.md §8.1), and nothing at all for an item with no tags:
-// absence is 0 and an empty slice in the row, never a per-row array.
+// absence is 0 and None in the row, never a per-row array.
 func (g *gen) emitTagsStatic(name string, tags []string) {
 	if len(tags) == 0 {
 		return
@@ -78,15 +78,17 @@ func (g *gen) emitTagsStatic(name string, tags []string) {
 }
 
 // annotationColumns renders a row's doc, num_tags and tags columns: the shared
-// empty doc and an empty slice where the item carries none.
+// empty doc, and None where the item carries no tags. An absent tag list is
+// spelled the way every other absent column in a Rust row is spelled, so a
+// walk tests one thing to know whether a list is there.
 func annotationColumns(doc string, tags []string, tagsName string) (string, int, string) {
 	docColumn := "TABLE_DOC_NONE"
 	if doc != "" {
 		docColumn = ir.QuoteDoc(doc)
 	}
-	list := "&[]"
+	list := "None"
 	if len(tags) > 0 {
-		list = "&" + tagsName
+		list = "Some(&" + tagsName + ")"
 	}
 	return docColumn, len(tags), list
 }

@@ -157,6 +157,7 @@ func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
 // ---- storage (table declarations only; closure types come from <Base>.h) ----
 
 func (g *tableGen) emitTableStruct(st *ir.Struct) {
+	g.pf("%s", ir.DocComment(st.Doc, "", "//"))
 	g.pf("/* table %s — TABLE-wire storage: relocatable, bounded. C has no member\n", st.Name)
 	g.pf("   initializers, so the declared defaults live in %s and nowhere\n", g.api(st.Name, "reset"))
 	g.pf("   else — one definition of what a default is (docs/SPEC-TABLES.md) */\n")
@@ -172,6 +173,7 @@ func (g *tableGen) emitTableStruct(st *ir.Struct) {
 			}
 			prevGuard = f.Guard
 		}
+		g.pf("%s", ir.DocComment(f.Doc, "    ", "//"))
 		g.emitTableStorageField(f)
 	}
 	if len(st.Fields) == 0 {

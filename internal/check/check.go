@@ -561,12 +561,12 @@ var valuedKeys = map[string]bool{
 	"cpp_include": true,
 }
 
-// fieldKeys is the valued vocabulary a FIELD line takes (SPEC §4.2); which of
+// fieldKeys is the valued vocabulary a FIELD line takes (SPEC §4.2). Which of
 // them a given field may carry is resolveAttrs's business.
 var fieldKeys = map[string]bool{"min": true, "max": true, "resolution": true, "was": true, "json": true}
 
 // qualification reads one line's | section (SPEC §4.2). The VALUELESS entries
-// are the line's TAGS, returned in declared order; the VALUED entries are
+// are the line's TAGS, returned in declared order. The VALUED entries are
 // returned for the caller, whose own switch decides what each means. takes
 // names the valued keys this line PARSES and is what an unknown key's
 // diagnostic advertises, so a key the line reads only to refuse it by name is
@@ -594,13 +594,13 @@ func (c *checker) qualification(where, kind string, attrs []ast.Attr, takes map[
 		if a.Value == nil {
 			switch {
 			case a.Key == "doc":
-				c.errf(a.Pos, "%s: doc is not a tag — documentation is the /// comment above the item, and one text has one spelling (SPEC §4.1, §4.11)", where)
+				c.errf(a.Pos, "%s: doc is not a tag. Documentation is the /// comment above the item, and one text has one spelling (SPEC §4.1, §4.11)", where)
 			case a.Key == "round":
-				c.errf(a.Pos, "%s: round is not part of the language — rounding is the one fixed-point rule: half away from zero, everywhere (SPEC §4.3, §4.11)", where)
+				c.errf(a.Pos, "%s: round is not part of the language. Rounding is the one fixed-point rule, half away from zero, everywhere (SPEC §4.3, §4.11)", where)
 			case valuedKeys[a.Key]:
-				c.errf(a.Pos, "%s: attribute %s requires a value, as %s = ... — a bare identifier right of | is a tag, and %s is a valued key, so it is refused by name rather than taken as one (SPEC §4.2, §4.6)", where, a.Key, a.Key, a.Key)
+				c.errf(a.Pos, "%s: attribute %s requires a value, as %s = ... . A bare identifier right of | is a tag, and %s is a valued key, so it is refused by name rather than taken as one (SPEC §4.2, §4.6)", where, a.Key, a.Key, a.Key)
 			case seenTag[a.Key]:
-				c.errf(a.Pos, "%s: tag %s repeated — a tag is written once on a line (SPEC §4.2)", where, a.Key)
+				c.errf(a.Pos, "%s: tag %s repeated. A tag is written once on a line (SPEC §4.2)", where, a.Key)
 			default:
 				seenTag[a.Key] = true
 				tags = append(tags, a.Key)
@@ -609,11 +609,11 @@ func (c *checker) qualification(where, kind string, attrs []ast.Attr, takes map[
 		}
 		switch {
 		case a.Key == "doc":
-			c.errf(a.Pos, "%s: doc is not an attribute — documentation is the /// comment above the item, and one text has one spelling (SPEC §4.1, §4.11)", where)
+			c.errf(a.Pos, "%s: doc is not an attribute. Documentation is the /// comment above the item, and one text has one spelling (SPEC §4.1, §4.11)", where)
 		case a.Key == "round":
-			c.errf(a.Pos, "%s: round is not part of the language — rounding is the one fixed-point rule: half away from zero, everywhere (SPEC §4.3, §4.11)", where)
+			c.errf(a.Pos, "%s: round is not part of the language. Rounding is the one fixed-point rule, half away from zero, everywhere (SPEC §4.3, §4.11)", where)
 		case !reads[a.Key]:
-			c.errf(a.Pos, "%s: unknown attribute %q — it is not an attribute %s takes, the valued vocabulary is typed and closed per compiler version, %s, and a tag is a bare identifier (SPEC §4.2)", where, a.Key, kind, vocabulary(takes))
+			c.errf(a.Pos, "%s: unknown attribute %q. It is not an attribute %s takes, the valued vocabulary is typed and closed per compiler version, %s, and a tag is a bare identifier (SPEC §4.2)", where, a.Key, kind, vocabulary(takes))
 		case seenKey[a.Key]:
 			c.errf(a.Pos, "%s: attribute %s repeated (SPEC §4.6)", where, a.Key)
 		default:
@@ -4028,7 +4028,7 @@ func (c *checker) resolveFlagsDefault(f *ast.Field, out *ir.Field, fl *ir.Flags,
 // valueless entries are the item's TAGS, in declared order, and takes names
 // the valued keys this item kind reads. `was = "OldName"` is the item's
 // rename, held to the field rule (a quoted string, not empty, not its own
-// name); a FLAGS variant reads none, and its bit-positional refusal is drawn
+// name). A FLAGS variant reads none, and its bit-positional refusal is drawn
 // here by name. It returns the alias, "" when none is declared, and the tags.
 func (c *checker) variantQualification(what, decl string, v ast.Name, takes map[string]bool) (string, []string) {
 	where := fmt.Sprintf("%s %s: variant %s", what, decl, v.Text)
@@ -4042,7 +4042,7 @@ func (c *checker) variantQualification(what, decl string, v ast.Name, takes map[
 			// a mask is POSITIONAL (docs/SPEC-TABLES.md §5): a flags
 			// variant's identity is its bit, no name rides, and a rename in
 			// place is the baseline's to judge (§18.2)
-			c.errf(a.Pos, "%s %s: variant %s takes no was — a mask is positional, a variant's identity is its bit and no name rides the wire, so a rename keeps every stored bit; the baseline judges a rename in place (docs/SPEC-TABLES.md §5, §18.2)", what, decl, v.Text)
+			c.errf(a.Pos, "%s %s: variant %s takes no was. A mask is positional, a variant's identity is its bit and no name rides the wire, so a rename keeps every stored bit. The baseline judges a rename in place (docs/SPEC-TABLES.md §5, §18.2)", what, decl, v.Text)
 			continue
 		}
 		lit, ok := a.Value.(*ast.StringLit)
@@ -4052,7 +4052,7 @@ func (c *checker) variantQualification(what, decl string, v ast.Name, takes map[
 		case lit.Value == "":
 			c.errf(a.Pos, "was = \"\" names nothing — was records the variant's old name after a rename (docs/SPEC-TABLES.md §5)")
 		case lit.Value == v.Text:
-			c.errf(a.Pos, "%s: was = %q names the variant's own current name — was records the OLD name after a rename; drop the attribute until one happens (docs/SPEC-TABLES.md §5)", where, lit.Value)
+			c.errf(a.Pos, "%s: was = %q names the variant's own current name. was records the OLD name after a rename. Drop the attribute until one happens (docs/SPEC-TABLES.md §5)", where, lit.Value)
 		default:
 			was = lit.Value
 		}

@@ -82,7 +82,7 @@ type Const struct {
 	Int      *big.Int
 	Float    float64
 	Expr     Expr     // for symbolic rendering in generated code
-	Doc      string   // the `///` block above it, verbatim (SPEC §4.1); "" when none
+	Doc      string   // the `///` block above it, verbatim (SPEC §4.1), "" when none
 	Tags     []string // its tags, in declared order (SPEC §4.2); nil when none
 }
 
@@ -98,7 +98,7 @@ type Enum struct {
 	Was         []string
 	Max         int64    // top wire value: variant count, or the | max = K widening
 	StorageBits int      // 8 / 16 / 32 / 64, the smallest unsigned fitting Max
-	Doc         string   // the declaration's `///` block (SPEC §4.1); "" when none
+	Doc         string   // the declaration's `///` block (SPEC §4.1), "" when none
 	Tags        []string // the declaration's tags, in declared order (SPEC §4.2)
 	// VariantDocs and VariantTags are each variant's own annotation, parallel
 	// to Variants: the `///` block above the variant and the tags right of its
@@ -114,7 +114,7 @@ type Flags struct {
 	Name     string
 	Variants []string // bit i is variant i
 	WireBits int      // variant count, or the | max = K widening
-	Doc      string   // the declaration's `///` block (SPEC §4.1); "" when none
+	Doc      string   // the declaration's `///` block (SPEC §4.1), "" when none
 	Tags     []string // the declaration's tags, in declared order (SPEC §4.2)
 	// VariantDocs and VariantTags are each bit's own annotation, parallel to
 	// Variants (docs/SPEC-TABLES.md §8.3).
@@ -131,7 +131,7 @@ type Union struct {
 	Variants    []UnionVariant // declared order — the tag order
 	Max         int64          // = len(Variants); the tag wire range is [0, Max]
 	StorageBits int            // 8 / 16 / 32 / 64, the smallest unsigned fitting Max
-	Doc         string         // the declaration's `///` block (SPEC §4.1); "" when none
+	Doc         string         // the declaration's `///` block (SPEC §4.1), "" when none
 	Tags        []string       // the declaration's tags, in declared order (SPEC §4.2)
 }
 
@@ -239,8 +239,8 @@ type Struct struct {
 	// so every stored record of the old name still reads as this table.
 	// Tables only; "" when unset. See [Struct.WireName].
 	WasName string
-	Doc     string   // the declaration's `///` block (SPEC §4.1); "" when none
-	Tags    []string // the declaration's tags, in declared order — inert (SPEC §4.2)
+	Doc     string   // the declaration's `///` block (SPEC §4.1), "" when none
+	Tags    []string // the declaration's tags, in declared order, inert (SPEC §4.2)
 	// C++ native type mapping (SPEC §4.2, Native type mapping): when set,
 	// generated C++ declares fields of this type as ::CppNative (a hand type
 	// deriving from the generated basis struct — same layout, plus behavior)

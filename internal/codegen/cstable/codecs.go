@@ -196,6 +196,7 @@ func member(f *ir.Field) string { return ir.GoExportName(f.Name) }
 // ---- storage (table declarations only; closure types come from <Base>.cs) ----
 
 func (g *tableGen) emitTableClass(st *ir.Struct) {
+	g.tf("%s", ir.DocComment(st.Doc, "", "//"))
 	g.tf("// table %s — TABLE-wire storage: public fields, every buffer allocated at\n", st.Name)
 	g.tf("// construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)\n")
 	g.tf("public sealed class %s\n{\n", st.Name)
@@ -210,6 +211,7 @@ func (g *tableGen) emitTableClass(st *ir.Struct) {
 			}
 			prevGuard = f.Guard
 		}
+		g.tf("%s", ir.DocComment(f.Doc, "    ", "//"))
 		g.emitTableStorageField(f)
 	}
 	g.emitElementConstructor(st)

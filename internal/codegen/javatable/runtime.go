@@ -314,12 +314,12 @@ public final class TableKeyed {
 `
 
 // tableDocNoneSource is the unit's ONE empty doc, and it is a class of its own
-// file because that is where this backend puts a unit-level constant —
+// file because that is where this backend puts a unit-level constant.
 // BuildVersion's home is the same one, for the same package-scope reason.
 const tableDocNoneSource = `// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
 // block carries a doc column naming this one constant, so absence costs a unit
 // no string data and a printer concatenates doc columns with no null test. Every
-// absent doc in the unit — a field's and a type's alike — is this definition,
+// absent doc in the unit, a field's and a type's alike, is this definition,
 // and no descriptor row spells an empty literal of its own.
 public final class TableDocNone {
     private TableDocNone() {}
@@ -427,10 +427,11 @@ public final class TableFieldInfo {
     public TableUnionInfo arms;
 
     // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
-    // block above it, verbatim (SPEC §4.1) — TableDocNone.value when there is
-    // none, never null — and its tags (SPEC §4.2) in declared order, 0 and null
-    // when there are none. Constant data built with the descriptor, so a walk
-    // that prints every doc and every tag allocates nothing.
+    // block above it, verbatim (SPEC §4.1). It is TableDocNone.value when
+    // there is none, never null. Its tags (SPEC §4.2) follow in declared
+    // order, and an untagged field is 0 beside null. Constant data built with
+    // the descriptor, so a walk that prints every doc and every tag allocates
+    // nothing.
     public String doc;
     public int numTags;
     public String[] tags;

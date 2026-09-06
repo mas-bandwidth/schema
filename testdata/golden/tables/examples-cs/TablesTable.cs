@@ -35,10 +35,15 @@ namespace Tabledemo
         }
     }
 
+    // One weapon's tuning. A designer edits this table and nothing else.
     // table WeaponConfig — TABLE-wire storage: public fields, every buffer allocated at
     // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class WeaponConfig
     {
+        //  Damage per hit, before armor.
+        //
+        // The armor curve is written "hardness \ hit" in the design notes,
+        // and the backslash is part of the name.
         public float Damage = 21.0f;
         public float Speed = 500.0f;
         public int Penetration = 1;

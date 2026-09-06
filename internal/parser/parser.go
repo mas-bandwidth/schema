@@ -79,7 +79,7 @@ func describe(t scanner.Token) string {
 
 // takeDoc consumes a `///` DOC COMMENT standing before an item and returns
 // its text (SPEC §4.1). The scanner has already held the block to its own
-// lines and to touching what follows; what remains is BINDING, which is the
+// lines and to touching what follows. What remains is BINDING, which is the
 // caller's: a declaration, a field, a variant or an arm takes the text, and
 // anything else refuses it by name through refuseDoc.
 func (p *parser) takeDoc() (string, ast.Pos, bool) {
@@ -95,7 +95,7 @@ func (p *parser) takeDoc() (string, ast.Pos, bool) {
 // block was an opt-in, and dropping it silently is the outcome opt-in exists
 // to prevent, so it is refused naming the spelling that works.
 func (p *parser) refuseDoc(pos ast.Pos, what string) {
-	p.errf(pos, "nothing here carries a doc comment — a /// block above %s reaches no descriptor; write // for a comment there (SPEC §4.1)", what)
+	p.errf(pos, "nothing here carries a doc comment, and a /// block above %s reaches no descriptor. Write // for a comment there (SPEC §4.1)", what)
 }
 
 // terminator: an actual newline, or the closing } of the enclosing block
@@ -202,7 +202,7 @@ func (p *parser) parseDecl(doc string, docPos ast.Pos, hasDoc bool) {
 		d.Expr = p.parseExpr()
 		if p.kind() == scanner.Pipe {
 			// the qualification section carries TAGS and nothing else
-			// (SPEC §4.2); | is never an operator, the language has no
+			// (SPEC §4.2). | is never an operator, the language has no
 			// bitwise-or, and the checker refuses anything valued there
 			d.Attrs = p.parsePipeAttrs()
 		}
@@ -317,7 +317,7 @@ func (p *parser) constType() (string, bool) {
 // names separated by a COMMA or by a NEWLINE, a trailing separator allowed.
 // Each variant may carry a `///` doc comment above it and a qualification
 // section after it. The section runs to the end of the line, so a qualified
-// variant ends its line and the newline is its separator; a `}` on that same
+// variant ends its line and the newline is its separator. A `}` on that same
 // line is refused by name, because the pipe claims the rest of the line and
 // the brace would be arguing with it.
 func (p *parser) parseVariantList(what string) []ast.Name {
@@ -357,7 +357,7 @@ func (p *parser) parseVariantList(what string) []ast.Name {
 			// two names on one line with nothing between them: read on as
 			// if the separator were there, so the rest of the body still
 			// diagnoses
-			p.errf(p.tok().Pos, "%s variants are separated by a comma or a newline — %s follows %s with neither (SPEC §4.2)", what, p.tok().Text, t.Text)
+			p.errf(p.tok().Pos, "%s variants are separated by a comma or a newline. %s follows %s with neither (SPEC §4.2)", what, p.tok().Text, t.Text)
 		}
 	}
 	p.expect(scanner.RBrace, "}")
@@ -476,8 +476,8 @@ func (p *parser) parseBlock() *ast.Block {
 }
 
 // parseItem parses one body item. doc is the `///` block above it (SPEC
-// §4.1): a FIELD takes it, and every other item — const( ), reserved( ),
-// align, if — has no descriptor row to carry one and refuses it by name.
+// §4.1): a FIELD takes it. Every other item, meaning const( ), reserved( ),
+// align and if, has no descriptor row to carry one and refuses it by name.
 func (p *parser) parseItem(doc string, docPos ast.Pos, hasDoc bool) ast.Item {
 	t := p.tok()
 	if hasDoc && t.Kind != scanner.Ident {
@@ -866,10 +866,10 @@ func (p *parser) parsePipeAttrs() []ast.Attr {
 	pipe := p.expect(scanner.Pipe, "|")
 	refused := false
 	if k := p.kind(); k == scanner.Int || k == scanner.Float || k == scanner.LParen || k == scanner.Minus {
-		// `const X = 1 | 2`: | is never an operator — the language has no
+		// `const X = 1 | 2`: | is never an operator. The language has no
 		// bitwise-or. It opens the qualification section, whose entries are
 		// identifiers (SPEC §4.2).
-		p.errf(pipe.Pos, "| is never an operator — the language has no bitwise-or; | opens a qualification section, whose entries are identifiers (SPEC §4.2)")
+		p.errf(pipe.Pos, "| is never an operator. The language has no bitwise-or. | opens a qualification section, whose entries are identifiers (SPEC §4.2)")
 		for p.kind() != scanner.Newline && p.kind() != scanner.RBrace && p.kind() != scanner.EOF {
 			p.advance() // the terminator stays for the caller
 		}
@@ -879,7 +879,7 @@ func (p *parser) parsePipeAttrs() []ast.Attr {
 		if p.kind().IsKeyword() {
 			word := p.advance()
 			refused = true
-			p.errf(word.Pos, "%s is a reserved word and cannot be a tag — a tag is an identifier, and reserved words are not identifiers (SPEC §4.1, §4.2)", word.Text)
+			p.errf(word.Pos, "%s is a reserved word and cannot be a tag. A tag is an identifier, and reserved words are not identifiers (SPEC §4.1, §4.2)", word.Text)
 			if p.kind() == scanner.Comma {
 				p.advance()
 				continue

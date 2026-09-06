@@ -203,9 +203,10 @@ typedef struct TableFieldInfo
     const TableUnionInfo * arms;
     const char * guard;     /* branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded */
     /* what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
-       block above it, verbatim (SPEC §4.1) — TableDocNone when there is none,
-       never NULL — and its tags (SPEC §4.2) in declared order, 0 and NULL when
-       there are none. Static, constant-initialized, allocating nothing. */
+       block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
+       none, never NULL. Its tags (SPEC §4.2) follow in declared order, and an
+       untagged field is 0 beside NULL. Static, constant-initialized,
+       allocating nothing. */
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
@@ -563,10 +564,15 @@ static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64
 
 #endif /* SCHEMA_TABLEDEMO_TABLE_COOK */
 
+// One weapon's tuning. A designer edits this table and nothing else.
 /* table WeaponConfig — TABLE-wire storage: relocatable, bounded. C has no member
    initializers, so the declared defaults live in weapon_config_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct WeaponConfig {
+    //  Damage per hit, before armor.
+    //
+    // The armor curve is written "hardness \ hit" in the design notes,
+    // and the backslash is part of the name.
     float damage;
     float speed;
     int32_t penetration;

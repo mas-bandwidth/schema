@@ -26,11 +26,11 @@ const (
 	Comment // raw-scan mode only (schemafmt) — Text carries the comment verbatim
 	// Doc is one `///` DOC COMMENT (SPEC §4.1): a contiguous run of `///`
 	// lines, each on a line of its own, scanned as ONE token whose Text is the
-	// block's text — what follows each marker, with at most one leading space
-	// and all trailing whitespace dropped, joined by single newlines. The run's
-	// own newlines are consumed with it, so the token sits directly before the
-	// item it documents. Never produced in raw-scan mode, where every comment
-	// is a Comment token verbatim.
+	// block's text. That is what follows each marker, with at most one leading
+	// space and all trailing whitespace dropped, joined by single newlines. The
+	// run's own newlines are consumed with it, so the token sits directly
+	// before the item it documents. Never produced in raw-scan mode, where
+	// every comment is a Comment token verbatim.
 	Doc
 
 	LBrace // {
@@ -211,8 +211,8 @@ func (s *state) peekAt(n int) byte {
 // scanDoc scans a `///` DOC COMMENT from its first marker (SPEC §4.1): a
 // contiguous run of `///` lines, each carrying nothing but the comment, whose
 // last line immediately precedes the item it documents. The text is the block
-// verbatim with the marker removed — at most one leading space dropped per
-// line, trailing whitespace dropped, lines joined by single newlines — and
+// verbatim with the marker removed. At most one leading space is dropped per
+// line, trailing whitespace is dropped, the lines join by single newlines, and
 // nothing else is interpreted. The run's newlines are consumed so the token
 // sits directly before the item.
 //
@@ -220,13 +220,14 @@ func (s *state) peekAt(n int) byte {
 // refusal naming `//` as the spelling that works: a `///` that TRAILS code on
 // the item's own line (a qualification section included), and a block held
 // off its item by a blank line or by an ordinary comment line. A block above
-// something that carries no doc comment — package, a closing brace, a `const(`
-// item — reaches the parser as a Doc token and is refused there, where the
-// item is known. On a refusal nothing is returned and the line is skipped.
+// something that carries no doc comment, such as package, a closing brace or
+// a `const(` item, reaches the parser as a Doc token and is refused there,
+// where the item is known. On a refusal nothing is returned and the line is
+// skipped.
 func (s *state) scanDoc() (Token, bool) {
 	p := s.pos()
 	if s.lineHasCode {
-		s.errf(p, "a doc comment stands on its own line above the item — a /// that trails code on the item's own line is refused; write // for a trailing comment (SPEC §4.1)")
+		s.errf(p, "a doc comment stands on its own line above the item. A /// that trails code on the item's own line is refused. Write // for a trailing comment (SPEC §4.1)")
 		for s.off < len(s.src) && s.peek() != '\n' {
 			s.advance()
 		}
@@ -261,7 +262,7 @@ func (s *state) scanDoc() (Token, bool) {
 	text := strings.Join(lines, "\n")
 	// what follows the block: the item on the very next line, or a refusal
 	if s.off >= len(s.src) {
-		s.errf(p, "a doc comment touches the item it documents — this /// block has nothing under it; write // for a comment that documents nothing (SPEC §4.1)")
+		s.errf(p, "a doc comment touches the item it documents. This /// block has nothing under it. Write // for a comment that documents nothing (SPEC §4.1)")
 		return Token{}, false
 	}
 	j := s.off + 1
@@ -270,13 +271,13 @@ func (s *state) scanDoc() (Token, bool) {
 	}
 	switch {
 	case j >= len(s.src):
-		s.errf(p, "a doc comment touches the item it documents — this /// block has nothing under it; write // for a comment that documents nothing (SPEC §4.1)")
+		s.errf(p, "a doc comment touches the item it documents. This /// block has nothing under it. Write // for a comment that documents nothing (SPEC §4.1)")
 		return Token{}, false
 	case s.src[j] == '\n':
-		s.errf(p, "a doc comment touches the item it documents — this /// block is separated from it by a blank line; close the gap, or write // for a working note (SPEC §4.1)")
+		s.errf(p, "a doc comment touches the item it documents. This /// block is separated from it by a blank line. Close the gap, or write // for a working note (SPEC §4.1)")
 		return Token{}, false
 	case s.src[j] == '/' && j+1 < len(s.src) && (s.src[j+1] == '/' || s.src[j+1] == '*'):
-		s.errf(p, "a doc comment touches the item it documents — this /// block is separated from it by a comment line; move the /// block directly above the item, or write // for a working note (SPEC §4.1)")
+		s.errf(p, "a doc comment touches the item it documents. This /// block is separated from it by a comment line. Move the /// block directly above the item, or write // for a working note (SPEC §4.1)")
 		return Token{}, false
 	}
 	s.advance() // the newline: the token sits directly before the item

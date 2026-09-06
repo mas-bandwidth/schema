@@ -162,6 +162,7 @@ func keyedLoopBound(f *ir.Field) string { return "int(" + f.KeyEnum + "Max)" }
 // ---- storage (table declarations only; closure types come from <Base>.go) ----
 
 func (g *tableGen) emitTableStruct(st *ir.Struct) {
+	g.tf("%s", ir.DocComment(st.Doc, "", "//"))
 	g.tf("// %s — TABLE-wire storage: exported fields, every buffer inside the value,\n", st.Name)
 	g.tf("// declared defaults restored by %sReset (docs/SPEC-TABLES.md).\n", st.Name)
 	g.tf("type %s struct {\n", st.Name)
@@ -176,6 +177,7 @@ func (g *tableGen) emitTableStruct(st *ir.Struct) {
 			}
 			prevGuard = f.Guard
 		}
+		g.tf("%s", ir.DocComment(f.Doc, "\t", "//"))
 		g.emitTableStorageField(f)
 	}
 	g.tf("}\n\n")
@@ -1150,7 +1152,11 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 // belongs to, exactly as that row's own field table and descriptor are named:
 // a declaration's list carries the type's name alone, a field's carries the
 // type's and the field's member spelling (docs/SPEC-TABLES.md §8.1).
-func tagsName(owner, member string) string { return owner + member + "TableTags" }
+//
+// "Table" sits BETWEEN the two halves. A package-level name has to be unique,
+// and concatenating the halves directly gives table Ship's field config and
+// table ShipConfig the same name, which is a package that does not compile.
+func tagsName(owner, member string) string { return owner + "Table" + member + "Tags" }
 
 // emitTagsStatic emits one tag list as a package-level slice of string
 // literals (docs/SPEC-TABLES.md §8.1), and nothing at all for an item with no
@@ -1166,8 +1172,8 @@ func (g *tableGen) emitTagsStatic(name string, tags []string) {
 
 // annotationColumns renders a row's Doc, NumTags and Tags columns: the shared
 // empty doc and a nil list where the item carries none. Go gives a string no
-// address identity, so the shared empty doc is shared in the EMITTED TEXT —
-// every unannotated row names TableDocNone rather than carrying an inline ""
+// address identity, so the shared empty doc is shared in the EMITTED TEXT.
+// Every unannotated row names TableDocNone rather than carrying an inline ""
 // of its own.
 func annotationColumns(doc string, tags []string, name string) string {
 	docColumn := "TableDocNone"

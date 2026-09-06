@@ -251,6 +251,7 @@ func member(f *ir.Field) string { return javaName(f.Name) }
 // ---- storage (table declarations only; closure types come from <Base>.java) ----
 
 func (g *tableGen) emitTableClass(st *ir.Struct) {
+	g.tf("%s", ir.DocComment(st.Doc, "", "//"))
 	g.tf("// table %s — TABLE-wire storage: public fields, every buffer allocated at\n", st.Name)
 	g.tf("// construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)\n")
 	g.tf("public static final class %s {\n", st.Name)
@@ -265,6 +266,7 @@ func (g *tableGen) emitTableClass(st *ir.Struct) {
 			}
 			prevGuard = f.Guard
 		}
+		g.tf("%s", ir.DocComment(f.Doc, "    ", "//"))
 		g.emitTableStorageField(f)
 	}
 	g.emitElementConstructor(st)

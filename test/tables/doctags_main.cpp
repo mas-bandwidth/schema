@@ -5,8 +5,8 @@
 // 1. `doc` IS NEVER NULL. The walk below CONCATENATES every doc in the
 //    tabledemo closure into one buffer with NO NULL TEST. A NULL column
 //    faults here rather than printing a line that happens to look right, so
-//    the rule has a red state and the Makefile's negative control — an
-//    emitter patched to write NULL for one absent doc — takes this binary
+//    the rule has a red state and the Makefile's negative control, an
+//    emitter patched to write NULL for one absent doc, takes this binary
 //    down.
 //
 // 2. ABSENCE IS ONE SHARED EMPTY STRING. C++ has address identity, so the
@@ -30,7 +30,7 @@ static int64_t rows = 0;
 static int64_t annotated = 0;
 static int failures = 0;
 
-// concatenate appends one doc column with no null test — observable 1.
+// concatenate appends one doc column with no null test. That is observable 1.
 static void concatenate( const char * doc )
 {
     const int64_t n = (int64_t) strlen( doc );
@@ -59,7 +59,7 @@ static void checkAnnotation( const char * what, const char * doc, int32_t num_ta
     }
     if ( ( num_tags == 0 ) != ( tags == NULL ) )
     {
-        printf( "FAIL %s: num_tags %d beside a %s tag list — absence is 0 and NULL together\n",
+        printf( "FAIL %s: num_tags %d beside a %s tag list. Absence is 0 and NULL together\n",
                 what, num_tags, tags == NULL ? "NULL" : "non-NULL" );
         failures++;
     }
@@ -67,7 +67,7 @@ static void checkAnnotation( const char * what, const char * doc, int32_t num_ta
     {
         if ( tags[i] == NULL )
         {
-            printf( "FAIL %s: tag %d is NULL — a declared tag is a string literal\n", what, i );
+            printf( "FAIL %s: tag %d is NULL. A declared tag is a string literal\n", what, i );
             failures++;
         }
         else
@@ -82,7 +82,12 @@ static void checkAnnotation( const char * what, const char * doc, int32_t num_ta
 }
 
 // walk visits one table's descriptor and every field of it, recursing through
-// the nested-table column so the whole closure is reached from its roots.
+// the nested-table column and through a union field's ARMS so the whole
+// closure is reached from its roots. An arm is a field line
+// (docs/SPEC-TABLES.md §2.6, §8.1): an arm that names a declaration hangs that
+// declaration's descriptor off the arm row, and a general arm carries a field
+// row of its own with its own doc and tag columns. Both reach the observables
+// only if the walk descends here.
 static void walk( const TableTypeInfo * type, int depth )
 {
     if ( type == NULL || depth > 8 )
@@ -95,6 +100,22 @@ static void walk( const TableTypeInfo * type, int depth )
         const TableFieldInfo * f = &type->fields[i];
         checkAnnotation( f->name, f->doc, f->num_tags, f->tags );
         walk( f->table, depth + 1 );
+        if ( f->arms == NULL )
+        {
+            continue;
+        }
+        // the tag range is [0, enum_max]. Index 0 is the empty arm and names
+        // neither a table nor a field row
+        const TableUnionInfo * u = f->arms();
+        for ( int64_t tag = 0; tag <= f->enum_max; tag++ )
+        {
+            const TableUnionArmInfo * arm = &u->arms[tag];
+            if ( arm->field != NULL )
+            {
+                checkAnnotation( arm->field->name, arm->field->doc, arm->field->num_tags, arm->field->tags );
+            }
+            walk( arm->table, depth + 1 );
+        }
     }
 }
 
@@ -115,7 +136,7 @@ int main()
     // over a corpus the exhibit never reached
     if ( annotated == 0 )
     {
-        printf( "FAIL doc/tags gate: %lld rows and not one annotation — the exhibit is not in this build\n",
+        printf( "FAIL doc/tags gate: %lld rows and not one annotation. The exhibit is not in this build\n",
                 (long long) rows );
         return 1;
     }

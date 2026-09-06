@@ -856,10 +856,11 @@ public sealed class TableFieldInfo
     public TableUnionInfo Arms;
 
     // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
-    // block above it, verbatim (SPEC §4.1) — TableDocNone when there is none,
-    // never null — and its tags (SPEC §4.2) in declared order, 0 and null when
-    // there are none. Static, built once with the descriptor and cached with
-    // it, so a walk that prints every doc and every tag allocates nothing.
+    // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
+    // none, never null. Its tags (SPEC §4.2) follow in declared order, and an
+    // untagged field is 0 beside null. Static, built once with the descriptor
+    // and cached with it, so a walk that prints every doc and every tag
+    // allocates nothing.
     public string Doc;
     public int NumTags;
     public string[] Tags;

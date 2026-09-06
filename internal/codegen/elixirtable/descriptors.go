@@ -34,7 +34,7 @@ func (g *gen) emitDescriptors(members []*ir.Struct) {
 	g.pf("# block carries a doc column naming this one attribute, so absence costs the\n")
 	g.pf("# module no string data and a printer concatenates doc columns with no nil\n")
 	g.pf("# test. A module attribute is the unit-level shared constant an Elixir file\n")
-	g.pf("# has — it folds into every row at compile time and claims no module segment.\n")
+	g.pf("# has. It folds into every row at compile time and claims no module segment.\n")
 	g.pf("@%s \"\"\n\n", docNoneAttr)
 	for _, st := range members {
 		g.emitDescriptor(st)
@@ -173,8 +173,8 @@ func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
 	fmt.Fprintf(&b, "      elem_default: %s,\n", g.elementDefault(f))
 	// what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
 	// block above it, verbatim (SPEC §4.1), and its tags (SPEC §4.2) in
-	// declared order. Elixir carries the column ALONE for a field — a struct
-	// key has no attribute to hang a doc on (SPEC §4.1).
+	// declared order. Elixir carries the column ALONE for a field, because a
+	// struct key has no attribute to hang a doc on (SPEC §4.1).
 	fmt.Fprintf(&b, "%s\n", annotationColumns(f.Doc, f.Tags, "      "))
 	fmt.Fprintf(&b, "    }")
 	return b.String()

@@ -1,8 +1,8 @@
 // The formatter's two doc-and-tags consequences (SPEC §7.4 rules 2 and 5): a
 // `///` line does not break an alignment group, and a variant list in which
 // any variant is qualified or documented is one per line with no commas, its
-// | column aligned; every other multi-line list is the comma form, a mixed
-// list normalized to it.
+// | column aligned. Every other multi-line list is the comma form, and a
+// mixed list is normalized to it.
 package format
 
 import "testing"

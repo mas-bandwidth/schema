@@ -110,7 +110,7 @@ func anyTagged(st *ir.Struct) bool {
 	return false
 }
 
-// typeTagsName is the tag-list static a TYPE's descriptor names; a field's is
+// typeTagsName is the tag-list static a TYPE's descriptor names. A field's is
 // named for the field.
 const typeTagsName = "tags"
 

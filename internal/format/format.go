@@ -516,11 +516,11 @@ func isUnary(tokens []scanner.Token, i int) bool {
 // ---- column alignment (SPEC §7.4 rule 2) ----
 
 // alignColumns pads names and types within contiguous runs of field lines
-// (broken by blank lines and comment lines — a `///` DOC comment line
+// (broken by blank lines and comment lines, a `///` DOC comment line
 // excepted, which belongs to the field under it and breaks nothing, SPEC §7.4
 // rule 2), aligns `=` within const runs, and aligns the `|` column across a
 // qualified variant list (rule 5). variants marks the variant lines. Operates
-// on the rendered lines; alignment is the only thing that distinguishes these
+// on the rendered lines, where alignment is the only thing that distinguishes these
 // lines from their minimal one-space form.
 func alignColumns(lines []string, variants []bool) []string {
 	out := make([]string, len(lines))
