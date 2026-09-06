@@ -4793,7 +4793,7 @@ damage (§3). A wire that had shipped would have taken `3` on that same rule.
 
 **RETENTION (§6.6) ON A MESSAGE BODY: the load side is unchanged and the save
 side REFUSES.** The C++ reference carries the WRITE half of this
-paragraph — the refusal — and the form 2 `LoadRetain` is not built (§6.6).
+paragraph, which is the refusal, and the form 2 `LoadRetain` is not built (§6.6).
 
 `LoadRetain` reads a form-`2` body as it reads a file's, the resolving walk
 replacing every reference with the id it names, against the connection's
@@ -10021,8 +10021,8 @@ in build version (§20.5).
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. That list is the
-  checker's own, and this section is held to it: the three lists here — 52, then
-  the block form's nine, then the C backend's seven — are `tableGeneratedVerbs`
+  checker's own, and this section is held to it: the three lists here, 52, then
+  the block form's nine, then the C backend's seven, are `tableGeneratedVerbs`
   entire, spelling for spelling and 68 in all, because a claim the page states
   and the checker does not make is a name a user may take.
 
@@ -10252,9 +10252,9 @@ in build version (§20.5).
     **And its verbs are MEMBERS**, so a different claim applies to them: a
     table's verbs are methods on its class and a closure `type`'s ride on
     `extension <Name>Table on <Name>` — so `Table` joins the suffix set — and
-    a FIELD whose Dart spelling is one of the twelve — `reset`, `measure`, `save`, `saveBody`,
-    `load`, `loadBody`, `fromJson`, `toJson`, `toJsonMeasure`, `loadRetain`,
-    `measureRetain` or `saveRetain` is refused on
+    a FIELD whose Dart spelling is one of the twelve (`reset`, `measure`, `save`,
+    `saveBody`, `load`, `loadBody`, `fromJson`, `toJson`, `toJsonMeasure`,
+    `loadRetain`, `measureRetain` or `saveRetain`) is refused on
     every closure member, because on a class it collides with the method and
     on an extension it silently hides it. The twelve are the whole per-member
     surface: the descriptors stay library-scope constants and the accessors

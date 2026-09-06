@@ -15173,9 +15173,9 @@ GRAPHDEMO_TABLE_INLINE bool MetaLoadBodyRetain( TableReader & r, Meta & value, T
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.tag[0] = 0; value.tag_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.tag[0] = 0; value.tag_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 8 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.tag, r.buffer + r.offset, (size_t) keep );
                 value.tag[keep] = 0;
                 value.tag_length = (int32_t) keep;
@@ -15295,9 +15295,9 @@ GRAPHDEMO_TABLE_INLINE bool SettingsLoadBodyRetain( TableReader & r, Settings & 
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.label[0] = 0; value.label_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.label[0] = 0; value.label_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.label, r.buffer + r.offset, (size_t) keep );
                 value.label[keep] = 0;
                 value.label_length = (int32_t) keep;
@@ -15446,9 +15446,9 @@ inline bool ListNodeLoadBodyRetain( TableReader & r, const TableNodeMap & nodes,
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.name[0] = 0; value.name_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.name[0] = 0; value.name_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 12 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 12 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 12 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 12 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.name, r.buffer + r.offset, (size_t) keep );
                 value.name[keep] = 0;
                 value.name_length = (int32_t) keep;
@@ -15614,9 +15614,9 @@ inline bool TreeNodeLoadBodyRetain( TableReader & r, const TableNodeMap & nodes,
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.label[0] = 0; value.label_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.label[0] = 0; value.label_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 12 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 12 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 12 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 12 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.label, r.buffer + r.offset, (size_t) keep );
                 value.label[keep] = 0;
                 value.label_length = (int32_t) keep;
@@ -16082,9 +16082,9 @@ inline bool SceneLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sc
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.name[0] = 0; value.name_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.name[0] = 0; value.name_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 24 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 24 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 24 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 24 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.name, r.buffer + r.offset, (size_t) keep );
                 value.name[keep] = 0;
                 value.name_length = (int32_t) keep;
@@ -16498,9 +16498,9 @@ inline bool DepotLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.name[0] = 0; value.name_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.name[0] = 0; value.name_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 12 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 12 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 12 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 12 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.name, r.buffer + r.offset, (size_t) keep );
                 value.name[keep] = 0;
                 value.name_length = (int32_t) keep;
@@ -16805,9 +16805,9 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.name[0] = 0; value.name_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.name[0] = 0; value.name_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.name, r.buffer + r.offset, (size_t) keep );
                 value.name[keep] = 0;
                 value.name_length = (int32_t) keep;
@@ -18576,6 +18576,12 @@ inline int64_t AlbumSaveRetainMessages( Args &&... )
 // could not find. The suffixes stay claimed on every closure member all the
 // same (§11): a table gains or loses pointers as an edit, and a name that is
 // free today must not become a collision tomorrow.
+//
+// NOTHING BETWEEN THESE TWO MARKERS IS MACHINERY. Each name is a function
+// template that defines nothing and instantiates nothing until it is called,
+// so this block lands in a value-only unit at no cost and §2.2's zero-cost
+// scan reads past it: the markers are what lets that scan say so exactly
+// rather than by the absence of the word "template".
 
 template <typename... Args>
 inline void MetaLoadRetain( Args &&... )
@@ -18618,6 +18624,8 @@ inline void SettingsSaveRetain( Args &&... )
     static_assert( sizeof...( Args ) == (size_t) -1,
         "Settings is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
+
+// ---- end of the fixed-class retain refusal ----
 
 // ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
 

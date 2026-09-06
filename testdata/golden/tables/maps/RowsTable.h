@@ -12346,9 +12346,9 @@ MAPDEMO_TABLE_INLINE bool RowEntriesEntryLoadBodyRetain( TableReader & r, RowEnt
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 8 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
                 value.key[keep] = 0;
                 value.key_length = (int32_t) keep;
@@ -13080,9 +13080,9 @@ MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntryLoadBodyRetain( TableReader & r, Edge
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 300 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 300 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 300 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 300 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
                 value.key[keep] = 0;
                 value.key_length = (int32_t) keep;

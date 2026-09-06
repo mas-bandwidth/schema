@@ -3164,6 +3164,12 @@ inline bool PartFrameLoadMessages( PartFrame * values, int64_t * count, const Ta
 // could not find. The suffixes stay claimed on every closure member all the
 // same (§11): a table gains or loses pointers as an edit, and a name that is
 // free today must not become a collision tomorrow.
+//
+// NOTHING BETWEEN THESE TWO MARKERS IS MACHINERY. Each name is a function
+// template that defines nothing and instantiates nothing until it is called,
+// so this block lands in a value-only unit at no cost and §2.2's zero-cost
+// scan reads past it: the markers are what lets that scan say so exactly
+// rather than by the absence of the word "template".
 
 template <typename... Args>
 inline void PartRowLoadRetain( Args &&... )
@@ -3206,6 +3212,8 @@ inline void PartFrameSaveRetain( Args &&... )
     static_assert( sizeof...( Args ) == (size_t) -1,
         "PartFrame is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
+
+// ---- end of the fixed-class retain refusal ----
 
 // ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
 
