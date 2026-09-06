@@ -1455,8 +1455,12 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
 // integers 2, 2 and 1000. What comes out of a token is a SIGN, a MAGNITUDE and
 // a STATUS, and nothing on the way is cast through a type that cannot hold what
 // it is handed. A uint64 magnitude past INT64_MAX is a magnitude and never a
-// negative, and a double is consulted only for a spelling the digit path cannot
-// read exactly.
+// negative, and NOTHING ON THE PATH IS A DOUBLE: the digits are read where they
+// stand and the decimal exponent moves the point, so a spelling with a zero
+// fraction is the integer it spells at every magnitude the kind holds, and
+// 9007199254740993.0 is that integer rather than the one a 53-bit mantissa
+// rounds it to. The wide kinds convert this way already and this is the same
+// normalization over one 64-bit lane.
 //
 // TWO POLICIES SIT ON TOP OF THE ONE VALUE and neither reinterprets the token:
 // an ordinary FIELD clamps to its domain and counts, and a MAP KEY rejects the
@@ -1468,59 +1472,69 @@ struct TableJsonInteger
     bool negative;
     bool fractional;    // a genuinely fractional VALUE: the wrong shape for an integer
     bool saturated;     // a magnitude past what 64 bits hold, held at that edge
-    bool finite;        // false: no integer target holds it at all
 };
 
-// the token, parsed digit by digit so no width and no locale can move it, and
-// through the runtime's converter only where the spelling carries a fraction or
-// an exponent
-inline TableJsonInteger TableJsonInterpret( const char * token, int32_t length, bool integral )
+// THE DECIMAL BAND a token is answered in without arithmetic: 10^20 is above
+// UINT64_MAX whatever the digits are, so a point past it saturates and a token
+// spelling 1e999999999 costs nothing to refuse.
+const int64_t kTableJsonDecimalBand = 20;
+
+// the token's own digits, read where they stand: the int and frac runs are one
+// digit string with the point after "point" of them, and the exponent moves the
+// point rather than the digits
+inline TableJsonInteger TableJsonInterpret( const char * token, int32_t length )
 {
     TableJsonInteger out;
     out.magnitude = 0;
     out.negative = false;
     out.fractional = false;
     out.saturated = false;
-    out.finite = true;
-    if ( integral )
+    int32_t i = 0;
+    if ( i < length && token[i] == '-' ) { out.negative = true; i++; } // WalkNumber refuses a leading plus
+    const char * int_digits = token + i;
+    int32_t int_len = 0;
+    while ( i < length && token[i] >= '0' && token[i] <= '9' ) { int_len++; i++; }
+    const char * frac_digits = token + i;
+    int32_t frac_len = 0;
+    if ( i < length && token[i] == '.' )
     {
-        int32_t i = 0;
-        if ( i < length && token[i] == '-' ) // WalkNumber refuses a leading plus
+        i++;
+        frac_digits = token + i;
+        while ( i < length && token[i] >= '0' && token[i] <= '9' ) { frac_len++; i++; }
+    }
+    int64_t exp = 0;
+    if ( i < length && ( token[i] == 'e' || token[i] == 'E' ) )
+    {
+        i++;
+        bool exp_negative = false;
+        if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { exp_negative = token[i] == '-'; i++; }
+        while ( i < length && token[i] >= '0' && token[i] <= '9' )
         {
-            out.negative = true;
+            if ( exp < 100000 ) { exp = exp * 10 + ( token[i] - '0' ); }
             i++;
         }
-        for ( ; i < length; i++ )
-        {
-            const uint64_t digit = (uint64_t) ( token[i] - '0' );
-            if ( out.magnitude > ( UINT64_MAX - digit ) / 10 )
-            {
-                out.magnitude = UINT64_MAX;
-                out.saturated = true;
-                break;
-            }
-            out.magnitude = out.magnitude * 10 + digit;
-        }
-        if ( out.magnitude == 0 ) { out.negative = false; } // -0 IS zero
-        return out;
+        if ( exp_negative ) { exp = -exp; }
     }
-    const double d = TableJsonTokenDouble( token, length, false );
-    if ( !TableJsonFinite( d ) ) { out.finite = false; return out; }
-    out.negative = d < 0;
-    const double whole = out.negative ? -d : d;
-    // THE DOMAIN IS ESTABLISHED BEFORE THE CAST: a magnitude past what sixty-four
-    // bits hold is answered here, so no value ever reaches a conversion that is
-    // undefined for it
-    if ( whole >= 18446744073709551616.0 )
+    // leading and trailing zeros stripped, so the last digit kept is significant
+    int32_t start = 0, end = int_len + frac_len;
+    int64_t point = (int64_t) int_len + exp;
+    while ( start < end && ( start < int_len ? int_digits[start] : frac_digits[start - int_len] ) == '0' ) { start++; point--; }
+    while ( end > start && ( end - 1 < int_len ? int_digits[end - 1] : frac_digits[end - 1 - int_len] ) == '0' ) { end--; }
+    const int64_t digits = end - start;
+    if ( digits == 0 ) { out.negative = false; return out; } // the value is zero, and -0 IS zero
+    if ( point < digits ) { out.fractional = true; return out; } // a significant digit below the point
+    if ( point > kTableJsonDecimalBand ) { out.magnitude = UINT64_MAX; out.saturated = true; return out; }
+    for ( int32_t k = start; k < end; k++ )
     {
-        out.magnitude = UINT64_MAX;
-        out.saturated = true;
-        return out;
+        const uint64_t digit = (uint64_t) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
+        if ( out.magnitude > ( UINT64_MAX - digit ) / 10 ) { out.magnitude = UINT64_MAX; out.saturated = true; return out; }
+        out.magnitude = out.magnitude * 10 + digit;
     }
-    const uint64_t truncated = (uint64_t) whole;
-    if ( (double) truncated != whole ) { out.fractional = true; return out; }
-    out.magnitude = truncated;
-    if ( out.magnitude == 0 ) { out.negative = false; }
+    for ( int64_t k = digits; k < point; k++ ) // the point's own zeros, which no digit spells
+    {
+        if ( out.magnitude > UINT64_MAX / 10 ) { out.magnitude = UINT64_MAX; out.saturated = true; return out; }
+        out.magnitude *= 10;
+    }
     return out;
 }
 
@@ -1533,7 +1547,6 @@ inline TableJsonInteger TableJsonIntegerOf( double bound )
     out.negative = bound < 0;
     out.fractional = false;
     out.saturated = false;
-    out.finite = true;
     const double whole = out.negative ? -bound : bound;
     out.magnitude = whole >= 18446744073709551616.0 ? UINT64_MAX : (uint64_t) whole;
     if ( out.magnitude == 0 ) { out.negative = false; }
@@ -2029,8 +2042,8 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     // emits them that way, and this walker's own float writer emits 1e+21. Only
     // a genuinely fractional value is the wrong shape for the kind.
     const bool is_signed = f->kind >= 2 && f->kind <= 5;
-    const TableJsonInteger number = TableJsonInterpret( token, length, integral );
-    if ( !number.finite || number.fractional )
+    const TableJsonInteger number = TableJsonInterpret( token, length );
+    if ( number.fractional )
     {
         in.report->kind_mismatch++;
         return true;

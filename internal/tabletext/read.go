@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"sort"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -1304,8 +1305,8 @@ func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool)
 // (docs/SPEC-TABLES.md §16.2).
 func (in *reader) placeInteger(cell *Cell, f *ir.Field, token string, integral bool, kind int) bool {
 	signed := kind >= ir.TableKindI8 && kind <= ir.TableKindI64
-	number := interpretInteger(token, integral)
-	if !number.finite || number.fractional {
+	number := interpretInteger(token)
+	if number.fractional {
 		in.report.KindMismatch++
 		return true
 	}
@@ -1507,8 +1508,12 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 // integers 2, 2 and 1000. What comes out of a token is a SIGN, a MAGNITUDE and
 // a STATUS, and nothing on the way is cast through a type that cannot hold what
 // it is handed. A uint64 magnitude past MaxInt64 is a magnitude and never a
-// negative, and a float64 is consulted only for a spelling the digit path
-// cannot read exactly.
+// negative, and NOTHING ON THE PATH IS A FLOAT64: the digits are read where
+// they stand and the decimal exponent moves the point, so a spelling with a
+// zero fraction is the integer it spells at every magnitude the kind holds, and
+// 9007199254740993.0 is that integer rather than the one a 53-bit mantissa
+// rounds it to. The wide kinds convert this way already (ParseWide) and this is
+// the same normalization over one 64-bit lane.
 //
 // TWO POLICIES SIT ON TOP OF THE ONE VALUE and neither reinterprets the token:
 // an ordinary FIELD clamps to its domain and counts, and a MAP KEY rejects the
@@ -1519,57 +1524,89 @@ type jsonInteger struct {
 	negative   bool
 	fractional bool // a genuinely fractional VALUE: the wrong shape for an integer
 	saturated  bool // a magnitude past what 64 bits hold, held at that edge
-	finite     bool // false: no integer target holds it at all
 }
 
-// interpretInteger reads the token digit by digit so no width and no locale can
-// move it, and goes through a float64 only where the spelling carries a fraction
-// or an exponent.
-func interpretInteger(token string, integral bool) jsonInteger {
-	out := jsonInteger{finite: true}
-	if integral {
-		i := 0
-		if i < len(token) && token[i] == '-' { // walkNumber refuses a leading plus
-			out.negative = true
+// decimalBand is where a token is answered without arithmetic: 10^20 is above
+// MaxUint64 whatever the digits are, so a point past it saturates, and a token
+// spelling 1e999999999 costs nothing to refuse.
+const decimalBand = 20
+
+// interpretInteger reads the token's own digits where they stand: the int and
+// frac runs are one digit string with the point after `point` of them, and the
+// exponent moves the point rather than the digits.
+func interpretInteger(token string) jsonInteger {
+	var out jsonInteger
+	i := 0
+	if i < len(token) && token[i] == '-' { // walkNumber refuses a leading plus
+		out.negative = true
+		i++
+	}
+	intAt := i
+	for ; i < len(token) && token[i] >= '0' && token[i] <= '9'; i++ {
+	}
+	intDigits := token[intAt:i]
+	fracDigits := ""
+	if i < len(token) && token[i] == '.' {
+		i++
+		fracAt := i
+		for ; i < len(token) && token[i] >= '0' && token[i] <= '9'; i++ {
+		}
+		fracDigits = token[fracAt:i]
+	}
+	exp := 0
+	if i < len(token) && (token[i] == 'e' || token[i] == 'E') {
+		i++
+		expNegative := false
+		if i < len(token) && (token[i] == '-' || token[i] == '+') {
+			expNegative = token[i] == '-'
 			i++
 		}
-		for ; i < len(token); i++ {
-			digit := uint64(token[i] - '0')
-			if out.magnitude > (math.MaxUint64-digit)/10 {
-				out.magnitude = math.MaxUint64
-				out.saturated = true
-				break
+		for ; i < len(token) && token[i] >= '0' && token[i] <= '9'; i++ {
+			if exp < 100000 {
+				exp = exp*10 + int(token[i]-'0')
 			}
-			out.magnitude = out.magnitude*10 + digit
 		}
-		if out.magnitude == 0 {
-			out.negative = false // -0 IS zero
+		if expNegative {
+			exp = -exp
 		}
+	}
+	// leading and trailing zeros stripped, so the last digit kept is significant
+	digits := intDigits + fracDigits
+	point := len(intDigits) + exp
+	for len(digits) > 0 && digits[0] == '0' {
+		digits = digits[1:]
+		point--
+	}
+	digits = strings.TrimRight(digits, "0")
+	if len(digits) == 0 {
+		out.negative = false // the value is zero, and -0 IS zero
 		return out
 	}
-	d, err := strconv.ParseFloat(token, 64)
-	if (err != nil && !errors.Is(err, strconv.ErrRange)) || math.IsInf(d, 0) || math.IsNaN(d) {
-		out.finite = false
+	if point < len(digits) {
+		out.fractional = true // a significant digit below the point
 		return out
 	}
-	out.negative = math.Signbit(d)
-	whole := math.Abs(d)
-	// THE DOMAIN IS ESTABLISHED BEFORE THE CAST: a magnitude past what
-	// sixty-four bits hold is answered here, so no value ever reaches a
-	// conversion that is undefined for it
-	if whole >= 18446744073709551616.0 {
+	if point > decimalBand {
 		out.magnitude = math.MaxUint64
 		out.saturated = true
 		return out
 	}
-	truncated := uint64(whole)
-	if float64(truncated) != whole {
-		out.fractional = true
-		return out
+	for k := 0; k < len(digits); k++ {
+		digit := uint64(digits[k] - '0')
+		if out.magnitude > (math.MaxUint64-digit)/10 {
+			out.magnitude = math.MaxUint64
+			out.saturated = true
+			return out
+		}
+		out.magnitude = out.magnitude*10 + digit
 	}
-	out.magnitude = truncated
-	if out.magnitude == 0 {
-		out.negative = false
+	for k := len(digits); k < point; k++ { // the point's own zeros, which no digit spells
+		if out.magnitude > math.MaxUint64/10 {
+			out.magnitude = math.MaxUint64
+			out.saturated = true
+			return out
+		}
+		out.magnitude *= 10
 	}
 	return out
 }
@@ -1577,7 +1614,7 @@ func interpretInteger(token string, integral bool) jsonInteger {
 // integerOf is a declared range bound as the same value. A bound is inside the
 // field's own domain by construction, so nothing here saturates.
 func integerOf(bound float64) jsonInteger {
-	out := jsonInteger{finite: true, negative: bound < 0}
+	out := jsonInteger{negative: bound < 0}
 	whole := math.Abs(bound)
 	if whole >= 18446744073709551616.0 {
 		out.magnitude = math.MaxUint64
@@ -1868,6 +1905,13 @@ const (
 // The KEY's policy over that value is REJECTION and not clamping: a fractional
 // value, or one outside the key kind's range, drops the whole entry, because a
 // key is an identity and a clamped one is two entries merged.
+//
+// THE KEY IS THE SPELLING AND NOTHING AROUND IT. The number walk steps over
+// leading whitespace and comments, which is right BETWEEN tokens and wrong
+// INSIDE one: a key is an identity, and a padded spelling that resolved to the
+// same integer would be a second name for one entry. So the walk must begin at
+// the token's first byte, and a token with anything before the number is not a
+// JSON number at all, which is malformed on the terms "1-2" is.
 func (in *reader) placeMapKey(entry *Instance, keyField *ir.Field, key []byte) mapKeyStatus {
 	cell := &entry.Fields[0].Cell
 	if keyField.Type.Kind == ir.TString {
@@ -1876,12 +1920,16 @@ func (in *reader) placeMapKey(entry *Instance, keyField *ir.Field, key []byte) m
 		return mapKeyPlaced
 	}
 	probe := reader{text: key, report: &Report{}}
-	integral, ok := probe.walkNumber()
+	probe.space()
+	if probe.pos != 0 {
+		return mapKeyMalformed // whitespace is never part of a key
+	}
+	_, ok := probe.walkNumber()
 	if !ok || probe.pos != len(key) {
 		return mapKeyMalformed // not a JSON number at all, or not only one
 	}
-	number := interpretInteger(string(key), integral)
-	if !number.finite || number.fractional || number.saturated {
+	number := interpretInteger(string(key))
+	if number.fractional || number.saturated {
 		return mapKeyMismatch
 	}
 	signed := keyField.Type.Kind == ir.TInt && keyField.Type.Signed

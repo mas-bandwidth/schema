@@ -269,7 +269,15 @@ func TestADecimalMapKeyAtTheTopOfTheDomainIsTheSameKey(t *testing.T) {
 	if got := fv.Entries[0].Tab.Fields[0].Cell.U; got != 18446744073709551615 {
 		t.Errorf("key %d, want 18446744073709551615", got)
 	}
-	if got := fv.Entries[0].Tab.Fields[1].Cell.I; got != 2 {
-		t.Errorf("last wins: count %d, want 2", got)
+	item := fv.Entries[0].Tab.Fields[1].Cell.Tab
+	if item == nil {
+		t.Fatal("the entry carries no value")
+	}
+	count, ok := item.FieldByKey("count")
+	if !ok {
+		t.Fatal("no count field")
+	}
+	if count.Cell.I != 2 {
+		t.Errorf("last wins: count %d, want 2", count.Cell.I)
 	}
 }
