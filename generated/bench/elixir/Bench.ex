@@ -152,6 +152,8 @@ defmodule Bench.MixedEventType do
   def hit, do: 1
   def chat, do: 2
   def pickup, do: 3
+  # the declared variant count (SPEC §4.2)
+  def count, do: 3
   # the exported extent (SPEC §4.2)
   def max, do: 3
 end
@@ -183,9 +185,9 @@ defmodule Bench.BenchMixed do
   # flux: wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
   # ping: fixed point Q8.8 — the raw scaled integer; wire [0, 250]
   # has_extra: specified default at construction; zero_* gives the §5 zero form
-  # if has_extra — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # has_extra — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # extra: wire [0, 255]
-  # if has_extra else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !has_extra — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # idle_ticks: wire [0, 15]
   defstruct sequence: 0,
             ack_sequence: 0,
@@ -196,7 +198,7 @@ defmodule Bench.BenchMixed do
             world_time: 0,
             frame_tick: 0,
             server_time: 0,
-            entities: [],
+            entities: List.duplicate(%Bench.MixedEntity{}, 1),
             stats: [],
             game_event: %Bench.MixedEvent{},
             loadout: List.duplicate(0, 4),
@@ -1498,6 +1500,18 @@ defmodule Bench.Bench do
   # mixed_event_max_bytes is rounded up to the family 8-byte write-buffer granularity.
   def mixed_event_max_bits, do: 30
   def mixed_event_max_bytes, do: 8
+
+  # enum_name_mixed_event_type: debug/log/tooling name for any MixedEventType wire value —
+  # out-of-set values (wire-legal up to the declared max) name as "???"
+  def enum_name_mixed_event_type(value) do
+    case value do
+      0 -> "None"
+      1 -> "Hit"
+      2 -> "Chat"
+      3 -> "Pickup"
+      _ -> "???"
+    end
+  end
 
   # The §5 zero form — the empty union (None). Arms hold their construction
   # form: every arm is unselected at None, and unselected arms are

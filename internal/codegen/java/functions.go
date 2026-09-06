@@ -384,9 +384,6 @@ func (g *gen) hasCheckItems(items []ir.Item) bool {
 }
 
 func (g *gen) hasCheckField(f *ir.Field) bool {
-	if f.Array == ir.ArrayCounted {
-		return true // the count contract always binds
-	}
 	if f.Array == ir.ArrayFixed && g.bulkBytes[f] {
 		return false // bare uint8 elements carry no contract
 	}
@@ -459,8 +456,10 @@ func (g *gen) emitCheckField(f *ir.Field, path, ind string) {
 		g.pf("%s}\n", ind)
 		g.loopDepth--
 	case ir.ArrayCounted:
+		// the count is not a contract here: the writer refuses a count
+		// outside its wire range in every build (SPEC §4.6), so only the
+		// elements' contracts walk
 		count := name + "Count"
-		g.assertRange(count, big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), true, ind)
 		if !g.hasCheckScalar(f) {
 			return
 		}
@@ -766,6 +765,11 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 		g.loopDepth--
 	case ir.ArrayCounted:
 		count := name + "Count"
+		// the count guards the loop, and a count outside its wire range is
+		// refused in EVERY build rather than left to the -ea predicate: a
+		// wrapped count is bytes no reader accepts (SPEC §4.6)
+		g.pf("%sif (%s < %d || %s > %d) {\n%s    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)\n%s}\n",
+			ind, count, f.ArrayMin, count, f.ArrayBound, ind, ind)
 		g.emitWriteOffset(count, big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), ind)
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++

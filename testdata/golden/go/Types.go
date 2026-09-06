@@ -344,7 +344,7 @@ type RigidBody struct {
 	Orientation Quat
 	AtRest      bool
 
-	// if !at_rest — wire branch; storage holds both sides, a read zeroes the
+	// !at_rest — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	LinearVelocity  Vec3
 	AngularVelocity Vec3
@@ -654,7 +654,7 @@ type ShipCreate struct {
 	LinearVelocity QuantizedVelocity
 	HasFlags       bool
 
-	// if has_flags — wire branch; storage holds both sides, a read zeroes the
+	// has_flags — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	Flags ShipFlags
 

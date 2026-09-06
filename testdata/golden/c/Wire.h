@@ -191,6 +191,7 @@ static SCHEMA_UNUSED ProbeSample new_probe_sample( void )
     ProbeSample value;
     memset( &value, 0, sizeof( value ) );
     value.active = 1;
+    value.samples_count = 1;
     return value;
 }
 
@@ -220,6 +221,7 @@ typedef uint8_t ProbeShapeType;
 #define PROBE_SHAPE_TYPE_NONE 0
 #define PROBE_SHAPE_TYPE_RING 1
 #define PROBE_SHAPE_TYPE_SLAB 2
+#define PROBE_SHAPE_TYPE_COUNT 2
 #define PROBE_SHAPE_TYPE_MAX 2
 
 /* Debug/log name for any ProbeShapeType value, out-of-set included. */

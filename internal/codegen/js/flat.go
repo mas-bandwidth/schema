@@ -484,8 +484,9 @@ func (g *fgen) emitStructFlat(st *ir.Struct) {
 
 	g.emitWriteVariant(st, false)
 	g.emitWriteVariant(st, true)
-	g.bpf("// Write%sFlat(value, view) -> bytes written (>= 0), or -1 on a checked\n", st.Name)
-	g.bpf("// contract refusal. The buffer behind view must hold %sMaxBytes.\n", st.Name)
+	g.bpf("// Write%sFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a\n", st.Name)
+	g.bpf("// count outside its wire range in every build (SPEC §4.6), and any other\n")
+	g.bpf("// contract in the checked build. The buffer behind view must hold %sMaxBytes.\n", st.Name)
 	g.bpf("export const Write%sFlat = PRODUCTION ? write%sFlatProduction : write%sFlatChecked;\n\n", st.Name, st.Name, st.Name)
 
 	g.emitReadFlat(st)
@@ -665,8 +666,15 @@ func (g *fgen) emitWriteField(f *ir.Field, path, ind string) {
 		g.loopDepth--
 	case ir.ArrayCounted:
 		count := name + "Count"
-		g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < %d || %s > %d", count, count, f.ArrayMin, count, f.ArrayBound),
-			" // the count guards the loop; out-of-contract writes are refused", ind)
+		// the count guards the loop, and a count outside its wire range is
+		// refused in EVERY build, the production writer included: a wrapped
+		// count is bytes no reader accepts (SPEC §4.6). The checked writer
+		// also holds the count to an integer, its contract on every number.
+		cond := fmt.Sprintf("%s < %d || %s > %d", count, f.ArrayMin, count, f.ArrayBound)
+		if g.checked {
+			cond = fmt.Sprintf("!Number.isInteger(%s) || %s", count, cond)
+		}
+		g.pf("%sif (%s) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)\n%s  return -1;\n%s}\n", ind, cond, ind, ind)
 		g.emitWriteRangedNum(count, f.ArrayMin, f.ArrayBound, ind)
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++

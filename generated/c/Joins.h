@@ -127,6 +127,7 @@ typedef uint8_t UnevenType;
 #define UNEVEN_TYPE_NONE 0
 #define UNEVEN_TYPE_NARROW 1
 #define UNEVEN_TYPE_WIDE 2
+#define UNEVEN_TYPE_COUNT 2
 #define UNEVEN_TYPE_MAX 2
 
 /* Debug/log name for any UnevenType value, out-of-set included. */

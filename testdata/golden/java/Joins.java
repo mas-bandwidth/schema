@@ -23,11 +23,11 @@ public final class Joins {
         public int lead;
         public boolean flag;
 
-        // if flag — wire branch; storage holds both sides, a read zeroes the
+        // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int a;
 
-        // if flag else — wire branch; storage holds both sides, a read zeroes the
+        // !flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int b;
 
@@ -217,11 +217,11 @@ public final class Joins {
         public int lead;
         public boolean flag;
 
-        // if flag — wire branch; storage holds both sides, a read zeroes the
+        // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int a;
 
-        // if flag else — wire branch; storage holds both sides, a read zeroes the
+        // !flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int b;
 
@@ -428,7 +428,7 @@ public final class Joins {
         public int lead;
         public boolean flag;
 
-        // if flag — wire branch; storage holds both sides, a read zeroes the
+        // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int a;
 
@@ -608,19 +608,19 @@ public final class Joins {
         public int lead;
         public boolean outer;
 
-        // if outer — wire branch; storage holds both sides, a read zeroes the
+        // outer — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public boolean inner;
 
-        // if outer / if inner — wire branch; storage holds both sides, a read zeroes the
+        // outer && inner — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int x;
 
-        // if outer / if inner else — wire branch; storage holds both sides, a read zeroes the
+        // outer && !inner — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int y;
 
-        // if outer else — wire branch; storage holds both sides, a read zeroes the
+        // !outer — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int z;
 
@@ -888,13 +888,13 @@ public final class Joins {
         public int lead;
         public boolean flag;
 
-        // if flag — wire branch; storage holds both sides, a read zeroes the
+        // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         // string(4): max length, used length beside it (SPEC §4.7)
         public final byte[] s = new byte[4];
         public int sLength;
 
-        // if flag else — wire branch; storage holds both sides, a read zeroes the
+        // !flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int b;
 
@@ -1160,13 +1160,13 @@ public final class Joins {
         public int lead;
         public boolean flag;
 
-        // if flag — wire branch; storage holds both sides, a read zeroes the
+        // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         // wire [0, 8191]
         public final short[] items = new short[3];
         public int itemsCount;
 
-        // if flag else — wire branch; storage holds both sides, a read zeroes the
+        // !flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int b;
 
@@ -1197,8 +1197,6 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert data.length >= armArrayMaxBytes;
         if (value.flag) {
-            assert value.itemsCount >= 0;
-            assert value.itemsCount <= 3;
             for (int i0 = 0; i0 < value.itemsCount; i0++) {
                 assert (value.items[i0] & 0xffffL) >= 0;
                 assert (value.items[i0] & 0xffffL) <= 8191;
@@ -1235,6 +1233,9 @@ public final class Joins {
             scratch = v >>> (1 - scratchBits);
         }
         if (value.flag) {
+            if (value.itemsCount < 0 || value.itemsCount > 3) {
+                return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+            }
             v = (value.itemsCount) & 0x3L;
             scratch |= v << scratchBits;
             scratchBits += 2;
@@ -1623,8 +1624,25 @@ public final class Joins {
         public static final byte none = 0;
         public static final byte narrow = 1;
         public static final byte wide = 2;
+        // the declared variant count (SPEC §4.2)
+        public static final byte count = 2;
         // the exported extent (SPEC §4.2)
         public static final byte max = 2;
+    }
+
+    // enumNameUnevenType: debug/log/tooling name for any UnevenType storage value —
+    // out-of-set values (wire-legal up to the declared max) name as "???"
+    public static String enumNameUnevenType(long value) {
+        if (value == UnevenType.none) {
+            return "None";
+        }
+        if (value == UnevenType.narrow) {
+            return "Narrow";
+        }
+        if (value == UnevenType.wide) {
+            return "Wide";
+        }
+        return "???";
     }
 
     // Uneven — at most one of the arms; type says which. Construction is the empty
@@ -2100,8 +2118,6 @@ public final class Joins {
     private static boolean checkWriteArrUneven(ArrUneven value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= arrUnevenMaxBytes;
-        assert value.itemsCount >= 0;
-        assert value.itemsCount <= 3;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
             final Uneven e0 = value.items[i0];
             assert (e0.type & 0xffL) >= 0;
@@ -2127,6 +2143,9 @@ public final class Joins {
             wordIndex++;
             scratchBits -= 64;
             scratch = v >>> (5 - scratchBits);
+        }
+        if (value.itemsCount < 0 || value.itemsCount > 3) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
         }
         v = (value.itemsCount) & 0x3L;
         scratch |= v << scratchBits;
@@ -2389,8 +2408,6 @@ public final class Joins {
     private static boolean checkWriteRegainAfterAlign(RegainAfterAlign value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= regainAfterAlignMaxBytes;
-        assert value.itemsCount >= 0;
-        assert value.itemsCount <= 3;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
             assert (value.items[i0] & 0xffffL) >= 0;
             assert (value.items[i0] & 0xffffL) <= 8191;
@@ -2417,6 +2434,9 @@ public final class Joins {
             wordIndex++;
             scratchBits -= 64;
             scratch = v >>> (5 - scratchBits);
+        }
+        if (value.itemsCount < 0 || value.itemsCount > 3) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
         }
         v = (value.itemsCount) & 0x3L;
         scratch |= v << scratchBits;

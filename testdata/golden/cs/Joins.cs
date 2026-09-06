@@ -17,11 +17,11 @@ namespace Example
         public uint Lead;
         public bool Flag;
 
-        // if flag — wire branch; storage holds both sides, a read zeroes the
+        // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public uint A;
 
-        // if flag else — wire branch; storage holds both sides, a read zeroes the
+        // !flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public uint B;
 
@@ -34,11 +34,11 @@ namespace Example
         public uint Lead;
         public bool Flag;
 
-        // if flag — wire branch; storage holds both sides, a read zeroes the
+        // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public uint A;
 
-        // if flag else — wire branch; storage holds both sides, a read zeroes the
+        // !flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public uint B;
 
@@ -51,7 +51,7 @@ namespace Example
         public uint Lead;
         public bool Flag;
 
-        // if flag — wire branch; storage holds both sides, a read zeroes the
+        // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public uint A;
 
@@ -64,19 +64,19 @@ namespace Example
         public uint Lead;
         public bool Outer;
 
-        // if outer — wire branch; storage holds both sides, a read zeroes the
+        // outer — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public bool Inner;
 
-        // if outer / if inner — wire branch; storage holds both sides, a read zeroes the
+        // outer && inner — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public uint X;
 
-        // if outer / if inner else — wire branch; storage holds both sides, a read zeroes the
+        // outer && !inner — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public uint Y;
 
-        // if outer else — wire branch; storage holds both sides, a read zeroes the
+        // !outer — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public uint Z;
 
@@ -89,12 +89,12 @@ namespace Example
         public uint Lead;
         public bool Flag;
 
-        // if flag — wire branch; storage holds both sides, a read zeroes the
+        // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public byte[] S = new byte[4]; // string(4): max length, used length beside it (SPEC §4.7)
         public int SLength;
 
-        // if flag else — wire branch; storage holds both sides, a read zeroes the
+        // !flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public uint B;
 
@@ -107,12 +107,12 @@ namespace Example
         public uint Lead;
         public bool Flag;
 
-        // if flag — wire branch; storage holds both sides, a read zeroes the
+        // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public ushort[] Items = new ushort[3]; // used count beside it; wire count in [0, 3]
         public int ItemsCount;
 
-        // if flag else — wire branch; storage holds both sides, a read zeroes the
+        // !flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public uint B;
 
@@ -137,6 +137,7 @@ namespace Example
         None = 0,
         Narrow = 1,
         Wide = 2,
+        Count = 2, // the declared variant count (SPEC §4.2)
         Max = 2, // the exported extent (SPEC §4.2)
     }
 
@@ -1006,6 +1007,23 @@ namespace Example
                 return false;
             }
             return true;
+        }
+
+        // EnumNameUnevenType: debug/log/tooling name for any UnevenType wire value —
+        // out-of-set values (wire-legal up to the declared max) name as "???"
+        public static string EnumNameUnevenType(ulong value)
+        {
+            switch (value)
+            {
+                case (ulong)UnevenType.None:
+                    return "None";
+                case (ulong)UnevenType.Narrow:
+                    return "Narrow";
+                case (ulong)UnevenType.Wide:
+                    return "Wide";
+                default:
+                    return "???";
+            }
         }
 
         // UnevenMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).

@@ -1283,6 +1283,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
             return 0;
         }
     }
+    if ( value->entities_count < 1 || value->entities_count > 8 )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
+    }
     if ( !serialize_write_int( stream, value->entities_count, 1, 8 ) )
     {
         return 0;
@@ -1296,6 +1300,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
                 return 0;
             }
         }
+    }
+    if ( value->stats_count < 0 || value->stats_count > 80 )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
     }
     if ( !serialize_write_int( stream, value->stats_count, 0, 80 ) )
     {

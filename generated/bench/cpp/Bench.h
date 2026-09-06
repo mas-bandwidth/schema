@@ -297,8 +297,22 @@ enum class MixedEventType : uint8_t {
     Hit = 1,
     Chat = 2,
     Pickup = 3,
+    Count = 3, // the declared variant count (SPEC §4.2)
     Max = 3, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any MixedEventType value, out-of-set included
+inline const char * EnumName( MixedEventType value )
+{
+    switch ( value )
+    {
+        case MixedEventType::None: return "None";
+        case MixedEventType::Hit: return "Hit";
+        case MixedEventType::Chat: return "Chat";
+        case MixedEventType::Pickup: return "Pickup";
+        default: return "???";
+    }
+}
 
 // union MixedEvent — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm's storage is established ZEROED
@@ -333,7 +347,7 @@ struct BenchMixed {
     uint64_t frame_tick = 0;
     int32_t server_time = 0; // fixed(24, 8) — Q24.8, raw value scaled by 2^8; bounds in whole units; wire [0, 65535]
     MixedEntity entities[8] = {}; // used count beside it; wire count in [1, 8]
-    int32_t entities_count = 0;
+    int32_t entities_count = 1;
     MixedStat stats[80] = {}; // used count beside it; wire count in [0, 80]
     int32_t stats_count = 0;
     MixedEvent game_event;
@@ -353,11 +367,11 @@ struct BenchMixed {
     uint32_t crc_hint = 0;
     bool has_extra = true;
 
-    // if has_extra — wire branch; storage holds both sides, a read zeroes the
+    // has_extra — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     int32_t extra = 0; // wire [0, 255]
 
-    // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+    // !has_extra — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     int32_t idle_ticks = 0; // wire [0, 15]
 };

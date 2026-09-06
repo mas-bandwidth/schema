@@ -371,7 +371,10 @@ SCHEMA_WRITE_INLINE bool WriteArmArray( serialize::WriteStream & stream, const A
     write_bool( stream, value.flag );
     if ( value.flag )
     {
-        serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 3 ) );
+        if ( int32_t( value.items_count ) < int32_t( 0 ) || int32_t( value.items_count ) > int32_t( 3 ) )
+        {
+            return false; // a count outside its wire range is refused in every build (SPEC §4.6)
+        }
         write_bits( stream, uint32_t( value.items_count ), 2 );
         for ( int32_t i = 0; i < value.items_count; i++ )
         {
@@ -501,7 +504,10 @@ SCHEMA_READ_INLINE bool ReadHoldsUneven( serialize::ReadStream & stream, HoldsUn
 SCHEMA_WRITE_INLINE bool WriteArrUneven( serialize::WriteStream & stream, const ArrUneven & value )
 {
     write_bits( stream, value.lead, 5 );
-    serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 3 ) );
+    if ( int32_t( value.items_count ) < int32_t( 0 ) || int32_t( value.items_count ) > int32_t( 3 ) )
+    {
+        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
+    }
     write_bits( stream, uint32_t( value.items_count ), 2 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
@@ -532,7 +538,10 @@ SCHEMA_READ_INLINE bool ReadArrUneven( serialize::ReadStream & stream, ArrUneven
 SCHEMA_WRITE_INLINE bool WriteRegainAfterAlign( serialize::WriteStream & stream, const RegainAfterAlign & value )
 {
     write_bits( stream, value.lead, 5 );
-    serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 3 ) );
+    if ( int32_t( value.items_count ) < int32_t( 0 ) || int32_t( value.items_count ) > int32_t( 3 ) )
+    {
+        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
+    }
     write_bits( stream, uint32_t( value.items_count ), 2 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {

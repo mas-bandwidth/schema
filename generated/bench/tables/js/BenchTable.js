@@ -319,8 +319,26 @@ export const TableEventType = Object.freeze({
   Hit: 1,
   Chat: 2,
   Pickup: 3,
+  Count: 3, // the declared variant count (SPEC §4.2)
   Max: 3, // the exported extent (SPEC §4.2)
 });
+
+// EnumNameTableEventType: debug/log/tooling name for any TableEventType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+export function EnumNameTableEventType(value) {
+  switch (value) {
+    case TableEventType.None:
+      return "None";
+    case TableEventType.Hit:
+      return "Hit";
+    case TableEventType.Chat:
+      return "Chat";
+    case TableEventType.Pickup:
+      return "Pickup";
+    default:
+      return "???";
+  }
+}
 
 // TableEvent — at most one of the arms; Type says which. Construction is the empty
 // union (None). A read zero-establishes exactly the selected arm before

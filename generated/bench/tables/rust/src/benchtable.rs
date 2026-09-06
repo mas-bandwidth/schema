@@ -350,7 +350,19 @@ impl TableEventType {
     pub const HIT: TableEventType = TableEventType(1);
     pub const CHAT: TableEventType = TableEventType(2);
     pub const PICKUP: TableEventType = TableEventType(3);
+    pub const COUNT: TableEventType = TableEventType(3); // the declared variant count (SPEC §4.2)
     pub const MAX: TableEventType = TableEventType(3); // the exported extent (SPEC §4.2)
+}
+
+/// Debug/log name for any `TableEventType` value, out-of-set included.
+pub fn enum_name_table_event_type(value: TableEventType) -> &'static str {
+    match value.0 {
+        0 => "None",
+        1 => "Hit",
+        2 => "Chat",
+        3 => "Pickup",
+        _ => "???",
+    }
 }
 
 // TableEvent — at most one of the arms. The default is None (the empty union);

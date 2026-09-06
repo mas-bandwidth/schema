@@ -2341,20 +2341,20 @@ namespace tabledemo {
 struct Patrol {
     bool active = false;
 
-    // if active — guarded fields stay off the wire when the guard says so;
+    // active — guarded fields stay off the wire when the guard says so;
     // a read's prefilled defaults stand in for the untaken side
     float speed = 1.0f;
     bool has_target = false;
 
-    // if active / if has_target — guarded fields stay off the wire when the guard says so;
+    // active && has_target — guarded fields stay off the wire when the guard says so;
     // a read's prefilled defaults stand in for the untaken side
     int32_t target_id = 0;
 
-    // if active / if has_target else — guarded fields stay off the wire when the guard says so;
+    // active && !has_target — guarded fields stay off the wire when the guard says so;
     // a read's prefilled defaults stand in for the untaken side
     float wander = 0.5f;
 
-    // if active else — guarded fields stay off the wire when the guard says so;
+    // !active — guarded fields stay off the wire when the guard says so;
     // a read's prefilled defaults stand in for the untaken side
     char note[8 + 1] = {}; // string(8): max length, used length beside it
     int32_t note_length = 0;

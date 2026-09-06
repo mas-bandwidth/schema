@@ -71,6 +71,7 @@ namespace Benchtable
         Hit = 1,
         Chat = 2,
         Pickup = 3,
+        Count = 3, // the declared variant count (SPEC §4.2)
         Max = 3, // the exported extent (SPEC §4.2)
     }
 
@@ -439,6 +440,25 @@ namespace Benchtable
                 value.Amount = (int)((int)(uint)v1);
             }
             return true;
+        }
+
+        // EnumNameTableEventType: debug/log/tooling name for any TableEventType wire value —
+        // out-of-set values (wire-legal up to the declared max) name as "???"
+        public static string EnumNameTableEventType(ulong value)
+        {
+            switch (value)
+            {
+                case (ulong)TableEventType.None:
+                    return "None";
+                case (ulong)TableEventType.Hit:
+                    return "Hit";
+                case (ulong)TableEventType.Chat:
+                    return "Chat";
+                case (ulong)TableEventType.Pickup:
+                    return "Pickup";
+                default:
+                    return "???";
+            }
         }
 
         // TableEventMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).

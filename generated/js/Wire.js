@@ -241,21 +241,21 @@ export class ProbeSample {
     this.RawDelta = 0;
     this.BigDelta = 0n;
 
-    // if active — wire branch; storage holds both sides, a read zeroes the
+    // active — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.Weapon = Weapon.None;
     this.HasTarget = false;
 
-    // if active / if has_target — wire branch; storage holds both sides, a read zeroes the
+    // active && has_target — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.TargetId = 0;
 
-    // if active else — wire branch; storage holds both sides, a read zeroes the
+    // !active — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.IdleTicks = 0;
 
     this.Samples = new Array(8).fill(0);
-    this.SamplesCount = 0;
+    this.SamplesCount = 1;
   }
 }
 
@@ -476,8 +476,24 @@ export const ProbeShapeType = Object.freeze({
   None: 0,
   Ring: 1,
   Slab: 2,
+  Count: 2, // the declared variant count (SPEC §4.2)
   Max: 2, // the exported extent (SPEC §4.2)
 });
+
+// EnumNameProbeShapeType: debug/log/tooling name for any ProbeShapeType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+export function EnumNameProbeShapeType(value) {
+  switch (value) {
+    case ProbeShapeType.None:
+      return "None";
+    case ProbeShapeType.Ring:
+      return "Ring";
+    case ProbeShapeType.Slab:
+      return "Slab";
+    default:
+      return "???";
+  }
+}
 
 // ProbeShape — at most one of the arms; Type says which. Construction is the empty
 // union (None). A read zero-establishes exactly the selected arm before

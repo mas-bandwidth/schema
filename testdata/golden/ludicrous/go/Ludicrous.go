@@ -253,7 +253,7 @@ type LudicrousState struct {
 	KeysCount int32
 	HasTarget bool
 
-	// if has_target — wire branch; storage holds both sides, a read zeroes the
+	// has_target — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	TargetId serialize.Uint128
 }

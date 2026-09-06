@@ -422,6 +422,8 @@ func (g *gen) emitUnionModules(d *ir.Union) {
 	for i, v := range d.Variants {
 		g.bpf("  def %s, do: %d\n", elixirName(v.Name), i+1)
 	}
+	g.bpf("  # the declared variant count (SPEC §4.2)\n")
+	g.bpf("  def count, do: %s\n", intLit64(int64(len(d.Variants))))
 	g.bpf("  # the exported extent (SPEC §4.2)\n")
 	g.bpf("  def max, do: %s\n", intLit64(d.Max))
 	g.bpf("end\n\n")
@@ -547,6 +549,12 @@ const formatWidth = 98
 func (g *gen) storageDefault(f *ir.Field) string {
 	switch f.Array {
 	case ir.ArrayCounted:
+		// a [A..B] count is born at A, the one wire-legal count a fresh
+		// value can carry (SPEC §4.6), so the list is born holding A
+		// elements in their construction form. A [..N] list is born empty
+		if n := f.BornCount(); n > 0 {
+			return fmt.Sprintf("List.duplicate(%s, %s)", g.scalarDefault(f), intLit64(n))
+		}
 		return "[]"
 	case ir.ArrayFixed:
 		return fmt.Sprintf("List.duplicate(%s, %s)", g.scalarDefault(f), intLit64(f.ArrayBound))

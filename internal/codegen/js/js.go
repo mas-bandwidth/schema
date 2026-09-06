@@ -248,8 +248,22 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 		g.pf("%s", ir.DocComment(docs[i], "  ", "//"))
 		g.pf("  %s: %d,\n", m, i+1)
 	}
+	g.pf("  Count: %d, // the declared variant count (SPEC §4.2)\n", len(members))
 	g.pf("  Max: %d, // the exported extent (SPEC §4.2)\n", len(members))
 	g.pf("});\n\n")
+
+	// the tag enum's name surface is a declared enum's, member for member: a
+	// reader logging which message arrived writes EnumName<Tag>(value)
+	// whichever enum it is. Nothing on the read or write path calls it.
+	g.pf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", name, name)
+	g.pf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
+	g.pf("export function EnumName%s(value) {\n", name)
+	g.pf("  switch (value) {\n")
+	g.pf("    case %s.None:\n      return \"None\";\n", name)
+	for _, m := range members {
+		g.pf("    case %s.%s:\n      return %q;\n", name, m, m)
+	}
+	g.pf("    default:\n      return \"???\";\n  }\n}\n\n")
 }
 
 // emitConst emits a schema const. Bare integers and explicit types through
@@ -421,7 +435,9 @@ func (g *gen) emitStorageField(f *ir.Field) {
 			g.pf("    this.%s = new Array(%s).fill(%s);%s\n", name, bound, g.zeroValue(f.Type), g.fieldComment(f))
 		}
 		if f.Array == ir.ArrayCounted {
-			g.pf("    this.%sCount = 0;\n", name)
+			// a [A..B] count is born at A, the one wire-legal count a fresh
+			// value can carry (SPEC §4.6). A [..N] count is born empty
+			g.pf("    this.%sCount = %d;\n", name, f.BornCount())
 		}
 	default:
 		init := ""

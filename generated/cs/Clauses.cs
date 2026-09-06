@@ -118,6 +118,7 @@ namespace Example
         None = 0,
         A = 1,
         B = 2,
+        Count = 2, // the declared variant count (SPEC §4.2)
         Max = 2, // the exported extent (SPEC §4.2)
     }
 
@@ -1095,6 +1096,23 @@ namespace Example
         private static bool ReadEmptyBBatch(ref ReadBatch batch, EmptyB value)
         {
             return true;
+        }
+
+        // EnumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType wire value —
+        // out-of-set values (wire-legal up to the declared max) name as "???"
+        public static string EnumNameEmptyUnionType(ulong value)
+        {
+            switch (value)
+            {
+                case (ulong)EmptyUnionType.None:
+                    return "None";
+                case (ulong)EmptyUnionType.A:
+                    return "A";
+                case (ulong)EmptyUnionType.B:
+                    return "B";
+                default:
+                    return "???";
+            }
         }
 
         // EmptyUnionMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).

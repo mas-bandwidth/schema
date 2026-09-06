@@ -448,7 +448,7 @@ pub struct RigidBody {
     pub orientation: Quat,
     pub at_rest: bool,
 
-    // if !at_rest — wire branch; storage holds both sides, a read zeroes the
+    // !at_rest — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub linear_velocity: Vec3,
     pub angular_velocity: Vec3,
@@ -714,7 +714,7 @@ pub struct ShipCreate {
     pub linear_velocity: QuantizedVelocity,
     pub has_flags: bool,
 
-    // if has_flags — wire branch; storage holds both sides, a read zeroes the
+    // has_flags — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub flags: ShipFlags,
 

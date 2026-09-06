@@ -1028,7 +1028,7 @@ public final class Ludicrous {
         public int keysCount;
         public boolean hasTarget;
 
-        // if has_target — wire branch; storage holds both sides, a read zeroes the
+        // has_target — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public UInt128 targetId = UInt128.zero;
 
@@ -1099,8 +1099,6 @@ public final class Ludicrous {
             assert value.wide.bias.compareTo(min) >= 0;
             assert value.wide.bias.compareTo(max) <= 0;
         }
-        assert value.keysCount >= 0;
-        assert value.keysCount <= 4;
         return true;
     }
 
@@ -1324,6 +1322,9 @@ public final class Ludicrous {
             wordIndex++;
             scratchBits -= 64;
             scratch = v >>> (32 - scratchBits);
+        }
+        if (value.keysCount < 0 || value.keysCount > 4) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
         }
         v = (value.keysCount) & 0x7L;
         scratch |= v << scratchBits;

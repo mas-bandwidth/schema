@@ -426,9 +426,23 @@ func (g *gen) emitTagEnum(name, typ string, members, docs []string, max int64, c
 		g.bpf("%s", ir.DocComment(docs[i], "        ", "//"))
 		g.bpf("        public static final %s %s = %s;\n", typ, javaName(m), narrowLit(typ, big.NewInt(int64(i+1))))
 	}
+	g.bpf("        // the declared variant count (SPEC §4.2)\n")
+	g.bpf("        public static final %s count = %s;\n", typ, narrowLit(typ, big.NewInt(int64(len(members)))))
 	g.bpf("        // the exported extent (SPEC §4.2)\n")
 	g.bpf("        public static final %s max = %s;\n", typ, narrowLit(typ, big.NewInt(max)))
 	g.bpf("    }\n\n")
+
+	// the tag enum's name surface is a declared enum's, member for member: a
+	// reader logging which message arrived writes enumName<Tag>(value)
+	// whichever enum it is. Nothing on the read or write path calls it.
+	g.bpf("    // enumName%s: debug/log/tooling name for any %s storage value —\n", name, name)
+	g.bpf("    // out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
+	g.bpf("    public static String enumName%s(long value) {\n", name)
+	g.bpf("        if (value == %s.none) {\n            return \"None\";\n        }\n", name)
+	for _, m := range members {
+		g.bpf("        if (value == %s.%s) {\n            return \"%s\";\n        }\n", name, javaName(m), m)
+	}
+	g.bpf("        return \"???\";\n    }\n\n")
 }
 
 func (g *gen) emitEnum(d *ir.Enum) {
@@ -578,7 +592,13 @@ func (g *gen) emitStorageField(f *ir.Field) []string {
 			g.bpf("        public final %s[] %s = new %s[%s];\n", scalarJavaType(f.Type), name, scalarJavaType(f.Type), bound)
 		}
 		if f.Array == ir.ArrayCounted {
-			g.bpf("        public int %sCount;\n", name)
+			// a [A..B] count is born at A, the one wire-legal count a fresh
+			// value can carry (SPEC §4.6). A [..N] count takes the field's zero
+			if n := f.BornCount(); n > 0 {
+				g.bpf("        public int %sCount = %d;\n", name, n)
+			} else {
+				g.bpf("        public int %sCount;\n", name)
+			}
 		}
 		return ctor
 	default:

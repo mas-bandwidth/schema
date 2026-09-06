@@ -15,11 +15,11 @@ struct ArmsAgree {
     uint32_t lead = 0;
     bool flag = false;
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     uint32_t a = 0;
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     uint32_t b = 0;
 
@@ -34,11 +34,11 @@ struct ArmsDisagree {
     uint32_t lead = 0;
     bool flag = false;
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     uint32_t a = 0;
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     uint32_t b = 0;
 
@@ -53,7 +53,7 @@ struct ArmEmpty {
     uint32_t lead = 0;
     bool flag = false;
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     uint32_t a = 0;
 
@@ -68,19 +68,19 @@ struct ArmsNested {
     uint32_t lead = 0;
     bool outer = false;
 
-    // if outer — wire branch; storage holds both sides, a read zeroes the
+    // outer — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     bool inner = false;
 
-    // if outer / if inner — wire branch; storage holds both sides, a read zeroes the
+    // outer && inner — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     uint32_t x = 0;
 
-    // if outer / if inner else — wire branch; storage holds both sides, a read zeroes the
+    // outer && !inner — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     uint32_t y = 0;
 
-    // if outer else — wire branch; storage holds both sides, a read zeroes the
+    // !outer — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     uint32_t z = 0;
 
@@ -95,12 +95,12 @@ struct ArmAlign {
     uint32_t lead = 0;
     bool flag = false;
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     char s[4 + 1] = {}; // string(4): max length, used length beside it (SPEC §4.7)
     int32_t s_length = 0;
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     uint32_t b = 0;
 
@@ -115,12 +115,12 @@ struct ArmArray {
     uint32_t lead = 0;
     bool flag = false;
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     uint16_t items[3] = {}; // used count beside it; wire count in [0, 3]
     int32_t items_count = 0;
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     uint32_t b = 0;
 
@@ -151,8 +151,21 @@ enum class UnevenType : uint8_t {
     None = 0,
     Narrow = 1,
     Wide = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any UnevenType value, out-of-set included
+inline const char * EnumName( UnevenType value )
+{
+    switch ( value )
+    {
+        case UnevenType::None: return "None";
+        case UnevenType::Narrow: return "Narrow";
+        case UnevenType::Wide: return "Wide";
+        default: return "???";
+    }
+}
 
 // union Uneven — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm's storage is established ZEROED

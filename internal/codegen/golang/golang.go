@@ -155,8 +155,23 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 		g.pf("%s", ir.DocComment(docs[i], "\t", "//"))
 		g.pf("\t%s%s %s = %d\n", name, m, name, i+1)
 	}
+	g.pf("\t%sCount %s = %d // the declared variant count (SPEC §4.2)\n", name, name, len(members))
 	g.pf("\t%sMax %s = %d // the exported extent (SPEC §4.2)\n", name, name, len(members))
 	g.pf(")\n\n")
+
+	// the tag enum's name surface is a declared enum's, member for member: a
+	// reader logging which message arrived writes EnumName<Tag>( value )
+	// whichever enum it is. Nothing on the read or write path calls it. The
+	// uint64 parameter (not the tag type) keeps out-of-set values exact.
+	g.pf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", name, name)
+	g.pf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
+	g.pf("func EnumName%s(value uint64) string {\n", name)
+	g.pf("\tswitch value {\n")
+	g.pf("\tcase uint64(%sNone):\n\t\treturn \"None\"\n", name)
+	for _, m := range members {
+		g.pf("\tcase uint64(%s%s):\n\t\treturn \"%s\"\n", name, m, m)
+	}
+	g.pf("\t}\n\treturn \"???\"\n}\n\n")
 }
 
 // emitConst emits a bare INTEGER schema const as an UNTYPED Go constant —
@@ -322,7 +337,7 @@ func (g *gen) hasDefaults(d *ir.Struct) bool {
 		}
 		seen[st.Name] = true
 		for _, f := range st.Fields {
-			if f.HasDefault {
+			if f.HasDefault || f.BornCount() > 0 {
 				return true
 			}
 			if f.Type.Kind == ir.TNamed {
@@ -338,6 +353,11 @@ func (g *gen) hasDefaults(d *ir.Struct) bool {
 
 func (g *gen) emitDefaultInit(f *ir.Field) {
 	name := "value." + ir.GoExportName(f.Name)
+	if n := f.BornCount(); n > 0 {
+		// a [A..B] count is born at A, the one wire-legal count a fresh value
+		// can carry (SPEC §4.6). The elements below follow their own rule
+		g.pf("\t%sCount = %d\n", name, n)
+	}
 	if f.HasDefault {
 		g.pf("\t%s = %s\n", name, g.defaultValue(f))
 		return

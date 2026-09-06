@@ -824,8 +824,25 @@ const (
 	MixedEventTypeHit    MixedEventType = 1
 	MixedEventTypeChat   MixedEventType = 2
 	MixedEventTypePickup MixedEventType = 3
+	MixedEventTypeCount  MixedEventType = 3 // the declared variant count (SPEC §4.2)
 	MixedEventTypeMax    MixedEventType = 3 // the exported extent (SPEC §4.2)
 )
+
+// EnumNameMixedEventType: debug/log/tooling name for any MixedEventType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+func EnumNameMixedEventType(value uint64) string {
+	switch value {
+	case uint64(MixedEventTypeNone):
+		return "None"
+	case uint64(MixedEventTypeHit):
+		return "Hit"
+	case uint64(MixedEventTypeChat):
+		return "Chat"
+	case uint64(MixedEventTypePickup):
+		return "Pickup"
+	}
+	return "???"
+}
 
 // MixedEvent — at most one of the arms; Type says which. The zero value is the
 // empty union (None). A read zero-establishes exactly the selected arm before
@@ -918,11 +935,11 @@ type BenchMixed struct {
 	CrcHint          uint32
 	HasExtra         bool // = true in New* (zero value otherwise)
 
-	// if has_extra — wire branch; storage holds both sides, a read zeroes the
+	// has_extra — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	Extra int32 // wire [0, 255]
 
-	// if has_extra else — wire branch; storage holds both sides, a read zeroes the
+	// !has_extra — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	IdleTicks int32 // wire [0, 15]
 }
@@ -932,6 +949,7 @@ type BenchMixed struct {
 // specified default overrides it).
 func NewBenchMixed() BenchMixed {
 	var value BenchMixed
+	value.EntitiesCount = 1
 	value.HasExtra = true
 	return value
 }

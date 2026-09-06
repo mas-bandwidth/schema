@@ -47,7 +47,7 @@ end
 
 # type RigidBody
 defmodule Example.RigidBody do
-  # if !at_rest — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !at_rest — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct position: %Example.Vec3{},
             orientation: %Example.Quat{},
             at_rest: false,
@@ -80,7 +80,7 @@ end
 
 # type ShipCreate
 defmodule Example.ShipCreate do
-  # if has_flags — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # has_flags — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # flags: ShipFlags — consumed as masks, uint64 storage (SPEC §4.2)
   # health: wire [0, 1000]
   # thrust: wire [0, 100]

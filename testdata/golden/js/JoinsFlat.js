@@ -115,8 +115,9 @@ function writeArmsAgreeFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteArmsAgreeFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold ArmsAgreeMaxBytes.
+// WriteArmsAgreeFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold ArmsAgreeMaxBytes.
 export const WriteArmsAgreeFlat = PRODUCTION ? writeArmsAgreeFlatProduction : writeArmsAgreeFlatChecked;
 
 // ReadArmsAgreeFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -266,8 +267,9 @@ function writeArmsDisagreeFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteArmsDisagreeFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold ArmsDisagreeMaxBytes.
+// WriteArmsDisagreeFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold ArmsDisagreeMaxBytes.
 export const WriteArmsDisagreeFlat = PRODUCTION ? writeArmsDisagreeFlatProduction : writeArmsDisagreeFlatChecked;
 
 // ReadArmsDisagreeFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -406,8 +408,9 @@ function writeArmEmptyFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteArmEmptyFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold ArmEmptyMaxBytes.
+// WriteArmEmptyFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold ArmEmptyMaxBytes.
 export const WriteArmEmptyFlat = PRODUCTION ? writeArmEmptyFlatProduction : writeArmEmptyFlatChecked;
 
 // ReadArmEmptyFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -596,8 +599,9 @@ function writeArmsNestedFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteArmsNestedFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold ArmsNestedMaxBytes.
+// WriteArmsNestedFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold ArmsNestedMaxBytes.
 export const WriteArmsNestedFlat = PRODUCTION ? writeArmsNestedFlatProduction : writeArmsNestedFlatChecked;
 
 // ReadArmsNestedFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -852,8 +856,9 @@ function writeArmAlignFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteArmAlignFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold ArmAlignMaxBytes.
+// WriteArmAlignFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold ArmAlignMaxBytes.
 export const WriteArmAlignFlat = PRODUCTION ? writeArmAlignFlatProduction : writeArmAlignFlatChecked;
 
 // ReadArmAlignFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -956,6 +961,9 @@ function writeArmArrayFlatProduction(value, view) {
     lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   if (value.Flag) {
+    if (value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
+      return -1;
+    }
     v = (((value.ItemsCount) & 0x3)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 2;
@@ -1015,7 +1023,7 @@ function writeArmArrayFlatChecked(value, view) {
     lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   if (value.Flag) {
-    if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; out-of-contract writes are refused
+    if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
       return -1;
     }
     v = (((value.ItemsCount) & 0x3)) >>> 0;
@@ -1067,8 +1075,9 @@ function writeArmArrayFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteArmArrayFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold ArmArrayMaxBytes.
+// WriteArmArrayFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold ArmArrayMaxBytes.
 export const WriteArmArrayFlat = PRODUCTION ? writeArmArrayFlatProduction : writeArmArrayFlatChecked;
 
 // ReadArmArrayFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1181,8 +1190,9 @@ function writeNarrowFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteNarrowFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold NarrowMaxBytes.
+// WriteNarrowFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold NarrowMaxBytes.
 export const WriteNarrowFlat = PRODUCTION ? writeNarrowFlatProduction : writeNarrowFlatChecked;
 
 // ReadNarrowFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1261,8 +1271,9 @@ function writeWideFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteWideFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold WideMaxBytes.
+// WriteWideFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold WideMaxBytes.
 export const WriteWideFlat = PRODUCTION ? writeWideFlatProduction : writeWideFlatChecked;
 
 // ReadWideFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1425,8 +1436,9 @@ function writeHoldsUnevenFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteHoldsUnevenFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold HoldsUnevenMaxBytes.
+// WriteHoldsUnevenFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold HoldsUnevenMaxBytes.
 export const WriteHoldsUnevenFlat = PRODUCTION ? writeHoldsUnevenFlatProduction : writeHoldsUnevenFlatChecked;
 
 // ReadHoldsUnevenFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1520,6 +1532,9 @@ export function ReadHoldsUnevenFlat(value, view, numBits) {
 function writeArrUnevenFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
+  if (value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
+    return -1;
+  }
   v = ((value.Lead & 0x1f) | (((value.ItemsCount) & 0x3) << 5)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 7;
@@ -1595,7 +1610,7 @@ function writeArrUnevenFlatProduction(value, view) {
 function writeArrUnevenFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; out-of-contract writes are refused
+  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
     return -1;
   }
   v = ((value.Lead & 0x1f) | (((value.ItemsCount) & 0x3) << 5)) >>> 0;
@@ -1673,8 +1688,9 @@ function writeArrUnevenFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteArrUnevenFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold ArrUnevenMaxBytes.
+// WriteArrUnevenFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold ArrUnevenMaxBytes.
 export const WriteArrUnevenFlat = PRODUCTION ? writeArrUnevenFlatProduction : writeArrUnevenFlatChecked;
 
 // ReadArrUnevenFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1782,6 +1798,9 @@ export function ReadArrUnevenFlat(value, view, numBits) {
 function writeRegainAfterAlignFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
+  if (value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
+    return -1;
+  }
   v = ((value.Lead & 0x1f) | (((value.ItemsCount) & 0x3) << 5)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 7;
@@ -1879,7 +1898,7 @@ function writeRegainAfterAlignFlatProduction(value, view) {
 function writeRegainAfterAlignFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; out-of-contract writes are refused
+  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
     return -1;
   }
   v = ((value.Lead & 0x1f) | (((value.ItemsCount) & 0x3) << 5)) >>> 0;
@@ -1982,8 +2001,9 @@ function writeRegainAfterAlignFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteRegainAfterAlignFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold RegainAfterAlignMaxBytes.
+// WriteRegainAfterAlignFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold RegainAfterAlignMaxBytes.
 export const WriteRegainAfterAlignFlat = PRODUCTION ? writeRegainAfterAlignFlatProduction : writeRegainAfterAlignFlatChecked;
 
 // ReadRegainAfterAlignFlat(value, view, numBits) -> bool. The buffer behind view must

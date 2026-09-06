@@ -180,7 +180,7 @@ public final class RealWorld {
         // specified default at construction; zero* gives the §5 zero form
         public boolean f012Bool = true;
 
-        // if f012_bool — wire branch; storage holds both sides, a read zeroes the
+        // f012_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public float f013F32;
         // wire [0, 775]
@@ -229,7 +229,7 @@ public final class RealWorld {
         // specified default at construction; zero* gives the §5 zero form
         public boolean f043Bool;
 
-        // if f043_bool — wire branch; storage holds both sides, a read zeroes the
+        // f043_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public float f044F32;
         public int f045Bits;
@@ -244,7 +244,7 @@ public final class RealWorld {
         // specified default at construction; zero* gives the §5 zero form
         public boolean f050Bool = true;
 
-        // if f050_bool — wire branch; storage holds both sides, a read zeroes the
+        // f050_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public boolean f051Bool;
         // wire [-57, 57]
@@ -288,7 +288,7 @@ public final class RealWorld {
         // specified default at construction; zero* gives the §5 zero form
         public boolean f074Bool;
 
-        // if f074_bool — wire branch; storage holds both sides, a read zeroes the
+        // f074_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public long f075U64;
         // wire [-26218, 26218]

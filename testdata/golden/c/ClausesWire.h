@@ -166,6 +166,10 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_interior_null_( const seria
 /* Writes W13. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w13( serialize_write_stream_t * stream, const W13 * value )
 {
+    if ( value->items_count < 0 || value->items_count > 12 )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
+    }
     if ( !serialize_write_int( stream, value->items_count, 0, 12 ) )
     {
         return 0;
@@ -220,6 +224,10 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w13( serialize_read_stream_t 
 /* Writes W17. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w17( serialize_write_stream_t * stream, const W17 * value )
 {
+    if ( value->items_count < 0 || value->items_count > 9 )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
+    }
     if ( !serialize_write_int( stream, value->items_count, 0, 9 ) )
     {
         return 0;
@@ -274,6 +282,10 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w17( serialize_read_stream_t 
 /* Writes W26. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w26( serialize_write_stream_t * stream, const W26 * value )
 {
+    if ( value->items_count < 0 || value->items_count > 6 )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
+    }
     if ( !serialize_write_int( stream, value->items_count, 0, 6 ) )
     {
         return 0;
@@ -328,6 +340,10 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w26( serialize_read_stream_t 
 /* Writes W1. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w1( serialize_write_stream_t * stream, const W1 * value )
 {
+    if ( value->items_count < 0 || value->items_count > 20 )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
+    }
     if ( !serialize_write_int( stream, value->items_count, 0, 20 ) )
     {
         return 0;
@@ -382,6 +398,10 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w1( serialize_read_stream_t *
 /* Writes W52. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w52( serialize_write_stream_t * stream, const W52 * value )
 {
+    if ( value->items_count < 0 || value->items_count > 3 )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
+    }
     if ( !serialize_write_int( stream, value->items_count, 0, 3 ) )
     {
         return 0;
@@ -448,6 +468,10 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w52( serialize_read_stream_t 
 /* Writes W50. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w50( serialize_write_stream_t * stream, const W50 * value )
 {
+    if ( value->items_count < 0 || value->items_count > 3 )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
+    }
     if ( !serialize_write_int( stream, value->items_count, 0, 3 ) )
     {
         return 0;
@@ -596,6 +620,10 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_tri3( serialize_read_stream_t
 /* Writes ArrTri3. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arr_tri3( serialize_write_stream_t * stream, const ArrTri3 * value )
 {
+    if ( value->items_count < 0 || value->items_count > 10 )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
+    }
     if ( !serialize_write_int( stream, value->items_count, 0, 10 ) )
     {
         return 0;
@@ -907,6 +935,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arr_nested( serialize_write
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->lead, 5 ) )
     {
         return 0;
+    }
+    if ( value->items_count < 0 || value->items_count > 4 )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
     }
     if ( !serialize_write_int( stream, value->items_count, 0, 4 ) )
     {

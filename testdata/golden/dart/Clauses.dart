@@ -27,7 +27,8 @@ void zeroW13(W13 value) {
 
 // writeW13 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// w13MaxBytes. Returns the bytes written.
+// w13MaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeW13(W13 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= w13MaxBytes);
@@ -35,8 +36,9 @@ int writeW13(W13 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.itemsCount >= 0);
-  assert(value.itemsCount <= 12);
+  if (value.itemsCount < 0 || value.itemsCount > 12) {
+    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+  }
   v = ((value.itemsCount) & 0xf);
   scratch |= v << scratchBits;
   scratchBits += 4;
@@ -197,7 +199,8 @@ void zeroW17(W17 value) {
 
 // writeW17 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// w17MaxBytes. Returns the bytes written.
+// w17MaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeW17(W17 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= w17MaxBytes);
@@ -205,8 +208,9 @@ int writeW17(W17 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.itemsCount >= 0);
-  assert(value.itemsCount <= 9);
+  if (value.itemsCount < 0 || value.itemsCount > 9) {
+    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+  }
   v = ((value.itemsCount) & 0xf);
   scratch |= v << scratchBits;
   scratchBits += 4;
@@ -361,7 +365,8 @@ void zeroW26(W26 value) {
 
 // writeW26 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// w26MaxBytes. Returns the bytes written.
+// w26MaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeW26(W26 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= w26MaxBytes);
@@ -369,8 +374,9 @@ int writeW26(W26 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.itemsCount >= 0);
-  assert(value.itemsCount <= 6);
+  if (value.itemsCount < 0 || value.itemsCount > 6) {
+    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+  }
   v = ((value.itemsCount) & 0x7);
   scratch |= v << scratchBits;
   scratchBits += 3;
@@ -519,7 +525,8 @@ void zeroW1(W1 value) {
 
 // writeW1 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// w1MaxBytes. Returns the bytes written.
+// w1MaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeW1(W1 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= w1MaxBytes);
@@ -527,8 +534,9 @@ int writeW1(W1 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.itemsCount >= 0);
-  assert(value.itemsCount <= 20);
+  if (value.itemsCount < 0 || value.itemsCount > 20) {
+    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+  }
   v = ((value.itemsCount) & 0x1f);
   scratch |= v << scratchBits;
   scratchBits += 5;
@@ -1028,7 +1036,8 @@ void zeroW52(W52 value) {
 
 // writeW52 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// w52MaxBytes. Returns the bytes written.
+// w52MaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeW52(W52 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= w52MaxBytes);
@@ -1036,8 +1045,9 @@ int writeW52(W52 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.itemsCount >= 0);
-  assert(value.itemsCount <= 3);
+  if (value.itemsCount < 0 || value.itemsCount > 3) {
+    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+  }
   v = ((value.itemsCount) & 0x3);
   scratch |= v << scratchBits;
   scratchBits += 2;
@@ -1146,7 +1156,8 @@ void zeroW50(W50 value) {
 
 // writeW50 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// w50MaxBytes. Returns the bytes written.
+// w50MaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeW50(W50 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= w50MaxBytes);
@@ -1154,8 +1165,9 @@ int writeW50(W50 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.itemsCount >= 0);
-  assert(value.itemsCount <= 3);
+  if (value.itemsCount < 0 || value.itemsCount > 3) {
+    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+  }
   v = ((value.itemsCount) & 0x3);
   scratch |= v << scratchBits;
   scratchBits += 2;
@@ -1262,7 +1274,8 @@ void zeroF13(F13 value) {
 
 // writeF13 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// f13MaxBytes. Returns the bytes written.
+// f13MaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeF13(F13 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= f13MaxBytes);
@@ -1351,7 +1364,8 @@ void zeroTri3(Tri3 value) {
 
 // writeTri3 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// tri3MaxBytes. Returns the bytes written.
+// tri3MaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeTri3(Tri3 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= tri3MaxBytes);
@@ -1439,7 +1453,8 @@ void zeroArrTri3(ArrTri3 value) {
 
 // writeArrTri3 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// arrTri3MaxBytes. Returns the bytes written.
+// arrTri3MaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeArrTri3(ArrTri3 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= arrTri3MaxBytes);
@@ -1447,8 +1462,9 @@ int writeArrTri3(ArrTri3 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.itemsCount >= 0);
-  assert(value.itemsCount <= 10);
+  if (value.itemsCount < 0 || value.itemsCount > 10) {
+    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+  }
   v = ((value.itemsCount) & 0xf);
   scratch |= v << scratchBits;
   scratchBits += 4;
@@ -1783,7 +1799,8 @@ void zeroEleven(Eleven value) {
 
 // writeEleven packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// elevenMaxBytes. Returns the bytes written.
+// elevenMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeEleven(Eleven value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= elevenMaxBytes);
@@ -1869,7 +1886,8 @@ void zeroArrEleven(ArrEleven value) {
 
 // writeArrEleven packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// arrElevenMaxBytes. Returns the bytes written.
+// arrElevenMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeArrEleven(ArrEleven value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= arrElevenMaxBytes);
@@ -1959,7 +1977,8 @@ void zeroEmptyA(EmptyA value) {
 
 // writeEmptyA packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// emptyAMaxBytes. Returns the bytes written.
+// emptyAMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeEmptyA(EmptyA value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= emptyAMaxBytes);
@@ -2002,7 +2021,8 @@ void zeroEmptyB(EmptyB value) {
 
 // writeEmptyB packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// emptyBMaxBytes. Returns the bytes written.
+// emptyBMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeEmptyB(EmptyB value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= emptyBMaxBytes);
@@ -2032,7 +2052,23 @@ abstract final class EmptyUnionType {
   static const int none = 0;
   static const int a = 1;
   static const int b = 2;
+  static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
+}
+
+// enumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType wire value —
+// out-of-set values (wire-legal up to the declared max) name as '???'
+String enumNameEmptyUnionType(int value) {
+  switch (value) {
+    case EmptyUnionType.none:
+      return 'None';
+    case EmptyUnionType.a:
+      return 'A';
+    case EmptyUnionType.b:
+      return 'B';
+    default:
+      return '???';
+  }
 }
 
 // EmptyUnion — at most one of the arms; type says which. Construction is the empty
@@ -2059,7 +2095,8 @@ void zeroEmptyUnion(EmptyUnion value) {
 
 // writeEmptyUnion packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// emptyUnionMaxBytes. Returns the bytes written.
+// emptyUnionMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeEmptyUnion(EmptyUnion value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= emptyUnionMaxBytes);
@@ -2171,7 +2208,8 @@ void zeroHoldsEmptyUnion(HoldsEmptyUnion value) {
 
 // writeHoldsEmptyUnion packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// holdsEmptyUnionMaxBytes. Returns the bytes written.
+// holdsEmptyUnionMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= holdsEmptyUnionMaxBytes);
@@ -2319,7 +2357,8 @@ void zeroStrs(Strs value) {
 
 // writeStrs packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// strsMaxBytes. Returns the bytes written.
+// strsMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeStrs(Strs value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= strsMaxBytes);
@@ -2605,7 +2644,8 @@ void zeroArrNested(ArrNested value) {
 
 // writeArrNested packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// arrNestedMaxBytes. Returns the bytes written.
+// arrNestedMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeArrNested(ArrNested value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= arrNestedMaxBytes);
@@ -2613,8 +2653,9 @@ int writeArrNested(ArrNested value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.itemsCount >= 0);
-  assert(value.itemsCount <= 4);
+  if (value.itemsCount < 0 || value.itemsCount > 4) {
+    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+  }
   v = ((value.lead) & 0x1f) | (((value.itemsCount) & 0x7) << 5);
   scratch |= v << scratchBits;
   scratchBits += 8;
@@ -2828,7 +2869,8 @@ void zeroSole(Sole value) {
 
 // writeSole packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// soleMaxBytes. Returns the bytes written.
+// soleMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeSole(Sole value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= soleMaxBytes);

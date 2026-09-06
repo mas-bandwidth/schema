@@ -597,8 +597,24 @@ export const EmptyUnionType = Object.freeze({
   None: 0,
   A: 1,
   B: 2,
+  Count: 2, // the declared variant count (SPEC §4.2)
   Max: 2, // the exported extent (SPEC §4.2)
 });
+
+// EnumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+export function EnumNameEmptyUnionType(value) {
+  switch (value) {
+    case EmptyUnionType.None:
+      return "None";
+    case EmptyUnionType.A:
+      return "A";
+    case EmptyUnionType.B:
+      return "B";
+    default:
+      return "???";
+  }
+}
 
 // EmptyUnion — at most one of the arms; Type says which. Construction is the empty
 // union (None). A read zero-establishes exactly the selected arm before

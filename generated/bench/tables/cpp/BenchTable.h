@@ -214,8 +214,22 @@ enum class TableEventType : uint8_t {
     Hit = 1,
     Chat = 2,
     Pickup = 3,
+    Count = 3, // the declared variant count (SPEC §4.2)
     Max = 3, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any TableEventType value, out-of-set included
+inline const char * EnumName( TableEventType value )
+{
+    switch ( value )
+    {
+        case TableEventType::None: return "None";
+        case TableEventType::Hit: return "Hit";
+        case TableEventType::Chat: return "Chat";
+        case TableEventType::Pickup: return "Pickup";
+        default: return "???";
+    }
+}
 
 // union TableEvent — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm's storage is established ZEROED

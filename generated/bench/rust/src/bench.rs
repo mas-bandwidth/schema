@@ -971,7 +971,19 @@ impl MixedEventType {
     pub const HIT: MixedEventType = MixedEventType(1);
     pub const CHAT: MixedEventType = MixedEventType(2);
     pub const PICKUP: MixedEventType = MixedEventType(3);
+    pub const COUNT: MixedEventType = MixedEventType(3); // the declared variant count (SPEC §4.2)
     pub const MAX: MixedEventType = MixedEventType(3); // the exported extent (SPEC §4.2)
+}
+
+/// Debug/log name for any `MixedEventType` value, out-of-set included.
+pub fn enum_name_mixed_event_type(value: MixedEventType) -> &'static str {
+    match value.0 {
+        0 => "None",
+        1 => "Hit",
+        2 => "Chat",
+        3 => "Pickup",
+        _ => "???",
+    }
 }
 
 // MixedEvent — at most one of the arms. The default is None (the empty union);
@@ -1073,11 +1085,11 @@ pub struct BenchMixed {
     pub crc_hint: u32,
     pub has_extra: bool, // = true in new() (zero value otherwise)
 
-    // if has_extra — wire branch; storage holds both sides, a read zeroes the
+    // has_extra — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub extra: i32, // wire [0, 255]
 
-    // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+    // !has_extra — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub idle_ticks: i32, // wire [0, 15]
 }
@@ -1127,6 +1139,7 @@ impl BenchMixed {
     // unless a specified default overrides it).
     pub fn new() -> Self {
         let mut value = BenchMixed::default();
+        value.entities_count = 1;
         value.has_extra = true;
         value
     }

@@ -66,7 +66,7 @@ namespace Example
         public Quat Orientation = new Quat();
         public bool AtRest;
 
-        // if !at_rest — wire branch; storage holds both sides, a read zeroes the
+        // !at_rest — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public Vec3 LinearVelocity = new Vec3();
         public Vec3 AngularVelocity = new Vec3();
@@ -117,7 +117,7 @@ namespace Example
         public QuantizedVelocity LinearVelocity = new QuantizedVelocity();
         public bool HasFlags;
 
-        // if has_flags — wire branch; storage holds both sides, a read zeroes the
+        // has_flags — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public ulong Flags; // ShipFlags — consumed as masks, ulong storage (SPEC §4.2)
 

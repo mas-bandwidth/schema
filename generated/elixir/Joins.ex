@@ -6,46 +6,46 @@
 
 # type ArmsAgree
 defmodule Example.ArmsAgree do
-  # if flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
-  # if flag else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, a: 0, b: 0, tail: 0
 end
 
 # type ArmsDisagree
 defmodule Example.ArmsDisagree do
-  # if flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
-  # if flag else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, a: 0, b: 0, tail: 0
 end
 
 # type ArmEmpty
 defmodule Example.ArmEmpty do
-  # if flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, a: 0, tail: 0
 end
 
 # type ArmsNested
 defmodule Example.ArmsNested do
-  # if outer — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
-  # if outer / if inner — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
-  # if outer / if inner else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
-  # if outer else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # outer — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # outer && inner — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # outer && !inner — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !outer — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, outer: false, inner: false, x: 0, y: 0, z: 0, tail: 0
 end
 
 # type ArmAlign
 defmodule Example.ArmAlign do
-  # if flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # s: string(4) — a UTF-8 binary; byte_size is the used length (SPEC §4.7)
-  # if flag else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, s: <<>>, b: 0, tail: 0
 end
 
 # type ArmArray
 defmodule Example.ArmArray do
-  # if flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # items: counted array — a list of up to 3 elements; wire [0, 8191]
-  # if flag else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, items: [], b: 0, tail: 0
 end
 
@@ -64,6 +64,8 @@ defmodule Example.UnevenType do
   def none, do: 0
   def narrow, do: 1
   def wide, do: 2
+  # the declared variant count (SPEC §4.2)
+  def count, do: 2
   # the exported extent (SPEC §4.2)
   def max, do: 2
 end
@@ -970,6 +972,17 @@ defmodule Example.Joins do
   # uneven_max_bytes is rounded up to the family 8-byte write-buffer granularity.
   def uneven_max_bits, do: 39
   def uneven_max_bytes, do: 8
+
+  # enum_name_uneven_type: debug/log/tooling name for any UnevenType wire value —
+  # out-of-set values (wire-legal up to the declared max) name as "???"
+  def enum_name_uneven_type(value) do
+    case value do
+      0 -> "None"
+      1 -> "Narrow"
+      2 -> "Wide"
+      _ -> "???"
+    end
+  end
 
   # The §5 zero form — the empty union (None). Arms hold their construction
   # form: every arm is unselected at None, and unselected arms are

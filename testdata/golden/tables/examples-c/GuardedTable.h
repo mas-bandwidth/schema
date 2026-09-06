@@ -570,20 +570,20 @@ static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64
 typedef struct Patrol {
     uint8_t active;
 
-    /* if active — guarded fields stay off the wire when the guard says so;
+    /* active — guarded fields stay off the wire when the guard says so;
        a read's prefilled defaults stand in for the untaken side */
     float speed;
     uint8_t has_target;
 
-    /* if active / if has_target — guarded fields stay off the wire when the guard says so;
+    /* active && has_target — guarded fields stay off the wire when the guard says so;
        a read's prefilled defaults stand in for the untaken side */
     int32_t target_id;
 
-    /* if active / if has_target else — guarded fields stay off the wire when the guard says so;
+    /* active && !has_target — guarded fields stay off the wire when the guard says so;
        a read's prefilled defaults stand in for the untaken side */
     float wander;
 
-    /* if active else — guarded fields stay off the wire when the guard says so;
+    /* !active — guarded fields stay off the wire when the guard says so;
        a read's prefilled defaults stand in for the untaken side */
     char note[8 + 1]; /* string(8): N + 1 for the terminator the wire does not carry */
     int32_t note_length;

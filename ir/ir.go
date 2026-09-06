@@ -331,8 +331,11 @@ const (
 // Field is one storage-carrying member of a struct, with its resolved wire
 // refinements.
 type Field struct {
-	Name  string
-	Guard string // "" or "if !at_rest" — branch context, kept as a comment
+	Name string
+	// Guard is the field's branch context, kept as a comment: "" outside a
+	// branch, otherwise the condition spelled as the reflection descriptors
+	// spell it: "at_rest", "!at_rest", "active && has_target".
+	Guard string
 
 	// Doc is the `///` block above the field, verbatim (SPEC §4.1), and
 	// Tags the valueless identifiers right of its pipe in declared order
@@ -408,6 +411,19 @@ type Field struct {
 	// such unit's id stable; see ir.WireProjection).
 	Round string
 	Steps int64 // ceil((FMax-FMin)/Resolution)
+}
+
+// BornCount is the count a fresh value of a counted array carries: the
+// declared minimum, because a range that starts above zero has no wire-legal
+// count at zero and an array takes no specified default to name another one
+// (SPEC §4.6). It is the one birth value an array declares, so every target's
+// constructed form carries it the way it carries a specified default, and a
+// [..N] array is born empty as before. Zero on every other field.
+func (f *Field) BornCount() int64 {
+	if f.Array == ArrayCounted {
+		return f.ArrayMin
+	}
+	return 0
 }
 
 type FieldTypeKind int

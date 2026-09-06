@@ -635,8 +635,28 @@ public final class BenchTable {
         public static final byte hit = 1;
         public static final byte chat = 2;
         public static final byte pickup = 3;
+        // the declared variant count (SPEC §4.2)
+        public static final byte count = 3;
         // the exported extent (SPEC §4.2)
         public static final byte max = 3;
+    }
+
+    // enumNameTableEventType: debug/log/tooling name for any TableEventType storage value —
+    // out-of-set values (wire-legal up to the declared max) name as "???"
+    public static String enumNameTableEventType(long value) {
+        if (value == TableEventType.none) {
+            return "None";
+        }
+        if (value == TableEventType.hit) {
+            return "Hit";
+        }
+        if (value == TableEventType.chat) {
+            return "Chat";
+        }
+        if (value == TableEventType.pickup) {
+            return "Pickup";
+        }
+        return "???";
     }
 
     // TableEvent — at most one of the arms; type says which. Construction is the empty

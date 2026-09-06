@@ -308,7 +308,7 @@ export class LudicrousState {
     this.KeysCount = 0;
     this.HasTarget = false;
 
-    // if has_target — wire branch; storage holds both sides, a read zeroes the
+    // has_target — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.TargetId = 0n;
   }

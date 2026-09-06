@@ -174,7 +174,10 @@ SCHEMA_WRITE_INLINE bool WriteLudicrousState( serialize::WriteStream & stream, c
     {
         return false;
     }
-    serialize_assert( int32_t( value.keys_count ) >= int32_t( 0 ) && int32_t( value.keys_count ) <= int32_t( 4 ) );
+    if ( int32_t( value.keys_count ) < int32_t( 0 ) || int32_t( value.keys_count ) > int32_t( 4 ) )
+    {
+        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
+    }
     write_bits( stream, uint32_t( value.keys_count ), 3 );
     for ( int32_t i = 0; i < value.keys_count; i++ )
     {

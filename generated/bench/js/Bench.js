@@ -971,8 +971,26 @@ export const MixedEventType = Object.freeze({
   Hit: 1,
   Chat: 2,
   Pickup: 3,
+  Count: 3, // the declared variant count (SPEC §4.2)
   Max: 3, // the exported extent (SPEC §4.2)
 });
+
+// EnumNameMixedEventType: debug/log/tooling name for any MixedEventType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+export function EnumNameMixedEventType(value) {
+  switch (value) {
+    case MixedEventType.None:
+      return "None";
+    case MixedEventType.Hit:
+      return "Hit";
+    case MixedEventType.Chat:
+      return "Chat";
+    case MixedEventType.Pickup:
+      return "Pickup";
+    default:
+      return "???";
+  }
+}
 
 // MixedEvent — at most one of the arms; Type says which. Construction is the empty
 // union (None). A read zero-establishes exactly the selected arm before
@@ -1050,7 +1068,7 @@ export class BenchMixed {
     this.FrameTick = 0n;
     this.ServerTime = 0; // wire [0, 65535]
     this.Entities = Array.from({ length: 8 }, () => new MixedEntity());
-    this.EntitiesCount = 0;
+    this.EntitiesCount = 1;
     this.Stats = Array.from({ length: 80 }, () => new MixedStat());
     this.StatsCount = 0;
     this.GameEvent = new MixedEvent();
@@ -1070,11 +1088,11 @@ export class BenchMixed {
     this.CrcHint = 0;
     this.HasExtra = true; // specified default at construction; Zero* gives the §5 zero form
 
-    // if has_extra — wire branch; storage holds both sides, a read zeroes the
+    // has_extra — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.Extra = 0; // wire [0, 255]
 
-    // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+    // !has_extra — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.IdleTicks = 0; // wire [0, 15]
   }

@@ -381,7 +381,7 @@ export class RigidBody {
     this.Orientation = new Quat();
     this.AtRest = false;
 
-    // if !at_rest — wire branch; storage holds both sides, a read zeroes the
+    // !at_rest — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.LinearVelocity = new Vec3();
     this.AngularVelocity = new Vec3();
@@ -691,7 +691,7 @@ export class ShipCreate {
     this.LinearVelocity = new QuantizedVelocity();
     this.HasFlags = false;
 
-    // if has_flags — wire branch; storage holds both sides, a read zeroes the
+    // has_flags — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.Flags = 0n; // ShipFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
 
