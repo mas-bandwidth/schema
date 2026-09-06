@@ -8629,16 +8629,16 @@ doc comment is not a value. **The pack tree does not see them either**
 tree is ever spelled by a doc or a tag. Documenting and tagging a shipped
 schema is a free edit, and that is the property the open namespace rests on.
 
-**REGISTRY STATUS: the DECLARATION and FIELD columns are emitted, the
-REGISTRY rows are not.** All nine targets carry `doc`, `num_tags` and `tags`
-on `TableFieldInfo` and on `TableTypeInfo`, filled from the `///` block
-(SPEC.md §4.1) and the tags (SPEC.md §4.2) the compiler reads at every
-line kind. What no target emits is the registry itself (§8.3), so an enum
-VARIANT's, a flags BIT's and a record-naming ARM's annotation ride the IR
-and the generated comments and reach no descriptor column. The placement
-rule above names those three, and they land with `UnitView()`. Owed as
-schema#523 ruling 4's registry half, and this line is deleted by the
-implementation PR that lands it.
+**PORT STATUS: every target carries the DECLARATION and FIELD columns; the
+C++ reference carries the REGISTRY rows beside them.** All nine targets carry
+`doc`, `num_tags` and `tags` on `TableFieldInfo` and on `TableTypeInfo`,
+filled from the `///` block (SPEC.md §4.1) and the tags (SPEC.md §4.2) the
+compiler reads at every line kind. An enum VARIANT's, a flags BIT's and a
+record-naming ARM's annotation ride the registry rows the placement rule above
+names, so reaching them means compiling `<Package>View.*` — which the C++
+backend emits and the eight ports do not yet (§8.3). Their users reach a
+variant's, a bit's and a record-naming arm's annotation through the generated
+comments until the view lands in their backend.
 
 **A field carries WHERE IT LIVES, and the spelling is the language's.** C++
 carries an offset and a width, because its storage is one flat struct; a
@@ -8943,13 +8943,12 @@ function per unit, name-first in the unit's own namespace beside
 `ProtocolId` (SPEC §6.1), answering with the set of everything the build
 declared:
 
-**BACKEND STATUS: OWED, not emitted.** `UnitView()` is specified ahead of its
-implementation: no backend emits it in any of the nine targets. It is the
-remaining half of #523 item 4, whose §8.1 descriptor columns have landed, and
-it carries the `doc` and `tags` of an enum variant, a flags bit and a
-record-naming arm, which are the three rows the placement rule of §8.1 puts
-here and nowhere else. The implementation PR that lands it deletes this
-paragraph.
+**PORT STATUS: the C++ reference emits it; the eight ports do not yet.** The
+C++ backend emits the pair for every unit that declares a table, with the
+corpus gate of §8.7 holding its listing to the compiler's own. A TABLE-FREE
+unit's view waits on the type view in the packet backend, which is where the
+descriptors of a unit with no table closure would have to come from; that and
+the eight ports are named follow-ons (§15).
 
 ```cpp
 struct ViewConstant
@@ -9822,25 +9821,28 @@ in build version (§20.5).
   the block type and claims nothing at file scope for them.
 
   **THE DESCRIPTOR SURFACE'S CLAIMS ARE TO BE UNCONDITIONAL — every
-  declaration, every unit, tables or not — AND ARE NOT IN FORCE YET.** Every
-  unit is to emit a view file and that file defines the descriptor surface
-  (§8.2), so a name a table-free unit may declare today would collide with
-  its own generated code the day its view is emitted — a legal schema whose
-  generated code does not compile, which is the one defect this whole list
-  exists to prevent. **What ships today claims these names only in a unit
-  that declares a table**: a table-free unit still accepts `type TableReport`
-  and `const TABLE_COOK_MAGIC`, and it must stop doing so BEFORE the first
-  view file is emitted, not after. This paragraph is the obligation, and the
-  gap between it and the checker is stated here rather than left for a port
-  to find. Two sets follow, and both are FRONT-END LAW rather than one
-  target's inventory:
+  declaration, every unit, tables or not — AND ARE IN FORCE ONLY WHERE A VIEW
+  FILE IS EMITTED.** Every unit is to emit a view file and that file defines
+  the descriptor surface (§8.2), so a name a table-free unit may declare today
+  would collide with its own generated code the day its view is emitted — a
+  legal schema whose generated code does not compile, which is the one defect
+  this whole list exists to prevent. **What ships today claims these names
+  only in a unit that declares a table**, which is exactly the set of units
+  the view is emitted for: a table-free unit still accepts `type TableReport`
+  and `const TABLE_COOK_MAGIC`, and it must stop doing so BEFORE its own view
+  file is emitted, not after — which is the follow-on §15 carries beside the
+  emitter that would emit it. This paragraph is the obligation, and the gap
+  between it and the checker is stated here rather than left for a port to
+  find. Two sets follow, and both are FRONT-END LAW rather than one target's
+  inventory:
 
   - **The three per-declaration spellings the descriptors emit** —
     `<Name>TableFields`, `<Name>TableInfo` and `<Name>TableType` — claimed
-    for every declaration in every unit. All three are in the suffix list
-    above and are claimed today only for closure members; the descriptor emission
-    spells all three per declaration, so widening one of them would leave
-    two open.
+    for every declaration in every unit, with `<Name>Reset` beside them, since
+    a viewed type carries its own prefill (§8.2). All four are claimed today
+    for every declaration in a unit that DECLARES A TABLE, which is where the
+    view file is emitted; a table-free unit still accepts them, and must stop
+    on the day its own view is emitted.
   - **The unit-level TABLE-RUNTIME names**, claimed in every unit rather
     than only in a unit that declares a table: the descriptor primitives
     `TableTypeInfo` and `TableFieldInfo` at their head, with
@@ -10841,14 +10843,22 @@ inspects everything in the schema built:
 
 ## 15. Named follow-ons
 
-- **THE UNIT REGISTRY, and the annotation rows only it carries** (§8.3, §8.7).
-  `UnitView()` is specified and no target emits it, so an enum VARIANT's, a
-  flags BIT's and a record-naming ARM's `doc` and `tags` reach the IR and the
-  generated comments and no descriptor column. Landing it lands
-  `ViewConstant`, `ViewVariant`, `ViewVocabulary` and `ViewType` with their
-  three annotation members, the corpus listing gate that byte-compares a
-  generated program's listing against the compiler's own, and the two
-  same-declaration pairs §8.7 checks there.
+- **THE UNIT REGISTRY IN THE EIGHT PORTS** (§8.3, §8.7). The C++ reference
+  emits `UnitView()` and the eight ports do not, so in those eight an enum
+  VARIANT's, a flags BIT's and a record-naming ARM's `doc` and `tags` reach
+  the IR and the generated comments and no descriptor column. What a port
+  lands is `ViewConstant`, `ViewVariant`, `ViewVocabulary` and `ViewType` with
+  their three annotation members, and its own program byte-compared against
+  the same pin — the corpus listing gate and the two same-declaration pairs
+  are written once, against the IR, and every backend answers to them.
+- **THE VIEW OF A TABLE-FREE UNIT** (§8.2, §8.5). The C++ view is emitted by
+  the TABLE backend, so a unit that declares no table gets none — and a
+  packet-only unit's `type` declarations therefore carry no descriptor at all
+  today. Landing it is the type view in the packet backend: the descriptor
+  primitives behind the table headers' own include guard, a descriptor per
+  declared `type`, and the registry over them. It is the same emitter pointed
+  at a unit with no closure, and it belongs with the emitters rather than
+  with this page.
 - **THE GENERATED TAG-LIST NAMES ARE NOT CLAIMED** (§11). A tagged field emits
   a per-row constant named from the declaration and the member, and
   `internal/check`'s generated-verb set does not carry it, so a unit
@@ -11086,8 +11096,8 @@ inspects everything in the schema built:
   compare. It is the same harness pointed at two more directories, and it
   belongs with the emitters rather than with this page, because a snapshot
   taken before the code that could move it is a snapshot of nothing.
-- **The view in a ported backend** — C++ and C# take it together (§8); every
-  other backend emits no view file until it emits the same registry against the
+- **The view in a ported backend** — C++ carries it (§8); every other backend,
+  C# included, emits no view file until it emits the same registry against the
   same pin (§8.7). Nothing is refused meanwhile, because nothing in a schema
   asks for one (§8.4): a backend without the emitter is a backend whose
   users have no registry, and the status paragraph says so.

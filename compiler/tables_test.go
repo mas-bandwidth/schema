@@ -193,18 +193,21 @@ func TestTablesMoveNoGeneratedPacketByte(t *testing.T) {
 			t.Errorf("file %s changed when a table was added — tables must move no packet byte", name)
 		}
 	}
-	// A table declaration grows the two TABLE files and the two BLOCK files
-	// and nothing else: the header a consumer includes, the .cpp carrying the
-	// text form's walk (docs/SPEC-TABLES.md §6.1, §13.5), and the block form's own
-	// pair, which nothing declares and which a consumer includes only if it
-	// uses the form (§19). The type wire stays header-only, so no packet file
-	// appears or moves.
+	// A table declaration grows the two TABLE files, the two BLOCK files and
+	// the unit's VIEW pair, and nothing else: the header a consumer includes,
+	// the .cpp carrying the text form's walk (docs/SPEC-TABLES.md §6.1,
+	// §13.5), the block form's own pair, which nothing declares and which a
+	// consumer includes only if it uses the form (§19), and the unit registry
+	// (§8.3, §8.5), which nothing declares either and which a consumer
+	// compiles only if it walks declarations (§8.4). The type wire stays
+	// header-only, so no packet file appears or moves.
 	for name := range with {
 		if _, ok := without[name]; ok {
 			continue
 		}
 		if !strings.HasSuffix(name, "Table.h") && !strings.HasSuffix(name, "Table.cpp") &&
-			!strings.HasSuffix(name, "Block.h") && !strings.HasSuffix(name, "Block.cpp") {
+			!strings.HasSuffix(name, "Block.h") && !strings.HasSuffix(name, "Block.cpp") &&
+			!strings.HasSuffix(name, "View.h") && !strings.HasSuffix(name, "View.cpp") {
 			t.Errorf("adding a table grew unexpected non-table file %s", name)
 		}
 	}

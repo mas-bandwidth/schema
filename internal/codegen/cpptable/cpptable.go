@@ -1260,6 +1260,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			out[f.Base+"Table.cpp"] = []byte(c.String())
 		}
 	}
+	// THE UNIT REGISTRY (docs/SPEC-TABLES.md §8.3), one pair for the whole
+	// unit however many schema files it has: the registry is a unit-level
+	// fact, the set of everything declared, and a per-file split would leave
+	// it homeless or force one file to reach across the others and back.
+	for name, data := range generateViewFiles(u, closure, anyVariable, anyKeyed, anyMap, anyList, anyExtent, blocks, variable, targets) {
+		out[name] = data
+	}
 	return out, nil
 }
 

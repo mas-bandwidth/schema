@@ -553,3 +553,59 @@ func TableVoidArmUnions(u *Unit) []string {
 	sort.Strings(out)
 	return out
 }
+
+// TableClosureVocabulary is the set of enum, flags and union declarations a
+// TABLE CLOSURE reaches, keyed by name. §5's refusals are scoped to the
+// closure throughout — the variant refusal reaches a vocabulary through a
+// closure member's field, and through the KEY of a closure member's keyed
+// array — so a declaration this set does not carry has variant ids nothing
+// ever checked, and every id column the view gives it is the reserved id
+// (docs/SPEC-TABLES.md §8.2).
+func TableClosureVocabulary(u *Unit) map[string]bool {
+	closure := TableClosure(u)
+	out := map[string]bool{}
+	seen := map[string]bool{}
+	var reach func(fields []*Field)
+	var reachUnion func(un *Union)
+	reachUnion = func(un *Union) {
+		if seen[un.Name] {
+			return
+		}
+		seen[un.Name] = true
+		out[un.Name] = true
+		for _, arm := range un.Variants {
+			if arm.F != nil {
+				reach([]*Field{arm.F})
+			}
+		}
+	}
+	reach = func(fields []*Field) {
+		for _, f := range fields {
+			// an enum-keyed array's KEY reaches the enum as surely as a field
+			// of that type does (docs/SPEC-TABLES.md §2.4)
+			if f.KeyEnumRef != nil {
+				out[f.KeyEnumRef.Name] = true
+			}
+			if f.Type.Kind != TNamed {
+				continue
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *Enum:
+				out[ref.Name] = true
+			case *Flags:
+				out[ref.Name] = true
+			case *Union:
+				reachUnion(ref)
+			}
+		}
+	}
+	for name := range closure {
+		if st, ok := u.Structs[name]; ok {
+			reach(st.Fields)
+		}
+		if st, ok := u.Tables[name]; ok {
+			reach(st.Fields)
+		}
+	}
+	return out
+}

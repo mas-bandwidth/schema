@@ -2169,6 +2169,13 @@ type fieldSpelling struct {
 	member string // the member path within it
 	indent string
 	guard  string
+	// outside marks a field of a `type` NO TABLE CLOSURE REACHES
+	// (docs/SPEC-TABLES.md §8.2). The two columns that describe the TABLE
+	// WIRE are empty there — such a type has none, and its field ids were
+	// never checked for collisions (§5's refusal is scoped to the closure, as
+	// §16.4's key refusal is), so filling them would hand a tool two fields
+	// under one id and a text-form key for a text form that does not exist.
+	outside bool
 }
 
 // wideName is the name of the TableWideRange static a wide-kind row points at.
@@ -2206,6 +2213,10 @@ func annotationColumns(doc string, tags []string, tagsName string) string {
 // of a union are the same row, differing only in how the storage is spelled.
 func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	id := tableFieldWireId(f)
+	jsonKey := fmt.Sprintf("\"%s\"", ir.TableFieldJsonKey(f))
+	if sp.outside {
+		id, jsonKey = 0, "NULL"
+	}
 	kind := tableScalarKind(f)
 	if f.Type.Kind == ir.TBytes && !f.Type.Blob() {
 		kind = tkU8
@@ -2415,8 +2426,8 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	if _, _, ok := ir.TableRawRange(f); ok && ir.TableKindWide(tableScalarKind(f)) {
 		wide = "&" + sp.wideName(f)
 	}
-	g.pf("%s    { \"%s\", \"%s\", \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s },\n",
-		sp.indent, f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
+	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s },\n",
+		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, fracBits, wide, enumMax, enumName, variantId,
 		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)))

@@ -3275,9 +3275,6 @@ language's own int32 storage cap.
 
 ### Inspecting a whole build: the view
 
-*Specified, not yet implemented — no backend emits the view file yet
-(SPEC-TABLES.md §8). The per-table descriptors above are live today.*
-
 The descriptors above answer "what is in this table". The **view** answers
 "what is in this build" — every declaration the schema made, walkable by a
 tool that has the generated code and no schema files at all. Nothing asks
@@ -3339,8 +3336,9 @@ for ( int32_t i = 0; i < unit->num_tables; i++ )   // then unit->types, the same
 
 `unit->tables` is every table in the unit and `unit->types` every type —
 both complete, and every entry points at the same `TableTypeInfo` the
-section above walks, so one printer serves both. C# is the same registry
-through `Schema.UnitView()`.
+section above walks, so one printer serves both. C++ carries the registry
+today; the other eight targets emit no view file yet, and a unit that
+declares no table gets none in C++ either (SPEC-TABLES.md §8.3, §15).
 
 Each set is ordered by declaration name, so a listing does not churn when a
 file is renamed or a declaration moves between files.
