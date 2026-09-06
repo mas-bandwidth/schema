@@ -1116,7 +1116,7 @@ follow-on rather than part of this construct.
 `<Name>TableType()` returns the reflection descriptor: field names, wire ids
 and kinds, bounds, ranges, guards, `Optional`, the enum/union vocabulary, and
 an enum-keyed array's `KeyTypeName`/`KeyName`/`KeyId`, which are functions of
-the KEY — `KeyId(0)` is `0`, the reserved id that says `None` names no slot.
+the KEY — `KeyId(0)` is `0`, the id that says `None` names no slot.
 `ArrayBound` is the storage extent, `E.Max`, and the key at index `i` is
 `i + 1`.
 
@@ -1286,7 +1286,7 @@ Generated code walks `.slots` directly and never pays for it.
 `<name>_table_type()` returns the reflection descriptor: field names, wire ids
 and kinds, storage offsets, bounds, ranges, guards, `optional`, the enum/union
 vocabulary, and an enum-keyed array's `key_type_name`/`key_name`/`key_id`,
-which are functions of the KEY — `key_id(0)` is `0`, the reserved id that says
+which are functions of the KEY — `key_id(0)` is `0`, the id that says
 `None` names no slot. `array_bound` is the storage extent, `E.Max`, and the key
 at index `i` is `i + 1`. It is `static` data, so any thread may read it and it
 costs a lookup rather than a parse.
