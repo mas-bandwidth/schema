@@ -1433,6 +1433,40 @@ static void test_text_values()
     CHECK_EQ( TextSave( into, from_text, sizeof( from_text ) ), n );
     CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
     free( json );
+
+    // CONTROL: `TableResetMapValue` resets the entry's KEY half instead of its
+    // VALUE half. A DUPLICATE key REPLACES and the value is reset WHOLE (§2.8),
+    // so a repeat that fills nothing reads as the declared default and never as
+    // the first insert's text — which for a text value means the BUFFER and the
+    // LENGTH COMPANION both, the two members its storage is.
+    {
+        TextBuilder dup;
+        Text * d = dup.GetRoot();
+        TextNamesEntry * first = TextNamesInsert( dup.main, d->names, "alpha" );
+        CHECK( first != NULL );
+        if ( first == NULL ) { return; }
+        memcpy( first->value, "first", 5 );
+        first->value_length = 5;
+
+        TextNamesEntry * repeat = TextNamesInsert( dup.main, d->names, "alpha" );
+        CHECK( repeat == first ); // the same entry, key and address unchanged
+        CHECK( repeat != NULL && repeat->value_length == 0 );
+        CHECK( repeat != NULL && repeat->value[0] == 0 );
+        CHECK_EQ( d->names.count, 1 ); // a duplicate replaces, it does not append
+        CHECK( TableEntryKey( *first )[0] == 'a' ); // and the KEY is the map's, untouched
+
+        // an empty string value is elided under §3's by-value rule, so the wire
+        // is the entry riding under its key and nothing for the value
+        static uint8_t reset_wire[1u << 16];
+        const int64_t reset_bytes = TextSave( dup, reset_wire, sizeof( reset_wire ) );
+        CHECK_EQ( TextMeasure( dup ), reset_bytes );
+        TextBuilder read_back;
+        TableReport reset_report;
+        CHECK( TextLoadBuilder( read_back, reset_wire, reset_bytes, &reset_report ) );
+        CHECK( !reset_report.malformed );
+        const TextNamesEntry * landed = TextNamesFind( read_back.arena, read_back.GetRoot()->names, "alpha" );
+        CHECK( landed != NULL && landed->value_length == 0 );
+    }
 }
 
 // ---- the MESSAGE FORM over maps (docs/SPEC-TABLES.md §2.8, §3.3) ----

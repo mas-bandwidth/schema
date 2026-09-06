@@ -3071,6 +3071,18 @@ tables-maps-cap-negative-control: bin/schema build/tables-generated/.stamp
 tables-maps-depth-negative-control: bin/schema build/tables-generated/.stamp
 	$(call map_negative_control,depth,'s@if ( inner == NULL ) { return true; }@return true; // SABOTAGED@',internal/codegen/cpptable/maps.go,summing the extent at one depth only left the map gate GREEN)
 
+# A DUPLICATE KEY REPLACES AND THE VALUE HALF IS RESET WHOLE (§2.8), so a
+# repeat that fills nothing reads as the declared default and never as the
+# first insert's. The sabotage drops that reset at its call site, which leaves
+# the value's STORAGE holding what the first insert put there. A TEXT value is
+# where it bites hardest, and why this control arrived with `Text`: its storage
+# is a PAIR — the buffer and the int32 used length — so the repeat rides the
+# first insert's bytes AND its length, and the `Text` unit's duplicate row
+# names both. The `Fleet` rows name the same rule for a table value.
+.PHONY: tables-maps-value-reset-negative-control
+tables-maps-value-reset-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,valuereset,'s@TableResetMapValue( \*found ); // a repeated key is LAST-WINS@(void) 0; // SABOTAGED@',internal/codegen/cpptable/maps.go,a duplicate that did not reset the value half left the map gate GREEN)
+
 # TOJSON WRITES ENTRIES IN ASCENDING KEY ORDER, so unpack then pack is
 # byte-stable and a diff of two texts is a diff of two maps (§2.8, §17.2). The
 # instance built out of key order meets it, and the round trip's byte compare
@@ -3158,6 +3170,7 @@ tables-maps-negative-controls: tables-maps-sort-negative-control \
 	tables-maps-key-identity-negative-control \
 	tables-maps-key-domain-negative-control \
 	tables-maps-place-failure-negative-control \
+	tables-maps-value-reset-negative-control \
 	tables-maps-unreached-negative-control
 
 # ---- THE LIST GATE (docs/SPEC-TABLES.md §2.9) ------------------------------
