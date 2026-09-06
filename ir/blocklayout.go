@@ -631,6 +631,13 @@ func fieldPieces(u *Unit, f *Field, projection bool) []storagePiece {
 	case f.Type.Kind == TString:
 		pieces = append(pieces, storagePiece{size: addSize(f.Type.Size, 1), align: 1}) // char[N+1]
 		pieces = append(pieces, storagePiece{size: 4, align: 4})                       // int32 length
+	case f.Type.Kind == TWString:
+		// WIDE TEXT's cooked storage (docs/SPEC-TABLES.md §7.2): char16_t[N+1]
+		// at two, then the int32 used length in CODE UNITS. Two bytes a unit
+		// is what makes the buffer's alignment two rather than the narrow
+		// twin's one.
+		pieces = append(pieces, storagePiece{size: mulSize(addSize(f.Type.Size, 1), 2), align: 2}) // char16_t[N+1]
+		pieces = append(pieces, storagePiece{size: 4, align: 4})                                   // int32 length
 	case f.Type.Kind == TBytes:
 		pieces = append(pieces, storagePiece{size: f.Type.Size, align: 1}) // uint8[N]
 		pieces = append(pieces, storagePiece{size: 4, align: 4})           // int32 length
@@ -831,6 +838,14 @@ func BlockFieldOf(u *Unit, f *Field, fieldOffset int64, projection bool) BlockFi
 		facts.Counted = true
 		facts.ArrayBound = f.Type.Size
 		facts.ElemSize = 1
+		facts.CountOffset = pieces[1].Offset
+	case f.Type.Kind == TWString:
+		// char16_t[N+1] buffer, then the int32 used length in CODE UNITS.
+		// Wide text is COUNTED and not an ARRAY, exactly as the narrow twin
+		// is, and its element is TWO bytes.
+		facts.Counted = true
+		facts.ArrayBound = f.Type.Size
+		facts.ElemSize = 2
 		facts.CountOffset = pieces[1].Offset
 	case f.Type.Kind == TBytes:
 		facts.IsArray = true

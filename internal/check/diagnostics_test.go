@@ -154,12 +154,10 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { a [4]wstring(4) }\n"},
 		{name: "wstring collides with its sibling's length companion", want: "length companion",
 			src: "package t\ntype T {\n    text wstring(8)\n    text_length uint8\n}\n"},
-		// the TABLE half of the row is schema#522 and has landed nowhere, so a
-		// table closure refuses wide text BY NAME rather than emitting
-		// something else (docs/SPEC-TABLES.md §11)
-		{name: "wstring inside a table closure", want: "not carried on the TABLE wire yet",
-			src: "package t\ntable T { s wstring(4) }\n"},
-		{name: "an optional wstring inside a table closure", want: "not carried on the TABLE wire yet",
+		// wide text rides kind 33 in a table closure (docs/SPEC-TABLES.md §3),
+		// so what is left there is the OPTIONAL, refused for the reason a
+		// `?string(N)` is: the length companion already carries emptiness
+		{name: "an optional wstring inside a table closure", want: "? on wstring(N) is a named follow-on",
 			src: "package t\ntable T { s ?wstring(4) }\n"},
 		{name: "unbounded wide text", want: "*wstring is specified ahead of its implementation",
 			src: "package t\ntype T { s *wstring }\n"},

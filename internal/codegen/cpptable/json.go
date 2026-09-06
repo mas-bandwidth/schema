@@ -949,6 +949,7 @@ inline char TableJsonShape( const TableFieldInfo * f )
 {
     if ( TableJsonIsMap( f ) ) return 'o';     // a MAP: an object keyed by the KEY (§2.8)
     if ( f->kind == 12 ) return 's';           // string
+    if ( f->kind == 33 ) return 's';           // wstring: the same text, transcoded (§16.2)
     if ( TableJsonIsBytes( f ) ) return 's';   // bytes: base64
     if ( TableJsonIsKeyed( f ) ) return 'o';   // an object keyed by variant NAME
     if ( f->is_array ) return 'a';
@@ -1093,6 +1094,33 @@ inline int32_t TableJsonUtf8( const char * s, int32_t remaining, int32_t * width
     return code;
 }
 
+// The inverse: one code point encoded as UTF-8 into unit, its length
+// answered. Both text kinds' writers reach it, and so does the escape
+// grammar's U+FFFD replacement.
+inline int32_t TableJsonEncodeUtf8( uint32_t code, char * unit )
+{
+    if ( code < 0x80 ) { unit[0] = (char) code; return 1; }
+    if ( code < 0x800 )
+    {
+        unit[0] = (char) ( 0xc0 | ( code >> 6 ) );
+        unit[1] = (char) ( 0x80 | ( code & 0x3f ) );
+        return 2;
+    }
+    if ( code < 0x10000 )
+    {
+        unit[0] = (char) ( 0xe0 | ( code >> 12 ) );
+        unit[1] = (char) ( 0x80 | ( ( code >> 6 ) & 0x3f ) );
+        unit[2] = (char) ( 0x80 | ( code & 0x3f ) );
+        return 3;
+    }
+    unit[0] = (char) ( 0xf0 | ( code >> 18 ) );
+    unit[1] = (char) ( 0x80 | ( ( code >> 12 ) & 0x3f ) );
+    unit[2] = (char) ( 0x80 | ( ( code >> 6 ) & 0x3f ) );
+    unit[3] = (char) ( 0x80 | ( code & 0x3f ) );
+    return 4;
+}
+
+
 // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
 // byte-transparent — the wire imposes no encoding (§3) and a string may hold
 // anything — so the WRITER is where that obligation is met: a byte that is
@@ -1143,6 +1171,53 @@ inline void TableJsonWriteString( TableJsonOut & out, const char * s, int32_t le
                 }
                 break;
         }
+    }
+    out.put( '"' );
+}
+
+// A WIDE field's text: the code units transcoded back to UTF-8 (§16.2). A
+// SURROGATE PAIR is one code point; an UNPAIRED SURROGATE is not a code point
+// at all, encodes to nothing, and writes one U+FFFD per ill-formed unit; a
+// ZERO UNIT is U+0000, which JSON has an escape for, and writes \u0000
+// (§16.3). No wire can put either into storage (§3), so both answer for
+// storage a PROGRAM built.
+inline void TableJsonWriteWString( TableJsonOut & out, const char16_t * s, int32_t length )
+{
+    static const char hex[] = "0123456789abcdef";
+    out.put( '"' );
+    for ( int32_t i = 0; i < length; i++ )
+    {
+        uint32_t code = (uint32_t) (uint16_t) s[i];
+        if ( code >= 0xd800 && code <= 0xdbff && i + 1 < length )
+        {
+            const uint32_t low = (uint32_t) (uint16_t) s[i + 1];
+            if ( low >= 0xdc00 && low <= 0xdfff )
+            {
+                code = 0x10000 + ( ( code - 0xd800 ) << 10 ) + ( low - 0xdc00 );
+                i++;
+            }
+        }
+        if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; } // an unpaired surrogate
+        switch ( code )
+        {
+            case '"':  out.raw( "\\\"", 2 ); continue;
+            case '\\': out.raw( "\\\\", 2 ); continue;
+            case '\b': out.raw( "\\b", 2 ); continue;
+            case '\f': out.raw( "\\f", 2 ); continue;
+            case '\n': out.raw( "\\n", 2 ); continue;
+            case '\r': out.raw( "\\r", 2 ); continue;
+            case '\t': out.raw( "\\t", 2 ); continue;
+            default: break;
+        }
+        if ( code < 0x20 )
+        {
+            char escape[6] = { '\\', 'u', '0', '0', hex[ code >> 4 ], hex[ code & 0xf ] };
+            out.raw( escape, 6 );
+            continue;
+        }
+        char encoded[4];
+        const int32_t encoded_length = TableJsonEncodeUtf8( code, encoded );
+        out.raw( encoded, encoded_length );
     }
     out.put( '"' );
 }
@@ -1431,6 +1506,11 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
         TableJsonWriteString( out, (const char *) storage, TableJsonCount( base, f ) );
         return true;
     }
+    if ( f->kind == 33 )
+    {
+        TableJsonWriteWString( out, (const char16_t *) (const void *) storage, TableJsonCount( base, f ) );
+        return true;
+    }
     if ( TableJsonIsBytes( f ) )
     {
         TableJsonWriteBase64( out, storage, TableJsonCount( base, f ) );
@@ -1630,54 +1710,22 @@ inline int TableJsonHex4( TableJsonIn & in )
     return value;
 }
 
-inline int32_t TableJsonEncodeUtf8( uint32_t code, char * unit )
-{
-    if ( code < 0x80 ) { unit[0] = (char) code; return 1; }
-    if ( code < 0x800 )
-    {
-        unit[0] = (char) ( 0xc0 | ( code >> 6 ) );
-        unit[1] = (char) ( 0x80 | ( code & 0x3f ) );
-        return 2;
-    }
-    if ( code < 0x10000 )
-    {
-        unit[0] = (char) ( 0xe0 | ( code >> 12 ) );
-        unit[1] = (char) ( 0x80 | ( ( code >> 6 ) & 0x3f ) );
-        unit[2] = (char) ( 0x80 | ( code & 0x3f ) );
-        return 3;
-    }
-    unit[0] = (char) ( 0xf0 | ( code >> 18 ) );
-    unit[1] = (char) ( 0x80 | ( ( code >> 12 ) & 0x3f ) );
-    unit[2] = (char) ( 0x80 | ( ( code >> 6 ) & 0x3f ) );
-    unit[3] = (char) ( 0x80 | ( code & 0x3f ) );
-    return 4;
-}
 
-// Scan one JSON string into a caller buffer. Bytes are appended ONE CODE
-// POINT AT A TIME — an escape's encoding, or a UTF-8 sequence read whole —
-// so a string longer than the field is clamped AT A CODE POINT BOUNDARY and
-// never cut through a multi-byte character. Clamping is counted, never
-// fatal, exactly as it is on the wire (§4). A NULL destination scans past a
-// string without keeping it.
-//
-// A CALLER THAT TAKES clamped_out OWNS THE COUNTER. The value paths leave it
-// NULL, and the clamp is a value's clamp, counted here. A MAP KEY takes it,
-// because a key never clamps: a key this buffer could not hold whole is not a
-// shorter key, and its entry drops instead (§2.8).
-inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity, int32_t * length,
-                                 bool * clamped_out = NULL )
+// One STRING BODY CHARACTER at the cursor, encoded into unit as UTF-8 and
+// its length answered: an escape's code point, or a UTF-8 sequence read
+// whole. It is ONE grammar serving both text kinds — the narrow scan places
+// these bytes and the wide scan converts them back to code units — so the
+// escape table, the lone-surrogate rule and the U+FFFD replacement are stated
+// once. false means the text is not JSON and in.bad says so; a returned
+// length of 0 means the closing quote was consumed and the string is done.
+inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_length_out )
 {
-    if ( TableJsonPeek( in ) != '"' ) { in.bad = true; return false; }
-    in.pos++;
-    int32_t placed = 0;
-    bool clamped = false;
-    for ( ;; )
+    int32_t unit_length = 0;
+    *unit_length_out = 0;
     {
         if ( in.pos >= in.size ) { in.bad = true; return false; }
         char c = in.text[in.pos];
-        if ( c == '"' ) { in.pos++; break; }
-        char unit[4];
-        int32_t unit_length = 0;
+        if ( c == '"' ) { in.pos++; return true; }
         if ( c == '\\' )
         {
             in.pos++;
@@ -1760,6 +1808,35 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
                 unit_length = TableJsonEncodeUtf8( 0xfffd, unit );
             }
         }
+    }
+    *unit_length_out = unit_length;
+    return true;
+}
+
+// Scan one JSON string into a caller buffer. Bytes are appended ONE CODE
+// POINT AT A TIME — an escape's encoding, or a UTF-8 sequence read whole —
+// so a string longer than the field is clamped AT A CODE POINT BOUNDARY and
+// never cut through a multi-byte character. Clamping is counted, never
+// fatal, exactly as it is on the wire (§4). A NULL destination scans past a
+// string without keeping it.
+//
+// A CALLER THAT TAKES clamped_out OWNS THE COUNTER. The value paths leave it
+// NULL, and the clamp is a value's clamp, counted here. A MAP KEY takes it,
+// because a key never clamps: a key this buffer could not hold whole is not a
+// shorter key, and its entry drops instead (§2.8).
+inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity, int32_t * length,
+                                 bool * clamped_out = NULL )
+{
+    if ( TableJsonPeek( in ) != '"' ) { in.bad = true; return false; }
+    in.pos++;
+    int32_t placed = 0;
+    bool clamped = false;
+    for ( ;; )
+    {
+        char unit[4];
+        int32_t unit_length = 0;
+        if ( !TableJsonScanUnit( in, unit, &unit_length ) ) { return false; }
+        if ( unit_length == 0 ) { break; }
         if ( out == NULL )
         {
             placed += unit_length; // measured and not kept: a byte buffer's read sizes its node this way (§2.5)
@@ -1783,6 +1860,79 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
     if ( length != NULL ) { *length = placed; }
     return true;
 }
+
+// One UTF-8 sequence back to its CODE POINT, over bytes TableJsonScanUnit
+// produced and therefore already well formed. It is the inverse of
+// TableJsonEncodeUtf8 and nothing more.
+inline uint32_t TableJsonDecodeUtf8( const char * unit, int32_t unit_length )
+{
+    const unsigned char lead = (unsigned char) unit[0];
+    if ( unit_length == 1 ) { return lead; }
+    uint32_t code = lead & ( unit_length == 2 ? 0x1fu : ( unit_length == 3 ? 0x0fu : 0x07u ) );
+    for ( int32_t i = 1; i < unit_length; i++ )
+    {
+        code = ( code << 6 ) | (uint32_t) ( (unsigned char) unit[i] & 0x3f );
+    }
+    return code;
+}
+
+// Scan one JSON string into a caller buffer of UTF-16 CODE UNITS: the wstring
+// row of §16.2, the text TRANSCODED at the boundary. It shares
+// TableJsonScanUnit with the narrow scan, so the escape grammar and the
+// lone-surrogate rule are one grammar, and appends ONE CODE POINT AT A TIME —
+// one unit below U+10000 and a surrogate PAIR above it. A string longer than
+// the field is therefore clamped at N code units with a pair never split, and
+// a high surrogate left without its low half is dropped with it, which is the
+// same sentence the wire's clamp takes (§3). Clamping is counted, never fatal.
+inline bool TableJsonScanWString( TableJsonIn & in, char16_t * out, int32_t capacity, int32_t * length )
+{
+    if ( TableJsonPeek( in ) != '"' ) { in.bad = true; return false; }
+    in.pos++;
+    int32_t placed = 0;
+    bool clamped = false;
+    for ( ;; )
+    {
+        char unit[4];
+        int32_t unit_length = 0;
+        if ( !TableJsonScanUnit( in, unit, &unit_length ) ) { return false; }
+        if ( unit_length == 0 ) { break; }
+        const uint32_t code = TableJsonDecodeUtf8( unit, unit_length );
+        char16_t units[2];
+        int32_t units_length = 1;
+        if ( code < 0x10000 )
+        {
+            units[0] = (char16_t) code;
+        }
+        else
+        {
+            const uint32_t rest = code - 0x10000;
+            units[0] = (char16_t) ( 0xd800 + ( rest >> 10 ) );
+            units[1] = (char16_t) ( 0xdc00 + ( rest & 0x3ff ) );
+            units_length = 2;
+        }
+        if ( out == NULL )
+        {
+            placed += units_length;
+        }
+        else if ( !clamped && placed + units_length <= capacity )
+        {
+            for ( int32_t i = 0; i < units_length; i++ ) { out[placed + i] = units[i]; }
+            placed += units_length;
+        }
+        else
+        {
+            // A CLAMP IS A PREFIX, the narrow scan's own rule: once one code
+            // point does not fit, the scan stops placing. A pair is placed
+            // whole or not at all, so no clamp can leave an unpaired
+            // surrogate in storage.
+            clamped = true;
+        }
+    }
+    if ( clamped ) { in.report->clamped++; }
+    if ( length != NULL ) { *length = placed; }
+    return true;
+}
+
 
 // the numeric token at the cursor, copied out whole; false = not a number
 // Scan one number, to JSON's OWN grammar (RFC 8259 §6) and not to a run of
@@ -2496,6 +2646,15 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         int32_t length = 0;
         if ( !TableJsonScanString( in, (char *) storage, f->array_bound, &length ) ) { return false; }
         storage[length] = 0;
+        TableJsonSetCount( base, f, length );
+        return true;
+    }
+    if ( f->kind == 33 )
+    {
+        char16_t * units = (char16_t *) (void *) storage;
+        int32_t length = 0;
+        if ( !TableJsonScanWString( in, units, (int32_t) f->array_bound, &length ) ) { return false; }
+        units[length] = 0; // the terminating zero UNIT at index length (§7.2, SPEC.md §4.12)
         TableJsonSetCount( base, f, length );
         return true;
     }

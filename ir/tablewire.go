@@ -176,7 +176,7 @@ func TableWireElemKind(f *Field) int {
 // canonical LEB128 they frame, which the reader checks against the reference
 // it read rather than against a constant.
 func ArmWireFixedWidth(f *Field) int {
-	if f == nil || f.Array != ArrayNone || f.Type.Kind == TString || f.Type.Kind == TBytes {
+	if f == nil || f.Array != ArrayNone || f.Type.Kind == TString || f.Type.Kind == TWString || f.Type.Kind == TBytes {
 		return 0
 	}
 	if f.Type.Pointer {

@@ -1297,14 +1297,12 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 			k = ir.TWString
 		}
 		if k == ir.TWString {
-			// WIDE TEXT rides the PACKET wire only today. The table half is
-			// kind 33 (docs/SPEC-TABLES.md §3), specified ahead of its
-			// implementation, so a wstring inside a table closure is refused
-			// BY NAME rather than emitted as something else.
-			if inTable {
-				c.errf(f.Type.Pos, "field %s: wstring is not carried on the TABLE wire yet — wide text rides the packet wire today (SPEC §4.12); declare the field string(N) here, or move the declaring type to a `type` (docs/SPEC-TABLES.md §11, schema#522)", f.Name)
-				return nil
-			}
+			// `*wstring` is the unbounded spelling of wide text and it is
+			// specified ahead of its implementation (docs/SPEC-TABLES.md
+			// §2.5): the blob record is law and no backend emits one, so the
+			// spelling is refused BY NAME. The BOUNDED spelling rides both
+			// wires — the packet wire's groups (SPEC §4.12) and kind 33 on
+			// the table wire (docs/SPEC-TABLES.md §3).
 			if f.Type.Pointer {
 				c.errf(f.Type.Pos, "field %s: *wstring is specified ahead of its implementation and no backend emits it (docs/SPEC-TABLES.md §2.5); declare *string for an unbounded byte buffer, or wstring(N) in a `type` for inline wide text (SPEC §4.12, schema#522)", f.Name)
 				return nil
@@ -2305,7 +2303,6 @@ func (c *checker) checkTables() {
 	}
 	c.tableClosure = closure
 	c.checkTableArmsReached(closure)
-	c.checkWideTextInClosure(closure, reachedBy)
 
 	names := make([]string, 0, len(closure))
 	for name := range closure {
@@ -2413,30 +2410,6 @@ func (c *checker) checkTables() {
 	c.checkOptionalVariableClosures(names)
 	c.checkJsonKeysInClosure()
 	c.checkWasInClosure()
-}
-
-// checkWideTextInClosure refuses a `wstring(N)` field of any `type` a table
-// reaches (docs/SPEC-TABLES.md §11, schema#522). Wide text rides the packet
-// wire only today: the table half is kind 33, specified ahead of its
-// implementation, and the table emitters have no arm for the kind. A table
-// body's own wstring field is refused where it resolves; a `type` body
-// resolves as packet wire, so its wide text is refused here, once the closure
-// is known, at the field's own line, with the same rule and the edge that put
-// the type in a closure as the author wrote it.
-func (c *checker) checkWideTextInClosure(closure map[string]bool, reachedBy map[string]string) {
-	for _, name := range sortedKeys(closure) {
-		st := c.closureMember(name)
-		if st == nil || st.IsTable {
-			continue
-		}
-		for _, f := range st.Fields {
-			if f.Type.Kind != ir.TWString {
-				continue
-			}
-			c.errf(c.fieldPos(name, f.Name), "type %s: field %s: wstring is not carried on the TABLE wire yet — wide text rides the packet wire today (SPEC §4.12), and %s reaches %s, putting it in a table closure; declare the field string(N), or hold %s outside the closure (docs/SPEC-TABLES.md §11, schema#522)",
-				name, f.Name, reachedBy[name], name, name)
-		}
-	}
 }
 
 // checkOptionalVariableClosures refuses an OPTIONAL whose value's closure is

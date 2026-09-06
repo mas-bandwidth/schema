@@ -234,7 +234,7 @@ func (r *wireReader) skip(kind uint8) bool {
 		_, ok := r.leb()
 		return ok
 	case ir.TableKindString, ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed,
-		ir.TableKindEscape, ir.TableKindNoPayload:
+		ir.TableKindEscape, ir.TableKindNoPayload, ir.TableKindWstring:
 		n, ok := r.leb()
 		if !ok || !r.has(int(n)) || n > uint64(len(r.buf)) {
 			return false
