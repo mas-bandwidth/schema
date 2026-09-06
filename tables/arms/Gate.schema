@@ -1,0 +1,21 @@
+package armdemo
+
+// A NODE REACHABLE ONLY THROUGH A UNION ARM (docs/SPEC-TABLES.md §2.6, §3.1):
+// no pointer field names Only or a string blob anywhere in the closure, so the
+// arm alone puts them in the set a load places, a cook lays out and a region
+// resolves.
+
+table Only { w int32 }
+
+union Reach
+{
+    only  *Only
+    text  *string
+    plain int32
+}
+
+table Gate
+{
+    reach Reach
+    after int32
+}

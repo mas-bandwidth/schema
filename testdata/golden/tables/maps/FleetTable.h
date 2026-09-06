@@ -7840,6 +7840,13 @@ inline bool ShipConfigExtentAt( const Ctx & ctx, const ShipConfig & value, int64
     return true;
 }
 
+template <typename Ctx>
+inline int64_t ShipConfigExtent( const Ctx & ctx, const ShipConfig & value )
+{
+    (void) ctx; (void) value; // no list or map below this record
+    return 0;
+}
+
 // ShipConfigExtentPack: carve ShipConfig's arrays out of the node's extent and copy the
 // entries in ASCENDING key order and the elements in INDEX order, PRE-ORDER,
 // advancing the same running offset ShipConfigExtentAt advances (§2.8, §2.9).
@@ -7866,6 +7873,13 @@ inline bool FleetByIdEntryExtentAt( const Ctx & ctx, const FleetByIdEntry & valu
 {
     (void) ctx; (void) value; (void) at; // no list or map below this record
     return true;
+}
+
+template <typename Ctx>
+inline int64_t FleetByIdEntryExtent( const Ctx & ctx, const FleetByIdEntry & value )
+{
+    (void) ctx; (void) value; // no list or map below this record
+    return 0;
 }
 
 // FleetByIdEntryExtentPack: carve FleetByIdEntry's arrays out of the node's extent and copy the
@@ -10296,7 +10310,8 @@ template <typename Ctx> inline bool FleetLoadoutsEntryCookNode( const Ctx & ctx,
 {
     if ( !FleetLoadoutsEntryCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return FleetLoadoutsEntryCookExtent( ctx, region, at + 40, extent_at, at, value, order );
+    if ( !FleetLoadoutsEntryCookExtent( ctx, region, at + 40, extent_at, at, value, order ) ) { return false; }
+    return extent_at == FleetLoadoutsEntryExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // FleetTiersEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -10312,7 +10327,8 @@ template <typename Ctx> inline bool FleetCookNode( const Ctx & ctx, const TableC
 {
     if ( !FleetCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return FleetCookExtent( ctx, region, at + 72, extent_at, at, value, order );
+    if ( !FleetCookExtent( ctx, region, at + 72, extent_at, at, value, order ) ) { return false; }
+    return extent_at == FleetExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // ShipConfigCookMeasure: the whole cooked file's bytes — the header, the data part

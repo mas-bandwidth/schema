@@ -124,6 +124,116 @@ var sabotages = map[string][]edit{
 `,
 	}},
 
+	// SPEC-TABLES §2.6, §2.9, §3.1 (schema#565): a list of unions is a
+	// by-value edge whose elements' set arms are the edges. Take the list out
+	// of the walk, and a node reached only through a list element's pointer
+	// arm is never numbered.
+	"arms-list-union-edge": {{
+		old: `		if un := listElementUnion(f); un != nil && g.unionHasEdge(un, map[*ir.Union]bool{}) {
+			return edgeList
+		}
+		return edgeNone`,
+		new: `		return edgeNone // SABOTAGED: a list of unions is no edge of the walk`,
+	}},
+
+	// SPEC-TABLES §2.6, §7.6: the cook's extent writer descends a table arm
+	// exactly as the measure did. Make the COOK alone skip the arm, so the
+	// layout reserves the arm's arrays and the writer lays nothing there: what
+	// goes red is the extent check, which refuses the cook before a header.
+	"arms-cook-skips-arm": {{
+		old: `	armed.descend = func(table string, expr edgeExpr, indent string) {
+		if ref := memberOf(g.unit, table); ref != nil && g.hasExtent(ref) {
+			v.descend(table, expr, indent)
+		}
+	}`,
+		new: `	armed.descend = func(table string, expr edgeExpr, indent string) {
+		if ref := memberOf(g.unit, table); ref != nil && g.hasExtent(ref) {
+			if ev.bytes != "" { g.pf("%s(void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order; // SABOTAGED: the cook skips the arm\n", indent); return }
+			v.descend(table, expr, indent)
+		}
+	}`,
+	}},
+
+	// SPEC-TABLES §7.6: the same skip with the extent check dropped. The cook
+	// then loses the arm's list and REPORTS SUCCESS, and only the pinned
+	// cook's byte compare catches it.
+	"arms-cook-check-dropped": {{
+		old: `	armed.descend = func(table string, expr edgeExpr, indent string) {
+		if ref := memberOf(g.unit, table); ref != nil && g.hasExtent(ref) {
+			v.descend(table, expr, indent)
+		}
+	}`,
+		new: `	armed.descend = func(table string, expr edgeExpr, indent string) {
+		if ref := memberOf(g.unit, table); ref != nil && g.hasExtent(ref) {
+			if ev.bytes != "" { g.pf("%s(void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order; // SABOTAGED: the cook skips the arm\n", indent); return }
+			v.descend(table, expr, indent)
+		}
+	}`,
+	}, {
+		old: `	g.pf("    return extent_at == %sExtent( ctx, value ); // the extent written is the extent measured, or no header is written\n}\n\n", st.Name)`,
+		new: `	g.pf("    (void) extent_at; return true; // SABOTAGED: the extent written is not held to the extent measured\n}\n\n")`,
+	}},
+
+	// SPEC-TABLES §2.6: an arm that is another union asks "does this arm reach
+	// a container" one level in. Stop asking, and the leaf's list under two
+	// tags leaves the extent: Lock copies the arena reference as it lies.
+	"arms-nested-union-extent": {{
+		old: `		if inner, ok := v.F.Type.Ref.(*ir.Union); ok && g.unionHasExtent(inner, seen) {
+			return true
+		}
+	}
+	return false`,
+		new: `		_ = seen // SABOTAGED: a nested union's arms are not asked
+	}
+	return false`,
+	}},
+
+	// SPEC-TABLES §2.6, §6.5: the framing scan dispatches from the field's
+	// actual shape. Frame every union field as ONE arm header, and an array of
+	// unions' extent is read from its element kind and count as an arm id.
+	"arms-array-of-unions-framing": {{
+		old: `			if f.Array == ir.ArrayNone {
+				g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: a union arm that holds a list or a map\n        {\n", ir.TableFieldWireId(f), tkUnion, f.Name)`,
+		new: `			if true { // SABOTAGED: every union field is framed as one arm header
+				g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: a union arm that holds a list or a map\n        {\n", ir.TableFieldWireId(f), tkUnion, f.Name)`,
+	}},
+
+	// SPEC-TABLES §2.6, §3.1: a POINTER ARM is a pointer edge, so its pointee
+	// is in the set a root's load can place. Leave pointer arms out of the
+	// reachable walk, and a node reached only through one is unknown to its
+	// own writer's load.
+	"arms-reachable-arm": {{
+		old: `			for _, v := range ref.Variants {
+				if v.F != nil {
+					line(v.F)
+				}
+			}`,
+		new: `			for _, v := range ref.Variants {
+				if v.F != nil && !v.F.Type.Pointer { // SABOTAGED: a pointer arm names nothing
+					line(v.F)
+				}
+			}`,
+	}},
+
+	// SPEC-TABLES §2.6, §3.1 (schema#578): a pointer arm's slot loop has its
+	// own index, because under a list or an array of unions it runs inside
+	// the element loop. Spell it `i` again, and slot k of element i reads
+	// element k's slot while the bound test reads past the live count.
+	"arms-slot-index-shadows": {{
+		old: `		g.pf("    for ( int32_t k = 0; k < %s && k < %d; k++ ) // %s: [..%d]*%s\n    {\n", count, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		body(base.index("k", 8))
+		g.pf("    }\n")
+	case ir.ArrayFixed:
+		g.pf("    for ( int32_t k = 0; k < %d; k++ ) // %s: [%d]*%s\n    {\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		body(base.index("k", 8))`,
+		new: `		g.pf("    for ( int32_t i = 0; i < %s && i < %d; i++ ) // %s: [..%d]*%s\n    {\n", count, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name) // SABOTAGED: the slot loop reuses the element index
+		body(base.index("i", 8))
+		g.pf("    }\n")
+	case ir.ArrayFixed:
+		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s: [%d]*%s\n    {\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		body(base.index("i", 8))`,
+	}},
+
 	// the same walk on the C# leg's Open
 	"cook-open-walk-cs": {{
 		old: `	g.hf("        cook = new %sCook(at + dataOffset, (long) dataLength);\n", name)`,

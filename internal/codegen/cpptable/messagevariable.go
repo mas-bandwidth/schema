@@ -135,7 +135,7 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 	g.pf("        records++;\n")
 	g.pf("    }\n")
 	g.pf("    int64_t root_extent = 0;\n")
-	if g.anyMap && g.hasExtent(st) {
+	if g.anyExtent && g.hasExtent(st) {
 		g.pf("    if ( !%sMessageExtent( r, vocabulary, index_bits, root_extent ) ) { complete = false; }\n", n)
 	} else {
 		g.pf("    if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { complete = false; }\n")
@@ -211,7 +211,7 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 	g.pf("    }\n")
 	g.pf("    const int64_t fields_start = r.offset;\n")
 	g.pf("    int64_t root_extent = 0;\n")
-	if g.anyMap && g.hasExtent(st) {
+	if g.anyExtent && g.hasExtent(st) {
 		g.pf("    {\n        TableBitReader walk = r;\n")
 		g.pf("        if ( !%sMessageExtent( walk, vocabulary, index_bits, root_extent ) ) { out->malformed = true; return false; }\n    }\n", n)
 	}
@@ -225,7 +225,7 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 	// its own fields still answers where the decode put what it decoded — the
 	// COUNT is what says it is not a body (§3.3)
 	g.pf("    root_out = root;\n")
-	if g.anyMap {
+	if g.anyExtent {
 		g.pf("    TableExtentCarve root_carve;\n")
 		g.pf("    root_carve.at = region + used + TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
 		g.pf("    root_carve.left = root_extent;\n")
@@ -252,7 +252,7 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 	g.pf("    }\n")
 	g.pf("    if ( r.offset != fields_start ) { out->malformed = true; return false; } // the two passes disagree about the table's extent\n\n")
 	g.pf("    // and the ROOT's own body last\n")
-	if g.anyMap {
+	if g.anyExtent {
 		g.pf("    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's\n")
 	}
 	g.pf("    return %sLoadMessageBody( r, vocabulary, out, nodes, index_bits, *root );\n}\n\n", n)
@@ -292,8 +292,8 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 // its maps take read off the bit stream, and the decode of its body.
 func (g *tableGen) emitRootNodeMessageDispatch(st *ir.Struct) {
 	n := st.Name
-	reachable := g.pointerReachable(st)
-	blobs := g.reachableBlobs(st)
+	reachable := ir.PointerReachable(st)
+	blobs := reachableBlobs(st)
 
 	g.pf("// %sNodeMessageStorage: the region bytes one record commands on the message\n", n)
 	g.pf("// wire, or -1 for a type id this build cannot name. A table's is its own\n")
@@ -323,14 +323,14 @@ func (g *tableGen) emitRootNodeMessageDispatch(st *ir.Struct) {
 	g.pf("    extent = 0;\n")
 	anyExtent := false
 	for _, t := range reachable {
-		if g.anyMap && g.hasExtent(t) {
+		if g.anyExtent && g.hasExtent(t) {
 			anyExtent = true
 		}
 	}
 	if anyExtent {
 		g.pf("    switch ( type_id )\n    {\n")
 		for _, t := range reachable {
-			if g.anyMap && g.hasExtent(t) {
+			if g.anyExtent && g.hasExtent(t) {
 				g.pf("        case 0x%016xull: return %sMessageExtent( r, vocabulary, index_bits, extent ); // %s\n", ir.TableWireId(t.Name), t.Name, t.Name)
 			}
 		}
@@ -343,7 +343,10 @@ func (g *tableGen) emitRootNodeMessageDispatch(st *ir.Struct) {
 	g.pf("// %sNodeMessageBody: PASS TWO's half — decode one record's body into the\n", n)
 	g.pf("// storage it already owns, its map entries carved from its own extent.\n")
 	g.pf("inline bool %sNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )\n{\n", n)
-	if g.anyMap {
+	// A LIST CARVES FROM THE NODE'S EXTENT EXACTLY AS A MAP DOES
+	// (docs/SPEC-TABLES.md §2.8, §2.9), so the cursor rides wherever the unit
+	// has an extent at all and not only where it has a map.
+	if g.anyExtent {
 		g.pf("    TableExtentCarve carve;\n")
 		g.pf("    carve.at = at + %sNodeRecordBytes( type_id );\n", n)
 		g.pf("    carve.left = 0;\n")

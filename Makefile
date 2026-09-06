@@ -38,6 +38,8 @@ SCHEMAS_TABLES_SCALARS := $(wildcard tables/scalars/*.schema)
 SCHEMAS_TABLES_MAPS := $(wildcard tables/maps/*.schema)
 # the UNBOUNDED ARRAY corpus (docs/SPEC-TABLES.md §2.9)
 SCHEMAS_TABLES_LISTS := $(wildcard tables/lists/*.schema)
+# the UNION-ARM TRAVERSAL corpus (docs/SPEC-TABLES.md §2.6, §2.9, §3.1)
+SCHEMAS_TABLES_ARMS := $(wildcard tables/arms/*.schema)
 # the MESSAGE FORM's corpora (docs/SPEC-TABLES.md §3.3): the three backend
 # messages the ruling measured, and the WIDE-VOCABULARY unit test/vocabgen
 # writes, whose vocabulary passes 127 ids so its message names slots on both
@@ -142,6 +144,7 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
 	$(1) generate --lang cpp --out $(2)/maps tables/maps
 	$(1) generate --lang cpp --out $(2)/lists tables/lists
+	$(1) generate --lang cpp --out $(2)/arms tables/arms
 	$(1) generate --lang cpp --out $(2)/scalars2 test/tables/Scalars2.schema
 	$(1) generate --lang cpp --out $(2)/backend tables/backend
 	$(1) generate --lang cpp --out $(2)/vocab tables/vocab
@@ -151,9 +154,9 @@ endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(SERIALIZE)
+	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/Scalars2.schema test/tables/Bases.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/Scalars2.schema test/tables/Bases.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -1021,7 +1024,8 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 	         testdata/golden/tables/block/*Table.* testdata/golden/tables/blockhome/*Table.* \
 	         testdata/golden/tables/messages/*Table.* testdata/golden/tables/stream/*Table.* \
 	         testdata/golden/tables/blobs/*Table.* testdata/golden/tables/scalars/*Table.* \
-	         testdata/golden/tables/maps/*Table.* testdata/golden/tables/lists/*Table.* ; do \
+	         testdata/golden/tables/maps/*Table.* testdata/golden/tables/lists/*Table.* \
+	         testdata/golden/tables/arms/*Table.* ; do \
 		dir=$$(basename $$(dirname $$f)); \
 		n=$$(( n + 1 )); \
 		cmp -s $$f build/tables-generated/$$dir/$$(basename $$f) || \
@@ -2082,6 +2086,12 @@ build/schema_test_lists_be: build/tables-generated/.stamp test/tables/lists_main
 	@mkdir -p build
 	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/lists_main.cpp $(LISTS_SOURCES) -o $@
 
+# and the UNION-ARM gate on the same host: the arrays an arm holds are laid by
+# the same walk, and a pointer arm's node is placed by the same numbering
+build/schema_test_arms_be: build/tables-generated/.stamp test/tables/arms_main.cpp
+	@mkdir -p build
+	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/arms_main.cpp $(ARMS_SOURCES) -o $@
+
 # The COOK's read side, for a BIG-ENDIAN target. A cook is produced in the byte
 # order of the build it is cooked for (docs/SPEC-TABLES.md §7), so this is where that
 # stops being a sentence: the big-endian build opens the big-endian cook
@@ -2104,11 +2114,12 @@ build/schema_test_block_endian_be: build/tables-generated/.stamp test/tables/blo
 	$(BE_CXX) $(BLOCK_CXXFLAGS) -static $(BLOCK_INCLUDES) test/tables/block_endian_main.cpp $(BLOCK_SOURCES) -o $@
 
 .PHONY: tables-big-endian
-tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/schema_test_lists_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
+tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
 	$(BE_RUN) ./build/schema_test_tables_be
 	$(BE_RUN) ./build/schema_test_maps_be
 	$(BE_RUN) ./build/schema_test_lists_be
-	@echo "big-endian leg: the wire crosses the byte order, a map's framing and its sorted entry array with it, and a list's element array"
+	$(BE_RUN) ./build/schema_test_arms_be
+	@echo "big-endian leg: the wire crosses the byte order, a map's framing and its sorted entry array with it, a list's element array and the arrays a union arm holds"
 	./build/schema_test_block_endian write build/block-host.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be write build/block-target.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be accept build/block-target.bin
@@ -2443,6 +2454,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-list-measure-refusals
 	$(MAKE) tables-json-list-walk
 	$(MAKE) tables-lists-negative-controls
+	$(MAKE) tables-arms
+	$(MAKE) tables-arms-negative-controls
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-graph-walk
 	$(MAKE) tables-json-negative-control
@@ -2844,7 +2857,7 @@ tables-lists-dead-element-negative-control: bin/schema build/tables-generated/.s
 tables-lists-preorder-negative-control: bin/schema build/tables-generated/.stamp
 	@mkdir -p build
 	@printf 'func listElementHoldsMap(f *ir.Field) bool {\n\tref := listElementStruct(f)\n\tif ref == nil {\n\t\treturn false\n\t}\n\tfor i := range ref.Fields {\n\t\tif ref.Fields[i].IsMap() {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}\n' > build/list-preorder-helper.txt
-	$(call list_negative_control,preorder,'s@g.pf("        at += (int64_t) cursor.count \* %d; // the whole array FIRST\\n", size)@if !listElementHoldsMap(f) { g.pf("        at += (int64_t) cursor.count * %d; // the whole array FIRST\\n", size) } // SABOTAGED@' -e 's@g.pf("%s    at += (int64_t) cursor.count \* (int64_t) sizeof( %s ); // the whole array FIRST\\n", ind, elem)@if !listElementHoldsMap(f) { g.pf("%s    at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // the whole array FIRST\\n", ind, elem) } // SABOTAGED@' -e '$$r build/list-preorder-helper.txt',internal/codegen/cpptable/extent.go,laying the element array after a nested container left the list gate GREEN)
+	$(call list_negative_control,preorder,'s@g.pf("%s    at += (int64_t) cursor.count \* %d; // the whole array FIRST\\n", ind, size)@if !listElementHoldsMap(f) { g.pf("%s    at += (int64_t) cursor.count * %d; // the whole array FIRST\\n", ind, size) } // SABOTAGED@' -e 's@g.pf("%s    at += (int64_t) cursor.count \* (int64_t) sizeof( %s ); // the whole array FIRST\\n", ind, elem)@if !listElementHoldsMap(f) { g.pf("%s    at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // the whole array FIRST\\n", ind, elem) } // SABOTAGED@' -e '$$r build/list-preorder-helper.txt',internal/codegen/cpptable/extent.go,laying the element array after a nested container left the list gate GREEN)
 	@grep -c "SABOTAGED" build/list-preorder.gotext | grep -qx 2 || \
 		{ echo "NEGATIVE CONTROL FAILED: the preorder sabotage did not reach both the pack's and the cook's list branch"; exit 1; }
 	@grep -q "^FAIL.*list_of_maps_cook" build/list-preorder.log || \
@@ -2945,10 +2958,157 @@ tables-lists-negative-controls: tables-lists-allocation-negative-control \
 	tables-lists-unreached-negative-control \
 	tables-lists-cook-check-negative-control
 
+# ---- THE UNION-ARM TRAVERSAL GATE (docs/SPEC-TABLES.md §2.6, §2.9, §3.1, §7.6) --
+#
+# One binary over the `tables/arms` corpus: five shapes where a union arm hides
+# a pointer or a collection extent (schema#565), the cross of two of them, and
+# two where an array-of-pointers arm sits under a list or an array of unions
+# (schema#578), each crossed by Measure and Save, LoadMeasure and Load, the
+# tool's path, Lock and a dereference after it,
+# a memcpy relocation, and a cook from the arena and from the region, opened
+# and walked. Its wire goldens are the reference's, pinned like every other
+# table golden, and the Go tool reads every wire it writes back into the text
+# form and writes it again: the tool re-derives the numbering from the graph
+# alone (internal/tablewire), so the bytes agreeing is the two walks numbering
+# the arms' nodes alike. The tool's COOK half does not carry a list-bearing
+# unit (schema#380), so the cooks are pinned and walked here and not crossed.
+#
+# THE SANITIZED TWIN rides beside it for the list gate's reason.
+
+ARMS_SOURCES = $$(ls build/tables-generated/arms/*Table.cpp)
+
+build/schema_test_arms: build/tables-generated/.stamp test/tables/arms_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/arms_main.cpp $(ARMS_SOURCES) -o $@
+
+build/schema_test_arms_asan: build/tables-generated/.stamp test/tables/arms_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+		$(TABLES_INCLUDES) test/tables/arms_main.cpp $(ARMS_SOURCES) -o $@
+
+# root table per pinned wire, for the tool's round trip
+ARMS_WIRE_ROOTS := arms_ring:Ring arms_holder:Holder arms_nest:Nest arms_hand:Hand arms_chain:Chain arms_gate:Gate arms_gate_text:Gate arms_rack:Rack arms_tray:Tray
+
+.PHONY: tables-arms
+tables-arms: build/schema_test_arms build/schema_test_arms_asan
+	@rm -rf build/arms-files && mkdir -p build/arms-files
+	SCHEMA_ARMS_DIR=build/arms-files ./build/schema_test_arms
+	./build/schema_test_arms_asan
+	@for pair in $(ARMS_WIRE_ROOTS); do \
+		name=$${pair%%:*}; root=$${pair##*:}; \
+		rm -rf build/arms-files/$$name-text; \
+		./bin/schema unpack --root $$root --in build/arms-files/$$name.bin --one-file build/arms-files/$$name-text tables/arms || exit 1; \
+		./bin/schema pack --root $$root --out build/arms-files/$$name-again.bin build/arms-files/$$name-text tables/arms || exit 1; \
+		cmp -s build/arms-files/$$name.bin build/arms-files/$$name-again.bin || \
+			{ echo "ARMS GATE FAILED: the tool numbered $$name's nodes differently from the reference"; exit 1; }; \
+	done
+	@echo "arms gate: the tool reads every pinned wire silently and writes it back byte for byte, so the two walks number the arms' nodes alike"
+
+# ---- THE NEGATIVE CONTROLS the arms gate names (schema#565) --------------
+#
+# One per shape, and one on the cook's extent check. Each names its sabotage
+# in tools/sabotage, patches the GENERATOR through a Go overlay, regenerates
+# the arms corpus, rebuilds the gate and requires it to go RED on a CHECK the
+# clean tree passes, the one that names the shape.
+#
+# $(1) the sabotage's name, $(2) the compiler source it patches, $(3) the
+# sentence a reader gets when the gate stayed green, $(4) flags the sabotaged
+# header needs to compile at all, so the control reaches its CHECK.
+define arms_negative_control
+	@mkdir -p build
+	@go run ./tools/sabotage -name $(1) -out build/$(1).gotext $(2)
+	@printf '{"Replace":{"%s/$(2)":"%s/build/$(1).gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/$(1)-overlay.json
+	@go build -overlay=build/$(1)-overlay.json -o build/schema-$(1) ./cmd/schema
+	@rm -rf build/tables-$(1) && mkdir -p build/tables-$(1)
+	@./build/schema-$(1) generate --lang cpp --out build/tables-$(1)/arms tables/arms
+	@$(CXX) $(TABLES_CXXFLAGS) $(4) -Ibuild/tables-$(1)/arms -Itest/tables test/tables/arms_main.cpp \
+		build/tables-$(1)/arms/*Table.cpp -o build/schema_test_$(1)
+	@if ./build/schema_test_$(1) > build/$(1).log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: $(3)"; exit 1; \
+	fi
+	@grep -q "^FAIL" build/$(1).log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/$(1).log; exit 1; }
+	@echo "negative control: $(1) turns the ARMS GATE red: $$(grep -c '^FAIL' build/$(1).log) failures"
+endef
+
+# a red line the control must carry: $(1) the control, $(2) the pattern
+define arms_control_red_on
+	@grep -q "$(2)" build/$(1).log || \
+		{ echo "NEGATIVE CONTROL FAILED: $(1) went red, but not on $(2)"; cat build/$(1).log; exit 1; }
+endef
+
+# A LIST OF UNIONS IS NOT AN EDGE (C1): the walk skips `Ring.items`, so the
+# node its elements point at is never numbered, and Measure refuses.
+.PHONY: tables-arms-list-edge-negative-control
+tables-arms-list-edge-negative-control: bin/schema build/tables-generated/.stamp
+	$(call arms_negative_control,arms-list-union-edge,internal/codegen/cpptable/pointers.go,a list of unions left out of the walk left the arms gate GREEN)
+	$(call arms_control_red_on,arms-list-union-edge,\[arms_ring\] measured > 0)
+
+# THE COOK SKIPS A TABLE ARM'S CONTAINERS (C2): the layout measured the leaf's
+# list and the writer laid nothing for it, so the extent check refuses the
+# cook before a header is written, on `Holder`.
+.PHONY: tables-arms-cook-arm-negative-control
+tables-arms-cook-arm-negative-control: bin/schema build/tables-generated/.stamp
+	$(call arms_negative_control,arms-cook-skips-arm,internal/codegen/cpptable/extent.go,the cook skipping a table arm's list left the arms gate GREEN)
+	$(call arms_control_red_on,arms-cook-skips-arm,\[arms_holder\] S::Cook)
+
+# THE COOK'S EXTENT CHECK IS DROPPED, with the same skip: the cook loses the
+# leaf's list and REPORTS SUCCESS, which is what the check exists to refuse,
+# and the pinned cook's byte compare is what catches it instead.
+.PHONY: tables-arms-cook-check-negative-control
+tables-arms-cook-check-negative-control: bin/schema build/tables-generated/.stamp
+	$(call arms_negative_control,arms-cook-check-dropped,internal/codegen/cpptable/extent.go,dropping the cook's extent check left the arms gate GREEN)
+	$(call arms_control_red_on,arms-cook-check-dropped,table wire golden arms_holder_cook)
+	@if grep -q "\[arms_holder\] S::Cook" build/arms-cook-check-dropped.log; then \
+		echo "NEGATIVE CONTROL FAILED: the cook still refused with its extent check dropped"; exit 1; \
+	fi
+
+# A NESTED UNION HIDES ITS EXTENT (C8): the question "does this arm reach a
+# container" stops one level up, so `Nest`'s leaf list stays an arena
+# reference after Lock.
+.PHONY: tables-arms-nested-union-negative-control
+tables-arms-nested-union-negative-control: bin/schema build/tables-generated/.stamp
+	$(call arms_negative_control,arms-nested-union-extent,internal/codegen/cpptable/extent.go,a nested union arm's list left out of the extent left the arms gate GREEN)
+	$(call arms_control_red_on,arms-nested-union-extent,\[arms_nest\] ref_inside)
+
+# AN ARRAY OF UNIONS IS FRAMED AS ONE ARM HEADER (C9): LoadMeasure omits
+# `Hand`'s leaf list, and Load's carve fails on valid wire.
+.PHONY: tables-arms-array-framing-negative-control
+tables-arms-array-framing-negative-control: bin/schema build/tables-generated/.stamp
+	$(call arms_negative_control,arms-array-of-unions-framing,internal/codegen/cpptable/extent.go,framing an array of unions as one arm header left the arms gate GREEN)
+	$(call arms_control_red_on,arms-array-of-unions-framing,\[arms_hand\] a loaded region: the report is not silent)
+
+# A POINTER ARM NAMES NO NODE (C10): `Gate`'s Only leaves the reachable set,
+# the load reads its own writer's record as unknown, and the arm resolves null.
+.PHONY: tables-arms-reachable-negative-control
+tables-arms-reachable-negative-control: bin/schema build/tables-generated/.stamp
+	$(call arms_negative_control,arms-reachable-arm,ir/table.go,a pointer arm left out of the reachable set left the arms gate GREEN)
+	$(call arms_control_red_on,arms-reachable-arm,\[arms_gate\] ref_inside)
+
+# THE ARM'S SLOT LOOP REUSES THE ELEMENT INDEX: under a list or an array of
+# unions the arm's `[..N]*T` walk spells its index `i` as the element loop
+# does, so the inner `i` shadows the element index, slot k reads element k's
+# node, and `Rack`'s second node of its first element is never numbered, so
+# Measure refuses. The gate's own `-Wshadow` refuses the header first, so the
+# control compiles without it to reach the CHECK.
+.PHONY: tables-arms-slot-index-negative-control
+tables-arms-slot-index-negative-control: bin/schema build/tables-generated/.stamp
+	$(call arms_negative_control,arms-slot-index-shadows,internal/codegen/cpptable/pointers.go,the arm's slot loop shadowing the element index left the arms gate GREEN,-Wno-shadow)
+	$(call arms_control_red_on,arms-slot-index-shadows,\[arms_rack\] measured > 0)
+
+.PHONY: tables-arms-negative-controls
+tables-arms-negative-controls: tables-arms-list-edge-negative-control \
+	tables-arms-cook-arm-negative-control \
+	tables-arms-cook-check-negative-control \
+	tables-arms-nested-union-negative-control \
+	tables-arms-array-framing-negative-control \
+	tables-arms-reachable-negative-control \
+	tables-arms-slot-index-negative-control
+
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
-update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists
+update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms
 	@mkdir -p testdata/golden testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
@@ -2956,7 +3116,8 @@ update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_maps
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_lists
-	@for d in examples pointers block blockhome messages stream blobs scalars maps lists; do \
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_arms
+	@for d in examples pointers block blockhome messages stream blobs scalars maps lists arms; do \
 		mkdir -p testdata/golden/tables/$$d; \
 		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
 	done
@@ -3119,7 +3280,7 @@ CONFORMANCE_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generat
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
-	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -I$(SERIALIZE)
+	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -I$(SERIALIZE)
 CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/w1/W1Table.cpp build/tables-generated/w2/W2Table.cpp \
 	build/tables-generated/r1/R1Table.cpp build/tables-generated/r2/R2Table.cpp \
@@ -3436,7 +3597,7 @@ NODE_TYPE_NC := build/wire-fuzz-nc-node-type
 .PHONY: tables-wire-fuzz-node-type-negative-control
 tables-wire-fuzz-node-type-negative-control: build/conformance-harness build/wire-fuzz-cpp
 	@rm -rf $(NODE_TYPE_NC) && mkdir -p $(NODE_TYPE_NC)
-	@sed -e 's|ir.PointerReachable(m.Unit, inst.Def) {|ir.TableClosure(m.Unit) { // NEGATIVE CONTROL: every closure table is placeable again|' \
+	@sed -e 's|for name := range placeable {|for name := range ir.TableClosure(m.Unit) { // NEGATIVE CONTROL: every closure table is placeable again|' \
 		internal/tablewire/decodenodes.go > $(NODE_TYPE_NC)/decodenodes.go.txt
 	@cmp -s internal/tablewire/decodenodes.go $(NODE_TYPE_NC)/decodenodes.go.txt && \
 		{ echo "NEGATIVE CONTROL: the node-type sabotage patched nothing"; exit 1; } || true
@@ -3466,7 +3627,7 @@ BLOB_NODE_NC := build/wire-fuzz-nc-blob-node
 .PHONY: tables-wire-fuzz-blob-node-negative-control
 tables-wire-fuzz-blob-node-negative-control: build/conformance-harness build/wire-fuzz-cpp
 	@rm -rf $(BLOB_NODE_NC) && mkdir -p $(BLOB_NODE_NC)
-	@sed -e 's|ir.PointerReachableBlobs(m.Unit, inst.Def)|true, true // NEGATIVE CONTROL: both reserved ids are nameable at every root|' \
+	@sed -e 's|ir.PointerReachableBlobs(inst.Def)|true, true // NEGATIVE CONTROL: both reserved ids are nameable at every root|' \
 		internal/tablewire/decodenodes.go > $(BLOB_NODE_NC)/decodenodes.go.txt
 	@cmp -s internal/tablewire/decodenodes.go $(BLOB_NODE_NC)/decodenodes.go.txt && \
 		{ echo "NEGATIVE CONTROL: the blob-node sabotage patched nothing"; exit 1; } || true

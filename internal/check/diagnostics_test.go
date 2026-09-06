@@ -869,3 +869,35 @@ func TestConstValueDiagnosticsPointAtTheExpression(t *testing.T) {
 		}
 	}
 }
+
+// AN ARRAY OF TABLES IS NOT AN ARM (docs/SPEC-TABLES.md §2.6, schema#579):
+// `[..N]T` and `[N]T` over a table T are refused at the arm by name, because
+// every walk descends a table arm as ONE body. A table arm and a scalar-array
+// arm beside them still pass. Reverting the refusal turns the first two red.
+func TestArrayOfTablesArmIsRefused(t *testing.T) {
+	const want = "a union arm is one table, not an array of tables"
+	for _, tc := range []struct{ name, src string }{
+		{"a bounded array of tables", "package t\ntable Leaf { items []int32 }\nunion U { few [..2]Leaf }\ntable Root { u U }\n"},
+		{"a fixed array of tables", "package t\ntable Leaf { x int32 }\nunion U { few [2]Leaf }\ntable Root { u U }\n"},
+	} {
+		errs := runUnit(t, map[string]string{"Bad.schema": tc.src})
+		var found bool
+		for _, e := range errs {
+			if strings.Contains(e.Error(), want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: the refusal went missing: %v", tc.name, errs)
+		}
+	}
+	for _, tc := range []struct{ name, src string }{
+		{"a table arm", "package t\ntable Leaf { items []int32 }\nunion U { one Leaf }\ntable Root { u U }\n"},
+		{"a scalar-array arm", "package t\nunion U { samples [..8]float32 }\ntable Root { u U }\n"},
+		{"a bounded array of pointers arm", "package t\ntable Leaf { x int32 }\nunion U { many [..2]*Leaf }\ntable Root { u U }\n"},
+	} {
+		if errs := runUnit(t, map[string]string{"Good.schema": tc.src}); len(errs) != 0 {
+			t.Errorf("%s: refused: %v", tc.name, errs)
+		}
+	}
+}

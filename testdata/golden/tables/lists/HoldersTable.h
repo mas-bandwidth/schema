@@ -13155,9 +13155,13 @@ template <typename Ctx> inline bool ArmyCookExtent( const Ctx & ctx, const Table
 template <typename Ctx> inline bool DeckCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Deck & value, TableByteOrder order )
 {
     (void) region; // a table element's and an entry's references resolve through their own bodies
-    for ( int32_t i = 0; i < ( value.hands_count < 3 ? value.hands_count : 3 ); i++ ) // hands
+    for ( int32_t i = 0; i < value.hands_count && i < 3; i++ ) // hands
     {
         if ( !RowCookExtent( ctx, region, extent, at, record + 0 + i * 24, value.hands[i], order ) ) { return false; }
+    }
+    for ( int32_t i = value.hands_count; i < 3; i++ ) // hands: the slots the walk does not reach (§7.6)
+    {
+        if ( !TableExtentUnreachedEmpty( RowExtent( ctx, value.hands[i] ) ) ) { return false; }
     }
     return true;
 }
@@ -13175,7 +13179,8 @@ template <typename Ctx> inline bool RowCookNode( const Ctx & ctx, const TableCoo
 {
     if ( !RowCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return RowCookExtent( ctx, region, at + 24, extent_at, at, value, order );
+    if ( !RowCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
+    return extent_at == RowExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // SheetCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -13183,7 +13188,8 @@ template <typename Ctx> inline bool SheetCookNode( const Ctx & ctx, const TableC
 {
     if ( !SheetCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return SheetCookExtent( ctx, region, at + 24, extent_at, at, value, order );
+    if ( !SheetCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
+    return extent_at == SheetExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // ItemCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -13207,7 +13213,8 @@ template <typename Ctx> inline bool SquadCookNode( const Ctx & ctx, const TableC
 {
     if ( !SquadCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return SquadCookExtent( ctx, region, at + 24, extent_at, at, value, order );
+    if ( !SquadCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
+    return extent_at == SquadExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // ArmyCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -13215,7 +13222,8 @@ template <typename Ctx> inline bool ArmyCookNode( const Ctx & ctx, const TableCo
 {
     if ( !ArmyCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return ArmyCookExtent( ctx, region, at + 24, extent_at, at, value, order );
+    if ( !ArmyCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
+    return extent_at == ArmyExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // DeckCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -13223,7 +13231,8 @@ template <typename Ctx> inline bool DeckCookNode( const Ctx & ctx, const TableCo
 {
     if ( !DeckCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return DeckCookExtent( ctx, region, at + 80, extent_at, at, value, order );
+    if ( !DeckCookExtent( ctx, region, at + 80, extent_at, at, value, order ) ) { return false; }
+    return extent_at == DeckExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // SampleCookMeasure: the whole cooked file's bytes — the header, the data part

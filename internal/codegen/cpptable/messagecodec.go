@@ -98,7 +98,7 @@ func (g *tableGen) emitMessageBodyDeclarations(members []*ir.Struct) {
 			g.pf("template <typename Ctx> inline int64_t %sMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const %s & value );\n", st.Name, st.Name)
 			g.pf("template <typename Ctx> inline bool %sSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const %s & value );\n", st.Name, st.Name)
 			g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, %s & value );\n", st.Name, st.Name)
-			if g.anyMap && g.hasExtent(st) {
+			if g.anyExtent && g.hasExtent(st) {
 				g.pf("inline bool %sMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at );\n", st.Name)
 			}
 			continue
@@ -120,7 +120,7 @@ func (g *tableGen) emitMessageBodyDeclarations(members []*ir.Struct) {
 func (g *tableGen) emitMessageCodec(st *ir.Struct) {
 	g.emitMessageMeasureBody(st)
 	g.emitMessageSaveBody(st)
-	if g.isVar(st.Name) && g.anyMap && g.hasExtent(st) {
+	if g.isVar(st.Name) && g.anyExtent && g.hasExtent(st) {
 		g.emitMessageExtent(st)
 	}
 	g.emitMessageLoadBody(st)

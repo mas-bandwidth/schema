@@ -255,14 +255,18 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 	}
 	d.indexBits = ir.TableMessageBitsRequired(0, int64(count)+1)
 
+	// THE NODE TYPES THIS ROOT CAN PLACE are the numbering's own walk, and the
+	// id is the WIRE name's so a table renamed under `was` is the node type
+	// its old name numbers (§3.1, §5). It is the file form's map, built the
+	// same way over the same walk.
 	byTypeId := map[uint64]*ir.Struct{}
-	for name := range ir.PointerReachable(d.m.Unit, inst.Def) {
-		if sd := d.m.Lookup(name); sd != nil {
-			byTypeId[ir.TableWireId(name)] = sd
+	for _, st := range ir.PointerReachable(inst.Def) {
+		if sd := d.m.Lookup(st.Name); sd != nil {
+			byTypeId[ir.TableWireId(sd.WireName())] = sd
 		}
 	}
 	blobKind := map[uint64]ir.FieldTypeKind{}
-	bytesEdge, stringEdge := ir.PointerReachableBlobs(d.m.Unit, inst.Def)
+	bytesEdge, stringEdge := ir.PointerReachableBlobs(inst.Def)
 	if bytesEdge {
 		blobKind[ir.BytesWireTypeId] = ir.TBytes
 	}

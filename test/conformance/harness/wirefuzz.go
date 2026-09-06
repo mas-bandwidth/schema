@@ -110,7 +110,8 @@ func newWireRoot(u *units, unitKey, rootName string, message bool) (*wireRoot, e
 	// ROOT can place: a table no pointer below the root targets is a node the
 	// reader cannot name, so it commands none (docs/SPEC-TABLES.md §3.1,
 	// §6.5), exactly as the reference's <Root>NodeStorage answers -1 for one.
-	for name := range ir.PointerReachable(unit, def) {
+	for _, reached := range ir.PointerReachable(def) {
+		name := reached.Name
 		st := m.Lookup(name)
 		if st == nil {
 			continue
