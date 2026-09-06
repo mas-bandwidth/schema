@@ -511,6 +511,12 @@ func TestAnOverLongArrayOfNonFixedElements(t *testing.T) {
 	if names.Count != 4 || string(instStr(t, names.Elems[3].Tab, "s")) != "dddd" {
 		t.Errorf("the reader kept %d elements", names.Count)
 	}
+	// AND A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION (M1):
+	// the walk that finds the array's end reads five more elements and stores
+	// none of them, so element zero is element zero
+	if got := string(instStr(t, names.Elems[0].Tab, "s")); got != "a" {
+		t.Errorf("element zero reads %q: a walked surplus element landed on it", got)
+	}
 	if instU64(t, back, "after") != 4242 {
 		t.Errorf("the field after the array reads %d, not 4242: the walk landed on the wrong bit", instU64(t, back, "after"))
 	}

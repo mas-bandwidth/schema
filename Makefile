@@ -3544,7 +3544,7 @@ MESSAGE_FORM_CONTROLS := \
 	message-refusal-not-terminal:internal/tablewire/message.go:TestARefusedFirstAnnouncement \
 	message-width-above-kind:ir/tablemessage.go:TestTheSixFindings \
 	message-count-not-offset:internal/tablewire/messageencode.go:TestTheBasesTwoEncodings \
-	message-surplus-lands-on-zero:internal/tablewire/messagedecode.go:TestTheSixFindings \
+	message-surplus-lands-on-zero:internal/tablewire/messagedecode.go:TestAnOverLongArrayOfNonFixedElements \
 	message-wide-reads-raw:internal/tablewire/messagedecode.go:TestTheSixFindings \
 	message-narrow-before-clamp:internal/tablewire/messagedecode.go:TestTheSixFindings \
 	message-max-above-int32:ir/tablemessage.go:TestAHostileShape \

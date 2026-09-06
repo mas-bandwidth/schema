@@ -229,8 +229,10 @@ func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from 
 		g.pf("%s%s scratch%s;\n", inner, f.Type.Name, sfx)
 		g.emitMessageReadUnion(f, elem, inner)
 	default:
-		// A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION: it
-		// decodes into scratch, and only an in-bounds one lands
+		// A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION. A
+		// fixed-width surplus is stepped over by the arithmetic below and
+		// never decoded at all; a WALKED one decodes into scratch, and only
+		// an in-bounds element lands
 		typ, _ := g.cppFieldType(f.Type)
 		g.pf("%s%s scratch%s = %s;\n", inner, typ, sfx, g.fieldDefaultExpr(f))
 		g.emitMessageReadScalarFromEntry(f, "scratch"+sfx, inner, from, true)

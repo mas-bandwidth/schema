@@ -4697,7 +4697,10 @@ WALKED, element by element by its announced shape, and discarded as it goes. The
 walk is bounded by the batch's own bits and stores nothing, so it is linear in
 the surplus and allocates not at all, which is what keeps it a clamp and not a
 refusal. **The reader counts ONE `clamped` for the array**, as §4 says, however
-many elements it walked past.
+many elements it walked past. **A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A
+LIVE DESTINATION**: a fixed-width surplus is stepped over by the arithmetic and
+never decoded at all, and a walked one decodes into a sink the reader throws
+away, so element zero is element zero either way.
 
 ---
 
