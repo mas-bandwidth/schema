@@ -2189,78 +2189,8 @@ func walkArms(un *ir.Union, visit func(string), seen map[*ir.Union]bool) {
 	}
 }
 
-// closureEdge names the edge a closure member's field makes, as the author
-// wrote it. A generated map entry (docs/SPEC-TABLES.md §2.8) is a closure
-// member the author never spelled, so its value field is named as the map
-// field that generated it, reached through the map's value, climbing a map of
-// maps to the field the author wrote.
-func (c *checker) closureEdge(name string, st *ir.Struct, f *ir.Field) string {
-	if st.MapEntryOf == "" {
-		what := "type"
-		if st.IsTable {
-			what = "table"
-		}
-		return fmt.Sprintf("%s %s's field %s", what, name, f.Name)
-	}
-	owner, field, _ := strings.Cut(st.MapEntryOf, ".")
-	depth := 0
-	for entry := c.tables[owner]; entry != nil && entry.MapEntryOf != ""; entry = c.tables[owner] {
-		owner, field, _ = strings.Cut(entry.MapEntryOf, ".")
-		depth++
-	}
-	through := "its map value" + strings.Repeat("'s map value", depth)
-	return fmt.Sprintf("table %s's field %s, through %s,", owner, field, through)
-}
-
-// fieldPos is where a declared body spells a field, descending `if` blocks,
-// so a diagnostic about the field lands on its line rather than the
-// declaration's. The declaration's own position stands in when the body does
-// not spell the name.
-func (c *checker) fieldPos(name, field string) ast.Pos {
-	d, ok := c.astDecls[name]
-	if !ok {
-		return ast.Pos{}
-	}
-	var body *ast.Block
-	switch d := d.(type) {
-	case *ast.TypeDecl:
-		body = d.Body
-	case *ast.TableDecl:
-		body = d.Body
-	}
-	if pos, found := blockFieldPos(body, field); found {
-		return pos
-	}
-	return d.DeclPos()
-}
-
-func blockFieldPos(b *ast.Block, field string) (ast.Pos, bool) {
-	if b == nil {
-		return ast.Pos{}, false
-	}
-	for _, item := range b.Items {
-		switch item := item.(type) {
-		case *ast.Field:
-			if item.Name == field {
-				return item.Pos, true
-			}
-		case *ast.IfItem:
-			if pos, found := blockFieldPos(item.Then, field); found {
-				return pos, true
-			}
-			if pos, found := blockFieldPos(item.Else, field); found {
-				return pos, true
-			}
-		}
-	}
-	return ast.Pos{}, false
-}
-
 func (c *checker) checkTables() {
 	closure := map[string]bool{}
-	// the field that pulled each `type` into the closure, so a refusal that
-	// exists BECAUSE of closure membership names the edge that created it
-	reachedBy := map[string]string{}
 	var walk func(name string)
 	walk = func(name string) {
 		if closure[name] {
@@ -2275,20 +2205,11 @@ func (c *checker) checkTables() {
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
-			site := c.closureEdge(name, st, f)
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Struct:
-				if !closure[ref.Name] {
-					reachedBy[ref.Name] = site
-				}
 				walk(ref.Name)
 			case *ir.Union:
-				walkArms(ref, func(target string) {
-					if !closure[target] {
-						reachedBy[target] = fmt.Sprintf("%s, through an arm of %s,", site, ref.Name)
-					}
-					walk(target)
-				}, map[*ir.Union]bool{})
+				walkArms(ref, walk, map[*ir.Union]bool{})
 			}
 		}
 	}
