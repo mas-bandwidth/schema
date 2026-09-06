@@ -3732,8 +3732,8 @@ static void test_json_dialect()
     // A KIND 12 PAYLOAD IS WELL-FORMED UTF-8 (docs/SPEC-TABLES.md §3), so a
     // byte in a string body that is not part of a well-formed sequence is not
     // a code point either and READS as U+FFFD (§16.3), one per sequence,
-    // counted as nothing. It does NOT swallow the character after it —
-    // including the closing quote — and the storage it leaves is storage the
+    // counted as nothing. It does NOT swallow the character after it, the
+    // closing quote included, and the storage it leaves is storage the
     // wire can carry.
     {
         tabledemo::ProfileConfig stray;
@@ -7078,7 +7078,7 @@ static void test_form_byte_refusals()
     // A VARIABLE ROOT'S MEASURE ANSWERS THE SAME REFUSAL BY NAME
     // (docs/SPEC-TABLES.md §3, §6.5): a form byte this build does not carry
     // makes LoadMeasure -1 with `unknown_form`, refused before any read, and
-    // a form it does carry writes nothing at all — the caller's own value
+    // a form it does carry writes nothing at all, so the caller's own value
     // stands beside the size, which is what makes a measure that answers cost
     // nothing.
     {
@@ -8334,6 +8334,33 @@ static void test_blob_past_slab()
 // a blob record whose length runs ONE BYTE past its field is §3.1's
 // node-table damage: malformed, every pointer null, the root's own
 // fields surviving
+// A BLOB PAST THE DERIVED-SIZE CAP is refused BY NAME (docs/SPEC-TABLES.md
+// §3.1, §6.5, §11), and the clause is reachable directly: `<Root>NodeStorage`
+// is a pure function of a type id and a length, so the length is handed to it
+// rather than spelled onto a wire that would have to carry four gigabytes to
+// say the same thing. A record's length rides as a `u32`, so the cap is
+// 0xFFFFFFFF and one past it is 0x100000000.
+//
+// Red where the cap is not checked: the storage comes back as a size a caller
+// would then try to allocate.
+static void test_blob_over_size_cap()
+{
+    blobdemo::TableRefuseReason reason = blobdemo::ok;
+    CHECK( blobdemo::CatalogNodeStorage( blobdemo::kTableBytesTypeId, 0x100000000ll, reason ) == blobdemo::kTableNodeRefused );
+    CHECK( reason == blobdemo::blob_over_size_cap );
+
+    // AT the cap it is an ordinary answer, and the reason is untouched
+    reason = blobdemo::ok;
+    CHECK( blobdemo::CatalogNodeStorage( blobdemo::kTableBytesTypeId, 0xFFFFFFFFll, reason ) > 0 );
+    CHECK( reason == blobdemo::ok );
+
+    // and a `*string` blob takes the same clause: the cap is the record's
+    // length, not the terminator its storage adds
+    reason = blobdemo::ok;
+    CHECK( blobdemo::CatalogNodeStorage( blobdemo::kTableStringTypeId, 0x100000000ll, reason ) == blobdemo::kTableNodeRefused );
+    CHECK( reason == blobdemo::blob_over_size_cap );
+}
+
 static void test_blob_record_length_off_by_one()
 {
     blobdemo::CatalogBuilder builder;
@@ -9067,6 +9094,7 @@ int main()
     test_blob_null_and_empty();
     test_blob_past_slab();
     test_blob_string_terminator();
+    test_blob_over_size_cap();
     test_blob_record_length_off_by_one();
     test_blob_kind_mismatch();
     test_blob_cook();

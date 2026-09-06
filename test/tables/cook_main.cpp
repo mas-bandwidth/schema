@@ -1925,7 +1925,7 @@ static int mode_conformance( const char * manifest_path, const char * outdir )
 }
 
 // ---------------------------------------------------------------------------
-// mode: reasons — the harness's `cook-reason` surface
+// mode: reasons, the harness's `cook-reason` surface
 // ---------------------------------------------------------------------------
 //
 // One process over the DERIVED manifest: every `refusal` line names a forgery

@@ -24,7 +24,7 @@ func init() {
 		// vocabulary a cook's Open, a block's BlockOpen and LoadMeasure's -1
 		// share, and its values, which sit at namespace scope like the message
 		// reasons above.
-		Name{Name: "TableRefuseReason", What: "why a FILE was refused, by name — the one vocabulary Open, BlockOpen and LoadMeasure's -1 share (§6.5, §7, §19.2)"},
+		Name{Name: "TableRefuseReason", What: "why a FILE was refused, by name. Open, BlockOpen and LoadMeasure's -1 share the one vocabulary (§6.5, §7, §19.2)"},
 		Name{Name: "ok", What: "no clause failed: the only refusal value beside a non-null root (§7)"},
 		Name{Name: "not_a_cook", What: "the magic is neither this build's nor its byte reversal (§7)"},
 		Name{Name: "foreign_order", What: "a cook of the other byte order (§7.1)"},

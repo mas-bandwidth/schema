@@ -207,8 +207,8 @@ func TestJsonKeyIsHonoured(t *testing.T) {
 	}
 }
 
-// §16.2: trailing commas and comments are accepted on read — the authoring
-// files this form exists for carry them — and never written. `//` runs to the
+// §16.2: trailing commas and comments are accepted on read, because the
+// authoring files this form exists for carry them, and never written. `//` runs to the
 // end of the line or of the input, `/* */` to its closing delimiter, and an
 // unclosed `/*` is malformed on the terms an unclosed string is.
 func TestTrailingCommasAndComments(t *testing.T) {
@@ -605,7 +605,7 @@ func TestBitsImpliedBound(t *testing.T) {
 // payload is well-formed UTF-8, so a byte in a string body that is not part of
 // a well-formed sequence is not a code point and READS as one U+FFFD. Three
 // bytes where one stood, so a `string(N)` clamps at its own bound, at a code
-// point boundary — and the text form is byte-stable from the FIRST lap,
+// point boundary, and the text form is byte-stable from the FIRST lap,
 // because the storage it built is storage the wire can carry.
 func TestIllFormedByteIsReplacedOnRead(t *testing.T) {
 	// build_note is string(48): 47 filler bytes plus one ill-formed byte fits,

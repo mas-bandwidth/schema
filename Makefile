@@ -181,7 +181,7 @@ build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POI
 # TableRefuseReason IS SANCTIONED, and it is the FORM's vocabulary rather than
 # the map's or the list's: every unit's cook Open names its refusal in it
 # (docs/SPEC-TABLES.md §7, §11), so every unit carries it. It stays in the list
-# below BECAUSE `TableRef`, the pointer handle, is a PREFIX of it — the
+# below BECAUSE `TableRef`, the pointer handle, is a PREFIX of it, and the
 # extraction takes the longest alternative at a position, so naming the whole
 # spelling here is what makes the token that comes out `TableRefuseReason`
 # rather than `TableRef`, and the sanctioned list below is what then clears it.

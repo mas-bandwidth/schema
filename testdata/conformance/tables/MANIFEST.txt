@@ -405,6 +405,13 @@ forgery block_pitch                block block_render block_render 0 0x003c 4 0x
 forgery block_count_past_extent    block block_render block_render 0 0x0038 4 0xfa0                200000 refuse a count whose rows leave the extent the caller passed
 forgery block_count_past_maximum   block block_render block_render 0 0x0038 4 0x1388              7879488 refuse a count past the declared maximum, inside a roomy extent
 forgery block_offset_overflow      block block_render block_render 0 0x0020 8 0x7fffffffffffffc0       -1 refuse an offset 64-aligned and just under 2^63 — the forgery fuzzer's find
+# THE USED EXTENT'S OWN PADDING (§19.2): the image is untouched and the CALLER's
+# bytes stop one short of the rounding the used extent takes to 64. block_render's
+# greatest end is 2784 and its file is 2816, so 2815 covers every array and not
+# the padding. It is `truncated` rather than `bad_layout` BECAUSE the arrays are
+# read first: the used extent is derived from them and has nothing to say until
+# they agree.
+forgery block_extent_padding       block block_render block_render 0 -1           0     0                            2815 refuse bytes that stop inside the used extent's own padding
 
 # THE COOK FORGERY BATTERY as data (docs/SPEC-TABLES.md §7, §7.4), pinned
 # from test/tables/cook_main.cpp's 111 by that binary's emit-forgeries mode:
@@ -827,12 +834,16 @@ report r2_cfg_as_r1 tblr1 Cfg testdata/wire/tables/r2_cfg.bin
 # accelerator can answer, one per clause that shares a value, and two that pin
 # the ORDER: a file failing two clauses answers the first.
 #
-# THE BLOCK'S `truncated` AND `unaligned_base` ARE NOT HERE, and that is about
-# the FORGERY they would need rather than about the reason: each is a clause
-# over the buffer the CALLER passed and not over the image, so no patched word
-# reaches it. test/tables/block_main.cpp's BlockOpen gate pins all four
-# readings there (a null base, a length under the prologue, a length under the
-# used extent, an unaligned base) beside the match that writes nothing.
+# THE BLOCK'S `truncated` REACHES THIS SURFACE THROUGH THE EXTENT COLUMN, which
+# is a caller's length and not a patched word: block_extent_padding leaves the
+# image alone and claims one byte less than the used extent's rounding, on the
+# precedent cook_claim_one_short set. THE BLOCK'S `unaligned_base` IS STILL NOT
+# HERE, and that is about the forgery it would need rather than about the
+# reason: it is a clause over the ADDRESS the caller passed, and a manifest row
+# hands a driver a path rather than a pointer. test/tables/block_main.cpp's
+# BlockOpen gate pins all five readings there (a null base, a length under the
+# prologue, a length under the arrays, a length inside the padding, an
+# unaligned base) beside the match that writes nothing.
 #
 #   refusal <forgery> <reason>
 #
@@ -868,3 +879,4 @@ refusal block_pitch               bad_layout
 refusal block_count_past_extent   bad_layout
 refusal block_count_past_maximum  bad_layout
 refusal block_offset_overflow     bad_layout
+refusal block_extent_padding      truncated

@@ -6537,7 +6537,7 @@ one check rather than two.
 **A BLOB NODE in a region** (§2.5) is an eight-byte header and then the
 bytes: `length (u64)`, then `length` bytes of data at offset eight, so the
 data itself is eight-aligned and the header expresses every length the wire
-can carry (§3); a `*string` blob carries one more
+can carry (§3). A `*string` blob carries one more
 zero byte after its data, which is the terminator `string(N)`'s storage
 carries and the reason a region hands back a C string with no copy. **A
 `*wstring` blob is that same header and two more zero bytes**: its `length` is
@@ -6667,11 +6667,22 @@ The builder is designed to go wide, lock-free by ownership:
 
   | value | what refused, and where it is stated |
   |---|---|
-  | `unknown_form` | a form byte this build does not carry (§3). The read never begins, so it is a refusal and not damage, which is what §3 already says of it |
+  | `unknown_form` | a form byte THIS CALL does not carry (§3). The read never begins, so it is a refusal and not damage, which is what §3 already says of it. **A FILE'S MEASURE ANSWERS IT FOR ANY BYTE THAT IS NOT THE FILE FORM**, form `2` included: a build that carries the message form carries it through the message surface (§3.3), and a batch handed to a file root is a form its file measure does not read. The `Load` beside it distinguishes the two, answering `message_form_as_file` where the byte is `2` and `newer_form` otherwise, because a report has room to say which and a `-1` has one value |
   | `count_over_length` | an array or map count whose elements cannot fit the field's own `L` (§2.8, §2.9) |
   | `count_over_extent_cap` | a count above the `int32` extent cap (§2.2), which no region can hold whatever its size |
   | `blob_over_size_cap` | a blob whose length is past the derived-size cap (§3.1, §11) |
   | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6) |
+
+  **`data_cycle` IS THE ONE VALUE WITH NO CARRIER TODAY, and the ruling is
+  that it gets one rather than that it loses its name**: `LoadMeasure` is the
+  only measure that takes the out-parameter, while the cycle is refused by
+  `Measure`, `CookMeasure`, `Save`, `Cook` and `Lock` (§3.1, §7.6), each of
+  which answers a bare `-1` or `false`. A value no call can write is a case
+  that exists only in the vocabulary, so **`Measure` and `CookMeasure` take
+  the same trailing `TableRefuseReason *` `LoadMeasure` takes**, written on
+  the refusal path only, and the enum keeps one value per clause with nothing
+  hiding behind another. Threading it through the pack walk is a named
+  follow-on rather than part of the row that introduced the enum.
 
   **A REFUSAL MOVES NO COUNTER** (§4): nothing was decoded, so there is nothing
   to report, and the reason is where the answer lives. **This shares a surface
@@ -7439,7 +7450,11 @@ the wire, and keeps the flexibility that comes with it.
   root, with the shared check in `TableCookOpen` naming the first failing
   clause in the order above. The conformance manifest pins one row per value
   on the `cook-reason` and `block-reason` surfaces, over the forgery
-  fixtures the `forgery` surfaces already read. Every other backend's `Open`
+  fixtures the `forgery` surfaces already read. **`unaligned_base` IS THE ONE
+  BLOCK VALUE THAT SURFACE DOES NOT CARRY**, because it is a clause over the
+  ADDRESS the caller passed and a manifest row hands a driver a path rather
+  than a pointer. It is held in the C++ reference's own `BlockOpen` gate
+  instead, beside the four readings that are on the surface. Every other backend's `Open`
   is still the null alone in its own spelling, and takes the parameter with
   the wire form it lacks (§15).
 
@@ -11488,7 +11503,7 @@ carries three accessors where C++ carries a tag offset and an arm offset.
   form's one formatting opinion, and it is held because a text these files
   exist for is read and diffed by people.
 - **THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE.** Every writer emits
-  it — `ToJson` in every backend, and `schema unpack` — and every reader
+  it, `ToJson` in every backend and `schema unpack` alike, and every reader
   ACCEPTS a text with or without one, because the trailing whitespace a read
   already skips is what makes the two the same text. The byte belongs to the
   FORM rather than to a file convention: a text is written to a file, pasted
@@ -13118,11 +13133,14 @@ schema name, as everywhere else in that backend.
 - **`BlockOpen` checks once and points, and this is the WHOLE check**, in
   §7's own order so that one enum and one order serve both accelerators: the
   magic read bytewise, the byte order it establishes, the build version
-  against this build's own, the used extent against the `bytes` the caller
-  passed, each array's PITCH against this build's own, its COUNT against the
-  declared maximum, its `offset_of` and its extent inside the block, and LAST
-  the base's alignment, which is the only clause that reads nothing out of the
-  block. **A block has no reserved prologue word and no `alignment` word**
+  against this build's own, then each array's PITCH against this build's own,
+  its COUNT against the declared maximum, its `offset_of` and its extent
+  inside the block, THEN the used extent against the `bytes` the caller
+  passed, and LAST the base's alignment, which is the only clause that reads
+  nothing out of the block. **The used extent sits after the arrays because it
+  is derived from them** (§19.1: the greatest `offset_of + count * stride`),
+  so there is no `used` to compare against `bytes` until every triple has
+  been read and agreed with. **A block has no reserved prologue word and no `alignment` word**
   (§19.1: the prologue is exactly `magic`, `build_version` and `byte_order`),
   so two clauses of §7's list are absent here rather than reordered, and the
   values that name them never fire for a block. A count past the maximum is checked HERE as well as at
@@ -13134,12 +13152,16 @@ schema name, as everywhere else in that backend.
   validate and nothing to fix up. On any failure it returns false and points
   at nothing — §7's shape, for §7's reason. **And it NAMES the failure in the
   same `TableRefuseReason` a cook's `Open` fills** (§7), first failing clause
-  first, in the order above: `not_a_cook` where the magic is neither this
-  build's block constant nor its byte reversal, `foreign_order`,
-  `wrong_build_version`, `truncated` where the used extent runs past the
-  `bytes` the caller passed, `bad_layout` for a pitch, a count, an offset or an
-  extent that disagrees with this build's or leaves the block, and
-  `unaligned_base` last. `reserved_not_zero` and `bad_alignment` never fire,
+  first, in the order the arithmetic forces: `not_a_cook` where the magic is
+  neither this build's block constant nor its byte reversal, `foreign_order`,
+  `wrong_build_version`, then `bad_layout` for a pitch, a count, an offset or
+  an extent that disagrees with this build's or leaves the block, then
+  `truncated` where the used extent runs past the `bytes` the caller passed,
+  and `unaligned_base` last. **THE ARRAYS ARE READ BEFORE THE USED EXTENT,
+  because the used extent is DERIVED FROM THEM**: a block whose triples do not
+  agree with this build has no trustworthy `used` to compare against `bytes`,
+  so the per-array clauses answer first and `truncated` speaks only for a
+  layout that already agrees. `reserved_not_zero` and `bad_alignment` never fire,
   for the reason above. One enum serves both
   accelerators because a consumer that falls back from either falls back the
   same way, and two vocabularies would have said the same things twice.

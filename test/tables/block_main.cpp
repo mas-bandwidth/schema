@@ -727,6 +727,49 @@ int main( int argc, char ** argv )
         reason = ok;
         check( !RenderFrameBlockOpen( opened, storage.base, bytes - 64, &reason ) && reason == bad_layout,
                "BlockOpen refuses a length whose arrays no longer fit: an extent clause, not a truncation" );
+        // THE USED EXTENT'S OWN PADDING, and it is the `truncated` reading no
+        // forgery of an IMAGE can reach (§19.2): the caller's bytes cover every
+        // array and stop INSIDE the rounding the used extent takes to 64. The
+        // arrays are read BEFORE the used extent, because the used extent is
+        // derived from them, so this is `truncated` and not `bad_layout`. A
+        // block of its own is laid out for it, with counts whose greatest end
+        // is not a multiple of 64 — the corpus frame's is.
+        {
+            RenderFrameBlockStorage pad_storage;
+            check( pad_storage.Create( counting_allocator() ), "the padding reading's storage allocates" );
+            RenderFrameCounts pad_counts = {};
+            pad_counts.cameras = 1;
+            // the LAST array is what the used extent is taken from, and its
+            // pitch is 80: one row leaves 48 bytes of padding to stop inside
+            pad_counts.explosions = 1;
+            RenderFrameBlock pad_block;
+            check( RenderFrameBlockBegin( pad_block, pad_storage, pad_counts ), "Begin lays the padding reading's block out" );
+            const int64_t pad_bytes = RenderFrameBlockBytes( pad_block );
+            const TableBlockTriple * const pad_triples[] = {
+                &pad_block.projection->cameras, &pad_block.projection->ships,
+                &pad_block.projection->turrets, &pad_block.projection->missiles,
+                &pad_block.projection->dynamic_props, &pad_block.projection->static_props,
+                &pad_block.projection->cosmetic_props, &pad_block.projection->lasers,
+                &pad_block.projection->explosions };
+            int64_t pad_used = (int64_t) sizeof( RenderFrameBlock::Projection );
+            for ( size_t t = 0; t < sizeof( pad_triples ) / sizeof( pad_triples[0] ); t++ )
+            {
+                const int64_t end = (int64_t) pad_triples[t]->offset_of
+                                  + (int64_t) pad_triples[t]->count * (int64_t) pad_triples[t]->stride;
+                if ( end > pad_used ) { pad_used = end; }
+            }
+            check( pad_bytes > pad_used, "the used extent is NOT 64-aligned, which is what this reading needs" );
+            RenderFrameBlock pad_open;
+            TableRefuseReason pad_reason = ok;
+            check( !RenderFrameBlockOpen( pad_open, pad_storage.base, pad_bytes - 1, &pad_reason ),
+                   "BlockOpen refuses bytes that stop inside the used extent's own padding" );
+            check( pad_reason == truncated, "and it NAMES truncated, not bad_layout: every array fits the caller's bytes" );
+            pad_reason = ok;
+            check( RenderFrameBlockOpen( pad_open, pad_storage.base, pad_bytes, &pad_reason ) && pad_reason == ok,
+                   "and one byte more opens: the padding is the whole of the difference" );
+            pad_storage.Destroy();
+        }
+
         // THE BASE'S ALIGNMENT IS THE LAST CLAUSE (§7, §19.2), so the image
         // has to be WHOLE and at an unaligned address for it to be reached:
         // shifting the pointer into the image would fail the magic first, and
