@@ -148,7 +148,7 @@ func TestCountOutsideItsWireRangeIsRefusedInEveryBuild(t *testing.T) {
 		}
 		// and it is not an assert: no line naming the count may carry the
 		// target's build-removable predicate.
-		for _, line := range strings.Split(text, "\n") {
+		for line := range strings.SplitSeq(text, "\n") {
 			if !strings.Contains(line, countName[target]) {
 				continue
 			}
