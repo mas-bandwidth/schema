@@ -1104,8 +1104,8 @@ enum is keyed.
   id, and that is held by test.
 - **Fixed-size when `T` is**, so the zero-cost gate holds.
 
-**A POSITIONAL ARRAY WHOSE BOUND FOLDS FROM AN ENUM IS REFUSED ANYWHERE A
-TABLE CLOSURE REACHES, and `[E]T` is the table form.** The rule follows the
+**A POSITIONAL ARRAY WHOSE BOUND FOLDS FROM AN ENUM IS REFUSED IN A TABLE
+BODY AND A UNION ARM, and `[E]T` is the table form.** The rule follows the
 bound's PROVENANCE rather than its spelling, and it is stated here once for
 the whole page:
 
@@ -1113,18 +1113,15 @@ the whole page:
   enum directly, and `[N]T` where `const N = E.Max` or `const N = E.Count`
   names it through a constant, at any depth of constant arithmetic (SPEC.md
   §4.2). A bound that folds from an enum is one bound however it is spelled.
-- **The CLOSURE is the scope.** A table body's own field, a union arm, and
-  every `type` the closure reaches through any nesting of `type`, union,
-  array, bounded array, optional, map value and pointer, all take the same
-  refusal, on the traversal §11's wide-text refusal already walks: the
-  checker records the edge that pulls each `type` into a table closure and
-  refuses every offending field of it.
+- **THE SCOPE IS A TABLE BODY AND A UNION ARM.** A table body's own field
+  takes the refusal, and so does a field of a union arm that body carries,
+  in every spelling the bound has above. The same array held by a `type` a
+  table closure reaches is a case of its own with two answers that exclude
+  each other, and it is ruled on schema#606 (THE HAZARD REACHES A `type`,
+  below).
 - **The DIAGNOSTIC names the field, the enum the bound folds from, and the
   fix**, which is `[E]T`, the name-keyed form. Where the bound reaches the
-  enum through a constant it names the constant. Where the field belongs to
-  a `type`, it names the edge that put the `type` in the closure, because
-  that edge is the only reason the rule applies and a person looking at the
-  `type` alone would not otherwise see it (§11).
+  enum through a constant it names the constant.
 
 **The reason is that an ordinal-indexed array is a POSITIONAL vocabulary and
 a table may have only one.** Such a field carries its elements by position, so
@@ -1137,30 +1134,36 @@ beside the keyed one leaves the class open for anyone who spells it that way
 and never touches the field again, which no kind number can catch, because
 nothing about the FIELD moved.
 
-**THE HAZARD IS THE CLOSURE'S AND NOT THE BODY'S, which is what sets the
-scope.** A `type` a table reaches rides this wire as a kind `13` body, and a
-positional array inside it rides under kind `14` (§3), so a variant inserted
-in the middle lands every later element one slot off in every stored file,
-exactly as it does in the table body's own field. What a `type` edit moves is
-the connect gate and the committed baseline (SPEC.md §3.1, §18), and a STORED
-FILE carries neither: a save written before the insert holds no protocol id
-and no baseline, so nothing in it can report the shift. One rule over the
-closure is what closes that, and it costs a `type` no table reaches nothing.
+**THE HAZARD REACHES A `type` A TABLE HOLDS, AND SCHEMA#606 IS THE RULING.**
+A `type` a table reaches rides this wire as a kind `13` body, and a
+positional array inside it rides under kind `14` today (§3), so a variant
+inserted in the middle lands every later element one slot off in every stored
+file, exactly as it does in the table body's own field. What a `type` edit
+moves is the connect gate and the committed baseline (SPEC.md §3.1, §18), and
+a STORED FILE carries neither: a save written before the insert holds no
+protocol id and no baseline, so nothing in it can report the shift. Two
+answers close that and they exclude each other, refusing the shape in every
+`type` a table closure reaches or keying the table wire for an enum-extent
+array wherever it is declared, so this page states the refusal for the table
+body and the union arm and states neither answer for the `type` until the
+ruling lands.
 
-**It is also what makes `flags` the only exception to the reachability rule**
-(SPEC.md §3.1). Under a projection scoped to what a `type` reaches, an enum
-only tables reach leaves the protocol id, so the connect gate stops refusing
-two peers whose variant orders disagree. That is correct for a vocabulary
-read by NAME and wrong for one read by POSITION, and the refusal above is what
-leaves `flags` as the only positional vocabulary a table has, and therefore
-the only exception the projection needs.
+**THE RULE IS ALSO WHAT MAKES `flags` THE ONLY EXCEPTION to the reachability
+rule** (SPEC.md §3.1). Under a projection scoped to what a `type` reaches, an
+enum only tables reach leaves the protocol id, so the connect gate stops
+refusing two peers whose variant orders disagree. That is correct for a
+vocabulary read by NAME and wrong for one read by POSITION, and the refusal
+above is what leaves `flags` as the only positional vocabulary a table body
+and a union arm have, with schema#606 closing the `type` under either of its
+answers, and therefore the only exception the projection needs.
 
 **On the TYPE wire the spelling stays legal and positional**, in a `type` no
-table closure reaches: that body's `[E.Max]T` is a plain array whose extent is
-the variant count, its bytes are the packet wire's, every fact of it projects,
+table reaches: that body's `[E.Max]T` is a plain array whose extent is the
+variant count, its bytes are the packet wire's, every fact of it projects,
 and the connect gate is what covers a variant insert (SPEC.md §3.1). The
-refusal is the table CLOSURE's, and it is what §2.2's mode derivation already
-made a per-body question, read over the closure rather than over one body.
+refusal above is the table body's and the union arm's, and it is what §2.2's
+mode derivation already made a per-body question. A `type` a table closure
+reaches keeps the spelling until schema#606 rules.
 
 **HELD BY TEST: one diagnostics row a SHAPE, red first.** Each row is a unit
 the checker must refuse, and each is red if the unit compiles or if the
@@ -1169,27 +1172,29 @@ diagnostic does not name the field, the enum and the fix.
 - **The BOUND's own shapes, in a table body**: `[E.Max]T`, `[E.Count]T`,
   `[N]T` under `const N = E.Max`, and one more under a constant that folds
   through another constant.
-- **The CLOSURE's shapes**, one per wrapper the walk descends, each holding
-  the positional array one level in: a `type` held by value, a nested `type`,
-  a union arm, `[N]T`, `[..N]T`, `[]T`, `?T`, `*T`, a map value, and an
-  enum-keyed array's element. Each diagnostic names the reaching edge as
-  well.
-- **The CONTROLS hold the other edge**: a `type` no table reaches keeps the
-  spelling, a packet-wire unit is untouched, and a positional array whose
-  bound is a plain literal or a constant that folds from no enum stands
-  wherever it is spelled.
-- **The NEGATIVE CONTROL removes the closure walk**, and every closure row
-  compiles clean without it.
+- **The UNION ARM's shape**: the same array in a field of a union arm the
+  table body carries, its diagnostic naming the arm as well.
+- **The CONTROLS hold the other edge**: a packet-wire unit is untouched, a
+  positional array whose bound is a plain literal or a constant that folds
+  from no enum stands wherever it is spelled, and a `type` no table reaches
+  keeps the spelling.
+- **The NEGATIVE CONTROL removes the constant fold from the bound check**,
+  and every row whose bound reaches its enum through a constant compiles
+  clean without it.
 
 **CHECKER STATUS: NOT REFUSED YET, in any shape.** The refusal is specified
 ahead of its implementation, on the terms §3.3 and §6.6 take. `schema check`
-accepts a positional enum-bound array in a table body and anywhere a table
-closure reaches, with no diagnostic and exit 0, so a unit that spells the
-array positionally compiles and carries the positional class this rule exists
-to close. Two sections rest on the refusal being made, §4.1's count of the
-silent class and SPEC.md §3.1's one exception to reachability, and each is
-written from this rule rather than from the tree. Owed as schema#540, and this
-line is deleted by the implementation PR that lands the behavior.
+accepts a positional enum-bound array in a table body and in a union arm,
+with no diagnostic and exit 0, so a unit that spells the array positionally
+compiles and carries the positional class this rule exists to close. Two
+sections rest on the refusal being made, §4.1's count of the silent class and
+SPEC.md §3.1's one exception to reachability, and each is written from this
+rule rather than from the tree. Owed as schema#540, and this line is deleted
+by the implementation PR that lands the behavior.
+
+**RULING STATUS: the type-held case is ruled on schema#606.** Until then a
+`type` no table reaches keeps the spelling and a `type` a table reaches is
+not refused.
 
 **A KEY ENUM IS IN THE TABLE CLOSURE'S VOCABULARY**, and the closure's
 rules reach it through the keying field. An enum that a table closure
@@ -1202,8 +1207,8 @@ KEYING FIELD as the edge that pulled the enum in, because that edge is the
 only reason the rule applies and a person looking at the enum alone would
 not otherwise see it.
 
-Refused by name: **a positional array whose bound folds from an enum,
-anywhere a table closure reaches**, above; a bound naming a
+Refused by name: **a positional array whose bound folds from an enum, in a
+table body and a union arm**, above; a bound naming a
 `flags` declaration (a mask holds any set of bits at once, so it names no
 single slot); a bounded keyed array, `[..E]` or `[A..E]` (a keyed array is
 COMPLETE by construction); an element that is a pointer, as for any array
@@ -3986,9 +3991,10 @@ The keyed spelling costs the key reference and the slot's own `L` per
 present slot, two bytes where both are small, and it closes that class. The corpus holds it with a middle insert and a removal in one
 generation step, and the negative control — encoding the slots
 positionally — turns the middle-insert test red. **The positional array is
-refused wherever a table closure reaches it, on the bound's provenance and
-not on its spelling** (§2.4), so a `type` the closure holds cannot carry the
-class in on kind `14` under a kind `13` body.
+refused in a table body and a union arm, on the bound's provenance and not
+on its spelling** (§2.4). Whether a `type` the table closure holds can still
+carry the class in on kind `14` under a kind `13` body, or rides keyed there
+as every enum-extent array would, is ruled on schema#606.
 
 **And the two spellings do not decode each other.** A `16` body read as a
 `14`, or the reverse, would take keys for values and values for keys — the
@@ -5900,10 +5906,11 @@ on it.**
   besides flags: insert a variant in the middle and every later slot lands
   one place off. `[E]T` (§2.4) closes it — keyed slots ride by name, so a
   middle insert moves no slot. **And a positional array whose bound folds
-  from an enum is REFUSED BY NAME anywhere a table closure reaches** (§2.4,
+  from an enum is REFUSED BY NAME in a table body and a union arm** (§2.4,
   §11), so the closed class cannot be reopened by spelling the bound another
-  way, folding it through a constant, or holding the array in a `type` the
-  closure reaches. That refusal
+  way or folding it through a constant. The same array held by a `type` a
+  table closure reaches is ruled on schema#606, by that refusal or by a keyed
+  wire, and the class is closed under either answer. That refusal
   is what leaves `flags` the ONE positional vocabulary a table has, which
   is in turn what makes `flags` the one exception to the reachability rule
   the protocol id is scoped by (SPEC.md §3.1).
@@ -6843,7 +6850,7 @@ fixed class's own row is the refusal.
 
 ```cpp
 uint8_t storage[ 64 * 1024 ];              // the caller owns it and sizes it
-uint64_t ids[ 64 * 1024 / 8 ];             // one entry an id, sized exactly
+TableRetain::Id ids[ 64 * 1024 / 8 ];      // an id and its slot, an entry
 
 TableRetain retain;
 retain.bytes = storage;
@@ -6898,27 +6905,44 @@ SceneSaveRetain( scene, &retain, buffer, size, &report );
 
 **THE RETAINED IDS' STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE
 CODEC NEVER ALLOCATES.** A save names every id it writes through a table, and
-the generated one cannot hold a retained id: `TableIds` is sized by a
+THE GENERATED ID TABLE cannot hold a retained id: it is sized by a
 COMPILE-TIME CONSTANT, the distinct names this unit's closure can spell, which
 is what makes a plain save allocate nothing, and a retained id is by definition
-a name that closure does not contain. So the retention tail carries its own id
+a name that closure does not contain. `TableIds` is that table's C++ spelling
+and PORTING.md is its home. So the retention tail carries its own id
 list, on the shape §3.3's resolved vocabulary already takes: the caller places
 the storage and the codec never allocates.
 
-- **THE CALLER DECLARES AN ARRAY OF IDS beside the retained records and hands
-  it to the three calls inside `TableRetain`, with its CAPACITY.** Where the
-  array sits is the caller's own business, static, on a heap, in an arena, or
-  inside the object that holds the region, and it lives exactly as long as the
-  retention buffer does, because it names what that buffer holds.
-- **`TableIds` IS UNTOUCHED.** Its capacity, its overflow rule and its `-1`
-  stand exactly as they are for every save, retaining or not, and no retained
-  id ever enters it.
+- **THE CALLER DECLARES AN ARRAY OF ENTRIES beside the retained records and
+  hands it to the three calls inside `TableRetain`, with its CAPACITY.** Where
+  the array sits is the caller's own business, static, on a heap, in an arena,
+  or inside the object that holds the region, and it lives exactly as long as
+  the retention buffer does, because it names what that buffer holds.
+- **AN ENTRY IS THE ID AND WHAT THE PORT NEEDS TO ANSWER A REPEAT REFERENCE TO
+  IT**, which is the id's own slot in the trailer being written: the two
+  stores are numbered into ONE trailer in merged first-use order (below), so
+  an index into the caller's list is not the number a second reference wants
+  and the slot rides beside the id. The entry's LAYOUT is the port's own,
+  exactly as a retained record's is (A RETAINED RECORD IS READER-PRIVATE,
+  below), and nothing compares two ports' entries. It rides INSIDE
+  `TableRetain`, which the sample spells `TableRetain::Id`, so it claims no
+  name of its own (§11).
+- **THE GENERATED ID TABLE IS UNTOUCHED.** Its capacity, its overflow rule and
+  its `-1` stand exactly as they are for every save, retaining or not, and no
+  retained id ever enters it.
 - **THE FILE STILL CARRIES ONE ID TABLE** (§3), and the split is the writer's
   storage rather than the wire's: an id this build can name takes its entry
-  from `TableIds`, a retained id takes its entry from the caller's list, and
+  from the generated table, a retained id takes its entry from the caller's
+  list, and
   both are numbered into one trailer in the order the walk first uses them.
   A retained id used by two records takes one entry, exactly as any repeat
   does.
+- **THE LIST FILLS AS THE SAVE WALK INTERNS, AND LOAD ONLY CLEARS IT.**
+  `LoadRetain` resets both stores and writes into neither list, because a
+  retained record carries its field's identity in the record itself, with
+  every reference resolved (below). An entry is taken where `MeasureRetain`
+  and `SaveRetain` first reach an id, so the overflow below is a measure-time
+  and save-time event and one walk produces it in both.
 - **A RETAINED ID PAST THE CAPACITY COUNTS ONE `retain_lost` AND ITS RECORD IS
   DROPPED, and the save is never refused.** It is the capacity rule the
   retention buffer already has, applied to the other store: the record is not
@@ -6926,13 +6950,16 @@ the storage and the codec never allocates.
   degrades to the default behavior one record at a time. `MeasureRetain` and
   `SaveRetain` drop the same records under the same walk, so the measure sees
   the same overflow and its answer is the size the save writes.
-- **EIGHT BYTES AN ID IS THE CONSTANT A CALLER SIZES EXACTLY BY.** Every id a
-  retained record names rides in that record as a reference widened to eight
-  bytes (THE SECURITY BOUND, below), and no record is placed unless it fits
-  whole, so a full retention buffer of `C` bytes holds at most `C / 8` ids. A
-  caller that declares that many entries can never meet the bound, and one
-  that declares fewer takes the drop rule above and reads it in
-  `retain_lost`.
+- **`C / 8` IS THE COUNT BOUND, AND IT IS AN UPPER BOUND NO CALLER MEETS.**
+  Every id a retained record names rides in that record as a reference widened
+  to eight bytes (THE SECURITY BOUND, below), and no record is placed unless
+  it fits whole, so a retention buffer of `C` bytes can never hold more than
+  `C / 8` distinct ids. Nothing reaches that count: the smallest record is
+  over ten bytes, its path and its two lengths included, so a caller that
+  declares `C / 8` entries pays the port's entry size for entries the buffer
+  can never fill. The bound is what no file can beat, and the number of
+  entries below it is the caller's own policy, read back in `retain_lost` when
+  it is short.
 
 **WHAT IS RETAINED: a FIELD whose id this reader cannot name**, at any depth,
 in the root body and in every node record (§3.1), **except the SIX EXCLUDED
@@ -7192,8 +7219,9 @@ copies attacker-chosen bytes, so the bound is stated rather than assumed:
   compile-time constant of the unit. The smallest unknown field on the wire is
   three bytes, so a file of nothing but tiny unknown fields is the worst
   ratio, and the caller's capacity is what answers it rather than any rule of
-  the wire's. The id list's bound is the same accounting read the other way,
-  eight bytes an id over the buffer's capacity (THE RETAINED IDS, above).
+  the wire's. The id list's COUNT bound is the same accounting read the other
+  way, the buffer's capacity over eight bytes an id, and no file reaches it
+  (THE RETAINED IDS, above).
 - **`retain_lost` is the whole of the denial-of-service surface, and it is a
   counter rather than a failure.** A file engineered to fill the buffer
   degrades one field at a time. It cannot make a read fail, allocate, or take
@@ -7259,7 +7287,7 @@ above), the fixed class's own row excepted:
   whose id has no entry is dropped, `retain_lost` counts one, the save answers
   the size the measure gave, and the file's own id table carries every other
   retained id in first-use order. Red if the save is refused, if a record
-  rides without its id, or if `TableIds` grew an entry.
+  rides without its id, or if the generated id table grew an entry.
 - a FIXED-class root, whose `LoadRetain` is refused by name. Red if the call
   compiles, and red if the refusal is a missing symbol rather than a named
   one.
@@ -9702,16 +9730,13 @@ in build version (§20.5).
   default on an optional; and a field whose name collides with an
   optional's `<field>_present` companion.
 - **Enum-keyed arrays** (§2.4): **a POSITIONAL array whose bound folds from
-  an enum, anywhere a TABLE CLOSURE reaches**, which is `[E.Max]T`,
+  an enum, in a TABLE BODY and a UNION ARM**, which is `[E.Max]T`,
   `[E.Count]T` and
   `[N]T` under a `const N` that folds from either, a compile error naming the
   field, the enum and `[E]T` as the fix, because an ordinal-indexed array is a
   positional vocabulary and a table has one, `flags` (§2.4, §4.1, SPEC.md
-  §3.1). The refusal follows the bound's PROVENANCE and not its spelling, and
-  a field of a `type` is refused once the closure is known, through any
-  nesting of `type`, union, array, bounded array, optional, map value and
-  pointer, naming the edge that put the `type` in the closure, on the walk the
-  wide-text refusal below already uses. The spelling stays legal
+  §3.1). The refusal follows the bound's PROVENANCE and not its spelling, on
+  the scope §2.4 states. The spelling stays legal
   in a `type` no table reaches, where it is a plain array; a bound naming a `flags`
   declaration (a mask names no single slot); a bounded keyed array, `[..E]`
   or `[A..E]` (a keyed array is complete by construction); an element that is a pointer — `[E]*T`,
@@ -9723,9 +9748,11 @@ in build version (§20.5).
   diagnostic naming the keying field that pulled the enum in. A slot value no variant names is a SAVE failure, not a silent `None`
   (§3.2).
   **CHECKER STATUS: the positional spelling is NOT REFUSED YET, in any
-  shape**, accepted in a table body and anywhere a table closure reaches today
+  shape**, accepted in a table body and in a union arm today
   with no diagnostic, owed as schema#540 (§2.4), and this
   sentence is deleted by the implementation PR that lands it.
+  **RULING STATUS: the type-held case is ruled on schema#606**, and until
+  then a `type` a table reaches is not refused (§2.4).
 - **Maps** (§2.8): a map in a `type` body; a key that is an enum (the
   diagnostic names `[E]T`), a `bool`, a float, a `flags`, a `bits(N)`, a
   `bytes(N)`, a `wstring(N)` (the diagnostic names `string(N)`, because
@@ -10409,8 +10436,10 @@ are these rulings, in the owner's words:
   narrowed on 2026-09-05** with the reachability ruling (SPEC.md §3.1):
   `[E.Max]T` stays legal and positional in a `type` body no table reaches,
   where the whole spelling projects and the connect gate covers a variant
-  insert, and it is REFUSED anywhere a TABLE CLOSURE reaches (§2.4), where
-  nothing on the wire could report the same insert. `[E]T` is the table form. What the user chooses is still a choice
+  insert, and it is REFUSED in a TABLE BODY and a UNION ARM (§2.4), where
+  nothing on the wire could report the same insert. `[E]T` is the table form.
+  A `type` a table closure reaches is ruled on schema#606. What the user
+  chooses is still a choice
   in the place the choice is safe, and the table body has one spelling
   because a table has one positional vocabulary, `flags`, and that is what
   makes `flags` the only exception the scoped projection needs.

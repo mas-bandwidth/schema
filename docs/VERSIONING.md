@@ -965,9 +965,15 @@ still open.
   as name hashes, so a reorder is invisible and safe and a rename is
   `unknown`, counted. **Two things had to be true for that to hold, and both
   were made true rather than found true.** `flags`, the one vocabulary where a
-  reorder IS silent, is held in the projection. And `[E.Max]T` is refused in a
-  table body (SPEC-TABLES.md §2.4, §11), so the other positional vocabulary a
-  table could have had is gone rather than excepted. The residue is that a
+  reorder IS silent, is held in the projection. And a positional array whose
+  bound folds from an enum is refused in a table body and a union arm on the
+  bound's provenance rather than its spelling, `[E.Max]T`, `[E.Count]T` and
+  `[N]T` under a `const N` that folds from either (SPEC-TABLES.md §2.4, §11),
+  so the other positional vocabulary a
+  table could have had is gone rather than excepted. The same array held by a
+  `type` a table closure reaches is ruled on schema#606, by that refusal or by
+  a keyed wire, and the vocabulary is gone under either answer. The residue is
+  that a
   table-only enum or union is guarded by the tables baseline and the build
   version and no longer by the connect gate.
 - **A field of a `type` that a table reaches renames under `was`** exactly
@@ -1065,9 +1071,12 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #432: the cook triple, and the byte-order sentences in five places.
 - #441: the retired-names ledger.
 - #446: the evolution table's fixtures.
-- #540: the `[E.Max]T` refusal in a table body, which SPEC-TABLES.md §2.4 and
+- #540: the refusal of a positional array whose bound folds from an enum, in a
+  table body and a union arm and in every spelling the bound has, which
+  SPEC-TABLES.md §2.4 and
   §11 state and the checker does not make, so the positional spelling still
-  compiles there and reopens the class §4.1 closed.
+  compiles there and reopens the class §4.1 closed. The `type`-held case is
+  ruled on #606.
 - #524: the reachability-scoped wire-shape projection, and the negative
   control on the walk that a missed edge must turn red.
 - #525: retain-unknown, the two report counters, and the conformance rows.

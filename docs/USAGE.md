@@ -1930,20 +1930,23 @@ way — and there the storage is a **plain array**: `per_team [Team]int32` in a
 `None` guard, because there is no key to check and no `None` slot to guard.
 Only the table wire keys the slots.
 
-**And a positional array whose bound comes from an enum is REFUSED anywhere a
-table closure reaches, by name**, with `[E]T` named as the fix. The refusal
+**And a positional array whose bound comes from an enum is REFUSED in a table
+body and a union arm, by name**, with `[E]T` named as the fix. The refusal
 follows where the bound comes from and not how it is spelled, so `[E.Max]T`,
-`[E.Count]T` and `[N]T` under a `const N = E.Max` all take it, in a table body
-and in every `type` a table reaches. *The specification states that refusal
+`[E.Count]T` and `[N]T` under a `const N = E.Max` all take it. *The
+specification states that refusal
 and the checker does not make it today: all of those still
 compile ([#540](https://github.com/mas-bandwidth/schema/issues/540)).*
 An ordinal-indexed array is a positional
 vocabulary, and a table has exactly one of those — `flags` — so the refusal is
 what keeps the closed class closed: you cannot reopen it by spelling the bound
-another way, folding it through a constant, or holding the array in a `type`
-the table reaches. `[E.Max]T` stays legal in
+another way or folding it through a constant. `[E.Max]T` stays legal in
 a `type` no table reaches, where it is a plain array (SPEC-TABLES.md §2.4,
-§11).
+§11). *Whether a `type` a table reaches keeps the spelling, or the table wire
+keys the array there too, is
+open ([#606](https://github.com/mas-bandwidth/schema/issues/606)), so a
+`type` a table reaches is not refused
+today.*
 
 A key enum counts as part of the table closure: it rides by variant name, so
 `| max` headroom and colliding variant names are refused for it too, with the

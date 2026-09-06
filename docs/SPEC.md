@@ -242,8 +242,9 @@ declaration, because sixty-four bits is the ceiling and the law is append at
 the end, so the case this scoping exists for, a content enum of item kinds,
 quests or achievements growing weekly, cannot arise in one. The other
 positional vocabulary a table could have had is gone rather than excepted:
-a positional array whose bound folds from an enum is REFUSED BY NAME anywhere
-a table closure reaches, every `type` the closure holds included
+a positional array whose bound folds from an enum is REFUSED BY NAME in a
+table body and a union arm, and the same array held by a `type` a table
+closure reaches is ruled on schema#606, by that refusal or by a keyed wire
 (SPEC-TABLES.md §2.4, §11), so
 `[E]T` is the table form and an enum a table reaches moves no slot when it
 changes. Flags is therefore the whole of the exception, and there is no
@@ -334,10 +335,12 @@ Consequences, in both directions:
 - **What scoping OPENED, read against the silent class.** The four edits the
   table wire cannot report (SPEC-TABLES.md §4.1) gain no fifth member, and the
   claim rests on two facts rather than on inspection. **One: a table has
-  exactly one positional vocabulary, and it is `flags`.** A positional array
-  whose bound folds from an enum is refused by name anywhere a table closure
-  reaches, every `type` the closure holds included (SPEC-TABLES.md §2.4, §11),
-  so an enum a
+  exactly one positional vocabulary, and it is `flags`.** No positional
+  enum-bound array rides anywhere a table closure reaches: the refusal names
+  a table body and a union arm, and the `type`-held case is ruled on
+  schema#606, whose two answers both leave that claim standing
+  (SPEC-TABLES.md §2.4, §11).
+  So an enum a
   table reaches is read by variant name at every site and a variant inserted,
   removed or reordered moves no stored slot. **Two: `flags` is held in this
   projection** (§3.1), so the one vocabulary whose move a table cannot report
