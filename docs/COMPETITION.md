@@ -76,8 +76,10 @@ machinery.
 
 **The gaps in that claim are named rather than argued away**, and each is an
 issue this page's rows already carry: the message form is specified and nothing
-writes it yet, as are the `widened` promotion rule and the `TableRefuseReason`
-enum ([#523](https://github.com/mas-bandwidth/schema/issues/523)); unknown
+writes it yet ([#523](https://github.com/mas-bandwidth/schema/issues/523)), and
+the `widened` promotion rule and the `TableRefuseReason` enum are the C++
+reference's and the tool's with the eight ports owing them
+([#366](https://github.com/mas-bandwidth/schema/issues/366)); unknown
 fields are dropped on rewrite unless a caller opts into retention, which is
 specified and unbuilt
 ([#525](https://github.com/mas-bandwidth/schema/issues/525)); a retired name can

@@ -7071,6 +7071,31 @@ static void test_form_byte_refusals()
         CHECK( tblv1::CfgLoadVerdict( out, both, 3, &report ) == tblv1::TableOpenRefused );
         CHECK( report.refused && !report.malformed );
     }
+
+    // A VARIABLE ROOT'S MEASURE ANSWERS THE SAME REFUSAL BY NAME
+    // (docs/SPEC-TABLES.md §3, §6.5): a form byte this build does not carry
+    // makes LoadMeasure -1 with `unknown_form`, refused before any read, and
+    // a form it does carry writes nothing at all — the caller's own value
+    // stands beside the size, which is what makes a measure that answers cost
+    // nothing.
+    {
+        graphdemo::SceneBuilder builder;
+        build_scene( builder );
+        static uint8_t scene_wire[8192];
+        const int64_t scene_bytes = graphdemo::SceneSave( builder, scene_wire, sizeof( scene_wire ) );
+        CHECK( scene_bytes > 0 );
+
+        graphdemo::TableRefuseReason reason = graphdemo::ok;
+        CHECK( graphdemo::SceneLoadMeasure( scene_wire, scene_bytes, NULL, &reason ) > 0 );
+        CHECK( reason == graphdemo::ok ); // a measure that answers writes nothing
+
+        static uint8_t forged_scene[8192];
+        memcpy( forged_scene, scene_wire, (size_t) scene_bytes );
+        forged_scene[0] = 3;
+        reason = graphdemo::ok;
+        CHECK( graphdemo::SceneLoadMeasure( forged_scene, scene_bytes, NULL, &reason ) == -1 );
+        CHECK( reason == graphdemo::unknown_form );
+    }
 }
 
 // ---- A FIELD THE WRITER DOES NOT WRITE IS NOT AN EDGE (§3.1, schema#440) --

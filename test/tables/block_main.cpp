@@ -725,11 +725,21 @@ int main( int argc, char ** argv )
         check( !RenderFrameBlockOpen( opened, storage.base, 8, &reason ) && reason == truncated,
                "BlockOpen refuses a length shorter than the projection: there is no prologue to read" );
         reason = ok;
-        check( !RenderFrameBlockOpen( opened, storage.base, bytes - 64, &reason ) && reason == truncated,
-               "BlockOpen refuses a length shorter than the used extent" );
-        reason = ok;
-        check( !RenderFrameBlockOpen( opened, storage.base + 8, bytes, &reason ) && reason == unaligned_base,
-               "BlockOpen refuses an unaligned base, LAST, because it is the one clause that reads nothing out of the block" );
+        check( !RenderFrameBlockOpen( opened, storage.base, bytes - 64, &reason ) && reason == bad_layout,
+               "BlockOpen refuses a length whose arrays no longer fit: an extent clause, not a truncation" );
+        // THE BASE'S ALIGNMENT IS THE LAST CLAUSE (§7, §19.2), so the image
+        // has to be WHOLE and at an unaligned address for it to be reached:
+        // shifting the pointer into the image would fail the magic first, and
+        // that is the ordering this check is about.
+        {
+            uint8_t * raw = (uint8_t *) malloc( (size_t) bytes + 128 );
+            uint8_t * lead = (uint8_t *) ( ( (uintptr_t) raw + 63 ) & ~(uintptr_t) 63 ) + 1;
+            memcpy( lead, storage.base, (size_t) bytes );
+            reason = ok;
+            check( !RenderFrameBlockOpen( opened, lead, bytes, &reason ) && reason == unaligned_base,
+                   "BlockOpen refuses an unaligned base, LAST, because it is the one clause that reads nothing out of the block" );
+            free( raw );
+        }
 
         // each prologue word in turn, restored after
         const uint64_t magic = block.projection->magic;

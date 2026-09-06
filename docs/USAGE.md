@@ -871,9 +871,7 @@ skipped by their kind, absent fields take their declared defaults, a field
 whose kind changed is skipped rather than misdecoded, a field whose kind
 merely GREW — an integer to a wider integer of the same signedness, or
 `float32` to `float64` — decodes exactly and counts `widened`, and
-out-of-range values are clamped. *The widening rule is specified and nothing
-counts `widened` yet, in any language
-([#523](https://github.com/mas-bandwidth/schema/issues/523)).* Every such event is counted in a report;
+out-of-range values are clamped. Every such event is counted in a report;
 framing damage stops the damaged nesting level, keeps what it decoded there
 and reads on past the field's own length, so one bad subtable never takes
 down the rest of the file. Tables never touch the protocol id —
@@ -2346,9 +2344,8 @@ its ascending prefix, flags `malformed`, and the parent reads on. A key that
 does not fit the reader's bound drops its entry and counts `clamped`, one per
 entry, so keys never clamp into each other. A key kind that disagrees resets
 the map to empty and counts one `kind_mismatch`, and a key kind the reader's
-own WIDENS decodes exactly and counts one `widened` (*specified, and nothing
-counts `widened` yet in any language,
-[#523](https://github.com/mas-bandwidth/schema/issues/523)*). And a map is
+own WIDENS decodes exactly and counts one `widened`, once for the map however
+many of its keys widened. And a map is
 byte-identical with `[..N]Pair` over a user's own
 `table Pair { key ...; value ... }`, in both directions, which is the
 migration path from the table-of-pairs idiom.
