@@ -119,6 +119,74 @@ func TestUnionTagEnumExportsCountAndItsDebugName(t *testing.T) {
 	}
 }
 
+// COUNT IS RESERVED EXACTLY WHERE THE MEMBER EXISTS. A packet union's tag
+// enum carries Count now, so an arm exporting Count would define the member
+// twice — a redefinition in C++ and C#. A TABLE-CLOSURE union's tag shape is
+// emitted beside the tables and carries Max alone, so the name is still free
+// there, and the corpus's own tables/messages/Messages.schema uses it.
+const countArmPacketUnion = `package tagcount
+
+type A
+{
+    x uint16
+}
+
+union U
+{
+    count A
+}
+
+type T
+{
+    u U
+}
+`
+
+const countArmTableUnion = `package tagcounttable
+
+table A
+{
+    x uint16
+}
+
+union U
+{
+    thing A
+    count int32 | min = 0, max = 100
+}
+
+table T
+{
+    body U
+}
+`
+
+func TestAPacketUnionArmNamedCountIsRefusedByName(t *testing.T) {
+	errs := checkErrors(t, countArmPacketUnion)
+	if len(errs) == 0 {
+		t.Fatal("an arm whose exported spelling is Count passed check — its tag enum defines Count twice")
+	}
+	var joined []string
+	for _, e := range errs {
+		joined = append(joined, e.Error())
+	}
+	text := strings.Join(joined, "\n")
+	for _, want := range []string{"variant count is a compile error", "the member Count"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the refusal does not name the rule (%q): %s", want, text)
+		}
+	}
+}
+
+// The other side of the same rule: the name stays legal where no Count is
+// emitted. A refusal here would break the corpus, and it would reserve a name
+// against a member that does not exist.
+func TestATableClosureUnionArmNamedCountIsAccepted(t *testing.T) {
+	if errs := checkErrors(t, countArmTableUnion); len(errs) > 0 {
+		t.Errorf("a table-closure union's arm named count was refused, and its tag shape carries no Count: %v", errs[0])
+	}
+}
+
 // The name function names every value a reader can meet, the out-of-set ones
 // included: None at 0, each variant in declared order, and "???" past them.
 func TestTagEnumDebugNameCoversNoneVariantsAndOutOfSet(t *testing.T) {

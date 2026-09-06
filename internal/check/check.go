@@ -977,6 +977,20 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 	// dropped variants (duplicates, bad payloads) already errored; Max and
 	// storage stay the DECLARED count so cascade diagnostics do not invent a
 	// second wire shape — the unit is refused either way.
+
+	// Count is reserved exactly where the member exists. A PACKET union's tag
+	// enum carries Count beside Max in all nine targets, so an arm exporting
+	// Count would define the member twice; a TABLE-CLOSURE union's tag shape
+	// is emitted beside the tables and carries Max alone, so the name is free
+	// there. The kind is known only once every arm is resolved, which is why
+	// this sits after the loop rather than beside None, Max and Type.
+	if !un.TableClosureOnly() {
+		for _, v := range d.Variants {
+			if ir.GoExportName(v.Name) == "Count" {
+				c.errf(v.Pos, "variant %s is a compile error — a union's generated tag enum carries its declared variant count as the member Count, checked over the exported spelling (SPEC §4.8, §4.2)", v.Name)
+			}
+		}
+	}
 }
 
 // resolveArm resolves one arm as a FIELD LINE (SPEC §4.8,
