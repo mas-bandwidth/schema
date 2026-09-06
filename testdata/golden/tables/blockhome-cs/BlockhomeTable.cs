@@ -118,6 +118,15 @@ namespace Blockhome
         // one — both carry a value -> name function and a variant id.
         public TableUnionInfo Arms;
 
+        // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+        // block above it, verbatim (SPEC §4.1) — TableDocNone when there is none,
+        // never null — and its tags (SPEC §4.2) in declared order, 0 and null when
+        // there are none. Static, built once with the descriptor and cached with
+        // it, so a walk that prints every doc and every tag allocates nothing.
+        public string Doc;
+        public int NumTags;
+        public string[] Tags;
+
         // ---- the storage location, in C#'s own currency ----
         //
         // GetRaw/SetRaw carry one NUMERIC element: an integer sign-extended into
@@ -173,6 +182,11 @@ namespace Blockhome
         // could not express without a function (docs/SPEC-TABLES.md §8.1). It calls
         // TableReset, the same prefill the wire's read path calls.
         public Action<object> Reset;
+        // the declaration's own doc and tags, on the same terms as a field's
+        // (docs/SPEC-TABLES.md §8.1)
+        public string Doc;
+        public int NumTags;
+        public string[] Tags;
     }
 
     // TableWriter is a ref struct over the caller's span: the wire is written in
@@ -322,6 +336,12 @@ namespace Blockhome
     // one slice per generated file.
     public static partial class Schema
     {
+        // THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+        // block carries a doc column naming this one constant, so absence costs a
+        // unit no string data and a printer concatenates doc columns with no null
+        // test.
+        public const string TableDocNone = "";
+
         // the IEEE-754 bit patterns the wire carries for f32 and f64 (docs/SPEC-TABLES.md §3)
         public static float TableBitsToFloat(uint bits)
         {

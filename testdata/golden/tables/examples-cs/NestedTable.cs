@@ -147,10 +147,13 @@ namespace Tabledemo
             info.NumFields = 2;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "root", Json = "root", TypeName = "RootConfig", Id = 0x2eb8, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RootConfigTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((ArchiveConfig)o).Root; } },
-                new TableFieldInfo { Name = "count", Json = "count", TypeName = "int32", Id = 0xe445, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ArchiveConfig)o).Count; }, SetRaw = delegate(object o, int i, ulong r) { ((ArchiveConfig)o).Count = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "root", Json = "root", TypeName = "RootConfig", Id = 0x2eb8, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RootConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((ArchiveConfig)o).Root; } },
+                new TableFieldInfo { Name = "count", Json = "count", TypeName = "int32", Id = 0xe445, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ArchiveConfig)o).Count; }, SetRaw = delegate(object o, int i, ulong r) { ((ArchiveConfig)o).Count = unchecked((int)(long)r); } },
             };
             info.Reset = delegate(object o) { TableReset((ArchiveConfig)o); };
+            info.Doc = TableDocNone;
+            info.NumTags = 0;
+            info.Tags = null;
             ArchiveConfigTableInfo = info;
             return info;
         }

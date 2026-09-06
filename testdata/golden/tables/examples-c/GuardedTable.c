@@ -1707,15 +1707,15 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
 /* ---- json walk: end ---- */
 
 static const TableFieldInfo schema_tabledemo_patrol_fields_[] = {
-    { "active", "active", "bool", 0x405a, 1, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( ( (Patrol *) 0 )->active ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "speed", "speed", "float32", 0xbc00, 10, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( ( (Patrol *) 0 )->speed ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "active" },
-    { "has_target", "has_target", "bool", 0xb0a7, 1, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( ( (Patrol *) 0 )->has_target ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "active" },
-    { "target_id", "target_id", "int32", 0xdf6a, 4, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( ( (Patrol *) 0 )->target_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, -1, NULL, 0, NULL, NULL, -1, NULL, "active && has_target" },
-    { "wander", "wander", "float32", 0x832f, 10, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( ( (Patrol *) 0 )->wander ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "active && !has_target" },
-    { "note", "note", "string", 0x9da7, 12, 0, 1, 0, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( ( (Patrol *) 0 )->note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "!active" },
+    { "active", "active", "bool", 0x405a, 1, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( ( (Patrol *) 0 )->active ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "speed", "speed", "float32", 0xbc00, 10, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( ( (Patrol *) 0 )->speed ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "active", TableDocNone, 0, NULL },
+    { "has_target", "has_target", "bool", 0xb0a7, 1, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( ( (Patrol *) 0 )->has_target ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "active", TableDocNone, 0, NULL },
+    { "target_id", "target_id", "int32", 0xdf6a, 4, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( ( (Patrol *) 0 )->target_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, -1, NULL, 0, NULL, NULL, -1, NULL, "active && has_target", TableDocNone, 0, NULL },
+    { "wander", "wander", "float32", 0x832f, 10, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( ( (Patrol *) 0 )->wander ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "active && !has_target", TableDocNone, 0, NULL },
+    { "note", "note", "string", 0x9da7, 12, 0, 1, 0, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( ( (Patrol *) 0 )->note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "!active", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_tabledemo_patrol_info_ = { "Patrol", (uint32_t) sizeof( Patrol ), 6, schema_tabledemo_patrol_fields_, schema_tabledemo_patrol_reset_raw_ };
+const TableTypeInfo schema_tabledemo_patrol_info_ = { "Patrol", (uint32_t) sizeof( Patrol ), 6, schema_tabledemo_patrol_fields_, schema_tabledemo_patrol_reset_raw_, TableDocNone, 0, NULL };
 
 int schema_tabledemo_patrol_from_json_( Patrol * value, const char * text, int64_t bytes, TableReport * report )
 {

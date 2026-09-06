@@ -148,14 +148,10 @@ func (g *tableGen) annotationColumns(indent, doc string, tags []string, tagsRef 
 	if doc != "" {
 		docColumn = ir.QuoteDocDart(doc)
 	}
-	// a string literal carries no break of its own, so a doc past the column
-	// limit takes the formatter's other shape: the value on its own line, four
-	// columns in from the argument
-	if one := fmt.Sprintf("%sdoc: %s,", indent, docColumn); len(one) <= 80 {
-		g.pf("%s\n", one)
-	} else {
-		g.pf("%sdoc:\n%s    %s,\n", indent, indent, docColumn)
-	}
+	// a string literal carries no break of its own, so the argument stays on
+	// one line however long the text is: that is what `dart format` writes,
+	// and the generated tree is held to it
+	g.pf("%sdoc: %s,\n", indent, docColumn)
 	g.pf("%snumTags: %d,\n", indent, len(tags))
 	list := "null"
 	if len(tags) > 0 {

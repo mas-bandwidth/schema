@@ -166,6 +166,13 @@ struct TableWideRange
     uint64_t hi[2];
 };
 
+// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+// block carries a doc column pointing at this one object, so absence costs a
+// unit no string data and a printer concatenates doc columns with no null
+// test. One definition for the whole unit: every absent doc compares equal by
+// address.
+inline const char TableDocNone[1] = "";
+
 // the arena's allocation front, defined with the variable-length runtime
 // below; a descriptor names it only through a pointer parameter.
 struct TableWorker;
@@ -244,6 +251,13 @@ struct TableFieldInfo
     // or the int32 cap. NULL on every field that is neither.
     void * ( * place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
+    // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+    // block above it, verbatim (SPEC §4.1) — TableDocNone when there is none,
+    // never NULL — and its tags (SPEC §4.2) in declared order, 0 and NULL when
+    // there are none. Static, constant-initialized, allocating nothing.
+    const char * doc;
+    int32_t num_tags;
+    const char * const * tags;
 };
 
 struct TableTypeInfo
@@ -263,6 +277,11 @@ struct TableTypeInfo
     // and read through a region root. Nobody declares it; the compiler
     // works it out.
     bool variable;
+    // the declaration's own doc and tags, on the same terms as a field's
+    // (docs/SPEC-TABLES.md §8.1)
+    const char * doc;
+    int32_t num_tags;
+    const char * const * tags;
 };
 
 struct TableWriter
@@ -7522,24 +7541,24 @@ extern const TableTypeInfo IntsTableInfo;
 extern const TableTypeInfo FloatsTableInfo;
 
 inline const TableFieldInfo BytesTableFields[] = {
-    { "data", "data", "uint8", 0x855b556730a34a05ull, 6, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Bytes, data ), (uint32_t) sizeof( uint8_t ), (uint32_t) offsetof( Bytes, data.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<uint8_t> *) slot ); }, "" },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Bytes, after ), (uint32_t) sizeof( Bytes::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "data", "data", "uint8", 0x855b556730a34a05ull, 6, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Bytes, data ), (uint32_t) sizeof( uint8_t ), (uint32_t) offsetof( Bytes, data.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<uint8_t> *) slot ); }, "", TableDocNone, 0, NULL },
+    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Bytes, after ), (uint32_t) sizeof( Bytes::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
-inline const TableTypeInfo BytesTableInfo = { "Bytes", (uint32_t) sizeof( Bytes ), 2, BytesTableFields, +[]( void * p ) { BytesReset( *(Bytes *) p ); }, true };
+inline const TableTypeInfo BytesTableInfo = { "Bytes", (uint32_t) sizeof( Bytes ), 2, BytesTableFields, +[]( void * p ) { BytesReset( *(Bytes *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * BytesTableType() { return &BytesTableInfo; }
 
 inline const TableFieldInfo IntsTableFields[] = {
-    { "values", "values", "int32", 0x21277bcf1a4d67fbull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Ints, values ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Ints, values.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "" },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ints, after ), (uint32_t) sizeof( Ints::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "values", "values", "int32", 0x21277bcf1a4d67fbull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Ints, values ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Ints, values.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL },
+    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ints, after ), (uint32_t) sizeof( Ints::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
-inline const TableTypeInfo IntsTableInfo = { "Ints", (uint32_t) sizeof( Ints ), 2, IntsTableFields, +[]( void * p ) { IntsReset( *(Ints *) p ); }, true };
+inline const TableTypeInfo IntsTableInfo = { "Ints", (uint32_t) sizeof( Ints ), 2, IntsTableFields, +[]( void * p ) { IntsReset( *(Ints *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * IntsTableType() { return &IntsTableInfo; }
 
 inline const TableFieldInfo FloatsTableFields[] = {
-    { "values", "values", "float32", 0x21277bcf1a4d67fbull, 10, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Floats, values ), (uint32_t) sizeof( float ), (uint32_t) offsetof( Floats, values.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<float> *) slot ); }, "" },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Floats, after ), (uint32_t) sizeof( Floats::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "values", "values", "float32", 0x21277bcf1a4d67fbull, 10, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Floats, values ), (uint32_t) sizeof( float ), (uint32_t) offsetof( Floats, values.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<float> *) slot ); }, "", TableDocNone, 0, NULL },
+    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Floats, after ), (uint32_t) sizeof( Floats::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
-inline const TableTypeInfo FloatsTableInfo = { "Floats", (uint32_t) sizeof( Floats ), 2, FloatsTableFields, +[]( void * p ) { FloatsReset( *(Floats *) p ); }, true };
+inline const TableTypeInfo FloatsTableInfo = { "Floats", (uint32_t) sizeof( Floats ), 2, FloatsTableFields, +[]( void * p ) { FloatsReset( *(Floats *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * FloatsTableType() { return &FloatsTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----
