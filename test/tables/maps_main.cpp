@@ -882,6 +882,8 @@ static void test_measure_refusals()
 
 // ---- the TEXT form (docs/SPEC-TABLES.md §2.8, §16) ----
 
+static void test_text_allocation_refusals();
+
 static void test_text()
 {
     FleetBuilder b;
@@ -988,6 +990,142 @@ static void test_text()
         CHECK( !WideRowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
         CHECK( r.malformed );
     }
+    {
+        // A KEY IS DATA AND A LENGTH, never a run to the first NUL (§2.8, §3):
+        // the wire and the text both carry an interior U+0000 in a string(N)
+        // key, so "a" and "a\0b" are TWO keys. A lookup that recomputes the
+        // length merges them and relabels the entry it found, which is a
+        // deletion the report never mentions.
+        const char * t = "{\"entries\":{\"a\":{\"count\":1},\"a\\u0000b\":{\"count\":2}}}";
+        RowBuilder rb;
+        TableReport r;
+        CHECK( RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK_EQ( rb.GetRoot()->entries.count, 2 );
+        CHECK_EQ( r.duplicate, 0 );
+        CHECK_EQ( r.clamped, 0 );
+    }
+    {
+        // and the SAME interior-zero key twice IS one key: one entry, counted
+        // duplicate, never a second entry wearing an identity the map holds
+        const char * t = "{\"entries\":{\"a\\u0000b\":{\"count\":1},\"a\\u0000b\":{\"count\":2}}}";
+        RowBuilder rb;
+        TableReport r;
+        CHECK( RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK_EQ( rb.GetRoot()->entries.count, 1 );
+        CHECK_EQ( r.duplicate, 1 );
+    }
+    test_text_allocation_refusals();
+}
+
+// ---- AN ALLOCATION FAILURE IS NOT AN OVERSIZED KEY (§2.8, §16.1) ----
+//
+// The arena refusing is the READ failing, the way the neighbouring list, blob
+// and pointer paths fail on one. Reporting it as `clamped` says the key did not
+// fit a bound it fits perfectly, hands back an instance missing entries the
+// text spelled, and calls the read a SUCCESS.
+//
+// The arena allocates one SEGMENT at a time, so a text has to cross a segment
+// boundary before the allocator is asked anything at all. Reaching that
+// boundary through the map alone would need tens of thousands of entries and an
+// insert scan quadratic in them, so the arena is filled through the builder's
+// own Alloc first — a constant-time call — and the READ is left the last
+// stretch to cross. How many nodes that takes is MEASURED here rather than
+// written down, so the row cannot rot when a node's storage or the segment's
+// size moves.
+
+struct TextBudget
+{
+    int64_t seen;
+    int64_t refuse_from; // 0 = never refuse
+};
+
+static void * text_budget_alloc( void * context, int64_t bytes )
+{
+    TextBudget * budget = (TextBudget *) context;
+    budget->seen++;
+    if ( budget->refuse_from > 0 && budget->seen >= budget->refuse_from ) { return NULL; }
+    return calloc( 1, (size_t) bytes );
+}
+
+static void text_budget_free( void * context, void * pointer ) { (void) context; free( pointer ); }
+
+// one `loadouts` object of `count` entries, each an inner map of one entry
+static void build_loadouts_text( char * text, int64_t capacity, int32_t count, int64_t & length )
+{
+    int64_t at = 0;
+    at += snprintf( text + at, (size_t) ( capacity - at ), "{\"loadouts\":{" );
+    for ( int32_t i = 0; i < count; i++ )
+    {
+        at += snprintf( text + at, (size_t) ( capacity - at ), "%s\"k%07d\":{\"1\":{\"count\":%d}}",
+                        i > 0 ? "," : "", i, i );
+    }
+    at += snprintf( text + at, (size_t) ( capacity - at ), "}}" );
+    length = at;
+}
+
+// the nodes one arena segment holds, MEASURED: allocate until the allocator is
+// asked for a second segment, and answer with what the first one took
+static int64_t nodes_per_segment()
+{
+    TextBudget probe = { 0, 0 };
+    TableAllocator counting;
+    counting.alloc = text_budget_alloc;
+    counting.free = text_budget_free;
+    counting.context = &probe;
+    FleetBuilder fb( counting );
+    if ( fb.GetRoot() == NULL ) { return 0; }
+    const int64_t first = probe.seen;
+    int64_t nodes = 0;
+    while ( probe.seen == first && nodes < ( 1 << 24 ) )
+    {
+        if ( fb.Alloc<ShipConfig>().null() ) { return 0; }
+        nodes++;
+    }
+    return probe.seen > first ? nodes : 0;
+}
+
+static void test_text_allocation_refusals()
+{
+    const int64_t fill = nodes_per_segment();
+    CHECK( fill > 4096 ); // a segment holds far more than the headroom left below
+    if ( fill <= 4096 ) { return; }
+
+    // 4096 entries, each an inner map of one, is more arena than the 2048 nodes
+    // of headroom left below — so the READ is what crosses into the segment the
+    // allocator refuses, whatever the entry's storage happens to be
+    const int64_t capacity = 1024 * 1024;
+    char * text = (char *) malloc( (size_t) capacity );
+    CHECK( text != NULL );
+    if ( text == NULL ) { return; }
+    int64_t length = 0;
+    build_loadouts_text( text, capacity, 4096, length );
+
+    TextBudget budget = { 0, 0 };
+    TableAllocator pair;
+    pair.alloc = text_budget_alloc;
+    pair.free = text_budget_free;
+    pair.context = &budget;
+    FleetBuilder fb( pair );
+    CHECK( fb.GetRoot() != NULL );
+    for ( int64_t i = 0; i < fill - 2048; i++ ) { CHECK( !fb.Alloc<ShipConfig>().null() ); }
+    const int64_t before = budget.seen;
+    budget.refuse_from = before + 1; // the arena can carve nothing more
+
+    TableReport r;
+    if ( FleetFromJson( fb, text, length, &r ) )
+    {
+        printf( "FAIL %s:%d: the arena refused and the read still called itself clean"
+                " (clamped=%d, entries=%d)\n",
+                __FILE__, __LINE__, r.clamped, fb.GetRoot()->loadouts.count );
+        failures++;
+    }
+    else
+    {
+        CHECK( r.malformed );
+        CHECK_EQ( r.clamped, 0 ); // an arena refusal is not a key over its bound
+    }
+    CHECK( budget.seen > before ); // the read did reach the allocator, or this proves nothing
+    free( text );
 }
 
 // ---- WHERE ELSE A MAP RIDES IN A HOLDER'S EXTENT (§2.8) ----

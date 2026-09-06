@@ -1184,13 +1184,17 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
         {
             placed += unit_length; // measured and not kept: a byte buffer's read sizes its node this way (§2.5)
         }
-        else if ( placed + unit_length <= capacity )
+        else if ( !clamped && placed + unit_length <= capacity )
         {
             memcpy( out + placed, unit, (size_t) unit_length );
             placed += unit_length;
         }
         else
         {
+            // A CLAMP IS A PREFIX. Once one code point does not fit, the scan
+            // stops placing: a later SHORTER code point sliding into the room
+            // the long one left would store a string the input never spelled,
+            // and one clamped count cannot tell the two apart.
             clamped = true;
         }
     }

@@ -143,6 +143,19 @@ inline int32_t TableKeyLength( const char * key, int32_t bound )
     return bound + 1; // longer than the bound: the caller refuses it
 }
 
+// A KEY IS DATA AND A LENGTH, and the length is CARRIED, never recomputed
+// (§2.8, §3). A string(N) key holds any byte a wire or a text can spell,
+// U+0000 included, so a lookup that measures to the first NUL answers that "a"
+// and "a", 0, "b" are the same key: the first entry is found, RESET, and
+// relabelled with the second key, which deletes an entry the report never
+// mentions. Every internal lookup and every insertion takes this pair; the
+// public const char * surface builds one and is a wrapper over it.
+struct TableMapKeyRef
+{
+    const char * data;
+    int32_t length;
+};
+
 // ---- the storage: SIXTEEN BYTES in the holder's record (§2.8, §7.2) ----
 //
 // An int64 self-relative reference to the entry array and an int32 count, then
@@ -704,6 +717,12 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
 // entry at one key, handed back at its defaults. It is the builder's Insert
 // with the ENTRY returned rather than its value, because the walk writes the
 // value through a field row and not through a typed pointer.
+//
+// THE ONE INSERTION PRIMITIVE. Lookup, reset, allocation and the KEY COPY are
+// all here, so no caller mutates an entry this did not create and no caller
+// relabels one it found. A key is copied only when an entry is created, which
+// is what makes a duplicate key leave the identity it matched untouched. NULL
+// is one thing and one thing only: the arena refused.
 template <typename Entry, typename Key>
 inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key key )
 {
@@ -717,7 +736,9 @@ inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key k
     TableMapHead * head = TableMapReach( worker, map );
     if ( head == NULL ) { return NULL; }
     Entry * entry = TableMapAppend( worker, head, map );
-    if ( entry != NULL ) { TableReset( *entry ); }
+    if ( entry == NULL ) { return NULL; }
+    TableReset( *entry );
+    TableEntrySetKey( *entry, key );
     return entry;
 }
 
@@ -789,13 +810,18 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 		g.pf("static const int32_t k%sKeyBound = %d; // string(%d): the key's storage, and the length an insert refuses past\n\n", n, bound, bound)
 		g.pf("inline int TableEntryOrder( const %s & a, const %s & b )\n{\n", n, n)
 		g.pf("    return TableKeyOrder( a.key, a.key_length, b.key, b.key_length );\n}\n")
+		g.pf("// THE ORDER TAKES DATA AND A LENGTH (§2.8): a key holds any byte, U+0000\n")
+		g.pf("// included, so nothing here measures to the first NUL. The const char *\n")
+		g.pf("// overload beside it is the wrapper the public surface spells.\n")
+		g.pf("inline int TableEntryOrder( const %s & entry, TableMapKeyRef key )\n{\n", n)
+		g.pf("    return TableKeyOrder( entry.key, entry.key_length, key.data, key.length );\n}\n")
 		g.pf("inline int TableEntryOrder( const %s & entry, const char * key )\n{\n", n)
-		g.pf("    return TableKeyOrder( entry.key, entry.key_length, key, TableKeyLength( key, k%sKeyBound ) );\n}\n", n)
+		g.pf("    return TableEntryOrder( entry, TableMapKeyRef{ key, TableKeyLength( key, k%sKeyBound ) } );\n}\n", n)
 		g.pf("inline const char * TableEntryKey( const %s & entry ) { return entry.key; } // NUL-terminated, the storage's own bytes\n", n)
-		g.pf("inline void TableEntrySetKey( %s & entry, const char * key, int32_t length )\n{\n", n)
-		g.pf("    memcpy( (void *) entry.key, (const void *) key, (size_t) length );\n")
-		g.pf("    entry.key[length] = 0;\n")
-		g.pf("    entry.key_length = length;\n}\n")
+		g.pf("inline void TableEntrySetKey( %s & entry, TableMapKeyRef key )\n{\n", n)
+		g.pf("    memcpy( (void *) entry.key, (const void *) key.data, (size_t) key.length );\n")
+		g.pf("    entry.key[key.length] = 0; // NUL-terminated BESIDE its length, for a C call site\n")
+		g.pf("    entry.key_length = key.length;\n}\n")
 	} else {
 		order := mapKeyOrderType(f)
 		typ, _ := g.cppFieldType(key.Type)
@@ -1141,27 +1167,20 @@ func (g *tableGen) emitMapBuilderSurface(owner *ir.Struct, f *ir.Field) {
 	g.pf("// writes Find first. NULL is NOT INSERTED: a key longer than the bound,\n")
 	g.pf("// because a truncated key would be a merged entry, and an arena that\n")
 	g.pf("// cannot carve another segment, alike.\n")
+	g.pf("//\n")
+	g.pf("// It is a WRAPPER: TableMapPlace owns the lookup, the reset, the\n")
+	g.pf("// allocation and the key copy, and this half is the bound and the\n")
+	g.pf("// const char * key's length. Nothing here mutates an entry (§2.8).\n")
 	g.pf("inline %s %s( TableWorker & worker, %s, %s key )\n{\n", g.mapInsertReturn(f), mapVerb(owner.Name, f, "Insert"), hold, key)
 	if mapKeyIsString(f) {
-		g.pf("    const int32_t length = TableKeyLength( key, k%sKeyBound );\n", n)
-		g.pf("    if ( key == NULL || length > k%sKeyBound ) { return NULL; } // KEYS NEVER CLAMP\n", n)
-	}
-	g.pf("    if ( worker.arena == NULL ) { return NULL; }\n")
-	g.pf("    %s * found = TableMapScan( *worker.arena, map, key ); // one LINEAR SCAN of the live entries\n", n)
-	g.pf("    if ( found != NULL )\n    {\n")
-	g.pf("        TableResetMapValue( *found ); // a duplicate REPLACES: the value goes back to its defaults\n")
-	g.pf("        return TableEntryValue( found );\n    }\n")
-	g.pf("    TableMapHead * head = TableMapReach( worker, map );\n")
-	g.pf("    if ( head == NULL ) { return NULL; }\n")
-	g.pf("    %s * entry = TableMapAppend( worker, head, map ); // APPENDS; nothing ever moves (§6.4)\n", n)
-	g.pf("    if ( entry == NULL ) { return NULL; }\n")
-	g.pf("    TableReset( *entry );\n")
-	if mapKeyIsString(f) {
-		g.pf("    TableEntrySetKey( *entry, key, length );\n")
+		g.pf("    if ( key == NULL ) { return NULL; }\n")
+		g.pf("    const TableMapKeyRef bytes = { key, TableKeyLength( key, k%sKeyBound ) };\n", n)
+		g.pf("    if ( bytes.length > k%sKeyBound ) { return NULL; } // KEYS NEVER CLAMP\n", n)
+		g.pf("    %s * entry = TableMapPlace( worker, map, bytes );\n", n)
 	} else {
-		g.pf("    TableEntrySetKey( *entry, key );\n")
+		g.pf("    %s * entry = TableMapPlace( worker, map, key );\n", n)
 	}
-	g.pf("    return TableEntryValue( entry );\n}\n\n")
+	g.pf("    return entry != NULL ? TableEntryValue( entry ) : NULL;\n}\n\n")
 
 	// FIND on the builder
 	g.pf("// FIND on the builder: the same linear scan, O( n ) key compares over the\n")

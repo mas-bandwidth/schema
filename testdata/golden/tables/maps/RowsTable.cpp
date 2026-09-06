@@ -1184,13 +1184,17 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
         {
             placed += unit_length; // measured and not kept: a byte buffer's read sizes its node this way (§2.5)
         }
-        else if ( placed + unit_length <= capacity )
+        else if ( !clamped && placed + unit_length <= capacity )
         {
             memcpy( out + placed, unit, (size_t) unit_length );
             placed += unit_length;
         }
         else
         {
+            // A CLAMP IS A PREFIX. Once one code point does not fit, the scan
+            // stops placing: a later SHORTER code point sliding into the room
+            // the long one left would store a string the input never spelled,
+            // and one clamped count cannot tell the two apart.
             clamped = true;
         }
     }
@@ -2960,13 +2964,27 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             }
             if ( !fits ) { in.report->kind_mismatch++; place = false; }
         }
+        else if ( token_length > key->array_bound )
+        {
+            // A KEY LONGER THAN N DROPS ITS ENTRY AND COUNTS clamped, the
+            // wire's rule, because a clamped key is a merged entry (§2.8). The
+            // BOUND IS THE WALKER'S, tested here against the key field's own
+            // descriptor, so placement is left with one failure to report.
+            in.report->clamped++;
+            place = false;
+        }
         const int32_t before = TableJsonExtentCount( (const void *) slot );
         void * entry = place ? f->place( *graph->worker, slot, token, token_length, key_value ) : NULL;
         if ( place && entry == NULL )
         {
-            // A KEY LONGER THAN N DROPS ITS ENTRY AND COUNTS clamped, the
-            // wire's rule, because a clamped key is a merged entry (§2.8).
-            in.report->clamped++;
+            // AN ALLOCATION FAILURE IS NOT AN OVERSIZED KEY (§2.8, §16.1). The
+            // key was checked above, so the arena is what refused, and the read
+            // stops where the list, blob and pointer paths stop on one rather
+            // than handing back an instance short of entries the text spelled
+            // and calling itself clean.
+            in.report->malformed = true;
+            in.bad = true;
+            return false;
         }
         else if ( entry != NULL && TableJsonExtentCount( (const void *) slot ) == before )
         {

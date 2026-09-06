@@ -847,17 +847,20 @@ func (g *tableGen) placeColumn(f *ir.Field) string {
 	entry := mapEntryOf(f)
 	n := entry.Name
 	hold := fmt.Sprintf("TableMap<%s>", n)
+	// THE THUNK PLACES, AND IT DECIDES NOTHING. The key's BOUND is the walker's
+	// rule, applied against the key field's own descriptor before it calls
+	// here, and the key's LENGTH rides in from the text — so NULL out of this
+	// lambda means one thing, that the arena refused, and the walker fails the
+	// read the way its list, blob and pointer neighbours do (§2.8, §16.1).
 	var insert string
 	if mapKeyIsString(f) {
 		insert = fmt.Sprintf("[]( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * "+
-			"{ if ( key == NULL || key_length > k%sKeyBound ) { return NULL; } "+ // KEYS NEVER CLAMP
-			"%s * placed = TableMapPlace( worker, *(%s *) slot, key ); "+
-			"if ( placed != NULL ) { TableEntrySetKey( *placed, key, key_length ); } return (void *) placed; }", n, n, hold)
+			"{ if ( key == NULL ) { return NULL; } "+
+			"return (void *) TableMapPlace( worker, *(%s *) slot, TableMapKeyRef{ key, key_length } ); }", hold)
 	} else {
 		typ, _ := g.cppFieldType(ir.MapKeyField(f).Type)
 		insert = fmt.Sprintf("[]( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * "+
-			"{ %s * placed = TableMapPlace( worker, *(%s *) slot, (%s) key_value ); "+
-			"if ( placed != NULL ) { TableEntrySetKey( *placed, (%s) key_value ); } return (void *) placed; }", n, hold, typ, typ)
+			"{ return (void *) TableMapPlace( worker, *(%s *) slot, (%s) key_value ); }", hold, typ)
 	}
 	return insert + ", "
 }
