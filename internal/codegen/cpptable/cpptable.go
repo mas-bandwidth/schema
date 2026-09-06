@@ -19,6 +19,7 @@ package cpptable
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -1264,9 +1265,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// unit however many schema files it has: the registry is a unit-level
 	// fact, the set of everything declared, and a per-file split would leave
 	// it homeless or force one file to reach across the others and back.
-	for name, data := range generateViewFiles(u, closure, anyVariable, anyKeyed, anyMap, anyList, anyExtent, blocks, variable, targets) {
-		out[name] = data
-	}
+	maps.Copy(out, generateViewFiles(u, closure, anyVariable, anyKeyed, anyMap, anyList, anyExtent, blocks, variable, targets))
 	return out, nil
 }
 

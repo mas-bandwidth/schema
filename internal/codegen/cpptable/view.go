@@ -40,8 +40,7 @@ func viewBase(pkg string) string {
 
 // viewGen carries the one pass that emits the pair.
 type viewGen struct {
-	unit    *ir.Unit
-	closure map[string]bool
+	unit *ir.Unit
 	// vocabulary reached by the table closure. A declaration outside it has
 	// ids nothing ever checked, so every id column on its rows is the
 	// reserved id (docs/SPEC-TABLES.md §8.2).
@@ -54,7 +53,7 @@ type viewGen struct {
 
 // generateViewFiles emits the unit registry pair.
 func generateViewFiles(u *ir.Unit, closure map[string]bool, anyVariable, anyKeyed, anyMap, anyList, anyExtent bool, blocks *ir.BlockUnit, variable, targets map[string]bool) map[string][]byte {
-	v := &viewGen{unit: u, closure: closure, reached: ir.TableClosureVocabulary(u)}
+	v := &viewGen{unit: u, reached: ir.TableClosureVocabulary(u)}
 	for _, f := range u.Files {
 		for _, d := range f.Decls {
 			if st, ok := d.(*ir.Struct); ok && !st.IsTable && !closure[st.Name] {

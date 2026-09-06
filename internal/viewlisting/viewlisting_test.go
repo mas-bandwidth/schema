@@ -44,7 +44,7 @@ func TestUnitViewListingMatchesTheIR(t *testing.T) {
 	// and a run that also went red over thirteen missing listings would be
 	// red for the wrong reason.
 	only := map[string]bool{}
-	for _, name := range strings.Split(os.Getenv("SCHEMA_VIEW_LISTING_UNITS"), ",") {
+	for name := range strings.SplitSeq(os.Getenv("SCHEMA_VIEW_LISTING_UNITS"), ",") {
 		if name != "" {
 			only[name] = true
 		}
