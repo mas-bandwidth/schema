@@ -541,15 +541,30 @@ fn main() {
             "an out-of-set enum value is refused on write",
         );
 
-        // a freshly constructed ProbeSample is wire-illegal (samples_count = 0
-        // against [1, 8]) — the write must refuse loudly, exactly as Go does,
-        // never emit a corrupt packet with Ok
+        // a freshly constructed ProbeSample is WIRE-LEGAL: samples_count is
+        // born at 1, the declared minimum of [1, 8] (SPEC §4.6) — the one
+        // wire-legal count a fresh value can carry
         let fresh = ProbeSample::new();
         let mut buffer2 = [0u8; 2048];
         let mut ws2 = WriteStream::new(&mut buffer2);
         check(
+            fresh.samples_count == 1,
+            "a [1..8] count is born at its declared minimum",
+        );
+        check(
+            write_probe_sample(&mut ws2, &fresh).is_ok(),
+            "a freshly constructed value writes cleanly",
+        );
+
+        // and a count set below that minimum is still refused loudly, exactly
+        // as Go does, never a corrupt packet with Ok
+        let mut below = ProbeSample::new();
+        below.samples_count = 0;
+        let mut buffer_below = [0u8; 2048];
+        let mut ws_below = WriteStream::new(&mut buffer_below);
+        check(
             matches!(
-                write_probe_sample(&mut ws2, &fresh),
+                write_probe_sample(&mut ws_below, &below),
                 Err(Error::Stream(serialize::Error::ValueOutOfRange))
             ),
             "a below-minimum array count is refused on write",

@@ -517,11 +517,16 @@ public final class Main {
             Wire.writeChat(bad, writeBuf);
         }, "an out-of-range string length must trip the writer contract");
 
-        expectAssert(() -> {
+        // A COUNT IS NOT A CHECKED-TWIN CONTRACT (SPEC §4.6): the count guards
+        // the element loop and the pack subtracts the low bound, so a count
+        // outside its wire range is refused in EVERY build — with -ea and
+        // without — rather than left to a predicate the JVM can disable.
+        {
             final Types.InputPacket bad = new Types.InputPacket();
             bad.inputsCount = 17; // above [0, MaxInputsPerPacket]
-            Types.writeInputPacket(bad, writeBuf);
-        }, "an out-of-range array count must trip the writer contract");
+            check(Types.writeInputPacket(bad, writeBuf) == -1,
+                "a count above its wire range is refused in every build");
+        }
 
         expectAssert(() -> {
             final Types.ShipCreate bad = new Types.ShipCreate();
