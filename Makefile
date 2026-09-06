@@ -2730,9 +2730,10 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-lists-negative-controls
 	$(MAKE) tables-arms
 	$(MAKE) tables-arms-negative-controls
-	# RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6): the round trip, the six
-	# excluded classes, the two capacities, and the two refusals, each of
-	# which is a compile error that has to name itself
+	# RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6): the round trip, the five
+	# excluded classes a wire can carry to the unknown arm, the two
+	# capacities, and the two refusals, each of which is a compile error that
+	# has to name itself
 	$(MAKE) tables-retain
 	$(MAKE) tables-retain-fixed-class-negative-control
 	$(MAKE) tables-retain-message-form-negative-control
@@ -3082,8 +3083,9 @@ tables-maps-negative-controls: tables-maps-sort-negative-control \
 LISTS_SOURCES = $$(ls build/tables-generated/lists/*Table.cpp)
 
 # THE RETAIN-UNKNOWN GATE (docs/SPEC-TABLES.md §6.6): the RT1/RT2/RT3 set, the
-# round trip at every depth, the six excluded classes, the two capacities and
-# the walk's verdict on damage inside sound outer framing.
+# round trip at every depth, the five excluded classes a wire can carry to the
+# unknown arm, the two capacities and the walk's verdict on damage inside sound
+# outer framing.
 build/schema_test_retain: build/tables-generated/.stamp test/tables/retain_main.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/retain_main.cpp -o $@

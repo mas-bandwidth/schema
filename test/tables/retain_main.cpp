@@ -1,10 +1,10 @@
 // THE RETAIN-UNKNOWN GATE (docs/SPEC-TABLES.md §6.6). One binary over the
 // RT1/RT2/RT3 set: RT2 and RT3 are newer builds, RT1 is the build that cannot
 // name what they wrote, and every row below is one of §6.6's own: the round
-// trip at three depths, idempotence, the six excluded classes, the two
-// capacities, the never-clobber condition, the step pair under a map, an
-// unbounded array element and a union arm, and the resolving walk's verdict on
-// damage inside sound outer framing.
+// trip at three depths, idempotence, the five excluded classes a wire can
+// carry to the unknown arm, the two capacities, the never-clobber condition,
+// the step pair under a map, an unbounded array element and a union arm, and
+// the resolving walk's verdict on damage inside sound outer framing.
 //
 // Every row says what sabotage turns it red.
 //
@@ -436,7 +436,7 @@ static void excluded_classes()
     }
 }
 
-// A NODE RECORD whose type id this reader cannot name is the sixth class, and
+// A NODE RECORD whose type id this reader cannot name is the fifth class, and
 // RT3 is what isolates it: `head` is the field RT1 already has, at the same id
 // and the same kind, pointing at a table RT1 never heard of.
 static void unknown_node_record()

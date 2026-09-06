@@ -7049,11 +7049,15 @@ the emit can read it. **A port that instead measured a content by walking it,
 then walked it again to write it, would double its work at every level of a
 nesting the FILE chooses**, and a field of a couple of hundred bytes would not
 return. That is a bound the wire can drive, and §6.6's security bound forbids
-it. Measured on the reference over one unknown table field: at nesting depth 1
-the record is 55 bytes and `LoadRetain` costs 1.5 times the plain `Load` of the
-same wire, and at depth 8 the record is 230 bytes and it costs 3.3 times. The added
-cost per record byte is the same at both, near five nanoseconds on the load and
-near seven on the save, and the multiple grows only because the record does.
+it. Measured on the reference over one unknown table field, `-O3 -DNDEBUG`, best
+of seven: at nesting depth 1 the record is 55 bytes and `LoadRetain` costs 1.5
+times the plain `Load` of the same wire, and at depth 8 the record is 230 bytes
+and it costs 4.1 times. `SaveRetain` costs 1.2 times the plain `Save` at depth 1
+and 1.9 times at depth 8. The ADDED cost per record byte is the same at every
+one of those readings, near one nanosecond on the load and near one on the save,
+and the multiple grows only because the record does: the plain `Load` skips the
+whole field by its outer framing, so its own cost barely moves between the two
+depths and the multiple is the record's size read against a flat denominator.
 
 **The walk's nesting cap is a SMALL STATED CONSTANT: 64 nested bodies.** A
 retained record's inner nesting is the WRITER's and not this build's, so it is
