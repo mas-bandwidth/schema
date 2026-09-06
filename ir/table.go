@@ -566,8 +566,7 @@ func TableClosureVocabulary(u *Unit) map[string]bool {
 	out := map[string]bool{}
 	seen := map[string]bool{}
 	var reach func(fields []*Field)
-	var reachUnion func(un *Union)
-	reachUnion = func(un *Union) {
+	reachUnion := func(un *Union) {
 		if seen[un.Name] {
 			return
 		}
