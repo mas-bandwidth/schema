@@ -707,7 +707,8 @@ static void pinned_instances()
 
 int main()
 {
-    pinned_instances();
+    // THE RULES FIRST, then the pins. A control that removes a rule must quote
+    // the rule's own row rather than a golden mismatch downstream of it.
     field_vectors();
     odd_length();
     default_and_count();
@@ -716,6 +717,7 @@ int main()
     element_site();
     text_form();
     cook_layout();
+    pinned_instances();
     if ( failures != 0 )
     {
         printf( "wide table gate: %d check(s) failed\n", failures );

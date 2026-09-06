@@ -71,7 +71,7 @@ type Cell struct {
 	// zero, so a fresh cell and an elided field agree without a materialized
 	// big.Int per slot.
 	Wide *big.Int
-	Str  []byte    // string / bytes payload, at its used extent
+	Str  []byte // string / bytes payload, at its used extent
 	// Units is a `wstring(N)` value's UTF-16 CODE UNITS, at its used extent
 	// (docs/SPEC-TABLES.md §3's kind 33, SPEC.md §4.12). It is a separate
 	// member from Str for the reason the two are separate KINDS: a wstring's
@@ -80,7 +80,7 @@ type Cell struct {
 	// the member's. Wide text takes no specified default, so nil is the whole
 	// of an unset one.
 	Units []uint16
-	Tab  *Instance // a nested table or type, or a union arm's declared-type payload
+	Tab   *Instance // a nested table or type, or a union arm's declared-type payload
 
 	// Arm is a UNION ARM that names no declaration (docs/SPEC-TABLES.md
 	// §2.6): an arm is a field line, so its storage is a field's storage —

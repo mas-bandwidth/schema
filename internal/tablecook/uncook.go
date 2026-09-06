@@ -128,8 +128,8 @@ func (r *regionReader) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 			return fmt.Errorf("field %s: the used length %d is outside its declared bound %d", f.Name, n, bound)
 		}
 		units := make([]uint16, n)
-		for i := int64(0); i < n; i++ {
-			units[i] = r.ord.Uint16(r.buf[value.Offset+i*2:])
+		for i := range units {
+			units[i] = r.ord.Uint16(r.buf[value.Offset+int64(i)*2:])
 		}
 		fv.Cell.Units = units
 		fv.Count = int(n)
