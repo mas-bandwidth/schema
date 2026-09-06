@@ -90,6 +90,15 @@ build/schema_test_wide: build/wide-generated/.stamp test/wide/main.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Ibuild/wide-generated test/wide/main.cpp -o $@
 
+# The TABLE half of the wide row (docs/SPEC-TABLES.md §3, kind 33): the same
+# unit's table declarations, gated apart from the packet half because they are
+# two wires — a bit stream with no recovery there, a length-framed body whose
+# answer is a verdict plus five counters here.
+build/schema_test_wide_table: build/wide-generated/.stamp test/wide/table_main.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Ibuild/wide-generated test/wide/table_main.cpp \
+		build/wide-generated/CaptionTable.cpp -o $@
+
 build/schema_test: generated/cpp/.stamp test/main.cpp test/second.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/cpp -Itest test/main.cpp test/second.cpp -o $@
@@ -2048,6 +2057,88 @@ wide-utf8-read-negative-control:
 	$(wide-negative-control-body)
 
 
+# ---------------------------------------------------------------------------
+# THE TABLE HALF's negative controls (docs/SPEC-TABLES.md §3, kind 33) --------
+#
+# build/schema_test_wide_table states one row per sentence of §3 and §4, and a
+# green run cannot be read for WHICH rule earned it either. Each control below
+# removes exactly one rule from a COPY of the TABLE emitter, regenerates
+# examples-wide/ with it, rebuilds the gate and requires the gate to go RED on
+# the row the rule is named for. SOURCE names the emitter file the sabotage
+# anchors in: the content rule and the clamp live in the emitted RUNTIME
+# (internal/codegen/cpptable/text.go) and the framing rules in the per-field
+# codec (internal/codegen/cpptable/codecs.go).
+define wide-table-negative-control-body
+	@mkdir -p build
+	@go run ./tools/sabotage -name $(SABOTAGE) -out build/wide-$(SABOTAGE).gotext $(SOURCE)
+	@printf '{"Replace":{"%s/$(SOURCE)":"%s/build/wide-$(SABOTAGE).gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/wide-$(SABOTAGE)-overlay.json
+	@rm -rf build/wide-$(SABOTAGE)-generated && mkdir -p build/wide-$(SABOTAGE)-generated
+	@go run -overlay=build/wide-$(SABOTAGE)-overlay.json ./cmd/schema generate \
+		--lang cpp --out build/wide-$(SABOTAGE)-generated examples-wide
+	@$(CXX) $(CXXFLAGS) -Ibuild/wide-$(SABOTAGE)-generated test/wide/table_main.cpp \
+		build/wide-$(SABOTAGE)-generated/CaptionTable.cpp -o build/schema_test_wide_table-$(SABOTAGE)
+	@if ./build/schema_test_wide_table-$(SABOTAGE) > build/wide-$(SABOTAGE).log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the wide table gate passed with $(SABOTAGE) applied"; \
+		cat build/wide-$(SABOTAGE).log; exit 1; \
+	fi
+	@grep -q '$(EXPECT)' build/wide-$(SABOTAGE).log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on $(EXPECT)"; \
+		  cat build/wide-$(SABOTAGE).log; exit 1; }
+	@echo "negative control ($(SABOTAGE)): the gate goes red on" \
+		"$$(grep FAILED build/wide-$(SABOTAGE).log | head -1)"
+endef
+
+# An UNPAIRED SURROGATE in a kind 33 payload is DAMAGE (§3). Take the pairing
+# rule out of the emitted runtime and the gate's surrogate rows stop being
+# refused, while the nul rows beside them stay red-free.
+.PHONY: wide-table-surrogate-negative-control
+wide-table-surrogate-negative-control: SABOTAGE = table-wstring-accept-unpaired-surrogate
+wide-table-surrogate-negative-control: SOURCE = internal/codegen/cpptable/text.go
+wide-table-surrogate-negative-control: EXPECT = on vector wstring-table-refuse-
+wide-table-surrogate-negative-control:
+	$(wide-table-negative-control-body)
+
+# A ZERO CODE UNIT among the units is DAMAGE on the rule kind 12 takes for a
+# zero byte (§3). Take it out and the three nul rows stop being refused.
+.PHONY: wide-table-zero-unit-negative-control
+wide-table-zero-unit-negative-control: SABOTAGE = table-wstring-accept-zero-unit
+wide-table-zero-unit-negative-control: SOURCE = internal/codegen/cpptable/text.go
+wide-table-zero-unit-negative-control: EXPECT = on vector wstring-table-refuse-nul-
+wide-table-zero-unit-negative-control:
+	$(wide-table-negative-control-body)
+
+# A CLAMP NEVER SPLITS A PAIR (§3): where the last kept unit is a high
+# surrogate whose low half did not fit, it is dropped with it. Take the drop
+# out and the clamp lands an unpaired surrogate in storage — the one thing no
+# wire may put there (§5).
+.PHONY: wide-table-clamp-negative-control
+wide-table-clamp-negative-control: SABOTAGE = table-wstring-clamp-splits-a-pair
+wide-table-clamp-negative-control: SOURCE = internal/codegen/cpptable/text.go
+wide-table-clamp-negative-control: EXPECT = on vector wstring-table-clamp-never-splits-a-pair
+wide-table-clamp-negative-control:
+	$(wide-table-negative-control-body)
+
+# An ODD `L` is framing damage on the body that carries it (§3), because the
+# value is `L / 2` code units. Take the check out and half a unit reads as one.
+.PHONY: wide-table-odd-length-negative-control
+wide-table-odd-length-negative-control: SABOTAGE = table-wstring-accept-odd-length
+wide-table-odd-length-negative-control: SOURCE = internal/codegen/cpptable/codecs.go
+wide-table-odd-length-negative-control: EXPECT = FAILED: report.malformed (
+wide-table-odd-length-negative-control:
+	$(wide-table-negative-control-body)
+
+# `L` IS A BYTE LENGTH, twice the code unit count (§3). Write the unit count
+# instead and the field's own bytes stop being what §3 frames, which the
+# default-and-count row reads byte for byte.
+.PHONY: wide-table-byte-length-negative-control
+wide-table-byte-length-negative-control: SABOTAGE = table-wstring-length-in-units
+wide-table-byte-length-negative-control: SOURCE = internal/codegen/cpptable/codecs.go
+wide-table-byte-length-negative-control: EXPECT = buffer\[3\] == 6
+wide-table-byte-length-negative-control:
+	$(wide-table-negative-control-body)
+
+
 # THE UNION ARM-ORDER NEGATIVE CONTROL (SPEC §3.1, §4.8, issue #491). A union's
 # arm order rides in its payload types only while the arms DIFFER in type: two
 # arms of one type reorder with every projected type unmoved, so the arm names
@@ -2488,7 +2579,7 @@ build/schema_test_bench_table: generated/bench/tables/cpp/.stamp test/bench/tabl
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/bench/tables/cpp test/bench/table_main.cpp -o $@
 
-test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/conformance-harness build/schema_test_wide
+test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/conformance-harness build/schema_test_wide build/schema_test_wide_table
 	./build/schema_test
 	./build/schema_test_guard
 	./build/schema_test_wide
@@ -2500,6 +2591,15 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) wide-surrogate-negative-control
 	$(MAKE) wide-terminator-negative-control
 	$(MAKE) wide-utf8-read-negative-control
+	./build/schema_test_wide_table
+	# THE TABLE HALF's controls (docs/SPEC-TABLES.md §3, kind 33): the same
+	# discipline one wire over — each removes one rule from a copy of the
+	# TABLE emitter and names the row that must go red.
+	$(MAKE) wide-table-surrogate-negative-control
+	$(MAKE) wide-table-zero-unit-negative-control
+	$(MAKE) wide-table-clamp-negative-control
+	$(MAKE) wide-table-odd-length-negative-control
+	$(MAKE) wide-table-byte-length-negative-control
 	$(MAKE) check-zero-range-negative-control
 	$(MAKE) projection-variant-order-negative-control
 	$(MAKE) projection-wire-law-negative-control

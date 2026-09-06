@@ -1,0 +1,60 @@
+// Caption.schema — the wstring(N) TABLE unit (docs/SPEC-TABLES.md §3, kind 33).
+//
+// Its own file beside Wide.schema, in the same package, because the two halves
+// of the row are two wires: Wide.schema is the packet wire's proving ground
+// (SPEC.md §4.12) and this is the id-table wire's. The unit stays out of
+// examples/ for the reason that one does — examples/ pins gate 1 for all nine
+// targets and eight of them refuse wide text on either wire.
+//
+// Every KIND 33 SITE the wire has is declared once here, and nowhere else in
+// the file, so a gate that names a site names one declaration: a TABLE's own
+// field, a `type` body's field the table reaches, a UNION ARM, and an ELEMENT,
+// which is a type inside an array. `wstring(N)` as a MAP KEY has no site: it
+// is refused by name, because a map's entries ride in `memcmp` order and
+// little-endian code units have none (§2.8).
+
+package wide
+
+// The bounds are the packet corpus's, so the two halves of the row read
+// against the same numbers: 7 is the corpus's buffer_size 8 and 4 its
+// buffer_size 5. A bound of 4 is what makes a clamp expressible — five code
+// units on the wire, four kept — and what puts a surrogate pair astride the
+// cut when the fifth unit is a pair's low half.
+
+// A `type` a table reaches, which is the closure edge #572 refused and kind 33
+// carries: its wide text is the packet emitter's storage read by the table
+// wire's codec.
+type Line
+{
+    text wstring(4)
+}
+
+// An arm is a field line (§2.6), so wide text is an admissible arm payload and
+// rides under kind 33 with the arm's `L` as its BYTE length. The narrow arm
+// beside it is what makes a respelling between the two an ordinary kind
+// mismatch rather than UTF-8 bytes read as code units.
+union Body
+{
+    wide   wstring(4)
+    narrow string(4)
+    count  int32
+}
+
+// The root: every site at once, so one instance exercises them all.
+table Caption
+{
+    title  wstring(7)
+    line   Line
+    lines  [..3]Line
+    body   Body
+}
+
+// A FIXED table (§2.2): no pointer in its by-value closure, so it takes the
+// block form and its cook is one region of one node. Wide text's cooked
+// storage is char16_t[N + 1] and an int32 used length in CODE UNITS (§7.2),
+// and a fixed root is where that layout is asserted rather than derived.
+table Stamp
+{
+    label wstring(4)
+    seq   uint32
+}
