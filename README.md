@@ -11,7 +11,7 @@ without ever having to hand-code definitions in each language ever again.
 
 ## Design
 
-**schema** is meant to serve all your needs for data types across all languages used when developing a game:
+**Schema** defines your data types across all languages used when developing a game:
 
 * The packet between a client and a server, where every bit counts and both sides ship together.
 * The message between the server and a backend that needs versioning.
