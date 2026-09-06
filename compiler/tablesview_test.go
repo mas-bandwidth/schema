@@ -64,7 +64,7 @@ func TestViewCarriesTheTypesNoTableReaches(t *testing.T) {
 	// because the descriptor that names it hands out no id: §8.2 says the id
 	// columns answer 0 outside a closure, so the view emits none of the pair.
 	if strings.Contains(header, "TableEnumId( Lonely value") {
-		t.Error("the view header carries an identity pair for an enum no table closure reaches — nothing calls it (§8.2)")
+		t.Error("the view header carries an identity pair for an enum no table closure reaches. Nothing calls it (§8.2)")
 	}
 	if strings.Contains(string(files["ProbeTable.h"]), "OrphanTableType") {
 		t.Error("the table header carries the descriptor of a type no table reaches — it belongs in the view file (§8.5)")

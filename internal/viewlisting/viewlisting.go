@@ -83,7 +83,7 @@ func (l *listing) enums() {
 		e := l.unit.Enums[name]
 		fmt.Fprintf(&l.b, "enum %s file=%s max=%d bits=%d variants=%d %s\n",
 			e.Name, l.file(e.Name), e.Max, e.StorageBits, len(e.Variants)+1, annotation(e.Doc, e.Tags))
-		// row 0 is None, the reserved id, then the variants in DECLARED order
+		// row 0 is None, whose id is 0, then the variants in DECLARED order
 		fmt.Fprintf(&l.b, "enum %s variant 0 None id=%016x %s\n", e.Name, 0, annotation("", nil))
 		for i, variant := range e.Variants {
 			id := uint64(0)
@@ -165,8 +165,8 @@ func (l *listing) unions() {
 // union's type. The listing's overlay column is read through such a field: a
 // generic walker reaches a union's arm descriptors through the holder's own
 // field descriptor, so a union nothing holds has no arm descriptors to
-// measure. The search is the same on both halves — the tables in registry
-// order, then the types — so the pin and the program agree about which arms
+// measure. The search is the same on both halves, the tables in registry
+// order and then the types, so the pin and the program agree about which arms
 // carry an overlay.
 func (l *listing) unionHasHolder(un *ir.Union) bool {
 	for _, set := range [][]*ir.Struct{l.tables, l.types} {

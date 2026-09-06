@@ -9163,8 +9163,8 @@ struct ViewVariant          // one enum variant, one flags bit, one union arm
 {
     uint64_t value;         // an enum's value, a flags BIT INDEX, a union's tag
     const char * name;
-    uint64_t id;            // the table-wire id (§5); 0 for a flags bit, and
-                            // throughout a vocabulary no table closure
+    uint64_t id;            // the table-wire id (§5). It is 0 for a flags bit,
+                            // and throughout a vocabulary no table closure
                             // reaches (§8.2)
     const char * payload_name;      // a union arm's TYPE as declared — a record's
                                     // name, or a general arm's spelling
@@ -9301,8 +9301,8 @@ const UnitViewInfo * UnitView();
   registry is a function-local static and `UnitView()` returns its address:
   the first call initializes it behind the guard the language emits for one,
   every call after is a lookup, never a parse, and no mutable state is on the
-  surface — the property §8.1 already holds for descriptors, which take the
-  same form, and it is carried up to the unit. The `type` column of a `ViewType`
+  surface. That is the property §8.1 already holds for descriptors, which take
+  the same form, carried up to the unit. The `type` column of a `ViewType`
   reaches its descriptor through `<Name>TableType()` for the same reason. In C# the registry is a static
   instance on `Schema`, and a `ViewType`'s descriptor is reached through a
   factory rather than held as a value, because C# gives no initialization
@@ -9447,9 +9447,9 @@ NULL `payload`, the arm's kind, width and bounds off that descriptor, and
 **the OVERLAY: the distance from that arm's offset to the union's payload
 base**, which is `0` on every general arm because every arm overlays. The
 overlay is the observable, and it is one because the two offsets it
-subtracts are spelled in different translation units — the arm row's own
-offset comes from the view file, the payload base from the arms table in the
-table header — so they can disagree, and a moved offset prints a line the
+subtracts are spelled in different translation units. The arm row's own
+offset comes from the view file and the payload base from the arms table in
+the table header, so they can disagree, and a moved offset prints a line the
 pin does not have. So does an arm whose `field` is NULL.
 
 **DOC AND TAGS ARE IN THAT LISTING, on every row that has them** (§8.1,

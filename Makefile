@@ -497,7 +497,7 @@ tables-view-negative-controls: build/tables-generated/.stamp test/tables/view_ma
 # pair. Nothing selects the view, so what a build pays is what it compiles, and
 # that answer only holds while the registry stays inside its own file. The gate
 # asks "did the registry leak out of its file?" and never "is there a
-# descriptor here?" — the descriptor vocabulary is §8.1's and rides where it
+# descriptor here?". The descriptor vocabulary is §8.1's and rides where it
 # always did, which is why the pattern is the six names and nothing else.
 #
 # UnitView covers UnitViewInfo, being its prefix.

@@ -83,10 +83,10 @@ static void vocabulary( const char * what, const unit_ns::ViewVocabulary & v, co
 // For each arm that names no record the listing carries the arm's kind and
 // bounds off its FIELD descriptor, and where that arm's offset sits relative
 // to the union's own payload base. A generic walker reaches those arm
-// descriptors through a HOLDER — the first registry entry declaring a field of
-// that union's type, the tables in registry order and then the types — because
-// a union's arms table hangs off a field descriptor and not off the vocabulary
-// row.
+// descriptors through a HOLDER, the first registry entry declaring a field of
+// that union's type, taking the tables in registry order and then the types.
+// It needs one because a union's arms table hangs off a field descriptor and
+// not off the vocabulary row.
 //
 // EVERY ARM OVERLAYS, with the tag at offset 0 and the overlay after it
 // (§8.1), so every arm's offset is the union's payload base and the OVERLAY

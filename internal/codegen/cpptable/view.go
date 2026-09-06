@@ -42,8 +42,8 @@ func viewBase(pkg string) string {
 type viewGen struct {
 	unit *ir.Unit
 	// vocabulary reached by the table closure. A declaration outside it has
-	// ids nothing ever checked, so every id column on its rows is the
-	// reserved id (docs/SPEC-TABLES.md §8.2).
+	// ids nothing ever checked, so every id column on its rows, and every id
+	// FUNCTION on its descriptors, answers 0 (docs/SPEC-TABLES.md §8.2).
 	reached map[string]bool
 	// outside is the `type` declarations no table reaches, in name order:
 	// their descriptors live in this file rather than beside the table
@@ -147,8 +147,8 @@ struct ViewVariant          // one enum variant, one flags bit, one union arm
 {
     uint64_t value;         // an enum's value, a flags BIT INDEX, a union's tag
     const char * name;
-    uint64_t id;            // the table-wire id (§5); the RESERVED id for a flags
-                            // bit, and throughout a vocabulary no table closure
+    uint64_t id;            // the table-wire id (§5). It is 0 for a flags bit,
+                            // and throughout a vocabulary no table closure
                             // reaches (§8.2)
     const char * payload_name;      // a union arm's TYPE as declared — a record's
                                     // name, or a general arm's spelling

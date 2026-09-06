@@ -16,8 +16,8 @@ import (
 // declare a table (docs/SPEC-TABLES.md §8.3, §8.5).
 //
 // IT IS DERIVED FROM THE MAKEFILE'S VIEW_CORPUS rather than restated beside
-// it. The gate has two halves — the Makefile compiles and runs a program per
-// unit, this test produces the pin per unit — and two hand-kept lists of the
+// it. The gate has two halves. The Makefile compiles and runs a program per
+// unit, this test produces the pin per unit, and two hand-kept lists of the
 // same units drift: a unit named in one and not the other is held by half a
 // gate, and neither half says so. One list, read by both.
 //
