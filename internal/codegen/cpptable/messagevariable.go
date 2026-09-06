@@ -354,6 +354,10 @@ func (g *tableGen) emitRootNodeMessageDispatch(st *ir.Struct) {
 		g.pf("        if ( !%sNodeMessageExtent( type_id, walk, vocabulary, index_bits, extent ) ) { report->malformed = true; return false; }\n", n)
 		g.pf("        carve.left = extent;\n")
 		g.pf("    }\n")
+		// THE CARVE IS THIS FRAME'S AND NEVER OUTLIVES IT: the node map's
+		// cursor is restored on the way out, so the address of a local is
+		// never left behind in a map the caller reads on with.
+		g.pf("    TableExtentCarve * const outer = nodes.carve;\n")
 		g.pf("    nodes.carve = &carve;\n")
 	}
 	anyVar := false
@@ -365,11 +369,15 @@ func (g *tableGen) emitRootNodeMessageDispatch(st *ir.Struct) {
 	if !anyVar {
 		g.pf("    (void) nodes; (void) index_bits; // every node this root can name is a FIXED table\n")
 	}
+	g.pf("    bool ok = false;\n")
 	g.pf("    switch ( type_id )\n    {\n")
 	for _, t := range reachable {
-		g.pf("        case 0x%016xull: return %s; // %s\n", ir.TableWireId(t.Name), g.msgLoadCall(t.Name, "r", fmt.Sprintf("*(%s *) at", t.Name)), t.Name)
+		g.pf("        case 0x%016xull: ok = %s; break; // %s\n", ir.TableWireId(t.Name), g.msgLoadCall(t.Name, "r", fmt.Sprintf("*(%s *) at", t.Name)), t.Name)
 	}
-	g.pf("        default: break;\n    }\n")
-	g.pf("    report->malformed = true; // a record this dispatch cannot name never reaches here: pass one left it absent\n")
-	g.pf("    return false;\n}\n\n")
+	g.pf("        // a record this dispatch cannot name never reaches here: pass one left it absent\n")
+	g.pf("        default: report->malformed = true; break;\n    }\n")
+	if g.anyExtent {
+		g.pf("    nodes.carve = outer;\n")
+	}
+	g.pf("    return ok;\n}\n\n")
 }
