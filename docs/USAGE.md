@@ -148,10 +148,6 @@ carries it too, so ranges and asserts reference the enum directly instead of
 a hand-declared count constant. `Max` is consequently reserved as a variant
 name, like `None`.
 
-A union's tag enum carries the debug-name function too, in the same nine
-spellings the declared enum uses, so logging which arm arrived is the same
-call either way.
-
 The `Count` member beside it is the **declared variant count**, `None`
 excluded — `ShipType::Count` (C++), `ShipType.Count` (C#), `ShipTypeCount`
 (Go), `ShipType::COUNT` (Rust), `ShipType.Count` (JS), `SHIP_TYPE_COUNT` (C),
@@ -161,6 +157,10 @@ same number. Under `| max = 15` they are 3 and 15, and that difference is
 what the two words are for. `Count` is a reserved variant name too, and a
 union's tag enum carries it beside `Max`, so `Count` is a reserved arm name
 on a packet union for the same reason.
+
+A union's tag enum carries the debug-name function too, in the same nine
+spellings the declared enum uses, so logging which arm arrived is the same
+call either way.
 
 **Two loop rules, and they are the whole story:**
 

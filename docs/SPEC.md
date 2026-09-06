@@ -1142,7 +1142,7 @@ beside `Max` too, in the same nine spellings (§4.8), so a tag enum and a
 declared enum present one surface to a reader. A tag set takes no headroom, so
 its `Count` and its `Max` are one number, and the member is there because the
 surface is uniform rather than because the two numbers ever differ. A
-table-closure union's tag shape carries `Max` alone today
+table-closure union's tag shape carries `Max` alone
 ([#601](https://github.com/mas-bandwidth/schema/issues/601)).
 
 ### 4.3 Field types and their wire encodings
@@ -1318,9 +1318,7 @@ All compile errors with positions:
 
   **A count outside [A, B] is refused by the WRITE in every build, in all
   nine targets.** That is not a compile error but the other half of the same
-  rule, and it is stated here because it is the rule generated code cites: the
-  refusal each target emits carries the comment "a count outside its wire
-  range is refused in every build (SPEC §4.6)". It is the one write-side
+  rule, and it is stated here because it is the rule generated code cites. It is the one write-side
   contract that is never a debug-only
   assert (§5). The count guards the element loop and the pack subtracts the
   low bound, so a count below A wraps to a large unsigned value and the write
@@ -1590,7 +1588,7 @@ union Value
   just the literal spellings. **`Count` is refused the same way on a PACKET
   union**, whose tag enum carries the member (below). The reservation is
   scoped to where the member exists, so the name stays free on a
-  table-closure union until the follow-on gives that shape its `Count`
+  table-closure union, whose tag shape carries `Max` alone
   ([#601](https://github.com/mas-bandwidth/schema/issues/601)).
 - **The tag enum is generated, named `<Union>Type`**: `None = 0`, then
   each variant **in declared order**
@@ -1632,13 +1630,13 @@ union Value
   | js | `WeaponFireType.Count` | `EnumNameWeaponFireType(value)` |
   | rust | `WeaponFireType::COUNT` | `enum_name_weapon_fire_type` |
 
-- **A TABLE-CLOSURE union's tag shape carries `Max` alone today.** It is a
+- **A TABLE-CLOSURE union's tag shape carries `Max` alone.** It is a
   different emitter, written beside the tables, and it gets neither `Count`
   nor the debug-name function. Giving it both, and extending the `Count`
   reservation to reach it, is a named follow-on
-  ([#601](https://github.com/mas-bandwidth/schema/issues/601)). Until that
-  lands, `Count` is a legal arm name on a table-closure union and a compile
-  error on a packet union, and the split is what the checker enforces.
+  ([#601](https://github.com/mas-bandwidth/schema/issues/601)). `Count` is a
+  legal arm name on a table-closure union and a compile error on a packet
+  union. The split is what the checker enforces.
 - **The wire.** This bullet is the TYPE wire's, which a union of declared
   `type` arms rides and a table-closure union does not ride at all (above).
   The tag encodes in **minimal bits for `[0, variant

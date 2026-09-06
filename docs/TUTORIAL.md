@@ -1140,7 +1140,7 @@ the line under it: the pack subtracts the low bound, so `window_count = 0`
 would wrap `0 - 2` to a large unsigned value, and the loop below writes
 `window_count` elements. An unchecked write would report success on bytes no
 reader takes. Every one of the nine targets refuses it, each in its own
-convention: `false` here, `0` in C, `-1` in Dart and Java,
+convention, among them `false` here, `0` in C, `-1` in Dart and Java,
 `ErrValueOutOfRange` in Go, an `ArgumentError` in Elixir.
 
 Reach for `[A..B]` with A above zero wherever the count genuinely has a floor.
@@ -1497,7 +1497,7 @@ band. A zero-initialized union field carries "nothing" without a has-flag, and
 a stream of unions can end on `None`. The program below prints that tag.
 
 The tag enum is a full enum. It carries `None`, the variants, `Count` and
-`Max`, and the debug-name function beside them, so `EnumName( cmd.fire.type )`
+`Max`, and the debug-name function beside them, so `EnumName( first.fire.fire.type )`
 compiles and prints `"Laser"`. It is the same call a declared enum takes, found
 by lookup the same way. Log a tag with it. The switch the program below writes is
 there to reach the payload, which a name cannot do. Because the enum carries
