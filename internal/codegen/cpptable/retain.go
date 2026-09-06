@@ -1119,3 +1119,205 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
     return true;
 }
 `
+
+// ---- the emitted surface (docs/SPEC-TABLES.md §6.6) ----
+
+// setOwner fixes the closure member whose codec is being emitted, and with it
+// the FIELD ORDINALS a path step names: the field's position in its body's own
+// DECLARATION ORDER, which is the reader's order and not the wire's.
+func (g *tableGen) setOwner(st *ir.Struct) {
+	g.owner = st
+	g.ordinal = map[*ir.Field]int{}
+	if st != nil {
+		for i, f := range st.Fields {
+			g.ordinal[f] = i
+		}
+	}
+	g.pathExpr = "path"
+	g.elemIndex = "0"
+	g.unionField = nil
+}
+
+// emitRetainDeclarations forward-declares the retain family, which is mutually
+// recursive across a unit's files exactly as the plain one is.
+func (g *tableGen) emitRetainDeclarations(members []*ir.Struct) {
+	g.pf("// ---- retain-unknown: the second family (docs/SPEC-TABLES.md §6.6) ----\n")
+	g.pf("//\n")
+	g.pf("// The same walks, with the PATH threaded and the unknown arm capturing. The\n")
+	g.pf("// three above are untouched and cost nothing for these being here: a caller\n")
+	g.pf("// that does not ask instantiates none of them.\n\n")
+	for _, st := range members {
+		if g.isVar(st.Name) {
+			g.pf("template <typename Ctx> inline int64_t %sMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline bool %sSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline bool %sSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
+			g.pf("inline bool %sLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
+			continue
+		}
+		g.pf("inline int64_t %sMeasureBodyRetain( TableRetainIds & ids, const %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
+		g.pf("%s bool %sSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const %s & value, TableRetain * retain, const TableRetainPath & path );\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
+		g.pf("%s bool %sLoadBodyRetain( TableReader & r, %s & value, TableRetain * retain, const TableRetainPath & path );\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
+	}
+	g.pf("\n")
+}
+
+// emitRetainBodies writes the family itself: the same field emitters, under
+// the retain names.
+func (g *tableGen) emitRetainBodies(members []*ir.Struct) {
+	g.retain = true
+	for _, st := range members {
+		g.setOwner(st)
+		g.emitTableMeasure(st)
+		g.emitTableWrite(st)
+		g.emitTableRead(st)
+	}
+	g.retain = false
+	g.setOwner(nil)
+}
+
+// emitRetainRoot writes one variable-class root's three verbs: LoadRetain,
+// MeasureRetain and SaveRetain (docs/SPEC-TABLES.md §6.6).
+func (g *tableGen) emitRetainRoot(st *ir.Struct) {
+	n := st.Name
+	reachable := ir.PointerReachable(st)
+	blobs := reachableBlobs(st)
+
+	// the node dispatch is a LOCAL of each call rather than a second pair of
+	// thunks on the numbering: a store per node on the plain save path would
+	// be a cost this feature is not allowed to have (§6.6, the owner's law)
+	dispatch := func(ind string) {
+		g.pf("%sauto retain_measure = []( const Ctx & c, const TableNumbering & nn, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> int64_t\n%s{\n", ind, ind)
+		g.pf("%s    const TableRetainPath at = TableRetainPathRoot( node, 0 );\n", ind)
+		g.pf("%s    (void) c; (void) nn; (void) ii; (void) rt; (void) at;\n", ind)
+		g.pf("%s    switch ( type_id )\n%s    {\n", ind, ind)
+		for _, t := range reachable {
+			if g.isVar(t.Name) {
+				g.pf("%s        case 0x%016xull: return %sMeasureBodyRetain( c, nn, ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+				continue
+			}
+			g.pf("%s        case 0x%016xull: return %sMeasureBodyRetain( ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+		}
+		for _, b := range blobs {
+			g.pf("%s        case %s: return (int64_t) ( (const TableBlob *) node )->length;\n", ind, b.constant)
+		}
+		g.pf("%s        default: break;\n%s    }\n%s    return -1;\n%s};\n", ind, ind, ind, ind)
+	}
+	saveDispatch := func(ind string) {
+		g.pf("%sauto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool\n%s{\n", ind, ind)
+		g.pf("%s    const TableRetainPath at = TableRetainPathRoot( node, 0 );\n", ind)
+		g.pf("%s    (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;\n", ind)
+		g.pf("%s    switch ( type_id )\n%s    {\n", ind, ind)
+		for _, t := range reachable {
+			if g.isVar(t.Name) {
+				g.pf("%s        case 0x%016xull: return %sSaveBodyRetain( c, nn, ww, ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+				continue
+			}
+			g.pf("%s        case 0x%016xull: return %sSaveBodyRetain( ww, ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+		}
+		for _, b := range blobs {
+			g.pf("%s        case %s:\n%s        {\n", ind, b.constant, ind)
+			g.pf("%s            const TableBlob * blob = (const TableBlob *) node;\n", ind)
+			g.pf("%s            ww.raw( (const void *) ( blob + 1 ), (int64_t) blob->length );\n%s            return true;\n%s        }\n", ind, ind, ind)
+		}
+		g.pf("%s        default: break;\n%s    }\n%s    return false;\n%s};\n", ind, ind, ind, ind)
+	}
+
+	g.retain = true
+	g.emitRootNodeBody(st, reachable, blobs)
+	g.emitVariableLoad(st)
+	g.retain = false
+
+	g.pf("// %sMeasureRetain and %sSaveRetain: the pair, with the retained tail in\n", n, n)
+	g.pf("// every body it belongs to (docs/SPEC-TABLES.md §6.6). They drop the same\n")
+	g.pf("// records under the same walk, so Measure's answer is the size the save\n")
+	g.pf("// writes even where a record could not be placed.\n")
+	g.pf("template <typename Ctx>\ninline int64_t %sMeasureWireRetain( const Ctx & ctx, const %s & root, TableRetain * retain, TableAllocator allocator )\n{\n", n, n)
+	g.pf("    TableNumbering numbering;\n")
+	g.pf("    TableNumberingInit( numbering, allocator );\n")
+	g.pf("    int64_t bytes = -1;\n")
+	dispatch("    ")
+	g.pf("    if ( %sNumberFrom( ctx, numbering, root ) )\n    {\n", n)
+	g.pf("        TableRetainIds ids( retain );\n")
+	g.pf("        if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it\n")
+	g.pf("        bytes = %sMeasureBodyRetain( ctx, numbering, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) );\n", n)
+	g.pf("        if ( bytes >= 0 )\n        {\n")
+	g.pf("            const int64_t table = TableNodeTableMeasureRetain( ctx, ids, numbering, retain, retain_measure );\n")
+	g.pf("            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + TableRetainIdsBytes( ids );\n")
+	g.pf("        }\n    }\n")
+	g.pf("    TableNumberingShutdown( numbering );\n")
+	g.pf("    return bytes;\n}\n\n")
+
+	g.pf("template <typename Ctx>\ninline int64_t %sSaveWireRetain( const Ctx & ctx, const %s & root, TableRetain * retain, uint8_t * buffer, int64_t capacity, TableReport * report )\n{\n", n, n)
+	g.pf("    TableNumbering numbering;\n")
+	g.pf("    TableNumberingInit( numbering, TableDefaultAllocator() );\n")
+	dispatch("    ")
+	saveDispatch("    ")
+	g.pf("    if ( !%sNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }\n", n)
+	g.pf("    TableWriter w( buffer, capacity );\n")
+	g.pf("    TableRetainIds ids( retain );\n")
+	g.pf("    if ( retain != NULL ) { retain->id_used = 0; }\n")
+	g.pf("    TableRetainClearPlaced( retain );\n")
+	g.pf("    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)\n")
+	g.pf("    // the root's own fields, then the RETAINED TAIL, then the node table's\n")
+	g.pf("    // field: a retained field is one of the root's own values, and the tail\n")
+	g.pf("    // is pinned before the large and damage-prone part (§6.6, §3.1)\n")
+	g.pf("    bool ok = %sSaveBodyFieldsRetain( ctx, numbering, w, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) ) &&\n", n)
+	g.pf("              TableNodeTableSaveRetain( ctx, w, ids, numbering, retain, retain_measure, retain_save );\n")
+	g.pf("    TableNumberingShutdown( numbering );\n")
+	g.pf("    if ( !ok || ids.overflow ) { return -1; }\n")
+	g.pf("    w.put8( 0 ); // the ZERO REFERENCE that ends the root body\n")
+	g.pf("    TableRetainIdsWrite( w, ids );\n")
+	g.pf("    if ( w.overflow ) { return -1; } // the caller's buffer was too small\n")
+	g.pf("    // THE SAVE'S OWN SHARE OF retain_lost, read after the save (§6.6): every\n")
+	g.pf("    // record the walk did not place, counted once.\n")
+	g.pf("    TableRetainCountLost( retain, report );\n")
+	g.pf("    return w.offset;\n}\n\n")
+
+	g.pf("inline int64_t %sMeasureRetain( const %s * root, TableRetain * retain, TableAllocator allocator = TableDefaultAllocator() )\n{\n", n, n)
+	g.pf("    if ( root == NULL ) { return -1; }\n")
+	g.pf("    TableRegionCtx ctx;\n")
+	g.pf("    return %sMeasureWireRetain( ctx, *root, retain, allocator );\n}\n\n", n)
+
+	g.pf("// SaveRetain REFUSES A NULL REPORT and returns -1 (docs/SPEC-TABLES.md\n")
+	g.pf("// §6.6): the save is the only place a caller learns that a record was\n")
+	g.pf("// dropped, so the report is required here where it is optional everywhere\n")
+	g.pf("// else. A surface that let a caller retain, save and never find out would\n")
+	g.pf("// be a promise it could not check.\n")
+	g.pf("inline int64_t %sSaveRetain( const %s * root, TableRetain * retain, uint8_t * buffer, int64_t capacity, TableReport * report )\n{\n", n, n)
+	g.pf("    if ( root == NULL || report == NULL ) { return -1; }\n")
+	g.pf("    TableRegionCtx ctx;\n")
+	g.pf("    return %sSaveWireRetain( ctx, *root, retain, buffer, capacity, report );\n}\n\n", n)
+}
+
+// emitRetainRefusals is RETENTION IS THE VARIABLE CLASS'S, AND A FIXED-CLASS
+// ROOT GETS NONE (docs/SPEC-TABLES.md §6.6). A fixed-class root is a value: it
+// has no region and no node directory, so the path's first step names nothing
+// and the anchor the round trip rests on does not exist.
+//
+// The refusal is IN THE SOURCE THE UNIT DOES EMIT rather than a missing symbol
+// (§11's rule for a surface a class does not carry): the three names are
+// declared, and naming one is a compile error that says why.
+func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
+	first := true
+	for _, st := range members {
+		if g.isVar(st.Name) || st.IsMapEntry() {
+			continue
+		}
+		if first {
+			g.pf("// ---- retain-unknown on a FIXED-class root: refused by name (§6.6) ----\n")
+			g.pf("//\n")
+			g.pf("// A fixed-class root is a VALUE: no region, no node directory, and so no\n")
+			g.pf("// anchor for a retained record's path. The three names are declared here so\n")
+			g.pf("// that naming one is a refusal that says why, rather than a symbol a linker\n")
+			g.pf("// could not find. The suffixes stay claimed on every closure member all the\n")
+			g.pf("// same (§11): a table gains or loses pointers as an edit, and a name that is\n")
+			g.pf("// free today must not become a collision tomorrow.\n\n")
+			first = false
+		}
+		why := fmt.Sprintf("%s is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it.", st.Name)
+		for _, verb := range []string{"LoadRetain", "MeasureRetain", "SaveRetain"} {
+			g.pf("template <typename... Args>\ninline void %s%s( Args &&... )\n{\n", st.Name, verb)
+			g.pf("    static_assert( sizeof...( Args ) == (size_t) -1,\n        \"%s\" );\n}\n\n", why)
+		}
+	}
+}

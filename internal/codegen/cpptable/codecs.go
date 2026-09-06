@@ -569,6 +569,20 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
+	if g.anyVariable {
+		// the same answer over the RETAIN family's merged table
+		// (docs/SPEC-TABLES.md §6.6): a key or a variant this build can name
+		// takes its entry from the generated table exactly as it always did,
+		// and the overload is what lets one codec serve both families.
+		g.pf("inline bool TableEnumRef( TableRetainIds & ids, %s value, uint64_t & ref )\n{\n", e.Name)
+		g.pf("    switch ( value )\n    {\n")
+		g.pf("        case %s::None: ref = 0; return true;\n", e.Name)
+		for i, v := range e.Variants {
+			g.pf("        case %s::%s: ref = %s; return true;\n", e.Name, v, g.wireRef(ir.TableWireId(e.VariantWireName(i))))
+		}
+		g.pf("        default: return false;\n")
+		g.pf("    }\n}\n")
+	}
 	g.pf("inline bool TableEnumNamed( %s value )\n{\n", e.Name)
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %s::None: return true;\n", e.Name)
@@ -671,12 +685,14 @@ func framed(length string) string {
 
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	if g.isVar(st.Name) {
-		g.pf("template <typename Ctx>\ninline int64_t %sMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const %s & value )\n{\n", st.Name, st.Name)
+		g.pf("template <typename Ctx>\ninline int64_t %s( const Ctx & ctx, const TableNumbering & numbering, %s & ids, const %s & value%s )\n{\n",
+			g.verb(st.Name, "MeasureBody"), g.idsType(), st.Name, g.retainParams())
 		if g.noVariableEdges(st) {
 			g.pf("    (void) ctx; (void) numbering;\n")
 		}
 	} else {
-		g.pf("inline int64_t %sMeasureBody( TableIds & ids, const %s & value )\n{\n", st.Name, st.Name)
+		g.pf("inline int64_t %s( %s & ids, const %s & value%s )\n{\n",
+			g.verb(st.Name, "MeasureBody"), g.idsType(), st.Name, g.retainParams())
 	}
 	if len(st.Fields) == 0 {
 		g.pf("    (void) value; (void) ids; // empty type: presence is the payload\n")
@@ -694,8 +710,15 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 		}
 		g.emitTableMeasureField(f)
 	}
+	if g.retain {
+		// WHERE THEY GO BACK: at the END of their own body, in the order
+		// retained (docs/SPEC-TABLES.md §6.6). A body carrying a retained
+		// field therefore does not ELIDE either, and needs no rule of its own
+		// to say so: the tail is bytes, and elision asks whether a body has any.
+		g.pf("    bytes += TableRetainTailMeasure( retain, ids, path );\n")
+	}
 	g.pf("    return bytes;\n}\n\n")
-	if g.isVar(st.Name) || st.IsMapEntry() {
+	if g.retain || g.isVar(st.Name) || st.IsMapEntry() {
 		return
 	}
 	// the buffer-level entry: the FORM BYTE, the ROOT BODY and the ID TABLE,
@@ -1077,12 +1100,14 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 		// so the terminator is written by whoever knows the body is finished:
 		// the wrapper below for a nested body, and the wire surface for a root
 		// that still owes its node table (docs/SPEC-TABLES.md §3.1).
-		g.pf("template <typename Ctx>\ninline bool %sSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const %s & value )\n{\n", st.Name, st.Name)
+		g.pf("template <typename Ctx>\ninline bool %s( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, %s & ids, const %s & value%s )\n{\n",
+			g.verb(st.Name, "SaveBodyFields"), g.idsType(), st.Name, g.retainParams())
 		if g.noVariableEdges(st) {
 			g.pf("    (void) ctx; (void) numbering;\n")
 		}
 	} else {
-		g.pf("%s bool %sSaveBody( TableWriter & w, TableIds & ids, const %s & value )\n{\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
+		g.pf("%s bool %s( TableWriter & w, %s & ids, const %s & value%s )\n{\n",
+			tableInlineMacro(g.unit.Package), g.verb(st.Name, "SaveBody"), g.idsType(), st.Name, g.retainParams())
 	}
 	if len(st.Fields) == 0 {
 		g.pf("    (void) value; (void) ids; // empty type: presence is the payload\n")
@@ -1099,12 +1124,23 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 		}
 		g.emitTableWriteField(f)
 	}
+	if g.retain {
+		// the RETAINED TAIL, and in a ROOT body it lands here rather than
+		// after the node table: the order is the root's declared fields, then
+		// the retained tail, then the node table (docs/SPEC-TABLES.md §6.6)
+		g.pf("    if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }\n")
+	}
 	if g.isVar(st.Name) {
 		g.pf("    return !w.overflow;\n}\n\n")
 		// the ordinary body: the fields, then the terminator. A nested body is
 		// finished when its fields are, and only a ROOT owes a node table.
-		g.pf("template <typename Ctx>\ninline bool %sSaveBody( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const %s & value )\n{\n", st.Name, st.Name)
-		g.pf("    if ( !%sSaveBodyFields( ctx, numbering, w, ids, value ) ) { return false; }\n", st.Name)
+		g.pf("template <typename Ctx>\ninline bool %s( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, %s & ids, const %s & value%s )\n{\n",
+			g.verb(st.Name, "SaveBody"), g.idsType(), st.Name, g.retainParams())
+		if g.retain {
+			g.pf("    if ( !%s( ctx, numbering, w, ids, value, retain, path ) ) { return false; }\n", g.verb(st.Name, "SaveBodyFields"))
+		} else {
+			g.pf("    if ( !%sSaveBodyFields( ctx, numbering, w, ids, value ) ) { return false; }\n", st.Name)
+		}
 		g.pf("    w.put8( 0 ); // the ZERO REFERENCE that ends the body\n")
 		g.pf("    return !w.overflow;\n}\n\n")
 		return
@@ -1119,6 +1155,9 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 // allocation anywhere: the caller owns the buffer, and the id table is a local
 // sized by the unit's own closure.
 func (g *tableGen) emitTableSave(st *ir.Struct) {
+	if g.retain {
+		return // the retain family's buffer-level entry is the ROOT's own (§6.6)
+	}
 	if g.isVar(st.Name) {
 		return // a variable-length table's Save takes a builder or a region root
 	}
@@ -1464,12 +1503,14 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind, sfx s
 
 func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if g.isVar(st.Name) {
-		g.pf("inline bool %sLoadBody( TableReader & r, const TableNodeMap & nodes, %s & value )\n{\n", st.Name, st.Name)
+		g.pf("inline bool %s( TableReader & r, const TableNodeMap & nodes, %s & value%s )\n{\n",
+			g.verb(st.Name, "LoadBody"), st.Name, g.retainParams())
 		if g.noVariableEdges(st) {
 			g.pf("    (void) nodes;\n")
 		}
 	} else {
-		g.pf("%s bool %sLoadBody( TableReader & r, %s & value )\n{\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
+		g.pf("%s bool %s( TableReader & r, %s & value%s )\n{\n",
+			tableInlineMacro(g.unit.Package), g.verb(st.Name, "LoadBody"), st.Name, g.retainParams())
 	}
 	// `<T>Reset`, NOT `value = T{}` and not `new ( &value ) T{}`: assignment
 	// materializes a temporary, and generated types can be large — a stack
@@ -1569,19 +1610,19 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		}
 		g.pf("            default:\n            {\n")
 		g.pf("                r.report->unknown++;\n")
-		g.pf("                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }\n")
+		g.emitUnknownArm("                ")
 		g.pf("                break;\n            }\n")
 		g.pf("        }\n    }\n}\n\n")
 	} else {
 		g.pf("        r.report->unknown++;\n")
-		g.pf("        if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }\n")
+		g.emitUnknownArm("        ")
 		g.pf("    }\n}\n\n")
 	}
 
 	// buffer-level convenience entry. A VARIABLE-LENGTH table has none: it is
 	// never held by value, so its Load takes the caller's region and hands back
 	// the root instead (docs/SPEC-TABLES.md §2).
-	if g.isVar(st.Name) || st.IsMapEntry() {
+	if g.retain || g.isVar(st.Name) || st.IsMapEntry() {
 		return
 	}
 	g.pf("// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so a\n")
@@ -1626,6 +1667,27 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("    return %sLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;\n}\n\n", st.Name)
 }
 
+// emitUnknownArm is the field this reader cannot name: skipped by its framing
+// and counted, exactly as it always was. Under RETENTION the same skip runs
+// inside the capture, which copies the field out with every reference resolved
+// — or drops it, counting one retain_lost, where an excluded class, a full
+// buffer or damage the plain read never looked at says it cannot be kept
+// (docs/SPEC-TABLES.md §6.6). Either way the read continues and the reader's
+// own data is exactly what it would have been with retention off.
+func (g *tableGen) emitUnknownArm(ind string) {
+	if !g.retain {
+		g.pf("%sif ( !r.skip( kind ) ) { r.report->malformed = true; return false; }\n", ind)
+		return
+	}
+	g.pf("%sif ( TableRetainReservedId( field_id ) )\n%s{\n", ind, ind)
+	g.pf("%s    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING\n", ind)
+	g.pf("%s    // and is never retained: re-emitting it would put a second\n", ind)
+	g.pf("%s    // numbering in a file whose own numbering the writer re-derives.\n", ind)
+	g.pf("%s    r.report->retain_lost++;\n", ind)
+	g.pf("%s    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }\n", ind)
+	g.pf("%s}\n%selse if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }\n", ind, ind)
+}
+
 // emitNodeIndexLoad reads one NODE INDEX and resolves it through the
 // numbering, never following it (docs/SPEC-TABLES.md §3.1). `exact` is the ARM
 // position's extra check: a reference-shaped arm's `L` must be the byte count
@@ -1658,7 +1720,20 @@ func (g *tableGen) emitEnumRefLoad(f *ir.Field, dst, ind, rdr, onBad string) {
 	g.pf("%sif ( variant_ref == 0 ) { %s = %s::None; } // the zero reference is the enum's None\n", ind, dst, e)
 	g.pf("%selse if ( variant_ref > (uint64_t) r.ids->count ) { %s }\n", ind, onBad)
 	g.pf("%selse if ( !TableEnumValue( r.ids->at( variant_ref ), %s ) )\n%s{\n", ind, dst, ind)
-	g.pf("%s    %s = %s::None;\n%s    r.report->unknown++;\n%s}\n", ind, dst, e, ind, ind)
+	g.pf("%s    %s = %s::None;\n%s    r.report->unknown++;%s\n%s}\n", ind, dst, e, ind, g.retainLostInline(), ind)
+}
+
+// retainLostInline is one EXCLUDED CLASS counted (docs/SPEC-TABLES.md §6.6),
+// emitted into the RETAIN family only and beside the unknown the plain read
+// already counts. The thing excluded is not a self-contained field, so putting
+// it back is a splice into something the reader rebuilds rather than a field
+// appended to a body — and every exclusion counts, so a caller that needs to
+// know retention held reads one number.
+func (g *tableGen) retainLostInline() string {
+	if !g.retain {
+		return ""
+	}
+	return " r.report->retain_lost++;"
 }
 
 func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
@@ -1820,7 +1895,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s            // must not leave an arm decoded by an earlier occurrence\n", ind)
 		g.pf("%s            // standing (docs/SPEC-TABLES.md §4).\n", ind)
 		g.pf("%s            value.%s.type = %sType::None;\n", ind, f.Name, un.Name)
-		g.pf("%s            r.report->unknown++;\n%s            break;\n", ind, ind)
+		g.pf("%s            r.report->unknown++;%s\n%s            break;\n", ind, g.retainLostInline(), ind)
 		g.pf("%s    }\n%s}\n", ind, ind)
 		g.pf("%sr.offset += (int64_t) body_len;\n", ind)
 	case kind == tkTable:
@@ -1895,7 +1970,7 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 			})
 			g.pf("%s                break;\n%s            }\n", ind, ind)
 		}
-		g.pf("%s            default: r.report->unknown++; break; // an arm this reader cannot name: the element reads None, the body skips by its length\n", ind)
+		g.pf("%s            default: r.report->unknown++;%s break; // an arm this reader cannot name: the element reads None, the body skips by its length\n", ind, g.retainLostInline())
 		g.pf("%s        }\n", ind)
 		g.pf("%s        %s.offset += (int64_t) %s;\n", ind, rdr, length)
 		g.pf("%s    }\n%s}\n", ind, ind)

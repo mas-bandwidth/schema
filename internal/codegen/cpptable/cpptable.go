@@ -160,6 +160,35 @@ func (g *tableGen) step(f *ir.Field) string {
 	return fmt.Sprintf("TableRetainStepInto( %s, %d, (uint32_t) ( %s ) )", at, g.ordinal[f], index)
 }
 
+// verb is a body function's own name under the family being emitted: the
+// RETAIN family writes <T>LoadBodyRetain, <T>MeasureBodyRetain and
+// <T>SaveBodyRetainFields beside the three the wire already had
+// (docs/SPEC-TABLES.md §6.6).
+func (g *tableGen) verb(name, base string) string {
+	if g.retain {
+		return name + base + "Retain"
+	}
+	return name + base
+}
+
+// idsType is the table the family interns into: the generated one, or the
+// MERGED pair of it and the caller's retained-id list (§6.6).
+func (g *tableGen) idsType() string {
+	if g.retain {
+		return "TableRetainIds"
+	}
+	return "TableIds"
+}
+
+// retainParams are the two the retain family carries and the plain one does
+// not: the caller's stores, and the path naming the body being walked.
+func (g *tableGen) retainParams() string {
+	if g.retain {
+		return ", TableRetain * retain, const TableRetainPath & path"
+	}
+	return ""
+}
+
 // inStep runs `emit` with the element index set, and puts back what was there:
 // an arm's elements nest inside walks that already spell one.
 func (g *tableGen) inStep(index string, emit func()) {
@@ -1133,8 +1162,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.emitMessageBodyDeclarations(members)
 			g.emitCodecDeclarations(members)
 			g.emitMapSurfaces(members)
+			if anyVariable {
+				g.emitRetainDeclarations(members)
+			}
 			for _, st := range members {
-				g.owner = st
+				g.setOwner(st)
 				g.emitTableMeasure(st)
 				g.emitTableWrite(st)
 				g.emitTableSave(st)
@@ -1143,6 +1175,18 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.emitMessageEntries(st)
 			}
 			g.emitVariableSurface(members)
+			// RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6): the second family, and
+			// the fixed class's refusal, which is emitted in every unit because
+			// a name refused by a missing symbol is not refused by name.
+			if anyVariable {
+				g.emitRetainBodies(members)
+				for _, st := range members {
+					if g.isVar(st.Name) && !st.IsMapEntry() {
+						g.emitRetainRoot(st)
+					}
+				}
+			}
+			g.emitRetainRefusals(members)
 			g.emitCookSurface(members)
 			g.emitCookWriteSurface(members)
 			g.emitRelocatabilityPreamble()
@@ -1254,6 +1298,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			h.WriteString("\n")
 			nodeGuard := strings.ToUpper(u.Package) + "_SCHEMA_TABLE_MESSAGE_NODES"
 			h.WriteString("#ifndef " + nodeGuard + "\n#define " + nodeGuard + "\n\nnamespace " + u.Package + " {\n\n" + cppMessageNodeRuntime + "} // namespace " + u.Package + "\n\n#endif // " + nodeGuard + "\n")
+			// RETAIN-UNKNOWN's runtime (docs/SPEC-TABLES.md §6.6). It names the
+			// region's node directory, so it follows the arena runtime that
+			// declares one, and only a unit with a VARIABLE-LENGTH table
+			// carries a byte of it: retention is the variable class's.
+			h.WriteString("\n")
+			h.WriteString(tableRetainRuntime(u.Package, u, tableRetainDepth(u, closure)))
 		}
 		if anyExtent {
 			// the NODE EXTENT runtime (docs/SPEC-TABLES.md §2.8, §2.9): what a

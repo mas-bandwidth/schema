@@ -1290,9 +1290,24 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	g.pf("        default: break;\n    }\n")
 	g.pf("    return 0;\n}\n\n")
 
-	g.pf("// %sNodeBody: PASS TWO's half — decode one record's body into the storage it\n", n)
+	g.emitRootNodeBody(st, reachable, blobs)
+}
+
+// emitRootNodeBody is PASS TWO's half: decode one record's body into the
+// storage it already owns. It is emitted twice — once plain, and once for the
+// RETAIN family, where each node body is a path root of its own
+// (docs/SPEC-TABLES.md §6.6).
+func (g *tableGen) emitRootNodeBody(st *ir.Struct, reachable []*ir.Struct, blobs []reachableBlob) {
+	n := st.Name
+	g.pf("// %s%s: PASS TWO's half — decode one record's body into the storage it\n", n, g.verb("", "NodeBody"))
 	g.pf("// already owns.\n")
-	g.pf("inline void %sNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )\n{\n", n)
+	if g.retain {
+		g.pf("// EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the\n")
+		g.pf("// index is the region directory's, which Load fills from the wire's framing\n")
+		g.pf("// and nothing afterwards renumbers.\n")
+	}
+	g.pf("inline void %s( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at%s )\n{\n",
+		g.verb(n, "NodeBody"), g.retainNodeBodyParams())
 	if g.anyExtent {
 		g.pf("    // the node's own EXTENT, where its lists' and maps' arrays are carved\n")
 		g.pf("    // from, PRE-ORDER as the bodies decode (docs/SPEC-TABLES.md §2.8, §2.9).\n")
@@ -1323,6 +1338,12 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 		call := fmt.Sprintf("%sLoadBody( r, nodes, *(%s *) at )", t.Name, t.Name)
 		if !g.isVar(t.Name) {
 			call = fmt.Sprintf("%sLoadBody( r, *(%s *) at )", t.Name, t.Name)
+		}
+		if g.retain {
+			call = fmt.Sprintf("%sLoadBodyRetain( r, nodes, *(%s *) at, retain, TableRetainPathRoot( (const void *) at, node ) )", t.Name, t.Name)
+			if !g.isVar(t.Name) {
+				call = fmt.Sprintf("%sLoadBodyRetain( r, *(%s *) at, retain, TableRetainPathRoot( (const void *) at, node ) )", t.Name, t.Name)
+			}
 		}
 		g.pf("        case 0x%016xull: %s; break; // %s\n", ir.TableWireId(t.WireName()), call, t.Name)
 	}
@@ -1540,13 +1561,23 @@ func (g *tableGen) emitVariableLoadMeasure(st *ir.Struct) {
 func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	n := st.Name
 	verb := "Load"
+	if g.retain {
+		verb = "LoadRetain"
+	}
 	g.pf("// %s%s: decode the tolerant wire into the caller's exact-sized region and\n", n, verb)
 	g.pf("// return the root. LOAD IS A SCAN, and that is the whole of its bound: it\n")
 	g.pf("// follows no reference, so there is no depth cap, no visited set and no\n")
 	g.pf("// ordering rule on the indices. Partial results are kept, as everywhere on\n")
 	g.pf("// this wire — the report says what happened. NULL means the CALLER's buffer\n")
 	g.pf("// was wrong.\n")
-	g.pf("inline const %s * %sLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )\n{\n", n, n)
+	if g.retain {
+		g.pf("// UNDER RETENTION it also fills the caller's two stores with the fields\n")
+		g.pf("// this build cannot name, and the report carries what it could not keep\n")
+		g.pf("// (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the\n")
+		g.pf("// reader's data is exactly what it would have been with retention off.\n")
+	}
+	g.pf("inline const %s * %s%s( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes,%s TableReport * report )\n{\n",
+		n, n, verb, g.retainLoadParam())
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:\n")
@@ -1593,6 +1624,13 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableWireId(st.WireName()))
 	g.pf("    %s * root = new ( region ) %s; // lifetime only: LoadBody's first act is %sReset\n", n, n, n)
 	g.pf("    %sReset( *root );\n\n", n)
+	if g.retain {
+		g.pf("    // LoadRetain RESETS BOTH STORES and writes into neither id list: a\n")
+		g.pf("    // retained record carries its field's identity in the record itself,\n")
+		g.pf("    // with every reference resolved (docs/SPEC-TABLES.md §6.6). The buffer\n")
+		g.pf("    // belongs to this region from here on.\n")
+		g.pf("    TableRetainReset( retain, nodes, region );\n\n")
+	}
 	g.pf("    // PASS ONE: fill the numbering from the framing, so that an index\n")
 	g.pf("    // resolves whichever way it points. It reads no body.\n")
 	g.pf("    {\n")
@@ -1637,7 +1675,14 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("        // the table is whole or it is nothing: a scan that failed counts\n")
 	g.pf("        // malformed and NOT the unknowns it met on the way, because the\n")
 	g.pf("        // numbering they belonged to does not exist (§3.1)\n")
-	g.pf("        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }\n")
+	if g.retain {
+		g.pf("        // A NODE RECORD whose type id this reader cannot name is one of the\n")
+		g.pf("        // SIX EXCLUDED CLASSES (§6.6): it is a whole node, and putting one\n")
+		g.pf("        // back means renumbering a graph the writer numbers from its own edges.\n")
+		g.pf("        if ( nodes.good ) { out->unknown += unknown_records; out->retain_lost += unknown_records; } else { out->malformed = true; }\n")
+	} else {
+		g.pf("        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }\n")
+	}
 	g.pf("    }\n\n")
 	g.pf("    // PASS TWO: decode each body into its own storage. A forward index\n")
 	g.pf("    // resolves without scratch, because pass one already placed every node.\n")
@@ -1647,7 +1692,11 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
 	g.pf("            if ( directory[k + 1].offset != kTableNodeAbsent )\n            {\n")
 	g.pf("                TableReader sub( body, length, out, &ids_table );\n")
-	g.pf("                %sNodeBody( type_id, sub, nodes, region + directory[k + 1].offset );\n", n)
+	if g.retain {
+		g.pf("                %sNodeBodyRetain( type_id, sub, nodes, region + directory[k + 1].offset, retain, (uint32_t) ( k + 2 ) );\n", n)
+	} else {
+		g.pf("                %sNodeBody( type_id, sub, nodes, region + directory[k + 1].offset );\n", n)
+	}
 	g.pf("            }\n")
 	g.pf("            k++;\n")
 	g.pf("        }\n    }\n\n")
@@ -1661,8 +1710,29 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("    root_carve.left = root_extent;\n")
 		g.pf("    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's\n")
 	}
-	g.pf("    %sLoadBody( r, nodes, *root );\n", n)
+	if g.retain {
+		g.pf("    %sLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );\n", n)
+	} else {
+		g.pf("    %sLoadBody( r, nodes, *root );\n", n)
+	}
 	g.pf("    return root;\n}\n\n")
+}
+
+// retainNodeBodyParams are the two a retaining node body takes: the caller's
+// stores, and the node's own index in the region directory (§6.3, §6.6).
+func (g *tableGen) retainNodeBodyParams() string {
+	if g.retain {
+		return ", TableRetain * retain, uint32_t node"
+	}
+	return ""
+}
+
+// retainLoadParam is LoadRetain's own argument, the caller's two stores.
+func (g *tableGen) retainLoadParam() string {
+	if g.retain {
+		return " TableRetain * retain,"
+	}
+	return ""
 }
 
 // loadMeasureReasonParam is the out-parameter every LoadMeasure takes: the

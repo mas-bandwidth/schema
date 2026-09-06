@@ -390,7 +390,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 			g.emitArmLoad(in, value, ind+"                ", inner, value+".type", un.Name+"Type::None", sfx+"a")
 			g.pf("%s                break;\n%s            }\n", ind, ind)
 		}
-		g.pf("%s            default: r.report->unknown++; break; // an arm this reader cannot name\n", ind)
+		g.pf("%s            default: r.report->unknown++;%s break; // an arm this reader cannot name\n", ind, g.retainLostInline())
 		g.pf("%s        }\n", ind)
 		g.pf("%s        %s.offset += (int64_t) %s;\n", ind, rdr, length)
 		g.pf("%s    }\n%s}\n", ind, ind)
