@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0xd093e62e6f907c36
+// package benchtable — protocol id 0x88cf953e975ace60
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an interior null)
@@ -71,6 +71,7 @@ namespace Benchtable
         Hit = 1,
         Chat = 2,
         Pickup = 3,
+        Count = 3, // the declared variant count (SPEC §4.2)
         Max = 3, // the exported extent (SPEC §4.2)
     }
 
@@ -93,7 +94,7 @@ namespace Benchtable
     {
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
-        public const ulong ProtocolId = 0xd093e62e6f907c36;
+        public const ulong ProtocolId = 0x88cf953e975ace60;
 
         // EnumNameTableWeapon: debug/log/tooling name for any TableWeapon wire value —
         // out-of-set values (wire-legal up to the declared max) name as "???"
@@ -439,6 +440,25 @@ namespace Benchtable
                 value.Amount = (int)((int)(uint)v1);
             }
             return true;
+        }
+
+        // EnumNameTableEventType: debug/log/tooling name for any TableEventType wire value —
+        // out-of-set values (wire-legal up to the declared max) name as "???"
+        public static string EnumNameTableEventType(ulong value)
+        {
+            switch (value)
+            {
+                case (ulong)TableEventType.None:
+                    return "None";
+                case (ulong)TableEventType.Hit:
+                    return "Hit";
+                case (ulong)TableEventType.Chat:
+                    return "Chat";
+                case (ulong)TableEventType.Pickup:
+                    return "Pickup";
+                default:
+                    return "???";
+            }
         }
 
         // TableEventMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).

@@ -1034,6 +1034,20 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 	// dropped variants (duplicates, bad payloads) already errored; Max and
 	// storage stay the DECLARED count so cascade diagnostics do not invent a
 	// second wire shape — the unit is refused either way.
+
+	// Count is reserved exactly where the member exists. A PACKET union's tag
+	// enum carries Count beside Max in all nine targets, so an arm exporting
+	// Count would define the member twice. A TABLE-CLOSURE union's tag shape
+	// is emitted beside the tables and carries Max alone, so the name is free
+	// there. The kind is known only once every arm is resolved, which is why
+	// this sits after the loop rather than beside None, Max and Type.
+	if !un.TableClosureOnly() {
+		for _, v := range d.Variants {
+			if ir.GoExportName(v.Name) == "Count" {
+				c.errf(v.Pos, "variant %s is a compile error — a union's generated tag enum carries its declared variant count as the member Count, checked over the exported spelling (SPEC §4.8, §4.2)", v.Name)
+			}
+		}
+	}
 }
 
 // resolveArm resolves one arm as a FIELD LINE (SPEC §4.8,
@@ -1124,18 +1138,25 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 				} else if cond.Type.Kind != ir.TBool || cond.Array != ir.ArrayNone {
 					c.errf(item.Cond.Pos, "if condition %s must be a bool field (SPEC §4.6)", item.Cond.Text)
 				}
-				neg := ""
-				if item.Neg {
-					neg = "!"
+				// the branch condition, spelled the way the reflection
+				// descriptors spell it: at_rest, !at_rest, active &&
+				// has_target. One spelling for the guard a reader meets in a
+				// storage comment and the guard a table-JSON walker parses at
+				// runtime (SPEC §4.5).
+				and := func(outer, inner string) string {
+					if outer == "" {
+						return inner
+					}
+					return outer + " && " + inner
 				}
-				g := "if " + neg + item.Cond.Text
-				if guard != "" {
-					g = guard + " / " + g
+				pos, negated := item.Cond.Text, "!"+item.Cond.Text
+				if item.Neg {
+					pos, negated = negated, pos
 				}
 				br := &ir.Branch{Neg: item.Neg, Cond: item.Cond.Text}
-				br.Then = walk(item.Then, g, append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
+				br.Then = walk(item.Then, and(guard, pos), append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
 				if item.Else != nil {
-					br.Else = walk(item.Else, g+" else", append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
+					br.Else = walk(item.Else, and(guard, negated), append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
 				}
 				items = append(items, br)
 			case *ast.ConstField:
@@ -1423,6 +1444,9 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 				out.ArrayBound = out.KeyEnumRef.Max
 				out.ArrayExpr = f.Array.Hi
 			default:
+				if !c.checkPositionalKeyedSpelling(f, inTable) {
+					return nil
+				}
 				hi, ok := c.evalInt(f.Array.Hi)
 				if !ok {
 					return nil

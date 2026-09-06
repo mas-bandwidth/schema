@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package bench — protocol id 0x5b8227d21cba8abf */
+   package bench — protocol id 0x06845f749d2417b4 */
 
 #ifndef SCHEMA_BENCH_BENCHWIRE_H
 #define SCHEMA_BENCH_BENCHWIRE_H
@@ -1283,6 +1283,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
             return 0;
         }
     }
+    if ( value->entities_count < 1 || value->entities_count > 8 )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
+    }
     if ( !serialize_write_int( stream, value->entities_count, 1, 8 ) )
     {
         return 0;
@@ -1296,6 +1300,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
                 return 0;
             }
         }
+    }
+    if ( value->stats_count < 0 || value->stats_count > 80 )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
     }
     if ( !serialize_write_int( stream, value->stats_count, 0, 80 ) )
     {

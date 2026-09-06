@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 package example
 
@@ -15,11 +15,11 @@ type ArmsAgree struct {
 	Lead uint32
 	Flag bool
 
-	// if flag — wire branch; storage holds both sides, a read zeroes the
+	// flag — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	A uint32
 
-	// if flag else — wire branch; storage holds both sides, a read zeroes the
+	// !flag — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	B uint32
 
@@ -79,11 +79,11 @@ type ArmsDisagree struct {
 	Lead uint32
 	Flag bool
 
-	// if flag — wire branch; storage holds both sides, a read zeroes the
+	// flag — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	A uint32
 
-	// if flag else — wire branch; storage holds both sides, a read zeroes the
+	// !flag — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	B uint32
 
@@ -143,7 +143,7 @@ type ArmEmpty struct {
 	Lead uint32
 	Flag bool
 
-	// if flag — wire branch; storage holds both sides, a read zeroes the
+	// flag — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	A uint32
 
@@ -199,19 +199,19 @@ type ArmsNested struct {
 	Lead  uint32
 	Outer bool
 
-	// if outer — wire branch; storage holds both sides, a read zeroes the
+	// outer — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	Inner bool
 
-	// if outer / if inner — wire branch; storage holds both sides, a read zeroes the
+	// outer && inner — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	X uint32
 
-	// if outer / if inner else — wire branch; storage holds both sides, a read zeroes the
+	// outer && !inner — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	Y uint32
 
-	// if outer else — wire branch; storage holds both sides, a read zeroes the
+	// !outer — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	Z uint32
 
@@ -285,12 +285,12 @@ type ArmAlign struct {
 	Lead uint32
 	Flag bool
 
-	// if flag — wire branch; storage holds both sides, a read zeroes the
+	// flag — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	S       [4]byte // string(4): max length, used length beside it (SPEC §4.7)
 	SLength int32
 
-	// if flag else — wire branch; storage holds both sides, a read zeroes the
+	// !flag — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	B uint32
 
@@ -380,12 +380,12 @@ type ArmArray struct {
 	Lead uint32
 	Flag bool
 
-	// if flag — wire branch; storage holds both sides, a read zeroes the
+	// flag — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	Items      [3]uint16 // used count beside it; wire count in [0, 3]
 	ItemsCount int32
 
-	// if flag else — wire branch; storage holds both sides, a read zeroes the
+	// !flag — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	B uint32
 
@@ -526,8 +526,23 @@ const (
 	UnevenTypeNone   UnevenType = 0
 	UnevenTypeNarrow UnevenType = 1
 	UnevenTypeWide   UnevenType = 2
+	UnevenTypeCount  UnevenType = 2 // the declared variant count (SPEC §4.2)
 	UnevenTypeMax    UnevenType = 2 // the exported extent (SPEC §4.2)
 )
+
+// EnumNameUnevenType: debug/log/tooling name for any UnevenType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+func EnumNameUnevenType(value uint64) string {
+	switch value {
+	case uint64(UnevenTypeNone):
+		return "None"
+	case uint64(UnevenTypeNarrow):
+		return "Narrow"
+	case uint64(UnevenTypeWide):
+		return "Wide"
+	}
+	return "???"
+}
 
 // Uneven — at most one of the arms; Type says which. The zero value is the
 // empty union (None). A read zero-establishes exactly the selected arm before

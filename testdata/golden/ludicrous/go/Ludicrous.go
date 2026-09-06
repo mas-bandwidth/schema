@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0x3a9a972a02c9e7ca
+// package ludicrous — protocol id 0x9660fa8c14d38d67
 
 package ludicrous
 
@@ -14,7 +14,7 @@ import (
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const ProtocolId uint64 = 0x3a9a972a02c9e7ca
+const ProtocolId uint64 = 0x9660fa8c14d38d67
 
 // ErrValidation is returned when a read rejects the wire: a wrong constant,
 // nonzero reserved bits, or an interior null in a string (SPEC §4.3, §4.7).
@@ -253,7 +253,7 @@ type LudicrousState struct {
 	KeysCount int32
 	HasTarget bool
 
-	// if has_target — wire branch; storage holds both sides, a read zeroes the
+	// has_target — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	TargetId serialize.Uint128
 }

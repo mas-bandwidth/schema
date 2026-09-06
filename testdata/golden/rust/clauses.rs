@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
@@ -647,7 +647,18 @@ impl EmptyUnionType {
     pub const NONE: EmptyUnionType = EmptyUnionType(0);
     pub const A: EmptyUnionType = EmptyUnionType(1);
     pub const B: EmptyUnionType = EmptyUnionType(2);
+    pub const COUNT: EmptyUnionType = EmptyUnionType(2); // the declared variant count (SPEC §4.2)
     pub const MAX: EmptyUnionType = EmptyUnionType(2); // the exported extent (SPEC §4.2)
+}
+
+/// Debug/log name for any `EmptyUnionType` value, out-of-set included.
+pub fn enum_name_empty_union_type(value: EmptyUnionType) -> &'static str {
+    match value.0 {
+        0 => "None",
+        1 => "A",
+        2 => "B",
+        _ => "???",
+    }
 }
 
 // EmptyUnion — at most one of the arms. The default is None (the empty union);

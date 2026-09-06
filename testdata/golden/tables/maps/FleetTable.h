@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package mapdemo — protocol id 0xac56402cfa2310d3 (packets only: tables version by field id, not by protocol id)
+// package mapdemo — protocol id 0xacb3899fa4a60950 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -1356,7 +1356,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // generated field header carries as a literal.
 static const int64_t kTableAnnounceBytes = 521;
 static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0xcf, 0xf7, 0x64, 0x41, 0x5a, 0x7d, 0x45, 0xac, 0x02,
+    0x01, 0x01, 0x09, 0x1e, 0x55, 0x86, 0xc4, 0xa8, 0x8a, 0xd5, 0x26, 0x02,
     0x0e, 0xe1, 0x03, 0x06, 0xde, 0x03, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
     0xc9, 0x3d, 0x0c, 0x20, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
     0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0x10, 0xea,
@@ -3288,8 +3288,8 @@ inline int32_t TableKeyLength( const char * key, int32_t bound )
 // (§2.8, §3). A string(N) key holds any byte a wire or a text can spell,
 // U+0000 included, so a lookup that measures to the first NUL answers that "a"
 // and "a", 0, "b" are the same key: the first entry is found, RESET, and
-// relabelled with the second key, which deletes an entry the report never
-// mentions. Every internal lookup and every insertion takes this pair; the
+// relabeled with the second key, which deletes an entry the report never
+// mentions. Every internal lookup and every insertion takes this pair, and the
 // public const char * surface builds one and is a wrapper over it.
 struct TableMapKeyRef
 {
@@ -3941,7 +3941,7 @@ namespace mapdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xac457d5a4164f7cfull;
+static const uint64_t BuildVersion = 0x26d58aa8c486551eull;
 
 } // namespace mapdemo
 

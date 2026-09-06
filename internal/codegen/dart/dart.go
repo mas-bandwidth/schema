@@ -532,8 +532,22 @@ func (g *gen) emitTagEnum(name string, members, docs []string, max int64, commen
 		g.bpf("%s", ir.DocComment(docs[i], "  ", "///"))
 		g.bpf("  static const int %s = %d;\n", dartName(m), i+1)
 	}
+	g.bpf("  static const int count = %d; // the declared variant count (SPEC §4.2)\n", len(members))
 	g.bpf("  static const int max = %d; // the exported extent (SPEC §4.2)\n", max)
 	g.bpf("}\n\n")
+
+	// the tag enum's name surface is a declared enum's, member for member: a
+	// reader logging which message arrived writes enumName<Tag>(value)
+	// whichever enum it is. Nothing on the read or write path calls it.
+	g.bpf("// enumName%s: debug/log/tooling name for any %s wire value —\n", name, name)
+	g.bpf("// out-of-set values (wire-legal up to the declared max) name as '???'\n")
+	g.bpf("String enumName%s(int value) {\n", name)
+	g.bpf("  switch (value) {\n")
+	g.bpf("    case %s.none:\n      return 'None';\n", name)
+	for _, m := range members {
+		g.bpf("    case %s.%s:\n      return '%s';\n", name, dartName(m), m)
+	}
+	g.bpf("    default:\n      return '???';\n  }\n}\n\n")
 }
 
 func (g *gen) emitEnum(d *ir.Enum) {
@@ -674,7 +688,9 @@ func (g *gen) emitStorageField(f *ir.Field) {
 			g.bpf("  final %s %s = %s(%s);\n", typedListFor(f.Type), name, typedListFor(f.Type), bound)
 		}
 		if f.Array == ir.ArrayCounted {
-			g.bpf("  int %sCount = 0;\n", name)
+			// a [A..B] count is born at A, the one wire-legal count a fresh
+			// value can carry (SPEC §4.6). A [..N] count is born empty
+			g.bpf("  int %sCount = %d;\n", name, f.BornCount())
 		}
 	default:
 		g.emitFieldComment(f)

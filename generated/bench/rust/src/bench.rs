@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x5b8227d21cba8abf
+// package bench — protocol id 0x06845f749d2417b4
 
 use serialize::{ReadStream, Stream, WriteStream};
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-pub const PROTOCOL_ID: u64 = 0x5b8227d21cba8abf;
+pub const PROTOCOL_ID: u64 = 0x06845f749d2417b4;
 
 /// The generated crate's error: the runtime's own errors pass through;
 /// Validation is a read rejecting the wire (SPEC §4.3, §4.7).
@@ -971,7 +971,19 @@ impl MixedEventType {
     pub const HIT: MixedEventType = MixedEventType(1);
     pub const CHAT: MixedEventType = MixedEventType(2);
     pub const PICKUP: MixedEventType = MixedEventType(3);
+    pub const COUNT: MixedEventType = MixedEventType(3); // the declared variant count (SPEC §4.2)
     pub const MAX: MixedEventType = MixedEventType(3); // the exported extent (SPEC §4.2)
+}
+
+/// Debug/log name for any `MixedEventType` value, out-of-set included.
+pub fn enum_name_mixed_event_type(value: MixedEventType) -> &'static str {
+    match value.0 {
+        0 => "None",
+        1 => "Hit",
+        2 => "Chat",
+        3 => "Pickup",
+        _ => "???",
+    }
 }
 
 // MixedEvent — at most one of the arms. The default is None (the empty union);
@@ -1073,11 +1085,11 @@ pub struct BenchMixed {
     pub crc_hint: u32,
     pub has_extra: bool, // = true in new() (zero value otherwise)
 
-    // if has_extra — wire branch; storage holds both sides, a read zeroes the
+    // has_extra — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub extra: i32, // wire [0, 255]
 
-    // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+    // !has_extra — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub idle_ticks: i32, // wire [0, 15]
 }
@@ -1127,6 +1139,7 @@ impl BenchMixed {
     // unless a specified default overrides it).
     pub fn new() -> Self {
         let mut value = BenchMixed::default();
+        value.entities_count = 1;
         value.has_extra = true;
         value
     }

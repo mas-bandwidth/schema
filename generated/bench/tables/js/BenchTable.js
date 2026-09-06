@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0xd093e62e6f907c36
+// package benchtable — protocol id 0x88cf953e975ace60
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an out-of-contract
@@ -21,7 +21,7 @@ const BOOL_SCRATCH = { value: false };
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-export const ProtocolId = 0xd093e62e6f907c36n;
+export const ProtocolId = 0x88cf953e975ace60n;
 
 // TableWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
@@ -319,8 +319,26 @@ export const TableEventType = Object.freeze({
   Hit: 1,
   Chat: 2,
   Pickup: 3,
+  Count: 3, // the declared variant count (SPEC §4.2)
   Max: 3, // the exported extent (SPEC §4.2)
 });
+
+// EnumNameTableEventType: debug/log/tooling name for any TableEventType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+export function EnumNameTableEventType(value) {
+  switch (value) {
+    case TableEventType.None:
+      return "None";
+    case TableEventType.Hit:
+      return "Hit";
+    case TableEventType.Chat:
+      return "Chat";
+    case TableEventType.Pickup:
+      return "Pickup";
+    default:
+      return "???";
+  }
+}
 
 // TableEvent — at most one of the arms; Type says which. Construction is the empty
 // union (None). A read zero-establishes exactly the selected arm before

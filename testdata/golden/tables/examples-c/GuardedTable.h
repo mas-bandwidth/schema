@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package tabledemo — protocol id 0x91df5fddd8edc184 (packets only: tables version by field id, not by protocol id)
+   package tabledemo — protocol id 0xceef9ce015dd2543 (packets only: tables version by field id, not by protocol id)
    The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
    dependency — includable from any TU. Compile the .c beside this header
    to use the reflection descriptors or the text form. */
@@ -406,7 +406,7 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE 0x913551e66dc67157ull
+#define SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE 0x2681ef805280d76eull
 
 #endif /* SCHEMA_TABLEDEMO_BUILD_VERSION */
 
@@ -570,20 +570,20 @@ static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64
 typedef struct Patrol {
     uint8_t active;
 
-    /* if active — guarded fields stay off the wire when the guard says so;
+    /* active — guarded fields stay off the wire when the guard says so;
        a read's prefilled defaults stand in for the untaken side */
     float speed;
     uint8_t has_target;
 
-    /* if active / if has_target — guarded fields stay off the wire when the guard says so;
+    /* active && has_target — guarded fields stay off the wire when the guard says so;
        a read's prefilled defaults stand in for the untaken side */
     int32_t target_id;
 
-    /* if active / if has_target else — guarded fields stay off the wire when the guard says so;
+    /* active && !has_target — guarded fields stay off the wire when the guard says so;
        a read's prefilled defaults stand in for the untaken side */
     float wander;
 
-    /* if active else — guarded fields stay off the wire when the guard says so;
+    /* !active — guarded fields stay off the wire when the guard says so;
        a read's prefilled defaults stand in for the untaken side */
     char note[8 + 1]; /* string(8): N + 1 for the terminator the wire does not carry */
     int32_t note_length;

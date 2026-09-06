@@ -849,9 +849,9 @@ func (g *tableGen) placeColumn(f *ir.Field) string {
 	hold := fmt.Sprintf("TableMap<%s>", n)
 	// THE THUNK PLACES, AND IT DECIDES NOTHING. The key's BOUND is the walker's
 	// rule, applied against the key field's own descriptor before it calls
-	// here, and the key's LENGTH rides in from the text — so NULL out of this
+	// here, and the key's LENGTH rides in from the text. So NULL out of this
 	// lambda means one thing, that the arena refused, and the walker fails the
-	// read the way its list, blob and pointer neighbours do (§2.8, §16.1).
+	// read the way its list, blob and pointer neighbors do (§2.8, §16.1).
 	var insert string
 	if mapKeyIsString(f) {
 		insert = fmt.Sprintf("[]( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * "+

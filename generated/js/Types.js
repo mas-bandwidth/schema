@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 import { MaxHealth, MaxInputsPerPacket, MaxObjects, MaxPositionUnits, MaxVelocityUnits, RotationUnits, ShipMaxLasers, ShipMaxMissiles } from "./Constants.js";
 import { Pending, ShipType, Team } from "./Enums.js";
@@ -381,7 +381,7 @@ export class RigidBody {
     this.Orientation = new Quat();
     this.AtRest = false;
 
-    // if !at_rest — wire branch; storage holds both sides, a read zeroes the
+    // !at_rest — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.LinearVelocity = new Vec3();
     this.AngularVelocity = new Vec3();
@@ -691,7 +691,7 @@ export class ShipCreate {
     this.LinearVelocity = new QuantizedVelocity();
     this.HasFlags = false;
 
-    // if has_flags — wire branch; storage holds both sides, a read zeroes the
+    // has_flags — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.Flags = 0n; // ShipFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
 

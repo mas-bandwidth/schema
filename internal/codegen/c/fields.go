@@ -33,7 +33,15 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, value->%s, (int) value->%s_length )", f.Name, f.Name))
 	case f.Array == ir.ArrayCounted:
-		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_count, %d, %s )", f.Name, f.ArrayMin, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound))))
+		// a count outside its wire range is refused in every build, ahead of
+		// the runtime call whose own range check is an assert. The count
+		// guards the element loop and the pack subtracts the low bound, so a
+		// count below the minimum wraps and an unchecked write reports
+		// success on bytes no reader accepts (SPEC §4.6)
+		bound := g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound))
+		g.pf("%sif ( value->%s_count < %d || value->%s_count > %s )\n%s{\n", ind, f.Name, f.ArrayMin, f.Name, bound, ind)
+		g.pf("%s    return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */\n%s}\n", ind, ind)
+		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_count, %d, %s )", f.Name, f.ArrayMin, bound))
 		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < value->%s_count; i++ )\n%s    {\n", ind, ind, ind, f.Name, ind)
 		g.emitWriteScalar(f, fmt.Sprintf("value->%s[i]", f.Name), ind+"        ")
 		g.pf("%s    }\n%s}\n", ind, ind)

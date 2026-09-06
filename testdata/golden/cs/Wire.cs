@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 using System;
 using System.Runtime.CompilerServices;
@@ -49,21 +49,21 @@ namespace Example
         public int RawDelta;
         public long BigDelta;
 
-        // if active — wire branch; storage holds both sides, a read zeroes the
+        // active — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public Weapon Weapon;
         public bool HasTarget;
 
-        // if active / if has_target — wire branch; storage holds both sides, a read zeroes the
+        // active && has_target — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public ushort TargetId;
 
-        // if active else — wire branch; storage holds both sides, a read zeroes the
+        // !active — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public uint IdleTicks;
 
         public ushort[] Samples = new ushort[8]; // used count beside it; wire count in [1, 8]
-        public int SamplesCount;
+        public int SamplesCount = 1;
     }
 
     // type ProbeRing
@@ -85,6 +85,7 @@ namespace Example
         None = 0,
         Ring = 1,
         Slab = 2,
+        Count = 2, // the declared variant count (SPEC §4.2)
         Max = 2, // the exported extent (SPEC §4.2)
     }
 
@@ -832,6 +833,23 @@ namespace Example
                 value.Height = (byte)rawValue;
             }
             return true;
+        }
+
+        // EnumNameProbeShapeType: debug/log/tooling name for any ProbeShapeType wire value —
+        // out-of-set values (wire-legal up to the declared max) name as "???"
+        public static string EnumNameProbeShapeType(ulong value)
+        {
+            switch (value)
+            {
+                case (ulong)ProbeShapeType.None:
+                    return "None";
+                case (ulong)ProbeShapeType.Ring:
+                    return "Ring";
+                case (ulong)ProbeShapeType.Slab:
+                    return "Slab";
+                default:
+                    return "???";
+            }
         }
 
         // ProbeShapeMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).

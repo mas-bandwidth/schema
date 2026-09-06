@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
@@ -597,8 +597,24 @@ export const EmptyUnionType = Object.freeze({
   None: 0,
   A: 1,
   B: 2,
+  Count: 2, // the declared variant count (SPEC §4.2)
   Max: 2, // the exported extent (SPEC §4.2)
 });
+
+// EnumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+export function EnumNameEmptyUnionType(value) {
+  switch (value) {
+    case EmptyUnionType.None:
+      return "None";
+    case EmptyUnionType.A:
+      return "A";
+    case EmptyUnionType.B:
+      return "B";
+    default:
+      return "???";
+  }
+}
 
 // EmptyUnion — at most one of the arms; Type says which. Construction is the empty
 // union (None). A read zero-establishes exactly the selected arm before

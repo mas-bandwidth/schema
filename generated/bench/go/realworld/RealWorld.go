@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package realworld — protocol id 0x0eefe6bcd2596139
+// package realworld — protocol id 0x11a7ba9416ba6b58
 
 package realworld
 
@@ -16,7 +16,7 @@ import (
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const ProtocolId uint64 = 0x0eefe6bcd2596139
+const ProtocolId uint64 = 0x11a7ba9416ba6b58
 
 // ErrValidation is returned when a read rejects the wire: a wrong constant,
 // nonzero reserved bits, or an interior null in a string (SPEC §4.3, §4.7).
@@ -132,7 +132,7 @@ type RealPacket struct {
 	F011Bits uint32
 	F012Bool bool // = true in New* (zero value otherwise)
 
-	// if f012_bool — wire branch; storage holds both sides, a read zeroes the
+	// f012_bool — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	F013F32   float32
 	F014Uint  uint16 // wire [0, 775]
@@ -167,7 +167,7 @@ type RealPacket struct {
 	F042Bits   uint32
 	F043Bool   bool // = false in New* (zero value otherwise)
 
-	// if f043_bool — wire branch; storage holds both sides, a read zeroes the
+	// f043_bool — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	F044F32  float32
 	F045Bits uint32
@@ -178,7 +178,7 @@ type RealPacket struct {
 	F049Ufixed uint16 // wire [0, 3]
 	F050Bool   bool   // = true in New* (zero value otherwise)
 
-	// if f050_bool — wire branch; storage holds both sides, a read zeroes the
+	// f050_bool — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	F051Bool bool
 	F052Int  int8 // wire [-57, 57]
@@ -206,7 +206,7 @@ type RealPacket struct {
 	F073Int    int8    // wire [-4, 4]
 	F074Bool   bool    // = false in New* (zero value otherwise)
 
-	// if f074_bool — wire branch; storage holds both sides, a read zeroes the
+	// f074_bool — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	F075U64  uint64
 	F076Int  int16 // wire [-26218, 26218]

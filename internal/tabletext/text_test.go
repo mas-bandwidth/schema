@@ -127,7 +127,7 @@ func TestStringClampsAtCodePointBoundary(t *testing.T) {
 }
 
 // §16.2: A CLAMP IS A PREFIX. Once one code point does not fit, the scan stops
-// placing — a later SHORTER code point must not slip into the room the long one
+// placing. A later SHORTER code point must not slip into the room the long one
 // left, because that stores a string the input never spelled and the `clamped`
 // count cannot tell the two apart.
 func TestClampIsAPrefix(t *testing.T) {
@@ -966,7 +966,7 @@ func TestSharedNodeWithNothingToWriteIsRefused(t *testing.T) {
 
 // §16.2: A MAGNITUDE IN THE HIGH HALF IS A MAGNITUDE, not a negative. It is the
 // field's own DOMAIN that bounds it, established before the value reaches
-// storage, so a narrower unsigned field clamps at its CEILING — reading the
+// storage, so a narrower unsigned field clamps at its CEILING. Reading the
 // interpreter's own signed lane instead lands zero, the floor, for a value
 // larger than any this field can hold.
 func TestUnsignedHighHalfClampsAtTheCeiling(t *testing.T) {
@@ -984,7 +984,7 @@ func TestUnsignedHighHalfClampsAtTheCeiling(t *testing.T) {
 
 // §16.2: A NEGATIVE TOKEN IN AN UNSIGNED FIELD CLAMPS TO ZERO whatever its
 // spelling. -1e30 is a magnitude past every width and a sign, and both halves
-// are known before anything is cast — reading it through a signed lane makes it
+// are known before anything is cast. Reading it through a signed lane makes it
 // the wrong SHAPE for the kind instead, which is the answer the page gives a
 // fraction and not a negative.
 func TestNegativeExponentInAnUnsignedFieldClampsToZero(t *testing.T) {

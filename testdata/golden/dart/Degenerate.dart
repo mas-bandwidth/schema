@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 import 'dart:typed_data';
 
@@ -46,7 +46,8 @@ void zeroVec2(Vec2 value) {
 
 // writeVec2 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// vec2MaxBytes. Returns the bytes written.
+// vec2MaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeVec2(Vec2 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= vec2MaxBytes);
@@ -163,7 +164,8 @@ void zeroSpanF64(SpanF64 value) {
 
 // writeSpanF64 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// spanF64MaxBytes. Returns the bytes written.
+// spanF64MaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeSpanF64(SpanF64 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= spanF64MaxBytes);
@@ -258,7 +260,8 @@ void zeroSpanU64(SpanU64 value) {
 
 // writeSpanU64 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// spanU64MaxBytes. Returns the bytes written.
+// spanU64MaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeSpanU64(SpanU64 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= spanU64MaxBytes);
@@ -353,7 +356,8 @@ void zeroSpanI64(SpanI64 value) {
 
 // writeSpanI64 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// spanI64MaxBytes. Returns the bytes written.
+// spanI64MaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeSpanI64(SpanI64 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= spanI64MaxBytes);
@@ -448,7 +452,8 @@ void zeroSpanOne(SpanOne value) {
 
 // writeSpanOne packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// spanOneMaxBytes. Returns the bytes written.
+// spanOneMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeSpanOne(SpanOne value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= spanOneMaxBytes);
@@ -543,7 +548,8 @@ void zeroSpanChunk(SpanChunk value) {
 
 // writeSpanChunk packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// spanChunkMaxBytes. Returns the bytes written.
+// spanChunkMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeSpanChunk(SpanChunk value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= spanChunkMaxBytes);
@@ -630,7 +636,8 @@ void zeroSpanTail(SpanTail value) {
 
 // writeSpanTail packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// spanTailMaxBytes. Returns the bytes written.
+// spanTailMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeSpanTail(SpanTail value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= spanTailMaxBytes);
@@ -744,7 +751,8 @@ void zeroSpanTwice(SpanTwice value) {
 
 // writeSpanTwice packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// spanTwiceMaxBytes. Returns the bytes written.
+// spanTwiceMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeSpanTwice(SpanTwice value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= spanTwiceMaxBytes);
@@ -873,7 +881,8 @@ void zeroTrio(Trio value) {
 
 // writeTrio packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// trioMaxBytes. Returns the bytes written.
+// trioMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeTrio(Trio value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= trioMaxBytes);
@@ -968,7 +977,8 @@ void zeroTrioSole(TrioSole value) {
 
 // writeTrioSole packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// trioSoleMaxBytes. Returns the bytes written.
+// trioSoleMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeTrioSole(TrioSole value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= trioSoleMaxBytes);
@@ -1065,7 +1075,8 @@ void zeroTrioFirst(TrioFirst value) {
 
 // writeTrioFirst packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// trioFirstMaxBytes. Returns the bytes written.
+// trioFirstMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeTrioFirst(TrioFirst value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= trioFirstMaxBytes);
@@ -1184,7 +1195,8 @@ void zeroTrioStraddle(TrioStraddle value) {
 
 // writeTrioStraddle packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// trioStraddleMaxBytes. Returns the bytes written.
+// trioStraddleMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeTrioStraddle(TrioStraddle value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= trioStraddleMaxBytes);

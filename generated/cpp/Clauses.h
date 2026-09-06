@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 #pragma once
 
@@ -126,8 +126,21 @@ enum class EmptyUnionType : uint8_t {
     None = 0,
     A = 1,
     B = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any EmptyUnionType value, out-of-set included
+inline const char * EnumName( EmptyUnionType value )
+{
+    switch ( value )
+    {
+        case EmptyUnionType::None: return "None";
+        case EmptyUnionType::A: return "A";
+        case EmptyUnionType::B: return "B";
+        default: return "???";
+    }
+}
 
 // union EmptyUnion — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm's storage is established ZEROED

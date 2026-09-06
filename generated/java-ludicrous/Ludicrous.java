@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0x3a9a972a02c9e7ca
+// package ludicrous — protocol id 0x9660fa8c14d38d67
 //
 // The shipped Java wire path (issue #156): the serialize.java bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -39,7 +39,7 @@ public final class Ludicrous {
 
     // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
     // sides at the same id speak identical bits; there is no other versioning.
-    public static final long protocolId = 0x3a9a972a02c9e7caL;
+    public static final long protocolId = 0x9660fa8c14d38d67L;
 
     public static final int maxWorldUnits = 30000;
 
@@ -1028,7 +1028,7 @@ public final class Ludicrous {
         public int keysCount;
         public boolean hasTarget;
 
-        // if has_target — wire branch; storage holds both sides, a read zeroes the
+        // has_target — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public UInt128 targetId = UInt128.zero;
 
@@ -1099,8 +1099,6 @@ public final class Ludicrous {
             assert value.wide.bias.compareTo(min) >= 0;
             assert value.wide.bias.compareTo(max) <= 0;
         }
-        assert value.keysCount >= 0;
-        assert value.keysCount <= 4;
         return true;
     }
 
@@ -1324,6 +1322,9 @@ public final class Ludicrous {
             wordIndex++;
             scratchBits -= 64;
             scratch = v >>> (32 - scratchBits);
+        }
+        if (value.keysCount < 0 || value.keysCount > 4) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
         }
         v = (value.keysCount) & 0x7L;
         scratch |= v << scratchBits;

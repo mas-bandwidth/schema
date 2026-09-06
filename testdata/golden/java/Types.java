@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 package example;
 
@@ -1096,7 +1096,7 @@ public final class Types {
         public final Quat orientation = new Quat();
         public boolean atRest;
 
-        // if !at_rest — wire branch; storage holds both sides, a read zeroes the
+        // !at_rest — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public final Vec3 linearVelocity = new Vec3();
         public final Vec3 angularVelocity = new Vec3();
@@ -2150,8 +2150,6 @@ public final class Types {
     private static boolean checkWriteInputPacket(InputPacket value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= inputPacketMaxBytes;
-        assert value.inputsCount >= 0;
-        assert value.inputsCount <= 16;
         return true;
     }
 
@@ -2208,6 +2206,9 @@ public final class Types {
             wordIndex++;
             scratchBits -= 64;
             scratch = v >>> (32 - scratchBits);
+        }
+        if (value.inputsCount < 0 || value.inputsCount > 16) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
         }
         v = (value.inputsCount) & 0x1fL;
         scratch |= v << scratchBits;
@@ -2595,7 +2596,7 @@ public final class Types {
         public final QuantizedVelocity linearVelocity = new QuantizedVelocity();
         public boolean hasFlags;
 
-        // if has_flags — wire branch; storage holds both sides, a read zeroes the
+        // has_flags — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         // ShipFlags — consumed as masks, uint64 storage (SPEC §4.2)
         public long flags;

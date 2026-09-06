@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
@@ -255,16 +255,16 @@ pub struct ProbeSample {
     pub raw_delta: i32,
     pub big_delta: i64,
 
-    // if active — wire branch; storage holds both sides, a read zeroes the
+    // active — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub weapon: Weapon,
     pub has_target: bool,
 
-    // if active / if has_target — wire branch; storage holds both sides, a read zeroes the
+    // active && has_target — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub target_id: u16,
 
-    // if active else — wire branch; storage holds both sides, a read zeroes the
+    // !active — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub idle_ticks: u32,
 
@@ -297,6 +297,7 @@ impl ProbeSample {
     pub fn new() -> Self {
         let mut value = ProbeSample::default();
         value.active = true;
+        value.samples_count = 1;
         value
     }
 }
@@ -509,7 +510,18 @@ impl ProbeShapeType {
     pub const NONE: ProbeShapeType = ProbeShapeType(0);
     pub const RING: ProbeShapeType = ProbeShapeType(1);
     pub const SLAB: ProbeShapeType = ProbeShapeType(2);
+    pub const COUNT: ProbeShapeType = ProbeShapeType(2); // the declared variant count (SPEC §4.2)
     pub const MAX: ProbeShapeType = ProbeShapeType(2); // the exported extent (SPEC §4.2)
+}
+
+/// Debug/log name for any `ProbeShapeType` value, out-of-set included.
+pub fn enum_name_probe_shape_type(value: ProbeShapeType) -> &'static str {
+    match value.0 {
+        0 => "None",
+        1 => "Ring",
+        2 => "Slab",
+        _ => "???",
+    }
 }
 
 // ProbeShape — at most one of the arms. The default is None (the empty union);

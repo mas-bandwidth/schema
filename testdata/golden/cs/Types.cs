@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 using System.Runtime.CompilerServices;
 using Serialize;
@@ -66,7 +66,7 @@ namespace Example
         public Quat Orientation = new Quat();
         public bool AtRest;
 
-        // if !at_rest — wire branch; storage holds both sides, a read zeroes the
+        // !at_rest — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public Vec3 LinearVelocity = new Vec3();
         public Vec3 AngularVelocity = new Vec3();
@@ -117,7 +117,7 @@ namespace Example
         public QuantizedVelocity LinearVelocity = new QuantizedVelocity();
         public bool HasFlags;
 
-        // if has_flags — wire branch; storage holds both sides, a read zeroes the
+        // has_flags — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public ulong Flags; // ShipFlags — consumed as masks, ulong storage (SPEC §4.2)
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package wide — protocol id 0x43b02a917a9d346e
+// package wide — protocol id 0x8595e1f4d5cd8338
 
 #pragma once
 
@@ -12,7 +12,7 @@ namespace wide {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0x43b02a917a9d346eull;
+inline constexpr uint64_t ProtocolId = 0x8595e1f4d5cd8338ull;
 
 // type WideSeven
 struct WideSeven {

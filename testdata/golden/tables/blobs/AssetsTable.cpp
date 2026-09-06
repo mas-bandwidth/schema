@@ -1305,7 +1305,7 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
 // and the VALUE decides rather than the spelling: 2, 2.0 and 1e3 are the
 // integers 2, 2 and 1000. What comes out of a token is a SIGN, a MAGNITUDE and
 // a STATUS, and nothing on the way is cast through a type that cannot hold what
-// it is handed — a uint64 magnitude past INT64_MAX is a magnitude and never a
+// it is handed. A uint64 magnitude past INT64_MAX is a magnitude and never a
 // negative, and a double is consulted only for a spelling the digit path cannot
 // read exactly.
 //
@@ -1336,9 +1336,9 @@ inline TableJsonInteger TableJsonInterpret( const char * token, int32_t length, 
     if ( integral )
     {
         int32_t i = 0;
-        if ( i < length && ( token[i] == '-' || token[i] == '+' ) )
+        if ( i < length && token[i] == '-' ) // WalkNumber refuses a leading plus
         {
-            out.negative = token[i] == '-';
+            out.negative = true;
             i++;
         }
         for ( ; i < length; i++ )
@@ -1876,9 +1876,9 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     }
     // AN ORDINARY FIELD'S POLICY over the one interpreted value: it CLAMPS to
     // its domain and counts. JSON has one number type, so 2.0 IS the integer 2
-    // and 1e3 IS 1000 — a library that round-trips numbers through a double
-    // emits them that way, this walker's own float writer emits 1e+21 — and
-    // only a genuinely fractional value is the wrong shape for the kind.
+    // and 1e3 IS 1000. A library that round-trips numbers through a double
+    // emits them that way, and this walker's own float writer emits 1e+21. Only
+    // a genuinely fractional value is the wrong shape for the kind.
     const bool is_signed = f->kind >= 2 && f->kind <= 5;
     const TableJsonInteger number = TableJsonInterpret( token, length, integral );
     if ( !number.finite || number.fractional )
@@ -1887,7 +1887,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         return true;
     }
     if ( number.saturated ) { in.report->clamped++; } // past what sixty-four bits hold
-    // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH — the wire's order (§4),
+    // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
     // so a text and a wire loaded from the same data land the same instance.
     // The comparison is on the value's OWN scale, correctly signed past
     // INT64_MAX, where the storage's bit pattern is not a number to compare.

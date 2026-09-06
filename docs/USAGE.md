@@ -153,8 +153,14 @@ excluded — `ShipType::Count` (C++), `ShipType.Count` (C#), `ShipTypeCount`
 (Go), `ShipType::COUNT` (Rust), `ShipType.Count` (JS), `SHIP_TYPE_COUNT` (C),
 `ShipType.count` (Dart and Java), `ShipType.count/0` (Elixir), and
 `E.Count` in schema expressions. Without headroom `Count` and `Max` are the
-same number; under `| max = 15` they are 3 and 15, and that difference is
-what the two words are for. `Count` is a reserved variant name too.
+same number. Under `| max = 15` they are 3 and 15, and that difference is
+what the two words are for. `Count` is a reserved variant name too, and a
+union's tag enum carries it beside `Max`, so `Count` is a reserved arm name
+on a packet union for the same reason.
+
+A union's tag enum carries the debug-name function too, in the same nine
+spellings the declared enum uses, so logging which arm arrived is the same
+call either way.
 
 **Two loop rules, and they are the whole story:**
 
@@ -241,11 +247,11 @@ type Collider
 **Every union has an implicit `None = 0`** — the empty union, in band, so a
 zero-initialized union field carries "no shape" without a has-flag. The
 compiler generates the tag enum `ColliderShapeType` (`None = 0`, variants in
-declared order, plus `Max`), and the wire is the tag in minimal bits for
-`[0, variant count]` followed by **the selected payload only**:
+declared order, then `Count` and `Max`), and the wire is the tag in minimal
+bits for `[0, variant count]` followed by **the selected payload only**:
 
 ```cpp
-enum class ColliderShapeType : uint8_t { None = 0, Box = 1, Sphere = 2, Capsule = 3, Hull = 4, Max = 4 };
+enum class ColliderShapeType : uint8_t { None = 0, Box = 1, Sphere = 2, Capsule = 3, Hull = 4, Count = 4, Max = 4 };
 
 struct ColliderShape
 {
@@ -617,8 +623,19 @@ ranged_count [2..8]uint32
 A fixed array always writes N elements. A counted array writes the count
 first, in the fewest bits that can express the bound, then that many
 elements. The bound is a range literal: `[..N]` reads "up to N" and is sugar
-for `[0..N]`; `[A..B]` is a count in [A, B], encoded relative to A. (A
+for `[0..N]`. `[A..B]` is a count in [A, B], encoded relative to A. (A
 retired `[<= N]` spelling is refused with `[..N]` named.)
+
+`ranged_count` above is born at **2**, its declared minimum, not at 0. Zero is
+outside that count's own wire range, so a fresh value would otherwise carry a
+count no reader accepts. It is the one place storage starts at something other
+than zero without a declared default, and `[..N]` is born at 0 as usual.
+
+Writing a count outside its bound is **refused in every build**, in all nine
+targets, and it is the one write-side contract that is never a debug-only
+assert. The count guards the element loop and the pack subtracts the low
+bound, so an unchecked out-of-range count would wrap and report a successful
+write of bytes no reader takes.
 
 ### Composition
 
@@ -806,11 +823,6 @@ not talk to each other at all. Check it during your handshake.
 
 There is no version tag on the wire — that is the point. The id is how you
 find out, once, at connect time, instead of paying for it on every packet.
-
-*The rule below is specified and the compiler does not scope by it yet:
-`ir.WireProjection` still renders the whole unit at `ProjectionVersion` 2, and
-the scoping is owed as
-[#524](https://github.com/mas-bandwidth/schema/issues/524) (SPEC.md §3.1).*
 
 It covers the CLOSURE over your `type` declarations — every `type`, and every
 enum and union a `type` reaches, by a field's type, an array's element, an
@@ -1914,10 +1926,7 @@ way — and there the storage is a **plain array**: `per_team [Team]int32` in a
 Only the table wire keys the slots.
 
 **And the positional spelling `[E.Max]T` is REFUSED in a table body, by
-name**, with `[E]T` named as the fix. *The specification states that refusal
-and the checker does not make it today: `[E.Max]T` in a table body still
-compiles ([#540](https://github.com/mas-bandwidth/schema/issues/540)).*
-An ordinal-indexed array is a positional
+name**, with `[E]T` named as the fix. An ordinal-indexed array is a positional
 vocabulary, and a table has exactly one of those — `flags` — so the refusal is
 what keeps the closed class closed: you cannot reopen it by spelling the array
 the old way and then never touching the field again. `[E.Max]T` stays legal in
@@ -2952,7 +2961,7 @@ cook's own header, and the third coordinate of the key below.
 
 ```
 $ schema build-version tables/block/
-0x6e4b803407267d82
+0xb1bb90bcc5a063f3
 ```
 
 ```cpp

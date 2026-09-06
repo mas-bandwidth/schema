@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x5b8227d21cba8abf
+// package bench — protocol id 0x06845f749d2417b4
 
 #pragma once
 
@@ -445,7 +445,10 @@ SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const
         int32_t fixed_value = value.server_time;
         write_fixed( stream, fixed_value, 24, 8, 0, 65535 );
     }
-    serialize_assert( int32_t( value.entities_count ) >= int32_t( 1 ) && int32_t( value.entities_count ) <= int32_t( 8 ) );
+    if ( int32_t( value.entities_count ) < int32_t( 1 ) || int32_t( value.entities_count ) > int32_t( 8 ) )
+    {
+        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
+    }
     write_bits( stream, uint32_t( value.entities_count ) - uint32_t( 1 ), 3 );
     for ( int32_t i = 0; i < value.entities_count; i++ )
     {
@@ -454,7 +457,10 @@ SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const
             return false;
         }
     }
-    serialize_assert( int32_t( value.stats_count ) >= int32_t( 0 ) && int32_t( value.stats_count ) <= int32_t( 80 ) );
+    if ( int32_t( value.stats_count ) < int32_t( 0 ) || int32_t( value.stats_count ) > int32_t( 80 ) )
+    {
+        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
+    }
     write_bits( stream, uint32_t( value.stats_count ), 7 );
     for ( int32_t i = 0; i < value.stats_count; i++ )
     {

@@ -1305,7 +1305,7 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
 // and the VALUE decides rather than the spelling: 2, 2.0 and 1e3 are the
 // integers 2, 2 and 1000. What comes out of a token is a SIGN, a MAGNITUDE and
 // a STATUS, and nothing on the way is cast through a type that cannot hold what
-// it is handed — a uint64 magnitude past INT64_MAX is a magnitude and never a
+// it is handed. A uint64 magnitude past INT64_MAX is a magnitude and never a
 // negative, and a double is consulted only for a spelling the digit path cannot
 // read exactly.
 //
@@ -1336,9 +1336,9 @@ inline TableJsonInteger TableJsonInterpret( const char * token, int32_t length, 
     if ( integral )
     {
         int32_t i = 0;
-        if ( i < length && ( token[i] == '-' || token[i] == '+' ) )
+        if ( i < length && token[i] == '-' ) // WalkNumber refuses a leading plus
         {
-            out.negative = token[i] == '-';
+            out.negative = true;
             i++;
         }
         for ( ; i < length; i++ )
@@ -1876,9 +1876,9 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     }
     // AN ORDINARY FIELD'S POLICY over the one interpreted value: it CLAMPS to
     // its domain and counts. JSON has one number type, so 2.0 IS the integer 2
-    // and 1e3 IS 1000 — a library that round-trips numbers through a double
-    // emits them that way, this walker's own float writer emits 1e+21 — and
-    // only a genuinely fractional value is the wrong shape for the kind.
+    // and 1e3 IS 1000. A library that round-trips numbers through a double
+    // emits them that way, and this walker's own float writer emits 1e+21. Only
+    // a genuinely fractional value is the wrong shape for the kind.
     const bool is_signed = f->kind >= 2 && f->kind <= 5;
     const TableJsonInteger number = TableJsonInterpret( token, length, integral );
     if ( !number.finite || number.fractional )
@@ -1887,7 +1887,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         return true;
     }
     if ( number.saturated ) { in.report->clamped++; } // past what sixty-four bits hold
-    // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH — the wire's order (§4),
+    // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
     // so a text and a wire loaded from the same data land the same instance.
     // The comparison is on the value's OWN scale, correctly signed past
     // INT64_MAX, where the storage's bit pattern is not a number to compare.
@@ -2944,7 +2944,7 @@ inline bool TableJsonMapKeyValue( const char * token, int32_t length, const Tabl
     if ( probe.pos != (int64_t) length ) { return false; } // trailing bytes: not a number
     // A MAP KEY'S POLICY over the one interpreted value: it REJECTS THE WHOLE
     // ENTRY. A key is an identity, so a clamped one is two entries merged, and
-    // a value the key kind does not hold is kind_mismatch for that entry —
+    // a value the key kind does not hold is kind_mismatch for that entry,
     // dropped and counted, never clamped.
     const TableJsonInteger number = TableJsonInterpret( token, length, integral );
     if ( !number.finite || number.fractional || number.saturated ) { return true; }
@@ -2983,10 +2983,13 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         bool place = true;
         if ( !TableJsonMapKeyIsString( key ) )
         {
-            // A KEY THIS SCAN COULD NOT HOLD WHOLE IS NOT A NUMBER ANY INTEGER
-            // KIND HOLDS: the token is longer than every integer's spelling, so
-            // the entry drops as kind_mismatch rather than a truncation being
-            // read as a value.
+            // AN INTEGER KEY PAST THIS SCAN'S BUFFER DROPS AS kind_mismatch,
+            // here and in the tool's walker. The bytes kept are a PREFIX, and a
+            // prefix is a different token, so the entry drops rather than a
+            // truncation being read as a value. The length alone does not
+            // settle it: a token that long can still spell a number an integer
+            // kind holds, "1" padded by an exponent of zeroes for one, and this
+            // read declines to find out.
             bool fits = false;
             if ( key_over ) { in.report->kind_mismatch++; place = false; }
             else if ( !TableJsonMapKeyValue( token, token_length, key, key_value, fits ) )
@@ -3004,8 +3007,8 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             // A KEY LONGER THAN N DROPS ITS ENTRY AND COUNTS clamped, the
             // wire's rule, because a clamped key is a merged entry (§2.8). The
             // BOUND IS THE WALKER'S, tested here against the key field's own
-            // descriptor, so placement is left with one failure to report — and
-            // a key past this scan's own buffer is the SAME event, because a
+            // descriptor, so placement is left with one failure to report. A
+            // key past this scan's own buffer is the SAME event, because a
             // truncated key is the merged entry the rule exists to prevent.
             in.report->clamped++;
             place = false;

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package realworld — protocol id 0x0eefe6bcd2596139
+// package realworld — protocol id 0x11a7ba9416ba6b58
 //
 // The shipped Dart wire path (issue #155): the serialize.dart bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -96,7 +96,7 @@ String _hex64(int value) => value < 0
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const int protocolId = 0x0eefe6bcd2596139;
+const int protocolId = 0x11a7ba9416ba6b58;
 
 // PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
 // an int-constant namespace — the Dart translation of the family's integer-
@@ -211,7 +211,7 @@ final class RealPacket {
   // specified default at construction; zero* gives the §5 zero form
   bool f012Bool = true;
 
-  // if f012_bool — wire branch; storage holds both sides, a read zeroes the
+  // f012_bool — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   double f013F32 = 0.0;
   // wire [0, 775]
@@ -260,7 +260,7 @@ final class RealPacket {
   // specified default at construction; zero* gives the §5 zero form
   bool f043Bool = false;
 
-  // if f043_bool — wire branch; storage holds both sides, a read zeroes the
+  // f043_bool — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   double f044F32 = 0.0;
   int f045Bits = 0;
@@ -275,7 +275,7 @@ final class RealPacket {
   // specified default at construction; zero* gives the §5 zero form
   bool f050Bool = true;
 
-  // if f050_bool — wire branch; storage holds both sides, a read zeroes the
+  // f050_bool — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   bool f051Bool = false;
   // wire [-57, 57]
@@ -319,7 +319,7 @@ final class RealPacket {
   // specified default at construction; zero* gives the §5 zero form
   bool f074Bool = false;
 
-  // if f074_bool — wire branch; storage holds both sides, a read zeroes the
+  // f074_bool — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int f075U64 = 0;
   // wire [-26218, 26218]
@@ -465,7 +465,8 @@ void zeroRealPacket(RealPacket value) {
 
 // writeRealPacket packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// realPacketMaxBytes. Returns the bytes written.
+// realPacketMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeRealPacket(RealPacket value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= realPacketMaxBytes);

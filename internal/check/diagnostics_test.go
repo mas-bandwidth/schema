@@ -338,6 +338,18 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\nunion U {\n    count int32 | json = \"n\"\n}\ntable Root { u U }\n"},
 		{name: "an enum-keyed array arm", want: "an enum-keyed array is not an arm",
 			src: "package t\nenum E { A, B }\nunion U {\n    slots [E]int32\n}\ntable Root { u U }\n"},
+
+		// `[E.Max]T` IS REFUSED IN A TABLE BODY and `[E]T` is the table form
+		// (§2.4, §11): an ordinal-indexed array is a POSITIONAL vocabulary and
+		// a table may have only one, which is `flags`. The TYPE wire keeps the
+		// spelling, so the refusal is per BODY and the pair is held together
+		// in TestPositionalKeyedArrayIsTheTableBodysRefusalAlone.
+		{name: "[E.Max]T in a table body", want: "is refused in a table body",
+			src: "package t\nenum E { A, B }\ntable Root { slots [E.Max]int32 }\n"},
+		{name: "[E.Max]T in a table body, one word of the fix", want: "spell it [E]int32",
+			src: "package t\nenum E { A, B }\ntable Root { slots [E.Max]int32 }\n"},
+		{name: "[E.Max]T in a table body, of a declared type", want: "spell it [E]Cfg",
+			src: "package t\nenum E { A, B }\ntype Cfg { hp uint16 }\ntable Root { slots [E.Max]Cfg }\n"},
 		{name: "an arm whose range excludes zero", want: "the value it establishes at selection is outside it",
 			src: "package t\nunion U {\n    count int32 | min = 1, max = 10\n}\ntable Root { u U }\n"},
 		{name: "union payload undefined", want: "undefined type",

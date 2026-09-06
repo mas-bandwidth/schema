@@ -1241,7 +1241,7 @@ func (in *reader) placeInteger(cell *Cell, f *ir.Field, token string, integral b
 	if number.saturated {
 		in.report.Clamped++ // past what sixty-four bits hold
 	}
-	// THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH — the wire's order (§4),
+	// THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
 	// so a text and a wire loaded from the same data land the same instance.
 	bounded := number
 	lo, hi, implied := ImpliedRange(f)
@@ -1435,7 +1435,7 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 // and the VALUE decides rather than the spelling: 2, 2.0 and 1e3 are the
 // integers 2, 2 and 1000. What comes out of a token is a SIGN, a MAGNITUDE and
 // a STATUS, and nothing on the way is cast through a type that cannot hold what
-// it is handed — a uint64 magnitude past MaxInt64 is a magnitude and never a
+// it is handed. A uint64 magnitude past MaxInt64 is a magnitude and never a
 // negative, and a float64 is consulted only for a spelling the digit path
 // cannot read exactly.
 //
@@ -1458,8 +1458,8 @@ func interpretInteger(token string, integral bool) jsonInteger {
 	out := jsonInteger{finite: true}
 	if integral {
 		i := 0
-		if i < len(token) && (token[i] == '-' || token[i] == '+') {
-			out.negative = token[i] == '-'
+		if i < len(token) && token[i] == '-' { // walkNumber refuses a leading plus
+			out.negative = true
 			i++
 		}
 		for ; i < len(token); i++ {
@@ -1717,10 +1717,12 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 		switch {
 		// A KEY THIS SCAN COULD NOT HOLD WHOLE IS NOT A SHORTER KEY (§2.8):
 		// truncating one there inserts an identity the text never spelled and
-		// merges two keys that share its prefix, so the entry drops instead —
-		// counted `clamped` for a string key, the event a key past its bound
-		// already raises, and `kind_mismatch` for an integer key, whose kinds
-		// hold no number spelled that long.
+		// merges two keys that share its prefix, so the entry drops instead. A
+		// string key counts `clamped`, the event a key past its bound already
+		// raises. An integer key counts `kind_mismatch`: the bytes kept are a
+		// PREFIX, and a prefix is a different token, so no value is read from
+		// them. The length alone does not settle it, because a token that long
+		// can still spell a number an integer kind holds.
 		case over && MapKeyIsString(f):
 			in.report.Clamped++
 			if !in.skipValue(depth) {

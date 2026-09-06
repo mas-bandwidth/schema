@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package bench — protocol id 0x5b8227d21cba8abf
+# package bench — protocol id 0x06845f749d2417b4
 #
 # The shipped Elixir wire path (issue #167): the serialize.elixir port's
 # measured shapes — byte-granular 32-bit-group packing and 40-bit read
@@ -152,6 +152,8 @@ defmodule Bench.MixedEventType do
   def hit, do: 1
   def chat, do: 2
   def pickup, do: 3
+  # the declared variant count (SPEC §4.2)
+  def count, do: 3
   # the exported extent (SPEC §4.2)
   def max, do: 3
 end
@@ -183,9 +185,9 @@ defmodule Bench.BenchMixed do
   # flux: wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
   # ping: fixed point Q8.8 — the raw scaled integer; wire [0, 250]
   # has_extra: specified default at construction; zero_* gives the §5 zero form
-  # if has_extra — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # has_extra — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # extra: wire [0, 255]
-  # if has_extra else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !has_extra — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # idle_ticks: wire [0, 15]
   defstruct sequence: 0,
             ack_sequence: 0,
@@ -196,7 +198,7 @@ defmodule Bench.BenchMixed do
             world_time: 0,
             frame_tick: 0,
             server_time: 0,
-            entities: [],
+            entities: List.duplicate(%Bench.MixedEntity{}, 1),
             stats: [],
             game_event: %Bench.MixedEvent{},
             loadout: List.duplicate(0, 4),
@@ -256,7 +258,7 @@ defmodule Bench.Bench do
 
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
-  def protocol_id, do: 0x5B8227D21CBA8ABF
+  def protocol_id, do: 0x06845F749D2417B4
 
   # bench_packet_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
   # bench_packet_max_bytes is rounded up to the family 8-byte write-buffer granularity.
@@ -1498,6 +1500,18 @@ defmodule Bench.Bench do
   # mixed_event_max_bytes is rounded up to the family 8-byte write-buffer granularity.
   def mixed_event_max_bits, do: 30
   def mixed_event_max_bytes, do: 8
+
+  # enum_name_mixed_event_type: debug/log/tooling name for any MixedEventType wire value —
+  # out-of-set values (wire-legal up to the declared max) name as "???"
+  def enum_name_mixed_event_type(value) do
+    case value do
+      0 -> "None"
+      1 -> "Hit"
+      2 -> "Chat"
+      3 -> "Pickup"
+      _ -> "???"
+    end
+  end
 
   # The §5 zero form — the empty union (None). Arms hold their construction
   # form: every arm is unselected at None, and unselected arms are

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package realworld — protocol id 0x0eefe6bcd2596139
+// package realworld — protocol id 0x11a7ba9416ba6b58
 
 #pragma once
 
@@ -12,7 +12,7 @@ namespace realworld {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0x0eefe6bcd2596139ull;
+inline constexpr uint64_t ProtocolId = 0x11a7ba9416ba6b58ull;
 
 // enum PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2)
 enum class PacketMode : uint8_t {
@@ -156,7 +156,7 @@ struct RealPacket {
     uint32_t f011_bits = 0;
     bool f012_bool = true;
 
-    // if f012_bool — wire branch; storage holds both sides, a read zeroes the
+    // f012_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     float f013_f32 = 0.0f;
     uint16_t f014_uint = 0; // wire [0, 775]
@@ -191,7 +191,7 @@ struct RealPacket {
     uint32_t f042_bits = 0;
     bool f043_bool = false;
 
-    // if f043_bool — wire branch; storage holds both sides, a read zeroes the
+    // f043_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     float f044_f32 = 0.0f;
     uint32_t f045_bits = 0;
@@ -202,7 +202,7 @@ struct RealPacket {
     uint16_t f049_ufixed = 0; // ufixed(2, 14) — UQ2.14, raw value scaled by 2^14; bounds in whole units; wire [0, 3]
     bool f050_bool = true;
 
-    // if f050_bool — wire branch; storage holds both sides, a read zeroes the
+    // f050_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     bool f051_bool = false;
     int8_t f052_int = 0; // wire [-57, 57]
@@ -230,7 +230,7 @@ struct RealPacket {
     int8_t f073_int = 0; // wire [-4, 4]
     bool f074_bool = false;
 
-    // if f074_bool — wire branch; storage holds both sides, a read zeroes the
+    // f074_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     uint64_t f075_u64 = 0;
     int16_t f076_int = 0; // wire [-26218, 26218]

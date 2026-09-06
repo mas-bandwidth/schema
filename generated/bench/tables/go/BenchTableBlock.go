@@ -27,7 +27,7 @@ import (
 // BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20): the one
 // digest a block carries and BlockOpen compares. It moves when anything a
 // reader points at moves.
-const BuildVersion uint64 = 0xf4b855b89df191ed
+const BuildVersion uint64 = 0xbee10aff8f660e35
 
 // TableBlockMagic identifies a schema block and carries the byte-order check
 // with it (docs/SPEC-TABLES.md §19.1). It is stored in the producer's NATIVE

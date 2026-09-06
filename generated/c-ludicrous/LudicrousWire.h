@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package ludicrous — protocol id 0x3a9a972a02c9e7ca */
+   package ludicrous — protocol id 0x9660fa8c14d38d67 */
 
 #ifndef SCHEMA_LUDICROUS_LUDICROUSWIRE_H
 #define SCHEMA_LUDICROUS_LUDICROUSWIRE_H
@@ -341,6 +341,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ludicrous_state( serialize_
     if ( !write_wide_probe( stream, &value->wide ) )
     {
         return 0;
+    }
+    if ( value->keys_count < 0 || value->keys_count > 4 )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
     }
     if ( !serialize_write_int( stream, value->keys_count, 0, 4 ) )
     {

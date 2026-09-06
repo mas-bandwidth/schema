@@ -1438,8 +1438,8 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 # The NEGATIVE CONTROL for the clamp's PREFIX rule (docs/SPEC-TABLES.md §16.2).
 # A clamped string keeps a PREFIX of the text, and a scan that resumes after one
 # code point fails to fit stores bytes the input never spelled in that order
-# while the `clamped` count stays right — invisible to any test that reads only
-# counters. This sabotage drops the stop and the fixture must go red.
+# while the `clamped` count stays right. That is invisible to any test that
+# reads only counters. This sabotage drops the stop and the fixture must go red.
 .PHONY: tables-json-clamp-prefix-negative-control
 tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_prefix_negative_main.cpp
 	@rm -rf build/json-clamp-sabotage && mkdir -p build/json-clamp-sabotage
@@ -2812,7 +2812,7 @@ tables-maps-key-length-negative-control: bin/schema build/tables-generated/.stam
 	fi
 	@grep -q "^FAIL test/tables/maps_main.cpp" build/map-keylength.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-keylength.log; exit 1; }
-	@echo "negative control: keylength turns the MAP GATE red — $$(grep -c '^FAIL' build/map-keylength.log) failures"
+	@echo "negative control: keylength turns the MAP GATE red, $$(grep -c '^FAIL' build/map-keylength.log) failures"
 
 # A KEY THE SCAN COULD NOT HOLD WHOLE IS NOT A SHORTER KEY (§2.8). The EdgeRow
 # row meets it: with the check dropped, two 256-byte keys that share 255 bytes
@@ -2831,8 +2831,8 @@ tables-maps-key-domain-negative-control: bin/schema build/tables-generated/.stam
 	$(call map_negative_control,keydomain,'s@const uint64_t high = bytes >= 8 ? UINT64_MAX@if ( (int64_t) magnitude < 0 ) { return 0; } const uint64_t high = bytes >= 8 ? UINT64_MAX@',internal/codegen/cpptable/json.go,reading an unsigned magnitude through a signed lane left the map gate GREEN)
 
 # AN ALLOCATION FAILURE IS NOT AN OVERSIZED KEY (§2.8, §16.1). The refusal row
-# meets it: labelling the arena's refusal `clamped` skips the entry, reads on
-# and calls the whole text clean, which is the one outcome the neighbouring
+# meets it: labeling the arena's refusal `clamped` skips the entry, reads on
+# and calls the whole text clean, which is the one outcome the neighboring
 # list, blob and pointer paths never give a refusal.
 .PHONY: tables-maps-place-failure-negative-control
 tables-maps-place-failure-negative-control: bin/schema build/tables-generated/.stamp

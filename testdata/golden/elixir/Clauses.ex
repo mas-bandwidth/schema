@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0x682e2a15a56b78bf
+# package example — protocol id 0x3d5823781128b414
 
 # type W13
 defmodule Example.W13 do
@@ -84,6 +84,8 @@ defmodule Example.EmptyUnionType do
   def none, do: 0
   def a, do: 1
   def b, do: 2
+  # the declared variant count (SPEC §4.2)
+  def count, do: 2
   # the exported extent (SPEC §4.2)
   def max, do: 2
 end
@@ -879,6 +881,17 @@ defmodule Example.Clauses do
   # empty_union_max_bytes is rounded up to the family 8-byte write-buffer granularity.
   def empty_union_max_bits, do: 2
   def empty_union_max_bytes, do: 8
+
+  # enum_name_empty_union_type: debug/log/tooling name for any EmptyUnionType wire value —
+  # out-of-set values (wire-legal up to the declared max) name as "???"
+  def enum_name_empty_union_type(value) do
+    case value do
+      0 -> "None"
+      1 -> "A"
+      2 -> "B"
+      _ -> "???"
+    end
+  end
 
   # The §5 zero form — the empty union (None). Arms hold their construction
   # form: every arm is unselected at None, and unselected arms are

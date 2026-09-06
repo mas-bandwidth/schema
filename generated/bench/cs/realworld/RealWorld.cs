@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package realworld — protocol id 0x0eefe6bcd2596139
+// package realworld — protocol id 0x11a7ba9416ba6b58
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an interior null)
@@ -46,7 +46,7 @@ namespace Realworld
         public uint F011Bits;
         public bool F012Bool = true; // specified default at construction; Zero* gives the §5 zero form
 
-        // if f012_bool — wire branch; storage holds both sides, a read zeroes the
+        // f012_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public float F013F32;
         public ushort F014Uint; // wire [0, 775]
@@ -81,7 +81,7 @@ namespace Realworld
         public uint F042Bits;
         public bool F043Bool = false; // specified default at construction; Zero* gives the §5 zero form
 
-        // if f043_bool — wire branch; storage holds both sides, a read zeroes the
+        // f043_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public float F044F32;
         public uint F045Bits;
@@ -92,7 +92,7 @@ namespace Realworld
         public ushort F049Ufixed; // wire [0, 3]
         public bool F050Bool = true; // specified default at construction; Zero* gives the §5 zero form
 
-        // if f050_bool — wire branch; storage holds both sides, a read zeroes the
+        // f050_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public bool F051Bool;
         public sbyte F052Int; // wire [-57, 57]
@@ -120,7 +120,7 @@ namespace Realworld
         public sbyte F073Int; // wire [-4, 4]
         public bool F074Bool = false; // specified default at construction; Zero* gives the §5 zero form
 
-        // if f074_bool — wire branch; storage holds both sides, a read zeroes the
+        // f074_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public ulong F075U64;
         public short F076Int; // wire [-26218, 26218]
@@ -155,7 +155,7 @@ namespace Realworld
     {
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
-        public const ulong ProtocolId = 0x0eefe6bcd2596139;
+        public const ulong ProtocolId = 0x11a7ba9416ba6b58;
 
         // EnumNamePacketMode: debug/log/tooling name for any PacketMode wire value —
         // out-of-set values (wire-legal up to the declared max) name as "???"

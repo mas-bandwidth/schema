@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x682e2a15a56b78bf */
+   package example — protocol id 0x3d5823781128b414 */
 
 #ifndef SCHEMA_EXAMPLE_CLAUSES_H
 #define SCHEMA_EXAMPLE_CLAUSES_H
@@ -148,6 +148,7 @@ typedef uint8_t EmptyUnionType;
 #define EMPTY_UNION_TYPE_NONE 0
 #define EMPTY_UNION_TYPE_A 1
 #define EMPTY_UNION_TYPE_B 2
+#define EMPTY_UNION_TYPE_COUNT 2
 #define EMPTY_UNION_TYPE_MAX 2
 
 /* Debug/log name for any EmptyUnionType value, out-of-set included. */

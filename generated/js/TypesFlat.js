@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that
@@ -151,8 +151,9 @@ function writeVec3FlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteVec3Flat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold Vec3MaxBytes.
+// WriteVec3Flat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold Vec3MaxBytes.
 export const WriteVec3Flat = PRODUCTION ? writeVec3FlatProduction : writeVec3FlatChecked;
 
 // ReadVec3Flat(value, view, numBits) -> bool. The buffer behind view must
@@ -388,8 +389,9 @@ function writeQuatFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteQuatFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold QuatMaxBytes.
+// WriteQuatFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold QuatMaxBytes.
 export const WriteQuatFlat = PRODUCTION ? writeQuatFlatProduction : writeQuatFlatChecked;
 
 // ReadQuatFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -511,8 +513,9 @@ function writeHandleFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteHandleFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold HandleMaxBytes.
+// WriteHandleFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold HandleMaxBytes.
 export const WriteHandleFlat = PRODUCTION ? writeHandleFlatProduction : writeHandleFlatChecked;
 
 // ReadHandleFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -621,8 +624,9 @@ function writeQuantizedPositionFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteQuantizedPositionFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold QuantizedPositionMaxBytes.
+// WriteQuantizedPositionFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold QuantizedPositionMaxBytes.
 export const WriteQuantizedPositionFlat = PRODUCTION ? writeQuantizedPositionFlatProduction : writeQuantizedPositionFlatChecked;
 
 // ReadQuantizedPositionFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -751,8 +755,9 @@ function writeQuantizedVelocityFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteQuantizedVelocityFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold QuantizedVelocityMaxBytes.
+// WriteQuantizedVelocityFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold QuantizedVelocityMaxBytes.
 export const WriteQuantizedVelocityFlat = PRODUCTION ? writeQuantizedVelocityFlatProduction : writeQuantizedVelocityFlatChecked;
 
 // ReadQuantizedVelocityFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -866,8 +871,9 @@ function writeQuantizedRotationFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteQuantizedRotationFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold QuantizedRotationMaxBytes.
+// WriteQuantizedRotationFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold QuantizedRotationMaxBytes.
 export const WriteQuantizedRotationFlat = PRODUCTION ? writeQuantizedRotationFlatProduction : writeQuantizedRotationFlatChecked;
 
 // ReadQuantizedRotationFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1448,8 +1454,9 @@ function writeRigidBodyFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteRigidBodyFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold RigidBodyMaxBytes.
+// WriteRigidBodyFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold RigidBodyMaxBytes.
 export const WriteRigidBodyFlat = PRODUCTION ? writeRigidBodyFlatProduction : writeRigidBodyFlatChecked;
 
 // ReadRigidBodyFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1944,8 +1951,9 @@ function writeInputFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteInputFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold InputMaxBytes.
+// WriteInputFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold InputMaxBytes.
 export const WriteInputFlat = PRODUCTION ? writeInputFlatProduction : writeInputFlatChecked;
 
 // ReadInputFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -2102,6 +2110,9 @@ function writeInputPacketFlatProduction(value, view) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (value.InputsCount < 0 || value.InputsCount > 16) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
+    return -1;
   }
   v = (((value.InputsCount) & 0x1f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -2281,7 +2292,7 @@ function writeInputPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (!Number.isInteger(value.InputsCount) || value.InputsCount < 0 || value.InputsCount > 16) { // the count guards the loop; out-of-contract writes are refused
+  if (!Number.isInteger(value.InputsCount) || value.InputsCount < 0 || value.InputsCount > 16) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
     return -1;
   }
   v = (((value.InputsCount) & 0x1f)) >>> 0;
@@ -2411,8 +2422,9 @@ function writeInputPacketFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteInputPacketFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold InputPacketMaxBytes.
+// WriteInputPacketFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold InputPacketMaxBytes.
 export const WriteInputPacketFlat = PRODUCTION ? writeInputPacketFlatProduction : writeInputPacketFlatChecked;
 
 // ReadInputPacketFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -2837,8 +2849,9 @@ function writeShipCreateFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteShipCreateFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold ShipCreateMaxBytes.
+// WriteShipCreateFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold ShipCreateMaxBytes.
 export const WriteShipCreateFlat = PRODUCTION ? writeShipCreateFlatProduction : writeShipCreateFlatChecked;
 
 // ReadShipCreateFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -3040,8 +3053,9 @@ function writeExpressionProbeFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteExpressionProbeFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold ExpressionProbeMaxBytes.
+// WriteExpressionProbeFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold ExpressionProbeMaxBytes.
 export const WriteExpressionProbeFlat = PRODUCTION ? writeExpressionProbeFlatProduction : writeExpressionProbeFlatChecked;
 
 // ReadExpressionProbeFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -3286,8 +3300,9 @@ function writeExtremeProbeFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteExtremeProbeFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold ExtremeProbeMaxBytes.
+// WriteExtremeProbeFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold ExtremeProbeMaxBytes.
 export const WriteExtremeProbeFlat = PRODUCTION ? writeExtremeProbeFlatProduction : writeExtremeProbeFlatChecked;
 
 // ReadExtremeProbeFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -3578,8 +3593,9 @@ function writeExtremeRowFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteExtremeRowFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold ExtremeRowMaxBytes.
+// WriteExtremeRowFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold ExtremeRowMaxBytes.
 export const WriteExtremeRowFlat = PRODUCTION ? writeExtremeRowFlatProduction : writeExtremeRowFlatChecked;
 
 // ReadExtremeRowFlat(value, view, numBits) -> bool. The buffer behind view must

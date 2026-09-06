@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
@@ -448,7 +448,7 @@ pub struct RigidBody {
     pub orientation: Quat,
     pub at_rest: bool,
 
-    // if !at_rest — wire branch; storage holds both sides, a read zeroes the
+    // !at_rest — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub linear_velocity: Vec3,
     pub angular_velocity: Vec3,
@@ -714,7 +714,7 @@ pub struct ShipCreate {
     pub linear_velocity: QuantizedVelocity,
     pub has_flags: bool,
 
-    // if has_flags — wire branch; storage holds both sides, a read zeroes the
+    // has_flags — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub flags: ShipFlags,
 

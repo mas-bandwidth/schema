@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package realworld — protocol id 0x0eefe6bcd2596139
+// package realworld — protocol id 0x11a7ba9416ba6b58
 //
 // THE FLAT TIER — the shipped JavaScript wire path: a single-word 32-bit
 // bitpacker inlined at every field (byte-identical wire to serialize.js),
@@ -1986,8 +1986,9 @@ function writeRealPacketFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteRealPacketFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold RealPacketMaxBytes.
+// WriteRealPacketFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold RealPacketMaxBytes.
 export const WriteRealPacketFlat = PRODUCTION ? writeRealPacketFlatProduction : writeRealPacketFlatChecked;
 
 // ReadRealPacketFlat(value, view, numBits) -> bool. The buffer behind view must

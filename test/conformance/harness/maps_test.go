@@ -91,7 +91,7 @@ func mapsModel(t *testing.T) *tabletext.Model {
 // A KEY THIS READER CANNOT HOLD WHOLE MUST NOT BECOME A DIFFERENT KEY
 // (docs/SPEC-TABLES.md §2.8). The walker scans a key into a fixed buffer, so a
 // key longer than it is truncated there, and two keys that share the prefix it
-// keeps merge into ONE entry keyed by bytes the text never spelled — while
+// keeps merge into ONE entry keyed by bytes the text never spelled, while
 // `clamped`, which the scan raises either way, says nothing about it.
 // `EdgeRow.names` is string(300), so the DECLARED bound holds both keys and
 // only the reader's own does not.

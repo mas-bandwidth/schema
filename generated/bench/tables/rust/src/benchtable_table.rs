@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — the TABLE wire (docs/SPEC-TABLES.md); protocol id 0xd093e62e6f907c36 names packets only, and a table versions by field id
+// package benchtable — the TABLE wire (docs/SPEC-TABLES.md); protocol id 0x88cf953e975ace60 names packets only, and a table versions by field id
 //
 // Measure/Save/Load are name-first free functions: <name>_measure gives the
 // exact wire size, <name>_save writes exactly that many bytes into the
@@ -124,11 +124,11 @@ pub struct TableMixed {
     pub crc_hint: u32,
     pub has_extra: bool,
 
-    // if has_extra — guarded fields stay off the wire when the guard says so;
+    // has_extra — guarded fields stay off the wire when the guard says so;
     // a read's restored defaults stand in for the untaken side
     pub extra: i32,
 
-    // if has_extra else — guarded fields stay off the wire when the guard says so;
+    // !has_extra — guarded fields stay off the wire when the guard says so;
     // a read's restored defaults stand in for the untaken side
     pub idle_ticks: i32,
 }

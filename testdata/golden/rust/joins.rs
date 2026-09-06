@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
@@ -14,11 +14,11 @@ pub struct ArmsAgree {
     pub lead: u32,
     pub flag: bool,
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub a: u32,
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub b: u32,
 
@@ -106,11 +106,11 @@ pub struct ArmsDisagree {
     pub lead: u32,
     pub flag: bool,
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub a: u32,
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub b: u32,
 
@@ -198,7 +198,7 @@ pub struct ArmEmpty {
     pub lead: u32,
     pub flag: bool,
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub a: u32,
 
@@ -275,19 +275,19 @@ pub struct ArmsNested {
     pub lead: u32,
     pub outer: bool,
 
-    // if outer — wire branch; storage holds both sides, a read zeroes the
+    // outer — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub inner: bool,
 
-    // if outer / if inner — wire branch; storage holds both sides, a read zeroes the
+    // outer && inner — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub x: u32,
 
-    // if outer / if inner else — wire branch; storage holds both sides, a read zeroes the
+    // outer && !inner — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub y: u32,
 
-    // if outer else — wire branch; storage holds both sides, a read zeroes the
+    // !outer — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub z: u32,
 
@@ -400,12 +400,12 @@ pub struct ArmAlign {
     pub lead: u32,
     pub flag: bool,
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub s: [u8; 4], // string(4): max length, used length beside it (SPEC §4.7)
     pub s_length: i32,
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub b: u32,
 
@@ -506,12 +506,12 @@ pub struct ArmArray {
     pub lead: u32,
     pub flag: bool,
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub items: [u16; 3], // used count beside it; wire count in [0, 3]
     pub items_count: i32,
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub b: u32,
 
@@ -697,7 +697,18 @@ impl UnevenType {
     pub const NONE: UnevenType = UnevenType(0);
     pub const NARROW: UnevenType = UnevenType(1);
     pub const WIDE: UnevenType = UnevenType(2);
+    pub const COUNT: UnevenType = UnevenType(2); // the declared variant count (SPEC §4.2)
     pub const MAX: UnevenType = UnevenType(2); // the exported extent (SPEC §4.2)
+}
+
+/// Debug/log name for any `UnevenType` value, out-of-set included.
+pub fn enum_name_uneven_type(value: UnevenType) -> &'static str {
+    match value.0 {
+        0 => "None",
+        1 => "Narrow",
+        2 => "Wide",
+        _ => "???",
+    }
 }
 
 // Uneven — at most one of the arms. The default is None (the empty union);

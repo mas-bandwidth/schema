@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package realworld — protocol id 0x0eefe6bcd2596139
+// package realworld — protocol id 0x11a7ba9416ba6b58
 
 use serialize::{ReadStream, Stream, WriteStream};
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-pub const PROTOCOL_ID: u64 = 0x0eefe6bcd2596139;
+pub const PROTOCOL_ID: u64 = 0x11a7ba9416ba6b58;
 
 /// The generated crate's error: the runtime's own errors pass through;
 /// Validation is a read rejecting the wire (SPEC §4.3, §4.7).
@@ -150,7 +150,7 @@ pub struct RealPacket {
     pub f011_bits: u32,
     pub f012_bool: bool, // = true in new() (zero value otherwise)
 
-    // if f012_bool — wire branch; storage holds both sides, a read zeroes the
+    // f012_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub f013_f32: f32,
     pub f014_uint: u16, // wire [0, 775]
@@ -185,7 +185,7 @@ pub struct RealPacket {
     pub f042_bits: u32,
     pub f043_bool: bool, // = false in new() (zero value otherwise)
 
-    // if f043_bool — wire branch; storage holds both sides, a read zeroes the
+    // f043_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub f044_f32: f32,
     pub f045_bits: u32,
@@ -196,7 +196,7 @@ pub struct RealPacket {
     pub f049_ufixed: u16, // wire [0, 3]
     pub f050_bool: bool, // = true in new() (zero value otherwise)
 
-    // if f050_bool — wire branch; storage holds both sides, a read zeroes the
+    // f050_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub f051_bool: bool,
     pub f052_int: i8, // wire [-57, 57]
@@ -224,7 +224,7 @@ pub struct RealPacket {
     pub f073_int: i8, // wire [-4, 4]
     pub f074_bool: bool, // = false in new() (zero value otherwise)
 
-    // if f074_bool — wire branch; storage holds both sides, a read zeroes the
+    // f074_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub f075_u64: u64,
     pub f076_int: i16, // wire [-26218, 26218]

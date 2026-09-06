@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 import 'dart:typed_data';
 
@@ -11,11 +11,11 @@ final class ArmsAgree {
   int lead = 0;
   bool flag = false;
 
-  // if flag — wire branch; storage holds both sides, a read zeroes the
+  // flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int a = 0;
 
-  // if flag else — wire branch; storage holds both sides, a read zeroes the
+  // !flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int b = 0;
 
@@ -39,7 +39,8 @@ void zeroArmsAgree(ArmsAgree value) {
 
 // writeArmsAgree packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// armsAgreeMaxBytes. Returns the bytes written.
+// armsAgreeMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeArmsAgree(ArmsAgree value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= armsAgreeMaxBytes);
@@ -169,11 +170,11 @@ final class ArmsDisagree {
   int lead = 0;
   bool flag = false;
 
-  // if flag — wire branch; storage holds both sides, a read zeroes the
+  // flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int a = 0;
 
-  // if flag else — wire branch; storage holds both sides, a read zeroes the
+  // !flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int b = 0;
 
@@ -197,7 +198,8 @@ void zeroArmsDisagree(ArmsDisagree value) {
 
 // writeArmsDisagree packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// armsDisagreeMaxBytes. Returns the bytes written.
+// armsDisagreeMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeArmsDisagree(ArmsDisagree value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= armsDisagreeMaxBytes);
@@ -346,7 +348,7 @@ final class ArmEmpty {
   int lead = 0;
   bool flag = false;
 
-  // if flag — wire branch; storage holds both sides, a read zeroes the
+  // flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int a = 0;
 
@@ -369,7 +371,8 @@ void zeroArmEmpty(ArmEmpty value) {
 
 // writeArmEmpty packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// armEmptyMaxBytes. Returns the bytes written.
+// armEmptyMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeArmEmpty(ArmEmpty value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= armEmptyMaxBytes);
@@ -494,19 +497,19 @@ final class ArmsNested {
   int lead = 0;
   bool outer = false;
 
-  // if outer — wire branch; storage holds both sides, a read zeroes the
+  // outer — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   bool inner = false;
 
-  // if outer / if inner — wire branch; storage holds both sides, a read zeroes the
+  // outer && inner — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int x = 0;
 
-  // if outer / if inner else — wire branch; storage holds both sides, a read zeroes the
+  // outer && !inner — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int y = 0;
 
-  // if outer else — wire branch; storage holds both sides, a read zeroes the
+  // !outer — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int z = 0;
 
@@ -532,7 +535,8 @@ void zeroArmsNested(ArmsNested value) {
 
 // writeArmsNested packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// armsNestedMaxBytes. Returns the bytes written.
+// armsNestedMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeArmsNested(ArmsNested value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= armsNestedMaxBytes);
@@ -738,13 +742,13 @@ final class ArmAlign {
   int lead = 0;
   bool flag = false;
 
-  // if flag — wire branch; storage holds both sides, a read zeroes the
+  // flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   // string(4): max length, used length beside it (SPEC §4.7)
   final Uint8List s = Uint8List(4);
   int sLength = 0;
 
-  // if flag else — wire branch; storage holds both sides, a read zeroes the
+  // !flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int b = 0;
 
@@ -769,7 +773,8 @@ void zeroArmAlign(ArmAlign value) {
 
 // writeArmAlign packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// armAlignMaxBytes. Returns the bytes written.
+// armAlignMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeArmAlign(ArmAlign value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= armAlignMaxBytes);
@@ -994,13 +999,13 @@ final class ArmArray {
   int lead = 0;
   bool flag = false;
 
-  // if flag — wire branch; storage holds both sides, a read zeroes the
+  // flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   // wire [0, 8191]
   final Uint16List items = Uint16List(3);
   int itemsCount = 0;
 
-  // if flag else — wire branch; storage holds both sides, a read zeroes the
+  // !flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int b = 0;
 
@@ -1025,7 +1030,8 @@ void zeroArmArray(ArmArray value) {
 
 // writeArmArray packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// armArrayMaxBytes. Returns the bytes written.
+// armArrayMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeArmArray(ArmArray value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= armArrayMaxBytes);
@@ -1043,8 +1049,9 @@ int writeArmArray(ArmArray value, ByteData view) {
     scratch = v >>> (6 - scratchBits);
   }
   if (value.flag) {
-    assert(value.itemsCount >= 0);
-    assert(value.itemsCount <= 3);
+    if (value.itemsCount < 0 || value.itemsCount > 3) {
+      return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+    }
     v = ((value.itemsCount) & 0x3);
     scratch |= v << scratchBits;
     scratchBits += 2;
@@ -1267,7 +1274,8 @@ void zeroNarrow(Narrow value) {
 
 // writeNarrow packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// narrowMaxBytes. Returns the bytes written.
+// narrowMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeNarrow(Narrow value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= narrowMaxBytes);
@@ -1348,7 +1356,8 @@ void zeroWide(Wide value) {
 
 // writeWide packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// wideMaxBytes. Returns the bytes written.
+// wideMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeWide(Wide value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= wideMaxBytes);
@@ -1416,7 +1425,23 @@ abstract final class UnevenType {
   static const int none = 0;
   static const int narrow = 1;
   static const int wide = 2;
+  static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
+}
+
+// enumNameUnevenType: debug/log/tooling name for any UnevenType wire value —
+// out-of-set values (wire-legal up to the declared max) name as '???'
+String enumNameUnevenType(int value) {
+  switch (value) {
+    case UnevenType.none:
+      return 'None';
+    case UnevenType.narrow:
+      return 'Narrow';
+    case UnevenType.wide:
+      return 'Wide';
+    default:
+      return '???';
+  }
 }
 
 // Uneven — at most one of the arms; type says which. Construction is the empty
@@ -1443,7 +1468,8 @@ void zeroUneven(Uneven value) {
 
 // writeUneven packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// unevenMaxBytes. Returns the bytes written.
+// unevenMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeUneven(Uneven value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= unevenMaxBytes);
@@ -1596,7 +1622,8 @@ void zeroHoldsUneven(HoldsUneven value) {
 
 // writeHoldsUneven packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// holdsUnevenMaxBytes. Returns the bytes written.
+// holdsUnevenMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeHoldsUneven(HoldsUneven value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= holdsUnevenMaxBytes);
@@ -1781,7 +1808,8 @@ void zeroArrUneven(ArrUneven value) {
 
 // writeArrUneven packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// arrUnevenMaxBytes. Returns the bytes written.
+// arrUnevenMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeArrUneven(ArrUneven value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= arrUnevenMaxBytes);
@@ -1789,8 +1817,9 @@ int writeArrUneven(ArrUneven value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.itemsCount >= 0);
-  assert(value.itemsCount <= 3);
+  if (value.itemsCount < 0 || value.itemsCount > 3) {
+    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+  }
   v = ((value.lead) & 0x1f) | (((value.itemsCount) & 0x3) << 5);
   scratch |= v << scratchBits;
   scratchBits += 7;
@@ -2007,7 +2036,8 @@ void zeroRegainAfterAlign(RegainAfterAlign value) {
 
 // writeRegainAfterAlign packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// regainAfterAlignMaxBytes. Returns the bytes written.
+// regainAfterAlignMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeRegainAfterAlign(RegainAfterAlign value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= regainAfterAlignMaxBytes);
@@ -2015,8 +2045,9 @@ int writeRegainAfterAlign(RegainAfterAlign value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.itemsCount >= 0);
-  assert(value.itemsCount <= 3);
+  if (value.itemsCount < 0 || value.itemsCount > 3) {
+    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+  }
   v = ((value.lead) & 0x1f) | (((value.itemsCount) & 0x3) << 5);
   scratch |= v << scratchBits;
   scratchBits += 7;

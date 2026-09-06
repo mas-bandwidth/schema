@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0xd093e62e6f907c36
+// package benchtable — protocol id 0x88cf953e975ace60
 //
 // The shipped Dart wire path (issue #155): the serialize.dart bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -33,7 +33,7 @@ String _hex64(int value) => value < 0
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const int protocolId = 0xd093e62e6f907c36;
+const int protocolId = 0x88cf953e975ace60;
 
 // TableWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
 // an int-constant namespace — the Dart translation of the family's integer-
@@ -200,7 +200,8 @@ void zeroTableHitEvent(TableHitEvent value) {
 
 // writeTableHitEvent packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// tableHitEventMaxBytes. Returns the bytes written.
+// tableHitEventMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeTableHitEvent(TableHitEvent value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= tableHitEventMaxBytes);
@@ -301,7 +302,8 @@ void zeroTableChatEvent(TableChatEvent value) {
 
 // writeTableChatEvent packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// tableChatEventMaxBytes. Returns the bytes written.
+// tableChatEventMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeTableChatEvent(TableChatEvent value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= tableChatEventMaxBytes);
@@ -390,7 +392,8 @@ void zeroTablePickupEvent(TablePickupEvent value) {
 
 // writeTablePickupEvent packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// tablePickupEventMaxBytes. Returns the bytes written.
+// tablePickupEventMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeTablePickupEvent(TablePickupEvent value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= tablePickupEventMaxBytes);
@@ -464,7 +467,25 @@ abstract final class TableEventType {
   static const int hit = 1;
   static const int chat = 2;
   static const int pickup = 3;
+  static const int count = 3; // the declared variant count (SPEC §4.2)
   static const int max = 3; // the exported extent (SPEC §4.2)
+}
+
+// enumNameTableEventType: debug/log/tooling name for any TableEventType wire value —
+// out-of-set values (wire-legal up to the declared max) name as '???'
+String enumNameTableEventType(int value) {
+  switch (value) {
+    case TableEventType.none:
+      return 'None';
+    case TableEventType.hit:
+      return 'Hit';
+    case TableEventType.chat:
+      return 'Chat';
+    case TableEventType.pickup:
+      return 'Pickup';
+    default:
+      return '???';
+  }
 }
 
 // TableEvent — at most one of the arms; type says which. Construction is the empty
@@ -492,7 +513,8 @@ void zeroTableEvent(TableEvent value) {
 
 // writeTableEvent packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// tableEventMaxBytes. Returns the bytes written.
+// tableEventMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeTableEvent(TableEvent value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= tableEventMaxBytes);

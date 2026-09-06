@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 #pragma once
 
@@ -155,21 +155,21 @@ struct ProbeSample {
     int32_t raw_delta = 0;
     int64_t big_delta = 0;
 
-    // if active — wire branch; storage holds both sides, a read zeroes the
+    // active — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     Weapon weapon = Weapon::None;
     bool has_target = false;
 
-    // if active / if has_target — wire branch; storage holds both sides, a read zeroes the
+    // active && has_target — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     uint16_t target_id = 0;
 
-    // if active else — wire branch; storage holds both sides, a read zeroes the
+    // !active — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     uint32_t idle_ticks = 0;
 
     uint16_t samples[8] = {}; // used count beside it; wire count in [1, 8]
-    int32_t samples_count = 0;
+    int32_t samples_count = 1;
 };
 
 inline constexpr int64_t ProbeSampleMaxBits = 276; // longest wire path; align pads at worst case (SPEC §6.1)
@@ -197,8 +197,21 @@ enum class ProbeShapeType : uint8_t {
     None = 0,
     Ring = 1,
     Slab = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any ProbeShapeType value, out-of-set included
+inline const char * EnumName( ProbeShapeType value )
+{
+    switch ( value )
+    {
+        case ProbeShapeType::None: return "None";
+        case ProbeShapeType::Ring: return "Ring";
+        case ProbeShapeType::Slab: return "Slab";
+        default: return "???";
+    }
+}
 
 // union ProbeShape — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm's storage is established ZEROED

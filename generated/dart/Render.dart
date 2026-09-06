@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 import 'dart:typed_data';
 
@@ -36,7 +36,8 @@ void zeroRenderSprite(RenderSprite value) {
 
 // writeRenderSprite packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// renderSpriteMaxBytes. Returns the bytes written.
+// renderSpriteMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeRenderSprite(RenderSprite value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= renderSpriteMaxBytes);
@@ -183,7 +184,8 @@ void zeroRenderBlock(RenderBlock value) {
 
 // writeRenderBlock packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// renderBlockMaxBytes. Returns the bytes written.
+// renderBlockMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeRenderBlock(RenderBlock value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= renderBlockMaxBytes);
@@ -191,8 +193,9 @@ int writeRenderBlock(RenderBlock value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.spritesCount >= 0);
-  assert(value.spritesCount <= 64);
+  if (value.spritesCount < 0 || value.spritesCount > 64) {
+    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+  }
   v =
       ((value.workerIndex) & 0xffffffff) |
       (((value.spriteCountHint) & 0xffffffff) << 32);

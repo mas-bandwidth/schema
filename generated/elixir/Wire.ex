@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0x682e2a15a56b78bf
+# package example — protocol id 0x3d5823781128b414
 
 # Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
 # an integer-constant namespace — the Elixir translation of the family's
@@ -35,9 +35,9 @@ end
 defmodule Example.ProbeSample do
   # active: specified default at construction; zero_* gives the §5 zero form
   # orientation: compressed float [-180.0, 180.0] @ 0.01
-  # if active — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
-  # if active / if has_target — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
-  # if active else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # active — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # active && has_target — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !active — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # samples: counted array — a list of up to 8 elements
   defstruct active: true,
             orientation: 0.0,
@@ -47,7 +47,7 @@ defmodule Example.ProbeSample do
             has_target: false,
             target_id: 0,
             idle_ticks: 0,
-            samples: []
+            samples: List.duplicate(0, 1)
 end
 
 # type ProbeRing
@@ -66,6 +66,8 @@ defmodule Example.ProbeShapeType do
   def none, do: 0
   def ring, do: 1
   def slab, do: 2
+  # the declared variant count (SPEC §4.2)
+  def count, do: 2
   # the exported extent (SPEC §4.2)
   def max, do: 2
 end
@@ -875,6 +877,17 @@ defmodule Example.Wire do
   # probe_shape_max_bytes is rounded up to the family 8-byte write-buffer granularity.
   def probe_shape_max_bits, do: 18
   def probe_shape_max_bytes, do: 8
+
+  # enum_name_probe_shape_type: debug/log/tooling name for any ProbeShapeType wire value —
+  # out-of-set values (wire-legal up to the declared max) name as "???"
+  def enum_name_probe_shape_type(value) do
+    case value do
+      0 -> "None"
+      1 -> "Ring"
+      2 -> "Slab"
+      _ -> "???"
+    end
+  end
 
   # The §5 zero form — the empty union (None). Arms hold their construction
   # form: every arm is unselected at None, and unselected arms are

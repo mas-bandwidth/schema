@@ -277,8 +277,20 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 		g.pf("%s", ir.DocComment(docs[i], "    ", "//"))
 		g.pf("    %s = %d,\n", m, i+1)
 	}
+	g.pf("    Count = %d, // the declared variant count (SPEC §4.2)\n", len(members))
 	g.pf("    Max = %d, // the exported extent (SPEC §4.2)\n", len(members))
 	g.pf("};\n\n")
+	// the tag enum's name surface is a declared enum's, member for member: a
+	// reader logging which message arrived writes EnumName( value ) whichever
+	// enum it is. Nothing on the read or write path calls it.
+	g.pf("// EnumName: debug/log name for any %s value, out-of-set included\n", name)
+	g.pf("inline const char * EnumName( %s value )\n{\n", name)
+	g.pf("    switch ( value )\n    {\n")
+	g.pf("        case %s::None: return \"None\";\n", name)
+	for _, m := range members {
+		g.pf("        case %s::%s: return \"%s\";\n", name, m, m)
+	}
+	g.pf("        default: return \"???\";\n    }\n}\n\n")
 }
 
 // emitUnion emits a first-class one-of (SPEC §4.8): the generated <Name>Type
@@ -518,7 +530,7 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	case f.Array == ir.ArrayCounted:
 		g.pf("    %s %s[%s] = {}; // used count beside it; wire count in [%d, %s]\n",
 			typ, f.Name, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound)), f.ArrayMin, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound)))
-		g.pf("    int32_t %s_count = 0;\n", f.Name)
+		g.pf("    int32_t %s_count = %d;\n", f.Name, f.BornCount())
 	default:
 		g.pf("    %s %s%s;%s\n", typ, f.Name, g.initializer(f, typ, isStructType), g.fieldComment(f))
 	}

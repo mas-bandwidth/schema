@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x5b8227d21cba8abf
+// package bench — protocol id 0x06845f749d2417b4
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an interior null)
@@ -143,6 +143,7 @@ namespace Bench
         Hit = 1,
         Chat = 2,
         Pickup = 3,
+        Count = 3, // the declared variant count (SPEC §4.2)
         Max = 3, // the exported extent (SPEC §4.2)
     }
 
@@ -171,7 +172,7 @@ namespace Bench
         public ulong FrameTick;
         public int ServerTime; // wire [0, 65535]
         public MixedEntity[] Entities = new MixedEntity[8]; // used count beside it; wire count in [1, 8]
-        public int EntitiesCount;
+        public int EntitiesCount = 1;
         public MixedStat[] Stats = new MixedStat[80]; // used count beside it; wire count in [0, 80]
         public int StatsCount;
         public MixedEvent GameEvent = new MixedEvent();
@@ -191,11 +192,11 @@ namespace Bench
         public uint CrcHint;
         public bool HasExtra = true; // specified default at construction; Zero* gives the §5 zero form
 
-        // if has_extra — wire branch; storage holds both sides, a read zeroes the
+        // has_extra — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int Extra; // wire [0, 255]
 
-        // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+        // !has_extra — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int IdleTicks; // wire [0, 15]
 
@@ -219,7 +220,7 @@ namespace Bench
     {
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
-        public const ulong ProtocolId = 0x5b8227d21cba8abf;
+        public const ulong ProtocolId = 0x06845f749d2417b4;
 
         // BenchPacketMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // BenchPacketMaxBytes is rounded up to the 8-byte write-buffer granularity.
@@ -1228,6 +1229,25 @@ namespace Bench
                 value.Amount = (int)((int)(uint)v1);
             }
             return true;
+        }
+
+        // EnumNameMixedEventType: debug/log/tooling name for any MixedEventType wire value —
+        // out-of-set values (wire-legal up to the declared max) name as "???"
+        public static string EnumNameMixedEventType(ulong value)
+        {
+            switch (value)
+            {
+                case (ulong)MixedEventType.None:
+                    return "None";
+                case (ulong)MixedEventType.Hit:
+                    return "Hit";
+                case (ulong)MixedEventType.Chat:
+                    return "Chat";
+                case (ulong)MixedEventType.Pickup:
+                    return "Pickup";
+                default:
+                    return "???";
+            }
         }
 
         // MixedEventMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).

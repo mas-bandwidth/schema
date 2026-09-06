@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x682e2a15a56b78bf */
+   package example — protocol id 0x3d5823781128b414 */
 
 #ifndef SCHEMA_EXAMPLE_JOINSWIRE_H
 #define SCHEMA_EXAMPLE_JOINSWIRE_H
@@ -617,6 +617,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arm_array( serialize_write_
     }
     if ( value->flag )
     {
+        if ( value->items_count < 0 || value->items_count > 3 )
+        {
+            return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
+        }
         if ( !serialize_write_int( stream, value->items_count, 0, 3 ) )
         {
             return 0;
@@ -878,6 +882,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arr_uneven( serialize_write
     {
         return 0;
     }
+    if ( value->items_count < 0 || value->items_count > 3 )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
+    }
     if ( !serialize_write_int( stream, value->items_count, 0, 3 ) )
     {
         return 0;
@@ -941,6 +949,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_regain_after_align( seriali
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->lead, 5 ) )
     {
         return 0;
+    }
+    if ( value->items_count < 0 || value->items_count > 3 )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
     }
     if ( !serialize_write_int( stream, value->items_count, 0, 3 ) )
     {

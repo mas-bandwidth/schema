@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 #pragma once
 
@@ -280,7 +280,10 @@ SCHEMA_WRITE_INLINE bool WriteInputPacket( serialize::WriteStream & stream, cons
     write_bits( stream, value.synchronize_sequence, 16 );
     write_bits( stream, value.current_frame, 64 );
     write_bits( stream, value.start_frame, 64 );
-    serialize_assert( int32_t( value.inputs_count ) >= int32_t( 0 ) && int32_t( value.inputs_count ) <= int32_t( MaxInputsPerPacket ) );
+    if ( int32_t( value.inputs_count ) < int32_t( 0 ) || int32_t( value.inputs_count ) > int32_t( MaxInputsPerPacket ) )
+    {
+        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
+    }
     write_bits( stream, uint32_t( value.inputs_count ), 5 );
     for ( int32_t i = 0; i < value.inputs_count; i++ )
     {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that
@@ -113,8 +113,9 @@ function writeVec2FlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteVec2Flat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold Vec2MaxBytes.
+// WriteVec2Flat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold Vec2MaxBytes.
 export const WriteVec2Flat = PRODUCTION ? writeVec2FlatProduction : writeVec2FlatChecked;
 
 // ReadVec2Flat(value, view, numBits) -> bool. The buffer behind view must
@@ -223,8 +224,9 @@ function writeSpanF64FlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteSpanF64Flat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold SpanF64MaxBytes.
+// WriteSpanF64Flat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold SpanF64MaxBytes.
 export const WriteSpanF64Flat = PRODUCTION ? writeSpanF64FlatProduction : writeSpanF64FlatChecked;
 
 // ReadSpanF64Flat(value, view, numBits) -> bool. The buffer behind view must
@@ -319,8 +321,9 @@ function writeSpanU64FlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteSpanU64Flat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold SpanU64MaxBytes.
+// WriteSpanU64Flat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold SpanU64MaxBytes.
 export const WriteSpanU64Flat = PRODUCTION ? writeSpanU64FlatProduction : writeSpanU64FlatChecked;
 
 // ReadSpanU64Flat(value, view, numBits) -> bool. The buffer behind view must
@@ -417,8 +420,9 @@ function writeSpanI64FlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteSpanI64Flat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold SpanI64MaxBytes.
+// WriteSpanI64Flat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold SpanI64MaxBytes.
 export const WriteSpanI64Flat = PRODUCTION ? writeSpanI64FlatProduction : writeSpanI64FlatChecked;
 
 // ReadSpanI64Flat(value, view, numBits) -> bool. The buffer behind view must
@@ -515,8 +519,9 @@ function writeSpanOneFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteSpanOneFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold SpanOneMaxBytes.
+// WriteSpanOneFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold SpanOneMaxBytes.
 export const WriteSpanOneFlat = PRODUCTION ? writeSpanOneFlatProduction : writeSpanOneFlatChecked;
 
 // ReadSpanOneFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -593,8 +598,9 @@ function writeSpanChunkFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteSpanChunkFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold SpanChunkMaxBytes.
+// WriteSpanChunkFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold SpanChunkMaxBytes.
 export const WriteSpanChunkFlat = PRODUCTION ? writeSpanChunkFlatProduction : writeSpanChunkFlatChecked;
 
 // ReadSpanChunkFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -698,8 +704,9 @@ function writeSpanTailFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteSpanTailFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold SpanTailMaxBytes.
+// WriteSpanTailFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold SpanTailMaxBytes.
 export const WriteSpanTailFlat = PRODUCTION ? writeSpanTailFlatProduction : writeSpanTailFlatChecked;
 
 // ReadSpanTailFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -843,8 +850,9 @@ function writeSpanTwiceFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteSpanTwiceFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold SpanTwiceMaxBytes.
+// WriteSpanTwiceFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold SpanTwiceMaxBytes.
 export const WriteSpanTwiceFlat = PRODUCTION ? writeSpanTwiceFlatProduction : writeSpanTwiceFlatChecked;
 
 // ReadSpanTwiceFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -970,8 +978,9 @@ function writeTrioFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteTrioFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold TrioMaxBytes.
+// WriteTrioFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold TrioMaxBytes.
 export const WriteTrioFlat = PRODUCTION ? writeTrioFlatProduction : writeTrioFlatChecked;
 
 // ReadTrioFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1082,8 +1091,9 @@ function writeTrioSoleFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteTrioSoleFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold TrioSoleMaxBytes.
+// WriteTrioSoleFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold TrioSoleMaxBytes.
 export const WriteTrioSoleFlat = PRODUCTION ? writeTrioSoleFlatProduction : writeTrioSoleFlatChecked;
 
 // ReadTrioSoleFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1212,8 +1222,9 @@ function writeTrioFirstFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteTrioFirstFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold TrioFirstMaxBytes.
+// WriteTrioFirstFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold TrioFirstMaxBytes.
 export const WriteTrioFirstFlat = PRODUCTION ? writeTrioFirstFlatProduction : writeTrioFirstFlatChecked;
 
 // ReadTrioFirstFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1540,8 +1551,9 @@ function writeTrioStraddleFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteTrioStraddleFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold TrioStraddleMaxBytes.
+// WriteTrioStraddleFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold TrioStraddleMaxBytes.
 export const WriteTrioStraddleFlat = PRODUCTION ? writeTrioStraddleFlatProduction : writeTrioStraddleFlatChecked;
 
 // ReadTrioStraddleFlat(value, view, numBits) -> bool. The buffer behind view must

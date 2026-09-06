@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x682e2a15a56b78bf
+// package example — protocol id 0x3d5823781128b414
 
 package example
 
@@ -782,11 +782,26 @@ func ReadEmptyB(stream *serialize.ReadStream, value *EmptyB) error {
 type EmptyUnionType uint8
 
 const (
-	EmptyUnionTypeNone EmptyUnionType = 0
-	EmptyUnionTypeA    EmptyUnionType = 1
-	EmptyUnionTypeB    EmptyUnionType = 2
-	EmptyUnionTypeMax  EmptyUnionType = 2 // the exported extent (SPEC §4.2)
+	EmptyUnionTypeNone  EmptyUnionType = 0
+	EmptyUnionTypeA     EmptyUnionType = 1
+	EmptyUnionTypeB     EmptyUnionType = 2
+	EmptyUnionTypeCount EmptyUnionType = 2 // the declared variant count (SPEC §4.2)
+	EmptyUnionTypeMax   EmptyUnionType = 2 // the exported extent (SPEC §4.2)
 )
+
+// EnumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+func EnumNameEmptyUnionType(value uint64) string {
+	switch value {
+	case uint64(EmptyUnionTypeNone):
+		return "None"
+	case uint64(EmptyUnionTypeA):
+		return "A"
+	case uint64(EmptyUnionTypeB):
+		return "B"
+	}
+	return "???"
+}
 
 // EmptyUnion — at most one of the arms; Type says which. The zero value is the
 // empty union (None). A read zero-establishes exactly the selected arm before

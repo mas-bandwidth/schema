@@ -251,8 +251,23 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 		g.tf("%s", ir.DocComment(docs[i], "    ", "//"))
 		g.tf("    %s = %d,\n", m, i+1)
 	}
+	g.tf("    Count = %d, // the declared variant count (SPEC §4.2)\n", len(members))
 	g.tf("    Max = %d, // the exported extent (SPEC §4.2)\n", len(members))
 	g.tf("}\n\n")
+
+	// the tag enum's name surface is a declared enum's, member for member: a
+	// reader logging which message arrived writes EnumName<Tag>(value)
+	// whichever enum it is. Nothing on the read or write path calls it. The
+	// ulong parameter (not the enum type) keeps out-of-set values exact.
+	g.sf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", name, name)
+	g.sf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
+	g.sf("public static string EnumName%s(ulong value)\n{\n", name)
+	g.sf("    switch (value)\n    {\n")
+	g.sf("        case (ulong)%s.None:\n            return \"None\";\n", name)
+	for _, m := range members {
+		g.sf("        case (ulong)%s.%s:\n            return %q;\n", name, m, m)
+	}
+	g.sf("        default:\n            return \"???\";\n    }\n}\n\n")
 }
 
 // emitConst emits a schema const on Schema: bare integers are long, bare
@@ -429,7 +444,7 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	case f.Array == ir.ArrayCounted:
 		g.tf("    public %s[] %s = new %s[%s]; // used count beside it; wire count in [%d, %s]\n",
 			typ, name, typ, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "", true), f.ArrayMin, ir.RenderExpr(f.ArrayExpr))
-		g.tf("    public int %s;\n", g.m(name+"Count"))
+		g.tf("    public int %s%s;\n", g.m(name+"Count"), bornCountInit(f))
 	default:
 		init := ""
 		if f.HasDefault {
@@ -441,6 +456,16 @@ func (g *gen) emitStorageField(f *ir.Field) {
 		}
 		g.tf("    public %s %s%s;%s\n", typ, name, init, g.fieldComment(f))
 	}
+}
+
+// bornCountInit is a counted array's count initializer: a [A..B] count is
+// born at A, the one wire-legal count a fresh value can carry (SPEC §4.6),
+// and a [..N] count takes the field's zero.
+func bornCountInit(f *ir.Field) string {
+	if n := f.BornCount(); n > 0 {
+		return fmt.Sprintf(" = %d", n)
+	}
+	return ""
 }
 
 func (g *gen) fieldComment(f *ir.Field) string {

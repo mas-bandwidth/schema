@@ -147,8 +147,8 @@ inline int32_t TableKeyLength( const char * key, int32_t bound )
 // (§2.8, §3). A string(N) key holds any byte a wire or a text can spell,
 // U+0000 included, so a lookup that measures to the first NUL answers that "a"
 // and "a", 0, "b" are the same key: the first entry is found, RESET, and
-// relabelled with the second key, which deletes an entry the report never
-// mentions. Every internal lookup and every insertion takes this pair; the
+// relabeled with the second key, which deletes an entry the report never
+// mentions. Every internal lookup and every insertion takes this pair, and the
 // public const char * surface builds one and is a wrapper over it.
 struct TableMapKeyRef
 {

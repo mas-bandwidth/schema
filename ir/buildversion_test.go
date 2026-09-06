@@ -238,14 +238,16 @@ table Row
 	}
 }
 
-// §20.8's ARM ID CONTROL, in the direction the page states it: an arm is a
-// FIELD LINE in the wire-shape projection too (docs/SPEC-TABLES.md §2.6,
-// §20.8; SPEC.md §3.1), so EVERY union projects, the table-armed ones
-// included, and an arm renamed there moves the PROTOCOL id exactly as a field
-// renamed moves it. The build version moves with it, because the protocol id
-// rides in the cook projection whole (§20.1 group 1). It is red if either id
-// stands still.
-func TestTableArmedUnionArmRenameMovesBothIds(t *testing.T) {
+// §20.8's ARM ID CONTROL, and the division the reachability scoping makes
+// explicit. A union with a TABLE ARM is EXCLUDED WHOLE from the wire-shape
+// projection (SPEC.md §3.1): it has no packet encoding, no `type` can name it,
+// and the closure never reaches it — so an arm renamed there moves NO protocol
+// id, and two peers whose table-only vocabularies disagree now connect,
+// correctly. What still catches the edit is the BUILD VERSION: group 3's union
+// vocabulary carries every arm's name and id (§20.2), so a cook written before
+// the rename refuses to open after it. It is red if either half moves the
+// wrong way.
+func TestTableArmedUnionArmRenameMovesTheBuildVersionAlone(t *testing.T) {
 	const src = `package demo
 
 table User
@@ -272,9 +274,12 @@ table Insert
 	base := unitFrom(t, src)
 	renamed := unitFrom(t, strings.Replace(src, "    user   User", "    author User", 1))
 
-	if renamed.ProtocolId == base.ProtocolId {
-		t.Errorf("a table-armed union's arm rename did NOT move the protocol id (0x%016x) — every arm projects as the field line it is (§2.6, §20.8)",
-			base.ProtocolId)
+	if renamed.ProtocolId != base.ProtocolId {
+		t.Errorf("a table-armed union's arm rename moved the protocol id (0x%016x -> 0x%016x) — no `type` reaches such a union, so no packet byte moved and the connect gate owes no redeploy (SPEC.md §3.1)",
+			base.ProtocolId, renamed.ProtocolId)
+	}
+	if strings.Contains(ir.WireProjection(base), "union Origin") {
+		t.Error("a union with a table arm is in the wire-shape projection — SPEC.md §3.1 excludes it whole, as the table itself is")
 	}
 	if ir.BuildVersion(renamed) == ir.BuildVersion(base) {
 		t.Error("a table-armed union's arm rename did not move the build version — group 3's union vocabulary is not in the digest, and nothing else covers this edit")

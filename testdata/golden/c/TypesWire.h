@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x682e2a15a56b78bf */
+   package example — protocol id 0x3d5823781128b414 */
 
 #ifndef SCHEMA_EXAMPLE_TYPESWIRE_H
 #define SCHEMA_EXAMPLE_TYPESWIRE_H
@@ -628,6 +628,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_input_packet( serialize_wri
     if ( !serialize_write_uint64( stream, (serialize_uint64_t) value->start_frame ) )
     {
         return 0;
+    }
+    if ( value->inputs_count < 0 || value->inputs_count > MAX_INPUTS_PER_PACKET )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
     }
     if ( !serialize_write_int( stream, value->inputs_count, 0, MAX_INPUTS_PER_PACKET ) )
     {

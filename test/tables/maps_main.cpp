@@ -1076,7 +1076,7 @@ static void test_text()
 
 // ---- AN ALLOCATION FAILURE IS NOT AN OVERSIZED KEY (§2.8, §16.1) ----
 //
-// The arena refusing is the READ failing, the way the neighbouring list, blob
+// The arena refusing is the READ failing, the way the neighboring list, blob
 // and pointer paths fail on one. Reporting it as `clamped` says the key did not
 // fit a bound it fits perfectly, hands back an instance missing entries the
 // text spelled, and calls the read a SUCCESS.
@@ -1085,8 +1085,8 @@ static void test_text()
 // boundary before the allocator is asked anything at all. Reaching that
 // boundary through the map alone would need tens of thousands of entries and an
 // insert scan quadratic in them, so the arena is filled through the builder's
-// own Alloc first — a constant-time call — and the READ is left the last
-// stretch to cross. How many nodes that takes is MEASURED here rather than
+// own Alloc first, which is a constant-time call, and the READ is left the
+// last stretch to cross. How many nodes that takes is MEASURED here rather than
 // written down, so the row cannot rot when a node's storage or the segment's
 // size moves.
 
@@ -1148,7 +1148,7 @@ static void test_text_allocation_refusals()
     if ( fill <= 4096 ) { return; }
 
     // 4096 entries, each an inner map of one, is more arena than the 2048 nodes
-    // of headroom left below — so the READ is what crosses into the segment the
+    // of headroom left below, so the READ is what crosses into the segment the
     // allocator refuses, whatever the entry's storage happens to be
     const int64_t capacity = 1024 * 1024;
     char * text = (char *) malloc( (size_t) capacity );

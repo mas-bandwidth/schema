@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package ludicrous — protocol id 0x3a9a972a02c9e7ca
+# package ludicrous — protocol id 0x9660fa8c14d38d67
 #
 # The shipped Elixir wire path (issue #167): the serialize.elixir port's
 # measured shapes — byte-granular 32-bit-group packing and 40-bit read
@@ -83,7 +83,7 @@ end
 # type LudicrousState
 defmodule Ludicrous.LudicrousState do
   # keys: counted array — a list of up to 4 elements
-  # if has_target — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # has_target — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct mode: 0,
             probe: %Ludicrous.FixedProbe{},
             wide: %Ludicrous.WideProbe{},
@@ -128,7 +128,7 @@ defmodule Ludicrous.Ludicrous do
 
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
-  def protocol_id, do: 0x3A9A972A02C9E7CA
+  def protocol_id, do: 0x9660FA8C14D38D67
 
   def max_world_units, do: 30000
 

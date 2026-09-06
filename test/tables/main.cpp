@@ -3915,8 +3915,8 @@ static void test_json_hostile_overflow()
     }
     // A MAGNITUDE IN THE HIGH HALF IS A MAGNITUDE, not a negative (§16.2). It
     // is the field's own DOMAIN that bounds it, established before the value
-    // reaches storage, so a narrower unsigned field clamps at its CEILING —
-    // reading the interpreter's own signed lane instead lands zero, the floor,
+    // reaches storage, so a narrower unsigned field clamps at its CEILING.
+    // Reading the interpreter's own signed lane instead lands zero, the floor,
     // for a value larger than any this field can hold.
     {
         tabledemo::ProfileConfig value;
@@ -3929,7 +3929,7 @@ static void test_json_hostile_overflow()
     }
     // A NEGATIVE TOKEN IN AN UNSIGNED FIELD CLAMPS TO ZERO whatever its
     // spelling (§16.2): -1e30 is a magnitude past every width and a sign, and
-    // both halves are known before anything is cast — reading it through a
+    // both halves are known before anything is cast. Reading it through a
     // signed lane makes it the wrong SHAPE for the kind instead, which is the
     // answer the page gives a fraction and not a negative.
     {
@@ -3989,8 +3989,8 @@ static void test_json_hostile_extents()
         // A CLAMP IS A PREFIX (docs/SPEC-TABLES.md §16.2): once one code point
         // does not fit, the scan stops placing. A later SHORTER code point must
         // not slip into the room the long one left, because that would store a
-        // string the input never spelled — "123456789012\xe2\x9c\x93X" out of
-        // "123456789012\xe2\x9c\x93\xe2\x9c\x93X" — and the counter alone
+        // string the input never spelled, "123456789012\xe2\x9c\x93X" out of
+        // "123456789012\xe2\x9c\x93\xe2\x9c\x93X", and the counter alone
         // cannot tell the two apart.
         tabledemo::RootConfig value;
         tabledemo::TableReport report;

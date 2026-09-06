@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package benchtable — protocol id 0xd093e62e6f907c36
+# package benchtable — protocol id 0x88cf953e975ace60
 #
 # The shipped Elixir wire path (issue #167): the serialize.elixir port's
 # measured shapes — byte-granular 32-bit-group packing and 40-bit read
@@ -81,6 +81,8 @@ defmodule Benchtable.TableEventType do
   def hit, do: 1
   def chat, do: 2
   def pickup, do: 3
+  # the declared variant count (SPEC §4.2)
+  def count, do: 3
   # the exported extent (SPEC §4.2)
   def max, do: 3
 end
@@ -107,7 +109,7 @@ defmodule Benchtable.BenchTable do
 
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
-  def protocol_id, do: 0xD093E62E6F907C36
+  def protocol_id, do: 0x88CF953E975ACE60
 
   # enum_name_table_weapon: debug/log/tooling name for any TableWeapon wire value —
   # out-of-set values (wire-legal up to the declared max) name as "???"
@@ -418,6 +420,18 @@ defmodule Benchtable.BenchTable do
   # table_event_max_bytes is rounded up to the family 8-byte write-buffer granularity.
   def table_event_max_bits, do: 30
   def table_event_max_bytes, do: 8
+
+  # enum_name_table_event_type: debug/log/tooling name for any TableEventType wire value —
+  # out-of-set values (wire-legal up to the declared max) name as "???"
+  def enum_name_table_event_type(value) do
+    case value do
+      0 -> "None"
+      1 -> "Hit"
+      2 -> "Chat"
+      3 -> "Pickup"
+      _ -> "???"
+    end
+  end
 
   # The §5 zero form — the empty union (None). Arms hold their construction
   # form: every arm is unselected at None, and unselected arms are
