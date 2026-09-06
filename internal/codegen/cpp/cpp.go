@@ -316,11 +316,11 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("// union %s — at most one of the arms; the tag says which. Construction is\n", d.Name)
 	g.pf("// None: the tag alone is initialized; an arm is freshly constructed with its defaults\n")
-	g.pf("// when selected, by Read%s before decoding (SPEC §4.8), or explicitly:\n", d.Name)
+	g.pf("// when selected, by Read%s before decoding (SPEC §4.8), or by application code.\n", d.Name)
 	if len(d.Variants) > 0 {
+		g.pf("// Application code must include <new> before constructing an arm in place:\n")
 		g.pf("// ::new ( (void*) &value.%s ) %s{}; value.type = %sType::%s;\n",
 			unionExampleArm(d), unionExampleType(d), d.Name, ir.GoExportName(unionExampleArm(d)))
-		g.needsNew = true
 	} else {
 		g.pf("// there is no payload to construct in this empty union.\n")
 	}

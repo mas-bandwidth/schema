@@ -1376,9 +1376,9 @@ nothing. That is not the union's `None`, which says no arm was selected.
 **What an arm may not be, or carry, is refused because the arm position
 already spends what it would buy**, and each is refused by name (§11):
 
-- **a specified default** — an arm ZERO-ESTABLISHES at selection (SPEC §5),
-  which is the one rule; a default at selection would be its first exception
-  and is a named follow-on (§15);
+- **a specified default on the arm itself** — the table wire zeroes selected-arm
+  storage before decoding its payload. An arm-level default remains a named
+  follow-on (§15). Packet payload construction follows SPEC §4.8;
 - **`?`** — selection IS the arm's presence, and the union's `None` is the
   absence one level up, so a second presence bit would be two spellings of
   nothing and a framing case the wire does not have (§2.3 refuses `?` on a
@@ -11376,10 +11376,10 @@ inspects everything in the schema built:
   and a case the payload-free arm does not already answer.
 - **`json` ON AN ARM** (§2.6): an arm key in the text form that is not the
   arm's name is the field feature one level down, and it waits for a case.
-  `= default`
-  ON AN ARM waits with SPEC §5's untaken-branch question: zero at selection
-  is the pinned rule, and a default at selection would be its first
-  exception.
+  `= default` ON A TABLE ARM remains a follow-on: the table wire zeroes
+  selected-arm storage before decoding (§2.6) and does not admit an arm-level
+  default. Packet payload construction (SPEC §4.8) and untaken-branch resets
+  (SPEC §5) have their own rules.
 - **AN ENUM-KEYED ARRAY AS AN ARM — `[E]T` inside a union** (§2.6): a keyed
   body elides slots by name (§3.2), so its empty end wants stating in arm
   position exactly as `[E]*T` and `[E]Body` want it in field position, and

@@ -1671,7 +1671,7 @@ union Value
   code initializes the payload before populating it and setting its tag;
   assigning the public tag alone does not initialize storage. A read performs
   this construction before decoding the selected payload on EVERY selection,
-  including when the tag repeats. Managed targets reuse their allocated
+  including when the tag repeats. Mutable managed targets reuse their allocated
   objects and buffers in place. The payload then follows §5's normal decoding
   rules, including the treatment of untaken branches. Arms not selected by a read are
   unspecified: in the C/C++ union representation their bytes are

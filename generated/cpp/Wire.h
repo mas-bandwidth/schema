@@ -7,7 +7,6 @@
 #pragma once
 
 #include <cstdint>
-#include <new>
 
 #include "Constants.h"
 
@@ -216,7 +215,8 @@ inline const char * EnumName( ProbeShapeType value )
 
 // union ProbeShape — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm is freshly constructed with its defaults
-// when selected, by ReadProbeShape before decoding (SPEC §4.8), or explicitly:
+// when selected, by ReadProbeShape before decoding (SPEC §4.8), or by application code.
+// Application code must include <new> before constructing an arm in place:
 // ::new ( (void*) &value.ring ) ProbeRing{}; value.type = ProbeShapeType::Ring;
 // Bytes of unselected arms are indeterminate.
 struct ProbeShape

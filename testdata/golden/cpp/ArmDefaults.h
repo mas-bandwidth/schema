@@ -7,7 +7,6 @@
 #pragma once
 
 #include <cstdint>
-#include <new>
 
 #include "Wire.h"
 
@@ -46,7 +45,8 @@ inline const char * EnumName( DefaultChoiceType value )
 
 // union DefaultChoice — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm is freshly constructed with its defaults
-// when selected, by ReadDefaultChoice before decoding (SPEC §4.8), or explicitly:
+// when selected, by ReadDefaultChoice before decoding (SPEC §4.8), or by application code.
+// Application code must include <new> before constructing an arm in place:
 // ::new ( (void*) &value.first ) DefaultArm{}; value.type = DefaultChoiceType::First;
 // Bytes of unselected arms are indeterminate.
 struct DefaultChoice
@@ -106,7 +106,8 @@ inline const char * EnumName( DefaultBulkChoiceType value )
 
 // union DefaultBulkChoice — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm is freshly constructed with its defaults
-// when selected, by ReadDefaultBulkChoice before decoding (SPEC §4.8), or explicitly:
+// when selected, by ReadDefaultBulkChoice before decoding (SPEC §4.8), or by application code.
+// Application code must include <new> before constructing an arm in place:
 // ::new ( (void*) &value.first ) DefaultBulkArm{}; value.type = DefaultBulkChoiceType::First;
 // Bytes of unselected arms are indeterminate.
 struct DefaultBulkChoice

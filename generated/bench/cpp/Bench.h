@@ -7,7 +7,6 @@
 #pragma once
 
 #include <cstdint>
-#include <new>
 
 #include "serialize.h"
 
@@ -317,7 +316,8 @@ inline const char * EnumName( MixedEventType value )
 
 // union MixedEvent — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm is freshly constructed with its defaults
-// when selected, by ReadMixedEvent before decoding (SPEC §4.8), or explicitly:
+// when selected, by ReadMixedEvent before decoding (SPEC §4.8), or by application code.
+// Application code must include <new> before constructing an arm in place:
 // ::new ( (void*) &value.hit ) MixedHitEvent{}; value.type = MixedEventType::Hit;
 // Bytes of unselected arms are indeterminate.
 struct MixedEvent
