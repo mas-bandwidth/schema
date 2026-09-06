@@ -824,11 +824,6 @@ not talk to each other at all. Check it during your handshake.
 There is no version tag on the wire — that is the point. The id is how you
 find out, once, at connect time, instead of paying for it on every packet.
 
-*The rule below is specified and the compiler does not scope by it yet:
-`ir.WireProjection` still renders the whole unit at `ProjectionVersion` 2, and
-the scoping is owed as
-[#524](https://github.com/mas-bandwidth/schema/issues/524) (SPEC.md §3.1).*
-
 It covers the CLOSURE over your `type` declarations — every `type`, and every
 enum and union a `type` reaches, by a field's type, an array's element, an
 array's bound, a keyed array's key enum, a constant's value, a union arm's
@@ -1933,9 +1928,9 @@ Only the table wire keys the slots.
 **And a positional array whose bound comes from an enum is REFUSED in a table
 body and a union arm, by name**, with `[E]T` named as the fix. The refusal
 follows where the bound comes from and not how it is spelled, so `[E.Max]T`,
-`[E.Count]T` and `[N]T` under a `const N = E.Max` all take it. *The
-specification states that refusal
-and the checker does not make it today: all of those still
+`[E.Count]T` and `[N]T` under a `const N = E.Max` all take it. *The compiler
+refuses `[E.Max]T` today and still reads the other two as plain bounds, so
+`[E.Count]T` and the constant fold still
 compile ([#540](https://github.com/mas-bandwidth/schema/issues/540)).*
 An ordinal-indexed array is a positional
 vocabulary, and a table has exactly one of those — `flags` — so the refusal is
@@ -2977,7 +2972,7 @@ cook's own header, and the third coordinate of the key below.
 
 ```
 $ schema build-version tables/block/
-0x6e4b803407267d82
+0xb1bb90bcc5a063f3
 ```
 
 ```cpp

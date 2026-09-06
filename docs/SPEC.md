@@ -215,11 +215,16 @@ these, and the list is exhaustive rather than illustrative:
    lowers to the positional `[E.Max]T` (SPEC-TABLES.md §2.4), so the key
    enum is an extent by another name and the third edge's reason is its
    reason.
-5. **A CONSTANT's value expression**, followed through to what it names. A
-   `const` declaration does not project, because its value is already
-   resolved into the bound or the default that does, so the walk has to
-   reach the enum BEHIND a `const N = E.Max` exactly as it reaches one
-   spelled at the bound.
+5. **A CONSTANT's value expression, where a BOUND names the constant**,
+   followed through to what it names. A `const` declaration does not
+   project, because its value is already resolved into the bound that does,
+   so the walk has to reach the enum BEHIND a `const N = E.Max` exactly as
+   it reaches one spelled at the bound. **The rule this edge follows is that
+   AN EXTENT REACHES AND A VALUE FOLDS.** An array bound reaches its enum,
+   because the enum sets how many elements ride and what slot `i` means. A
+   range, a size or a default expression folds to a number that is already
+   in the projection text, so it reaches nothing: the number it folded to is
+   what the id is over, and the name it folded from decides no wire byte.
 6. **A UNION ARM's payload type, and the arm's own field facts**, which
    re-enter the list at 1.
 7. **The members of BOTH SIDES of a branch**, which re-enter the list at 1.
@@ -257,18 +262,31 @@ so the closure preserves it exactly. What moves is the other direction, the
 spurious MISMATCH: two units whose packet halves are identical and whose table
 halves differ now hold one id, which is correct.
 
-**THE NEGATIVE CONTROL IS ONE CASE PER EDGE KIND**, and that is what the
-obligation costs. A missed edge is the dangerous direction, a declaration a
-packet byte reaches that the walk does not, which is two incompatible builds
-shaking hands, so a single control over a single edge proves nothing about the
-other seven. Each case is a unit in which one declaration is reachable ONLY
-through that edge kind, edited so that packet bytes move, with
-`internal/check/projection_test.go`'s "an edit that moves bytes must move the
-id" leg required to go red when that edge is removed from the walk: an enum
-named only as a field type, one named only as an array element, one named only
-by an `[E.Max]` bound, one named only as an `[E]T` key, one named only through
-a `const`, a union named only as an arm payload, a declaration named only
-inside an `else` body, and one named only through a `type` two steps away.
+**THE NEGATIVE CONTROL IS SEVEN ISOLABLE CASES**, one for every edge kind a
+case can isolate, and that is what the obligation costs. A missed edge is the
+dangerous direction, a declaration a packet byte reaches that the walk does
+not, which is two incompatible builds shaking hands, so a single control over a
+single edge proves nothing about the rest. Each case is a unit in which one
+declaration is reachable ONLY through that edge kind, edited so that packet
+bytes move, with `internal/check/projection_test.go`'s "an edit that moves
+bytes must move the id" leg required to go red when that edge is removed from
+the walk: an enum named only as a field type (edge 1), one named only as an
+array element (2), one named only by an `[E.Max]` bound (3), one named only as
+an `[E]T` key (4), one named only through a `const` (5), one named only inside
+an `else` body (7), and one named only through a `type` two steps away (8).
+
+**EDGE 6 CANNOT BE ISOLATED, and the reason is structural rather than a gap in
+the cases.** A union in a `type` body takes `type` payloads only
+(SPEC-TABLES.md §2.6), and every `type` declaration is a ROOT of the walk, so a
+projected union's ARM PAYLOAD IS A ROOT BY CONSTRUCTION and is in the closure
+before the arm is ever walked. No unit can therefore hold a declaration
+reachable only through the arm descent, and removing that descent moves no id,
+which is to say a control over it could not go red. The descent is implemented
+because the rule is the rule. **What holds edge 6 instead is the ARM-EDIT
+PAIR**, `TestUnionOutsideTheClosureMovesNoId`: every arm edit a union inside
+the closure can express moves the id, and every arm edit a union no `type`
+reaches can express moves none. That pair is the obligation edge 6 owes, and it
+is required to go red the same way.
 
 **The projection carries two version lines.** `ProjectionVersion` rides the
 first, so a change to the RENDERING moves every id deliberately and visibly
@@ -288,14 +306,11 @@ alone, so a bump costs no per-release churn in the tree.
 move the id, and an edit that moves bytes must. The second is the one that
 must never regress.
 
-**Scoping the projection by reachability is a `ProjectionVersion` bump**,
-`2` to `3`. Every id in existence moves once, deliberately and visibly, and
-the release carrying it announces that first.
-
-**Compiler status: NOT SCOPED YET.** `ir.WireProjection` renders the unit and
-`ProjectionVersion` is `2`, so the reachability rule above is the
-specification the change is written from rather than a description of the
-tree. Owed as schema#524, with the negative control it names.
+**The reachability scoping is what `ProjectionVersion` `3` carries**, and it
+cost the bump's one deliberate, visible move of every id in existence. Nothing
+else moved with it: the closure preserves the contract exactly, so a unit whose
+declarations are all reached renders the same facts under `3` that it did under
+`2`, in the same order, under a new first line.
 
 ### 3.2 The unit
 

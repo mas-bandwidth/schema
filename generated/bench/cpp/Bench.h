@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x5b8227d21cba8abf
+// package bench — protocol id 0x06845f749d2417b4
 
 #pragma once
 
@@ -14,7 +14,7 @@ namespace bench {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0x5b8227d21cba8abfull;
+inline constexpr uint64_t ProtocolId = 0x06845f749d2417b4ull;
 
 // type BenchPacket
 struct BenchPacket {

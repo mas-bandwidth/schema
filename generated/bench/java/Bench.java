@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x5b8227d21cba8abf
+// package bench — protocol id 0x06845f749d2417b4
 //
 // The shipped Java wire path (issue #156): the serialize.java bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -39,7 +39,7 @@ public final class Bench {
 
     // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
     // sides at the same id speak identical bits; there is no other versioning.
-    public static final long protocolId = 0x5b8227d21cba8abfL;
+    public static final long protocolId = 0x06845f749d2417b4L;
 
     // type BenchPacket
     public static final class BenchPacket {

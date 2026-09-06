@@ -183,7 +183,7 @@ Open `gen/Game.h`:
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package starlight — protocol id 0x657f3fb8771fbe6e
+// package starlight — protocol id 0xff86e6e5b9a15fa5
 
 #pragma once
 
@@ -193,7 +193,7 @@ namespace starlight {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0x657f3fb8771fbe6eull;
+inline constexpr uint64_t ProtocolId = 0xff86e6e5b9a15fa5ull;
 
 inline constexpr int64_t MaxPlayers = 64;
 inline constexpr int64_t TickRate = 60;
@@ -224,7 +224,7 @@ why are:
 
 ```
 $ schema id .
-0x657f3fb8771fbe6e
+0xff86e6e5b9a15fa5
 ```
 
 and `schema projection .`, which prints the exact text the id hashes. Diff
@@ -1747,29 +1747,25 @@ Now the promise from Part 1 comes due. Look at the id, then add one arm to
 
 ```
 $ schema id .
-0xb786cca203ebb6ea
+0x60d7cbad6bb296f2
 $ # add:  railgun LaserFire  to union WeaponFire, then schema fmt .
 $ schema id .
-0x799890f44a60c51f
+0x31c8d2175ac80ef7
 ```
 
-Take the arm back out and the id returns to `0xb786cca203ebb6ea`, because the
+Take the arm back out and the id returns to `0x60d7cbad6bb296f2`, because the
 id is a pure function of the unit's text. `schema projection` prints the exact
 text that gets hashed:
 
 ```
 $ schema projection .
-schema-wire-projection 2
+schema-wire-projection 3
 schema-wire-law 1
 package starlight
-enum Pending max=0 storage=8 variants=0
 enum ShipType max=3 storage=8 variants=3
   variant 1 name=Fighter
   variant 2 name=Freighter
   variant 3 name=Corvette
-enum Weapon max=15 storage=8 variants=2
-  variant 1 name=Laser
-  variant 2 name=Missile
 flags SystemFlags wirebits=4
   bit 0 name=Shields
   bit 1 name=Cloak
@@ -1778,6 +1774,18 @@ flags SystemFlags wirebits=4
 ```
 
 and it continues through every type, field kind, width and range in the unit.
+
+`Pending` and `Weapon` are declared in this unit and are not in that text,
+because **the projection lists what a `type` REACHES**. Every `type` is a root,
+since any of them may be handed to a writer, and the walk goes from there
+through field types, array elements, array bounds, keyed-array keys, constants,
+union arms and both sides of every branch. Nothing in Starlight's types names
+`Pending` or `Weapon`, so neither puts a byte on a packet and neither moves the
+id: add a variant to `Weapon` today and every deployed client still connects.
+Give `ShipState` a `weapon Weapon` field and it joins the text, with the id move
+that field was going to cost anyway. `flags` is the one exception and rides
+whether a type reaches it or not, which is why `SystemFlags` is there: a flags
+bit is a position, and Part 6's table wire has no way to report one moving.
 Nothing on the wire identifies fields, and both sides simply know the layout
 because they were generated from the same schema. That is what makes the wire
 this small, and it means both sides must **be** the same. The contract:
@@ -1885,13 +1893,13 @@ Part 12, so ignore it until then. The table header is includable from any
 translation unit and depends on nothing but the C standard headers:
 
 ```cpp
-// package starlight — protocol id 0xb786cca203ebb6ea (packets only: tables version by field id, not by protocol id)
+// package starlight — protocol id 0x60d7cbad6bb296f2 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 ```
 
 Note that banner. Adding a whole table to the unit did **not** move the
-protocol id: it is still `0xb786cca203ebb6ea`, the number Part 5 printed. The
+protocol id: it is still `0x60d7cbad6bb296f2`, the number Part 5 printed. The
 id covers what the packet wire reaches, and a table is not on it.
 
 The storage struct lives in the table header, and it looks exactly like a
@@ -3987,7 +3995,7 @@ of Part 9 or from a wire file, one command either way:
 $ schema cook --root GameConfig --in tree --out Game.cook --verbose .
 report: silent — the data matched the schema exactly
 report: silent — the data matched the schema exactly
-cooked Game.cook: 464 bytes, build version 0x4186cdc67f83f559, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
+cooked Game.cook: 464 bytes, build version 0x8a4897ed86a715f6, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
 ```
 
 And the game opens it. `cook.cpp`, entire:
@@ -4097,9 +4105,9 @@ $ schema check .
 $ echo $?
 0
 $ schema id .
-0xb786cca203ebb6ea
+0x60d7cbad6bb296f2
 $ schema build-version .
-0x7d56db7dd7e25376
+0x8272fb7f3068abdf
 $ ./cook Game.cook
 not this build's cook
 ```
@@ -4116,7 +4124,7 @@ A big-endian cook refuses on a little-endian build the same way:
 
 ```
 $ schema cook --root GameConfig --in tree --out GameBig.cook --byte-order big --verbose .
-cooked GameBig.cook: 464 bytes, build version 0x4186cdc67f83f559, big-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
+cooked GameBig.cook: 464 bytes, build version 0x8a4897ed86a715f6, big-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
 $ ./cook GameBig.cook
 not this build's cook
 ```
@@ -4132,7 +4140,7 @@ offline, once, on purpose:
 
 ```
 $ schema cook-check --root GameConfig --verbose Game.cook .
-ok: build version 0x4186cdc67f83f559, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes, 0 reference slots
+ok: build version 0x8a4897ed86a715f6, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes, 0 reference slots
 ```
 
 `cook-check` verifies every reference and count against the attribution, a
@@ -4166,7 +4174,7 @@ file to diff when you want to know **why** the version moved:
 ```
 $ schema build-version --facts .
 schema-build-version 3
-protocol b786cca203ebb6ea
+protocol 60d7cbad6bb296f2
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record GameConfig sizeof=384 alignof=8
@@ -4185,7 +4193,7 @@ header and block prologue.
 The store contract is one line: your pipeline stores assets under the triple
 **(asset hash, build version, byte order)**. The asset hash is the hash of the
 wire file you cooked from. The build version is target neutral, which the
-big-endian cook above shows by stamping the same `0x4186cdc67f83f559`, and
+big-endian cook above shows by stamping the same `0x8a4897ed86a715f6`, and
 `byteorder little` appearing in the facts is a generation input that never
 varies. Byte order is the third coordinate, carried in the header and refused
 by `Open` on a mismatch. Your game asks for exactly that triple, anything that
@@ -4332,7 +4340,7 @@ int main()
 $ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o produce produce.cpp gen/RenderBlock.cpp gen/RenderTable.cpp
 $ ./produce
 block: 56064 bytes of 196672 max (frame 1207, 3000 ships)
-build version 0x1b087f2fcefc4628
+build version 0x5042e348da4b84ea
 wrote frame.block
 refused: array ships count 5000 max 4096
 ```
@@ -4405,10 +4413,10 @@ $ schema generate --lang c --out genc .
 $ cc -std=c99 -Wall -Wextra -Werror -I genc -o consume consume.c genc/RenderBlock.c genc/RenderTable.c
 $ ./consume
 c read: frame=1207 ships=3000 ships[2999]=(2999, -2999)
-c build version 0x1b087f2fcefc4628
+c build version 0x5042e348da4b84ea
 ```
 
-The two builds carry the same build version, `0x1b087f2fcefc4628` in the C++
+The two builds carry the same build version, `0x5042e348da4b84ea` in the C++
 header and the C source alike. `BlockOpen` checks the prologue, which is the
 magic, the byte order, the **build version**, the base's 64-byte alignment,
 every count against its declared maximum, and every extent, and then you index.
@@ -4575,7 +4583,7 @@ re-cook before crossing:
 
 ```
 $ schema cook --root GameConfig --in tree --out Game.cook --verbose .
-cooked Game.cook: 464 bytes, build version 0x1b087f2fcefc4628, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
+cooked Game.cook: 464 bytes, build version 0x5042e348da4b84ea, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
 ```
 
 `opencook.c`, entire:
@@ -4790,7 +4798,7 @@ func main() {
 ```
 $ go build -o docsgen . && ./docsgen
 [c cpp cs dart docs elixir go java js rust]
-package starlight, protocol id 0xb786cca203ebb6ea
+package starlight, protocol id 0x60d7cbad6bb296f2
 ## ChatLine — 990 bits max
 ## Contact — 34 bits max
 ## FireCommand — 41 bits max

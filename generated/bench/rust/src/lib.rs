@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x5b8227d21cba8abf
+// package bench — protocol id 0x06845f749d2417b4
 
 // Two clippy classes are silenced deliberately, crate-wide:
 // - derivable_impls / field_reassign_with_default: Default impls are

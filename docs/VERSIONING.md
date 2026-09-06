@@ -306,7 +306,7 @@ does today.
 | a flags variant inserted or removed | silent | refuses | moves, and so does the protocol id |
 | a flags variant reordered or renamed in place | **silent** | **refuses** | moves: the cook projection digests each variant's bit position, and the protocol id moves too |
 | a union arm reordered or renamed | `unknown` for an arm this reader lacks; a reorder is silent and safe | warns on a vanished name | moves, and the protocol id with it where a `type` reaches the union: the arm names are what a same-typed reorder moves |
-| a keyed array made positional | `kind_mismatch` | refuses; and in a TABLE body the positional spelling is refused by name (SPEC-TABLES.md §2.4, §11), which the checker does not do yet (#540) | moves |
+| a keyed array made positional | `kind_mismatch` | refuses; and in a TABLE body the positional spelling is refused by name (SPEC-TABLES.md §2.4, §11) | moves |
 | a keyed array's key enum swapped for another | `unknown`, one per slot; the kind stays | refuses | moves |
 | a map's KEY kind changed, or its KEY bound tightened (SPEC-TABLES.md §2.8) | a changed kind is one `kind_mismatch` for the map, which reads empty. A tightened bound drops the entries that no longer fit and counts `clamped`, one per entry | **refuses** a changed kind, warns on a tightened bound | moves |
 | an array changed between `[]T` and `[..N]T` (SPEC-TABLES.md §2.9) | nothing where the count fits the new bound, `clamped` past it: the two are the same bytes | warns on the direction that ADDS a bound, as any capacity shrunk; passes on the one that removes it | moves: the storage is a reference and a count on one side and the maximum inline on the other |
@@ -1071,14 +1071,11 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #432: the cook triple, and the byte-order sentences in five places.
 - #441: the retired-names ledger.
 - #446: the evolution table's fixtures.
-- #540: the refusal of a positional array whose bound folds from an enum, in a
-  table body and a union arm and in every spelling the bound has, which
-  SPEC-TABLES.md §2.4 and
-  §11 state and the checker does not make, so the positional spelling still
-  compiles there and reopens the class §4.1 closed. The `type`-held case is
-  ruled on #606.
-- #524: the reachability-scoped wire-shape projection, and the negative
-  control on the walk that a missed edge must turn red.
+- #540: the refusal following the bound's PROVENANCE rather than its spelling.
+  `[E.Max]T` is refused in a table body and a union arm, but `[E.Count]T` and
+  `[N]T` under a `const N` that folds from either still compile there, which
+  SPEC-TABLES.md §2.4 and §11 state as refused, so those two spellings reopen
+  the class §4.1 closed. The `type`-held case is ruled on #606.
 - #525: retain-unknown, the two report counters, and the conformance rows.
 - #522: the `wstring` kind `33` on the id-table wire, `*wstring`, the cooked
   storage, the text row and the table-form goldens (SPEC.md §4.12).
