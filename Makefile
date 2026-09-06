@@ -1435,6 +1435,22 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 		-Ibuild/json-dup-sabotage test/tables/json_keyed_dup_negative_main.cpp build/json-dup-sabotage/KeyedTable.cpp -o build/schema_test_json_keyed_dup_negative
 	./build/schema_test_json_keyed_dup_negative
 
+# The NEGATIVE CONTROL for the clamp's PREFIX rule (docs/SPEC-TABLES.md §16.2).
+# A clamped string keeps a PREFIX of the text, and a scan that resumes after one
+# code point fails to fit stores bytes the input never spelled in that order
+# while the `clamped` count stays right. That is invisible to any test that
+# reads only counters. This sabotage drops the stop and the fixture must go red.
+.PHONY: tables-json-clamp-prefix-negative-control
+tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_prefix_negative_main.cpp
+	@rm -rf build/json-clamp-sabotage && mkdir -p build/json-clamp-sabotage
+	./bin/schema generate --lang cpp --out build/json-clamp-sabotage tables/examples
+	@sed -i.bak 's|else if ( !clamped \&\& placed + unit_length <= capacity )|else if ( placed + unit_length <= capacity ) // SABOTAGED|' build/json-clamp-sabotage/TablesTable.cpp
+	@grep -q 'SABOTAGED' build/json-clamp-sabotage/TablesTable.cpp || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
+	@mkdir -p build
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
+		-Ibuild/json-clamp-sabotage test/tables/json_clamp_prefix_negative_main.cpp build/json-clamp-sabotage/TablesTable.cpp -o build/schema_test_json_clamp_prefix_negative
+	./build/schema_test_json_clamp_prefix_negative
+
 # THE NEGATIVE CONTROL FOR PER-CASE ABSENCE (test/conformance/README.md).
 #
 # An absence is a driver's own claim, so the mechanism could hide a real hole:
@@ -2531,6 +2547,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) conformance-negative-control-reference-surface
 	$(MAKE) conformance-negative-control-block-dump
 	$(MAKE) tables-json-keyed-dup-negative-control
+	$(MAKE) tables-json-clamp-prefix-negative-control
 	$(MAKE) tables-flat-wire
 	$(MAKE) tables-flat-wire-negative-control
 	$(MAKE) tables-was-negative-control
@@ -2767,6 +2784,60 @@ tables-maps-text-order-negative-control: bin/schema build/tables-generated/.stam
 tables-maps-unreached-negative-control: bin/schema build/tables-generated/.stamp
 	$(call map_negative_control,unreached,'s@inline bool TableExtentUnreachedEmpty( int64_t extent ) { return extent == 0; }@inline bool TableExtentUnreachedEmpty( int64_t ) { return true; }@',internal/codegen/cpptable/extent.go,writing an unreached non-empty map left the map gate GREEN)
 
+# A KEY IS DATA AND A LENGTH (§2.8, §3), and the length is CARRIED. The rows
+# whose keys hold an interior U+0000 meet it: a lookup that measures to the
+# first NUL calls "a" and "a", 0, "b" one key, so two entries become one and a
+# repeat of the second becomes two, and the report says `duplicate` for a
+# deletion it never names.
+#
+# Its sabotage carries the commas and the unbalanced parenthesis a $(call)
+# argument cannot, so the recipe is spelled out rather than taken from
+# map_negative_control above. Everything else about it is that define.
+.PHONY: tables-maps-key-length-negative-control
+tables-maps-key-length-negative-control: bin/schema build/tables-generated/.stamp
+	@mkdir -p build
+	@sed -e 's@key\.data, key\.length );@key.data, TableKeyLength( key.data, 255 ) ); // SABOTAGED@' \
+		internal/codegen/cpptable/maps.go > build/map-keylength.gotext
+	@cmp -s build/map-keylength.gotext internal/codegen/cpptable/maps.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the keylength sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/maps.go":"%s/build/map-keylength.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/map-keylength-overlay.json
+	@go build -overlay=build/map-keylength-overlay.json -o build/schema-map-keylength ./cmd/schema
+	@rm -rf build/tables-map-keylength && mkdir -p build/tables-map-keylength
+	@./build/schema-map-keylength generate --lang cpp --out build/tables-map-keylength/maps tables/maps
+	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-map-keylength/maps -Itest/tables test/tables/maps_main.cpp \
+		build/tables-map-keylength/maps/*Table.cpp -o build/schema_test_maps_keylength
+	@if ./build/schema_test_maps_keylength > build/map-keylength.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: measuring a key to its first NUL left the map gate GREEN"; exit 1; \
+	fi
+	@grep -q "^FAIL test/tables/maps_main.cpp" build/map-keylength.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-keylength.log; exit 1; }
+	@echo "negative control: keylength turns the MAP GATE red, $$(grep -c '^FAIL' build/map-keylength.log) failures"
+
+# A KEY THE SCAN COULD NOT HOLD WHOLE IS NOT A SHORTER KEY (§2.8). The EdgeRow
+# row meets it: with the check dropped, two 256-byte keys that share 255 bytes
+# merge into one entry keyed by a prefix the text never spelled, and the `names`
+# bound of 300 is wide enough that the declared bound catches neither.
+.PHONY: tables-maps-key-identity-negative-control
+tables-maps-key-identity-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,keyidentity,'s@else if ( key_over || token_length > key->array_bound )@else if ( token_length > key->array_bound )@',internal/codegen/cpptable/json.go,truncating a key into the walker buffer left the map gate GREEN)
+
+# THE TARGET DOMAIN IS ESTABLISHED BEFORE THE CAST (§16.2). The uint64 key rows
+# meet it: read through the interpreter's own signed lane, a magnitude in the
+# high half looks like a negative, so 1e19 and 18446744073709551615 both land as
+# the key zero and collide, where the kind holds each of them exactly.
+.PHONY: tables-maps-key-domain-negative-control
+tables-maps-key-domain-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,keydomain,'s@const uint64_t high = bytes >= 8 ? UINT64_MAX@if ( (int64_t) magnitude < 0 ) { return 0; } const uint64_t high = bytes >= 8 ? UINT64_MAX@',internal/codegen/cpptable/json.go,reading an unsigned magnitude through a signed lane left the map gate GREEN)
+
+# AN ALLOCATION FAILURE IS NOT AN OVERSIZED KEY (§2.8, §16.1). The refusal row
+# meets it: labeling the arena's refusal `clamped` skips the entry, reads on
+# and calls the whole text clean, which is the one outcome the neighboring
+# list, blob and pointer paths never give a refusal.
+.PHONY: tables-maps-place-failure-negative-control
+tables-maps-place-failure-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,placefail,'s@if ( place \&\& entry == NULL )@if ( place \&\& entry == NULL \&\& false )@',internal/codegen/cpptable/json.go,reading on past an arena refusal left the map gate GREEN)
+
 .PHONY: tables-maps-negative-controls
 tables-maps-negative-controls: tables-maps-sort-negative-control \
 	tables-maps-dead-entry-negative-control \
@@ -2778,6 +2849,10 @@ tables-maps-negative-controls: tables-maps-sort-negative-control \
 	tables-maps-cap-negative-control \
 	tables-maps-depth-negative-control \
 	tables-maps-text-order-negative-control \
+	tables-maps-key-length-negative-control \
+	tables-maps-key-identity-negative-control \
+	tables-maps-key-domain-negative-control \
+	tables-maps-place-failure-negative-control \
 	tables-maps-unreached-negative-control
 
 # ---- THE LIST GATE (docs/SPEC-TABLES.md §2.9) ------------------------------

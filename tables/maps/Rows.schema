@@ -16,3 +16,16 @@ table WideRow
     entries map[uint32]Item
     after   int32
 }
+
+// The reader's OWN edges, past what the two roots above reach (§2.8, §16.2): a
+// key bound ABOVE the text walker's key buffer, where a key it cannot hold
+// whole must not become a shorter key of its own making, and a uint64 key,
+// whose domain the number rule has to establish before any cast. That is the
+// one key kind whose magnitudes fill the high half of a signed 64-bit lane.
+
+table EdgeRow
+{
+    names map[string(300)]Item
+    ids   map[uint64]Item
+    after int32
+}
