@@ -571,27 +571,54 @@ struct TableBitWriter
     TableBitWriter() : buffer( NULL ), capacity( 0 ), bits( 0 ), overflow( false ) {}
     TableBitWriter( uint8_t * to_buffer, int64_t to_capacity ) : buffer( to_buffer ), capacity( to_capacity ), bits( 0 ), overflow( false ) {}
 
+    // ONE BYTE OF THE BUFFER AT A TIME, never one bit: the bits of one value
+    // that fall in a byte are masked and shifted into place together, so a
+    // sixty-four bit field costs nine touches rather than sixty-four and
+    // spends no division at all. The BITS ON THE WIRE are the same bits in
+    // the same places — bit i in byte i/8 at position i%8, low bit first —
+    // which is what the pinned goldens hold.
     void put( uint64_t value, int64_t n )
     {
-        for ( int64_t i = 0; i < n; i++ )
+        if ( n <= 0 ) { return; }
+        if ( ( bits + n + 7 ) / 8 > capacity ) { overflow = true; bits += n; return; }
+        if ( n < 64 ) { value &= ( uint64_t( 1 ) << n ) - 1; } // a caller's high bits never leak
+        int64_t at = bits;
+        int64_t left = n;
+        while ( left > 0 )
         {
-            const int64_t at = bits + i;
-            if ( at / 8 >= capacity ) { overflow = true; bits += n - i; return; }
-            if ( ( at % 8 ) == 0 ) { buffer[ at / 8 ] = 0; }
-            if ( ( value >> (uint64_t) i ) & 1 ) { buffer[ at / 8 ] = uint8_t( buffer[ at / 8 ] | ( 1 << ( at % 8 ) ) ); }
+            const int64_t index = at >> 3;
+            const int64_t bit = at & 7;
+            const int64_t room = 8 - bit;
+            const int64_t take = room < left ? room : left;
+            if ( bit == 0 ) { buffer[index] = 0; }
+            buffer[index] = uint8_t( buffer[index] | uint8_t( ( value & ( ( uint64_t( 1 ) << take ) - 1 ) ) << bit ) );
+            value >>= take;
+            at += take;
+            left -= take;
         }
         bits += n;
     }
 
+    // THE ALIGN IS WHAT BUYS THIS (docs/SPEC-TABLES.md §3.3): a string(N), a
+    // bytes(N) and a blob record align before their bytes precisely so the
+    // largest payload on the wire moves as ONE memcpy. Off a boundary there is
+    // nothing to memcpy and the bytes go through put.
     void putbytes( const uint8_t * data, int64_t n )
     {
+        if ( n <= 0 ) { return; }
+        if ( ( bits & 7 ) == 0 )
+        {
+            if ( ( bits >> 3 ) + n > capacity ) { overflow = true; bits += n * 8; return; }
+            memcpy( buffer + ( bits >> 3 ), data, (size_t) n );
+            bits += n * 8;
+            return;
+        }
         for ( int64_t i = 0; i < n; i++ ) { put( (uint64_t) data[i], 8 ); }
     }
 
-    // a string's or a bytes' payload ALIGNS before its bytes, which buys a
-    // memcpy on the largest payload on the wire, and a batch aligns once at
-    // its end. Both are zero fill.
-    void align() { while ( ( bits % 8 ) != 0 ) { put( 0, 1 ); } }
+    // a string's or a bytes' payload ALIGNS before its bytes, and a batch
+    // aligns once at its end. Both are zero fill, spent in one call.
+    void align() { put( 0, ( 8 - ( bits & 7 ) ) & 7 ); }
 };
 
 // TableAlignBits is what an align costs from a bit position, which a measure
@@ -616,10 +643,37 @@ struct TableBitReader
     {
         if ( n > 64 || !has( n ) ) { return false; }
         value = 0;
+        int64_t got = 0;
+        while ( got < n )
+        {
+            const int64_t index = offset >> 3;
+            const int64_t bit = offset & 7;
+            const int64_t room = 8 - bit;
+            const int64_t take = ( n - got ) < room ? ( n - got ) : room;
+            const uint64_t chunk = ( uint64_t( buffer[index] ) >> bit ) & ( ( uint64_t( 1 ) << take ) - 1 );
+            value |= chunk << got;
+            offset += take;
+            got += take;
+        }
+        return true;
+    }
+
+    // the bytes of an ALIGNED payload, which is the read side of the memcpy
+    // the align buys (docs/SPEC-TABLES.md §3.3)
+    bool getbytes( uint8_t * out, int64_t n )
+    {
+        if ( n < 0 || !has( n * 8 ) ) { return false; }
+        if ( ( offset & 7 ) == 0 )
+        {
+            memcpy( out, buffer + ( offset >> 3 ), (size_t) n );
+            offset += n * 8;
+            return true;
+        }
         for ( int64_t i = 0; i < n; i++ )
         {
-            if ( ( buffer[ offset / 8 ] >> ( offset % 8 ) ) & 1 ) { value |= uint64_t(1) << (uint64_t) i; }
-            offset++;
+            uint64_t by = 0;
+            if ( !get( by, 8 ) ) { return false; }
+            out[i] = (uint8_t) by;
         }
         return true;
     }
@@ -630,12 +684,10 @@ struct TableBitReader
     // wire's rule for the same reason (SPEC.md §4.3)
     bool align()
     {
-        while ( ( offset % 8 ) != 0 )
-        {
-            uint64_t bit = 0;
-            if ( !get( bit, 1 ) || bit != 0 ) { return false; }
-        }
-        return true;
+        const int64_t pad = ( 8 - ( offset & 7 ) ) & 7;
+        if ( pad == 0 ) { return true; }
+        uint64_t bits_read = 0;
+        return get( bits_read, pad ) && bits_read == 0;
     }
 };
 
