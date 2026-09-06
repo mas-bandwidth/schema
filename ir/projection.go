@@ -80,15 +80,12 @@ import (
 // PROTOCOL ID, so it changes only when the projection must describe something
 // it previously did not.
 //
-// 2: the ordered variant names of every enum and flags declaration, and the
-// ordered arm names of every union. Version 1 could not see a reorder of any
-// of the three.
-//
-// 3: the enums and unions are SCOPED BY REACHABILITY (SPEC §3.1). Version 2
-// listed the unit; version 3 lists the closure over the unit's `type`
-// declarations, so an enum or a union only `table` bodies reach contributes
-// nothing to this id. `flags` is held out of the scoping and projects whether
-// a `type` reaches it or not.
+// 3 renders the ordered variant names of every enum and flags declaration and
+// the ordered arm names of every union, so a reorder of any of the three moves
+// the id. The enums and unions it renders are SCOPED BY REACHABILITY (SPEC
+// §3.1): the closure over the unit's `type` declarations, so an enum or a
+// union only `table` bodies reach contributes nothing to this id. `flags` is
+// held out of the scoping and projects whether a `type` reaches it or not.
 const ProjectionVersion = 3
 
 // WireLaw is the CODEC LAW's version: the compiler's own rules for turning a
@@ -413,9 +410,9 @@ func (w *closureWalk) reachField(f *Field) {
 		w.reachExpr(f.ArrayExpr)
 	}
 	// a map's GENERATED ENTRY is a table of the closure (docs/SPEC-TABLES.md
-	// §2.8) and a `type` body cannot spell a map, so this descent reaches
-	// nothing today. It costs nothing and it is the safe direction: a walk
-	// that met a map field and stepped over it would be a missed edge.
+	// §2.8), and a `type` body cannot spell a map, so no unit can reach this
+	// descent. It costs nothing and it is the safe direction: a walk that met
+	// a map field and stepped over it would be a missed edge.
 	if f.MapEntry != nil {
 		w.reachItems(f.MapEntry.Items)
 	}

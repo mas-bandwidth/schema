@@ -629,11 +629,11 @@ type Holder {
 	}
 }
 
-// THE NEGATIVE CONTROL IS ONE CASE PER EDGE KIND (SPEC §3.1), and that is what
-// the reachability obligation costs. A missed edge is the dangerous direction
-// — a declaration a packet byte reaches that the walk does not, which is two
-// incompatible builds shaking hands — so a single control over a single edge
-// proves nothing about the other seven.
+// THE NEGATIVE CONTROL IS SEVEN ISOLABLE CASES (SPEC §3.1), one for every edge
+// kind a case can isolate, and that is what the reachability obligation costs.
+// A missed edge is the dangerous direction, a declaration a packet byte reaches
+// that the walk does not, which is two incompatible builds shaking hands, so a
+// single control over a single edge proves nothing about the rest.
 //
 // Each case holds ONE enum reachable only through one edge kind, and edits it
 // by REORDERING its variants: every folded number in the projection stays
@@ -643,19 +643,20 @@ type Holder {
 //
 // A reorder is a byte-moving edit for every one of them. Where the enum is a
 // field type or an array element, a value rides as its declaration ordinal, so
-// a reorder changes what every stored ordinal means. Where it is an extent —
-// `[E.Max]T`, `[E]T`, or a `const` standing in for either — the array is
+// a reorder changes what every stored ordinal means. Where it is an extent,
+// `[E.Max]T`, `[E]T`, or a `const` standing in for either, the array is
 // positional and slot i holds the key i + 1 (docs/SPEC-TABLES.md §2.4), so a
 // reorder changes what every element is.
 //
 // EDGE 6 IS THE ONE CASE THIS LEG DOES NOT ISOLATE, and it is stated rather
 // than left for a reader to find. A union in a `type` body takes `type`
 // payloads only (docs/SPEC-TABLES.md §2.6), and EVERY `type` IS A ROOT, so a
-// projected union's arm payload is already in the closure before the arm is
-// walked: deleting the arm descent from the walk leaves case 6 green. The
-// descent is implemented because the rule is the rule, and the case is held
-// here because it is the path the page names; what makes it red today is edge
-// 1 reaching the union and edge 8 descending into the payload type.
+// projected union's arm payload is a root by construction and is in the closure
+// before the arm is walked: deleting the arm descent from the walk leaves case
+// 6 green. The descent is implemented because the rule is the rule, and the
+// case is held here as the path the page names, red through edge 1 reaching the
+// union and edge 8 descending into the payload type. What holds edge 6 is
+// TestUnionOutsideTheClosureMovesNoId's arm-edit pair (SPEC §3.1).
 func TestReachabilityEdgeControls(t *testing.T) {
 	cases := []struct {
 		edge   int

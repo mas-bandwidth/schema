@@ -33,7 +33,7 @@ func (c *checker) checkPositionalKeyedSpelling(f *ast.Field, inTable bool) bool 
 	if _, isEnum := c.astDecls[m.Enum].(*ast.EnumDecl); !isEnum {
 		return true
 	}
-	c.errf(m.Pos, "field %s: [%s.Max]%s is refused in a table body — an ordinal-indexed array is a POSITIONAL vocabulary, so inserting a variant in the middle of %s lands every later element one slot off in every file already written, with nothing on the wire that could say so; spell it [%s]%s, whose slots ride by variant name (docs/SPEC-TABLES.md §2.4, §11)",
+	c.errf(m.Pos, "field %s: [%s.Max]%s is refused in a table body. An ordinal-indexed array is a POSITIONAL vocabulary, so inserting a variant in the middle of %s lands every later element one slot off in every file already written, with nothing on the wire that could say so. Instead spell it [%s]%s, whose slots ride by variant name (docs/SPEC-TABLES.md §2.4, §11)",
 		f.Name, m.Enum, scalarSpelling(f.Type), m.Enum, m.Enum, scalarSpelling(f.Type))
 	return false
 }
