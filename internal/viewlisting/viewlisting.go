@@ -129,16 +129,16 @@ func (l *listing) unions() {
 		un := all[name]
 		fmt.Fprintf(&l.b, "union %s file=%s max=%d bits=%d variants=%d %s\n",
 			un.Name, l.file(un.Name), un.Max, un.StorageBits, len(un.Variants)+1, annotation(un.Doc, un.Tags))
-		fmt.Fprintf(&l.b, "union %s arm 0 None id=%016x payload=- record=no field=no kind=- bound=- probe=- overlay=- %s\n",
+		fmt.Fprintf(&l.b, "union %s arm 0 None id=%016x payload=- record=no field=no kind=- bound=- overlay=- %s\n",
 			un.Name, 0, annotation("", nil))
-		probed := l.unionHasHolder(un)
+		held := l.unionHasHolder(un)
 		for i, arm := range un.Variants {
 			id := uint64(0)
 			if l.reached[un.Name] {
 				id = ir.TableWireId(arm.WireName())
 			}
 			payload, record, field := "-", "no", "no"
-			kind, bound, probe, overlay := "-", "-", "-", "-"
+			kind, bound, overlay := "-", "-", "-"
 			switch {
 			case arm.Void():
 			case arm.Body():
@@ -147,27 +147,27 @@ func (l *listing) unions() {
 				payload, field = ir.FieldTypeSpelling(arm.F), "yes"
 				kind = fmt.Sprintf("%d", armKind(arm.F))
 				bound = fmt.Sprintf("%d", armBound(arm.F))
-				if probed {
-					// every arm overlays the union's payload base, so the
-					// offset the registry's row carries is that base and the
-					// value written there reads back as the arm's own tag
-					probe, overlay = fmt.Sprintf("%d", i+1), "0"
+				if held {
+					// EVERY ARM OVERLAYS THE UNION'S PAYLOAD BASE, so the
+					// offset each arm's descriptor carries is that one base
+					// and the distance between any two of them is zero
+					overlay = "0"
 				}
 			}
-			fmt.Fprintf(&l.b, "union %s arm %d %s id=%016x payload=%s record=%s field=%s kind=%s bound=%s probe=%s overlay=%s %s\n",
-				un.Name, i+1, arm.Name, id, payload, record, field, kind, bound, probe, overlay,
+			fmt.Fprintf(&l.b, "union %s arm %d %s id=%016x payload=%s record=%s field=%s kind=%s bound=%s overlay=%s %s\n",
+				un.Name, i+1, arm.Name, id, payload, record, field, kind, bound, overlay,
 				annotation(arm.Doc, arm.Tags))
 		}
 	}
 }
 
 // unionHasHolder reports whether some registry entry declares a FIELD of this
-// union's type. The listing's probe is read through such a field: a generic
-// walker has no union to instantiate on its own, so it takes the holder's
-// storage, writes each general arm's tag at the arm's offset from the base of
-// the union's storage, and reads every arm back. The search is the same on
-// both halves — the tables in registry order, then the types — so the pin and
-// the program agree about which arms carry a probe.
+// union's type. The listing's overlay column is read through such a field: a
+// generic walker reaches a union's arm descriptors through the holder's own
+// field descriptor, so a union nothing holds has no arm descriptors to
+// measure. The search is the same on both halves — the tables in registry
+// order, then the types — so the pin and the program agree about which arms
+// carry an overlay.
 func (l *listing) unionHasHolder(un *ir.Union) bool {
 	for _, set := range [][]*ir.Struct{l.tables, l.types} {
 		for _, st := range set {

@@ -9441,10 +9441,13 @@ command.
 **A GENERAL ARM's two descriptor columns are in that listing** (§8.1). For
 each arm that names no record the program prints `field` non-NULL beside a
 NULL `payload`, the arm's kind, width and bounds off that descriptor, and
-the value read at the arm's offset from the base of the union's storage. It
-goes red for one reason: an arm whose `field` is NULL, or whose offset does
-not reach the value the compiler's own listing carries, prints a line the
-pin does not have.
+**the OVERLAY: the distance from that arm's offset to the union's payload
+base**, which is `0` on every general arm because every arm overlays. The
+overlay is the observable, and it is one because the two offsets it
+subtracts are spelled in different translation units — the arm row's own
+offset comes from the view file, the payload base from the arms table in the
+table header — so they can disagree, and a moved offset prints a line the
+pin does not have. So does an arm whose `field` is NULL.
 
 **DOC AND TAGS ARE IN THAT LISTING, on every row that has them** (§8.1,
 §8.3). The program prints each declaration's `doc` and its tags in declared

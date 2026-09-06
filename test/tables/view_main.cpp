@@ -19,7 +19,6 @@
 // what keeps the comparison a comparison rather than a formatting argument.
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include VIEW_HEADER
@@ -79,22 +78,22 @@ static void vocabulary( const char * what, const unit_ns::ViewVocabulary & v, co
     }
 }
 
-// ---- the general arm's probe and overlay (docs/SPEC-TABLES.md §8.7) ----
+// ---- the general arm's overlay (docs/SPEC-TABLES.md §8.7) ----
 //
 // For each arm that names no record the listing carries the arm's kind and
-// bounds off its FIELD descriptor, the value read at the arm's offset from the
-// base of the union's storage, and where that offset sits relative to the
-// union's own payload base. A generic walker holds no union to instantiate, so
-// it takes a HOLDER — the first registry entry declaring a field of that
-// union's type, the tables in registry order and then the types — establishes
-// that holder's defaults through the descriptor's own reset hook, writes the
-// arm's tag at the arm's offset and reads it back.
+// bounds off its FIELD descriptor, and where that arm's offset sits relative
+// to the union's own payload base. A generic walker reaches those arm
+// descriptors through a HOLDER — the first registry entry declaring a field of
+// that union's type, the tables in registry order and then the types — because
+// a union's arms table hangs off a field descriptor and not off the vocabulary
+// row.
 //
 // EVERY ARM OVERLAYS, with the tag at offset 0 and the overlay after it
 // (§8.1), so every arm's offset is the union's payload base and the OVERLAY
-// column is 0 on every general arm. That is the column an arm whose offset
-// does not reach its own value goes red in: the arm row's own offset, from the
-// view file, against the payload base the table header's arms table carries.
+// column is 0 on every general arm. That is the column a moved arm offset goes
+// red in, and it is the observable: the arm row's own offset, taken from the
+// VIEW file, against the payload base the table header's arms table carries.
+// The two are spelled in different translation units, so they can disagree.
 
 struct Holder
 {
@@ -125,26 +124,6 @@ static Holder findHolder( const unit_ns::UnitViewInfo * unit, const char * union
     return none;
 }
 
-// probeArm writes one arm's tag at its own offset and reads it back. Each arm
-// is probed on its own storage, because the arms OVERLAY and a second write
-// would land on the first arm's bytes.
-static uint64_t probeArm( const Holder & holder, const unit_ns::TableFieldInfo * arm, uint64_t tag )
-{
-    unsigned char * storage = (unsigned char *) calloc( 1, holder.type->size );
-    if ( storage == NULL )
-    {
-        return 0;
-    }
-    holder.type->reset( storage );
-    unsigned char * base = storage + holder.field->offset + arm->offset;
-    size_t width = arm->elem_size < 8 ? (size_t) arm->elem_size : 8;
-    memcpy( base, &tag, width );
-    uint64_t value = 0;
-    memcpy( &value, base, width );
-    free( storage );
-    return value;
-}
-
 static void unionVocabulary( const unit_ns::UnitViewInfo * unit, const unit_ns::ViewVocabulary & v )
 {
     printf( "union %s file=%s max=%lld bits=%d variants=%d",
@@ -165,18 +144,18 @@ static void unionVocabulary( const unit_ns::UnitViewInfo * unit, const unit_ns::
             printf( " kind=%d bound=%d", (int) r.field->kind, (int) r.field->array_bound );
             if ( arms != NULL )
             {
-                printf( " probe=%llu overlay=%d",
-                        (unsigned long long) probeArm( holder, r.field, r.value ),
-                        (int) r.field->offset - (int) arms->arms[1].offset );
+                // EVERY ARM OVERLAYS THE UNION'S PAYLOAD BASE, so the distance
+                // from the first general arm's offset to this one's is zero
+                printf( " overlay=%d", (int) r.field->offset - (int) arms->arms[1].offset );
             }
             else
             {
-                printf( " probe=- overlay=-" );
+                printf( " overlay=-" );
             }
         }
         else
         {
-            printf( " kind=- bound=- probe=- overlay=-" );
+            printf( " kind=- bound=- overlay=-" );
         }
         annotation( r.num_tags, r.tags, r.doc );
     }
