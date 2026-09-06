@@ -503,6 +503,109 @@ static void damaged_inner_structure()
     CHECK( l.report.retain_lost == 1 );
 }
 
+// ---- A SECOND OCCURRENCE REPLACES ONLY WHAT IT CARRIES (§6.6) ----
+//
+// A discard taken at the FIELD is right only where a second occurrence
+// replaces the first WHOLE. An ENUM-KEYED ARRAY never does: it overwrites the
+// slots it carries and leaves every other slot standing. A LIST's repeat can
+// be INERT, replacing nothing at all.
+//
+// CONTROL: discard at the field on either of these and the records under the
+// slots the writer never touched die, with no counter moving to say so.
+static void disjoint_occurrences()
+{
+    // the two Slot variant ids, as the wire names them (§3.2)
+    static const uint64_t kLow = 0x24f3a319b88552c1ull;
+    static const uint64_t kHigh = 0x9deeefd89ca8a81dull;
+
+    // `banks` twice, with DISJOINT slots, each slot carrying an unknown field
+    WireBuilder b;
+    for ( int32_t pass = 0; pass < 2; pass++ )
+    {
+        b.field( "banks", 16 );
+        const int64_t at = b.open_len();
+        b.u8( 13 );  // the element kind: a table body
+        b.leb( 1 );  // one triple
+        b.leb( b.ref( pass == 0 ? kLow : kHigh ) );
+        const int64_t slot = b.open_len();
+        b.field( "future", 4 );
+        b.u32( pass == 0 ? 41 : 42 );
+        b.field( "hits", 4 );
+        b.u32( pass == 0 ? 4 : 5 );
+        b.end();
+        b.close_len( slot );
+        b.close_len( at );
+    }
+    b.end();
+    uint8_t wire[ 4096 ];
+    const int64_t n = b.finish( wire );
+
+    Loaded l;
+    l.load( wire, n );
+    CHECK( l.root != NULL );
+    CHECK( !l.report.malformed );
+    CHECK( l.root->banks.slots[0].hits == 4 );
+    CHECK( l.root->banks.slots[1].hits == 5 ); // both slots landed, from different occurrences
+    CHECK( l.report.retained == 2 );
+    CHECK( l.report.retain_lost == 0 );
+    CHECK( l.retain.count == 2 ); // and NEITHER record went with the other slot's occurrence
+
+    tblrt1::TableReport save_report;
+    uint8_t out[ 4096 ];
+    const int64_t m = tblrt1::NodeMeasureRetain( l.root, &l.retain );
+    const int64_t w = tblrt1::NodeSaveRetain( l.root, &l.retain, out, m, &save_report );
+    CHECK( w == m && w > 0 );
+    CHECK( save_report.retain_lost == 0 );
+
+    Region back;
+    back.size( tblrt2::NodeLoadMeasure( out, w ) );
+    tblrt2::TableReport read_report;
+    const tblrt2::Node * reread = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
+    CHECK( reread != NULL && !read_report.malformed );
+    CHECK( reread->banks.slots[0].future == 41 );
+    CHECK( reread->banks.slots[1].future == 42 );
+
+    // `list` twice, the second occurrence INERT: a body too short for its own
+    // header keeps the value the field has (§4), so it replaces nothing and
+    // the first occurrence's record stands.
+    WireBuilder c;
+    c.field( "list", 14 );
+    const int64_t at = c.open_len();
+    c.u8( 13 );
+    c.leb( 1 );
+    const int64_t element = c.open_len();
+    c.field( "future", 4 );
+    c.u32( 71 );
+    c.field( "hits", 4 );
+    c.u32( 8 );
+    c.end();
+    c.close_len( element );
+    c.close_len( at );
+    c.field( "list", 14 );
+    c.leb( 0 ); // fewer than two bytes of body, and INERT
+    c.end();
+    uint8_t inert[ 4096 ];
+    const int64_t in = c.finish( inert );
+
+    Loaded l2;
+    l2.load( inert, in );
+    CHECK( l2.root != NULL );
+    CHECK( !l2.report.malformed );
+    CHECK( l2.report.retained == 1 );
+    CHECK( l2.report.retain_lost == 0 );
+    CHECK( l2.retain.count == 1 ); // the inert repeat replaced nothing, and took nothing
+
+    tblrt1::TableReport inert_save;
+    uint8_t inert_out[ 4096 ];
+    const int64_t im = tblrt1::NodeMeasureRetain( l2.root, &l2.retain );
+    const int64_t iw = tblrt1::NodeSaveRetain( l2.root, &l2.retain, inert_out, im, &inert_save );
+    CHECK( iw == im && iw > 0 );
+    CHECK( inert_save.retain_lost == 0 );
+    uint8_t inert_plain[ 4096 ];
+    const int64_t ip = tblrt1::NodeSave( l2.root, inert_plain, sizeof( inert_plain ) );
+    CHECK( ip > 0 && iw > ip ); // the record rode
+}
+
 // ---- THE WALK IS ONE PASS EACH WAY (docs/SPEC-TABLES.md §6.6) ----
 //
 // The resolving walk "cannot make a read fail, allocate, or take a path it
@@ -645,6 +748,7 @@ int main( int argc, char ** argv )
     capacities();
     record_lifetime();
     damaged_inner_structure();
+    disjoint_occurrences();
     walk_is_linear();
     trailer_is_permuted();
     if ( failures != 0 )

@@ -8250,15 +8250,7 @@ LISTDEMO_TABLE_INLINE bool UnitLoadBodyRetain( TableReader & r, Unit & value, Ta
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -8363,7 +8355,6 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBodyRetain( TableReader & r, Bounded & val
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 0 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -8382,6 +8373,9 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBodyRetain( TableReader & r, Bounded & val
                     else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     else
                     {
+                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                    // records under this field go with the value it is about to lose.
+                    TableRetainDiscardField( retain, path, 0 );
                     uint64_t keep = count;
                     if ( keep > 8 ) { keep = 8; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
@@ -8436,15 +8430,7 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBodyRetain( TableReader & r, Bounded & val
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -8568,7 +8554,6 @@ inline bool UnboundedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 0 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -8588,6 +8573,9 @@ inline bool UnboundedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
                         // fill's refusal, and it moves no counter.
+                        // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                        // records under this field go with the value it is about to lose.
+                        TableRetainDiscardField( retain, path, 0 );
                         TableListFill<Unit> fill = TableListFillBegin( nodes, value.items, count );
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
@@ -8653,15 +8641,7 @@ inline bool UnboundedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }

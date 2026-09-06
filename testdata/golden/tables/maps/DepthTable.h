@@ -9690,15 +9690,7 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBodyRetain( TableReader & r, Squad
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -9814,7 +9806,6 @@ inline bool SquadLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sq
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 0 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -9826,6 +9817,9 @@ inline bool SquadLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sq
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                    // records under this field go with the value it is about to lose.
+                    TableRetainDiscardField( retain, path, 0 );
                     TableMapFill<SquadRosterEntry> fill = TableMapFillBegin( nodes, value.roster, (uint32_t) count );
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
@@ -9900,15 +9894,7 @@ inline bool SquadLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sq
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -10187,7 +10173,6 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 1 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -10206,6 +10191,9 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                     else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     else
                     {
+                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                    // records under this field go with the value it is about to lose.
+                    TableRetainDiscardField( retain, path, 1 );
                     uint64_t keep = count;
                     if ( keep > 3 ) { keep = 3; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
@@ -10241,7 +10229,6 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 2 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -10403,15 +10390,7 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }

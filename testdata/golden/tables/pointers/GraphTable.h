@@ -15165,15 +15165,7 @@ GRAPHDEMO_TABLE_INLINE bool MetaLoadBodyRetain( TableReader & r, Meta & value, T
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -15295,15 +15287,7 @@ GRAPHDEMO_TABLE_INLINE bool SettingsLoadBodyRetain( TableReader & r, Settings & 
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -15479,15 +15463,7 @@ inline bool ListNodeLoadBodyRetain( TableReader & r, const TableNodeMap & nodes,
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -15675,15 +15651,7 @@ inline bool TreeNodeLoadBodyRetain( TableReader & r, const TableNodeMap & nodes,
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -15831,15 +15799,7 @@ inline bool LayerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, La
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -16256,7 +16216,6 @@ inline bool SceneLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sc
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 7 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -16275,6 +16234,9 @@ inline bool SceneLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sc
                     else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     else
                     {
+                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                    // records under this field go with the value it is about to lose.
+                    TableRetainDiscardField( retain, path, 7 );
                     uint64_t keep = count;
                     if ( keep > 4 ) { keep = 4; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
@@ -16333,15 +16295,7 @@ inline bool SceneLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sc
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -16543,7 +16497,6 @@ inline bool DepotLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 1 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -16641,15 +16594,7 @@ inline bool DepotLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -16972,15 +16917,7 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }

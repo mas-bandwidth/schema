@@ -12082,15 +12082,7 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -12417,15 +12409,7 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -12615,7 +12599,6 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 0 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -12634,6 +12617,9 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
                     else if ( elem_kind != 15 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     else
                     {
+                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                    // records under this field go with the value it is about to lose.
+                    TableRetainDiscardField( retain, path, 0 );
                     uint64_t keep = count;
                     if ( keep > 2 ) { keep = 2; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
@@ -12744,15 +12730,7 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -12949,7 +12927,6 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 0 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -12969,6 +12946,9 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
                         // fill's refusal, and it moves no counter.
+                        // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                        // records under this field go with the value it is about to lose.
+                        TableRetainDiscardField( retain, path, 0 );
                         TableListFill<Carry> fill = TableListFillBegin( nodes, value.links, count );
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
@@ -13085,15 +13065,7 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }

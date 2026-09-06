@@ -1078,6 +1078,7 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	g.pf("%s    // A MAP HEADER WHOSE ELEMENT KIND IS NOT %d is the ordinary array\n", ind, tkTable)
 	g.pf("%s    // kind mismatch of §4, and nothing about a map is special-cased\n", ind)
 	g.pf("%s    if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, tkTable)
+	g.emitRetainReplaced(f, ind+"    ")
 	g.pf("%s    TableMapFill<%s> fill = TableMapFillBegin( nodes, value.%s, (uint32_t) count );\n", ind, n, f.Name)
 	g.pf("%s    if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }\n", ind)
 	g.pf("%s    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)

@@ -1686,13 +1686,13 @@ func (g *tableGen) emitUnknownArm(ind string) {
 		g.pf("%sif ( !r.skip( kind ) ) { r.report->malformed = true; return false; }\n", ind)
 		return
 	}
-	g.pf("%sif ( TableRetainReservedId( field_id ) )\n%s{\n", ind, ind)
-	g.pf("%s    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING\n", ind)
-	g.pf("%s    // and is never retained: re-emitting it would put a second\n", ind)
-	g.pf("%s    // numbering in a file whose own numbering the writer re-derives.\n", ind)
-	g.pf("%s    r.report->retain_lost++;\n", ind)
-	g.pf("%s    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }\n", ind)
-	g.pf("%s}\n%selse if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }\n", ind, ind)
+	// A RESERVED ID NEVER REACHES HERE, and it is excluded by construction
+	// rather than by a branch: every body refuses the build version's id and
+	// the message vocabulary's before this switch, refuses the node table's in
+	// any body but the one whose transport it is, and consumes it in that one.
+	// A fixed-class root, the one shape with no case of its own, gets no
+	// retention at all.
+	g.pf("%sif ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }\n", ind)
 }
 
 // emitNodeIndexLoad reads one NODE INDEX and resolves it through the
@@ -1745,12 +1745,14 @@ func (g *tableGen) retainLostInline() string {
 
 func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 	ind := "                "
-	if g.retain && fieldHoldsBodies(f) {
+	if g.retain && fieldDiscardsWhole(f) {
 		// THE FIELD IS BEING READ AGAIN (docs/SPEC-TABLES.md §6.6): a repeated
-		// table field, a union whose arm is written again — the same arm or
-		// another — a map field written again and a keyed array written again
-		// all reset what they hold, so every record under this field goes
-		// before the winning occurrence is read.
+		// table field and a union whose arm is written again, the same arm or
+		// another, both replace everything the earlier occurrence held, so
+		// every record under this field goes before the winning one is read.
+		// A map, a list and a bounded array take this at the point their own
+		// read commits to replace instead, and an enum-keyed array never takes
+		// it at all.
 		g.pf("%sTableRetainDiscardField( retain, path, %d );\n", ind, g.ordinal[f])
 	}
 	if f.IsMap() {
@@ -1834,6 +1836,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 			// every element decoded at the wire kind's width
 			g.pf("%s    else if ( elem_kind != %d )\n%s    {\n", ind, ir.TableWireElemKind(f), ind)
 			g.pf("%s        if ( !TableKindWidens( elem_kind, %d ) ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, ir.TableWireElemKind(f))
+			g.emitRetainReplaced(f, ind+"        ")
 			g.pf("%s        uint64_t widened_keep = count;\n", ind)
 			g.pf("%s        if ( widened_keep > %d ) { widened_keep = %d; r.report->clamped++; }\n", ind, bound, bound)
 			g.pf("%s        TableReader widened_sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)
@@ -1847,6 +1850,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 			g.pf("%s    else if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, ir.TableWireElemKind(f))
 		}
 		g.pf("%s    else\n%s    {\n", ind, ind)
+		g.emitRetainReplaced(f, ind+"    ")
 		g.pf("%s    uint64_t keep = count;\n", ind)
 		g.pf("%s    if ( keep > %d ) { keep = %d; r.report->clamped++; }\n", ind, bound, bound)
 		g.pf("%s    // elements are BOUNDED by the field body: a count the length\n", ind)

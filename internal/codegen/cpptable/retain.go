@@ -1480,3 +1480,37 @@ func fieldHoldsBodies(f *ir.Field) bool {
 	}
 	return false
 }
+
+// fieldDiscardsWhole reports whether a SECOND occurrence of this field replaces
+// everything the first one held, which is the only shape a discard taken at the
+// field can be right for (docs/SPEC-TABLES.md §6.6). A nested table's body is
+// reset before it is read, and a union's tag is written whatever the arm, so
+// both replace whole.
+//
+// THE COLLECTIONS DO NOT. A map, a list and a bounded array replace only where
+// the plain read commits to replace, which is past a header that can turn the
+// occurrence inert or foreign, and each takes its discard THERE. An enum-keyed
+// array never replaces whole at all: a second occurrence overwrites the slots
+// it carries and leaves the rest standing, so a discard at the field would kill
+// records under slots the writer never touched. Its slots are bodies, and each
+// re-put slot discards its own.
+func fieldDiscardsWhole(f *ir.Field) bool {
+	if !fieldHoldsBodies(f) {
+		return false
+	}
+	return !f.IsMap() && !f.IsList() && f.KeyEnum == "" && f.Array == ir.ArrayNone
+}
+
+// emitRetainReplaced is the discard a COLLECTION takes, emitted at the line its
+// plain read commits to replace what the field already held: past the inert
+// header, past the element kind, and immediately before the fill that resets
+// it. An occurrence that turns back before this line leaves the field's value
+// standing, and the records under it stand with it.
+func (g *tableGen) emitRetainReplaced(f *ir.Field, ind string) {
+	if !g.retain || !fieldHoldsBodies(f) {
+		return
+	}
+	g.pf("%s// THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the\n", ind)
+	g.pf("%s// records under this field go with the value it is about to lose.\n", ind)
+	g.pf("%sTableRetainDiscardField( retain, path, %d );\n", ind, g.ordinal[f])
+}

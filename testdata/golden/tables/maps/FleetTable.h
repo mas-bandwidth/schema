@@ -11877,15 +11877,7 @@ MAPDEMO_TABLE_INLINE bool ShipConfigLoadBodyRetain( TableReader & r, ShipConfig 
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -11971,15 +11963,7 @@ MAPDEMO_TABLE_INLINE bool ItemLoadBodyRetain( TableReader & r, Item & value, Tab
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -12110,15 +12094,7 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntryLoadBodyRetain( TableReader & r, FleetS
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -12262,15 +12238,7 @@ inline bool FleetByIdEntryLoadBodyRetain( TableReader & r, const TableNodeMap & 
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -12390,15 +12358,7 @@ MAPDEMO_TABLE_INLINE bool FleetLoadoutsEntryValueEntryLoadBodyRetain( TableReade
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -12546,7 +12506,6 @@ inline bool FleetLoadoutsEntryLoadBodyRetain( TableReader & r, const TableNodeMa
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 1 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -12558,6 +12517,9 @@ inline bool FleetLoadoutsEntryLoadBodyRetain( TableReader & r, const TableNodeMa
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                    // records under this field go with the value it is about to lose.
+                    TableRetainDiscardField( retain, path, 1 );
                     TableMapFill<FleetLoadoutsEntryValueEntry> fill = TableMapFillBegin( nodes, value.value, (uint32_t) count );
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
@@ -12632,15 +12594,7 @@ inline bool FleetLoadoutsEntryLoadBodyRetain( TableReader & r, const TableNodeMa
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -12771,15 +12725,7 @@ MAPDEMO_TABLE_INLINE bool FleetTiersEntryLoadBodyRetain( TableReader & r, FleetT
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
@@ -13045,7 +12991,6 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 0 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -13057,6 +13002,9 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                    // records under this field go with the value it is about to lose.
+                    TableRetainDiscardField( retain, path, 0 );
                     TableMapFill<FleetShipsEntry> fill = TableMapFillBegin( nodes, value.ships, (uint32_t) count );
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
@@ -13133,7 +13081,6 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 1 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -13145,6 +13092,9 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                    // records under this field go with the value it is about to lose.
+                    TableRetainDiscardField( retain, path, 1 );
                     TableMapFill<FleetByIdEntry> fill = TableMapFillBegin( nodes, value.by_id, (uint32_t) count );
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
@@ -13241,7 +13191,6 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 3 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -13253,6 +13202,9 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                    // records under this field go with the value it is about to lose.
+                    TableRetainDiscardField( retain, path, 3 );
                     TableMapFill<FleetLoadoutsEntry> fill = TableMapFillBegin( nodes, value.loadouts, (uint32_t) count );
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
@@ -13329,7 +13281,6 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 4 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -13341,6 +13292,9 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                    // records under this field go with the value it is about to lose.
+                    TableRetainDiscardField( retain, path, 4 );
                     TableMapFill<FleetTiersEntry> fill = TableMapFillBegin( nodes, value.tiers, (uint32_t) count );
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
@@ -13415,15 +13369,7 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
             default:
             {
                 r.report->unknown++;
-                if ( TableRetainReservedId( field_id ) )
-                {
-                    // THE RESERVED NODE-TABLE FIELD IS THE WRITER'S WHOLE NUMBERING
-                    // and is never retained: re-emitting it would put a second
-                    // numbering in a file whose own numbering the writer re-derives.
-                    r.report->retain_lost++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                }
-                else if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
         }
