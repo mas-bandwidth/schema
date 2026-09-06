@@ -1,10 +1,10 @@
 // Caption.schema — the wstring(N) TABLE unit (docs/SPEC-TABLES.md §3, kind 33).
 //
-// Its own file beside Wide.schema, in the same package, because the two halves
-// of the row are two wires: Wide.schema is the packet wire's proving ground
-// (SPEC.md §4.12) and this is the id-table wire's. The unit stays out of
-// examples/ for the reason that one does — examples/ pins gate 1 for all nine
-// targets and eight of them refuse wide text on either wire.
+// Its own file beside WideText.schema, in the same package, because the two
+// halves of the row are two wires: WideText.schema is the packet wire's
+// proving ground (SPEC.md §4.12) and this is the id-table wire's. The unit
+// stays out of examples/ for the reason that one does — examples/ pins gate 1
+// for all nine targets and eight of them refuse wide text on either wire.
 //
 // Every KIND 33 SITE the wire has is declared once here, and nowhere else in
 // the file, so a gate that names a site names one declaration: a TABLE's own
@@ -43,10 +43,10 @@ union Body
 // The root: every site at once, so one instance exercises them all.
 table Caption
 {
-    title  wstring(7)
-    line   Line
-    lines  [..3]Line
-    body   Body
+    title wstring(7)
+    line  Line
+    lines [..3]Line
+    body  Body
 }
 
 // A FIXED table (§2.2): no pointer in its by-value closure, so it takes the

@@ -50,6 +50,10 @@ unit blockdemo tables/block
 unit messagedemo tables/messages
 unit streamdemo tables/stream
 unit blobdemo  tables/blobs
+# WIDE TEXT (docs/SPEC-TABLES.md §3, kind 33): its own unit, because examples/
+# pins gate 1 for all nine targets and eight of them refuse wide text on either
+# wire (SPEC.md §4.12). A leg without the construct answers ABSENT here.
+unit widedemo  examples-wide
 unit tblm1     test/tables/M1.schema
 unit tblm2     test/tables/M2.schema
 unit tbla1     test/tables/A1.schema
@@ -162,6 +166,20 @@ instance blob_shared          blobdemo    Catalog     testdata/wire/tables/blob_
 # the rows that hold the terminator answerable.
 instance blob_str8            blobdemo    Catalog     testdata/wire/tables/blob_str8.bin
 instance blob_str16           blobdemo    Catalog     testdata/wire/tables/blob_str16.bin
+
+# WIDE TEXT, kind 33 (§3). wide_empty is the ELISION: wide text takes no
+# specified default (SPEC.md §4.12), so an empty wstring writes no line at all.
+# wide_sites carries the kind at EVERY site the wire has at once — a table's
+# own field, a `type` a table reaches, an element, and a union arm — which is
+# what makes it the seed the wire fuzzer plants an ill-formed payload at four
+# ways (§4.2). wide_narrow_arm is the same union at its kind 12 arm, so a
+# respelling between the two text kinds is an ordinary kind mismatch in both
+# directions rather than UTF-8 bytes read as code units.
+instance wide_empty           widedemo    Caption     testdata/wire/tables/wide_empty.bin
+instance wide_title           widedemo    Caption     testdata/wire/tables/wide_title.bin
+instance wide_sites           widedemo    Caption     testdata/wire/tables/wide_sites.bin
+instance wide_narrow_arm      widedemo    Caption     testdata/wire/tables/wide_narrow_arm.bin
+instance wide_stamp           widedemo    Stamp       testdata/wire/tables/wide_stamp.bin
 
 # THE EVOLUTION SEAMS (§4): every instance of one generation, read by the
 # other. The counters are generated into reports.txt by the Go engine and are

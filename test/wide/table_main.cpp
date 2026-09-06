@@ -589,8 +589,125 @@ static void cook_layout()
     }
 }
 
+// ---------------------------------------------------------------------------
+// THE PINNED INSTANCES (docs/SPEC-TABLES.md §3). C++ is the reference writer:
+// these instances' encodings are pinned into testdata/wire/tables/<name>.bin
+// and named by the conformance manifest, so the wire fuzzer's seeds carry kind
+// 33 at every site it plants a mutation at (§4.2). A break here under an
+// unchanged schema is stop-the-line, never a quiet re-pin —
+// SCHEMA_UPDATE_WIRE_GOLDENS=1 rewrites them deliberately (make
+// update-goldens).
+
+static void pin( const char * name, const uint8_t * data, int64_t bytes )
+{
+    char path[256];
+    snprintf( path, sizeof( path ), "testdata/wire/tables/%s.bin", name );
+    if ( getenv( "SCHEMA_UPDATE_WIRE_GOLDENS" ) != NULL )
+    {
+        FILE * f = fopen( path, "wb" );
+        if ( f == NULL ) { printf( "FAILED: cannot write %s\n", path ); failures++; return; }
+        fwrite( data, 1, (size_t) bytes, f );
+        fclose( f );
+        return;
+    }
+    FILE * f = fopen( path, "rb" );
+    if ( f == NULL )
+    {
+        printf( "FAILED: missing table wire golden %s (run: make update-goldens)\n", path );
+        failures++;
+        return;
+    }
+    static uint8_t pinned[1u << 16];
+    const size_t n = fread( pinned, 1, sizeof( pinned ), f );
+    fclose( f );
+    if ( (int64_t) n != bytes || memcmp( pinned, data, n ) != 0 )
+    {
+        printf( "FAILED: table wire golden %s: %lld bytes written, %lld pinned\n",
+                name, (long long) bytes, (long long) n );
+        failures++;
+    }
+}
+
+static void save_and_pin_caption( const char * name, const Caption & value )
+{
+    static uint8_t buffer[1u << 16];
+    const int64_t size = CaptionSave( value, buffer, (int64_t) sizeof( buffer ) );
+    check_vector( size > 0, name );
+    if ( size <= 0 ) { return; }
+    pin( name, buffer, size );
+    // and the round trip, so a pin is a wire this reader reads back exactly
+    Caption out;
+    TableReport report;
+    check_vector( CaptionLoad( out, buffer, size, &report ), name );
+    check_vector( !report.malformed && report.clamped == 0, name );
+}
+
+static void set_units( char16_t * out, int32_t & length, const uint16_t * units, int count )
+{
+    for ( int i = 0; i < count; i++ ) { out[i] = (char16_t) units[i]; }
+    out[count] = 0;
+    length = (int32_t) count;
+}
+
+static void pinned_instances()
+{
+    static const uint16_t basic[3]  = { 0x043C, 0x0438, 0x0440 };
+    static const uint16_t astral[4] = { 0x0041, 0xD83D, 0xDCA9, 0x0042 };
+    static const uint16_t two[2]    = { 0x0041, 0x0042 };
+
+    {
+        // wide_empty: every wstring at its declared default, which is empty —
+        // wide text takes no specified default (SPEC.md §4.12) — so no kind 33
+        // line rides at all and the file is the elision itself
+        Caption value;
+        save_and_pin_caption( "wide_empty", value );
+    }
+    {
+        // wide_title: one kind 33 field line and nothing else
+        Caption value;
+        set_units( value.title, value.title_length, basic, 3 );
+        save_and_pin_caption( "wide_title", value );
+    }
+    {
+        // wide_sites: kind 33 at EVERY site the wire has at once — a table's
+        // own field, a type a table reaches, an element, and a union arm — so
+        // one seed carries all four for the fuzzer to plant at (§4.2)
+        Caption value;
+        set_units( value.title, value.title_length, astral, 4 );
+        set_units( value.line.text, value.line.text_length, two, 2 );
+        value.lines_count = 2;
+        set_units( value.lines[0].text, value.lines[0].text_length, two, 2 );
+        set_units( value.lines[1].text, value.lines[1].text_length, basic, 3 );
+        value.body.type = BodyType::Wide;
+        set_units( value.body.wide.value, value.body.wide.value_length, two, 2 );
+        save_and_pin_caption( "wide_sites", value );
+    }
+    {
+        // wide_narrow_arm: the same union at its NARROW arm, so a respelling
+        // between kind 12 and kind 33 is an ordinary kind mismatch in both
+        // directions rather than UTF-8 bytes read as code units (§3)
+        Caption value;
+        value.body.type = BodyType::Narrow;
+        memcpy( value.body.narrow.value, "ok", 2 );
+        value.body.narrow.value[2] = 0;
+        value.body.narrow.value_length = 2;
+        save_and_pin_caption( "wide_narrow_arm", value );
+    }
+    {
+        // wide_stamp: the FIXED root, whose cook is one region of one node
+        Stamp value;
+        set_units( value.label, value.label_length, two, 2 );
+        value.seq = 7;
+        static uint8_t buffer[1u << 12];
+        const int64_t size = StampSave( value, buffer, (int64_t) sizeof( buffer ) );
+        check( size > 0 );
+        if ( size > 0 ) { pin( "wide_stamp", buffer, size ); }
+    }
+}
+
 int main()
 {
+    pinned_instances();
     field_vectors();
     odd_length();
     default_and_count();
