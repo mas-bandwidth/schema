@@ -1,0 +1,18 @@
+// RT3.schema — the third writer of the RETAIN-UNKNOWN set
+// (docs/SPEC-TABLES.md §6.6): `head` is the field RT1 already has, at the same
+// wire id and the same kind, POINTING AT ANOTHER TABLE. RT1 reads the node
+// index and cannot name the record's type id, which is the excluded class a
+// NODE RECORD is, isolated from every other: nothing else on this wire is
+// unknown to RT1 at all.
+package tblrt3
+
+table Beam
+{
+    value int32 = 0 | min = 0, max = 1000
+}
+
+table Node
+{
+    name string(16)
+    head *Beam
+}

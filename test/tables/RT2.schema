@@ -1,0 +1,56 @@
+// RT2.schema — the WRITER of the RETAIN-UNKNOWN pair (docs/SPEC-TABLES.md
+// §6.6). Every field RT1 has, at the same wire ids, plus what a newer build
+// adds: a scalar the reader cannot name at three depths, a third enum variant,
+// a third union arm, a third keyed slot, a field of kind 17, an array whose
+// element kind is 17, and an unknown table whose payload reaches a 17 three
+// bodies down beside an unknown scalar in that same field.
+package tblrt2
+
+const MaxItems = 4
+
+enum Slot { Low, High, Extra }
+
+table Leaf
+{
+    value int32 = 0 | min = 0, max = 1000
+    next  *Leaf
+}
+
+table Inner
+{
+    tag    string(8)
+    hits   int32 = 0 | min = 0, max = 100
+    future int32 = 0 | min = 0, max = 1000
+}
+
+table Deep  { link *Leaf }
+table Middle { deeper Deep }
+table Ghost
+{
+    plain int32 = 0 | min = 0, max = 1000
+    mid   Middle
+}
+
+union Pick
+{
+    alpha Inner
+    beta  int32
+    gamma int32
+}
+
+table Node
+{
+    name    string(16)
+    tier    Slot
+    inner   Inner
+    items   [..MaxItems]Inner
+    banks   [Slot]Inner
+    pick    Pick
+    head    *Leaf
+    entries map[string(8)]Inner
+    list    []Inner
+    extra   int32 = 0 | min = 0, max = 1000
+    ghost   *Leaf
+    ghosts  [..2]*Leaf
+    outer   Ghost
+}
