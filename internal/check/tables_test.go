@@ -971,12 +971,18 @@ func TestSpecSection11EqualsTheChecker(t *testing.T) {
 	}
 }
 
-// TestTableArmsProjectAndTablesDoNot is §2.6's rule beside §10's boundary. A
-// UNION is a declaration like any other and every arm projects as the field
-// line it is, so adding an arm moves the protocol id exactly as adding a field
-// does. A TABLE's own fields never project, so the independence that matters
-// holds: no table edit reaches this id.
-func TestTableArmsProjectAndTablesDoNot(t *testing.T) {
+// TestTableArmsAndTablesLeaveTheIdAlone is §2.6's rule beside §10's boundary,
+// under the reachability scoping (SPEC §3.1, §3.2). A TABLE's own fields never
+// project, and neither does a union only a table closure reaches: it has no
+// packet encoding, so declaring one, growing it, retyping an arm and adding a
+// scalar arm all leave the protocol id exactly where it was. The independence
+// that matters therefore holds at full width — NO table edit reaches this id.
+//
+// A union with a TABLE ARM is the case SPEC §3.1 excludes whole, and the
+// exclusion needs no rule of its own: such a union is a table-closure
+// construct, a `type` body refuses one by name, and the closure never reaches
+// it.
+func TestTableArmsAndTablesLeaveTheIdAlone(t *testing.T) {
 	withTables := tablelessSrc + `
 table Open { path string(16) }
 table Save { path string(16) }
@@ -997,28 +1003,26 @@ union Body
 table Msg { body Body }
 `
 	grownTable := strings.Replace(moreArms, "table Open { path string(16) }", "table Open {\n    path string(16)\n    line uint32\n}", 1)
-	// §20.8's ARM id control: a union a table closure holds gains a SCALAR
-	// arm, and the id moves — an arm is a field line whatever its type
 	scalarArm := strings.Replace(moreArms, "    save Save\n", "    save Save\n    seq  uint32\n", 1)
 
 	base := buildUnit(t, tablelessSrc)
-	one := buildUnit(t, withTables)
+	for _, tc := range []struct {
+		name   string
+		source string
+	}{
+		{"declaring a union a table holds", withTables},
+		{"adding an arm to it", moreArms},
+		{"adding a SCALAR arm to it", scalarArm},
+		{"growing a table the union names", grownTable},
+	} {
+		if got := buildUnit(t, tc.source).ProtocolId; got != base.ProtocolId {
+			t.Fatalf("%s moved the protocol id %#x -> %#x — no `type` reaches this union, so no packet byte moved and no redeploy is owed (§10)",
+				tc.name, base.ProtocolId, got)
+		}
+	}
 	two := buildUnit(t, moreArms)
-	grown := buildUnit(t, grownTable)
-	scalar := buildUnit(t, scalarArm)
-	if base.ProtocolId == one.ProtocolId {
-		t.Fatalf("declaring a union did NOT move the protocol id %#x — a union is a declaration and its arms are wire facts", base.ProtocolId)
-	}
-	if one.ProtocolId == two.ProtocolId {
-		t.Fatalf("adding an arm did NOT move the protocol id %#x — an arm projects as the field line it is", one.ProtocolId)
-	}
-	if two.ProtocolId == scalar.ProtocolId {
-		t.Fatalf("adding a SCALAR arm did NOT move the protocol id %#x — an arm is a field line whatever its type (§20.8)", two.ProtocolId)
-	}
-	// the independence that holds: a TABLE's own fields project nothing, so
-	// growing Open moves no packet byte and no packet id (§10)
-	if two.ProtocolId != grown.ProtocolId {
-		t.Fatalf("a table's own field moved the protocol id %#x -> %#x — no table edit may reach this id", two.ProtocolId, grown.ProtocolId)
+	if strings.Contains(ir.WireProjection(two), "union Body") {
+		t.Fatal("a union only a table closure reaches is in the projection — a table edit would reach the connect gate")
 	}
 	un := two.TableUnions["Body"]
 	if un == nil || !un.HasTableArm() || len(un.Variants) != 2 || !un.Variants[1].Ref.IsTable {
@@ -1470,5 +1474,61 @@ func TestWideTextRefusalNamesTheMapField(t *testing.T) {
 			}
 			t.Fatalf("no diagnostic contains %q; got: %v", tc.want, errs)
 		})
+	}
+}
+
+// TestPositionalKeyedArrayIsTheTableBodysRefusalAlone is §2.4's refusal and
+// the half of it that stays legal, held as the pair they are. `[E.Max]T` is
+// refused in a TABLE body, because an ordinal-indexed array is a positional
+// vocabulary and a middle insert lands every later element one slot off with
+// nothing on the wire that could say so. In a `type` body the same spelling is
+// a plain array on the packet wire, where the protocol id moves with it, so it
+// stays legal and this is the per-body question §2.2's mode derivation already
+// made.
+//
+// SPEC §3.1's ONE EXCEPTION RESTS ON THIS. With the positional spelling
+// refused here, an enum a table reaches rides by variant NAME at every site,
+// so a variant inserted, removed or reordered moves no stored slot and the
+// table wire reports it — which is what leaves `flags` as the only vocabulary
+// the connect gate still has to hold.
+func TestPositionalKeyedArrayIsTheTableBodysRefusalAlone(t *testing.T) {
+	const inType = `package t
+
+enum ShipType { Fighter, Bomber }
+
+type Cfg { hp uint16 }
+
+type Loadout {
+    ships [ShipType.Max]Cfg
+}
+`
+	u := buildUnit(t, inType)
+	if got := u.Structs["Loadout"].Fields[0].ArrayBound; got != 2 {
+		t.Fatalf("[ShipType.Max]Cfg in a `type` body resolved a bound of %d, want 2 — the positional spelling is the type wire's and stays legal", got)
+	}
+	if !strings.Contains(ir.WireProjection(u), "enum ShipType") {
+		t.Error("an enum a `type` body's [E.Max]T names is out of the projection — the extent decides what every element MEANS and a reorder would ship as a false match")
+	}
+
+	inTable := strings.Replace(inType, "type Loadout {", "table Loadout {", 1)
+	errs := runUnit(t, map[string]string{"t.schema": inTable})
+	if len(errs) == 0 {
+		t.Fatal("[ShipType.Max]Cfg compiled in a table body — a variant inserted in the middle of ShipType would land every later element one slot off in every file already written, and no kind number can catch it")
+	}
+	var named bool
+	for _, e := range errs {
+		text := e.Error()
+		if strings.Contains(text, "is refused in a table body") && strings.Contains(text, "ShipType") && strings.Contains(text, "spell it [ShipType]Cfg") {
+			named = true
+		}
+	}
+	if !named {
+		t.Fatalf("no diagnostic names the field, the enum and the one-word fix; got: %v", errs)
+	}
+
+	// and the table form compiles, which is what the refusal points at
+	keyed := strings.Replace(inTable, "[ShipType.Max]Cfg", "[ShipType]Cfg", 1)
+	if errs := runUnit(t, map[string]string{"t.schema": keyed}); len(errs) > 0 {
+		t.Fatalf("the table form [ShipType]Cfg did not compile: %v", errs)
 	}
 }

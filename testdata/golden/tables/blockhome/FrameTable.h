@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package blockhome — protocol id 0x0fc1a1667e54b144 (packets only: tables version by field id, not by protocol id)
+// package blockhome — protocol id 0x2b2cf24c76ce8b6e (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -1293,7 +1293,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // generated field header carries as a literal.
 static const int64_t kTableAnnounceBytes = 288;
 static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x40, 0x76, 0x0d, 0x74, 0xea, 0xfc, 0x75, 0xad, 0x02,
+    0x01, 0x01, 0x09, 0x76, 0x71, 0x42, 0x0f, 0xea, 0x10, 0x3b, 0x3e, 0x02,
     0x0e, 0xf8, 0x01, 0x06, 0xf5, 0x01, 0x38, 0x4b, 0x9e, 0x6e, 0x56, 0x8c,
     0x8b, 0x53, 0x0d, 0x03, 0xe7, 0xdd, 0xbf, 0x1f, 0x5d, 0xe6, 0x4c, 0x0d,
     0xd0, 0xf4, 0x5f, 0xfe, 0xbe, 0xec, 0x79, 0x4e, 0x0a, 0x00, 0x89, 0x59,
@@ -1852,7 +1852,7 @@ namespace blockhome {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xad75fcea740d7640ull;
+static const uint64_t BuildVersion = 0x3e3b10ea0f427176ull;
 
 } // namespace blockhome
 
