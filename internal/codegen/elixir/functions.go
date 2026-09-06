@@ -598,6 +598,22 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.bpf("  def %s_max_bits, do: %s\n", snake, intLit64(maxBits))
 	g.bpf("  def %s_max_bytes, do: %s\n\n", snake, intLit64(ir.MaxBytes(maxBits)))
 
+	// the tag enum's name surface is a declared enum's, member for member: a
+	// reader logging which message arrived writes enum_name_<tag>(value)
+	// whichever enum it is. Nothing on the read or write path calls it.
+	tag := ir.RustSnake(d.Name + "Type")
+	g.bpf("  # enum_name_%s: debug/log/tooling name for any %sType wire value —\n", tag, d.Name)
+	g.bpf("  # out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
+	g.bpf("  def enum_name_%s(value) do\n", tag)
+	g.bpf("    case value do\n")
+	g.bpf("      0 -> \"None\"\n")
+	for i, v := range d.Variants {
+		g.bpf("      %d -> \"%s\"\n", i+1, ir.GoExportName(v.Name))
+	}
+	g.bpf("      _ -> \"???\"\n")
+	g.bpf("    end\n")
+	g.bpf("  end\n\n")
+
 	g.bpf("  # The §5 zero form — the empty union (None). Arms hold their construction\n")
 	g.bpf("  # form: every arm is unselected at None, and unselected arms are\n")
 	g.bpf("  # unspecified by rule (SPEC §4.8).\n")

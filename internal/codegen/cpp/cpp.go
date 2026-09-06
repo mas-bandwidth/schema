@@ -273,8 +273,20 @@ func (g *gen) emitTagEnum(name string, members []string, comment string) {
 	for i, m := range members {
 		g.pf("    %s = %d,\n", m, i+1)
 	}
+	g.pf("    Count = %d, // the declared variant count (SPEC §4.2)\n", len(members))
 	g.pf("    Max = %d, // the exported extent (SPEC §4.2)\n", len(members))
 	g.pf("};\n\n")
+	// the tag enum's name surface is a declared enum's, member for member: a
+	// reader logging which message arrived writes EnumName( value ) whichever
+	// enum it is. Nothing on the read or write path calls it.
+	g.pf("// EnumName: debug/log name for any %s value, out-of-set included\n", name)
+	g.pf("inline const char * EnumName( %s value )\n{\n", name)
+	g.pf("    switch ( value )\n    {\n")
+	g.pf("        case %s::None: return \"None\";\n", name)
+	for _, m := range members {
+		g.pf("        case %s::%s: return \"%s\";\n", name, m, m)
+	}
+	g.pf("        default: return \"???\";\n    }\n}\n\n")
 }
 
 // emitUnion emits a first-class one-of (SPEC §4.8): the generated <Name>Type

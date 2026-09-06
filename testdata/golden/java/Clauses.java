@@ -1620,8 +1620,25 @@ public final class Clauses {
         public static final byte none = 0;
         public static final byte a = 1;
         public static final byte b = 2;
+        // the declared variant count (SPEC §4.2)
+        public static final byte count = 2;
         // the exported extent (SPEC §4.2)
         public static final byte max = 2;
+    }
+
+    // enumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType storage value —
+    // out-of-set values (wire-legal up to the declared max) name as "???"
+    public static String enumNameEmptyUnionType(long value) {
+        if (value == EmptyUnionType.none) {
+            return "None";
+        }
+        if (value == EmptyUnionType.a) {
+            return "A";
+        }
+        if (value == EmptyUnionType.b) {
+            return "B";
+        }
+        return "???";
     }
 
     // EmptyUnion — at most one of the arms; type says which. Construction is the empty

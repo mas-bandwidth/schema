@@ -255,8 +255,23 @@ func (g *gen) emitTagEnum(name string, members []string, comment string) {
 	for i, m := range members {
 		g.pf("    pub const %s: %s = %s(%d);\n", ir.RustConstName(m), name, name, i+1)
 	}
+	g.pf("    pub const COUNT: %s = %s(%d); // the declared variant count (SPEC §4.2)\n", name, name, len(members))
 	g.pf("    pub const MAX: %s = %s(%d); // the exported extent (SPEC §4.2)\n", name, name, len(members))
 	g.pf("}\n\n")
+
+	// the tag enum's name surface is a declared enum's, member for member: a
+	// reader logging which message arrived writes enum_name_<tag>(value)
+	// whichever enum it is. Nothing on the read or write path calls it.
+	snake := ir.RustSnake(name)
+	g.pf("/// Debug/log name for any `%s` value, out-of-set included.\n", name)
+	g.pf("pub fn enum_name_%s(value: %s) -> &'static str {\n", snake, name)
+	g.pf("    match value.0 {\n")
+	g.pf("        0 => \"None\",\n")
+	for i, m := range members {
+		g.pf("        %d => %q,\n", i+1, m)
+	}
+	g.pf("        _ => \"???\",\n")
+	g.pf("    }\n}\n\n")
 }
 
 // emitConst emits a schema const: bare integers are i64, bare floats f64, and

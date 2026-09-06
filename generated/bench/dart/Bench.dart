@@ -1507,7 +1507,25 @@ abstract final class MixedEventType {
   static const int hit = 1;
   static const int chat = 2;
   static const int pickup = 3;
+  static const int count = 3; // the declared variant count (SPEC §4.2)
   static const int max = 3; // the exported extent (SPEC §4.2)
+}
+
+// enumNameMixedEventType: debug/log/tooling name for any MixedEventType wire value —
+// out-of-set values (wire-legal up to the declared max) name as '???'
+String enumNameMixedEventType(int value) {
+  switch (value) {
+    case MixedEventType.none:
+      return 'None';
+    case MixedEventType.hit:
+      return 'Hit';
+    case MixedEventType.chat:
+      return 'Chat';
+    case MixedEventType.pickup:
+      return 'Pickup';
+    default:
+      return '???';
+  }
 }
 
 // MixedEvent — at most one of the arms; type says which. Construction is the empty

@@ -462,11 +462,26 @@ func ReadProbeSlab(stream *serialize.ReadStream, value *ProbeSlab) error {
 type ProbeShapeType uint8
 
 const (
-	ProbeShapeTypeNone ProbeShapeType = 0
-	ProbeShapeTypeRing ProbeShapeType = 1
-	ProbeShapeTypeSlab ProbeShapeType = 2
-	ProbeShapeTypeMax  ProbeShapeType = 2 // the exported extent (SPEC §4.2)
+	ProbeShapeTypeNone  ProbeShapeType = 0
+	ProbeShapeTypeRing  ProbeShapeType = 1
+	ProbeShapeTypeSlab  ProbeShapeType = 2
+	ProbeShapeTypeCount ProbeShapeType = 2 // the declared variant count (SPEC §4.2)
+	ProbeShapeTypeMax   ProbeShapeType = 2 // the exported extent (SPEC §4.2)
 )
+
+// EnumNameProbeShapeType: debug/log/tooling name for any ProbeShapeType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+func EnumNameProbeShapeType(value uint64) string {
+	switch value {
+	case uint64(ProbeShapeTypeNone):
+		return "None"
+	case uint64(ProbeShapeTypeRing):
+		return "Ring"
+	case uint64(ProbeShapeTypeSlab):
+		return "Slab"
+	}
+	return "???"
+}
 
 // ProbeShape — at most one of the arms; Type says which. The zero value is the
 // empty union (None). A read zero-establishes exactly the selected arm before

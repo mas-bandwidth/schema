@@ -137,6 +137,7 @@ namespace Example
         None = 0,
         Narrow = 1,
         Wide = 2,
+        Count = 2, // the declared variant count (SPEC §4.2)
         Max = 2, // the exported extent (SPEC §4.2)
     }
 
@@ -1006,6 +1007,23 @@ namespace Example
                 return false;
             }
             return true;
+        }
+
+        // EnumNameUnevenType: debug/log/tooling name for any UnevenType wire value —
+        // out-of-set values (wire-legal up to the declared max) name as "???"
+        public static string EnumNameUnevenType(ulong value)
+        {
+            switch (value)
+            {
+                case (ulong)UnevenType.None:
+                    return "None";
+                case (ulong)UnevenType.Narrow:
+                    return "Narrow";
+                case (ulong)UnevenType.Wide:
+                    return "Wide";
+                default:
+                    return "???";
+            }
         }
 
         // UnevenMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).

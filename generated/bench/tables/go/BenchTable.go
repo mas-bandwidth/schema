@@ -306,8 +306,25 @@ const (
 	TableEventTypeHit    TableEventType = 1
 	TableEventTypeChat   TableEventType = 2
 	TableEventTypePickup TableEventType = 3
+	TableEventTypeCount  TableEventType = 3 // the declared variant count (SPEC §4.2)
 	TableEventTypeMax    TableEventType = 3 // the exported extent (SPEC §4.2)
 )
+
+// EnumNameTableEventType: debug/log/tooling name for any TableEventType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+func EnumNameTableEventType(value uint64) string {
+	switch value {
+	case uint64(TableEventTypeNone):
+		return "None"
+	case uint64(TableEventTypeHit):
+		return "Hit"
+	case uint64(TableEventTypeChat):
+		return "Chat"
+	case uint64(TableEventTypePickup):
+		return "Pickup"
+	}
+	return "???"
+}
 
 // TableEvent — at most one of the arms; Type says which. The zero value is the
 // empty union (None). A read zero-establishes exactly the selected arm before

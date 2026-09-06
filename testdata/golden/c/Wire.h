@@ -221,6 +221,7 @@ typedef uint8_t ProbeShapeType;
 #define PROBE_SHAPE_TYPE_NONE 0
 #define PROBE_SHAPE_TYPE_RING 1
 #define PROBE_SHAPE_TYPE_SLAB 2
+#define PROBE_SHAPE_TYPE_COUNT 2
 #define PROBE_SHAPE_TYPE_MAX 2
 
 /* Debug/log name for any ProbeShapeType value, out-of-set included. */

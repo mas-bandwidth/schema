@@ -85,6 +85,7 @@ namespace Example
         None = 0,
         Ring = 1,
         Slab = 2,
+        Count = 2, // the declared variant count (SPEC §4.2)
         Max = 2, // the exported extent (SPEC §4.2)
     }
 
@@ -832,6 +833,23 @@ namespace Example
                 value.Height = (byte)rawValue;
             }
             return true;
+        }
+
+        // EnumNameProbeShapeType: debug/log/tooling name for any ProbeShapeType wire value —
+        // out-of-set values (wire-legal up to the declared max) name as "???"
+        public static string EnumNameProbeShapeType(ulong value)
+        {
+            switch (value)
+            {
+                case (ulong)ProbeShapeType.None:
+                    return "None";
+                case (ulong)ProbeShapeType.Ring:
+                    return "Ring";
+                case (ulong)ProbeShapeType.Slab:
+                    return "Slab";
+                default:
+                    return "???";
+            }
         }
 
         // ProbeShapeMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).

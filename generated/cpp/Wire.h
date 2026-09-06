@@ -197,8 +197,21 @@ enum class ProbeShapeType : uint8_t {
     None = 0,
     Ring = 1,
     Slab = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any ProbeShapeType value, out-of-set included
+inline const char * EnumName( ProbeShapeType value )
+{
+    switch ( value )
+    {
+        case ProbeShapeType::None: return "None";
+        case ProbeShapeType::Ring: return "Ring";
+        case ProbeShapeType::Slab: return "Slab";
+        default: return "???";
+    }
+}
 
 // union ProbeShape — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm's storage is established ZEROED

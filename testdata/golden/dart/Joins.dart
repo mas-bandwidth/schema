@@ -1425,7 +1425,23 @@ abstract final class UnevenType {
   static const int none = 0;
   static const int narrow = 1;
   static const int wide = 2;
+  static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
+}
+
+// enumNameUnevenType: debug/log/tooling name for any UnevenType wire value —
+// out-of-set values (wire-legal up to the declared max) name as '???'
+String enumNameUnevenType(int value) {
+  switch (value) {
+    case UnevenType.none:
+      return 'None';
+    case UnevenType.narrow:
+      return 'Narrow';
+    case UnevenType.wide:
+      return 'Wide';
+    default:
+      return '???';
+  }
 }
 
 // Uneven — at most one of the arms; type says which. Construction is the empty

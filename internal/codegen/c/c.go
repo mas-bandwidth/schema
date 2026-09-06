@@ -416,6 +416,7 @@ func (g *gen) emitUnion(d *ir.Union) {
 	for i, v := range d.Variants {
 		g.pf("#define %s_%s %d\n", screaming(tag), screaming(v.Name), i+1)
 	}
+	g.pf("#define %s_COUNT %d\n", screaming(tag), len(d.Variants))
 	g.pf("#define %s_MAX %d\n", screaming(tag), d.Max)
 
 	g.pf("\n/* Debug/log name for any %s value, out-of-set included. */\n", tag)

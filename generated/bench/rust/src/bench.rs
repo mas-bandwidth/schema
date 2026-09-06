@@ -971,7 +971,19 @@ impl MixedEventType {
     pub const HIT: MixedEventType = MixedEventType(1);
     pub const CHAT: MixedEventType = MixedEventType(2);
     pub const PICKUP: MixedEventType = MixedEventType(3);
+    pub const COUNT: MixedEventType = MixedEventType(3); // the declared variant count (SPEC §4.2)
     pub const MAX: MixedEventType = MixedEventType(3); // the exported extent (SPEC §4.2)
+}
+
+/// Debug/log name for any `MixedEventType` value, out-of-set included.
+pub fn enum_name_mixed_event_type(value: MixedEventType) -> &'static str {
+    match value.0 {
+        0 => "None",
+        1 => "Hit",
+        2 => "Chat",
+        3 => "Pickup",
+        _ => "???",
+    }
 }
 
 // MixedEvent — at most one of the arms. The default is None (the empty union);

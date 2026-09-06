@@ -143,6 +143,7 @@ namespace Bench
         Hit = 1,
         Chat = 2,
         Pickup = 3,
+        Count = 3, // the declared variant count (SPEC §4.2)
         Max = 3, // the exported extent (SPEC §4.2)
     }
 
@@ -1228,6 +1229,25 @@ namespace Bench
                 value.Amount = (int)((int)(uint)v1);
             }
             return true;
+        }
+
+        // EnumNameMixedEventType: debug/log/tooling name for any MixedEventType wire value —
+        // out-of-set values (wire-legal up to the declared max) name as "???"
+        public static string EnumNameMixedEventType(ulong value)
+        {
+            switch (value)
+            {
+                case (ulong)MixedEventType.None:
+                    return "None";
+                case (ulong)MixedEventType.Hit:
+                    return "Hit";
+                case (ulong)MixedEventType.Chat:
+                    return "Chat";
+                case (ulong)MixedEventType.Pickup:
+                    return "Pickup";
+                default:
+                    return "???";
+            }
         }
 
         // MixedEventMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).

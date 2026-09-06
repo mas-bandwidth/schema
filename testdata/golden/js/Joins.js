@@ -668,8 +668,24 @@ export const UnevenType = Object.freeze({
   None: 0,
   Narrow: 1,
   Wide: 2,
+  Count: 2, // the declared variant count (SPEC §4.2)
   Max: 2, // the exported extent (SPEC §4.2)
 });
+
+// EnumNameUnevenType: debug/log/tooling name for any UnevenType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+export function EnumNameUnevenType(value) {
+  switch (value) {
+    case UnevenType.None:
+      return "None";
+    case UnevenType.Narrow:
+      return "Narrow";
+    case UnevenType.Wide:
+      return "Wide";
+    default:
+      return "???";
+  }
+}
 
 // Uneven — at most one of the arms; Type says which. Construction is the empty
 // union (None). A read zero-establishes exactly the selected arm before

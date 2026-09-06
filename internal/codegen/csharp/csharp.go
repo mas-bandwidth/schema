@@ -243,8 +243,23 @@ func (g *gen) emitTagEnum(name string, members []string, comment string) {
 	for i, m := range members {
 		g.tf("    %s = %d,\n", m, i+1)
 	}
+	g.tf("    Count = %d, // the declared variant count (SPEC §4.2)\n", len(members))
 	g.tf("    Max = %d, // the exported extent (SPEC §4.2)\n", len(members))
 	g.tf("}\n\n")
+
+	// the tag enum's name surface is a declared enum's, member for member: a
+	// reader logging which message arrived writes EnumName<Tag>(value)
+	// whichever enum it is. Nothing on the read or write path calls it. The
+	// ulong parameter (not the enum type) keeps out-of-set values exact.
+	g.sf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", name, name)
+	g.sf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
+	g.sf("public static string EnumName%s(ulong value)\n{\n", name)
+	g.sf("    switch (value)\n    {\n")
+	g.sf("        case (ulong)%s.None:\n            return \"None\";\n", name)
+	for _, m := range members {
+		g.sf("        case (ulong)%s.%s:\n            return %q;\n", name, m, m)
+	}
+	g.sf("        default:\n            return \"???\";\n    }\n}\n\n")
 }
 
 // emitConst emits a schema const on Schema: bare integers are long, bare

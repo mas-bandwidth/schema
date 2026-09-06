@@ -526,8 +526,23 @@ const (
 	UnevenTypeNone   UnevenType = 0
 	UnevenTypeNarrow UnevenType = 1
 	UnevenTypeWide   UnevenType = 2
+	UnevenTypeCount  UnevenType = 2 // the declared variant count (SPEC §4.2)
 	UnevenTypeMax    UnevenType = 2 // the exported extent (SPEC §4.2)
 )
+
+// EnumNameUnevenType: debug/log/tooling name for any UnevenType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+func EnumNameUnevenType(value uint64) string {
+	switch value {
+	case uint64(UnevenTypeNone):
+		return "None"
+	case uint64(UnevenTypeNarrow):
+		return "Narrow"
+	case uint64(UnevenTypeWide):
+		return "Wide"
+	}
+	return "???"
+}
 
 // Uneven — at most one of the arms; Type says which. The zero value is the
 // empty union (None). A read zero-establishes exactly the selected arm before

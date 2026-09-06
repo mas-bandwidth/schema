@@ -2144,8 +2144,28 @@ public final class Bench {
         public static final byte hit = 1;
         public static final byte chat = 2;
         public static final byte pickup = 3;
+        // the declared variant count (SPEC §4.2)
+        public static final byte count = 3;
         // the exported extent (SPEC §4.2)
         public static final byte max = 3;
+    }
+
+    // enumNameMixedEventType: debug/log/tooling name for any MixedEventType storage value —
+    // out-of-set values (wire-legal up to the declared max) name as "???"
+    public static String enumNameMixedEventType(long value) {
+        if (value == MixedEventType.none) {
+            return "None";
+        }
+        if (value == MixedEventType.hit) {
+            return "Hit";
+        }
+        if (value == MixedEventType.chat) {
+            return "Chat";
+        }
+        if (value == MixedEventType.pickup) {
+            return "Pickup";
+        }
+        return "???";
     }
 
     // MixedEvent — at most one of the arms; type says which. Construction is the empty

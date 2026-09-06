@@ -971,8 +971,26 @@ export const MixedEventType = Object.freeze({
   Hit: 1,
   Chat: 2,
   Pickup: 3,
+  Count: 3, // the declared variant count (SPEC §4.2)
   Max: 3, // the exported extent (SPEC §4.2)
 });
+
+// EnumNameMixedEventType: debug/log/tooling name for any MixedEventType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+export function EnumNameMixedEventType(value) {
+  switch (value) {
+    case MixedEventType.None:
+      return "None";
+    case MixedEventType.Hit:
+      return "Hit";
+    case MixedEventType.Chat:
+      return "Chat";
+    case MixedEventType.Pickup:
+      return "Pickup";
+    default:
+      return "???";
+  }
+}
 
 // MixedEvent — at most one of the arms; Type says which. Construction is the empty
 // union (None). A read zero-establishes exactly the selected arm before

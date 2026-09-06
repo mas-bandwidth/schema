@@ -1624,8 +1624,25 @@ public final class Joins {
         public static final byte none = 0;
         public static final byte narrow = 1;
         public static final byte wide = 2;
+        // the declared variant count (SPEC §4.2)
+        public static final byte count = 2;
         // the exported extent (SPEC §4.2)
         public static final byte max = 2;
+    }
+
+    // enumNameUnevenType: debug/log/tooling name for any UnevenType storage value —
+    // out-of-set values (wire-legal up to the declared max) name as "???"
+    public static String enumNameUnevenType(long value) {
+        if (value == UnevenType.none) {
+            return "None";
+        }
+        if (value == UnevenType.narrow) {
+            return "Narrow";
+        }
+        if (value == UnevenType.wide) {
+            return "Wide";
+        }
+        return "???";
     }
 
     // Uneven — at most one of the arms; type says which. Construction is the empty

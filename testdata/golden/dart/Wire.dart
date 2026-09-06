@@ -1020,7 +1020,23 @@ abstract final class ProbeShapeType {
   static const int none = 0;
   static const int ring = 1;
   static const int slab = 2;
+  static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
+}
+
+// enumNameProbeShapeType: debug/log/tooling name for any ProbeShapeType wire value —
+// out-of-set values (wire-legal up to the declared max) name as '???'
+String enumNameProbeShapeType(int value) {
+  switch (value) {
+    case ProbeShapeType.none:
+      return 'None';
+    case ProbeShapeType.ring:
+      return 'Ring';
+    case ProbeShapeType.slab:
+      return 'Slab';
+    default:
+      return '???';
+  }
 }
 
 // ProbeShape — at most one of the arms; type says which. Construction is the empty

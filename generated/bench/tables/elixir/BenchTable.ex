@@ -81,6 +81,8 @@ defmodule Benchtable.TableEventType do
   def hit, do: 1
   def chat, do: 2
   def pickup, do: 3
+  # the declared variant count (SPEC §4.2)
+  def count, do: 3
   # the exported extent (SPEC §4.2)
   def max, do: 3
 end
@@ -418,6 +420,18 @@ defmodule Benchtable.BenchTable do
   # table_event_max_bytes is rounded up to the family 8-byte write-buffer granularity.
   def table_event_max_bits, do: 30
   def table_event_max_bytes, do: 8
+
+  # enum_name_table_event_type: debug/log/tooling name for any TableEventType wire value —
+  # out-of-set values (wire-legal up to the declared max) name as "???"
+  def enum_name_table_event_type(value) do
+    case value do
+      0 -> "None"
+      1 -> "Hit"
+      2 -> "Chat"
+      3 -> "Pickup"
+      _ -> "???"
+    end
+  end
 
   # The §5 zero form — the empty union (None). Arms hold their construction
   # form: every arm is unselected at None, and unselected arms are

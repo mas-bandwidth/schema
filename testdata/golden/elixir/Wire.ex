@@ -66,6 +66,8 @@ defmodule Example.ProbeShapeType do
   def none, do: 0
   def ring, do: 1
   def slab, do: 2
+  # the declared variant count (SPEC §4.2)
+  def count, do: 2
   # the exported extent (SPEC §4.2)
   def max, do: 2
 end
@@ -875,6 +877,17 @@ defmodule Example.Wire do
   # probe_shape_max_bytes is rounded up to the family 8-byte write-buffer granularity.
   def probe_shape_max_bits, do: 18
   def probe_shape_max_bytes, do: 8
+
+  # enum_name_probe_shape_type: debug/log/tooling name for any ProbeShapeType wire value —
+  # out-of-set values (wire-legal up to the declared max) name as "???"
+  def enum_name_probe_shape_type(value) do
+    case value do
+      0 -> "None"
+      1 -> "Ring"
+      2 -> "Slab"
+      _ -> "???"
+    end
+  end
 
   # The §5 zero form — the empty union (None). Arms hold their construction
   # form: every arm is unselected at None, and unselected arms are

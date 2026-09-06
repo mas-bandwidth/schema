@@ -297,8 +297,22 @@ enum class MixedEventType : uint8_t {
     Hit = 1,
     Chat = 2,
     Pickup = 3,
+    Count = 3, // the declared variant count (SPEC §4.2)
     Max = 3, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any MixedEventType value, out-of-set included
+inline const char * EnumName( MixedEventType value )
+{
+    switch ( value )
+    {
+        case MixedEventType::None: return "None";
+        case MixedEventType::Hit: return "Hit";
+        case MixedEventType::Chat: return "Chat";
+        case MixedEventType::Pickup: return "Pickup";
+        default: return "???";
+    }
+}
 
 // union MixedEvent — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm's storage is established ZEROED

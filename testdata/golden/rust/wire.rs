@@ -510,7 +510,18 @@ impl ProbeShapeType {
     pub const NONE: ProbeShapeType = ProbeShapeType(0);
     pub const RING: ProbeShapeType = ProbeShapeType(1);
     pub const SLAB: ProbeShapeType = ProbeShapeType(2);
+    pub const COUNT: ProbeShapeType = ProbeShapeType(2); // the declared variant count (SPEC §4.2)
     pub const MAX: ProbeShapeType = ProbeShapeType(2); // the exported extent (SPEC §4.2)
+}
+
+/// Debug/log name for any `ProbeShapeType` value, out-of-set included.
+pub fn enum_name_probe_shape_type(value: ProbeShapeType) -> &'static str {
+    match value.0 {
+        0 => "None",
+        1 => "Ring",
+        2 => "Slab",
+        _ => "???",
+    }
 }
 
 // ProbeShape — at most one of the arms. The default is None (the empty union);

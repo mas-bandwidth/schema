@@ -824,8 +824,25 @@ const (
 	MixedEventTypeHit    MixedEventType = 1
 	MixedEventTypeChat   MixedEventType = 2
 	MixedEventTypePickup MixedEventType = 3
+	MixedEventTypeCount  MixedEventType = 3 // the declared variant count (SPEC §4.2)
 	MixedEventTypeMax    MixedEventType = 3 // the exported extent (SPEC §4.2)
 )
+
+// EnumNameMixedEventType: debug/log/tooling name for any MixedEventType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+func EnumNameMixedEventType(value uint64) string {
+	switch value {
+	case uint64(MixedEventTypeNone):
+		return "None"
+	case uint64(MixedEventTypeHit):
+		return "Hit"
+	case uint64(MixedEventTypeChat):
+		return "Chat"
+	case uint64(MixedEventTypePickup):
+		return "Pickup"
+	}
+	return "???"
+}
 
 // MixedEvent — at most one of the arms; Type says which. The zero value is the
 // empty union (None). A read zero-establishes exactly the selected arm before

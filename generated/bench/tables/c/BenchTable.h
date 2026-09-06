@@ -234,6 +234,7 @@ typedef uint8_t TableEventType;
 #define TABLE_EVENT_TYPE_HIT 1
 #define TABLE_EVENT_TYPE_CHAT 2
 #define TABLE_EVENT_TYPE_PICKUP 3
+#define TABLE_EVENT_TYPE_COUNT 3
 #define TABLE_EVENT_TYPE_MAX 3
 
 /* Debug/log name for any TableEventType value, out-of-set included. */

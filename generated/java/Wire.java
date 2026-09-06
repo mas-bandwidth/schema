@@ -1180,8 +1180,25 @@ public final class Wire {
         public static final byte none = 0;
         public static final byte ring = 1;
         public static final byte slab = 2;
+        // the declared variant count (SPEC §4.2)
+        public static final byte count = 2;
         // the exported extent (SPEC §4.2)
         public static final byte max = 2;
+    }
+
+    // enumNameProbeShapeType: debug/log/tooling name for any ProbeShapeType storage value —
+    // out-of-set values (wire-legal up to the declared max) name as "???"
+    public static String enumNameProbeShapeType(long value) {
+        if (value == ProbeShapeType.none) {
+            return "None";
+        }
+        if (value == ProbeShapeType.ring) {
+            return "Ring";
+        }
+        if (value == ProbeShapeType.slab) {
+            return "Slab";
+        }
+        return "???";
     }
 
     // ProbeShape — at most one of the arms; type says which. Construction is the empty

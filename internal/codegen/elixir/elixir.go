@@ -409,6 +409,8 @@ func (g *gen) emitUnionModules(d *ir.Union) {
 	for i, v := range d.Variants {
 		g.bpf("  def %s, do: %d\n", elixirName(v.Name), i+1)
 	}
+	g.bpf("  # the declared variant count (SPEC §4.2)\n")
+	g.bpf("  def count, do: %s\n", intLit64(int64(len(d.Variants))))
 	g.bpf("  # the exported extent (SPEC §4.2)\n")
 	g.bpf("  def max, do: %s\n", intLit64(d.Max))
 	g.bpf("end\n\n")

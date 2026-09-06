@@ -151,8 +151,21 @@ enum class UnevenType : uint8_t {
     None = 0,
     Narrow = 1,
     Wide = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any UnevenType value, out-of-set included
+inline const char * EnumName( UnevenType value )
+{
+    switch ( value )
+    {
+        case UnevenType::None: return "None";
+        case UnevenType::Narrow: return "Narrow";
+        case UnevenType::Wide: return "Wide";
+        default: return "???";
+    }
+}
 
 // union Uneven — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm's storage is established ZEROED

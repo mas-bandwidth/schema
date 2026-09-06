@@ -467,7 +467,25 @@ abstract final class TableEventType {
   static const int hit = 1;
   static const int chat = 2;
   static const int pickup = 3;
+  static const int count = 3; // the declared variant count (SPEC §4.2)
   static const int max = 3; // the exported extent (SPEC §4.2)
+}
+
+// enumNameTableEventType: debug/log/tooling name for any TableEventType wire value —
+// out-of-set values (wire-legal up to the declared max) name as '???'
+String enumNameTableEventType(int value) {
+  switch (value) {
+    case TableEventType.none:
+      return 'None';
+    case TableEventType.hit:
+      return 'Hit';
+    case TableEventType.chat:
+      return 'Chat';
+    case TableEventType.pickup:
+      return 'Pickup';
+    default:
+      return '???';
+  }
 }
 
 // TableEvent — at most one of the arms; type says which. Construction is the empty

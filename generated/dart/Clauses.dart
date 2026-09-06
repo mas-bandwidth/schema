@@ -2052,7 +2052,23 @@ abstract final class EmptyUnionType {
   static const int none = 0;
   static const int a = 1;
   static const int b = 2;
+  static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
+}
+
+// enumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType wire value —
+// out-of-set values (wire-legal up to the declared max) name as '???'
+String enumNameEmptyUnionType(int value) {
+  switch (value) {
+    case EmptyUnionType.none:
+      return 'None';
+    case EmptyUnionType.a:
+      return 'A';
+    case EmptyUnionType.b:
+      return 'B';
+    default:
+      return '???';
+  }
 }
 
 // EmptyUnion — at most one of the arms; type says which. Construction is the empty

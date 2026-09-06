@@ -322,6 +322,7 @@ typedef uint8_t MixedEventType;
 #define MIXED_EVENT_TYPE_HIT 1
 #define MIXED_EVENT_TYPE_CHAT 2
 #define MIXED_EVENT_TYPE_PICKUP 3
+#define MIXED_EVENT_TYPE_COUNT 3
 #define MIXED_EVENT_TYPE_MAX 3
 
 /* Debug/log name for any MixedEventType value, out-of-set included. */
