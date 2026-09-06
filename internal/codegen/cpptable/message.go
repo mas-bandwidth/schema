@@ -1075,6 +1075,11 @@ struct TableMessageBatchReader
     const TableVocabulary * vocabulary = NULL;
     TableReport * report = NULL;
     int64_t remaining = 0;
+    // THE SINK A CALLER THAT PASSED NO REPORT WRITES INTO IS THE READER'S OWN,
+    // not a static: a static is shared mutable state, and two threads reading
+    // two batches without reports would be writing one object. LoadMessages
+    // already keeps its sink locally, for the same reason.
+    TableReport ignored;
 };
 
 // TableMessageBatchOpen answers the batch's body count, or -1 with the refusal
@@ -1082,8 +1087,7 @@ struct TableMessageBatchReader
 // that never announced.
 inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    static TableReport ignored;
-    br.report = report != NULL ? report : &ignored;
+    br.report = report != NULL ? report : &br.ignored;
     br.vocabulary = &vocabulary;
     if ( bytes < 1 ) { br.report->malformed = true; return -1; }
     if ( buffer[0] != kTableWireMessageForm ) { br.report->refused = true; br.report->reason = newer_form; return -1; }

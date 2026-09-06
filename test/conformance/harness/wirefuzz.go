@@ -357,15 +357,23 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
 		if root.variable && reply.measure < 0 {
 			// LOADMEASURE REFUSED THE FRAMING, so there was no region to load
 			// into and no value to compare: a wire that cannot be OPENED at
-			// all — fewer than nine bytes, a table that cannot be read whole,
-			// a form this reader does not carry — has no body and no numbering
+			// all, fewer than nine bytes, a table that cannot be read whole,
+			// a form this reader does not carry, has no body and no numbering
 			// (docs/SPEC-TABLES.md §3). The oracle has to agree there was
-			// nothing to read.
+			// nothing to read, AND THAT IS THE WHOLE OF WHAT IT OWES HERE.
+			//
+			// THE COUNTER TUPLES ARE NOT COMPARED ON THIS BRANCH, because the
+			// two sides ran two different operations and the page rules both
+			// of them. A LoadMeasure refusal moves no counter (§6.5), so the
+			// leg's report is empty by rule; the oracle DECODED, and the
+			// fields decoded before the damage stand with the counters they
+			// earned (§3.3), so its report is not. A batch claiming 129
+			// bodies in 66 bytes is exactly that shape: the leg refuses to
+			// measure and the oracle reads body one and counts one malformed.
+			// Requiring the tuples to match would require one of those two
+			// sentences to be false.
 			if !ans.report.Malformed && !ans.report.Refused {
 				return "the leg's LoadMeasure refused the framing; the oracle read the same bytes cleanly"
-			}
-			if reply.report != ans.report {
-				return fmt.Sprintf("the report differs: the leg says %s, the oracle says %s", reply.report, ans.report)
 			}
 			return ""
 		}
