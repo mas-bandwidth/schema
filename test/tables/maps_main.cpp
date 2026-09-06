@@ -15,6 +15,7 @@
 #include "FleetTable.h"
 #include "RowsTable.h"
 #include "DepthTable.h"
+#include "TextTable.h"
 #include "wirebuilder.h"
 
 using namespace mapdemo;
@@ -1288,6 +1289,152 @@ static void test_depth()
     CHECK( memcmp( relocked, wire, (size_t) n ) == 0 );
 }
 
+// ---- A MAP WHOSE VALUE IS TEXT (docs/SPEC-TABLES.md §2.8) ----
+//
+// "A VALUE is anything a table field can hold: a scalar, an enum, a `flags`
+// mask, `string(N)`, `wstring(N)`, `bytes(N)` ..." Each of the three is an
+// ORDINARY FIELD of the generated entry, so the codec is that field's own and
+// the storage is the buffer beside its int32 used length (§7.2). Two members
+// are not one addressable slot, so the handle Insert, Find and Each hand back
+// is the ENTRY: a caller fills `value` and `value_length`, and leaves `key` to
+// the map, which owns the order the key carries.
+
+static void test_text_values()
+{
+    TextBuilder b;
+    Text * t = b.GetRoot();
+
+    // string(16) under a string key, INSERTED OUT OF KEY ORDER so the pinned
+    // wire below says the four writing walks sorted
+    static const char * const names[2] = { "beta", "alpha" };
+    static const char * const values[2] = { "second", "first" };
+    for ( int i = 0; i < 2; i++ )
+    {
+        TextNamesEntry * entry = TextNamesInsert( b.main, t->names, names[i] );
+        CHECK( entry != NULL );
+        if ( entry == NULL ) { return; }
+        const size_t length = strlen( values[i] );
+        memcpy( entry->value, values[i], length );
+        entry->value_length = (int32_t) length;
+    }
+
+    // wstring(6): KIND 33, the value kind that is never a key. Five code units
+    // with a SURROGATE PAIR at the end, so the transcode both ways is exercised
+    // and a clamp that split the pair would be visible.
+    {
+        TextWideEntry * entry = TextWideInsert( b.main, t->wide, (uint16_t) 5 );
+        CHECK( entry != NULL );
+        if ( entry == NULL ) { return; }
+        const char16_t units[5] = { 0x0041, 0x00E9, 0x4E2D, 0xD83D, 0xDE00 };
+        for ( int i = 0; i < 5; i++ ) { entry->value[i] = units[i]; }
+        entry->value_length = 5;
+    }
+
+    // bytes(10) under a SIGNED key: -3 sorts before 2, and a byte buffer holds
+    // any byte, a zero and a high one included, which text cannot
+    {
+        static const int32_t keys[2] = { 2, -3 };
+        static const uint8_t payload[2][4] = { { 0x00, 0x01, 0x80, 0xff }, { 0xde, 0xad, 0xbe, 0xef } };
+        for ( int i = 0; i < 2; i++ )
+        {
+            TextBlobsEntry * entry = TextBlobsInsert( b.main, t->blobs, keys[i] );
+            CHECK( entry != NULL );
+            if ( entry == NULL ) { return; }
+            memcpy( entry->value, payload[i], sizeof( payload[i] ) );
+            entry->value_length = (int32_t) sizeof( payload[i] );
+        }
+    }
+    t->after = 9;
+
+    // the builder's Find hands back the same entry an Insert did
+    const TextNamesEntry * found = TextNamesFind( b.arena, t->names, "alpha" );
+    CHECK( found != NULL );
+    CHECK( found != NULL && found->value_length == 5 && memcmp( found->value, "first", 5 ) == 0 );
+    CHECK( TextNamesFind( b.arena, t->names, "gamma" ) == NULL );
+
+    const int64_t measured = TextMeasure( b );
+    static uint8_t wire[1u << 16];
+    const int64_t n = TextSave( b, wire, sizeof( wire ) );
+    CHECK_EQ( measured, n );
+    pin_golden( "map_text", wire, n );
+
+    // the region: every value comes back whole, through the sorted array's Find
+    const int64_t need = TextLoadMeasure( wire, n );
+    CHECK( need > 0 );
+    uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+    if ( region == NULL ) { return; }
+    TableReport report;
+    const Text * loaded = TextLoad( region, need, wire, n, &report );
+    CHECK( loaded != NULL );
+    CHECK( !report.malformed );
+    CHECK_EQ( report.clamped, 0 );
+    CHECK_EQ( report.kind_mismatch, 0 );
+    if ( loaded != NULL )
+    {
+        const TextNamesEntry * alpha = loaded->names.Find( "alpha" );
+        CHECK( alpha != NULL );
+        CHECK( alpha != NULL && alpha->value_length == 5 && memcmp( alpha->value, "first", 5 ) == 0 );
+        CHECK( alpha != NULL && alpha->value[alpha->value_length] == 0 ); // NUL beside the length
+        const TextNamesEntry * beta = loaded->names.Find( "beta" );
+        CHECK( beta != NULL && beta->value_length == 6 && memcmp( beta->value, "second", 6 ) == 0 );
+
+        const TextWideEntry * wide = loaded->wide.Find( (uint16_t) 5 );
+        CHECK( wide != NULL );
+        CHECK( wide != NULL && wide->value_length == 5 );
+        CHECK( wide != NULL && wide->value[0] == 0x0041 && wide->value[2] == 0x4E2D );
+        CHECK( wide != NULL && wide->value[3] == 0xD83D && wide->value[4] == 0xDE00 );
+        CHECK( wide != NULL && wide->value[wide->value_length] == 0 ); // the zero UNIT (SPEC §4.12)
+
+        const TextBlobsEntry * low = loaded->blobs.Find( (int32_t) -3 ); // the SIGNED key sorts first
+        CHECK( low != NULL && low->value_length == 4 && low->value[0] == 0xde && low->value[3] == 0xef );
+        const TextBlobsEntry * high = loaded->blobs.Find( (int32_t) 2 );
+        CHECK( high != NULL && high->value_length == 4 && high->value[0] == 0x00 && high->value[3] == 0xff );
+
+        CHECK_EQ( loaded->after, 9 ); // and the parent read on past all three
+
+        // the region's FILE FORM is the builder's, byte for byte
+        static uint8_t again[1u << 16];
+        CHECK_EQ( TextSave( loaded, again, sizeof( again ) ), n );
+        CHECK( memcmp( again, wire, (size_t) n ) == 0 );
+    }
+    free( region );
+
+    // THE TEXT FORM: the value takes its own §16.2 row under the map's key —
+    // a string as itself, wide text TRANSCODED to UTF-8, a byte buffer BASE64.
+    CHECK( b.Lock() );
+    const Text * locked = b.AsConst();
+    CHECK( locked != NULL );
+    if ( locked == NULL ) { return; }
+    const int64_t json_bytes = TextToJsonMeasure( locked );
+    CHECK( json_bytes > 0 );
+    char * json = (char *) MEASURED_CALLOC( json_bytes, 1 );
+    if ( json == NULL ) { return; }
+    CHECK_EQ( TextToJson( locked, json, json_bytes ), json_bytes );
+    CHECK( strstr( json, "\"alpha\": \"first\"" ) != NULL );
+    CHECK( strstr( json, "\"beta\": \"second\"" ) != NULL );
+    // wide text is the SAME TEXT, transcoded: five UTF-16 code units out as
+    // ten UTF-8 bytes, the surrogate pair as the one astral character it spells
+    CHECK( strstr( json, "\"5\": \"\x41\xc3\xa9\xe4\xb8\xad\xf0\x9f\x98\x80\"" ) != NULL );
+    CHECK( strstr( json, "\"2\": \"AAGA/w==\"" ) != NULL ); // bytes(N): base64, PADDED
+    CHECK( strstr( json, "\"-3\": \"3q2+7w==\"" ) != NULL );
+    const char * alpha_at = strstr( json, "\"alpha\"" );
+    const char * beta_at = strstr( json, "\"beta\"" );
+    CHECK( alpha_at != NULL && beta_at != NULL && alpha_at < beta_at ); // ASCENDING
+
+    // and it reads back to the same instance, so the same wire
+    TextBuilder into;
+    TableReport text_report;
+    CHECK( TextFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.malformed );
+    CHECK_EQ( text_report.clamped, 0 );
+    CHECK_EQ( text_report.kind_mismatch, 0 );
+    CHECK_EQ( text_report.unknown, 0 );
+    static uint8_t from_text[1u << 16];
+    CHECK_EQ( TextSave( into, from_text, sizeof( from_text ) ), n );
+    CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
+    free( json );
+}
+
 // ---- the MESSAGE FORM over maps (docs/SPEC-TABLES.md §2.8, §3.3) ----
 //
 // A map rides on the message wire as its thirty-two bit count and its entries
@@ -1375,6 +1522,7 @@ int main( int argc, char ** argv )
     test_measure_refusals();
     test_text();
     test_depth();
+    test_text_values();
     test_message_form();
 
     if ( failures != 0 )

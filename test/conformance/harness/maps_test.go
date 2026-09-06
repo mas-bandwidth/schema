@@ -29,7 +29,7 @@ func TestTheToolWritesTheReferencesMapBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := tabletext.NewModel(u)
-	for _, tc := range []struct{ name, root string }{{"map_full", "Fleet"}, {"map_empty", "Fleet"}, {"map_depth", "Depth"}} {
+	for _, tc := range []struct{ name, root string }{{"map_full", "Fleet"}, {"map_empty", "Fleet"}, {"map_depth", "Depth"}, {"map_text", "Text"}} {
 		name, rootName := tc.name, tc.root
 		data, err := os.ReadFile(root + "testdata/wire/tables/" + name + ".bin")
 		if err != nil {
