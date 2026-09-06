@@ -554,6 +554,13 @@ struct TableWideRange
     uint64_t hi[2];
 };
 
+// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+// block carries a doc column pointing at this one object, so absence costs a
+// unit no string data and a printer concatenates doc columns with no null
+// test. One definition for the whole unit: every absent doc compares equal by
+// address.
+inline const char TableDocNone[1] = "";
+
 ` + pointerForward + `struct TableFieldInfo
 {
     const char * name;      // schema field name, e.g. "health"
@@ -611,6 +618,14 @@ struct TableWideRange
     // inside it). NULL for every other kind.
     const TableUnionInfo * (*arms)();` + placeMember + `
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
+    // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+    // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
+    // none, never NULL. Its tags (SPEC §4.2) follow in declared order, and an
+    // untagged field is 0 beside NULL. Static, constant-initialized,
+    // allocating nothing.
+    const char * doc;
+    int32_t num_tags;
+    const char * const * tags;
 };
 
 struct TableTypeInfo
@@ -625,6 +640,11 @@ struct TableTypeInfo
     // thing the descriptors could not express without it. Placement-new
     // value-init, exactly what the wire's read path does, and no temporary.
     void (*reset)( void * storage );` + pointerTypeMember + `
+    // the declaration's own doc and tags, on the same terms as a field's
+    // (docs/SPEC-TABLES.md §8.1)
+    const char * doc;
+    int32_t num_tags;
+    const char * const * tags;
 };
 
 struct TableWriter

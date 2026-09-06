@@ -18,6 +18,12 @@ func init() {
 		Name{Name: "TableReader", What: "the wire reader over the caller's buffer"},
 		Name{Name: "TableTypeInfo", What: "a table's reflection descriptor"},
 		Name{Name: "TableFieldInfo", What: "a field's reflection descriptor"},
+		// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every field row
+		// and every declaration row with no `///` block names this ONE
+		// definition, so absence costs a unit no string data and a printer
+		// concatenates doc columns with no null test. Claimed wherever a unit
+		// declares a table.
+		Name{Name: "TableDocNone", What: "the one shared empty doc every unannotated descriptor row names"},
 		Name{Name: "TableUnionInfo", What: "a union field's tag and its arms"},
 		Name{Name: "TableKeyed", What: "an enum-keyed array's slot storage"},
 		Name{Name: "TableJson", What: "the text form's generic walk. C# spells it a nested class of Schema, which claims nothing; Java puts it at package scope, Dart at library scope and JavaScript at module scope — an ES module is one scope, with no nested class to hide a walk in — so the claim is the UNION and the name is claimed"},

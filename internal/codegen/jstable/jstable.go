@@ -684,7 +684,7 @@ func (g *tableGen) assemble() []byte {
 // every other module of the unit re-exports.
 func sharedRuntimeNames(anyKeyed bool) []string {
 	names := []string{
-		"TableBitsToDouble", "TableBitsToFloat", "TableDoubleToBits", "TableFloatToBits",
+		"TableBitsToDouble", "TableBitsToFloat", "TableDocNone", "TableDoubleToBits", "TableFloatToBits",
 		"TableJson", "TableReader", "TableReport", "TableWriter",
 	}
 	if anyKeyed {
@@ -840,7 +840,13 @@ func tableRuntime(anyKeyed bool) string {
 	if anyKeyed {
 		keyedStorage = tableKeyedStorage
 	}
-	return keyedStorage + `// The table-wire read report — the permissive contract's ledger. Silence
+	return keyedStorage + `// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+// block carries a doc column naming this one definition, so absence costs a
+// unit no string data and a printer concatenates doc columns with no undefined
+// test. One definition for the whole unit, imported by every module of it.
+export const TableDocNone = "";
+
+// The table-wire read report — the permissive contract's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
 export class TableReport {
   constructor() {

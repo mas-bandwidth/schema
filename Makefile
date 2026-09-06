@@ -280,6 +280,50 @@ tables-json-negative-control: bin/schema test/tables/json_negative_main.cpp
 		-Ibuild/json-sabotage test/tables/json_negative_main.cpp build/json-sabotage/TablesTable.cpp -o build/schema_test_json_negative
 	./build/schema_test_json_negative
 
+# THE DOC AND TAGS COST OBSERVABLES (docs/SPEC-TABLES.md §8.7). The two cost
+# claims §8.1 makes about the annotation columns are held by observables, not
+# by inspection: a printer concatenates every doc with no null test, and every
+# absent doc in a unit compares equal by address to the unit's one
+# TableDocNone. The binary carries both and its own account of what it walked.
+.PHONY: tables-doctags
+tables-doctags: bin/schema test/tables/doctags_main.cpp
+	@rm -rf build/doctags && mkdir -p build/doctags
+	./bin/schema generate --lang cpp --out build/doctags tables/examples
+	$(CXX) $(CXXFLAGS) -Ibuild/doctags test/tables/doctags_main.cpp build/doctags/TablesTable.cpp -o build/schema_test_doctags
+	./build/schema_test_doctags
+
+# THE NEGATIVE CONTROLS for the pair above (docs/SPEC-TABLES.md §8.7): a gate
+# that cannot go red proves nothing, so each claim is broken in a throwaway
+# copy of the generated header and the binary must FAIL.
+#
+#   1. NULL for an absent doc. The concatenating printer dereferences it, so
+#      the run faults or the address check names the row.
+#   2. A per-row inline empty literal instead of the unit's one TableDocNone.
+#      The text is right and the address is not, which is exactly the failure
+#      the shared-string claim exists to have.
+.PHONY: tables-doctags-negative-controls
+tables-doctags-negative-controls: bin/schema test/tables/doctags_main.cpp
+	@rm -rf build/doctags-null && mkdir -p build/doctags-null
+	./bin/schema generate --lang cpp --out build/doctags-null tables/examples
+	@sed -i.bak 's|", TableDocNone, 0, NULL }|", NULL, 0, NULL }|' build/doctags-null/TablesTable.h
+	@grep -q '", NULL, 0, NULL }' build/doctags-null/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL: the NULL-doc sabotage did not apply"; exit 1; }
+	$(CXX) $(CXXFLAGS) -Ibuild/doctags-null test/tables/doctags_main.cpp build/doctags-null/TablesTable.cpp -o build/schema_test_doctags_null
+	@if ./build/schema_test_doctags_null > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a NULL doc column did not take the gate down"; exit 1; \
+	fi
+	@echo "doc/tags negative control 1: a NULL doc column takes the gate down"
+	@rm -rf build/doctags-inline && mkdir -p build/doctags-inline
+	./bin/schema generate --lang cpp --out build/doctags-inline tables/examples
+	@sed -i.bak 's|, TableDocNone, 0, NULL }|, "", 0, NULL }|' build/doctags-inline/TablesTable.h
+	@grep -q ', "", 0, NULL }' build/doctags-inline/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL: the inline-empty sabotage did not apply"; exit 1; }
+	$(CXX) $(CXXFLAGS) -Ibuild/doctags-inline test/tables/doctags_main.cpp build/doctags-inline/TablesTable.cpp -o build/schema_test_doctags_inline
+	@if ./build/schema_test_doctags_inline > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a per-row empty literal did not take the shared-string gate down"; exit 1; \
+	fi
+	@echo "doc/tags negative control 2: a per-row empty literal takes the shared-string gate down"
+
 # ---------------------------------------------------------------------------
 # The BLOCK FORM (docs/SPEC-TABLES.md §19). Nothing declares it: every fixed table
 # has one, emitted on the side into <Base>Block.h/.cpp and <Base>Block.cs, and
@@ -2459,6 +2503,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-graph-walk
 	$(MAKE) tables-json-negative-control
+	$(MAKE) tables-doctags
+	$(MAKE) tables-doctags-negative-controls
 	$(MAKE) tables-ports-refuse-wide-scalars
 	$(MAKE) tables-scalars-block-asserts
 	# THE CONFORMANCE HARNESS (test/conformance/README.md): the same corpus as

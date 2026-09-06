@@ -2,13 +2,16 @@
 //
 // Newlines are terminator tokens, suppressed immediately after opening
 // punctuation, separators, infix operators and `else`, and immediately before
-// closing punctuation. Comments are skipped (doc comments are deferred — SPEC
-// §4.1); a block comment containing a newline acts as a newline, Go's rule.
+// closing punctuation. Comments are skipped, with one exception: a `///` DOC
+// comment (SPEC §4.1) is the one comment the compiler reads, and a run of
+// `///` lines scans as a single Doc token carrying the block's text. A block
+// comment containing a newline acts as a newline, Go's rule.
 package scanner
 
 import (
 	"bytes"
 	"fmt"
+	"strings"
 )
 
 type Kind int
@@ -21,6 +24,14 @@ const (
 	Float
 	String  // "..." — attribute values only (SPEC §4.2); Text keeps the quotes
 	Comment // raw-scan mode only (schemafmt) — Text carries the comment verbatim
+	// Doc is one `///` DOC COMMENT (SPEC §4.1): a contiguous run of `///`
+	// lines, each on a line of its own, scanned as ONE token whose Text is the
+	// block's text. That is what follows each marker, with at most one leading
+	// space and all trailing whitespace dropped, joined by single newlines. The
+	// run's own newlines are consumed with it, so the token sits directly
+	// before the item it documents. Never produced in raw-scan mode, where
+	// every comment is a Comment token verbatim.
+	Doc
 
 	LBrace // {
 	RBrace // }
@@ -165,6 +176,10 @@ type state struct {
 	errs         []error
 	keepComments bool // raw-scan mode: comments become tokens
 	pipeLine     bool // right of | on the current line: no wrapping there (SPEC §4.1)
+	// lineHasCode reports that a code token has been scanned on the current
+	// physical line, which is what makes a `///` there a TRAILING doc
+	// comment, refused by name (SPEC §4.1)
+	lineHasCode bool
 }
 
 func (s *state) pos() Pos { return Pos{s.file, s.line, s.col} }
@@ -186,6 +201,89 @@ func (s *state) peek2() byte {
 	return s.src[s.off+1]
 }
 
+func (s *state) peekAt(n int) byte {
+	if s.off+n >= len(s.src) {
+		return 0
+	}
+	return s.src[s.off+n]
+}
+
+// scanDoc scans a `///` DOC COMMENT from its first marker (SPEC §4.1): a
+// contiguous run of `///` lines, each carrying nothing but the comment, whose
+// last line immediately precedes the item it documents. The text is the block
+// verbatim with the marker removed. At most one leading space is dropped per
+// line, trailing whitespace is dropped, the lines join by single newlines, and
+// nothing else is interpreted. The run's newlines are consumed so the token
+// sits directly before the item.
+//
+// Every `///` line is part of a doc comment or is REFUSED BY NAME, each
+// refusal naming `//` as the spelling that works: a `///` that TRAILS code on
+// the item's own line (a qualification section included), and a block held
+// off its item by a blank line or by an ordinary comment line. A block above
+// something that carries no doc comment, such as package, a closing brace or
+// a `const(` item, reaches the parser as a Doc token and is refused there,
+// where the item is known. On a refusal nothing is returned and the line is
+// skipped.
+func (s *state) scanDoc() (Token, bool) {
+	p := s.pos()
+	if s.lineHasCode {
+		s.errf(p, "a doc comment stands on its own line above the item. A /// that trails code on the item's own line is refused. Write // for a trailing comment (SPEC §4.1)")
+		for s.off < len(s.src) && s.peek() != '\n' {
+			s.advance()
+		}
+		return Token{}, false
+	}
+	var lines []string
+	for {
+		s.advance()
+		s.advance()
+		s.advance() // the marker
+		start := s.off
+		for s.off < len(s.src) && s.peek() != '\n' {
+			s.advance()
+		}
+		text := strings.TrimRight(string(s.src[start:s.off]), " \t\r")
+		text = strings.TrimPrefix(text, " ")
+		lines = append(lines, text)
+		// the run continues when the next line is another `///` line
+		j := s.off + 1
+		for j < len(s.src) && (s.src[j] == ' ' || s.src[j] == '\t' || s.src[j] == '\r') {
+			j++
+		}
+		if s.off < len(s.src) && j+2 < len(s.src) && s.src[j] == '/' && s.src[j+1] == '/' && s.src[j+2] == '/' {
+			s.advance() // the newline
+			for s.off < j {
+				s.advance()
+			}
+			continue
+		}
+		break
+	}
+	text := strings.Join(lines, "\n")
+	// what follows the block: the item on the very next line, or a refusal
+	if s.off >= len(s.src) {
+		s.errf(p, "a doc comment touches the item it documents. This /// block has nothing under it. Write // for a comment that documents nothing (SPEC §4.1)")
+		return Token{}, false
+	}
+	j := s.off + 1
+	for j < len(s.src) && (s.src[j] == ' ' || s.src[j] == '\t' || s.src[j] == '\r') {
+		j++
+	}
+	switch {
+	case j >= len(s.src):
+		s.errf(p, "a doc comment touches the item it documents. This /// block has nothing under it. Write // for a comment that documents nothing (SPEC §4.1)")
+		return Token{}, false
+	case s.src[j] == '\n':
+		s.errf(p, "a doc comment touches the item it documents. This /// block is separated from it by a blank line. Close the gap, or write // for a working note (SPEC §4.1)")
+		return Token{}, false
+	case s.src[j] == '/' && j+1 < len(s.src) && (s.src[j+1] == '/' || s.src[j+1] == '*'):
+		s.errf(p, "a doc comment touches the item it documents. This /// block is separated from it by a comment line. Move the /// block directly above the item, or write // for a working note (SPEC §4.1)")
+		return Token{}, false
+	}
+	s.advance() // the newline: the token sits directly before the item
+	return Token{Doc, text, p}, true
+}
+
 func (s *state) advance() {
 	c := s.src[s.off]
 	s.off++
@@ -205,13 +303,31 @@ func isIdentPart(c byte) bool { return isIdentStart(c) || (c >= '0' && c <= '9')
 
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
+// next scans one token and keeps the per-line state a doc comment's placement
+// rule reads: a Newline opens a fresh line, and any other token is CODE on the
+// line it sits on.
 func (s *state) next() Token {
+	t := s.scanToken()
+	s.lineHasCode = t.Kind != Newline && t.Kind != EOF
+	return t
+}
+
+func (s *state) scanToken() Token {
 	for {
 		// skip spaces, carriage returns and comments; newlines are tokens
 		for {
 			c := s.peek()
 			if c == ' ' || c == '\t' || c == '\r' {
 				s.advance()
+				continue
+			}
+			if c == '/' && s.peek2() == '/' && !s.keepComments && s.peekAt(2) == '/' {
+				// a `///` DOC line (SPEC §4.1): the one comment the compiler
+				// reads. In raw-scan mode it stays a Comment token verbatim,
+				// which is what the formatter preserves.
+				if t, ok := s.scanDoc(); ok {
+					return t
+				}
 				continue
 			}
 			if c == '/' && s.peek2() == '/' {
@@ -437,6 +553,11 @@ func filter(raw []Token) []Token {
 
 	var out []Token
 	sincePipe := false // right of |, ALL suppression is off (SPEC §4.1)
+	// pipeNewline marks the last emitted Newline as the one that TERMINATED a
+	// qualification section: a comma on the next line is then a separator
+	// after a qualified variant, which the grammar refuses, and never a
+	// continuation of the section (SPEC §4.1)
+	pipeNewline := false
 	for _, t := range raw {
 		if t.Kind == Pipe {
 			sincePipe = true
@@ -449,12 +570,19 @@ func filter(raw []Token) []Token {
 			if last == Newline || (suppressAfter[last] && !sincePipe) {
 				continue
 			}
+			pipeNewline = sincePipe
 			sincePipe = false
 			out = append(out, t)
 			continue
 		}
 		if suppressBefore[t.Kind] && len(out) > 0 && out[len(out)-1].Kind == Newline {
 			out = out[:len(out)-1] // newline immediately before ) ] } is suppressed
+		}
+		if t.Kind == Comma && len(out) > 0 && out[len(out)-1].Kind == Newline && !pipeNewline {
+			// a newline immediately BEFORE a comma is suppressed too, so a
+			// variant list that puts its separators at the head of the line
+			// sees one separator rather than two (SPEC §4.1)
+			out = out[:len(out)-1]
 		}
 		if t.Kind == EOF && len(out) > 0 && out[len(out)-1].Kind == Newline {
 			out = out[:len(out)-1] // EOF synthesizes its own terminator in the parser

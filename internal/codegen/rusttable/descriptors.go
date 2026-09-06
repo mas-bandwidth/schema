@@ -33,6 +33,13 @@ func (g *gen) emitDescriptor(st *ir.Struct) {
 	guards := guardStrings(st)
 	g.pf("pub fn %s() -> &'static TableTypeInfo {\n", fn(st.Name, "table_type"))
 	reset := g.resetAdapter(st)
+	// the TAG lists (docs/SPEC-TABLES.md §8.1), one static per tagged field and
+	// one for a tagged declaration, named from the descriptor row as the
+	// function's other statics are
+	for _, f := range st.Fields {
+		g.emitTagsStatic(fieldTagsName(f), f.Tags)
+	}
+	g.emitTagsStatic(typeTagsName, st.Tags)
 	g.pf("    static FIELDS: [TableFieldInfo; %d] = [\n", len(st.Fields))
 	for _, f := range st.Fields {
 		g.pf("        %s,\n", g.descriptorRow(st, f, guards[f.Name]))
@@ -44,8 +51,46 @@ func (g *gen) emitDescriptor(st *ir.Struct) {
 	g.pf("        num_fields: %d,\n", len(st.Fields))
 	g.pf("        fields: &FIELDS,\n")
 	g.pf("        reset: %s,\n", reset)
+	doc, numTags, tags := annotationColumns(st.Doc, st.Tags, typeTagsName)
+	g.pf("        doc: %s,\n", doc)
+	g.pf("        num_tags: %d,\n", numTags)
+	g.pf("        tags: %s,\n", tags)
 	g.pf("    };\n")
 	g.pf("    &INFO\n}\n\n")
+}
+
+// typeTagsName is the name of the tag-list static a tagged declaration's
+// TableTypeInfo points at, and fieldTagsName the one a tagged field's row
+// points at. Both are scoped to the <name>_table_type function that holds
+// them, so they take no crate-level name from the schema author.
+const typeTagsName = "TAGS"
+
+func fieldTagsName(f *ir.Field) string { return ir.RustConstName(f.Name) + "_TAGS" }
+
+// emitTagsStatic emits one tag list as a static array of string literals
+// (docs/SPEC-TABLES.md §8.1), and nothing at all for an item with no tags:
+// absence is 0 and None in the row, never a per-row array.
+func (g *gen) emitTagsStatic(name string, tags []string) {
+	if len(tags) == 0 {
+		return
+	}
+	g.pf("    static %s: [&str; %d] = [%s];\n", name, len(tags), ir.QuotedTags(tags))
+}
+
+// annotationColumns renders a row's doc, num_tags and tags columns: the shared
+// empty doc, and None where the item carries no tags. An absent tag list is
+// spelled the way every other absent column in a Rust row is spelled, so a
+// walk tests one thing to know whether a list is there.
+func annotationColumns(doc string, tags []string, tagsName string) (string, int, string) {
+	docColumn := "TABLE_DOC_NONE"
+	if doc != "" {
+		docColumn = ir.QuoteDoc(doc)
+	}
+	list := "None"
+	if len(tags) > 0 {
+		list = "Some(&" + tagsName + ")"
+	}
+	return docColumn, len(tags), list
 }
 
 // resetAdapter is the descriptor's reset hook: a private free function that
@@ -185,6 +230,10 @@ func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
 	fmt.Fprintf(&b, "            key_id: %s,\n", keyId)
 	fmt.Fprintf(&b, "            arms: %s,\n", arms)
 	fmt.Fprintf(&b, "            guard: %q,\n", guard)
+	doc, numTags, tags := annotationColumns(f.Doc, f.Tags, fieldTagsName(f))
+	fmt.Fprintf(&b, "            doc: %s,\n", doc)
+	fmt.Fprintf(&b, "            num_tags: %d,\n", numTags)
+	fmt.Fprintf(&b, "            tags: %s,\n", tags)
 	fmt.Fprintf(&b, "        }")
 	return b.String()
 }

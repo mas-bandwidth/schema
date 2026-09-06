@@ -580,6 +580,7 @@ func sortedKeys[V any](m map[string]V) []string {
 // table's closure contains plain `type` declarations whose storage the packet
 // emitter already wrote, and these codecs decode into those very classes.
 func (g *tableGen) emitTableClass(st *ir.Struct) {
+	g.pf("%s", ir.DocComment(st.Doc, "", "///"))
 	g.pf("/// table %s — TABLE-wire storage: public fields, every buffer allocated at\n", st.Name)
 	g.pf("/// construction, declared defaults in the field initializers\n")
 	g.pf("/// (docs/SPEC-TABLES.md), and the table verbs as METHODS on the value.\n")
@@ -588,6 +589,7 @@ func (g *tableGen) emitTableClass(st *ir.Struct) {
 		g.pf("  // empty body — presence is the payload\n")
 	}
 	for _, f := range st.Fields {
+		g.pf("%s", ir.DocComment(f.Doc, "  ", "///"))
 		g.emitStorageField(f)
 	}
 	g.pf("\n")

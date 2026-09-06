@@ -168,6 +168,13 @@ struct TableWideRange
     uint64_t hi[2];
 };
 
+// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+// block carries a doc column pointing at this one object, so absence costs a
+// unit no string data and a printer concatenates doc columns with no null
+// test. One definition for the whole unit: every absent doc compares equal by
+// address.
+inline const char TableDocNone[1] = "";
+
 // the arena's allocation front, defined with the variable-length runtime
 // below; a descriptor names it only through a pointer parameter.
 struct TableWorker;
@@ -246,6 +253,14 @@ struct TableFieldInfo
     // or the int32 cap. NULL on every field that is neither.
     void * ( * place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
+    // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+    // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
+    // none, never NULL. Its tags (SPEC §4.2) follow in declared order, and an
+    // untagged field is 0 beside NULL. Static, constant-initialized,
+    // allocating nothing.
+    const char * doc;
+    int32_t num_tags;
+    const char * const * tags;
 };
 
 struct TableTypeInfo
@@ -265,6 +280,11 @@ struct TableTypeInfo
     // and read through a region root. Nobody declares it; the compiler
     // works it out.
     bool variable;
+    // the declaration's own doc and tags, on the same terms as a field's
+    // (docs/SPEC-TABLES.md §8.1)
+    const char * doc;
+    int32_t num_tags;
+    const char * const * tags;
 };
 
 struct TableWriter
@@ -8544,31 +8564,31 @@ extern const TableTypeInfo WideRowEntriesEntryTableInfo;
 extern const TableTypeInfo WideRowTableInfo;
 
 inline const TableFieldInfo RowEntriesEntryTableFields[] = {
-    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( RowEntriesEntry, key ), (uint32_t) sizeof( RowEntriesEntry::key ), (uint32_t) offsetof( RowEntriesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RowEntriesEntry, value ), (uint32_t) sizeof( RowEntriesEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( RowEntriesEntry, key ), (uint32_t) sizeof( RowEntriesEntry::key ), (uint32_t) offsetof( RowEntriesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RowEntriesEntry, value ), (uint32_t) sizeof( RowEntriesEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
-inline const TableTypeInfo RowEntriesEntryTableInfo = { "RowEntriesEntry", (uint32_t) sizeof( RowEntriesEntry ), 2, RowEntriesEntryTableFields, +[]( void * p ) { RowEntriesEntryReset( *(RowEntriesEntry *) p ); }, false };
+inline const TableTypeInfo RowEntriesEntryTableInfo = { "RowEntriesEntry", (uint32_t) sizeof( RowEntriesEntry ), 2, RowEntriesEntryTableFields, +[]( void * p ) { RowEntriesEntryReset( *(RowEntriesEntry *) p ); }, false, TableDocNone, 0, NULL };
 inline const TableTypeInfo * RowEntriesEntryTableType() { return &RowEntriesEntryTableInfo; }
 
 inline const TableFieldInfo RowTableFields[] = {
-    { "entries", "entries", "map[string(8)]Item", 0xc5b2a72c0845a253ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Row, entries ), (uint32_t) sizeof( RowEntriesEntry ), (uint32_t) offsetof( Row, entries.count ), 0xffffffffu, &RowEntriesEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL || key_length > kRowEntriesEntryKeyBound ) { return NULL; } RowEntriesEntry * placed = TableMapPlace( worker, *(TableMap<RowEntriesEntry> *) slot, key ); if ( placed != NULL ) { TableEntrySetKey( *placed, key, key_length ); } return (void *) placed; }, "" },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Row, after ), (uint32_t) sizeof( Row::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "entries", "entries", "map[string(8)]Item", 0xc5b2a72c0845a253ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Row, entries ), (uint32_t) sizeof( RowEntriesEntry ), (uint32_t) offsetof( Row, entries.count ), 0xffffffffu, &RowEntriesEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL || key_length > kRowEntriesEntryKeyBound ) { return NULL; } RowEntriesEntry * placed = TableMapPlace( worker, *(TableMap<RowEntriesEntry> *) slot, key ); if ( placed != NULL ) { TableEntrySetKey( *placed, key, key_length ); } return (void *) placed; }, "", TableDocNone, 0, NULL },
+    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Row, after ), (uint32_t) sizeof( Row::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
-inline const TableTypeInfo RowTableInfo = { "Row", (uint32_t) sizeof( Row ), 2, RowTableFields, +[]( void * p ) { RowReset( *(Row *) p ); }, true };
+inline const TableTypeInfo RowTableInfo = { "Row", (uint32_t) sizeof( Row ), 2, RowTableFields, +[]( void * p ) { RowReset( *(Row *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * RowTableType() { return &RowTableInfo; }
 
 inline const TableFieldInfo WideRowEntriesEntryTableFields[] = {
-    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRowEntriesEntry, key ), (uint32_t) sizeof( WideRowEntriesEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRowEntriesEntry, value ), (uint32_t) sizeof( WideRowEntriesEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRowEntriesEntry, key ), (uint32_t) sizeof( WideRowEntriesEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRowEntriesEntry, value ), (uint32_t) sizeof( WideRowEntriesEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
-inline const TableTypeInfo WideRowEntriesEntryTableInfo = { "WideRowEntriesEntry", (uint32_t) sizeof( WideRowEntriesEntry ), 2, WideRowEntriesEntryTableFields, +[]( void * p ) { WideRowEntriesEntryReset( *(WideRowEntriesEntry *) p ); }, false };
+inline const TableTypeInfo WideRowEntriesEntryTableInfo = { "WideRowEntriesEntry", (uint32_t) sizeof( WideRowEntriesEntry ), 2, WideRowEntriesEntryTableFields, +[]( void * p ) { WideRowEntriesEntryReset( *(WideRowEntriesEntry *) p ); }, false, TableDocNone, 0, NULL };
 inline const TableTypeInfo * WideRowEntriesEntryTableType() { return &WideRowEntriesEntryTableInfo; }
 
 inline const TableFieldInfo WideRowTableFields[] = {
-    { "entries", "entries", "map[uint32]Item", 0xc5b2a72c0845a253ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( WideRow, entries ), (uint32_t) sizeof( WideRowEntriesEntry ), (uint32_t) offsetof( WideRow, entries.count ), 0xffffffffu, &WideRowEntriesEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { WideRowEntriesEntry * placed = TableMapPlace( worker, *(TableMap<WideRowEntriesEntry> *) slot, (uint32_t) key_value ); if ( placed != NULL ) { TableEntrySetKey( *placed, (uint32_t) key_value ); } return (void *) placed; }, "" },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRow, after ), (uint32_t) sizeof( WideRow::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "entries", "entries", "map[uint32]Item", 0xc5b2a72c0845a253ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( WideRow, entries ), (uint32_t) sizeof( WideRowEntriesEntry ), (uint32_t) offsetof( WideRow, entries.count ), 0xffffffffu, &WideRowEntriesEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { WideRowEntriesEntry * placed = TableMapPlace( worker, *(TableMap<WideRowEntriesEntry> *) slot, (uint32_t) key_value ); if ( placed != NULL ) { TableEntrySetKey( *placed, (uint32_t) key_value ); } return (void *) placed; }, "", TableDocNone, 0, NULL },
+    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRow, after ), (uint32_t) sizeof( WideRow::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
-inline const TableTypeInfo WideRowTableInfo = { "WideRow", (uint32_t) sizeof( WideRow ), 2, WideRowTableFields, +[]( void * p ) { WideRowReset( *(WideRow *) p ); }, true };
+inline const TableTypeInfo WideRowTableInfo = { "WideRow", (uint32_t) sizeof( WideRow ), 2, WideRowTableFields, +[]( void * p ) { WideRowReset( *(WideRow *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * WideRowTableType() { return &WideRowTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

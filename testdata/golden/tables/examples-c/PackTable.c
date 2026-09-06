@@ -1707,22 +1707,22 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
 /* ---- json walk: end ---- */
 
 static const TableFieldInfo schema_tabledemo_gunner_settings_fields_[] = {
-    { "reaction", "reaction", "float32", 0x900f, 10, 0, 0, 0, 0, (uint32_t) offsetof( GunnerSettings, reaction ), (uint32_t) sizeof( ( (GunnerSettings *) 0 )->reaction ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "tracking", "tracking", "bool", 0x53d5, 1, 0, 0, 0, 0, (uint32_t) offsetof( GunnerSettings, tracking ), (uint32_t) sizeof( ( (GunnerSettings *) 0 )->tracking ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "callsign", "callsign", "string", 0x74dc, 12, 0, 1, 0, 24, (uint32_t) offsetof( GunnerSettings, callsign ), (uint32_t) sizeof( ( (GunnerSettings *) 0 )->callsign ), (uint32_t) offsetof( GunnerSettings, callsign_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "reaction", "reaction", "float32", 0x900f, 10, 0, 0, 0, 0, (uint32_t) offsetof( GunnerSettings, reaction ), (uint32_t) sizeof( ( (GunnerSettings *) 0 )->reaction ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "tracking", "tracking", "bool", 0x53d5, 1, 0, 0, 0, 0, (uint32_t) offsetof( GunnerSettings, tracking ), (uint32_t) sizeof( ( (GunnerSettings *) 0 )->tracking ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "callsign", "callsign", "string", 0x74dc, 12, 0, 1, 0, 24, (uint32_t) offsetof( GunnerSettings, callsign ), (uint32_t) sizeof( ( (GunnerSettings *) 0 )->callsign ), (uint32_t) offsetof( GunnerSettings, callsign_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_tabledemo_gunner_settings_info_ = { "GunnerSettings", (uint32_t) sizeof( GunnerSettings ), 3, schema_tabledemo_gunner_settings_fields_, schema_tabledemo_gunner_settings_reset_raw_ };
+const TableTypeInfo schema_tabledemo_gunner_settings_info_ = { "GunnerSettings", (uint32_t) sizeof( GunnerSettings ), 3, schema_tabledemo_gunner_settings_fields_, schema_tabledemo_gunner_settings_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_tabledemo_ship_entry_fields_[] = {
-    { "display_name", "name", "string", 0xcb8b, 12, 0, 1, 0, 32, (uint32_t) offsetof( ShipEntry, display_name ), (uint32_t) sizeof( ( (ShipEntry *) 0 )->display_name ), (uint32_t) offsetof( ShipEntry, display_name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "health", "health", "float32", 0x8617, 10, 0, 0, 0, 0, (uint32_t) offsetof( ShipEntry, health ), (uint32_t) sizeof( ( (ShipEntry *) 0 )->health ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "mass", "mass", "float32", 0xe7a6, 10, 0, 0, 0, 0, (uint32_t) offsetof( ShipEntry, mass ), (uint32_t) sizeof( ( (ShipEntry *) 0 )->mass ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "hardpoints", "hardpoints", "int32", 0xc4b2, 4, 1, 1, 0, 4, (uint32_t) offsetof( ShipEntry, hardpoints ), (uint32_t) sizeof( ( (ShipEntry *) 0 )->hardpoints[0] ), (uint32_t) offsetof( ShipEntry, hardpoints_count ), 0xffffffffu, NULL, 1, 0.0, 8.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "gunner", "gunner", "GunnerSettings", 0x2bc9, 13, 0, 0, 1, 0, (uint32_t) offsetof( ShipEntry, gunner ), (uint32_t) sizeof( ( (ShipEntry *) 0 )->gunner ), 0xffffffffu, (uint32_t) offsetof( ShipEntry, gunner_present ), &schema_tabledemo_gunner_settings_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "display_name", "name", "string", 0xcb8b, 12, 0, 1, 0, 32, (uint32_t) offsetof( ShipEntry, display_name ), (uint32_t) sizeof( ( (ShipEntry *) 0 )->display_name ), (uint32_t) offsetof( ShipEntry, display_name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "health", "health", "float32", 0x8617, 10, 0, 0, 0, 0, (uint32_t) offsetof( ShipEntry, health ), (uint32_t) sizeof( ( (ShipEntry *) 0 )->health ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "mass", "mass", "float32", 0xe7a6, 10, 0, 0, 0, 0, (uint32_t) offsetof( ShipEntry, mass ), (uint32_t) sizeof( ( (ShipEntry *) 0 )->mass ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "hardpoints", "hardpoints", "int32", 0xc4b2, 4, 1, 1, 0, 4, (uint32_t) offsetof( ShipEntry, hardpoints ), (uint32_t) sizeof( ( (ShipEntry *) 0 )->hardpoints[0] ), (uint32_t) offsetof( ShipEntry, hardpoints_count ), 0xffffffffu, NULL, 1, 0.0, 8.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "gunner", "gunner", "GunnerSettings", 0x2bc9, 13, 0, 0, 1, 0, (uint32_t) offsetof( ShipEntry, gunner ), (uint32_t) sizeof( ( (ShipEntry *) 0 )->gunner ), 0xffffffffu, (uint32_t) offsetof( ShipEntry, gunner_present ), &schema_tabledemo_gunner_settings_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_tabledemo_ship_entry_info_ = { "ShipEntry", (uint32_t) sizeof( ShipEntry ), 5, schema_tabledemo_ship_entry_fields_, schema_tabledemo_ship_entry_reset_raw_ };
+const TableTypeInfo schema_tabledemo_ship_entry_info_ = { "ShipEntry", (uint32_t) sizeof( ShipEntry ), 5, schema_tabledemo_ship_entry_fields_, schema_tabledemo_ship_entry_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableVariantInfo schema_tabledemo_global_settings_difficulty_variants_[] = {
     { "None", 0x0000 },
@@ -1731,13 +1731,13 @@ static const TableVariantInfo schema_tabledemo_global_settings_difficulty_varian
     { "Hard", 0xc313 },
 };
 static const TableFieldInfo schema_tabledemo_global_settings_fields_[] = {
-    { "tick_rate", "tick_rate", "uint32", 0x1953, 8, 0, 0, 0, 0, (uint32_t) offsetof( GlobalSettings, tick_rate ), (uint32_t) sizeof( ( (GlobalSettings *) 0 )->tick_rate ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 240.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "difficulty", "difficulty", "Difficulty", 0xd53f, 7, 0, 0, 0, 0, (uint32_t) offsetof( GlobalSettings, difficulty ), (uint32_t) sizeof( ( (GlobalSettings *) 0 )->difficulty ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 3, schema_tabledemo_global_settings_difficulty_variants_, 1, NULL, NULL, -1, NULL, "" },
-    { "build_note", "build_note", "string", 0xb2d4, 12, 0, 1, 0, 48, (uint32_t) offsetof( GlobalSettings, build_note ), (uint32_t) sizeof( ( (GlobalSettings *) 0 )->build_note ), (uint32_t) offsetof( GlobalSettings, build_note_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "spawn_delays", "spawn_delays", "float32", 0x7c01, 10, 1, 0, 0, 3, (uint32_t) offsetof( GlobalSettings, spawn_delays ), (uint32_t) sizeof( ( (GlobalSettings *) 0 )->spawn_delays[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "tick_rate", "tick_rate", "uint32", 0x1953, 8, 0, 0, 0, 0, (uint32_t) offsetof( GlobalSettings, tick_rate ), (uint32_t) sizeof( ( (GlobalSettings *) 0 )->tick_rate ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 240.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "difficulty", "difficulty", "Difficulty", 0xd53f, 7, 0, 0, 0, 0, (uint32_t) offsetof( GlobalSettings, difficulty ), (uint32_t) sizeof( ( (GlobalSettings *) 0 )->difficulty ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 3, schema_tabledemo_global_settings_difficulty_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "build_note", "build_note", "string", 0xb2d4, 12, 0, 1, 0, 48, (uint32_t) offsetof( GlobalSettings, build_note ), (uint32_t) sizeof( ( (GlobalSettings *) 0 )->build_note ), (uint32_t) offsetof( GlobalSettings, build_note_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "spawn_delays", "spawn_delays", "float32", 0x7c01, 10, 1, 0, 0, 3, (uint32_t) offsetof( GlobalSettings, spawn_delays ), (uint32_t) sizeof( ( (GlobalSettings *) 0 )->spawn_delays[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_tabledemo_global_settings_info_ = { "GlobalSettings", (uint32_t) sizeof( GlobalSettings ), 4, schema_tabledemo_global_settings_fields_, schema_tabledemo_global_settings_reset_raw_ };
+const TableTypeInfo schema_tabledemo_global_settings_info_ = { "GlobalSettings", (uint32_t) sizeof( GlobalSettings ), 4, schema_tabledemo_global_settings_fields_, schema_tabledemo_global_settings_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableVariantInfo schema_tabledemo_pack_config_ships_keys_[] = {
     { "None", 0x0000 },
@@ -1752,14 +1752,14 @@ static const TableVariantInfo schema_tabledemo_pack_config_thresholds_keys_[] = 
     { "Hard", 0xc313 },
 };
 static const TableFieldInfo schema_tabledemo_pack_config_fields_[] = {
-    { "version", "version", "uint32", 0xe8e6, 8, 0, 0, 0, 0, (uint32_t) offsetof( PackConfig, version ), (uint32_t) sizeof( ( (PackConfig *) 0 )->version ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "global", "global", "GlobalSettings", 0x1b51, 13, 0, 0, 0, 0, (uint32_t) offsetof( PackConfig, global ), (uint32_t) sizeof( ( (PackConfig *) 0 )->global ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_global_settings_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "ships", "ships", "ShipEntry", 0x2d39, 13, 1, 0, 0, (int32_t) SHIP_TYPE_MAX, (uint32_t) offsetof( PackConfig, ships ), (uint32_t) sizeof( ( (PackConfig *) 0 )->ships[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_ship_entry_info_, 0, 0.0, 0.0, -1, NULL, 0, "ShipType", schema_tabledemo_pack_config_ships_keys_, 3, NULL, "" },
-    { "thresholds", "thresholds", "int32", 0xb2eb, 4, 1, 0, 0, (int32_t) DIFFICULTY_MAX, (uint32_t) offsetof( PackConfig, thresholds ), (uint32_t) sizeof( ( (PackConfig *) 0 )->thresholds[0] ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, -1, NULL, 0, "Difficulty", schema_tabledemo_pack_config_thresholds_keys_, 3, NULL, "" },
-    { "reserves", "reserves", "ShipEntry", 0x049d, 13, 1, 1, 0, 3, (uint32_t) offsetof( PackConfig, reserves ), (uint32_t) sizeof( ( (PackConfig *) 0 )->reserves[0] ), (uint32_t) offsetof( PackConfig, reserves_count ), 0xffffffffu, &schema_tabledemo_ship_entry_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "version", "version", "uint32", 0xe8e6, 8, 0, 0, 0, 0, (uint32_t) offsetof( PackConfig, version ), (uint32_t) sizeof( ( (PackConfig *) 0 )->version ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "global", "global", "GlobalSettings", 0x1b51, 13, 0, 0, 0, 0, (uint32_t) offsetof( PackConfig, global ), (uint32_t) sizeof( ( (PackConfig *) 0 )->global ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_global_settings_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "ships", "ships", "ShipEntry", 0x2d39, 13, 1, 0, 0, (int32_t) SHIP_TYPE_MAX, (uint32_t) offsetof( PackConfig, ships ), (uint32_t) sizeof( ( (PackConfig *) 0 )->ships[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_ship_entry_info_, 0, 0.0, 0.0, -1, NULL, 0, "ShipType", schema_tabledemo_pack_config_ships_keys_, 3, NULL, "", TableDocNone, 0, NULL },
+    { "thresholds", "thresholds", "int32", 0xb2eb, 4, 1, 0, 0, (int32_t) DIFFICULTY_MAX, (uint32_t) offsetof( PackConfig, thresholds ), (uint32_t) sizeof( ( (PackConfig *) 0 )->thresholds[0] ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, -1, NULL, 0, "Difficulty", schema_tabledemo_pack_config_thresholds_keys_, 3, NULL, "", TableDocNone, 0, NULL },
+    { "reserves", "reserves", "ShipEntry", 0x049d, 13, 1, 1, 0, 3, (uint32_t) offsetof( PackConfig, reserves ), (uint32_t) sizeof( ( (PackConfig *) 0 )->reserves[0] ), (uint32_t) offsetof( PackConfig, reserves_count ), 0xffffffffu, &schema_tabledemo_ship_entry_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_tabledemo_pack_config_info_ = { "PackConfig", (uint32_t) sizeof( PackConfig ), 5, schema_tabledemo_pack_config_fields_, schema_tabledemo_pack_config_reset_raw_ };
+const TableTypeInfo schema_tabledemo_pack_config_info_ = { "PackConfig", (uint32_t) sizeof( PackConfig ), 5, schema_tabledemo_pack_config_fields_, schema_tabledemo_pack_config_reset_raw_, TableDocNone, 0, NULL };
 
 int schema_tabledemo_gunner_settings_from_json_( GunnerSettings * value, const char * text, int64_t bytes, TableReport * report )
 {

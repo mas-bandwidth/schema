@@ -167,6 +167,13 @@ struct TableWideRange
     uint64_t hi[2];
 };
 
+// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+// block carries a doc column pointing at this one object, so absence costs a
+// unit no string data and a printer concatenates doc columns with no null
+// test. One definition for the whole unit: every absent doc compares equal by
+// address.
+inline const char TableDocNone[1] = "";
+
 // the arena's allocation front, defined with the variable-length runtime
 // below; a descriptor names it only through a pointer parameter.
 struct TableWorker;
@@ -245,6 +252,14 @@ struct TableFieldInfo
     // or the int32 cap. NULL on every field that is neither.
     void * ( * place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
+    // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+    // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
+    // none, never NULL. Its tags (SPEC §4.2) follow in declared order, and an
+    // untagged field is 0 beside NULL. Static, constant-initialized,
+    // allocating nothing.
+    const char * doc;
+    int32_t num_tags;
+    const char * const * tags;
 };
 
 struct TableTypeInfo
@@ -264,6 +279,11 @@ struct TableTypeInfo
     // and read through a region root. Nobody declares it; the compiler
     // works it out.
     bool variable;
+    // the declaration's own doc and tags, on the same terms as a field's
+    // (docs/SPEC-TABLES.md §8.1)
+    const char * doc;
+    int32_t num_tags;
+    const char * const * tags;
 };
 
 struct TableWriter
@@ -6373,16 +6393,16 @@ extern const TableTypeInfo OnlyTableInfo;
 extern const TableTypeInfo GateTableInfo;
 
 inline const TableFieldInfo OnlyTableFields[] = {
-    { "w", "w", "int32", 0xaf63ea4c86020456ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Only, w ), (uint32_t) sizeof( Only::w ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "w", "w", "int32", 0xaf63ea4c86020456ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Only, w ), (uint32_t) sizeof( Only::w ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
-inline const TableTypeInfo OnlyTableInfo = { "Only", (uint32_t) sizeof( Only ), 1, OnlyTableFields, +[]( void * p ) { OnlyReset( *(Only *) p ); }, false };
+inline const TableTypeInfo OnlyTableInfo = { "Only", (uint32_t) sizeof( Only ), 1, OnlyTableFields, +[]( void * p ) { OnlyReset( *(Only *) p ); }, false, TableDocNone, 0, NULL };
 inline const TableTypeInfo * OnlyTableType() { return &OnlyTableInfo; }
 
 inline const TableFieldInfo GateTableFields[] = {
-    { "reach", "reach", "Reach", 0x891da1f305deb858ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Gate, reach ), (uint32_t) sizeof( Gate::reach ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "only"; case 2: return "text"; case 3: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x072ddab46af04ab7ull; case 2: return 0xfa04f4ef1995407eull; case 3: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Reach[] = { { "only", "only", "Only", 0x072ddab46af04ab7ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) OnlyAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) OnlyEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Reach, only ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &OnlyTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" }, { "text", "text", "string", 0xfa04f4ef1995407eull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Reach, text ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Reach, plain ), (uint32_t) sizeof( Reach::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Reach, only ), NULL, &arm_fields_Reach[0], 8 }, { (uint32_t) offsetof( Reach, text ), NULL, &arm_fields_Reach[1], 8 }, { (uint32_t) offsetof( Reach, plain ), NULL, &arm_fields_Reach[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Reach, type ), (uint32_t) sizeof( Reach::type ), arms }; return &info; }, NULL, "" },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Gate, after ), (uint32_t) sizeof( Gate::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "reach", "reach", "Reach", 0x891da1f305deb858ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Gate, reach ), (uint32_t) sizeof( Gate::reach ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "only"; case 2: return "text"; case 3: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x072ddab46af04ab7ull; case 2: return 0xfa04f4ef1995407eull; case 3: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Reach[] = { { "only", "only", "Only", 0x072ddab46af04ab7ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) OnlyAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) OnlyEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Reach, only ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &OnlyTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "text", "text", "string", 0xfa04f4ef1995407eull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Reach, text ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Reach, plain ), (uint32_t) sizeof( Reach::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Reach, only ), NULL, &arm_fields_Reach[0], 8 }, { (uint32_t) offsetof( Reach, text ), NULL, &arm_fields_Reach[1], 8 }, { (uint32_t) offsetof( Reach, plain ), NULL, &arm_fields_Reach[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Reach, type ), (uint32_t) sizeof( Reach::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL },
+    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Gate, after ), (uint32_t) sizeof( Gate::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
-inline const TableTypeInfo GateTableInfo = { "Gate", (uint32_t) sizeof( Gate ), 2, GateTableFields, +[]( void * p ) { GateReset( *(Gate *) p ); }, true };
+inline const TableTypeInfo GateTableInfo = { "Gate", (uint32_t) sizeof( Gate ), 2, GateTableFields, +[]( void * p ) { GateReset( *(Gate *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * GateTableType() { return &GateTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

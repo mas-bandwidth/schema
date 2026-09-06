@@ -70,6 +70,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	g.emitFieldsClass(st)
 	guards := tableGuardStrings(st)
 	lower := lowerFirst(st.Name)
+	cls := fieldsClass(st.Name)
 	g.pf("// %s's descriptor (docs/SPEC-TABLES.md §8) — a compile-time constant, so\n", st.Name)
 	g.pf("// reaching for it costs nothing and a walk over it allocates nothing.\n")
 	g.pf("const TableTypeInfo %sTableType = TableTypeInfo(\n", lower)
@@ -79,7 +80,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	} else {
 		g.pf("  fields: <TableFieldInfo>[\n")
 		for _, f := range st.Fields {
-			g.emitTableFieldDescriptor(f, guards[f.Name])
+			g.emitTableFieldDescriptor(cls, f, guards[f.Name])
 		}
 		g.pf("  ],\n")
 	}
@@ -87,12 +88,76 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	// cannot express without a function — a generic walker that FILLS a value
 	// establishes an absent field's defaults through it, holding no type to
 	// spell. It is <name>Reset, the prefill the wire's read path already calls.
-	cls := fieldsClass(st.Name)
 	for _, m := range []string{"reset", "getRaw", "setRaw", "child", "buffer",
 		"getCount", "setCount", "getPresent", "setPresent", "getTag", "setTag", "armPayload"} {
 		g.pf("  %s: %s.%s,\n", m, cls, m)
 	}
+	g.annotationColumns("  ", st.Doc, st.Tags, cls+"."+typeTagsName)
 	g.pf(");\n\n")
+}
+
+// anyTagged says a type's accessor class carries tag lists at all: the
+// declaration's own, or one of its fields'.
+func anyTagged(st *ir.Struct) bool {
+	if len(st.Tags) > 0 {
+		return true
+	}
+	for _, f := range st.Fields {
+		if len(f.Tags) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// typeTagsName is the tag-list static a TYPE's descriptor names. A field's is
+// named for the field.
+const typeTagsName = "tags"
+
+// tagsName is the name of the tag-list static a tagged field's row names.
+func tagsName(f *ir.Field) string { return dartName(f.Name) + "Tags" }
+
+// emitTagsStatic writes ONE tag list (docs/SPEC-TABLES.md §8.1), and nothing at
+// all for an item with no tags: absence is 0 and a null list in the row, never
+// a per-row empty array.
+func (g *tableGen) emitTagsStatic(name string, tags []string) {
+	if len(tags) == 0 {
+		return
+	}
+	quoted := make([]string, len(tags))
+	for i, t := range tags {
+		quoted[i] = ir.QuoteDocDart(t)
+	}
+	head := fmt.Sprintf("  static const %s = <String>[", name)
+	if one := head + strings.Join(quoted, ", ") + "];"; len(one) <= 80 {
+		g.pf("%s\n", one)
+		return
+	}
+	g.pf("%s\n", head)
+	for _, q := range quoted {
+		g.pf("    %s,\n", q)
+	}
+	g.pf("  ];\n")
+}
+
+// annotationColumns writes a row's doc, numTags and tags columns at the row's
+// own indentation (docs/SPEC-TABLES.md §8.1): the shared empty doc where the item
+// carries none, and a null list where it carries no tags.
+func (g *tableGen) annotationColumns(indent, doc string, tags []string, tagsRef string) {
+	docColumn := "TableDocNone"
+	if doc != "" {
+		docColumn = ir.QuoteDocDart(doc)
+	}
+	// a string literal carries no break of its own, so the argument stays on
+	// one line however long the text is: that is what `dart format` writes,
+	// and the generated tree is held to it
+	g.pf("%sdoc: %s,\n", indent, docColumn)
+	g.pf("%snumTags: %d,\n", indent, len(tags))
+	list := "null"
+	if len(tags) > 0 {
+		list = tagsRef
+	}
+	g.pf("%stags: %s,\n", indent, list)
 }
 
 // emitFieldsClass writes the per-type dispatch: one static method per storage
@@ -107,6 +172,17 @@ func (g *tableGen) emitFieldsClass(st *ir.Struct) {
 	g.pf("// carries these tear-offs instead. Static methods rather than closures\n")
 	g.pf("// because a tear-off is a compile-time constant and a closure is not.\n")
 	g.pf("abstract final class %s {\n", cls)
+	// the TAG lists (docs/SPEC-TABLES.md §8.1), one const per tagged field and one
+	// for a tagged declaration, each named from the descriptor row that points
+	// at it. They are MEMBERS for the reason the enum vocabularies are: as
+	// members they claim not one name a schema could declare (§11).
+	if anyTagged(st) {
+		for _, f := range st.Fields {
+			g.emitTagsStatic(tagsName(f), f.Tags)
+		}
+		g.emitTagsStatic(typeTagsName, st.Tags)
+		g.pf("\n")
+	}
 	call := fmt.Sprintf("(o as %s).reset();", st.Name)
 	if len("  static void reset(Object o) => ")+len(call) <= 80 {
 		g.pf("  static void reset(Object o) => %s\n\n", call)
@@ -322,8 +398,9 @@ func (g *tableGen) armCase(st *ir.Struct, f *ir.Field, i int) []string {
 	return lines
 }
 
-// emitTableFieldDescriptor writes one field's const descriptor row.
-func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
+// emitTableFieldDescriptor writes one field's const descriptor row. cls is the
+// owner's accessor class, which carries the tag list a tagged row names.
+func (g *tableGen) emitTableFieldDescriptor(cls string, f *ir.Field, guard string) {
 	id := ir.TableFieldId(f)
 	kind := tableScalarKind(f)
 	if f.Type.Kind == ir.TBytes {
@@ -439,6 +516,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	g.pf("      guard: '%s',\n", guard)
 	g.pf("      table: %s,\n", table)
 	g.pf("      arms: %s,\n", arms)
+	g.annotationColumns("      ", f.Doc, f.Tags, cls+"."+tagsName(f))
 	g.pf("    ),\n")
 }
 

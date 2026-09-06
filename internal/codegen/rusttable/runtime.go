@@ -464,6 +464,15 @@ pub struct TableUnionInfo {
     pub arms: &'static [TableUnionArmInfo],
 }
 
+// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+// block carries a doc column naming this one item, so absence costs a unit no
+// string data and a printer concatenates doc columns with no None test. One
+// definition for the whole unit: a STATIC, so every absent doc column is the
+// same object and comparing two by address answers the shared-string claim.
+// A const would be a value copied into each row, which is the very thing the
+// claim rules out.
+pub static TABLE_DOC_NONE: &str = "";
+
 pub struct TableFieldInfo {
     pub name: &'static str,      // schema field name, e.g. "health"
     pub json: &'static str,      // the TEXT form's key: json = "key", else name (§16.3)
@@ -505,6 +514,14 @@ pub struct TableFieldInfo {
     // descriptor stays a constant.
     pub arms: Option<fn() -> &'static TableUnionInfo>,
     pub guard: &'static str, // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
+    // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+    // block above it, verbatim (SPEC §4.1), TABLE_DOC_NONE when there is
+    // none, never None, and its tags (SPEC §4.2) in declared order. An
+    // untagged field is 0 and None, the same absence every other absent
+    // column in a row spells. Static, constant data, allocating nothing.
+    pub doc: &'static str,
+    pub num_tags: i32,
+    pub tags: Option<&'static [&'static str]>,
 }
 
 pub struct TableTypeInfo {
@@ -516,6 +533,11 @@ pub struct TableTypeInfo {
     // walker that fills a value has to be able to establish the defaults an
     // absent field takes, and it holds no type to spell.
     pub reset: fn(*mut u8),
+    // the declaration's own doc and tags, on the same terms as a field's
+    // (docs/SPEC-TABLES.md §8.1)
+    pub doc: &'static str,
+    pub num_tags: i32,
+    pub tags: Option<&'static [&'static str]>,
 }
 
 // ---- json walk: begin ----

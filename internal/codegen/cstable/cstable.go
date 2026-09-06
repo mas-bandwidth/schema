@@ -376,6 +376,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // the unit, which is the generic-walk gate (`make tables-cs-json-walk`).
 func (g *tableGen) emitRuntime() {
 	g.tf("%s", tableRuntime(g.anyKeyed))
+	g.pf("%s", tableDocNone())
 	g.pf("%s", tableBitHelpers())
 	g.pf("%s", tableJsonWalkSource)
 }
@@ -706,6 +707,20 @@ public sealed class TableKeyed<T, E> where E : struct, System.Enum
 
 `
 
+// tableDocNone is THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1), on Schema
+// beside the codecs. Emitted once per unit, with the runtime: a unit's files
+// compile into one assembly and Schema is partial across them, so every
+// descriptor row of the unit names this one definition.
+func tableDocNone() string {
+	return `// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+// block carries a doc column naming this one constant, so absence costs a
+// unit no string data and a printer concatenates doc columns with no null
+// test.
+public const string TableDocNone = "";
+
+`
+}
+
 // tableBitHelpers is the float <-> IEEE-754 bit pattern pair, on Schema
 // beside the codecs. Emitted once per unit, with the runtime.
 func tableBitHelpers() string {
@@ -840,6 +855,16 @@ public sealed class TableFieldInfo
     // one — both carry a value -> name function and a variant id.
     public TableUnionInfo Arms;
 
+    // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+    // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
+    // none, never null. Its tags (SPEC §4.2) follow in declared order, and an
+    // untagged field is 0 beside null. Static, built once with the descriptor
+    // and cached with it, so a walk that prints every doc and every tag
+    // allocates nothing.
+    public string Doc;
+    public int NumTags;
+    public string[] Tags;
+
     // ---- the storage location, in C#'s own currency ----
     //
     // GetRaw/SetRaw carry one NUMERIC element: an integer sign-extended into
@@ -895,6 +920,11 @@ public sealed class TableTypeInfo
     // could not express without a function (docs/SPEC-TABLES.md §8.1). It calls
     // TableReset, the same prefill the wire's read path calls.
     public Action<object> Reset;
+    // the declaration's own doc and tags, on the same terms as a field's
+    // (docs/SPEC-TABLES.md §8.1)
+    public string Doc;
+    public int NumTags;
+    public string[] Tags;
 }
 
 // TableWriter is a ref struct over the caller's span: the wire is written in

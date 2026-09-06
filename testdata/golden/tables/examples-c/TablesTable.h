@@ -157,6 +157,13 @@ typedef struct TableVariantInfo
     uint16_t id;
 } TableVariantInfo;
 
+/* THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+   block carries a doc column pointing at this one object, so absence costs a
+   unit no string data and a printer concatenates doc columns with no null
+   test. One definition per translation unit, and the descriptors of a unit
+   are one, so every absent doc compares equal by address. */
+static SCHEMA_UNUSED const char TableDocNone[1] = "";
+
 typedef struct TableFieldInfo
 {
     const char * name;      /* schema field name, e.g. "health" */
@@ -195,6 +202,14 @@ typedef struct TableFieldInfo
     /* union fields: the tag and its arms. NULL for every other kind. */
     const TableUnionInfo * arms;
     const char * guard;     /* branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded */
+    /* what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+       block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
+       none, never NULL. Its tags (SPEC §4.2) follow in declared order, and an
+       untagged field is 0 beside NULL. Static, constant-initialized,
+       allocating nothing. */
+    const char * doc;
+    int32_t num_tags;
+    const char * const * tags;
 } TableFieldInfo;
 
 typedef struct TableTypeInfo
@@ -209,6 +224,11 @@ typedef struct TableTypeInfo
        thing the descriptors could not express without it. It is the void *
        form of <name>_reset and the same code. */
     void (*reset)( void * storage );
+    /* the declaration's own doc and tags, on the same terms as a field's
+       (docs/SPEC-TABLES.md §8.1) */
+    const char * doc;
+    int32_t num_tags;
+    const char * const * tags;
 } TableTypeInfo;
 
 typedef struct TableWriter
@@ -544,10 +564,15 @@ static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64
 
 #endif /* SCHEMA_TABLEDEMO_TABLE_COOK */
 
+// One weapon's tuning. A designer edits this table and nothing else.
 /* table WeaponConfig — TABLE-wire storage: relocatable, bounded. C has no member
    initializers, so the declared defaults live in weapon_config_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct WeaponConfig {
+    //  Damage per hit, before armor.
+    //
+    // The armor curve is written "hardness \ hit" in the design notes,
+    // and the backslash is part of the name.
     float damage;
     float speed;
     int32_t penetration;
