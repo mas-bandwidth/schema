@@ -121,7 +121,7 @@ func WireProjection(u *Unit) string {
 
 	names := make([]string, 0, len(u.Enums))
 	for n := range u.Enums {
-		if reached.Enums[n] {
+		if reached.enums[n] {
 			names = append(names, n)
 		}
 	}
@@ -196,12 +196,12 @@ func WireProjection(u *Unit) string {
 	// union by name, so the closure never reaches one.
 	names = names[:0]
 	for n := range u.Unions {
-		if reached.Unions[n] {
+		if reached.unions[n] {
 			names = append(names, n)
 		}
 	}
 	for n := range u.TableUnions {
-		if reached.Unions[n] {
+		if reached.unions[n] {
 			names = append(names, n)
 		}
 	}
@@ -309,12 +309,14 @@ func projectField(b *strings.Builder, f *Field, ind string) {
 	b.WriteString("\n")
 }
 
-// Reached is the set of declarations the unit's `type` declarations reach —
+// reachedSet is the set of declarations the unit's `type` declarations reach —
 // the projection's scope (SPEC §3.1). `flags` is absent from it because
-// `flags` projects unconditionally and needs no closure to say so.
-type Reached struct {
-	Enums  map[string]bool
-	Unions map[string]bool
+// `flags` projects unconditionally and needs no closure to say so. It stays
+// unexported: nothing outside this rendering has a use for it, and an export
+// is a semver commitment (docs/VERSIONING.md).
+type reachedSet struct {
+	enums  map[string]bool
+	unions map[string]bool
 }
 
 // projectionClosure walks SPEC §3.1's EIGHT EDGES from every `type` in the
@@ -340,10 +342,10 @@ type Reached struct {
 // reaches that the walk does not, which is two incompatible builds shaking
 // hands — so internal/check's projection test holds one negative control per
 // edge kind, each a declaration reachable only through that edge.
-func projectionClosure(u *Unit) Reached {
+func projectionClosure(u *Unit) reachedSet {
 	w := closureWalk{
 		u:       u,
-		reached: Reached{Enums: map[string]bool{}, Unions: map[string]bool{}},
+		reached: reachedSet{enums: map[string]bool{}, unions: map[string]bool{}},
 		structs: map[string]bool{},
 		consts:  map[string]bool{},
 	}
@@ -355,7 +357,7 @@ func projectionClosure(u *Unit) Reached {
 
 type closureWalk struct {
 	u       *Unit
-	reached Reached
+	reached reachedSet
 	structs map[string]bool // visited, so a cycle of pointers terminates
 	consts  map[string]bool // visited, so a const chain terminates
 }
@@ -424,7 +426,7 @@ func (w *closureWalk) reachField(f *Field) {
 // about it.
 func (w *closureWalk) reachDecl(name string) {
 	if w.u.Enums[name] != nil {
-		w.reached.Enums[name] = true
+		w.reached.enums[name] = true
 		return
 	}
 	if un := w.u.Unions[name]; un != nil {
@@ -449,10 +451,10 @@ func (w *closureWalk) reachDecl(name string) {
 // union is a table-closure construct, which a `type` body refuses by name, so
 // no closure walk reaches one and the exclusion needs no rule of its own.
 func (w *closureWalk) reachUnion(name string, un *Union) {
-	if w.reached.Unions[name] {
+	if w.reached.unions[name] {
 		return
 	}
-	w.reached.Unions[name] = true
+	w.reached.unions[name] = true
 	for _, v := range un.Variants {
 		if v.Ref != nil {
 			w.reachStruct(v.Ref.Name)
