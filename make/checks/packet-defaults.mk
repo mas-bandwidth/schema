@@ -21,6 +21,7 @@ packet-defaults-goldens: build/schema_test_packet_defaults
 	@mkdir -p testdata/wire/packet-defaults
 	./build/schema_test_packet_defaults testdata/wire/packet-defaults --write-goldens
 
+update-goldens: packet-defaults-goldens
 test: packet-defaults-cpp
 
 # Packet defaults are construction only. The C++ oracle and defaultless twin

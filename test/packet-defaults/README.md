@@ -18,7 +18,8 @@ count.
 
 Run the C++ oracle with `make packet-defaults-cpp`. Regenerate its pins explicitly
 with `make packet-defaults-goldens`, then review both the bytes and consumed bits.
-The normal test targets only compare checked-in pins.
+The repository's `make update-goldens` includes this corpus too. The normal test
+targets only compare checked-in pins.
 
 `make packet-defaults-go` checks constructors, every C++ pin and read bit count,
 and reads into reused storage. Short and empty union payloads distinguish fresh
