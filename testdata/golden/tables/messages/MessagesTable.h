@@ -595,13 +595,17 @@ inline double TableWidenF32( uint32_t bits )
 // and a code point past U+10FFFF, which is SPEC.md §4.7's rule in this wire's
 // idiom: the field reads its declared default, one malformed counts, and the
 // parent reads on past L.
-inline bool TableUtf8Valid( const uint8_t * bytes, int64_t length )
+//
+// A LENGTH IS A 64-BIT NUMBER (§3), so it arrives as one: a payload length is
+// whatever the wire spelled, and narrowing it to a signed count would read
+// 0xFFFFFFFFFFFFFFFF as an empty payload.
+inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
 {
-    int64_t i = 0;
+    uint64_t i = 0;
     while ( i < length )
     {
         const uint8_t lead = bytes[i];
-        int64_t continuations;
+        uint64_t continuations;
         uint32_t code_point;
         if ( lead == 0 ) { return false; }
         if ( lead < 0x80 ) { i++; continue; }
@@ -610,7 +614,7 @@ inline bool TableUtf8Valid( const uint8_t * bytes, int64_t length )
         else if ( ( lead & 0xF8 ) == 0xF0 ) { continuations = 3; code_point = lead & 0x07; }
         else { return false; }
         if ( i + continuations >= length ) { return false; }
-        for ( int64_t k = 1; k <= continuations; k++ )
+        for ( uint64_t k = 1; k <= continuations; k++ )
         {
             if ( ( bytes[i + k] & 0xC0 ) != 0x80 ) { return false; }
             code_point = ( code_point << 6 ) | uint32_t( bytes[i + k] & 0x3F );
@@ -626,9 +630,15 @@ inline bool TableUtf8Valid( const uint8_t * bytes, int64_t length )
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
-inline int64_t TableUtf8Clamp( const uint8_t * bytes, int64_t length, int64_t bound )
+//
+// THE ANSWER IS NEVER ABOVE THE BOUND. The length arrives as the wire's own
+// 64-bit number and the caller turns the answer back into the size of a copy,
+// so a length no reader could have bounded has to leave here bounded: taken as
+// a signed count, 0xFFFFFFFFFFFFFFFF is -1, -1 is under every bound, and the
+// copy would run at SIZE_MAX.
+inline int64_t TableUtf8Clamp( const uint8_t * bytes, uint64_t length, int64_t bound )
 {
-    if ( length <= bound ) { return length; }
+    if ( length <= (uint64_t) bound ) { return (int64_t) length; }
     int64_t cut = bound;
     while ( cut > 0 && ( bytes[cut] & 0xC0 ) == 0x80 ) { cut--; }
     return cut;
@@ -2652,9 +2662,9 @@ MESSAGEDEMO_TABLE_INLINE bool UserLoadBody( TableReader & r, User & value )
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.name[0] = 0; value.name_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.name[0] = 0; value.name_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.name, r.buffer + r.offset, (size_t) keep );
                 value.name[keep] = 0;
                 value.name_length = (int32_t) keep;
@@ -2972,9 +2982,9 @@ MESSAGEDEMO_TABLE_INLINE bool ScriptLoadBody( TableReader & r, Script & value )
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.path[0] = 0; value.path_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.path[0] = 0; value.path_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 64 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 64 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 64 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 64 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.path, r.buffer + r.offset, (size_t) keep );
                 value.path[keep] = 0;
                 value.path_length = (int32_t) keep;
@@ -4116,9 +4126,9 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.text[0] = 0; value.text_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.text[0] = 0; value.text_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 32 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 32 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 32 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 32 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.text, r.buffer + r.offset, (size_t) keep );
                 value.text[keep] = 0;
                 value.text_length = (int32_t) keep;
@@ -6628,9 +6638,9 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBody( TableReader & r, OpenDocumen
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.path[0] = 0; value.path_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.path[0] = 0; value.path_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 64 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 64 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 64 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 64 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.path, r.buffer + r.offset, (size_t) keep );
                 value.path[keep] = 0;
                 value.path_length = (int32_t) keep;
@@ -7062,9 +7072,9 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentLoadBody( TableReader & r, SaveDocumen
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.path[0] = 0; value.path_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.path[0] = 0; value.path_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 64 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 64 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 64 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 64 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.path, r.buffer + r.offset, (size_t) keep );
                 value.path[keep] = 0;
                 value.path_length = (int32_t) keep;
@@ -7773,9 +7783,9 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.reason[0] = 0; value.reason_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.reason[0] = 0; value.reason_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.reason, r.buffer + r.offset, (size_t) keep );
                 value.reason[keep] = 0;
                 value.reason_length = (int32_t) keep;
