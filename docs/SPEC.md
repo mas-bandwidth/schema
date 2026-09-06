@@ -730,8 +730,10 @@ FloatExpr   = float expression over float literals, int literals and const names
   On the TABLE wire a field at its declared default elides and an
   absent field reads as it, whatever the kind (SPEC-TABLES.md §4), so the
   string, bytes and flags defaults are part of that wire's contract exactly
-  as a scalar's is. The C++ reference carries the three, and every other
-  backend refuses a unit that declares one, naming the follow-on.
+  as a scalar's is. C++ carries all three on both wires. Go carries them for
+  packet-only fields; a default reachable from any table is refused by name
+  in Go. Every other backend refuses a unit that declares one, naming the
+  follow-on.
   **On the packet wire, defaults initialize storage without eliding fields.**
   A selected union payload starts at these construction values before its
   fields are decoded (§4.8). The ordinary field encodings still apply,

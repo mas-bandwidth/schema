@@ -58,4 +58,5 @@ func (goTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 func init() {
 	registerBuiltin(goTarget{}, true, false, false, false)
 	registerPacketVoidArmCarrier("go")
+	registerPacketValueDefaultCarrier("go")
 }
