@@ -314,7 +314,8 @@ tables-doctags: bin/schema test/tables/doctags_main.cpp
 	# THE GENERAL ARM PAIR needs a general arm, and the exhibit declares none:
 	# adding one to tabledemo would move that unit's union tag range, its wire
 	# goldens and its protocol id, which the page forbids the exhibit doing
-	# (§8.7). armdemo declares one already, so the pair is exercised there.
+	# (§8.7). armdemo declares one already, and its `plain` arm carries a doc
+	# comment and a tag, so both halves of the pair are non-empty there.
 	$(CXX) $(CXXFLAGS) -Ibuild/doctags-arms -Itest/tables -DVIEW_HEADER='"ArmdemoView.h"' -DVIEW_NAMESPACE=armdemo \
 		test/tables/doctags_main.cpp build/doctags-arms/CarryTable.cpp build/doctags-arms/GateTable.cpp \
 		build/doctags-arms/NestTable.cpp build/doctags-arms/RingTable.cpp build/doctags-arms/ArmdemoView.cpp \
@@ -396,8 +397,8 @@ tables-doctags-negative-controls: bin/schema test/tables/doctags_main.cpp
 	@echo "doc/tags negative control 5: the TYPE pair disagreeing takes the gate down"
 	@rm -rf build/doctags-armpair && mkdir -p build/doctags-armpair
 	./bin/schema generate --lang cpp --out build/doctags-armpair tables/arms
-	@sed -i.bak 's|&Carry_view_arm_fields\[0\], TableDocNone|\&Carry_view_arm_fields[0], "drifted"|' build/doctags-armpair/ArmdemoView.cpp
-	@grep -q '&Carry_view_arm_fields\[0\], "drifted"' build/doctags-armpair/ArmdemoView.cpp || \
+	@sed -i.bak 's|&Carry_view_arm_fields\[0\], "|\&Carry_view_arm_fields[0], "drifted |' build/doctags-armpair/ArmdemoView.cpp
+	@grep -q '&Carry_view_arm_fields\[0\], "drifted ' build/doctags-armpair/ArmdemoView.cpp || \
 		{ echo "NEGATIVE CONTROL: the arm-pair sabotage did not apply"; exit 1; }
 	$(CXX) $(CXXFLAGS) -Ibuild/doctags-armpair -Itest/tables -DVIEW_HEADER='"ArmdemoView.h"' -DVIEW_NAMESPACE=armdemo \
 		test/tables/doctags_main.cpp build/doctags-armpair/CarryTable.cpp build/doctags-armpair/GateTable.cpp \
