@@ -545,12 +545,11 @@ which is the same wire with no encoding rule (SPEC.md §4.7).
 
 ### wstring(N)
 
-*On the packet wire in C++, with the wide corpus under `examples-wide/` as its
-goldens. The other eight targets refuse the spelling by name until their ports
-land ([#590](https://github.com/mas-bandwidth/schema/issues/590)). A table, or
-any type a table reaches, may not carry it yet: the checker refuses it across
-the whole table closure until the table-wire kind lands
-([#522](https://github.com/mas-bandwidth/schema/issues/522)). SPEC.md §4.12 is
+*On BOTH wires in C++, with the wide corpus under `examples-wide/` as its
+goldens: the packet wire here, and kind `33` on the table wire
+(SPEC-TABLES.md §3), so a table, or any type a table reaches, carries it. The
+other eight targets refuse the spelling by name until their ports land
+([#590](https://github.com/mas-bandwidth/schema/issues/590)). SPEC.md §4.12 is
 the wire.*
 
 ```
@@ -2488,8 +2487,7 @@ every instance whether it is used or not.
 **A buffer at exactly its used size is `*bytes`, and `*string` is the same
 node with a terminator** (SPEC-TABLES.md §2.5). `*wstring` is the third
 spelling and does the same in UTF-16 code units — *specified, and no backend
-emits it ([#522](https://github.com/mas-bandwidth/schema/issues/522),
-SPEC-TABLES.md §2.5).* Each is a POINTER to a BLOB
+emits the blob record (SPEC-TABLES.md §2.5).* Each is a POINTER to a BLOB
 NODE of exactly its bytes, and every pointer rule applies: table body only,
 no default, no `?`, no array, no bound — and the field makes its holder
 variable, so the builder is where the bytes are put:

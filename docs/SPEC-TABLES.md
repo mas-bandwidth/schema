@@ -9826,13 +9826,6 @@ in build version (§20.5).
   **`*wstring` is the third spelling and takes every clause above**, its bound
   `*wstring(N)` refused with the other two, because a buffer at its used size
   has no bound to declare whatever units it holds (§2.5).
-- **Wide text in a table closure** (SPEC.md §4.12): a `wstring(N)` field
-  anywhere a table reaches, until the table wire's kind `33` lands
-  (schema#522). A table body's own field and a union arm are refused where
-  they resolve; a field of a `type` is refused once the closure is known,
-  through any nesting of `type`, union, array, bounded array, optional, map
-  value and pointer, naming the field and the edge that put the `type` in the
-  closure. A `type` no table reaches keeps its wide text on the packet wire.
 - **The block form** (§2.7), each refusal naming the table and the field or
   declaration at fault. **Nothing declares the form, so nothing is refused
   FOR it** — a table that cannot have one simply has none (§19) — and there

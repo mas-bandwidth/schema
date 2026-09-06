@@ -1870,16 +1870,17 @@ compile error, the same floor `string(N)` carries (§4.6).
 
 **Backend status: ONE TARGET CARRIES WIDE TEXT TODAY.** This section is
 written for all nine and one of them has landed it, on the terms §3.1
-and §4.2 take. The C++ packet emitter carries the storage, the wire and
-every read refusal below. The other eight REFUSE a unit declaring a
-`wstring(N)` field by name at generate time, rather than emit a member
+and §4.2 take. The C++ emitter carries the storage, the wire and
+every read refusal below, on BOTH wires: the packet wire's groups here and
+kind `33` on the id-table wire (SPEC-TABLES.md §3). The other eight REFUSE a
+unit declaring a `wstring(N)` field by name at generate time, whichever wire
+declares it, rather than emit a member
 they never laid out and a wire that skips it, so the storage and
 boundary table below states what each target owes rather than what it
-runs. The TABLE wire's half of the row (kind `33` and `*wstring`) has
-landed nowhere and a `wstring` inside a table closure is refused by name
-in the front end, which is SPEC-TABLES.md §11 and schema#522. Owed as
-schema#188, narrowed by each target that lands the codec, and this line
-is deleted by the last of them.
+runs. `*wstring`, the unbounded twin, is specified ahead of its
+implementation and no backend emits the blob record (SPEC-TABLES.md §2.5).
+Owed as schema#188, narrowed by each target that lands the codec, and this
+line is deleted by the last of them.
 
 **Why the language carries a wide type at all:** on a host whose native text
 is already UTF-16, the wire and the string hold the same units, so text
@@ -1947,8 +1948,8 @@ path, both in all nine targets, and both terminal.
 
 **BOTH WIRES CARRY `wstring(N)`, and they validate it differently on
 purpose.** The table wire gives wide text KIND `33`, `L` bytes holding `L / 2`
-UTF-16 code units two bytes each little-endian, with an odd `L` as framing
-damage and nothing else refused (SPEC-TABLES.md §3). Its unbounded twin is
+UTF-16 code units two bytes each little-endian, an odd `L` being framing
+damage on the body that carries it (SPEC-TABLES.md §3). Its unbounded twin is
 `*wstring`, a blob node under the reserved id `fnv1a64( "wstring" )`
 (SPEC-TABLES.md §2.5, §3.1), its storage is `char16_t[N + 1]` and an `int32`
 used length in code units (SPEC-TABLES.md §7.2), and its text form is a JSON
