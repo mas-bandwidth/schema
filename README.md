@@ -23,14 +23,6 @@ Schema is designed to support the following use-cases common in game development
 * Game assets cooked to an efficient runtime binary format.
 * Render data written in one language and read in another - sixty times per-second.
 
-## Features
-
-1. Define constants, enums, flags, types and tables in one language.
-2. Generate fast bit-packed serialization for struct types that do not need versioning, such as client/server packets and state.
-3. _under construction_ -- Generate versioned tables for messages, data, assets, save game files and everything else.
-4. _under construction_ -- Tables can point at tables, so trees and graphs are tables too.
-5. _under construction_ -- Cook tables to an efficient binary format for asset loading.
-
 ## Example
 
 ```
