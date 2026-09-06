@@ -7,8 +7,25 @@
 // `clamped` count comes back right. That is exactly why a suite which only
 // reads counters could never see it.
 //
-// This binary is built against a walker whose scan resumes after a code point
-// that did not fit, and it PASSES only when the stored bytes come back wrong.
+// THE CONTROL NAMES ONE DEFECT AND ESTABLISHES THAT ONE. It runs twice: against
+// a walker whose scan resumes after a code point that did not fit, where it must
+// SEE the wrong bytes, and against the honest walker, where it must find nothing
+// to see. So there are exactly three outcomes it may report, and only one of
+// them is success:
+//
+//   the read SUCCEEDED, the clamp counted 1, and the stored bytes are wrong
+//                                        -> red as required, the defect stands
+//   the read succeeded, the clamp counted 1, the stored bytes are the prefix
+//                                        -> the honest walker, or a sabotage
+//                                           the suite cannot see
+//   anything else                        -> the defect was never reached
+//
+// A READ THAT FAILED AND A CLAMP COUNT THAT MOVED ARE THE THIRD OUTCOME, not
+// the first. Both were success here, so a sabotage that broke the read outright,
+// or moved the ledger as well as the bytes, printed the word red and returned
+// zero over a run that observed no prefix at all. A control has to fail on the
+// read's VERDICT and on the CLAMPED COUNT as surely as on the bytes, or the
+// branch it passes through is a branch that proves nothing.
 
 #include <cstdio>
 #include <cstring>
@@ -24,16 +41,22 @@ int main()
     const char * text = "{ \"version_note\": \"123456789012\xe2\x9c\x93\xe2\x9c\x93X\" }";
     if ( !tabledemo::RootConfigFromJson( value, text, (int64_t) strlen( text ), &report ) )
     {
-        printf( "clamp prefix negative control: the sabotaged walker would not read at all: red\n" );
-        return 0;
+        printf( "FAIL clamp prefix negative control: the walker would not read this text at\n"
+                "      all, so the clamp was never reached and the stored bytes say nothing.\n"
+                "      A failed read does not establish the defect this control names.\n" );
+        return 1;
     }
 
-    // the CLAMP must still be counted: the sabotage moves the bytes and not the
-    // ledger, and a control that passed for the wrong reason would prove nothing
+    // the CLAMP must still be counted: the defect moves the bytes and not the
+    // ledger, and a run whose ledger also moved has not met the defect either
     if ( report.clamped != 1 )
     {
-        printf( "clamp prefix negative control: the clamp went uncounted as well: red, but for the wrong reason\n" );
-        return 0;
+        printf( "FAIL clamp prefix negative control: the read counted %d clamps where the\n"
+                "      text spells exactly one, so this run is not the one-clamp read the\n"
+                "      control reads bytes out of. The defect it names is a clamp that is\n"
+                "      not a prefix, and no clamp was observed.\n",
+                (int) report.clamped );
+        return 1;
     }
 
     if ( value.version_note_length != 15 || strcmp( value.version_note, "123456789012\xe2\x9c\x93" ) != 0 )
