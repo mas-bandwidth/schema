@@ -5517,16 +5517,6 @@ games decide their own policy over it. Nothing crashes on data from a
 different schema version, in either direction, and that property is held by
 a both-directions evolution test in the corpus.
 
-**BACKEND STATUS for `widened`: OWED, not counted.** The counter and the two
-ladders above are specified ahead of their implementation, on the terms §3.3
-and §6.6 take. No report struct carries a `widened` member in any target or
-in the tool, and every pair the ladders accept is a `kind_mismatch` today,
-the payload skipped by its framing and the field left at its declared
-default. What a caller sees is the five that remain, `unknown`,
-`kind_mismatch`, `clamped`, `duplicate` and the `malformed` flag. Owed as
-schema#523, and this line is deleted by the implementation PR that lands the
-behavior.
-
 **TWO MORE COUNTERS RIDE ON THE SAME STRUCT AND STAY ZERO UNTIL A CALLER ASKS
 FOR THEM**: `retained` and `retain_lost`, the retain-unknown pair (§6.6). They
 report on RETENTION rather than on the read, and they change no counter above.
@@ -5543,9 +5533,9 @@ declaration and read under another, pinning the six counters and the value:
   the writer's own, every sibling field intact. The pair is on the signed
   ladder, so the arm's kind byte is READ and its payload DECODED rather than
   skipped, which is the widening rule met at an arm (above). Red if another
-  counter moves, if the value is not exact, or if a sibling is lost. **The
-  manifest's pin for this row moves with the implementation**, from one
-  `kind_mismatch` and a `None` union to one `widened` and the value.
+  counter moves, if the value is not exact, or if a sibling is lost. The
+  manifest pins it as one `widened` and the value, and the C++ reference's
+  own arm controls read the same wire to the same answer.
 - an `int32` arm read as a `float32` arm, and a scalar arm read as a
   `string(N)` arm: one `kind_mismatch` in each direction, the union `None`,
   the field at its declared default. Each is red if every counter is zero,
@@ -6473,15 +6463,23 @@ The builder is designed to go wide, lock-free by ownership:
   with the accelerators' refusal and lands with it**, so a build that has one
   has the other.
 
-  **WHERE IT IS CARRIED.** The C++ reference spells `TableRefuseReason` with
-  the two values a map's and an unbounded array's framing can raise,
-  `count_over_length` and `count_over_extent_cap`, as a native enum a unit
-  that declares either construct emits, and `LoadMeasure` there takes it as a
-  trailing out-parameter, `TableRefuseReason * reason_out = NULL`, so a caller
-  that does not ask keeps the signature it had. A unit with neither construct
-  carries neither the enum nor the parameter (§2.2). The other three values,
-  §7's check order and §19.2's block clauses are owed as schema#523, and no
-  port spells the enum yet.
+  **WHERE IT IS CARRIED.** The enum is a NATIVE type in each target's
+  language, a C++ enum, a Go type, a Dart enum, never a schema-language enum,
+  with the same value names in all nine, and its carriage is each language's
+  standard error path: an out-parameter beside the null in C and C++, never
+  an exception, `Result` in Rust, an error value in Go, the language's
+  standard error idiom in C#, Java, JavaScript and Dart, and a tagged tuple in
+  Elixir. The C++ reference spells `TableRefuseReason` in every unit, with
+  §7's eight values first in the order the check runs them, then
+  `bad_layout`, then the five above, and `LoadMeasure` takes it as a trailing
+  out-parameter, `TableRefuseReason * reason_out = NULL`, so a caller that
+  does not ask keeps the signature it had. It is written on the refusal path
+  only: a `-1` for a form byte this build does not carry writes
+  `unknown_form`, one for a count writes its count value, one for a blob past
+  the cap writes `blob_over_size_cap`, and a measure that answers a size
+  writes nothing. A `-1` for a trailer that cannot be read whole, which is
+  damage and not a refusal, writes nothing either. No port spells the enum
+  yet; each claims it with the wire form it lacks (§15).
 - **Into a builder** — the tool's path. The same tolerant decode into a
   fresh builder, so loaded data can be edited and locked again. **Its own
   refusal is a NULL** rather than a `-1`, and the report it leaves behind is
@@ -7134,7 +7132,10 @@ the wire, and keeps the flexibility that comes with it.
   foreign order is a cross-endian cook (§15), a truncated file is a bad
   download, and an unaligned base is the CALLER'S OWN defect and the one it can
   fix on the spot. So every `Open` takes one more out-parameter, an enum named
-  `TableRefuseReason`, and fills it on every call. **The name says REFUSE and
+  `TableRefuseReason`, and fills it ON THE REFUSAL PATH ONLY: a match writes
+  nothing, which is the owner's ruling that a diagnostic costs nothing on the
+  successful open, and a caller that wants `ok` beside a non-null root
+  initializes its own variable to it. **The name says REFUSE and
   not OPEN deliberately**: the same enum answers `LoadMeasure`'s `-1` (§6.5),
   where nothing was opened and nothing could have been, so a name built on
   `Open` would have been wrong at half its call sites the moment it was
@@ -7142,7 +7143,8 @@ the wire, and keeps the flexibility that comes with it.
 
   | clause | reason |
   |---|---|
-  | no clause fails | `ok`, and this is the only value that comes with a non-null root |
+  | no clause fails | `ok`, and this is the only value that comes with a non-null root. `Open` never writes it: the out-parameter is untouched on a match |
+  | a null buffer, or one shorter than the 64-byte header | `unaligned_base` for the null, which is the caller's own buffer and not a file, and `truncated` for the short one, which has no header to read. Neither is a clause of the enumeration below, and each takes the value whose reading it already has |
   | the magic, read bytewise | `not_a_cook` where it is neither this build's constant nor its byte reversal, so the bytes are not a cook at all. A BLOCK reads its own magic here, so a block handed to a cook's `Open` lands on this value and not on a version answer |
   | the same magic, the other way | `foreign_order` where it IS this build's constant byte-reversed: a cook of the other byte order (§7.1) |
   | the BYTE ORDER the magic established | `not_a_cook` again, and this is the one clause with no value of its own. A header whose `byte_order` word contradicts its own magic describes no cook in EITHER order, so there is nothing a distinct value would tell a caller that this one does not (§7.1) |
@@ -7217,14 +7219,14 @@ the wire, and keeps the flexibility that comes with it.
   nothing to validate. One order, one enum, and the two accelerators differ
   only in which clauses they have.
 
-  **BACKEND STATUS: OWED, not emitted.** The out-parameter and its enum are
-  specified ahead of their implementation, on the terms §3.3 and §6.6 take.
-  The C++ reference emits `const Scene * SceneOpen( const void * bytes,
-  uint64_t length )` and nothing more, every other backend's `Open` is that
-  same shape in its own spelling, and the null alone is the whole of a
-  refusal's answer. Owed as schema#523, with §6.5's measure values and
-  §19.2's block clauses, and this line is deleted by the implementation PR
-  that lands the behavior.
+  **The C++ reference carries it**, `const Scene * SceneOpen( const void *
+  bytes, uint64_t length, TableRefuseReason * reason = NULL )`, on every
+  root, with the shared check in `TableCookOpen` naming the first failing
+  clause in the order above. The conformance manifest pins one row per value
+  on the `cook-reason` and `block-reason` surfaces, over the forgery
+  fixtures the `forgery` surfaces already read. Every other backend's `Open`
+  is still the null alone in its own spelling, and takes the parameter with
+  the wire form it lacks (§15).
 
 - **`Open` is the RUNTIME's only entry point.** There is no second one: a
   build either wrote a file or it did not, and the build version is what says
@@ -12854,10 +12856,12 @@ schema name, as everywhere else in that backend.
   accelerators because a consumer that falls back from either falls back the
   same way, and two vocabularies would have said the same things twice.
 
-  **BACKEND STATUS: OWED, not emitted**, on the terms §3.3 and §6.6 take.
-  `<Name>BlockOpen` returns a bare `bool` today and names no reason, exactly
-  as a cook's `Open` returns a bare null (§7). Owed as schema#523, and this
-  line is deleted by the implementation PR that lands the behavior.
+  **The C++ reference carries it**, `bool <Name>BlockOpen( <Name>Block &
+  block, void * base, int64_t bytes, TableRefuseReason * reason = NULL )`,
+  written on the refusal path only, and every prologue word is read bytewise
+  so that the base's alignment can be the last clause. A block whose bytes
+  are fewer than its prologue answers `truncated`, and a null base
+  `unaligned_base`, on the readings §7 gives those two.
 - **An array is ITERATED, not indexed by hand.** The accessor yields a
   reference to each row where it lies, at the pitch the instance gives, for
   `count` rows — a range-for in C++, an enumerator in C#, the equivalent per
