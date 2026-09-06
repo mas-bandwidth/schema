@@ -1197,8 +1197,6 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert data.length >= armArrayMaxBytes;
         if (value.flag) {
-            assert value.itemsCount >= 0;
-            assert value.itemsCount <= 3;
             for (int i0 = 0; i0 < value.itemsCount; i0++) {
                 assert (value.items[i0] & 0xffffL) >= 0;
                 assert (value.items[i0] & 0xffffL) <= 8191;
@@ -1235,6 +1233,9 @@ public final class Joins {
             scratch = v >>> (1 - scratchBits);
         }
         if (value.flag) {
+            if (value.itemsCount < 0 || value.itemsCount > 3) {
+                return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+            }
             v = (value.itemsCount) & 0x3L;
             scratch |= v << scratchBits;
             scratchBits += 2;
@@ -2100,8 +2101,6 @@ public final class Joins {
     private static boolean checkWriteArrUneven(ArrUneven value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= arrUnevenMaxBytes;
-        assert value.itemsCount >= 0;
-        assert value.itemsCount <= 3;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
             final Uneven e0 = value.items[i0];
             assert (e0.type & 0xffL) >= 0;
@@ -2127,6 +2126,9 @@ public final class Joins {
             wordIndex++;
             scratchBits -= 64;
             scratch = v >>> (5 - scratchBits);
+        }
+        if (value.itemsCount < 0 || value.itemsCount > 3) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
         }
         v = (value.itemsCount) & 0x3L;
         scratch |= v << scratchBits;
@@ -2389,8 +2391,6 @@ public final class Joins {
     private static boolean checkWriteRegainAfterAlign(RegainAfterAlign value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= regainAfterAlignMaxBytes;
-        assert value.itemsCount >= 0;
-        assert value.itemsCount <= 3;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
             assert (value.items[i0] & 0xffffL) >= 0;
             assert (value.items[i0] & 0xffffL) <= 8191;
@@ -2417,6 +2417,9 @@ public final class Joins {
             wordIndex++;
             scratchBits -= 64;
             scratch = v >>> (5 - scratchBits);
+        }
+        if (value.itemsCount < 0 || value.itemsCount > 3) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
         }
         v = (value.itemsCount) & 0x3L;
         scratch |= v << scratchBits;

@@ -932,6 +932,7 @@ type BenchMixed struct {
 // specified default overrides it).
 func NewBenchMixed() BenchMixed {
 	var value BenchMixed
+	value.EntitiesCount = 1
 	value.HasExtra = true
 	return value
 }

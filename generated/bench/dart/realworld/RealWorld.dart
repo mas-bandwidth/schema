@@ -465,7 +465,8 @@ void zeroRealPacket(RealPacket value) {
 
 // writeRealPacket packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// realPacketMaxBytes. Returns the bytes written.
+// realPacketMaxBytes. Returns the bytes written, or -1 when a count is outside its
+// wire range, which is refused in every build (SPEC §4.6).
 int writeRealPacket(RealPacket value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= realPacketMaxBytes);

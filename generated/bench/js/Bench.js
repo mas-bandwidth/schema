@@ -1050,7 +1050,7 @@ export class BenchMixed {
     this.FrameTick = 0n;
     this.ServerTime = 0; // wire [0, 65535]
     this.Entities = Array.from({ length: 8 }, () => new MixedEntity());
-    this.EntitiesCount = 0;
+    this.EntitiesCount = 1;
     this.Stats = Array.from({ length: 80 }, () => new MixedStat());
     this.StatsCount = 0;
     this.GameEvent = new MixedEvent();

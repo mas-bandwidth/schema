@@ -196,7 +196,7 @@ defmodule Bench.BenchMixed do
             world_time: 0,
             frame_tick: 0,
             server_time: 0,
-            entities: [],
+            entities: List.duplicate(%Bench.MixedEntity{}, 1),
             stats: [],
             game_event: %Bench.MixedEvent{},
             loadout: List.duplicate(0, 4),

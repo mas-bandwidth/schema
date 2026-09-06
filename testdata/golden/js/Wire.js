@@ -255,7 +255,7 @@ export class ProbeSample {
     this.IdleTicks = 0;
 
     this.Samples = new Array(8).fill(0);
-    this.SamplesCount = 0;
+    this.SamplesCount = 1;
   }
 }
 

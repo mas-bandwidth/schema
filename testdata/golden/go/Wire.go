@@ -241,6 +241,7 @@ type ProbeSample struct {
 func NewProbeSample() ProbeSample {
 	var value ProbeSample
 	value.Active = true
+	value.SamplesCount = 1
 	return value
 }
 

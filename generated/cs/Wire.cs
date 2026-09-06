@@ -63,7 +63,7 @@ namespace Example
         public uint IdleTicks;
 
         public ushort[] Samples = new ushort[8]; // used count beside it; wire count in [1, 8]
-        public int SamplesCount;
+        public int SamplesCount = 1;
     }
 
     // type ProbeRing

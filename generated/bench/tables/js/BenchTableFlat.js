@@ -80,8 +80,9 @@ function writeTableHitEventFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteTableHitEventFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold TableHitEventMaxBytes.
+// WriteTableHitEventFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold TableHitEventMaxBytes.
 export const WriteTableHitEventFlat = PRODUCTION ? writeTableHitEventFlatProduction : writeTableHitEventFlatChecked;
 
 // ReadTableHitEventFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -149,8 +150,9 @@ function writeTableChatEventFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteTableChatEventFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold TableChatEventMaxBytes.
+// WriteTableChatEventFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold TableChatEventMaxBytes.
 export const WriteTableChatEventFlat = PRODUCTION ? writeTableChatEventFlatProduction : writeTableChatEventFlatChecked;
 
 // ReadTableChatEventFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -214,8 +216,9 @@ function writeTablePickupEventFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteTablePickupEventFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold TablePickupEventMaxBytes.
+// WriteTablePickupEventFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold TablePickupEventMaxBytes.
 export const WriteTablePickupEventFlat = PRODUCTION ? writeTablePickupEventFlatProduction : writeTablePickupEventFlatChecked;
 
 // ReadTablePickupEventFlat(value, view, numBits) -> bool. The buffer behind view must

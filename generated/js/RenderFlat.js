@@ -132,8 +132,9 @@ function writeRenderSpriteFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteRenderSpriteFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold RenderSpriteMaxBytes.
+// WriteRenderSpriteFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold RenderSpriteMaxBytes.
 export const WriteRenderSpriteFlat = PRODUCTION ? writeRenderSpriteFlatProduction : writeRenderSpriteFlatChecked;
 
 // ReadRenderSpriteFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -207,6 +208,9 @@ function writeRenderBlockFlatProduction(value, view) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (value.SpritesCount < 0 || value.SpritesCount > 64) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
+    return -1;
   }
   v = (((value.SpriteCountHint) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -293,7 +297,7 @@ function writeRenderBlockFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (!Number.isInteger(value.SpritesCount) || value.SpritesCount < 0 || value.SpritesCount > 64) { // the count guards the loop; out-of-contract writes are refused
+  if (!Number.isInteger(value.SpritesCount) || value.SpritesCount < 0 || value.SpritesCount > 64) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
     return -1;
   }
   v = (((value.SpriteCountHint) >>> 0)) >>> 0;
@@ -372,8 +376,9 @@ function writeRenderBlockFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteRenderBlockFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold RenderBlockMaxBytes.
+// WriteRenderBlockFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold RenderBlockMaxBytes.
 export const WriteRenderBlockFlat = PRODUCTION ? writeRenderBlockFlatProduction : writeRenderBlockFlatChecked;
 
 // ReadRenderBlockFlat(value, view, numBits) -> bool. The buffer behind view must

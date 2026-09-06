@@ -2150,8 +2150,6 @@ public final class Types {
     private static boolean checkWriteInputPacket(InputPacket value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= inputPacketMaxBytes;
-        assert value.inputsCount >= 0;
-        assert value.inputsCount <= 16;
         return true;
     }
 
@@ -2208,6 +2206,9 @@ public final class Types {
             wordIndex++;
             scratchBits -= 64;
             scratch = v >>> (32 - scratchBits);
+        }
+        if (value.inputsCount < 0 || value.inputsCount > 16) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
         }
         v = (value.inputsCount) & 0x1fL;
         scratch |= v << scratchBits;

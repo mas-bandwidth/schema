@@ -191,6 +191,7 @@ static SCHEMA_UNUSED ProbeSample new_probe_sample( void )
     ProbeSample value;
     memset( &value, 0, sizeof( value ) );
     value.active = 1;
+    value.samples_count = 1;
     return value;
 }
 

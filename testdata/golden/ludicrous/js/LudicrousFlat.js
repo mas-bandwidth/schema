@@ -187,8 +187,9 @@ function writeFixedProbeFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteFixedProbeFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold FixedProbeMaxBytes.
+// WriteFixedProbeFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold FixedProbeMaxBytes.
 export const WriteFixedProbeFlat = PRODUCTION ? writeFixedProbeFlatProduction : writeFixedProbeFlatChecked;
 
 // ReadFixedProbeFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -455,8 +456,9 @@ function writeUnsignedProbeFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteUnsignedProbeFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold UnsignedProbeMaxBytes.
+// WriteUnsignedProbeFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold UnsignedProbeMaxBytes.
 export const WriteUnsignedProbeFlat = PRODUCTION ? writeUnsignedProbeFlatProduction : writeUnsignedProbeFlatChecked;
 
 // ReadUnsignedProbeFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -873,8 +875,9 @@ function writeWideProbeFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteWideProbeFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold WideProbeMaxBytes.
+// WriteWideProbeFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold WideProbeMaxBytes.
 export const WriteWideProbeFlat = PRODUCTION ? writeWideProbeFlatProduction : writeWideProbeFlatChecked;
 
 // ReadWideProbeFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1236,6 +1239,9 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
+  if (value.KeysCount < 0 || value.KeysCount > 4) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
+    return -1;
+  }
   v = (((value.KeysCount) & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
@@ -1577,7 +1583,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (!Number.isInteger(value.KeysCount) || value.KeysCount < 0 || value.KeysCount > 4) { // the count guards the loop; out-of-contract writes are refused
+  if (!Number.isInteger(value.KeysCount) || value.KeysCount < 0 || value.KeysCount > 4) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
     return -1;
   }
   v = (((value.KeysCount) & 0x7)) >>> 0;
@@ -1686,8 +1692,9 @@ function writeLudicrousStateFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteLudicrousStateFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold LudicrousStateMaxBytes.
+// WriteLudicrousStateFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold LudicrousStateMaxBytes.
 export const WriteLudicrousStateFlat = PRODUCTION ? writeLudicrousStateFlatProduction : writeLudicrousStateFlatChecked;
 
 // ReadLudicrousStateFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -2058,8 +2065,9 @@ function writeDegenerateProbeFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteDegenerateProbeFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold DegenerateProbeMaxBytes.
+// WriteDegenerateProbeFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold DegenerateProbeMaxBytes.
 export const WriteDegenerateProbeFlat = PRODUCTION ? writeDegenerateProbeFlatProduction : writeDegenerateProbeFlatChecked;
 
 // ReadDegenerateProbeFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -2226,8 +2234,9 @@ function writeFixedVecFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteFixedVecFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold FixedVecMaxBytes.
+// WriteFixedVecFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold FixedVecMaxBytes.
 export const WriteFixedVecFlat = PRODUCTION ? writeFixedVecFlatProduction : writeFixedVecFlatChecked;
 
 // ReadFixedVecFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -2408,8 +2417,9 @@ function writeFixedQuatFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteFixedQuatFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold FixedQuatMaxBytes.
+// WriteFixedQuatFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold FixedQuatMaxBytes.
 export const WriteFixedQuatFlat = PRODUCTION ? writeFixedQuatFlatProduction : writeFixedQuatFlatChecked;
 
 // ReadFixedQuatFlat(value, view, numBits) -> bool. The buffer behind view must

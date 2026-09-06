@@ -395,6 +395,7 @@ static SCHEMA_UNUSED BenchMixed new_bench_mixed( void )
 {
     BenchMixed value;
     memset( &value, 0, sizeof( value ) );
+    value.entities_count = 1;
     value.has_extra = 1;
     return value;
 }

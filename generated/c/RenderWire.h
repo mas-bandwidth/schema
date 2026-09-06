@@ -142,6 +142,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_block( serialize_wri
     {
         return 0;
     }
+    if ( value->sprites_count < 0 || value->sprites_count > RENDER_BLOCK_MAX_SPRITES )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
+    }
     if ( !serialize_write_int( stream, value->sprites_count, 0, RENDER_BLOCK_MAX_SPRITES ) )
     {
         return 0;

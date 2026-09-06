@@ -171,7 +171,7 @@ namespace Bench
         public ulong FrameTick;
         public int ServerTime; // wire [0, 65535]
         public MixedEntity[] Entities = new MixedEntity[8]; // used count beside it; wire count in [1, 8]
-        public int EntitiesCount;
+        public int EntitiesCount = 1;
         public MixedStat[] Stats = new MixedStat[80]; // used count beside it; wire count in [0, 80]
         public int StatsCount;
         public MixedEvent GameEvent = new MixedEvent();

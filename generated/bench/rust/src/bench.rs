@@ -1127,6 +1127,7 @@ impl BenchMixed {
     // unless a specified default overrides it).
     pub fn new() -> Self {
         let mut value = BenchMixed::default();
+        value.entities_count = 1;
         value.has_extra = true;
         value
     }

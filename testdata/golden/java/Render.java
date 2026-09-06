@@ -264,8 +264,6 @@ public final class Render {
     private static boolean checkWriteRenderBlock(RenderBlock value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= renderBlockMaxBytes;
-        assert value.spritesCount >= 0;
-        assert value.spritesCount <= 64;
         for (int i0 = 0; i0 < value.spritesCount; i0++) {
             final RenderSprite e0 = value.sprites[i0];
             assert (e0.team & 0xffL) >= 0;
@@ -300,6 +298,9 @@ public final class Render {
             wordIndex++;
             scratchBits -= 64;
             scratch = v >>> (32 - scratchBits);
+        }
+        if (value.spritesCount < 0 || value.spritesCount > 64) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
         }
         v = (value.spritesCount) & 0x7fL;
         scratch |= v << scratchBits;

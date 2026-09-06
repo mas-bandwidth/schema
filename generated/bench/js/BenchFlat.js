@@ -333,8 +333,9 @@ function writeBenchPacketFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteBenchPacketFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold BenchPacketMaxBytes.
+// WriteBenchPacketFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold BenchPacketMaxBytes.
 export const WriteBenchPacketFlat = PRODUCTION ? writeBenchPacketFlatProduction : writeBenchPacketFlatChecked;
 
 // ReadBenchPacketFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -598,8 +599,9 @@ function writeBenchIntsFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteBenchIntsFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold BenchIntsMaxBytes.
+// WriteBenchIntsFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold BenchIntsMaxBytes.
 export const WriteBenchIntsFlat = PRODUCTION ? writeBenchIntsFlatProduction : writeBenchIntsFlatChecked;
 
 // ReadBenchIntsFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -804,8 +806,9 @@ function writeBenchBitsFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteBenchBitsFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold BenchBitsMaxBytes.
+// WriteBenchBitsFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold BenchBitsMaxBytes.
 export const WriteBenchBitsFlat = PRODUCTION ? writeBenchBitsFlatProduction : writeBenchBitsFlatChecked;
 
 // ReadBenchBitsFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1050,8 +1053,9 @@ function writeMixedEntityFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteMixedEntityFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold MixedEntityMaxBytes.
+// WriteMixedEntityFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold MixedEntityMaxBytes.
 export const WriteMixedEntityFlat = PRODUCTION ? writeMixedEntityFlatProduction : writeMixedEntityFlatChecked;
 
 // ReadMixedEntityFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1175,8 +1179,9 @@ function writeMixedStatFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteMixedStatFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold MixedStatMaxBytes.
+// WriteMixedStatFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold MixedStatMaxBytes.
 export const WriteMixedStatFlat = PRODUCTION ? writeMixedStatFlatProduction : writeMixedStatFlatChecked;
 
 // ReadMixedStatFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1243,8 +1248,9 @@ function writeMixedHitEventFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteMixedHitEventFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold MixedHitEventMaxBytes.
+// WriteMixedHitEventFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold MixedHitEventMaxBytes.
 export const WriteMixedHitEventFlat = PRODUCTION ? writeMixedHitEventFlatProduction : writeMixedHitEventFlatChecked;
 
 // ReadMixedHitEventFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1312,8 +1318,9 @@ function writeMixedChatEventFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteMixedChatEventFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold MixedChatEventMaxBytes.
+// WriteMixedChatEventFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold MixedChatEventMaxBytes.
 export const WriteMixedChatEventFlat = PRODUCTION ? writeMixedChatEventFlatProduction : writeMixedChatEventFlatChecked;
 
 // ReadMixedChatEventFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1377,8 +1384,9 @@ function writeMixedPickupEventFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteMixedPickupEventFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold MixedPickupEventMaxBytes.
+// WriteMixedPickupEventFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold MixedPickupEventMaxBytes.
 export const WriteMixedPickupEventFlat = PRODUCTION ? writeMixedPickupEventFlatProduction : writeMixedPickupEventFlatChecked;
 
 // ReadMixedPickupEventFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -1519,6 +1527,9 @@ function writeBenchMixedFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
+  if (value.EntitiesCount < 1 || value.EntitiesCount > 8) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
+    return -1;
+  }
   v = (((value.ServerTime) & 0xffffff) | (((((value.EntitiesCount >>> 0) - 1) >>> 0) & 0x7) << 24)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 27;
@@ -1594,6 +1605,9 @@ function writeBenchMixedFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (2 - sb);
     }
+  }
+  if (value.StatsCount < 0 || value.StatsCount > 80) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
+    return -1;
   }
   v = (((value.StatsCount) & 0x7f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -2086,7 +2100,7 @@ function writeBenchMixedFlatChecked(value, view) {
   if (!Number.isInteger(value.ServerTime) || value.ServerTime < 0 || value.ServerTime > 16776960) {
     return -1;
   }
-  if (!Number.isInteger(value.EntitiesCount) || value.EntitiesCount < 1 || value.EntitiesCount > 8) { // the count guards the loop; out-of-contract writes are refused
+  if (!Number.isInteger(value.EntitiesCount) || value.EntitiesCount < 1 || value.EntitiesCount > 8) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
     return -1;
   }
   v = (((value.ServerTime) & 0xffffff) | (((((value.EntitiesCount >>> 0) - 1) >>> 0) & 0x7) << 24)) >>> 0;
@@ -2192,7 +2206,7 @@ function writeBenchMixedFlatChecked(value, view) {
       lo = sb === 0 ? 0 : v >>> (2 - sb);
     }
   }
-  if (!Number.isInteger(value.StatsCount) || value.StatsCount < 0 || value.StatsCount > 80) { // the count guards the loop; out-of-contract writes are refused
+  if (!Number.isInteger(value.StatsCount) || value.StatsCount < 0 || value.StatsCount > 80) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
     return -1;
   }
   v = (((value.StatsCount) & 0x7f)) >>> 0;
@@ -2606,8 +2620,9 @@ function writeBenchMixedFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteBenchMixedFlat(value, view) -> bytes written (>= 0), or -1 on a checked
-// contract refusal. The buffer behind view must hold BenchMixedMaxBytes.
+// WriteBenchMixedFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
+// count outside its wire range in every build (SPEC §4.6), and any other
+// contract in the checked build. The buffer behind view must hold BenchMixedMaxBytes.
 export const WriteBenchMixedFlat = PRODUCTION ? writeBenchMixedFlatProduction : writeBenchMixedFlatChecked;
 
 // ReadBenchMixedFlat(value, view, numBits) -> bool. The buffer behind view must

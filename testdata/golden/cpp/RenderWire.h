@@ -86,7 +86,10 @@ SCHEMA_WRITE_INLINE bool WriteRenderBlock( serialize::WriteStream & stream, cons
 {
     write_bits( stream, value.worker_index, 32 );
     write_bits( stream, value.sprite_count_hint, 32 );
-    serialize_assert( int32_t( value.sprites_count ) >= int32_t( 0 ) && int32_t( value.sprites_count ) <= int32_t( RenderBlockMaxSprites ) );
+    if ( int32_t( value.sprites_count ) < int32_t( 0 ) || int32_t( value.sprites_count ) > int32_t( RenderBlockMaxSprites ) )
+    {
+        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
+    }
     write_bits( stream, uint32_t( value.sprites_count ), 7 );
     for ( int32_t i = 0; i < value.sprites_count; i++ )
     {

@@ -44,8 +44,6 @@ public final class Clauses {
     private static boolean checkWriteW13(W13 value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= w13MaxBytes;
-        assert value.itemsCount >= 0;
-        assert value.itemsCount <= 12;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
             assert (value.items[i0] & 0xffffL) >= 0;
             assert (value.items[i0] & 0xffffL) <= 8191;
@@ -62,6 +60,9 @@ public final class Clauses {
         int scratchBits = 0;
         int wordIndex = 0;
         long v = 0;
+        if (value.itemsCount < 0 || value.itemsCount > 12) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+        }
         v = (value.itemsCount) & 0xfL;
         scratch |= v << scratchBits;
         scratchBits += 4;
@@ -180,8 +181,6 @@ public final class Clauses {
     private static boolean checkWriteW17(W17 value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= w17MaxBytes;
-        assert value.itemsCount >= 0;
-        assert value.itemsCount <= 9;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
             assert (value.items[i0] & 0xffffffffL) >= 0;
             assert (value.items[i0] & 0xffffffffL) <= 131071;
@@ -198,6 +197,9 @@ public final class Clauses {
         int scratchBits = 0;
         int wordIndex = 0;
         long v = 0;
+        if (value.itemsCount < 0 || value.itemsCount > 9) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+        }
         v = (value.itemsCount) & 0xfL;
         scratch |= v << scratchBits;
         scratchBits += 4;
@@ -316,8 +318,6 @@ public final class Clauses {
     private static boolean checkWriteW26(W26 value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= w26MaxBytes;
-        assert value.itemsCount >= 0;
-        assert value.itemsCount <= 6;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
             assert (value.items[i0] & 0xffffffffL) >= 0;
             assert (value.items[i0] & 0xffffffffL) <= 67108863;
@@ -334,6 +334,9 @@ public final class Clauses {
         int scratchBits = 0;
         int wordIndex = 0;
         long v = 0;
+        if (value.itemsCount < 0 || value.itemsCount > 6) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+        }
         v = (value.itemsCount) & 0x7L;
         scratch |= v << scratchBits;
         scratchBits += 3;
@@ -452,8 +455,6 @@ public final class Clauses {
     private static boolean checkWriteW1(W1 value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= w1MaxBytes;
-        assert value.itemsCount >= 0;
-        assert value.itemsCount <= 20;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
             assert (value.items[i0] & 0xffL) >= 0;
             assert (value.items[i0] & 0xffL) <= 1;
@@ -470,6 +471,9 @@ public final class Clauses {
         int scratchBits = 0;
         int wordIndex = 0;
         long v = 0;
+        if (value.itemsCount < 0 || value.itemsCount > 20) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+        }
         v = (value.itemsCount) & 0x1fL;
         scratch |= v << scratchBits;
         scratchBits += 5;
@@ -588,8 +592,6 @@ public final class Clauses {
     private static boolean checkWriteW52(W52 value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= w52MaxBytes;
-        assert value.itemsCount >= 0;
-        assert value.itemsCount <= 3;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
             assert value.items[i0] >= 0;
             assert value.items[i0] <= 4503599627370495L;
@@ -606,6 +608,9 @@ public final class Clauses {
         int scratchBits = 0;
         int wordIndex = 0;
         long v = 0;
+        if (value.itemsCount < 0 || value.itemsCount > 3) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+        }
         v = (value.itemsCount) & 0x3L;
         scratch |= v << scratchBits;
         scratchBits += 2;
@@ -742,8 +747,6 @@ public final class Clauses {
     private static boolean checkWriteW50(W50 value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= w50MaxBytes;
-        assert value.itemsCount >= 0;
-        assert value.itemsCount <= 3;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
             assert value.items[i0] >= 0;
             assert value.items[i0] <= 1125899906842623L;
@@ -760,6 +763,9 @@ public final class Clauses {
         int scratchBits = 0;
         int wordIndex = 0;
         long v = 0;
+        if (value.itemsCount < 0 || value.itemsCount > 3) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+        }
         v = (value.itemsCount) & 0x3L;
         scratch |= v << scratchBits;
         scratchBits += 2;
@@ -1125,8 +1131,6 @@ public final class Clauses {
     private static boolean checkWriteArrTri3(ArrTri3 value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= arrTri3MaxBytes;
-        assert value.itemsCount >= 0;
-        assert value.itemsCount <= 10;
         return true;
     }
 
@@ -1139,6 +1143,9 @@ public final class Clauses {
         int scratchBits = 0;
         int wordIndex = 0;
         long v = 0;
+        if (value.itemsCount < 0 || value.itemsCount > 10) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
+        }
         v = (value.itemsCount) & 0xfL;
         scratch |= v << scratchBits;
         scratchBits += 4;
@@ -2234,8 +2241,6 @@ public final class Clauses {
     private static boolean checkWriteArrNested(ArrNested value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= arrNestedMaxBytes;
-        assert value.itemsCount >= 0;
-        assert value.itemsCount <= 4;
         return true;
     }
 
@@ -2256,6 +2261,9 @@ public final class Clauses {
             wordIndex++;
             scratchBits -= 64;
             scratch = v >>> (5 - scratchBits);
+        }
+        if (value.itemsCount < 0 || value.itemsCount > 4) {
+            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
         }
         v = (value.itemsCount) & 0x7L;
         scratch |= v << scratchBits;

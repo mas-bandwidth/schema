@@ -629,6 +629,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_input_packet( serialize_wri
     {
         return 0;
     }
+    if ( value->inputs_count < 0 || value->inputs_count > MAX_INPUTS_PER_PACKET )
+    {
+        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
+    }
     if ( !serialize_write_int( stream, value->inputs_count, 0, MAX_INPUTS_PER_PACKET ) )
     {
         return 0;

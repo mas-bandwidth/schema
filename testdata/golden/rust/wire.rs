@@ -297,6 +297,7 @@ impl ProbeSample {
     pub fn new() -> Self {
         let mut value = ProbeSample::default();
         value.active = true;
+        value.samples_count = 1;
         value
     }
 }

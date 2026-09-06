@@ -169,7 +169,7 @@ struct ProbeSample {
     uint32_t idle_ticks = 0;
 
     uint16_t samples[8] = {}; // used count beside it; wire count in [1, 8]
-    int32_t samples_count = 0;
+    int32_t samples_count = 1;
 };
 
 inline constexpr int64_t ProbeSampleMaxBits = 276; // longest wire path; align pads at worst case (SPEC §6.1)

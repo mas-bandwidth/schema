@@ -333,7 +333,7 @@ struct BenchMixed {
     uint64_t frame_tick = 0;
     int32_t server_time = 0; // fixed(24, 8) — Q24.8, raw value scaled by 2^8; bounds in whole units; wire [0, 65535]
     MixedEntity entities[8] = {}; // used count beside it; wire count in [1, 8]
-    int32_t entities_count = 0;
+    int32_t entities_count = 1;
     MixedStat stats[80] = {}; // used count beside it; wire count in [0, 80]
     int32_t stats_count = 0;
     MixedEvent game_event;

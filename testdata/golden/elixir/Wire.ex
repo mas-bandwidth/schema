@@ -47,7 +47,7 @@ defmodule Example.ProbeSample do
             has_target: false,
             target_id: 0,
             idle_ticks: 0,
-            samples: []
+            samples: List.duplicate(0, 1)
 end
 
 # type ProbeRing
