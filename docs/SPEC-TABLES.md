@@ -4280,6 +4280,16 @@ node count records, back to back:
   bytes verbatim.** Its type id is one of the three reserved blob ids and it is
   a reference like any other. The align is `string(N)`'s and `bytes(N)`'s, for
   `memcpy`, and a blob is the largest payload this wire carries.
+- **A RECORD'S FRAMING IS ITS TYPE ID'S, AND ITS PLACEMENT IS THE ROOT'S, and
+  those are two questions.** The reserved blob ids say a length, an align and
+  the bytes WHEREVER THEY APPEAR, and every reader knows that by the id alone,
+  because the tail announces all three ids whether or not a root names them
+  (the order, above). Whether this root can PLACE such a node is asked second,
+  of the blob edges its pointers reach (§2.5): a root that reaches none commands
+  no storage for the record, counts one `unknown` at it, and every reference to
+  it reads null. A reader that gated the FRAMING on that second question would
+  read a blob record's bytes as a table body's fields, because a bit stream
+  carries no length for it to step the record over by instead.
 - **A ROOT THAT REACHES NO NODES ELIDES THE FIELD**, like every other empty
   thing on this wire (§3). There is no empty node table and no count of zero: a
   message with no pointers carries no reserved reference at all.

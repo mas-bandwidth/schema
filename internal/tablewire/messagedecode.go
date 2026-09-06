@@ -276,6 +276,16 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 			byTypeId[ir.TableWireId(sd.WireName())] = sd
 		}
 	}
+	// A RECORD'S FRAMING IS ITS TYPE ID'S, AND ITS PLACEMENT IS THE ROOT'S,
+	// which are two questions and are asked separately here (§2.5, §3.1, §3.3).
+	// The two RESERVED BLOB IDS say a thirty-two bit length, an align and the
+	// bytes wherever they appear, and every reader knows that by the id alone
+	// because the announcement's tail carries both ids whether or not this
+	// root names them. A bit stream has no length for a reader to step a
+	// record over by, so a reader that framed a blob record as a TABLE body
+	// would be reading its bytes as fields and would not be reading the same
+	// wire. Whether this ROOT can PLACE such a node is the second question,
+	// answered below by the edges its pointers reach.
 	blobKind := map[uint64]ir.FieldTypeKind{}
 	bytesEdge, stringEdge := ir.PointerReachableBlobs(inst.Def)
 	if bytesEdge {
@@ -284,6 +294,7 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 	if stringEdge {
 		blobKind[ir.StringWireTypeId] = ir.TString
 	}
+	blobFramed := map[uint64]bool{ir.BytesWireTypeId: true, ir.StringWireTypeId: true}
 
 	// LOAD IS A SCAN, and a bit stream forces the same two passes a file's
 	// lengths allowed (§3.1): PASS ONE walks the records to learn what each
@@ -314,7 +325,7 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 		if !named {
 			return false
 		}
-		if _, isBlob := blobKind[typeEntry.Id]; isBlob {
+		if blobFramed[typeEntry.Id] {
 			n, ok := d.r.get(32)
 			if !ok || !d.r.align() || !d.r.has(int(n)*8) {
 				d.report.Malformed = true
@@ -334,7 +345,15 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 
 	st.nodes = make([]Node, len(records))
 	for i, rec := range records {
-		if kind, isBlob := blobKind[rec.typeId]; isBlob {
+		if blobFramed[rec.typeId] {
+			kind, placeable := blobKind[rec.typeId]
+			if !placeable {
+				// THIS ROOT REACHES NO SUCH BLOB EDGE, so the record commands
+				// no storage, its bytes are the ones the framing already
+				// stepped over, and ONE unknown counts at the node (§2.5)
+				d.report.Unknown++
+				continue
+			}
 			st.nodes[i] = Node{Blob: &tabletext.Blob{Data: rec.blob}, Kind: kind}
 			continue
 		}

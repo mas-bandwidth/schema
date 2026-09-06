@@ -73,11 +73,18 @@ pointer_self_cycle graphdemo Scene    testdata/wire/tables/fuzz-vectors/pointer_
 # It is the input tables-wire-fuzz-node-type-negative-control replays.
 message_node_type_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/message_node_type_unpointed.bin message
 
-# THE SAME RULE AT THE TWO RESERVED BLOB IDS carried a vector here and no
-# longer does. A blob record on the bitpacked body carries a thirty-two bit
-# length that must fit the batch's remaining bits, so a mutated record names a
-# reserved blob id and the reader still never places a blob: the vector's bytes
-# stopped reproducing when the second round moved the bodies to bits, and the
-# corpus holds no replacement. ir.PointerReachableBlobs still gates the rule in
-# the reference emitter and in the oracle. The node-type vector above is the one
-# the corpus reaches.
+# A RECORD'S FRAMING IS ITS TYPE ID'S AND ITS PLACEMENT IS THE ROOT'S (§2.5,
+# §3.1, §3.3), which are two questions, and this vector is the red that
+# separated them. The two RESERVED BLOB IDS say a thirty-two bit length, an
+# align and the bytes wherever they appear, because §3.3's tail announces both
+# ids whether or not a root names them; ir.PointerReachableBlobs answers only
+# whether this root can PLACE such a node. The oracle asked only the second
+# question, so with no blob edge under graphdemo's Scene it framed a blob
+# record as a TABLE BODY and read its bytes as fields, where the reference read
+# the length and refused a record whose 3,739,746,528 bytes run past a 66 byte
+# batch. The first vector for this class stopped reproducing when the second
+# round moved the bodies to bits; this one is derived against the bit stream,
+# found by the random pass at mutant 280820 of seed 24845619678 over
+# graph_tree_message. It is the input
+# tables-wire-fuzz-blob-node-negative-control replays.
+message_blob_node_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/message_blob_node_unpointed.bin message

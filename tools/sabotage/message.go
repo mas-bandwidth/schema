@@ -111,7 +111,7 @@ var messageSabotages = map[string][]edit{
 	// AN OVER-LONG ARRAY CLAMPS BY WALKING THE SURPLUS: stop at the bound
 	// instead and the next field lands on the wrong bit.
 	"message-clamp-drops-surplus": {{
-		old: "\tfor i := uint64(0); i < n; i++ {\n\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tif f.Array == ir.ArrayList {\n",
+		old: "\tfor i := uint64(0); i < walk; i++ {\n\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tif f.Array == ir.ArrayList {\n",
 		new: "\tfor i := uint64(0); i < kept; i++ { // SABOTAGED: the surplus is not walked\n\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tif f.Array == ir.ArrayList {\n",
 	}},
 
