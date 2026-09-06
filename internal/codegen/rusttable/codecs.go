@@ -176,6 +176,7 @@ func (g *gen) tableEnums(members []*ir.Struct) []*ir.Enum {
 // ---- storage ----
 
 func (g *gen) emitStorage(st *ir.Struct) {
+	g.pf("%s", ir.DocComment(st.Doc, "", "///"))
 	g.pf("// table %s — TABLE-wire storage: relocatable, bounded, declared defaults\n", st.Name)
 	g.pf("// in the Default impl (docs/SPEC-TABLES.md)\n")
 	g.pf("#[repr(C)]\n#[derive(Clone, Copy, PartialEq, Debug)]\n")
@@ -194,6 +195,7 @@ func (g *gen) emitStorage(st *ir.Struct) {
 				}
 				prevGuard = f.Guard
 			}
+			g.pf("%s", ir.DocComment(f.Doc, "    ", "///"))
 			g.emitStorageField(f)
 		}
 		g.pf("}\n\n")

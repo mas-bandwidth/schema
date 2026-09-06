@@ -214,12 +214,15 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 // variant; nothing heap-allocates per value after construction.
 func (g *gen) emitUnion(d *ir.Union) {
 	members := make([]string, len(d.Variants))
+	docs := make([]string, len(d.Variants))
 	for i, v := range d.Variants {
 		members[i] = ir.GoExportName(v.Name)
+		docs[i] = v.Doc
 	}
-	g.emitTagEnum(d.Name+"Type", members,
+	g.emitTagEnum(d.Name+"Type", members, docs,
 		fmt.Sprintf("union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)", d.Name))
 
+	g.tf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.tf("// %s — at most one of the arms; Type says which. Construction is the empty\n", d.Name)
 	g.tf("// union (None). A read zero-establishes exactly the selected arm before\n")
 	g.tf("// decoding it (SPEC §5); unselected arms keep what they last held — the\n")
@@ -236,11 +239,16 @@ func (g *gen) emitUnion(d *ir.Union) {
 }
 
 // emitTagEnum emits a tag enum with unsigned backing sized to the set.
-func (g *gen) emitTagEnum(name string, members []string, comment string) {
+// emitTagEnum emits a tag enum with unsigned backing sized to the set. docs
+// is each arm's doc comment (SPEC §4.1), parallel to members: it reaches the
+// tag's member as a line comment, the one place the arm is a declaration of
+// its own.
+func (g *gen) emitTagEnum(name string, members []string, docs []string, comment string) {
 	g.tf("// %s: %s\n", name, comment)
 	g.tf("public enum %s : %s\n{\n", name, csUint(ir.StorageBitsFor(int64(len(members)))))
 	g.tf("    None = 0,\n")
 	for i, m := range members {
+		g.tf("%s", ir.DocComment(docs[i], "    ", "//"))
 		g.tf("    %s = %d,\n", m, i+1)
 	}
 	g.tf("    Max = %d, // the exported extent (SPEC §4.2)\n", len(members))
@@ -252,6 +260,7 @@ func (g *gen) emitTagEnum(name string, members []string, comment string) {
 // type (the declared type pins the exported type, SPEC §4.2). Consumers cast
 // at the use site where a narrower type is required — C# constants are typed.
 func (g *gen) emitConst(d *ir.Const) {
+	g.sf("%s", ir.DocComment(d.Doc, "", "//"))
 	if d.IsFloat {
 		if d.Storage == "float32" {
 			g.sf("public const float %s = %s;%s\n\n", d.Name, formatFloat32(d.Float), g.foldComment(d.Expr))
@@ -274,12 +283,14 @@ func (g *gen) foldComment(e ast.Expr) string {
 }
 
 func (g *gen) emitEnum(d *ir.Enum) {
+	g.tf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.tf("// %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
 	g.tf("// a native enum with unsigned backing — | max = ... headroom values are\n")
 	g.tf("// representable because C# enums are open over their backing type (SPEC §6.1)\n")
 	g.tf("public enum %s : %s\n{\n", d.Name, csUint(d.StorageBits))
 	g.tf("    None = 0,\n")
 	for i, v := range d.Variants {
+		g.tf("%s", ir.DocComment(d.VariantDocs[i], "    ", "//"))
 		g.tf("    %s = %d,\n", v, i+1)
 	}
 	g.tf("    Count = %d, // the declared variant count (SPEC §4.2)\n", len(d.Variants))
@@ -300,10 +311,12 @@ func (g *gen) emitEnum(d *ir.Enum) {
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {
+	g.sf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.sf("// %s — one bit per variant, consumed as masks; flags-typed fields store a\n", d.Name)
 	g.sf("// plain ulong, wire %d bits (SPEC §4.2). Masks are flat PascalCase — the Go\n", d.WireBits)
 	g.sf("// target's spelling exactly, so the checker's existing claims cover them.\n")
 	for i, v := range d.Variants {
+		g.sf("%s", ir.DocComment(d.VariantDocs[i], "", "//"))
 		g.sf("public const ulong %s%s = 1ul << %d;\n", d.Name, v, i)
 	}
 	g.sf("public const long %sCount = %d; // the declared variant count (SPEC §4.2)\n", d.Name, len(d.Variants))
@@ -332,6 +345,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 }
 
 func (g *gen) emitClass(d *ir.Struct) {
+	g.tf("%s", ir.DocComment(d.Doc, "", "//"))
 	if len(d.Tags) > 0 {
 		g.tf("// type %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", d.Name, strings.Join(d.Tags, ", "))
 	} else {
@@ -391,6 +405,7 @@ func (g *gen) emitClassFields(fields []*ir.Field) {
 			}
 			prevGuard = f.Guard
 		}
+		g.tf("%s", ir.DocComment(f.Doc, "    ", "//"))
 		g.emitStorageField(f)
 	}
 }

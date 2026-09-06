@@ -70,9 +70,32 @@ func describe(t scanner.Token) string {
 		return "end of file"
 	case scanner.Newline:
 		return "newline"
+	case scanner.Doc:
+		return "doc comment"
 	default:
 		return t.Text
 	}
+}
+
+// takeDoc consumes a `///` DOC COMMENT standing before an item and returns
+// its text (SPEC §4.1). The scanner has already held the block to its own
+// lines and to touching what follows. What remains is BINDING, which is the
+// caller's: a declaration, a field, a variant or an arm takes the text, and
+// anything else refuses it by name through refuseDoc.
+func (p *parser) takeDoc() (string, ast.Pos, bool) {
+	if p.kind() != scanner.Doc {
+		return "", ast.Pos{}, false
+	}
+	t := p.advance()
+	return t.Text, t.Pos, true
+}
+
+// refuseDoc is the diagnostic for a `///` block above something that has no
+// descriptor row to carry a doc comment (SPEC §4.1, SPEC-TABLES.md §8): the
+// block was an opt-in, and dropping it silently is the outcome opt-in exists
+// to prevent, so it is refused naming the spelling that works.
+func (p *parser) refuseDoc(pos ast.Pos, what string) {
+	p.errf(pos, "nothing here carries a doc comment, and a /// block above %s reaches no descriptor. Write // for a comment there (SPEC §4.1)", what)
 }
 
 // terminator: an actual newline, or the closing } of the enclosing block
@@ -129,7 +152,12 @@ func (p *parser) parseFile() {
 			continue
 		}
 		before := p.i
-		p.parseDecl()
+		doc, docPos, hasDoc := p.takeDoc()
+		if hasDoc && p.kind() == scanner.EOF {
+			p.refuseDoc(docPos, "the end of the file")
+			break
+		}
+		p.parseDecl(doc, docPos, hasDoc)
 		if p.i == before {
 			p.skipDecl() // ensure progress on a parse error
 		}
@@ -140,10 +168,16 @@ func (p *parser) parseFile() {
 	}
 }
 
-func (p *parser) parseDecl() {
+// parseDecl parses one file-scope declaration. doc is the `///` block above
+// it, when one stands there (SPEC §4.1): a const, enum, flags, type, table or
+// union declaration takes it, and `package` refuses it by name.
+func (p *parser) parseDecl(doc string, docPos ast.Pos, hasDoc bool) {
 	t := p.tok()
 	switch t.Kind {
 	case scanner.KwPackage:
+		if hasDoc {
+			p.refuseDoc(docPos, "package")
+		}
 		p.advance()
 		name := p.expect(scanner.Ident, "package name")
 		p.expectTerminator("package declaration")
@@ -160,15 +194,17 @@ func (p *parser) parseDecl() {
 	case scanner.KwConst:
 		p.advance()
 		name := p.expect(scanner.Ident, "constant name")
-		d := &ast.ConstDecl{Name: name.Text, Pos: t.Pos}
+		d := &ast.ConstDecl{Name: name.Text, Pos: t.Pos, Doc: doc}
 		if typ, ok := p.constType(); ok {
 			d.Type = typ
 		}
 		p.expect(scanner.Assign, "=")
 		d.Expr = p.parseExpr()
 		if p.kind() == scanner.Pipe {
-			p.errf(p.tok().Pos, "a constant takes no qualification, and | is never an operator — the language has no bitwise-or (SPEC §4.2)")
-			p.skipToTerminator()
+			// the qualification section carries TAGS and nothing else
+			// (SPEC §4.2). | is never an operator, the language has no
+			// bitwise-or, and the checker refuses anything valued there
+			d.Attrs = p.parsePipeAttrs()
 		}
 		p.expectTerminator("constant declaration")
 		p.file.Decls = append(p.file.Decls, d)
@@ -176,7 +212,7 @@ func (p *parser) parseDecl() {
 	case scanner.KwEnum:
 		p.advance()
 		name := p.expect(scanner.Ident, "enum name")
-		d := &ast.EnumDecl{Name: name.Text, Pos: t.Pos}
+		d := &ast.EnumDecl{Name: name.Text, Pos: t.Pos, Doc: doc}
 		d.Attrs = p.declQualifiers("enum")
 		d.Variants = p.parseVariantList("enum")
 		p.expectTerminator("enum declaration")
@@ -185,7 +221,7 @@ func (p *parser) parseDecl() {
 	case scanner.KwType:
 		p.advance()
 		name := p.expect(scanner.Ident, "type name")
-		d := &ast.TypeDecl{Name: name.Text, Pos: t.Pos}
+		d := &ast.TypeDecl{Name: name.Text, Pos: t.Pos, Doc: doc}
 		d.Attrs = p.declQualifiers("type")
 		d.Body = p.parseBlock()
 		p.expectTerminator("type declaration")
@@ -201,7 +237,7 @@ func (p *parser) parseDecl() {
 		// one, emitted on the side, so there is no marker to parse.
 		p.advance()
 		name := p.expect(scanner.Ident, "table name")
-		d := &ast.TableDecl{Name: name.Text, Pos: t.Pos}
+		d := &ast.TableDecl{Name: name.Text, Pos: t.Pos, Doc: doc}
 		d.Attrs = p.declQualifiers("table")
 		d.Body = p.parseBlock()
 		p.expectTerminator("table declaration")
@@ -235,7 +271,7 @@ func (p *parser) parseDecl() {
 		case "flags":
 			p.advance()
 			name := p.expect(scanner.Ident, "flags name")
-			d := &ast.FlagsDecl{Name: name.Text, Pos: t.Pos}
+			d := &ast.FlagsDecl{Name: name.Text, Pos: t.Pos, Doc: doc}
 			d.Attrs = p.declQualifiers("flags")
 			d.Variants = p.parseVariantList("flags")
 			p.expectTerminator("flags declaration")
@@ -249,11 +285,9 @@ func (p *parser) parseDecl() {
 		case "union":
 			p.advance()
 			name := p.expect(scanner.Ident, "union name")
-			d := &ast.UnionDecl{Name: name.Text, Pos: t.Pos}
-			if p.kind() == scanner.Pipe {
-				p.errf(p.tok().Pos, "a union declaration takes no qualification (SPEC §4.2)")
-				p.skipToTerminator()
-			}
+			d := &ast.UnionDecl{Name: name.Text, Pos: t.Pos, Doc: doc}
+			// the qualification carries TAGS and nothing else (SPEC §4.2)
+			d.Attrs = p.declQualifiers("union")
 			d.Variants = p.parseUnionBody()
 			p.expectTerminator("union declaration")
 			p.file.Decls = append(p.file.Decls, d)
@@ -279,56 +313,52 @@ func (p *parser) constType() (string, bool) {
 	return "", false
 }
 
-// parseVariantList parses an `enum` or `flags` body: COMMA-SEPARATED variant
-// names (SPEC §4.2), where a `type` or `table` body is LINE-separated fields.
-//
-// The two body grammars in one language are the most likely early mistake, so
-// the missing comma is a diagnostic of its own and the list RECOVERS across
-// it. Before, the newline ended the list, `expect(})` failed on it, and the
-// declaration closed there — which sent the next variant to the top-level loop
-// and drew a second error placing it at FILE SCOPE, two lines below the actual
-// mistake and listing the declaration keywords (#447 F-02, #521 G-03).
+// parseVariantList parses an `enum` or `flags` body (SPEC §4.2): variant
+// names separated by a COMMA or by a NEWLINE, a trailing separator allowed.
+// Each variant may carry a `///` doc comment above it and a qualification
+// section after it. The section runs to the end of the line, so a qualified
+// variant ends its line and the newline is its separator. A `}` on that same
+// line is refused by name, because the pipe claims the rest of the line and
+// the brace would be arguing with it.
 func (p *parser) parseVariantList(what string) []ast.Name {
 	var names []ast.Name
 	p.skipNewlineBeforeBrace()
 	p.expect(scanner.LBrace, "{")
-	saidComma := false
 	for p.kind() != scanner.RBrace && p.kind() != scanner.EOF {
+		doc, docPos, hasDoc := p.takeDoc()
+		if hasDoc && (p.kind() == scanner.RBrace || p.kind() == scanner.EOF) {
+			p.refuseDoc(docPos, "a closing brace")
+			break
+		}
 		t := p.expect(scanner.Ident, what+" variant name")
 		if t.Kind != scanner.Ident {
 			break
 		}
-		n := ast.Name{Text: t.Text, Pos: t.Pos}
+		n := ast.Name{Text: t.Text, Pos: t.Pos, Doc: doc}
 		if p.kind() == scanner.Pipe {
 			// A QUALIFIED VARIANT (SPEC §4.2): the section runs to the end of
 			// the line, so the variant ends its line and the newline is its
 			// separator. A trailing comma inside the section is the section's
 			// own, and the list goes on below it.
 			n.Attrs = p.parsePipeAttrs()
-			names = append(names, n)
+			if p.kind() == scanner.RBrace && p.tok().Pos.Line == t.Pos.Line {
+				p.errf(p.tok().Pos, "a qualified variant ends its own line: write the list one variant per line, with the closing brace on a line of its own (SPEC §4.1)")
+			}
+		}
+		names = append(names, n)
+		switch p.kind() {
+		case scanner.Comma:
+			p.advance() // a newline after a comma is whitespace (SPEC §4.1)
+		case scanner.Newline:
 			for p.kind() == scanner.Newline {
 				p.advance()
 			}
-			continue
+		case scanner.Ident:
+			// two names on one line with nothing between them: read on as
+			// if the separator were there, so the rest of the body still
+			// diagnoses
+			p.errf(p.tok().Pos, "%s variants are separated by a comma or a newline. %s follows %s with neither (SPEC §4.2)", what, p.tok().Text, t.Text)
 		}
-		names = append(names, n)
-		if p.kind() == scanner.Comma {
-			p.advance() // trailing comma allowed; newlines around commas are whitespace
-			continue
-		}
-		// a newline with another name after it is a body written one variant
-		// per line. Say the rule ONCE — a five-variant enum written that way
-		// is one mistake, not five — and read the rest of the body.
-		if p.kind() == scanner.Newline && p.peek().Kind == scanner.Ident {
-			if !saidComma {
-				p.errf(p.tok().Pos, "%s variants are COMMA-separated, so %s needs a comma after it — a `type` or `table` body separates its FIELDS by newline, and the two body grammars differ (SPEC §4.2)",
-					what, t.Text)
-				saidComma = true
-			}
-			p.advance() // the newline, read as the separator it was meant to be
-			continue
-		}
-		break
 	}
 	p.expect(scanner.RBrace, "}")
 	return names
@@ -355,6 +385,11 @@ func (p *parser) parseUnionBody() []ast.UnionVariant {
 		case scanner.Newline:
 			p.advance()
 		default:
+			doc, docPos, hasDoc := p.takeDoc()
+			if hasDoc && (p.kind() == scanner.RBrace || p.kind() == scanner.EOF) {
+				p.refuseDoc(docPos, "a closing brace")
+				continue
+			}
 			if p.kind() == scanner.KwType {
 				// `type` scans as a keyword, so this cannot reach the
 				// checker: the named refusal lives here (SPEC §4.8 — it is
@@ -375,7 +410,7 @@ func (p *parser) parseUnionBody() []ast.UnionVariant {
 				// no storage, the packet wire carries the tag alone and the
 				// table wire the arm id with L = 0 (docs/SPEC-TABLES.md §2.6).
 				// Its qualification section, when it has one, follows the name.
-				v := ast.UnionVariant{Name: name.Text, Pos: name.Pos, TypePos: typePos}
+				v := ast.UnionVariant{Name: name.Text, Pos: name.Pos, TypePos: typePos, Doc: doc}
 				if p.kind() == scanner.Pipe {
 					v.Attrs = p.parsePipeAttrs()
 				}
@@ -388,7 +423,8 @@ func (p *parser) parseUnionBody() []ast.UnionVariant {
 			if !ok {
 				continue
 			}
-			v := ast.UnionVariant{Name: arm.Name, Pos: arm.Pos, TypePos: typePos, Arm: arm}
+			arm.Doc = doc
+			v := ast.UnionVariant{Name: arm.Name, Pos: arm.Pos, TypePos: typePos, Arm: arm, Doc: doc}
 			if arm.Array == nil && !arm.Type.Optional && !arm.Type.Pointer && arm.Type.Kind == ast.ScalarNamed {
 				// the arm names a bare declaration: the spelling every arm had
 				// before an arm could be any field type
@@ -424,7 +460,12 @@ func (p *parser) parseBlock() *ast.Block {
 			p.advance()
 		default:
 			before := p.i
-			if item := p.parseItem(); item != nil {
+			doc, docPos, hasDoc := p.takeDoc()
+			if hasDoc && (p.kind() == scanner.RBrace || p.kind() == scanner.EOF) {
+				p.refuseDoc(docPos, "a closing brace")
+				continue
+			}
+			if item := p.parseItem(doc, docPos, hasDoc); item != nil {
 				b.Items = append(b.Items, item)
 			}
 			if p.i == before {
@@ -434,8 +475,25 @@ func (p *parser) parseBlock() *ast.Block {
 	}
 }
 
-func (p *parser) parseItem() ast.Item {
+// parseItem parses one body item. doc is the `///` block above it (SPEC
+// §4.1): a FIELD takes it. Every other item, meaning const( ), reserved( ),
+// align and if, has no descriptor row to carry one and refuses it by name.
+func (p *parser) parseItem(doc string, docPos ast.Pos, hasDoc bool) ast.Item {
 	t := p.tok()
+	if hasDoc && t.Kind != scanner.Ident {
+		what := describe(t)
+		switch t.Kind {
+		case scanner.KwConst:
+			what = "a const( ) item"
+		case scanner.KwReserved:
+			what = "a reserved( ) item"
+		case scanner.KwAlign:
+			what = "an align item"
+		case scanner.KwIf:
+			what = "an if branch"
+		}
+		p.refuseDoc(docPos, what)
+	}
 	switch t.Kind {
 	case scanner.KwConst: // const(value, bits) — one token of lookahead disambiguates
 		p.advance()
@@ -489,7 +547,11 @@ func (p *parser) parseItem() ast.Item {
 
 	case scanner.Ident:
 		p.advance()
-		return p.parseFieldLine(t)
+		item := p.parseFieldLine(t)
+		if f, ok := item.(*ast.Field); ok {
+			f.Doc = doc
+		}
+		return item
 
 	default:
 		p.errf(t.Pos, "unexpected %q inside block", describe(t))
@@ -795,16 +857,43 @@ func (p *parser) declQualifiers(what string) []ast.Attr {
 
 // parsePipeAttrs parses a | qualification section: comma-separated
 // attributes running to the end of the line (SPEC §4.2). The terminator is
-// left for the caller. An empty section is a parse error.
+// left for the caller. An empty section is a parse error. A valueless entry
+// is a TAG, an identifier in an open namespace, and a RESERVED WORD is not an
+// identifier (SPEC §4.1), so `| table` is refused with the word named rather
+// than becoming a tag.
 func (p *parser) parsePipeAttrs() []ast.Attr {
 	var attrs []ast.Attr
 	pipe := p.expect(scanner.Pipe, "|")
-	for p.kind() == scanner.Ident {
+	refused := false
+	if k := p.kind(); k == scanner.Int || k == scanner.Float || k == scanner.LParen || k == scanner.Minus {
+		// `const X = 1 | 2`: | is never an operator. The language has no
+		// bitwise-or. It opens the qualification section, whose entries are
+		// identifiers (SPEC §4.2).
+		p.errf(pipe.Pos, "| is never an operator. The language has no bitwise-or. | opens a qualification section, whose entries are identifiers (SPEC §4.2)")
+		for p.kind() != scanner.Newline && p.kind() != scanner.RBrace && p.kind() != scanner.EOF {
+			p.advance() // the terminator stays for the caller
+		}
+		return nil
+	}
+	for {
+		if p.kind().IsKeyword() {
+			word := p.advance()
+			refused = true
+			p.errf(word.Pos, "%s is a reserved word and cannot be a tag. A tag is an identifier, and reserved words are not identifiers (SPEC §4.1, §4.2)", word.Text)
+			if p.kind() == scanner.Comma {
+				p.advance()
+				continue
+			}
+			break
+		}
+		if p.kind() != scanner.Ident {
+			break
+		}
 		key := p.advance()
 		a := ast.Attr{Key: key.Text, Pos: key.Pos}
 		if p.kind() == scanner.Assign {
 			p.advance()
-			a.Value = p.parseExpr() // a bare word value (round = up) parses as an IdentExpr
+			a.Value = p.parseExpr() // a bare word value (cpp_native = VMath) parses as an IdentExpr
 		}
 		attrs = append(attrs, a)
 		if p.kind() == scanner.Comma {
@@ -813,7 +902,7 @@ func (p *parser) parsePipeAttrs() []ast.Attr {
 		}
 		break
 	}
-	if len(attrs) == 0 {
+	if len(attrs) == 0 && !refused {
 		p.errf(pipe.Pos, "empty qualification section — write the qualifiers after | or drop it (SPEC §4.2)")
 	}
 	return attrs

@@ -189,6 +189,7 @@ func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
 // ---- storage (table declarations only; closure types come from <Base>.h) ----
 
 func (g *tableGen) emitTableStruct(st *ir.Struct) {
+	g.pf("%s", ir.DocComment(st.Doc, "", "//"))
 	g.pf("// table %s — TABLE-wire storage: relocatable, bounded, defaults in the\n", st.Name)
 	g.pf("// member initializers (docs/SPEC-TABLES.md)\n")
 	g.pf("struct %s {\n", st.Name)
@@ -203,6 +204,7 @@ func (g *tableGen) emitTableStruct(st *ir.Struct) {
 			}
 			prevGuard = f.Guard
 		}
+		g.pf("%s", ir.DocComment(f.Doc, "    ", "//"))
 		g.emitTableStorageField(f)
 	}
 	g.pf("};\n\n")
@@ -574,6 +576,16 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 		g.pf("        case %s::%s: return true;\n", e.Name, v)
 	}
 	g.pf("        default: return false;\n")
+	g.pf("    }\n}\n")
+	// THE MESSAGE FORM's half: the SLOT, a literal, with no id table in sight
+	// (docs/SPEC-TABLES.md §3.3)
+	g.pf("inline bool TableEnumSlot( %s value, uint64_t & slot )\n{\n", e.Name)
+	g.pf("    switch ( value )\n    {\n")
+	g.pf("        case %s::None: slot = 0; return true;\n", e.Name)
+	for _, v := range e.Variants {
+		g.pf("        case %s::%s: slot = %d; return true;\n", e.Name, v, g.slots[ir.TableVocabularyEntry{Id: ir.TableWireId(v)}.Key()])
+	}
+	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
 	g.pf("inline bool TableEnumId( %s value, uint64_t & id )\n{\n", e.Name)
 	g.pf("    switch ( value )\n    {\n")
@@ -1453,7 +1465,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("        const uint64_t field_id = r.ids->at( field_ref );\n")
 	g.pf("        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }\n")
 	g.pf("        uint8_t kind = r.get8();\n")
-	g.pf("        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )\n        {\n")
+	g.pf("        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )\n        {\n")
 	g.pf("            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,\n")
 	g.pf("            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node\n")
 	g.pf("            // table's is the ROOT body's alone, on the numbering's own\n")
@@ -1993,6 +2005,12 @@ func (g *tableGen) unionArmsLambda(un *ir.Union, hoisted bool) string {
 			if v.Body() || v.Void() {
 				continue
 			}
+			g.emitTagsStatic(fieldSpelling{owner: un.Name}.tagsName(v.F), v.F.Tags, "static const", "")
+		}
+		for _, v := range un.Variants {
+			if v.Body() || v.Void() {
+				continue
+			}
 			g.emitArmFieldInfo(un, v, hoisted)
 		}
 		rows := oneLine(g.body.String())
@@ -2100,6 +2118,13 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 			g.pf("%s%s TableWideRange %s_%s_wide = { { %sull, %sull }, { %sull, %sull } };\n",
 				indent, qualifier, st.Name, f.Name, lo0, lo1, hi0, hi1)
 		}
+		// the TAG lists (docs/SPEC-TABLES.md §8.1), one constant per tagged
+		// field and one for a tagged declaration, named from the descriptor
+		// row as the wide ranges are
+		for _, f := range st.Fields {
+			g.emitTagsStatic(fieldSpelling{owner: st.Name}.tagsName(f), f.Tags, qualifier, indent)
+		}
+		g.emitTagsStatic(st.Name+"_tags", st.Tags, qualifier, indent)
 		if hoisted {
 			g.pf("inline const TableFieldInfo %sTableFields[] = {\n", st.Name)
 		} else {
@@ -2110,19 +2135,21 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 		}
 		if hoisted {
 			g.pf("};\n")
-			g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), %d, %sTableFields, %s%s };\n",
-				st.Name, st.Name, st.Name, len(st.Fields), st.Name, resetLambda(st.Name), g.modeColumn(st))
+			g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), %d, %sTableFields, %s%s, %s };\n",
+				st.Name, st.Name, st.Name, len(st.Fields), st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"))
 		} else {
 			g.pf("    };\n")
-			g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields, %s%s };\n",
-				infoQualifier, st.Name, st.Name, len(st.Fields), resetLambda(st.Name), g.modeColumn(st))
+			g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields, %s%s, %s };\n",
+				infoQualifier, st.Name, st.Name, len(st.Fields), resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"))
 		}
 	case hoisted:
-		g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s };\n",
-			st.Name, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st))
+		g.emitTagsStatic(st.Name+"_tags", st.Tags, qualifier, indent)
+		g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s };\n",
+			st.Name, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"))
 	default:
-		g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s };\n",
-			infoQualifier, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st))
+		g.emitTagsStatic(st.Name+"_tags", st.Tags, qualifier, indent)
+		g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s };\n",
+			infoQualifier, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"))
 	}
 	if hoisted {
 		g.pf("inline const TableTypeInfo * %sTableType() { return &%sTableInfo; }\n\n", st.Name, st.Name)
@@ -2146,6 +2173,33 @@ type fieldSpelling struct {
 
 // wideName is the name of the TableWideRange static a wide-kind row points at.
 func (sp fieldSpelling) wideName(f *ir.Field) string { return sp.owner + "_" + f.Name + "_wide" }
+
+// tagsName is the name of the tag-list static a tagged row points at.
+func (sp fieldSpelling) tagsName(f *ir.Field) string { return sp.owner + "_" + f.Name + "_tags" }
+
+// emitTagsStatic emits one tag list as a constant array of string literals
+// (docs/SPEC-TABLES.md §8.1), and nothing at all for an item with no tags:
+// absence is 0 and NULL in the row, never a per-row empty array.
+func (g *tableGen) emitTagsStatic(name string, tags []string, qualifier, indent string) {
+	if len(tags) == 0 {
+		return
+	}
+	g.pf("%s%s char * const %s[] = { %s };\n", indent, qualifier, name, ir.QuotedTags(tags))
+}
+
+// annotationColumns renders a row's doc, num_tags and tags columns: the
+// shared empty doc and a NULL list where the item carries none.
+func annotationColumns(doc string, tags []string, tagsName string) string {
+	docColumn := "TableDocNone"
+	if doc != "" {
+		docColumn = ir.QuoteDoc(doc)
+	}
+	list := "NULL"
+	if len(tags) > 0 {
+		list = tagsName
+	}
+	return fmt.Sprintf("%s, %d, %s", docColumn, len(tags), list)
+}
 
 // emitFieldInfo emits ONE TableFieldInfo row (docs/SPEC-TABLES.md §8.1). It is
 // the whole descriptor vocabulary in one place: a field of a table and an arm
@@ -2361,11 +2415,11 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	if _, _, ok := ir.TableRawRange(f); ok && ir.TableKindWide(tableScalarKind(f)) {
 		wide = "&" + sp.wideName(f)
 	}
-	g.pf("%s    { \"%s\", \"%s\", \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\" },\n",
+	g.pf("%s    { \"%s\", \"%s\", \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s },\n",
 		sp.indent, f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, fracBits, wide, enumMax, enumName, variantId,
-		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard)
+		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)))
 }
 
 // ---- string, bytes and flags defaults (SPEC §4.2) ----

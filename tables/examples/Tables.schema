@@ -5,10 +5,19 @@
 // (magic, content hash) stays a few lines of user code by design.
 package tabledemo
 
-const MaxLoadoutSlots = 8
+/// The slots a loadout admits. Raising it is a free edit on the wire: a
+/// bound sizes storage, and it is not an id.
+const MaxLoadoutSlots = 8 | tuning
 const MaxProfileName  = 32
 
-enum Grade { Bronze, Silver, Gold }
+/// A profile's standing, ranked low to high.
+enum Grade | progression
+{
+    Bronze
+    Silver
+    /// The top rank. A profile that reaches it keeps it.
+    Gold   | celebrate, rare, announce
+}
 
 flags Perks { Shielded, Cloaked, Turbo }
 
@@ -29,9 +38,11 @@ type Debuff
     amount int32 = 0 | min = 0, max = 100
 }
 
-union Effect
+/// What a weapon does to a target beyond its damage.
+union Effect | gameplay
 {
-    buff   Buff
+    /// A multiplier that rides while the effect is live.
+    buff   Buff   | positive
     debuff Debuff
 }
 
@@ -44,9 +55,14 @@ table RootConfig
     profiles     [..4]ProfileConfig
 }
 
-table WeaponConfig
+/// One weapon's tuning. A designer edits this table and nothing else.
+table WeaponConfig | designer_facing
 {
-    damage      float32 = 21.0
+    ///  Damage per hit, before armor.
+    ///
+    /// The armor curve is written "hardness \ hit" in the design notes,
+    /// and the backslash is part of the name.
+    damage      float32 = 21.0  | ui_slider, hot, tuning
     speed       float32 = 500.0 | was = "velocity"
     penetration int32 = 1       | min = 0, max = 10
     channel     bits(6)

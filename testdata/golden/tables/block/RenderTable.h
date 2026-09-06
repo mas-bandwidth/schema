@@ -69,7 +69,8 @@ enum TableMessageReason
     no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
     second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
     vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
-    message_form_as_file  // a form 2 wire where a FILE was expected: its table is somewhere else
+    message_form_as_file, // a form 2 wire where a FILE was expected: its table is somewhere else
+    batch_too_large       // a batch of more than 256 bodies on the write side, or of more than the caller has room for on the read side: nothing is written or decoded, and the count says what the wire carries
 };
 
 // The table-wire read report — the permissive contract's ledger. Silence
@@ -175,6 +176,13 @@ struct TableWideRange
     uint64_t hi[2];
 };
 
+// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+// block carries a doc column pointing at this one object, so absence costs a
+// unit no string data and a printer concatenates doc columns with no null
+// test. One definition for the whole unit: every absent doc compares equal by
+// address.
+inline const char TableDocNone[1] = "";
+
 struct TableFieldInfo
 {
     const char * name;      // schema field name, e.g. "health"
@@ -232,6 +240,14 @@ struct TableFieldInfo
     // inside it). NULL for every other kind.
     const TableUnionInfo * (*arms)();
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
+    // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+    // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
+    // none, never NULL. Its tags (SPEC §4.2) follow in declared order, and an
+    // untagged field is 0 beside NULL. Static, constant-initialized,
+    // allocating nothing.
+    const char * doc;
+    int32_t num_tags;
+    const char * const * tags;
 };
 
 struct TableTypeInfo
@@ -246,6 +262,11 @@ struct TableTypeInfo
     // thing the descriptors could not express without it. Placement-new
     // value-init, exactly what the wire's read path does, and no temporary.
     void (*reset)( void * storage );
+    // the declaration's own doc and tags, on the same terms as a field's
+    // (docs/SPEC-TABLES.md §8.1)
+    const char * doc;
+    int32_t num_tags;
+    const char * const * tags;
 };
 
 struct TableWriter
@@ -316,16 +337,8 @@ struct TableIds
     int32_t head[ kBuckets ];
     int32_t count;
     bool overflow;
-    // THE MESSAGE FORM'S SLOTS (docs/SPEC-TABLES.md §3.3). A form 2 wire
-    // names ids through the CONNECTION's table, which is the unit's whole
-    // vocabulary in a compiler-settled order — so every reference is known at
-    // compile time and rides at the header as a literal beside the id. This
-    // flag is what selects it: false interns the id in first-use order and
-    // writes a trailer, true answers the slot and writes none, and the walk
-    // that decides is one walk.
-    bool vocabulary;
 
-    TableIds() : count( 0 ), overflow( false ), vocabulary( false )
+    TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
     }
@@ -335,16 +348,10 @@ struct TableIds
         return uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> 56 ) & uint32_t( kBuckets - 1 );
     }
 
-    // the reference an id takes: its message-form SLOT under the connection's
-    // table, or the file's own first-use entry
-    BLOCKDEMO_TABLE_INLINE uint64_t ref( uint64_t id, uint64_t slot )
-    {
-        if ( vocabulary ) { return slot; }
-        return intern( id );
-    }
-
-    // the FILE form's half, appending the id on first use
-    uint64_t intern( uint64_t id )
+    // the reference an id takes: the file's own first-use entry, appended on
+    // first use. The MESSAGE form names no id at all: its references are
+    // compile-time slots of the announced vocabulary (docs/SPEC-TABLES.md §3.3).
+    BLOCKDEMO_TABLE_INLINE uint64_t ref( uint64_t id )
     {
         const uint32_t b = bucket_of( id );
         for ( int32_t i = head[b]; i >= 0; i = chain[i] )
@@ -360,8 +367,6 @@ struct TableIds
     // recent one in its bucket, so it sits at that bucket's head.
     void truncate( int32_t mark )
     {
-        // a SLOT costs no entry, so an elided field has nothing to undo
-        if ( vocabulary ) { return; }
         while ( count > mark )
         {
             count--;
@@ -724,164 +729,750 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
     }
 }
 
-// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): a FILE carries its own id
-// table and a MESSAGE STREAM announces one and then carries none.
+// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): a batch of BITPACKED bodies
+// under one announced vocabulary.
 //
-// A form 2 wire is TWO PARTS, the form byte and the root body: the body ends
-// at its own zero reference as it does in a file, there is no trailer, and the
-// message's last byte is the body's terminator. Its references resolve against
-// the CONNECTION's table, which is the unit's whole vocabulary in the order
-// the compiler settled.
+// A form 2 wire is THREE PARTS: the form byte, the body count, and the bodies
+// as one continuous bit stream, zero-padded to the next byte at the end and
+// nowhere else. A body is a sequence of fields, each a REFERENCE followed by a
+// PAYLOAD and nothing else: no kind byte and no length, because the
+// announcement carries the kind and the shape of every entry.
 const uint8_t kTableWireMessageForm = 2;
 
-// The RESERVED build-version id, the second id the language holds back (§5,
-// §11), beside the node table's. It is the announcement's one required field,
-// and a reserved id in any body but the one whose transport it is, is
-// malformed (§3.1).
+// THE COUNT IS A RANGED INTEGER OVER [1, 256], eight bits carrying M - 1. 256
+// is a WIRE CONSTANT of this form rather than a receiver's policy, because the
+// count's WIDTH depends on it and two peers that disagreed on the width would
+// not be reading the same wire. A batch of zero is not spellable.
+static const int64_t kTableMessageBatchMax = 256;
+
+// The RESERVED ids of the announcement's own two fields (§5, §11), beside the
+// node table's. They are the announcement's transport, they never appear in a
+// body, and they take no slot in the vocabulary.
 static const uint64_t kTableBuildVersionFieldId = 0xFFFFFFFFFFFFFFFEull;
+static const uint64_t kTableMessageVocabularyFieldId = 0xFFFFFFFFFFFFFFFDull;
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 88 entries and 724 bytes. It is an
-// ordinary form 1 FILE — the form byte, a body carrying the BUILD VERSION
-// under the reserved id at kind 9, and the trailer that IS the connection's
-// table, slot 1 the reserved id and slots 2 and up the vocabulary under one
-// numbering.
-//
-// The vocabulary is the unit's whole closure in the COOK PROJECTION's order
-// (§20.2) — each record in the order the projection renders it and each
-// record's fields in the order the projection renders them, then each enum's
-// variants and each union's arms — followed by the tail the projection does
-// not name: the reserved node-table id, the three blob type ids as bytes,
-// string and wstring, and every table's own name id in the projection's sorted
-// record order. The tail is UNCONDITIONAL, so an ordinary edit only ever grows
-// it at its end and never moves a slot a generated field header carries as a
-// literal.
-static const int64_t kTableAnnounceBytes = 724;
-static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x82, 0x7d, 0x26, 0x07, 0x34, 0x80, 0x4b, 0x6e, 0x00,
-    0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x77, 0x6e, 0x48, 0x15,
-    0x2b, 0xb7, 0xdc, 0xed, 0x44, 0x41, 0xc6, 0x45, 0xad, 0xa9, 0x7b, 0xee,
-    0x38, 0x81, 0x0a, 0xf1, 0x1f, 0x06, 0xa7, 0xa3, 0xca, 0x48, 0x91, 0xc2,
-    0x9b, 0xb3, 0x73, 0xc5, 0xf3, 0xa4, 0x48, 0x44, 0x19, 0xab, 0xd7, 0x56,
-    0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x17, 0x0b, 0x8c, 0x08,
-    0x79, 0xd0, 0xf2, 0xd5, 0xc0, 0x3a, 0x5c, 0xb5, 0x07, 0x2e, 0xb7, 0x08,
-    0x3d, 0x62, 0xcb, 0x8f, 0xec, 0xfc, 0xf7, 0x39, 0x46, 0x56, 0xee, 0xb1,
-    0x6b, 0x2e, 0x8c, 0xe6, 0x6d, 0xfa, 0xa8, 0xa5, 0x48, 0xb0, 0xae, 0xba,
-    0x63, 0x7c, 0x51, 0x16, 0x74, 0x6c, 0x97, 0x77, 0x4a, 0xd7, 0xa1, 0xfc,
-    0x26, 0x3a, 0xbf, 0x4c, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a, 0xb5,
-    0x2e, 0xb9, 0x4a, 0x08, 0x0f, 0x70, 0x61, 0x9f, 0x9b, 0x0c, 0xfd, 0xff,
-    0xc7, 0x3d, 0x6d, 0x33, 0xc2, 0xb9, 0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a,
-    0x5c, 0xe1, 0xd9, 0xfe, 0x18, 0x7c, 0xb2, 0xdc, 0x91, 0x1d, 0x1a, 0xb7,
-    0xfb, 0xb9, 0xac, 0x6a, 0xec, 0x5a, 0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17,
-    0x26, 0x2e, 0x6b, 0xe5, 0x49, 0x44, 0x6e, 0xb6, 0x28, 0xc2, 0xdd, 0xcb,
-    0x3b, 0xf7, 0x7b, 0x4d, 0xad, 0x5d, 0x4c, 0x5e, 0x15, 0x6f, 0x62, 0xe5,
-    0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x12, 0x98, 0xf1, 0x07,
-    0x2c, 0xb4, 0xda, 0x0b, 0x46, 0x3c, 0x76, 0x85, 0x52, 0x01, 0xe0, 0x5d,
-    0xa3, 0x02, 0x02, 0x86, 0x4c, 0xe9, 0x63, 0xaf, 0x78, 0xd7, 0x6e, 0xb1,
-    0xa0, 0x3f, 0x7f, 0xfd, 0x93, 0x6c, 0x04, 0xb4, 0x3c, 0x7b, 0xee, 0x0b,
-    0xe5, 0x3b, 0x39, 0xd3, 0x9c, 0xeb, 0x89, 0xdc, 0x37, 0xea, 0x08, 0x98,
-    0x2c, 0xc6, 0x62, 0xbb, 0xa7, 0xa2, 0x7a, 0xba, 0xd2, 0x22, 0x92, 0x0f,
-    0x44, 0xad, 0xe1, 0x13, 0x49, 0x5c, 0x4a, 0x29, 0x8c, 0x60, 0x83, 0xc2,
-    0x0b, 0x26, 0xf8, 0x84, 0xd0, 0xa4, 0x1b, 0x4b, 0x19, 0x27, 0x30, 0x1c,
-    0x27, 0x3d, 0x90, 0xa9, 0x98, 0x53, 0x12, 0x43, 0xd2, 0xcf, 0x7f, 0xff,
-    0xed, 0xd7, 0xf8, 0xc1, 0xff, 0x80, 0xf4, 0xf5, 0x39, 0x8e, 0x40, 0x33,
-    0x6d, 0xd1, 0x92, 0x3e, 0x7b, 0xb7, 0x82, 0xd9, 0x69, 0x6a, 0x80, 0x85,
-    0x1a, 0x8c, 0x6a, 0x87, 0x1f, 0x25, 0xad, 0x45, 0xad, 0x97, 0x5d, 0xee,
-    0xf2, 0x40, 0x15, 0xb9, 0xba, 0xa5, 0x17, 0x69, 0xec, 0x94, 0x02, 0x39,
-    0x5f, 0xc0, 0x29, 0xcd, 0x41, 0x38, 0x13, 0x42, 0xc2, 0x93, 0xb5, 0x96,
-    0xbc, 0xb4, 0x07, 0x2c, 0x0e, 0x2a, 0x1b, 0x15, 0x07, 0x17, 0x02, 0x86,
-    0x4c, 0xf5, 0x63, 0xaf, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf,
-    0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf, 0x56, 0x04, 0x02, 0x86,
-    0x4c, 0xea, 0x63, 0xaf, 0x73, 0xcd, 0x00, 0x31, 0xcb, 0x87, 0xd5, 0xcf,
-    0x68, 0x72, 0xe7, 0xa2, 0x86, 0x2e, 0x7d, 0x1f, 0x71, 0x01, 0x22, 0xa1,
-    0x45, 0xfa, 0x54, 0x15, 0x81, 0xcb, 0xb9, 0xa1, 0x7b, 0xe9, 0x5b, 0x4d,
-    0xc3, 0x95, 0x4b, 0x57, 0xab, 0xa7, 0x3d, 0xd2, 0x54, 0x1f, 0x54, 0xed,
-    0x6a, 0x1a, 0xa1, 0x88, 0xec, 0xeb, 0xad, 0x52, 0xd9, 0xc8, 0x2c, 0x3d,
-    0x34, 0xe6, 0x80, 0x93, 0xf7, 0x6e, 0x73, 0xc8, 0x5e, 0x80, 0xf4, 0xd8,
-    0x72, 0xa1, 0xe8, 0x94, 0xfa, 0xef, 0x7e, 0x96, 0xa7, 0x5a, 0x74, 0xa0,
-    0xca, 0xaf, 0x76, 0x5a, 0xd2, 0xa4, 0xd0, 0xf5, 0x5d, 0x07, 0xd9, 0xf6,
-    0x72, 0x79, 0x8d, 0x47, 0x34, 0xe2, 0x74, 0xef, 0x2b, 0x17, 0xa6, 0xca,
-    0x53, 0xd6, 0x52, 0x28, 0xac, 0xac, 0x98, 0x4f, 0x19, 0x30, 0xea, 0x44,
-    0x47, 0x7e, 0x3a, 0x7f, 0xc2, 0x85, 0x52, 0xc1, 0xc3, 0xf7, 0x11, 0xd0,
-    0x8a, 0xcb, 0x54, 0xc5, 0xa1, 0x6a, 0x21, 0xa8, 0xdb, 0x23, 0x0e, 0xd0,
-    0xa3, 0x21, 0x23, 0x6c, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f,
-    0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x1c, 0x3f, 0x95, 0xd5,
-    0x8f, 0xd7, 0x00, 0xcf, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xe4, 0x4f, 0x1c, 0x4f,
-    0x47, 0xc0, 0x2e, 0x2f, 0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70,
-    0xc7, 0xd4, 0x7b, 0x26, 0xb0, 0x9d, 0x29, 0x5f, 0xe0, 0xc3, 0x1e, 0xde,
-    0xc6, 0x0e, 0x05, 0xbf, 0x81, 0x75, 0x20, 0xd6, 0x48, 0x16, 0x3a, 0x1d,
-    0x06, 0x03, 0xf3, 0x15, 0x9d, 0xb2, 0xc6, 0x11, 0x6f, 0x63, 0x76, 0xe7,
-    0xba, 0xbd, 0xf5, 0x5f, 0x47, 0x01, 0xb4, 0x1b, 0x0e, 0xd0, 0xa6, 0xcc,
-    0xf8, 0xe5, 0xc9, 0x85, 0xb5, 0x38, 0xc7, 0x0c, 0x4e, 0x0f, 0xc3, 0x3f,
-    0xfb, 0x49, 0x27, 0x9b, 0x94, 0xd9, 0x23, 0x6c, 0xbe, 0x7d, 0x94, 0xb0,
-    0x5b, 0x13, 0xda, 0x14, 0x11, 0xb3, 0xda, 0x93, 0x07, 0x60, 0xad, 0x3f,
-    0xd9, 0xed, 0x00, 0x5b, 0xfe, 0x76, 0x52, 0x86, 0x2b, 0xd6, 0x9a, 0xc1,
-    0x9f, 0xc2, 0x08, 0xa4, 0x1f, 0x18, 0x34, 0x40, 0x58, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-};
+// THE WIDEST COUNT THIS FORM SPELLS, which is the count an UNBOUNDED array
+// announces (§2.9): an unbounded array states no bound, so the announcement
+// states the widest one a batch could carry. It is the ceiling an array's or a
+// keyed entry's announced min and max are checked against.
+static const uint64_t kTableMessageListMax = 0xFFFFFFFFull;
 
-// AnnounceMeasure is the announcement's byte count, which is a constant of the
-// unit and not a walk.
-inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+// THIS UNIT'S OWN REFERENCE WIDTH: the bits a writer spends on every reference
+// of every body it writes, which is a compile-time constant because the
+// vocabulary is. A READER spends the width the SENDER's vocabulary settles.
+static const int64_t kTableMessageRefBitsHere = 7;
 
-// Announce writes the announcement into the caller's buffer and answers the
-// bytes written — exactly AnnounceMeasure's answer — or -1 when the buffer is
-// too small. It allocates nothing and walks nothing.
-inline int64_t Announce( uint8_t * buffer, int64_t capacity )
+// THIS UNIT'S OWN ENTRY COUNT, which is the CAPACITY a receiver declares for
+// its resolved vocabulary when it talks only to peers of this schema (§3.3).
+// The vocabulary is a pure function of the build version, so a peer at this
+// build announces exactly this many entries; a receiver that means to meet
+// OTHER builds declares more, and an announcement above whatever it declared
+// is refused as vocabulary_too_large.
+static const int64_t kTableMessageEntriesHere = 88;
+
+// THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
+// layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
+// so a value written here and a value written by a generated packet writer are
+// the same bits in the same places.
+
+// EIGHT BYTES OF THE STREAM AS ONE WORD, and the word is LITTLE-END-FIRST
+// whatever order this host is in, because the stream's own definition puts
+// bit i in byte i/8: byte 0 of the run holds the word's low eight bits. That
+// is what lets one value of any width move in one unaligned load or store
+// instead of one touch a byte, and the BITS ON THE WIRE do not move.
+inline uint64_t table_message_byteswap64( uint64_t v )
 {
-    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
-    memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
-    return kTableAnnounceBytes;
+    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull )
+         | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull )
+         | ( v << 56 );
 }
 
-// TableVocabulary is ONE DIRECTION of ONE CONNECTION's id table (§3.3): the
-// entries an announcement carried, whole, under one numbering with slot 1 the
-// reserved build-version id.
-//
-// A peer holds TWO of these for a connection, the one it writes with and the
-// one it reads with, and neither is the other's. A restart opens a fresh
-// connection with empty tables and nothing is cached across connections, so
-// its whole life is one connection's. It BORROWS the announcement's bytes rather than
-// copying them, so a receiver holds one table a direction and its memory is
-// the bound below and nothing else.
-struct TableVocabulary
+inline uint64_t table_message_load64( const uint8_t * p )
 {
-    // THE CONFORMING DEFAULT BOUND (§3.3): 32 KiB a direction, eight times the
-    // 500-id unit that is already a large one. A connection's table is bounded
-    // by nothing the wire carries, so the receiver declares the maximum and an
-    // announcement above it is refused by name before an entry is touched.
-    static const int64_t kDefaultMaxEntries = 4096;
+    uint64_t v = 0;
+    memcpy( &v, p, 8 );
+#if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    v = table_message_byteswap64( v );
+#endif
+    return v;
+}
 
-    TableIdTable table;
-    uint64_t build_version = 0;
-    bool announced = false;
-    int64_t max_entries = kDefaultMaxEntries;
+inline void table_message_store64( uint8_t * p, uint64_t v )
+{
+#if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    v = table_message_byteswap64( v );
+#endif
+    memcpy( p, &v, 8 );
+}
+
+struct TableBitWriter
+{
+    uint8_t * buffer;
+    int64_t capacity; // bytes
+    int64_t bits;
+    bool overflow;
+
+    TableBitWriter() : buffer( NULL ), capacity( 0 ), bits( 0 ), overflow( false ) {}
+    TableBitWriter( uint8_t * to_buffer, int64_t to_capacity ) : buffer( to_buffer ), capacity( to_capacity ), bits( 0 ), overflow( false ) {}
+
+    // ONE WORD AT A TIME, never one bit and never one byte of arithmetic: the
+    // value is shifted into place in a REGISTER once, and the bytes it
+    // occupies are stored from that register with no read back. A sixty-four
+    // bit field costs one shift rather than nine masked read-modify-writes.
+    // The word is assembled little-end-first, so the BITS ON THE WIRE are the
+    // same bits in the same places, bit i in byte i/8 at position i%8 with the
+    // low bit first, which is what the pinned goldens hold. IT WRITES EXACTLY
+    // THE BYTES THE VALUE OCCUPIES and never one past them, so a caller's
+    // buffer beyond the batch is its own.
+    void put( uint64_t value, int64_t n )
+    {
+        if ( n <= 0 ) { return; }
+        if ( ( bits + n + 7 ) / 8 > capacity ) { overflow = true; bits += n; return; }
+        if ( n < 64 ) { value &= ( uint64_t( 1 ) << n ) - 1; } // a caller's high bits never leak
+        const int64_t index = bits >> 3;
+        const int64_t bit = bits & 7;
+        // the byte the write STARTS in keeps the bits already written to it,
+        // and every byte after it is this value's own
+        const uint64_t head = bit != 0 ? ( uint64_t( buffer[index] ) & ( ( uint64_t( 1 ) << bit ) - 1 ) ) : 0;
+        const uint64_t word = head | ( value << bit );
+        const int64_t need = ( bit + n + 7 ) >> 3; // 1 to 9 bytes
+        if ( need >= 8 )
+        {
+            table_message_store64( buffer + index, word );
+            if ( need > 8 ) { buffer[index + 8] = uint8_t( value >> ( 64 - bit ) ); }
+        }
+        else
+        {
+            for ( int64_t i = 0; i < need; i++ ) { buffer[index + i] = uint8_t( word >> ( 8 * i ) ); }
+        }
+        bits += n;
+    }
+
+    // THE ALIGN IS WHAT BUYS THIS (docs/SPEC-TABLES.md §3.3): a string(N), a
+    // bytes(N) and a blob record align before their bytes precisely so the
+    // largest payload on the wire moves as ONE memcpy. Off a boundary there is
+    // nothing to memcpy and the bytes go through put.
+    void putbytes( const uint8_t * data, int64_t n )
+    {
+        if ( n <= 0 ) { return; }
+        if ( ( bits & 7 ) == 0 )
+        {
+            if ( ( bits >> 3 ) + n > capacity ) { overflow = true; bits += n * 8; return; }
+            memcpy( buffer + ( bits >> 3 ), data, (size_t) n );
+            bits += n * 8;
+            return;
+        }
+        for ( int64_t i = 0; i < n; i++ ) { put( (uint64_t) data[i], 8 ); }
+    }
+
+    // a string's or a bytes' payload ALIGNS before its bytes, and a batch
+    // aligns once at its end. Both are zero fill, spent in one call.
+    void align() { put( 0, ( 8 - ( bits & 7 ) ) & 7 ); }
 };
 
-// AnnounceRead reads an announcement into one direction's table (§3.3).
+// TableAlignBits is what an align costs from a bit position, which a measure
+// spends exactly where a save does.
+inline int64_t TableAlignBits( int64_t bits ) { return ( 8 - ( bits % 8 ) ) % 8; }
+
+struct TableBitReader
+{
+    const uint8_t * buffer;
+    int64_t bits;   // the stream's extent, in bits
+    int64_t offset; // bits consumed
+
+    TableBitReader() : buffer( NULL ), bits( 0 ), offset( 0 ) {}
+    TableBitReader( const uint8_t * from_buffer, int64_t from_bytes ) : buffer( from_buffer ), bits( from_bytes * 8 ), offset( 0 ) {}
+
+    bool has( int64_t n ) const { return n >= 0 && offset + n <= bits; }
+
+    // the primitive is sixty-four bits, and a width above it is refused
+    // here as well as at the announcement: no field on any body can ask this
+    // reader to move more bits than it holds
+    // ONE WORD OF THE BUFFER AT A TIME, the mirror of the writer's put: the
+    // eight bytes the value starts in load as one little-end-first word and a
+    // ninth byte carries the spill a value that straddles the word needs.
+    // Within nine bytes of the stream's end there is no room for a word load
+    // and the bytes come one at a time, by the same arithmetic.
+    bool get( uint64_t & value, int64_t n )
+    {
+        if ( n > 64 || !has( n ) ) { return false; }
+        value = 0;
+        if ( n == 0 ) { return true; }
+        const int64_t index = offset >> 3;
+        const int64_t bit = offset & 7;
+        const int64_t bytes = ( bits + 7 ) >> 3;
+        if ( index + 9 <= bytes )
+        {
+            uint64_t v = table_message_load64( buffer + index ) >> bit;
+            if ( bit != 0 && bit + n > 64 ) { v |= uint64_t( buffer[index + 8] ) << ( 64 - bit ); }
+            value = n == 64 ? v : ( v & ( ( uint64_t( 1 ) << n ) - 1 ) );
+            offset += n;
+            return true;
+        }
+        int64_t got = 0;
+        while ( got < n )
+        {
+            const int64_t byte = offset >> 3;
+            const int64_t off = offset & 7;
+            const int64_t room = 8 - off;
+            const int64_t take = ( n - got ) < room ? ( n - got ) : room;
+            const uint64_t chunk = ( uint64_t( buffer[byte] ) >> off ) & ( ( uint64_t( 1 ) << take ) - 1 );
+            value |= chunk << got;
+            offset += take;
+            got += take;
+        }
+        return true;
+    }
+
+    // the bytes of an ALIGNED payload, which is the read side of the memcpy
+    // the align buys (docs/SPEC-TABLES.md §3.3)
+    bool getbytes( uint8_t * out, int64_t n )
+    {
+        if ( n < 0 || !has( n * 8 ) ) { return false; }
+        if ( ( offset & 7 ) == 0 )
+        {
+            memcpy( out, buffer + ( offset >> 3 ), (size_t) n );
+            offset += n * 8;
+            return true;
+        }
+        for ( int64_t i = 0; i < n; i++ )
+        {
+            uint64_t by = 0;
+            if ( !get( by, 8 ) ) { return false; }
+            out[i] = (uint8_t) by;
+        }
+        return true;
+    }
+
+    bool skip( int64_t n ) { if ( !has( n ) ) { return false; } offset += n; return true; }
+
+    // the pad to the next byte boundary is VERIFIED ZERO, which is the packet
+    // wire's rule for the same reason (SPEC.md §4.3)
+    bool align()
+    {
+        const int64_t pad = ( 8 - ( offset & 7 ) ) & 7;
+        if ( pad == 0 ) { return true; }
+        uint64_t bits_read = 0;
+        return get( bits_read, pad ) && bits_read == 0;
+    }
+};
+
+// TableBitsRequired is bits_required( min, max ): the bit length of max - min,
+// and zero where the two are equal, which is a value that spends no bit at all.
+inline int64_t TableBitsRequired( int64_t min, int64_t max )
+{
+    if ( max <= min ) { return 0; }
+    uint64_t span = (uint64_t) ( max - min );
+    int64_t n = 0;
+    while ( span > 0 ) { n++; span >>= 1; }
+    return n;
+}
+
+// THE ANNOUNCED ENTRY (§3.3): an id, a kind, and a SHAPE, which is the width
+// and range facts a reader needs to SKIP a field exactly and to DECODE one
+// whose own declaration has moved. One name may take TWO entries, at two kinds or two
+// shapes, and a body names the one it means.
 //
-// THE BOUND IS CHECKED BEFORE ANYTHING IS ALLOCATED: the entry count is a
-// fixed little-endian u64 at the end, so a receiver reads it, compares it and
-// refuses without touching an entry. After that it is §3's ordinary FILE read,
-// because the announcement IS a file, with EXACTLY ONE STRICT CHECK over its
-// body: the reserved build-version field present, exactly once, under kind 9,
-// eight bytes wide. Everything else is an ordinary field under §4's tolerance,
-// so an unknown one is skipped and counted and the announcement can GAIN a
-// field in a later minor without a lockstep redeploy.
+// The ELEMENT's own facts ride beside the field's because an array's element
+// is the one nesting this wire has: an array of arrays is not a table-wire
+// construct, so one level is every level.
 //
-// The FIRST announcement sets the table and it is the only one that can. A
-// SECOND is refused by name: it does not replace the table, it does not amend
-// it and it changes nothing. A refused announcement sets NO TABLE.
+// IT IS THE RESOLVED ENTRY AND THE CALLER SIZES AN ARRAY OF THEM, so it
+// carries what a DECODE takes and nothing a decode does not: qmin, qdelta and
+// qcount are what SPEC.md §4.3's rule leaves behind, and the qmax and qres
+// that rule CONSUMES are locals of the parse. The widths are int16 because a
+// width is bounded by the kind it came under and no kind holds more than 128
+// bits.
+struct TableMessageEntry
+{
+    uint64_t id = 0;
+    int64_t min = 0;        // an array's minimum count
+    int64_t max = 0;        // an array's maximum count, a string's capacity, a keyed array's slots
+    int64_t base_lo = 0;    // the ranged base, low half: a signed kind's sign-extends, an unsigned kind's is whole
+    int64_t base_hi = 0;    // its high half, for a 128-bit kind
+    int64_t elem_max = 0;
+    int64_t elem_base_lo = 0;
+    int64_t elem_base_hi = 0;
+    // what SPEC.md §4.3's derivation leaves: the base, the step and the count
+    float qmin = 0.0f;
+    float qdelta = 0.0f;
+    uint32_t qcount = 0;
+    float elem_qmin = 0.0f;
+    float elem_qdelta = 0.0f;
+    uint32_t elem_qcount = 0;
+    // THE PAYLOAD'S WIDTH, RESOLVED: what the kind, the packing and the
+    // announced bits together say, computed once at AnnounceRead, and -1
+    // where the payload is not a fixed-width value at all
+    int16_t value_bits = -1;
+    int16_t elem_value_bits = -1;
+    uint8_t kind = 0;
+    uint8_t packing = 0;
+    uint8_t elem_kind = 0;
+    uint8_t elem_packing = 0;
+};
+
+// TableMessageEntrySame reports whether two RESOLVED entries carry the same
+// shape, which is every fact of the entry but its id and its kind. It is what
+// the announcement's duplicate rule is asked in: two entries that agree on all
+// three parts are malformed (§3.3).
+inline bool TableMessageEntrySame( const TableMessageEntry & a, const TableMessageEntry & b )
+{
+    return a.min == b.min && a.max == b.max && a.base_lo == b.base_lo && a.base_hi == b.base_hi
+        && a.elem_max == b.elem_max && a.elem_base_lo == b.elem_base_lo && a.elem_base_hi == b.elem_base_hi
+        && a.qmin == b.qmin && a.qdelta == b.qdelta && a.qcount == b.qcount
+        && a.elem_qmin == b.elem_qmin && a.elem_qdelta == b.elem_qdelta && a.elem_qcount == b.elem_qcount
+        && a.value_bits == b.value_bits && a.elem_value_bits == b.elem_value_bits
+        && a.packing == b.packing && a.elem_kind == b.elem_kind && a.elem_packing == b.elem_packing;
+}
+
+// TableMessageKindBits is the widest RANGED value a kind can carry, its own
+// storage width: a width above it is a hostile width on the announcement.
+inline int64_t TableMessageKindBits( uint8_t kind )
+{
+    switch ( kind )
+    {
+        case 2: case 6: case 20: case 25: return 8;
+        case 3: case 7: case 21: case 26: return 16;
+        case 4: case 8: case 22: case 27: return 32;
+        case 5: case 9: case 23: case 28: return 64;
+        default: return 128;
+    }
+}
+
+// TableMessageQuantization is SPEC.md §4.3's derivation over an announced
+// triple, in float32 and by nothing else: delta, the step count and the
+// width. False is a triple SPEC.md calls non-conforming, which on the
+// announcement is a hostile width like any other (§3.3).
+inline bool TableMessageQuantization( float qmin, float qmax, float qres, float & delta, uint32_t & count, int64_t & bits )
+{
+    if ( !( qmin < qmax ) || !( qres > 0.0f ) ) { return false; }
+    delta = qmax - qmin;
+    float values = delta / qres;
+    if ( !( delta - delta == 0.0f ) || !( values - values == 0.0f ) ) { return false; } // Inf - Inf is NaN
+    if ( !( values >= 1.0f ) ) { values = 1.0f; }
+    else if ( values > 4294967040.0f ) { values = 4294967040.0f; } // the largest float below 2^32
+    count = (uint32_t) values;
+    if ( (float) count < values ) { count++; } // ceil, on a value the cast holds exactly
+    bits = TableBitsRequired( 0, (int64_t) count );
+    return true;
+}
+
+// The two roundings on each side of the rule (SPEC.md §7.2): the product
+// rounds to float32 BEFORE the add, which a compiler permitted to contract
+// would otherwise fuse into one rounding and move the wire.
+#if ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) )
+#define TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+w" ( x ) )
+#elif ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) )
+#define TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+x" ( x ) )
+#else
+#define TABLE_FLOAT_FORCE_ROUND( x ) do { volatile float table_float_force_round_slot = ( x ); ( x ) = table_float_force_round_slot; } while ( 0 )
+#endif
+
+// TableMessageQuantize is the writer's half: the index a value takes.
+inline uint32_t TableMessageQuantize( float value, float qmin, float delta, uint32_t count )
+{
+    float normalized = ( value - qmin ) / delta;
+    if ( !( normalized >= 0.0f ) ) { normalized = 0.0f; }
+    else if ( !( normalized <= 1.0f ) ) { normalized = 1.0f; }
+    float scaled = normalized * (float) count;
+    TABLE_FLOAT_FORCE_ROUND( scaled );
+    uint32_t index = (uint32_t) ( scaled + 0.5f ); // floor of a non-negative value
+    if ( index > count ) { index = count; }
+    return index;
+}
+
+// TableMessageDequantize is the reader's half: the float an index names.
+inline float TableMessageDequantize( uint32_t index, float qmin, float delta, uint32_t count )
+{
+    if ( index > count ) { index = count; }
+    const float normalized = index / (float) count;
+    float scaled = normalized * delta;
+    TABLE_FLOAT_FORCE_ROUND( scaled );
+    return scaled + qmin;
+}
+
+inline bool TableMessageIntegerKind( uint8_t kind )
+{
+    return ( kind >= 2 && kind <= 9 ) || kind == 18 || kind == 19;
+}
+
+inline bool TableMessageFixedKind( uint8_t kind ) { return kind >= 20 && kind <= 29; }
+
+inline bool TableMessageKnownKind( uint8_t kind )
+{
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+}
+
+// A CANONICAL LEB128, which is the announcement's own integer: the
+// announcement is a form 1 FILE and takes §3's rule.
+inline bool TableMessageLeb( const uint8_t * in, int64_t size, int64_t & at, uint64_t & value )
+{
+    value = 0;
+    for ( int64_t shift = 0; at < size; shift += 7 )
+    {
+        if ( shift >= 64 ) { return false; }
+        const uint8_t by = in[ at++ ];
+        value |= uint64_t( by & 0x7F ) << shift;
+        if ( ( by & 0x80 ) == 0 ) { return !( shift > 0 && by == 0 ); }
+    }
+    return false;
+}
+
+// TableMessageShapeFacts is where one shape's facts land: the field's own,
+// or its element's, which is the one nesting this wire has.
+struct TableMessageShapeFacts
+{
+    uint8_t & packing; int64_t & value_bits; int64_t & base_lo; int64_t & base_hi;
+    float & qmin; float & qmax; float & qres; float & qdelta; uint32_t & qcount;
+    int64_t & min; int64_t & max; uint8_t & elem_kind;
+};
+
+inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & at, uint8_t kind, TableMessageShapeFacts f );
+inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t value_bits );
+
+// TableMessageEntryRead parses ONE entry, and answers false for a HOSTILE
+// SHAPE: bits above the kind's own domain, an array whose min exceeds its
+// max, an element kind outside the closed set, a quantized triple SPEC.md
+// calls non-conforming, or a shape running past the vocabulary's own bytes.
+inline bool TableMessageEntryRead( const uint8_t * in, int64_t size, int64_t & at, TableMessageEntry & entry )
+{
+    if ( at + 9 > size ) { return false; }
+    entry = TableMessageEntry();
+    for ( int i = 0; i < 8; i++ ) { entry.id |= uint64_t( in[ at + i ] ) << ( 8 * i ); }
+    entry.kind = in[ at + 8 ];
+    at += 9;
+    if ( !TableMessageKnownKind( entry.kind ) ) { return false; }
+    // The parse lands in LOCALS and the entry keeps what a decode reads: the
+    // quantized max and res are the derivation's inputs and never a field's.
+    uint8_t packing = 0, elem_kind = 0;
+    int64_t bits = 0, base_lo = 0, base_hi = 0, min = 0, max = 0;
+    float qmin = 0.0f, qmax = 0.0f, qres = 0.0f, qdelta = 0.0f;
+    uint32_t qcount = 0;
+    TableMessageShapeFacts own = { packing, bits, base_lo, base_hi,
+                                   qmin, qmax, qres, qdelta, qcount,
+                                   min, max, elem_kind };
+    if ( !TableMessageShapeRead( in, size, at, entry.kind, own ) ) { return false; }
+    entry.packing = packing;
+    entry.value_bits = (int16_t) TableMessageValueBits( entry.kind, packing, bits );
+    entry.base_lo = base_lo;
+    entry.base_hi = base_hi;
+    entry.qmin = qmin;
+    entry.qdelta = qdelta;
+    entry.qcount = qcount;
+    entry.min = min;
+    entry.max = max;
+    entry.elem_kind = elem_kind;
+    if ( entry.kind == 14 || entry.kind == 16 )
+    {
+        uint8_t elem_packing = 0, inner_kind = 0;
+        int64_t elem_bits = 0, elem_base_lo = 0, elem_base_hi = 0, elem_min = 0, elem_max = 0;
+        float elem_qmin = 0.0f, elem_qmax = 0.0f, elem_qres = 0.0f, elem_qdelta = 0.0f;
+        uint32_t elem_qcount = 0;
+        TableMessageShapeFacts elem = { elem_packing, elem_bits, elem_base_lo, elem_base_hi,
+                                        elem_qmin, elem_qmax, elem_qres, elem_qdelta, elem_qcount,
+                                        elem_min, elem_max, inner_kind };
+        if ( !TableMessageShapeRead( in, size, at, entry.elem_kind, elem ) ) { return false; }
+        entry.elem_packing = elem_packing;
+        entry.elem_value_bits = (int16_t) TableMessageValueBits( entry.elem_kind, elem_packing, elem_bits );
+        entry.elem_base_lo = elem_base_lo;
+        entry.elem_base_hi = elem_base_hi;
+        entry.elem_qmin = elem_qmin;
+        entry.elem_qdelta = elem_qdelta;
+        entry.elem_qcount = elem_qcount;
+        entry.elem_max = elem_max;
+    }
+    return true;
+}
+
+// TableMessageShapeRead is one shape, by the kind that names it (§3.3's shape
+// table). Every number in it is a canonical LEB128 except where the row says
+// otherwise: a RANGED BASE IS ENCODED BY ITS KIND'S SIGNEDNESS, zigzag for the
+// signed kinds, unsigned for the unsigned kinds and sixteen bytes for the
+// 128-bit and fixed-point kinds, and a QUANTIZED f32 carries min, max and res
+// as float32, from which the step count and the width derive by SPEC.md
+// §4.3's rule and by nothing else.
+inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & at, uint8_t kind, TableMessageShapeFacts f )
+{
+    uint64_t v = 0;
+    if ( TableMessageIntegerKind( kind ) || TableMessageFixedKind( kind ) || kind == 10 )
+    {
+        if ( at >= size ) { return false; }
+        f.packing = in[ at++ ];
+        if ( f.packing == 0 ) { return true; }
+        if ( f.packing == 1 && kind != 10 )
+        {
+            if ( !TableMessageLeb( in, size, at, v ) || (int64_t) v > TableMessageKindBits( kind ) ) { return false; }
+            f.value_bits = (int64_t) v;
+            if ( kind == 18 || kind == 19 || TableMessageFixedKind( kind ) )
+            {
+                if ( at + 16 > size ) { return false; }
+                uint64_t lo = 0, hi = 0;
+                for ( int i = 0; i < 8; i++ ) { lo |= uint64_t( in[ at + i ] ) << ( 8 * i ); }
+                for ( int i = 0; i < 8; i++ ) { hi |= uint64_t( in[ at + 8 + i ] ) << ( 8 * i ); }
+                f.base_lo = (int64_t) lo; f.base_hi = (int64_t) hi;
+                at += 16;
+                return true;
+            }
+            if ( !TableMessageLeb( in, size, at, v ) ) { return false; }
+            if ( kind >= 2 && kind <= 5 ) { f.base_lo = (int64_t) ( v >> 1 ) ^ -(int64_t) ( v & 1 ); } // zigzag
+            else { f.base_lo = (int64_t) v; }                                                       // the unsigned domain, whole
+            return true;
+        }
+        if ( f.packing == 2 && kind == 10 )
+        {
+            if ( at + 12 > size ) { return false; }
+            uint32_t raw[3] = { 0, 0, 0 };
+            for ( int k = 0; k < 3; k++ ) { for ( int i = 0; i < 4; i++ ) { raw[k] |= uint32_t( in[ at + 4 * k + i ] ) << ( 8 * i ); } }
+            at += 12;
+            memcpy( &f.qmin, &raw[0], 4 );
+            memcpy( &f.qmax, &raw[1], 4 );
+            memcpy( &f.qres, &raw[2], 4 );
+            return TableMessageQuantization( f.qmin, f.qmax, f.qres, f.qdelta, f.qcount, f.value_bits );
+        }
+        return false; // a packing outside the closed set
+    }
+    // A MAX ABOVE WHAT THE KIND CAN HOLD IS A HOSTILE WIDTH (§3.3). A string
+    // and a wide string are bounded by the int32 storage cap the checker
+    // applies to every N (SPEC §4.3, §6.1), and an array and a keyed entry by
+    // the 32-bit count an unbounded array announces (§2.9), which is the
+    // widest count this form spells. A larger bound is a shape no conforming
+    // declaration can produce, and a reader that carried it would do its
+    // length arithmetic in a range that overflows.
+    if ( kind == 12 || kind == 33 )
+    {
+        if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) INT32_MAX ) { return false; }
+        f.max = (int64_t) v;
+        return true;
+    }
+    if ( kind == 14 || kind == 16 )
+    {
+        if ( kind == 14 )
+        {
+            if ( !TableMessageLeb( in, size, at, v ) || v > kTableMessageListMax ) { return false; }
+            f.min = (int64_t) v;
+        }
+        if ( !TableMessageLeb( in, size, at, v ) || v > kTableMessageListMax ) { return false; }
+        if ( (int64_t) v < f.min ) { return false; }
+        f.max = (int64_t) v;
+        if ( at >= size ) { return false; }
+        f.elem_kind = in[ at++ ];
+        if ( !TableMessageKnownKind( f.elem_kind ) ) { return false; }
+        // AND AN ELEMENT KIND OF 12 OR 33 IS REFUSED HERE, at the
+        // announcement, rather than at the skip that would meet it (§3.3): no
+        // declaration this language accepts is an array of string(N) or of
+        // wstring(N), so a shape announcing one is one rule's business and not
+        // two.
+        if ( f.elem_kind == 12 || f.elem_kind == 33 ) { return false; }
+        return true;
+    }
+    return true;
+}
+
+// TableMessageValueBits is one value's width under a shape, and -1 where the
+// kind's payload is not a fixed-width value at all.
+inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t value_bits )
+{
+    if ( kind == 1 ) { return 1; }
+    if ( kind == 11 ) { return 64; }
+    if ( kind == 10 ) { return packing == 2 ? value_bits : 32; }
+    if ( TableMessageIntegerKind( kind ) || TableMessageFixedKind( kind ) )
+    {
+        if ( packing == 1 ) { return value_bits; }
+        switch ( kind )
+        {
+            case 2: case 6: case 20: case 25: return 8;
+            case 3: case 7: case 21: case 26: return 16;
+            case 4: case 8: case 22: case 27: return 32;
+            case 5: case 9: case 23: case 28: return 64;
+            default: return 128;
+        }
+    }
+    return -1;
+}
+
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 88 entries and 912 bytes. It is an
+// ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
+// the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
+// over element kind 6, and a trailer of those two reserved ids.
+//
+// THE VOCABULARY IS A FIELD AND NOT THE TRAILER, and that buys three things:
+// §3's writer rule that an id no body references is never written is restored
+// unbroken, an entry can carry a KIND and a SHAPE which a trailer of bare ids
+// cannot, and one NAME can appear at two shapes.
+//
+// The order is the COOK PROJECTION's (§20.2): each record in the order the
+// projection renders it and each record's fields in the order the projection
+// renders them, then each enum's variants and each union's arms. Then comes
+// the tail the projection does not name: the reserved node-table id, the three
+// blob type ids as bytes, string and wstring, and every table's own name id in
+// the projection's sorted record order. The tail is UNCONDITIONAL, so an
+// ordinary edit only ever grows it at its end and never moves a slot a
+// generated field header carries as a literal.
+static const int64_t kTableAnnounceBytes = 912;
+static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
+    0x01, 0x01, 0x09, 0x82, 0x7d, 0x26, 0x07, 0x34, 0x80, 0x4b, 0x6e, 0x02,
+    0x0e, 0xe8, 0x06, 0x06, 0xe5, 0x06, 0x77, 0x6e, 0x48, 0x15, 0x2b, 0xb7,
+    0xdc, 0xed, 0x06, 0x00, 0x44, 0x41, 0xc6, 0x45, 0xad, 0xa9, 0x7b, 0xee,
+    0x09, 0x00, 0x38, 0x81, 0x0a, 0xf1, 0x1f, 0x06, 0xa7, 0xa3, 0x0e, 0x00,
+    0x40, 0x0d, 0xca, 0x48, 0x91, 0xc2, 0x9b, 0xb3, 0x73, 0xc5, 0x0e, 0x00,
+    0x0c, 0x06, 0x00, 0xf3, 0xa4, 0x48, 0x44, 0x19, 0xab, 0xd7, 0x56, 0x06,
+    0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0b, 0x17, 0x0b,
+    0x8c, 0x08, 0x79, 0xd0, 0xf2, 0xd5, 0x01, 0xc0, 0x3a, 0x5c, 0xb5, 0x07,
+    0x2e, 0xb7, 0x08, 0x08, 0x00, 0x3d, 0x62, 0xcb, 0x8f, 0xec, 0xfc, 0xf7,
+    0x39, 0x0c, 0x0f, 0x46, 0x56, 0xee, 0xb1, 0x6b, 0x2e, 0x8c, 0xe6, 0x0e,
+    0x04, 0x04, 0x07, 0x00, 0x6d, 0xfa, 0xa8, 0xa5, 0x48, 0xb0, 0xae, 0xba,
+    0x10, 0x04, 0x06, 0x00, 0x63, 0x7c, 0x51, 0x16, 0x74, 0x6c, 0x97, 0x77,
+    0x04, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x9f,
+    0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a, 0xb5, 0x0d, 0x2e, 0xb9, 0x4a, 0x08,
+    0x0f, 0x70, 0x61, 0x9f, 0x08, 0x00, 0x9b, 0x0c, 0xfd, 0xff, 0xc7, 0x3d,
+    0x6d, 0x33, 0x08, 0x00, 0xc2, 0xb9, 0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a,
+    0x08, 0x00, 0x5c, 0xe1, 0xd9, 0xfe, 0x18, 0x7c, 0xb2, 0xdc, 0x0a, 0x00,
+    0x91, 0x1d, 0x1a, 0xb7, 0xfb, 0xb9, 0xac, 0x6a, 0x0b, 0xec, 0x5a, 0xf7,
+    0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x00, 0x26, 0x2e, 0x6b, 0xe5, 0x49,
+    0x44, 0x6e, 0xb6, 0x08, 0x00, 0x28, 0xc2, 0xdd, 0xcb, 0x3b, 0xf7, 0x7b,
+    0x4d, 0x06, 0x00, 0xad, 0x5d, 0x4c, 0x5e, 0x15, 0x6f, 0x62, 0xe5, 0x1e,
+    0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x12, 0x98, 0xf1,
+    0x07, 0x2c, 0xb4, 0xda, 0x0b, 0x08, 0x00, 0x46, 0x3c, 0x76, 0x85, 0x52,
+    0x01, 0xe0, 0x5d, 0x06, 0x00, 0xa3, 0x02, 0x02, 0x86, 0x4c, 0xe9, 0x63,
+    0xaf, 0x0b, 0x78, 0xd7, 0x6e, 0xb1, 0xa0, 0x3f, 0x7f, 0xfd, 0x08, 0x00,
+    0x93, 0x6c, 0x04, 0xb4, 0x3c, 0x7b, 0xee, 0x0b, 0x08, 0x00, 0xe5, 0x3b,
+    0x39, 0xd3, 0x9c, 0xeb, 0x89, 0xdc, 0x1e, 0x37, 0xea, 0x08, 0x98, 0x2c,
+    0xc6, 0x62, 0xbb, 0x09, 0x00, 0xa7, 0xa2, 0x7a, 0xba, 0xd2, 0x22, 0x92,
+    0x0f, 0x0e, 0x00, 0x01, 0x0d, 0x44, 0xad, 0xe1, 0x13, 0x49, 0x5c, 0x4a,
+    0x29, 0x0e, 0x00, 0x80, 0x20, 0x0d, 0x8c, 0x60, 0x83, 0xc2, 0x0b, 0x26,
+    0xf8, 0x84, 0x0e, 0x00, 0x80, 0x08, 0x0d, 0xd0, 0xa4, 0x1b, 0x4b, 0x19,
+    0x27, 0x30, 0x1c, 0x0e, 0x00, 0x80, 0x20, 0x0d, 0x27, 0x3d, 0x90, 0xa9,
+    0x98, 0x53, 0x12, 0x43, 0x0e, 0x00, 0x80, 0x20, 0x0d, 0xd2, 0xcf, 0x7f,
+    0xff, 0xed, 0xd7, 0xf8, 0xc1, 0x0e, 0x00, 0xa0, 0x9c, 0x01, 0x0d, 0xff,
+    0x80, 0xf4, 0xf5, 0x39, 0x8e, 0x40, 0x33, 0x0e, 0x00, 0x80, 0x40, 0x0d,
+    0x6d, 0xd1, 0x92, 0x3e, 0x7b, 0xb7, 0x82, 0xd9, 0x0e, 0x00, 0x80, 0xfa,
+    0x01, 0x0d, 0x69, 0x6a, 0x80, 0x85, 0x1a, 0x8c, 0x6a, 0x87, 0x0e, 0x00,
+    0x80, 0xfa, 0x01, 0x0d, 0x1f, 0x25, 0xad, 0x45, 0xad, 0x97, 0x5d, 0xee,
+    0x0d, 0xf2, 0x40, 0x15, 0xb9, 0xba, 0xa5, 0x17, 0x69, 0x0d, 0xec, 0x94,
+    0x02, 0x39, 0x5f, 0xc0, 0x29, 0xcd, 0x08, 0x00, 0x41, 0x38, 0x13, 0x42,
+    0xc2, 0x93, 0xb5, 0x96, 0x1e, 0xbc, 0xb4, 0x07, 0x2c, 0x0e, 0x2a, 0x1b,
+    0x15, 0x1e, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x54,
+    0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b, 0x6d, 0x1a, 0x02, 0x86,
+    0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x56, 0x04, 0x02, 0x86, 0x4c, 0xea, 0x63,
+    0xaf, 0x0b, 0xec, 0x5a, 0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x01,
+    0x04, 0x00, 0x73, 0xcd, 0x00, 0x31, 0xcb, 0x87, 0xd5, 0xcf, 0x0a, 0x00,
+    0x68, 0x72, 0xe7, 0xa2, 0x86, 0x2e, 0x7d, 0x1f, 0x1e, 0x71, 0x01, 0x22,
+    0xa1, 0x45, 0xfa, 0x54, 0x15, 0x01, 0x81, 0xcb, 0xb9, 0xa1, 0x7b, 0xe9,
+    0x5b, 0x4d, 0x01, 0xc3, 0x95, 0x4b, 0x57, 0xab, 0xa7, 0x3d, 0xd2, 0x08,
+    0x00, 0x54, 0x1f, 0x54, 0xed, 0x6a, 0x1a, 0xa1, 0x88, 0x08, 0x00, 0xec,
+    0xeb, 0xad, 0x52, 0xd9, 0xc8, 0x2c, 0x3d, 0x00, 0x34, 0xe6, 0x80, 0x93,
+    0xf7, 0x6e, 0x73, 0xc8, 0x00, 0x5e, 0x80, 0xf4, 0xd8, 0x72, 0xa1, 0xe8,
+    0x94, 0x00, 0xfa, 0xef, 0x7e, 0x96, 0xa7, 0x5a, 0x74, 0xa0, 0x00, 0xca,
+    0xaf, 0x76, 0x5a, 0xd2, 0xa4, 0xd0, 0xf5, 0x00, 0x5d, 0x07, 0xd9, 0xf6,
+    0x72, 0x79, 0x8d, 0x47, 0x00, 0x34, 0xe2, 0x74, 0xef, 0x2b, 0x17, 0xa6,
+    0xca, 0x00, 0x53, 0xd6, 0x52, 0x28, 0xac, 0xac, 0x98, 0x4f, 0x00, 0x19,
+    0x30, 0xea, 0x44, 0x47, 0x7e, 0x3a, 0x7f, 0x00, 0xc2, 0x85, 0x52, 0xc1,
+    0xc3, 0xf7, 0x11, 0xd0, 0x00, 0x8a, 0xcb, 0x54, 0xc5, 0xa1, 0x6a, 0x21,
+    0xa8, 0x00, 0xdb, 0x23, 0x0e, 0xd0, 0xa3, 0x21, 0x23, 0x6c, 0x00, 0x7c,
+    0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x00, 0x2d, 0x3e, 0x69, 0xc1,
+    0xa7, 0xd3, 0xf3, 0xec, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00,
+    0xcf, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x00, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xe4, 0x4f, 0x1c, 0x4f,
+    0x47, 0xc0, 0x2e, 0x2f, 0x00, 0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b,
+    0x70, 0x00, 0xc7, 0xd4, 0x7b, 0x26, 0xb0, 0x9d, 0x29, 0x5f, 0x00, 0xe0,
+    0xc3, 0x1e, 0xde, 0xc6, 0x0e, 0x05, 0xbf, 0x00, 0x81, 0x75, 0x20, 0xd6,
+    0x48, 0x16, 0x3a, 0x1d, 0x00, 0x06, 0x03, 0xf3, 0x15, 0x9d, 0xb2, 0xc6,
+    0x11, 0x00, 0x6f, 0x63, 0x76, 0xe7, 0xba, 0xbd, 0xf5, 0x5f, 0x00, 0x47,
+    0x01, 0xb4, 0x1b, 0x0e, 0xd0, 0xa6, 0xcc, 0x00, 0xf8, 0xe5, 0xc9, 0x85,
+    0xb5, 0x38, 0xc7, 0x0c, 0x00, 0x4e, 0x0f, 0xc3, 0x3f, 0xfb, 0x49, 0x27,
+    0x9b, 0x00, 0x94, 0xd9, 0x23, 0x6c, 0xbe, 0x7d, 0x94, 0xb0, 0x00, 0x5b,
+    0x13, 0xda, 0x14, 0x11, 0xb3, 0xda, 0x93, 0x00, 0x07, 0x60, 0xad, 0x3f,
+    0xd9, 0xed, 0x00, 0x5b, 0x00, 0xfe, 0x76, 0x52, 0x86, 0x2b, 0xd6, 0x9a,
+    0xc1, 0x00, 0x9f, 0xc2, 0x08, 0xa4, 0x1f, 0x18, 0x34, 0x40, 0x00, 0x00,
+    0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+// TableVocabulary is ONE DIRECTION's announced vocabulary (§3.3): the entries
+// an announcement carried, RESOLVED ONCE, under one numbering.
+//
+// THE RECEIVER RESOLVES ONCE (§3.3), so this holds the entries themselves and
+// not the announcement's bytes: every entry is parsed at AnnounceRead, and
+// every body after it dispatches through ONE ARRAY INDEX with nothing to
+// re-read and nothing to decide. The announcement is free the moment
+// AnnounceRead returns.
+//
+// THE STORAGE IS THE CALLER'S and this library never allocates. The caller
+// declares an array of entries wherever it wants it, static, on a heap, in an
+// arena or beside its connection, and hands it here with its CAPACITY. The
+// announcement holds for the life of the connection (§3.3), so the array does
+// too, and a peer holds TWO for a connection, the one it writes with and the
+// one it reads with. A restart opens a fresh connection with an empty
+// vocabulary and nothing is cached across connections.
+//
+// kTableMessageEntriesHere is the capacity a receiver that talks only to peers
+// of THIS schema declares, and a receiver meeting other builds declares more.
+struct TableVocabulary
+{
+    // THE CONFORMING DEFAULT BYTE BOUND (§3.3). The ENTRY bound has no default
+    // because it IS the caller's capacity: an announcement naming more entries
+    // than the caller made room for is refused as vocabulary_too_large before
+    // an entry is touched, and the byte bound is read off the vocabulary
+    // field's own length before that.
+    static const int64_t kDefaultMaxBytes = 64 * 1024;
+
+    TableVocabulary( TableMessageEntry * storage, int64_t capacity )
+        : entries( storage ), max_entries( capacity ) {}
+
+    TableMessageEntry * entries; // THE CALLER'S, capacity max_entries
+    int64_t max_entries;
+    int64_t count = 0;
+    int64_t ref_bits = 0;
+    uint64_t build_version = 0;
+    bool announced = false;
+    // REFUSAL IS TERMINAL (§3.3): a connection whose first announcement was
+    // refused, for any reason, carries no vocabulary for its life, and every
+    // announcement after it is refused as second_announcement
+    bool refused = false;
+    int64_t max_bytes = kDefaultMaxBytes;
+};
+
+// TableVocabularyEntryAt is the entry a reference names, counted from 1: ONE
+// ARRAY INDEX into the caller's resolved storage, no parse and no branch.
+inline const TableMessageEntry & TableVocabularyEntryAt( const TableVocabulary & vocabulary, uint64_t slot )
+{
+    return vocabulary.entries[ slot - 1 ];
+}
+
+// AnnounceRead reads an announcement into one direction's vocabulary (§3.3).
+//
+// The announcement IS a file, so every malformed rule of §3 already covers it.
+// Over its body there are EXACTLY TWO STRICT CHECKS: the BUILD VERSION
+// present, exactly once, under kind 9, eight bytes wide, and the VOCABULARY
+// present, exactly once, under kind 14 over element kind 6. Everything else is
+// ordinary and tolerant, so an unknown field is skipped and counted and the
+// announcement can GAIN a field in a later minor without a lockstep redeploy.
+//
+// The FIRST announcement sets the vocabulary and it is the only one that can.
+// A SECOND is refused by name: it does not replace it, does not amend it and
+// changes nothing. A refused announcement sets NO VOCABULARY, and the refusal
+// is TERMINAL: every announcement after it, whether or not the first set
+// anything, is second_announcement, so a peer holds no retry on the
+// connection and cannot buy a second resolve by having its first refused.
+inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * to );
+
 inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( vocabulary.announced )
+    if ( vocabulary.announced || vocabulary.refused )
     {
         to->refused = true;
         to->reason = second_announcement;
         return false;
     }
+    const bool set = AnnounceReadOnce( vocabulary, buffer, bytes, to );
+    if ( !set ) { vocabulary.refused = true; }
+    return set;
+}
+
+inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * to )
+{
     if ( bytes < 1 ) { to->malformed = true; return false; }
     if ( buffer[0] != kTableWireForm )
     {
@@ -890,15 +1481,6 @@ inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, 
         return false;
     }
     if ( bytes < 9 ) { to->malformed = true; return false; }
-    const uint8_t * tail = buffer + bytes - 8;
-    uint64_t lo = uint64_t( tail[0] ) | uint64_t( tail[1] ) << 8 | uint64_t( tail[2] ) << 16 | uint64_t( tail[3] ) << 24;
-    uint64_t hi = uint64_t( tail[4] ) | uint64_t( tail[5] ) << 8 | uint64_t( tail[6] ) << 16 | uint64_t( tail[7] ) << 24;
-    if ( ( lo | ( hi << 32 ) ) > (uint64_t) vocabulary.max_entries )
-    {
-        to->refused = true;
-        to->reason = vocabulary_too_large;
-        return false;
-    }
     TableIdTable table;
     int64_t body_bytes = 0;
     const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
@@ -909,10 +1491,11 @@ inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, 
         return false;
     }
     if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) ) { to->malformed = true; return false; }
-    // the body, under §4's tolerance and this form's one strict check
     TableReader r( buffer + 1, body_bytes, to, &table );
     uint64_t version = 0;
-    int32_t seen = 0;
+    const uint8_t * words = NULL;
+    int64_t words_bytes = 0;
+    int32_t seen_version = 0, seen_vocabulary = 0;
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -921,20 +1504,394 @@ inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, 
         if ( ref > (uint64_t) table.count || !r.has( 1 ) ) { to->malformed = true; return false; }
         const uint64_t id = table.at( ref );
         const uint8_t kind = r.get8();
-        if ( id != kTableBuildVersionFieldId )
+        if ( id == kTableBuildVersionFieldId )
         {
-            to->unknown++;
-            if ( !r.skip( kind ) ) { to->malformed = true; return false; }
+            if ( kind != 9 || !r.has( 8 ) ) { to->malformed = true; return false; }
+            version = r.get64();
+            // THE BUILD VERSION IS KEPT THE MOMENT IT IS READ, refusal or not, so
+            // that a refusal on this connection NAMES IT (§3.3). It is not the
+            // vocabulary, and a refused announcement still sets none.
+            vocabulary.build_version = version;
+            seen_version++;
             continue;
         }
-        if ( kind != 9 || !r.has( 8 ) ) { to->refused = true; to->reason = no_vocabulary; return false; }
-        version = r.get64();
-        seen++;
+        if ( id == kTableMessageVocabularyFieldId )
+        {
+            // kind 14 over element kind 6, which is §3's spelling for an
+            // opaque run of bytes
+            uint64_t framed = 0;
+            if ( kind != 14 || !r.getleb( framed ) || !r.has( (int64_t) framed ) ) { to->malformed = true; return false; }
+            const int64_t begin = r.offset, end = r.offset + (int64_t) framed;
+            r.offset = end;
+            if ( begin >= end || r.buffer[ begin ] != 6 ) { to->malformed = true; return false; }
+            int64_t at = begin + 1;
+            uint64_t length = 0;
+            if ( !TableMessageLeb( r.buffer, end, at, length ) || at + (int64_t) length != end ) { to->malformed = true; return false; }
+            if ( (int64_t) length > vocabulary.max_bytes ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
+            words = r.buffer + at;
+            words_bytes = (int64_t) length;
+            seen_vocabulary++;
+            continue;
+        }
+        to->unknown++;
+        if ( !r.skip( kind ) ) { to->malformed = true; return false; }
     }
-    if ( seen != 1 ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    vocabulary.table = table;
+    if ( seen_version != 1 || seen_vocabulary != 1 ) { to->malformed = true; return false; }
+
+    // THE ENTRIES, RESOLVED ONCE into the caller's storage (§3.3): every width
+    // is checked here and never again, and no body after this parses a byte of
+    // an announcement. An entry count above the caller's CAPACITY is refused
+    // by name before the entry is touched.
+    int64_t at = 0, count = 0, node_table_slots = 0;
+    while ( at < words_bytes )
+    {
+        if ( count >= vocabulary.max_entries ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
+        TableMessageEntry & parsed = vocabulary.entries[ count ];
+        if ( !TableMessageEntryRead( words, words_bytes, at, parsed ) ) { to->malformed = true; return false; }
+        // THE RESERVED IDS WHERE THEY DO NOT BELONG (§3.3): the announcement's
+        // own two never take a slot, and the node-table id takes exactly one,
+        // so a vocabulary carrying either of the first or a SECOND node-table
+        // id is malformed whole and sets nothing
+        if ( parsed.id == kTableBuildVersionFieldId || parsed.id == kTableMessageVocabularyFieldId ) { to->malformed = true; return false; }
+        if ( parsed.id == kTableNodeTableFieldId ) { if ( node_table_slots++ > 0 ) { to->malformed = true; return false; } }
+        // A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE, so two entries that
+        // agree on the id, the kind and every fact of the shape are malformed
+        // (§3.3): no writer this wire has produces one, and a reader that took
+        // it would carry two slots naming one thing. The scan is quadratic in
+        // the entry count, and the entry count is bounded above at 4096, so it
+        // is at most eight million compares on a path that runs ONCE a
+        // connection and never again.
+        for ( int64_t seen = 0; seen < count; seen++ )
+        {
+            const TableMessageEntry & other = vocabulary.entries[ seen ];
+            if ( other.id == parsed.id && other.kind == parsed.kind && TableMessageEntrySame( other, parsed ) ) { to->malformed = true; return false; }
+        }
+        count++;
+    }
+    vocabulary.count = count;
+    vocabulary.ref_bits = TableBitsRequired( 0, count );
     vocabulary.build_version = version;
     vocabulary.announced = true;
+    return true;
+}
+
+// TableMessageReserved is one of the three ids the language holds back (§3.1,
+// §3.3, §5): each is malformed anywhere but its own transport, and the rule
+// OUTRANKS the wrong-sort rule below.
+inline bool TableMessageReserved( uint64_t id )
+{
+    // THE THREE ARE THE TOP THREE VALUES a uint64 holds, so the test is ONE
+    // comparison: 0xFFFFFFFFFFFFFFFD, FE and FF and nothing else is at or
+    // above the vocabulary's own id, and a declaration hashing to any of them
+    // is refused by name (§11)
+    return id >= kTableMessageVocabularyFieldId;
+}
+
+// TableMessageNameEntry resolves a reference used as a VALUE, which is an
+// enum's variant, a keyed array's slot key or a node record's type id, and
+// which must name a kind-0 entry (§3.3). A reference of 0 where an entry is required, one
+// above E, one naming a reserved id and one naming an entry that carries a
+// payload are each damage: the reader RESOLVED the entry and it contradicts
+// the position it was used in, so the next bit's meaning is what is in doubt.
+inline bool TableMessageNameEntry( const TableVocabulary & vocabulary, uint64_t ref, TableMessageEntry & entry )
+{
+    if ( ref == 0 || ref > (uint64_t) vocabulary.count ) { return false; }
+    entry = TableVocabularyEntryAt( vocabulary, ref );
+    return !TableMessageReserved( entry.id ) && entry.kind == 0;
+}
+
+// TableMessageArmEntry resolves a UNION's arm reference, which must name an
+// entry carrying the arm's own kind and shape: a kind-0 entry frames nothing,
+// and a reserved id belongs to no arm (§3.3).
+inline bool TableMessageArmEntry( const TableVocabulary & vocabulary, uint64_t ref, TableMessageEntry & entry )
+{
+    if ( ref == 0 || ref > (uint64_t) vocabulary.count ) { return false; }
+    entry = TableVocabularyEntryAt( vocabulary, ref );
+    return !TableMessageReserved( entry.id ) && entry.kind != 0;
+}
+
+// TableMessageSkipVariant steps over an ENUM's variant reference on a SKIP
+// path and RESOLVES it while it is there: 0 is None and the whole payload, and
+// every other reference must name a kind-0 entry, because every reference
+// above E is damage and one naming an entry that carries a payload
+// contradicts the position it was used in, whether or not this reader was
+// going to keep the value (§3.3).
+inline bool TableMessageSkipVariant( TableBitReader & r, const TableVocabulary & vocabulary )
+{
+    uint64_t ref = 0;
+    if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
+    if ( ref == 0 ) { return true; }
+    TableMessageEntry named;
+    return TableMessageNameEntry( vocabulary, ref, named );
+}
+// TableMessageSkip steps over one field's payload without decoding it, using
+// the announced ENTRY alone (§3.3). It is what makes an unknown entry
+// skippable on a body with no kind byte, and it is ONE function over every
+// table, because a shape says everything a skipper needs.
+inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits );
+inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry );
+
+// TableMessageSkipElement steps over ONE element of an array or keyed entry
+// by the element's own announced shape: a nested body to its zero reference,
+// a variant or a node index at its reference width, a union arm by its own
+// entry, and a fixed-width value at its bits.
+inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry )
+{
+    switch ( entry.elem_kind )
+    {
+        case 13: return TableMessageSkipBody( r, vocabulary, index_bits );
+        case 30: return TableMessageSkipVariant( r, vocabulary );
+        case 17: return index_bits > 0 && r.skip( index_bits );
+        case 15:
+        {
+            TableMessageEntry inner;
+            inner.kind = 15;
+            return TableMessageSkip( r, vocabulary, index_bits, inner );
+        }
+        default:
+        {
+            const int64_t elem = entry.elem_value_bits;
+            return elem >= 0 && r.skip( elem );
+        }
+    }
+}
+
+// TableMessageElementRunBits is the bits ONE element of an array or a keyed
+// entry occupies on the SKIP path, where nothing is resolved and a run of them
+// is one multiplication, and -1 where the element's width is its own
+// content's. A ZERO is a real answer, and it is why this exists: a ranged
+// element whose min equals its max rides no bits at all (§3.3).
+inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, const TableMessageEntry & entry )
+{
+    int64_t elem = 0;
+    switch ( entry.elem_kind )
+    {
+        // a nested body, a union arm, an enum's variant and a node index each
+        // RESOLVE something, and a resolve that contradicts its position is
+        // damage this reader must still find, so they are walked
+        case 13: case 15: case 30: case 17: return -1;
+        default: elem = entry.elem_value_bits; break;
+    }
+    if ( elem < 0 ) { return -1; }
+    if ( entry.kind == 16 ) { elem += vocabulary.ref_bits; } // a keyed slot's own key reference
+    return elem;
+}
+
+// TableMessageSkipRun steps over n elements of one fixed width in a single
+// arithmetic step. A FIXED-WIDTH ELEMENT IS ARITHMETIC (§3.3), and a loop here
+// would be the one superlinear thing in this form: a zero-width element under
+// a count of 2^31 is six bytes of wire.
+inline bool TableMessageSkipRun( TableBitReader & r, uint64_t n, int64_t width )
+{
+    if ( width < 0 ) { return false; }
+    if ( width == 0 ) { return true; }
+    if ( n > (uint64_t) ( INT64_MAX / width ) ) { return false; }
+    return r.skip( (int64_t) ( n * (uint64_t) width ) );
+}
+
+inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry )
+{
+    switch ( entry.kind )
+    {
+        case 0: case 32: return true;              // a name, and a payload-free arm
+        case 30: return TableMessageSkipVariant( r, vocabulary );
+        case 13: return TableMessageSkipBody( r, vocabulary, index_bits );
+        case 17: return index_bits > 0 && r.skip( index_bits ); // a node index, at the width the body's node count settled
+        case 15:
+        {
+            uint64_t arm = 0;
+            if ( !r.get( arm, vocabulary.ref_bits ) ) { return false; }
+            if ( arm == 0 ) { return true; }
+            TableMessageEntry arm_entry;
+            if ( !TableMessageArmEntry( vocabulary, arm, arm_entry ) ) { return false; }
+            return TableMessageSkip( r, vocabulary, index_bits, arm_entry );
+        }
+        case 12:
+        {
+            uint64_t n = 0;
+            if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
+            return r.skip( (int64_t) n * 8 );
+        }
+        case 33:
+        {
+            // the length, NO align, then SIXTEEN bits a code unit (§3.3)
+            uint64_t n = 0;
+            if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) ) { return false; }
+            return r.skip( (int64_t) n * 16 );
+        }
+        case 31:
+        {
+            // THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
+            // the one path a later-major writer has on this form (§3.3)
+            uint64_t n = 0;
+            if ( !r.align() || !r.get( n, 32 ) ) { return false; }
+            return r.skip( (int64_t) n * 8 );
+        }
+        case 14: case 16:
+        {
+            uint64_t n = (uint64_t) entry.min;
+            const int64_t width = entry.kind == 16 ? TableBitsRequired( 0, entry.max ) : TableBitsRequired( entry.min, entry.max );
+            if ( entry.kind == 16 ) { n = 0; }
+            if ( width > 0 )
+            {
+                uint64_t raw = 0;
+                if ( !r.get( raw, width ) ) { return false; }
+                n = entry.kind == 16 ? raw : raw + (uint64_t) entry.min;
+            }
+            if ( entry.kind == 14 && entry.elem_kind == 6 && !r.align() ) { return false; }
+            // A RUN OF FIXED-WIDTH ELEMENTS IS ONE MULTIPLICATION (§3.3), and
+            // only an element whose width is its own content's is walked
+            const int64_t run = TableMessageElementRunBits( vocabulary, entry );
+            if ( run >= 0 ) { return TableMessageSkipRun( r, n, run ); }
+            for ( uint64_t i = 0; i < n; i++ )
+            {
+                if ( entry.kind == 16 && !r.skip( vocabulary.ref_bits ) ) { return false; }
+                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry ) ) { return false; }
+            }
+            return true;
+        }
+    }
+    const int64_t width = entry.value_bits;
+    return width >= 0 && r.skip( width );
+}
+
+inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits )
+{
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
+        if ( ref == 0 ) { return true; }
+        if ( ref > (uint64_t) vocabulary.count ) { return false; }
+        if ( !TableMessageSkip( r, vocabulary, index_bits, TableVocabularyEntryAt( vocabulary, ref ) ) ) { return false; }
+    }
+}
+
+// TableMessageNodeTableOpen reads the node table's opening when a body has
+// one: the reserved id's reference and the count at thirty-two raw bits. A
+// body whose first reference is anything else has no node table, and the
+// reader is left where it was. False is damage: a reference past E, or bits
+// that run out.
+inline bool TableMessageNodeTableOpen( TableBitReader & r, const TableVocabulary & vocabulary, int64_t & count )
+{
+    count = 0;
+    const int64_t at = r.offset;
+    uint64_t ref = 0;
+    if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
+    if ( ref == 0 ) { r.offset = at; return true; }
+    if ( ref > (uint64_t) vocabulary.count ) { return false; }
+    if ( TableVocabularyEntryAt( vocabulary, ref ).id != kTableNodeTableFieldId ) { r.offset = at; return true; }
+    uint64_t n = 0;
+    if ( !r.get( n, 32 ) ) { return false; }
+    count = (int64_t) n;
+    return true;
+}
+// AnnounceMeasure is the announcement's byte count, which is a constant of the
+// unit and not a walk.
+inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+
+// Announce writes the announcement into the caller's buffer and answers the
+// bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
+// buffer is too small. It allocates nothing and walks nothing.
+inline int64_t Announce( uint8_t * buffer, int64_t capacity )
+{
+    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
+    return kTableAnnounceBytes;
+}
+
+// THE PRIMITIVE IS A BATCH (§3.3): a number of bodies of ONE ROOT in one
+// buffer, one count and one continuous bit stream with no alignment between
+// them. A single message is the batch of one.
+//
+// The count rides ahead of the bodies, so a writer declares it at Begin and
+// End refuses a batch that wrote a different number: a count the bodies do not
+// match is not a wire this writer will hand anyone.
+struct TableMessageBatch
+{
+    TableBitWriter w;
+    int64_t declared = 0;
+    int64_t written = 0;
+};
+
+inline bool TableMessageBatchBegin( TableMessageBatch & batch, uint8_t * buffer, int64_t capacity, int64_t bodies )
+{
+    if ( buffer == NULL || capacity < 1 || bodies < 1 || bodies > kTableMessageBatchMax ) { return false; }
+    buffer[0] = kTableWireMessageForm; // the FORM BYTE is read first, always
+    batch.w = TableBitWriter( buffer + 1, capacity - 1 );
+    batch.declared = bodies;
+    batch.written = 0;
+    batch.w.put( (uint64_t) ( bodies - 1 ), 8 ); // a ranged integer over [1, 256]
+    return true;
+}
+
+// TableMessageBatchEnd zero-fills to the next byte, the one alignment a batch
+// spends at its end, and answers the whole batch's byte count, or -1.
+inline int64_t TableMessageBatchEnd( TableMessageBatch & batch )
+{
+    if ( batch.written != batch.declared || batch.w.overflow ) { return -1; }
+    batch.w.align();
+    if ( batch.w.overflow ) { return -1; }
+    return 1 + batch.w.bits / 8;
+}
+
+// TableMessageBatchBytes is a batch's byte count from its bodies' BIT count,
+// which is what every <Root>MeasureMessages answers.
+inline int64_t TableMessageBatchBytes( int64_t body_bits )
+{
+    if ( body_bits < 0 ) { return -1; }
+    return 1 + ( 8 + body_bits + 7 ) / 8;
+}
+
+// The reading half. A batch is opened once and its bodies are then read in
+// order into the storage the caller sized for them: which root a batch carries
+// is the APPLICATION's and never this wire's.
+struct TableMessageBatchReader
+{
+    TableBitReader r;
+    const TableVocabulary * vocabulary = NULL;
+    TableReport * report = NULL;
+    int64_t remaining = 0;
+    // THE SINK A CALLER THAT PASSED NO REPORT WRITES INTO IS THE READER'S OWN,
+    // not a static: a static is shared mutable state, and two threads reading
+    // two batches without reports would be writing one object. LoadMessages
+    // already keeps its sink locally, for the same reason.
+    TableReport ignored;
+};
+
+// TableMessageBatchOpen answers the batch's body count, or -1 with the refusal
+// on the report: a form byte this reader does not carry, or a body from a peer
+// that never announced.
+inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    br.report = report != NULL ? report : &br.ignored;
+    br.vocabulary = &vocabulary;
+    if ( bytes < 1 ) { br.report->malformed = true; return -1; }
+    if ( buffer[0] != kTableWireMessageForm ) { br.report->refused = true; br.report->reason = newer_form; return -1; }
+    if ( !vocabulary.announced ) { br.report->refused = true; br.report->reason = no_vocabulary; return -1; }
+    br.r = TableBitReader( buffer + 1, bytes - 1 );
+    uint64_t count = 0;
+    if ( !br.r.get( count, 8 ) ) { br.report->malformed = true; return -1; }
+    br.remaining = (int64_t) count + 1;
+    return br.remaining;
+}
+
+// TableMessageRefuseBatch is the batch's own refusal (§3.3): M above 256 on the
+// write side, or above the caller's capacity on the read side. Nothing is
+// written or decoded, no counter moves, and the reason names it.
+inline void TableMessageRefuseBatch( TableReport * report )
+{
+    if ( report == NULL ) { return; }
+    report->refused = true;
+    report->reason = batch_too_large;
+}
+
+// TableMessageBatchClose verifies the trailing pad, and that NOTHING FOLLOWS
+// IT: the batch ends at the pad to the byte boundary, and a buffer with bytes
+// left over describes no batch this reader can name (§3.3).
+inline bool TableMessageBatchClose( TableMessageBatchReader & br )
+{
+    if ( br.remaining != 0 || !br.r.align() || br.r.offset != br.r.bits ) { br.report->malformed = true; return false; }
     return true;
 }
 
@@ -1460,9 +2417,9 @@ inline bool TableEnumRef( TableIds & ids, ShipType value, uint64_t & ref )
     switch ( value )
     {
         case ShipType::None: ref = 0; return true;
-        case ShipType::Fighter: ref = ids.ref( 0xd011f7c3c15285c2ull, 66 ); return true;
-        case ShipType::Bomber: ref = ids.ref( 0xa8216aa1c554cb8aull, 67 ); return true;
-        case ShipType::Freighter: ref = ids.ref( 0x6c2321a3d00e23dbull, 68 ); return true;
+        case ShipType::Fighter: ref = ids.ref( 0xd011f7c3c15285c2ull ); return true;
+        case ShipType::Bomber: ref = ids.ref( 0xa8216aa1c554cb8aull ); return true;
+        case ShipType::Freighter: ref = ids.ref( 0x6c2321a3d00e23dbull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -1475,6 +2432,17 @@ inline bool TableEnumNamed( ShipType value )
         case ShipType::Bomber: return true;
         case ShipType::Freighter: return true;
         default: return false;
+    }
+}
+inline bool TableEnumSlot( ShipType value, uint64_t & slot )
+{
+    switch ( value )
+    {
+        case ShipType::None: slot = 0; return true;
+        case ShipType::Fighter: slot = 66; return true;
+        case ShipType::Bomber: slot = 67; return true;
+        case ShipType::Freighter: slot = 68; return true;
+        default: return false; // no variant names this value: no wire identity
     }
 }
 inline bool TableEnumId( ShipType value, uint64_t & id )
@@ -1512,10 +2480,10 @@ inline bool TableEnumRef( TableIds & ids, Team value, uint64_t & ref )
     switch ( value )
     {
         case Team::None: ref = 0; return true;
-        case Team::Red: ref = ids.ref( 0x9ff1de19feac1b7cull, 69 ); return true;
-        case Team::Blue: ref = ids.ref( 0xecf3d3a7c1693e2dull, 70 ); return true;
-        case Team::Green: ref = ids.ref( 0xcf00d78fd5953f1cull, 71 ); return true;
-        case Team::Gold: ref = ids.ref( 0xc416c97e0d3218b3ull, 72 ); return true;
+        case Team::Red: ref = ids.ref( 0x9ff1de19feac1b7cull ); return true;
+        case Team::Blue: ref = ids.ref( 0xecf3d3a7c1693e2dull ); return true;
+        case Team::Green: ref = ids.ref( 0xcf00d78fd5953f1cull ); return true;
+        case Team::Gold: ref = ids.ref( 0xc416c97e0d3218b3ull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -1529,6 +2497,18 @@ inline bool TableEnumNamed( Team value )
         case Team::Green: return true;
         case Team::Gold: return true;
         default: return false;
+    }
+}
+inline bool TableEnumSlot( Team value, uint64_t & slot )
+{
+    switch ( value )
+    {
+        case Team::None: slot = 0; return true;
+        case Team::Red: slot = 69; return true;
+        case Team::Blue: slot = 70; return true;
+        case Team::Green: slot = 71; return true;
+        case Team::Gold: slot = 72; return true;
+        default: return false; // no variant names this value: no wire identity
     }
 }
 inline bool TableEnumId( Team value, uint64_t & id )
@@ -1568,8 +2548,8 @@ inline bool TableEnumRef( TableIds & ids, MissileType value, uint64_t & ref )
     switch ( value )
     {
         case MissileType::None: ref = 0; return true;
-        case MissileType::Seeker: ref = ids.ref( 0xf5d0a4d25a76afcaull, 61 ); return true;
-        case MissileType::Dumb: ref = ids.ref( 0x478d7972f6d9075dull, 62 ); return true;
+        case MissileType::Seeker: ref = ids.ref( 0xf5d0a4d25a76afcaull ); return true;
+        case MissileType::Dumb: ref = ids.ref( 0x478d7972f6d9075dull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -1581,6 +2561,16 @@ inline bool TableEnumNamed( MissileType value )
         case MissileType::Seeker: return true;
         case MissileType::Dumb: return true;
         default: return false;
+    }
+}
+inline bool TableEnumSlot( MissileType value, uint64_t & slot )
+{
+    switch ( value )
+    {
+        case MissileType::None: slot = 0; return true;
+        case MissileType::Seeker: slot = 61; return true;
+        case MissileType::Dumb: slot = 62; return true;
+        default: return false; // no variant names this value: no wire identity
     }
 }
 inline bool TableEnumId( MissileType value, uint64_t & id )
@@ -1616,9 +2606,9 @@ inline bool TableEnumRef( TableIds & ids, PropType value, uint64_t & ref )
     switch ( value )
     {
         case PropType::None: ref = 0; return true;
-        case PropType::Rock: ref = ids.ref( 0xcaa6172bef74e234ull, 63 ); return true;
-        case PropType::Station: ref = ids.ref( 0x4f98acac2852d653ull, 64 ); return true;
-        case PropType::Beacon: ref = ids.ref( 0x7f3a7e4744ea3019ull, 65 ); return true;
+        case PropType::Rock: ref = ids.ref( 0xcaa6172bef74e234ull ); return true;
+        case PropType::Station: ref = ids.ref( 0x4f98acac2852d653ull ); return true;
+        case PropType::Beacon: ref = ids.ref( 0x7f3a7e4744ea3019ull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -1631,6 +2621,17 @@ inline bool TableEnumNamed( PropType value )
         case PropType::Station: return true;
         case PropType::Beacon: return true;
         default: return false;
+    }
+}
+inline bool TableEnumSlot( PropType value, uint64_t & slot )
+{
+    switch ( value )
+    {
+        case PropType::None: slot = 0; return true;
+        case PropType::Rock: slot = 63; return true;
+        case PropType::Station: slot = 64; return true;
+        case PropType::Beacon: slot = 65; return true;
+        default: return false; // no variant names this value: no wire identity
     }
 }
 inline bool TableEnumId( PropType value, uint64_t & id )
@@ -1668,8 +2669,8 @@ inline bool TableEnumRef( TableIds & ids, LaserType value, uint64_t & ref )
     switch ( value )
     {
         case LaserType::None: ref = 0; return true;
-        case LaserType::Pulse: ref = ids.ref( 0x94e8a172d8f4805eull, 59 ); return true;
-        case LaserType::Beam: ref = ids.ref( 0xa0745aa7967eeffaull, 60 ); return true;
+        case LaserType::Pulse: ref = ids.ref( 0x94e8a172d8f4805eull ); return true;
+        case LaserType::Beam: ref = ids.ref( 0xa0745aa7967eeffaull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -1681,6 +2682,16 @@ inline bool TableEnumNamed( LaserType value )
         case LaserType::Pulse: return true;
         case LaserType::Beam: return true;
         default: return false;
+    }
+}
+inline bool TableEnumSlot( LaserType value, uint64_t & slot )
+{
+    switch ( value )
+    {
+        case LaserType::None: slot = 0; return true;
+        case LaserType::Pulse: slot = 59; return true;
+        case LaserType::Beam: slot = 60; return true;
+        default: return false; // no variant names this value: no wire identity
     }
 }
 inline bool TableEnumId( LaserType value, uint64_t & id )
@@ -1716,8 +2727,8 @@ inline bool TableEnumRef( TableIds & ids, ExplosionType value, uint64_t & ref )
     switch ( value )
     {
         case ExplosionType::None: ref = 0; return true;
-        case ExplosionType::Small: ref = ids.ref( 0x3d2cc8d952adebecull, 57 ); return true;
-        case ExplosionType::Large: ref = ids.ref( 0xc8736ef79380e634ull, 58 ); return true;
+        case ExplosionType::Small: ref = ids.ref( 0x3d2cc8d952adebecull ); return true;
+        case ExplosionType::Large: ref = ids.ref( 0xc8736ef79380e634ull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -1729,6 +2740,16 @@ inline bool TableEnumNamed( ExplosionType value )
         case ExplosionType::Small: return true;
         case ExplosionType::Large: return true;
         default: return false;
+    }
+}
+inline bool TableEnumSlot( ExplosionType value, uint64_t & slot )
+{
+    switch ( value )
+    {
+        case ExplosionType::None: slot = 0; return true;
+        case ExplosionType::Small: slot = 57; return true;
+        case ExplosionType::Large: slot = 58; return true;
+        default: return false; // no variant names this value: no wire identity
     }
 }
 inline bool TableEnumId( ExplosionType value, uint64_t & id )
@@ -1906,6 +2927,43 @@ inline void RenderVector3Reset( RenderVector3 & value ) { value = RenderVector3(
 
 inline void RenderQuaternionReset( RenderQuaternion & value ) { value = RenderQuaternion(); }
 
+inline int64_t RenderCameraMeasureMessageBody( int64_t at, const RenderCamera & value );
+inline bool RenderCameraSaveMessageBody( TableBitWriter & w, const RenderCamera & value );
+inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderCamera & value );
+inline int64_t RenderShipMeasureMessageBody( int64_t at, const RenderShip & value );
+inline bool RenderShipSaveMessageBody( TableBitWriter & w, const RenderShip & value );
+inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderShip & value );
+inline int64_t RenderTurretMeasureMessageBody( int64_t at, const RenderTurret & value );
+inline bool RenderTurretSaveMessageBody( TableBitWriter & w, const RenderTurret & value );
+inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderTurret & value );
+inline int64_t RenderMissileMeasureMessageBody( int64_t at, const RenderMissile & value );
+inline bool RenderMissileSaveMessageBody( TableBitWriter & w, const RenderMissile & value );
+inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderMissile & value );
+inline int64_t RenderDynamicPropMeasureMessageBody( int64_t at, const RenderDynamicProp & value );
+inline bool RenderDynamicPropSaveMessageBody( TableBitWriter & w, const RenderDynamicProp & value );
+inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderDynamicProp & value );
+inline int64_t RenderStaticPropMeasureMessageBody( int64_t at, const RenderStaticProp & value );
+inline bool RenderStaticPropSaveMessageBody( TableBitWriter & w, const RenderStaticProp & value );
+inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderStaticProp & value );
+inline int64_t RenderCosmeticPropMeasureMessageBody( int64_t at, const RenderCosmeticProp & value );
+inline bool RenderCosmeticPropSaveMessageBody( TableBitWriter & w, const RenderCosmeticProp & value );
+inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderCosmeticProp & value );
+inline int64_t RenderLaserMeasureMessageBody( int64_t at, const RenderLaser & value );
+inline bool RenderLaserSaveMessageBody( TableBitWriter & w, const RenderLaser & value );
+inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderLaser & value );
+inline int64_t RenderExplosionMeasureMessageBody( int64_t at, const RenderExplosion & value );
+inline bool RenderExplosionSaveMessageBody( TableBitWriter & w, const RenderExplosion & value );
+inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderExplosion & value );
+inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & value );
+inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & value );
+inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderFrame & value );
+inline int64_t RenderVector3MeasureMessageBody( int64_t at, const RenderVector3 & value );
+inline bool RenderVector3SaveMessageBody( TableBitWriter & w, const RenderVector3 & value );
+inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderVector3 & value );
+inline int64_t RenderQuaternionMeasureMessageBody( int64_t at, const RenderQuaternion & value );
+inline bool RenderQuaternionSaveMessageBody( TableBitWriter & w, const RenderQuaternion & value );
+inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderQuaternion & value );
+
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t RenderCameraMeasureBody( TableIds & ids, const RenderCamera & value );
@@ -1950,7 +3008,7 @@ inline int64_t RenderCameraMeasureBody( TableIds & ids, const RenderCamera & val
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_position = ids.count;
-        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull, 14 );
+        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
@@ -1958,16 +3016,16 @@ inline int64_t RenderCameraMeasureBody( TableIds & ids, const RenderCamera & val
     }
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
         else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.camera_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x9f61700f084ab92eull, 16 ) ) + 1 + 4; } // camera_id
-    if ( value.camera_type != 0 ) { bytes += TableLebBytes( ids.ref( 0x336d3dc7fffd0c9bull, 17 ) ) + 1 + 4; } // camera_type
-    if ( value.target_object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x6a0c6a156952b9c2ull, 18 ) ) + 1 + 4; } // target_object_id
-    if ( value.fov != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xdcb27c18fed9e15cull, 19 ) ) + 1 + 4; } // fov
+    if ( value.camera_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x9f61700f084ab92eull ) ) + 1 + 4; } // camera_id
+    if ( value.camera_type != 0 ) { bytes += TableLebBytes( ids.ref( 0x336d3dc7fffd0c9bull ) ) + 1 + 4; } // camera_type
+    if ( value.target_object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x6a0c6a156952b9c2ull ) ) + 1 + 4; } // target_object_id
+    if ( value.fov != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xdcb27c18fed9e15cull ) ) + 1 + 4; } // fov
     return bytes;
 }
 
@@ -1983,7 +3041,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraSaveBody( TableWriter & w, TableIds & id
 {
     {
         const int32_t mark_position = ids.count;
-        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull, 14 );
+        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_position > 1 ) // all-default nested elides
@@ -1995,7 +3053,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraSaveBody( TableWriter & w, TableIds & id
     }
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_rotation > 1 ) // all-default nested elides
@@ -2007,22 +3065,22 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraSaveBody( TableWriter & w, TableIds & id
     }
     if ( value.camera_id != 0 )
     {
-        w.putleb( ids.ref( 0x9f61700f084ab92eull, 16 ) ); w.put8( 8 ); // camera_id
+        w.putleb( ids.ref( 0x9f61700f084ab92eull ) ); w.put8( 8 ); // camera_id
         w.put32( uint32_t( value.camera_id ) );
     }
     if ( value.camera_type != 0 )
     {
-        w.putleb( ids.ref( 0x336d3dc7fffd0c9bull, 17 ) ); w.put8( 8 ); // camera_type
+        w.putleb( ids.ref( 0x336d3dc7fffd0c9bull ) ); w.put8( 8 ); // camera_type
         w.put32( uint32_t( value.camera_type ) );
     }
     if ( value.target_object_id != 0 )
     {
-        w.putleb( ids.ref( 0x6a0c6a156952b9c2ull, 18 ) ); w.put8( 8 ); // target_object_id
+        w.putleb( ids.ref( 0x6a0c6a156952b9c2ull ) ); w.put8( 8 ); // target_object_id
         w.put32( uint32_t( value.target_object_id ) );
     }
     if ( value.fov != 0.0f )
     {
-        w.putleb( ids.ref( 0xdcb27c18fed9e15cull, 19 ) ); w.put8( 10 ); // fov
+        w.putleb( ids.ref( 0xdcb27c18fed9e15cull ) ); w.put8( 10 ); // fov
         w.put32( table_float_to_bits( value.fov ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -2052,7 +3110,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera 
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -2266,47 +3324,329 @@ inline bool RenderCameraLoad( RenderCamera & value, const uint8_t * buffer, int6
     return RenderCameraLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
-// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
-// body, and no trailer at all — the connection's announced table is where
-// the ids live. Every reference is a compile-time SLOT, so this walk does
-// no lookup and a save costs what a save costs.
-inline int64_t RenderCameraMeasureMessage( const RenderCamera & value )
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t RenderCameraMeasureMessageBody( int64_t at, const RenderCamera & value )
 {
-    TableIds ids;
-    ids.vocabulary = true;
-    const int64_t body = RenderCameraMeasureBody( ids, value );
-    if ( body < 0 ) { return -1; }
-    return 1 + body;
+    int64_t bits = 0;
+    {
+        const int64_t body_position = RenderVector3MeasureMessageBody( at + bits, value.position );
+        if ( body_position < 0 ) { return -1; }
+        if ( body_position > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderVector3MeasureMessageBody( at + bits, value.position );
+        }
+    }
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        if ( body_rotation < 0 ) { return -1; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        }
+    }
+    if ( value.camera_id != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.camera_type != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.target_object_id != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.fov != 0.0f )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
 }
 
-inline int64_t RenderCameraSaveMessage( const RenderCamera & value, uint8_t * buffer, int64_t capacity )
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool RenderCameraSaveMessageBody( TableBitWriter & w, const RenderCamera & value )
 {
-    TableWriter w( buffer, capacity );
-    TableIds ids;
-    ids.vocabulary = true;
-    w.put8( kTableWireMessageForm );
-    if ( !RenderCameraSaveBody( w, ids, value ) || w.overflow ) { return -1; }
-    return w.offset; // == RenderCameraMeasureMessage( value )
+    {
+        const int64_t body_position = RenderVector3MeasureMessageBody( 0, value.position );
+        if ( body_position < 0 ) { return false; }
+        if ( body_position > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 13, kTableMessageRefBitsHere );
+            if ( !RenderVector3SaveMessageBody( w, value.position ) ) { return false; }
+        }
+    }
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( 0, value.rotation );
+        if ( body_rotation < 0 ) { return false; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 14, kTableMessageRefBitsHere );
+            if ( !RenderQuaternionSaveMessageBody( w, value.rotation ) ) { return false; }
+        }
+    }
+    if ( value.camera_id != 0 )
+    {
+        w.put( 15, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.camera_id ), 32 );
+    }
+    if ( value.camera_type != 0 )
+    {
+        w.put( 16, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.camera_type ), 32 );
+    }
+    if ( value.target_object_id != 0 )
+    {
+        w.put( 17, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.target_object_id ), 32 );
+    }
+    if ( value.fov != 0.0f )
+    {
+        w.put( 18, kTableMessageRefBitsHere );
+        w.put( (uint64_t) table_float_to_bits( value.fov ), 32 );
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
 }
 
-// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
-// nothing is decoded, the reader says it holds no table, no counter moves
-// and malformed does not fire. A reader does not fall back to the file
-// form on its own and does not guess a table, because a guessed table
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderCamera & value )
+{
+    RenderCameraReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0x4cbf3a26fca1d74aull: // position
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderVector3LoadMessageBody( r, vocabulary, report, index_bits, value.position ) ) { return false; }
+                break;
+            }
+            case 0xb51afb05cd34709full: // rotation
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderQuaternionLoadMessageBody( r, vocabulary, report, index_bits, value.rotation ) ) { return false; }
+                break;
+            }
+            case 0x9f61700f084ab92eull: // camera_id
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.camera_id = decoded_v;
+                }
+                break;
+            }
+            case 0x336d3dc7fffd0c9bull: // camera_type
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.camera_type = decoded_v;
+                }
+                break;
+            }
+            case 0x6a0c6a156952b9c2ull: // target_object_id
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.target_object_id = decoded_v;
+                }
+                break;
+            }
+            case 0xdcb27c18fed9e15cull: // fov
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 10 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    float decoded_f = 0.0f;
+                    if ( entry.packing == 2 )
+                    {
+                        uint64_t index = 0;
+                        if ( !r.get( index, entry.value_bits ) ) { report->malformed = true; return false; }
+                        if ( index > (uint64_t) entry.qcount ) { report->malformed = true; return false; } // above the step count: the packet wire's own refusal
+                        decoded_f = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount ); // SPEC.md §4.3's rule, in float32
+                    }
+                    else
+                    {
+                        uint64_t raw = 0;
+                        if ( !r.get( raw, 32 ) ) { report->malformed = true; return false; }
+                        decoded_f = table_bits_to_float( (uint32_t) raw );
+                    }
+                    value.fov = decoded_f;
+                }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of bodies of
+// ONE ROOT in one buffer, one count and one continuous bit stream with no
+// alignment between them. A single message is the batch of one, and there is
+// no singular verb.
+//
+// Every reference is a compile-time SLOT and every width a literal, so a save
+// does no lookup at all and costs what a save costs.
+//
+// M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
+// verdict set and the reason batch_too_large on it, and nothing written. The
+// refusal is learned at MEASURE time, before a buffer is allocated, and a
+// caller with more bodies calls again.
+inline int64_t RenderCameraMeasureMessages( const RenderCamera * values, int64_t count, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    int64_t bits = 8; // the body count, a ranged integer over [1, 256]
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const int64_t body = RenderCameraMeasureMessageBody( bits, values[i] );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
+}
+
+inline int64_t RenderCameraSaveMessages( const RenderCamera * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableMessageBatch batch;
+    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( !RenderCameraSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        batch.written++;
+    }
+    return TableMessageBatchEnd( batch ); // == RenderCameraMeasureMessages( values, count, report )
+}
+
+// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no vocabulary, no counter
+// moves and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a vocabulary, because a guessed one
 // decodes a body under the wrong names in silence.
-inline bool RenderCameraLoadMessage( RenderCamera & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+//
+// `count` is IN and OUT: in, the storage the caller has room for, and out,
+// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
+// batch_too_large, found from the count before a body is decoded, and count
+// comes back holding the WIRE's M, so the caller calls again with storage at
+// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
+// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
+// after it is not a body.
+inline bool RenderCameraLoadMessages( RenderCamera * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    RenderCameraReset( value );
-    if ( bytes < 1 ) { to->malformed = true; return false; }
-    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
-    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
-    // there is no stray-byte rule to apply between one and a first entry
-    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    return RenderCameraLoadBody( r, value );
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    const int64_t capacity = *count;
+    *count = 0;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
+    if ( bodies < 0 ) { return false; }
+    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    for ( int64_t i = 0; i < bodies; i++ )
+    {
+        if ( !RenderCameraLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        br.remaining--;
+    }
+    *count = bodies;
+    return TableMessageBatchClose( br );
 }
 
 inline int64_t RenderShipMeasureBody( TableIds & ids, const RenderShip & value )
@@ -2314,7 +3654,7 @@ inline int64_t RenderShipMeasureBody( TableIds & ids, const RenderShip & value )
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_position = ids.count;
-        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull, 14 );
+        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
@@ -2322,21 +3662,21 @@ inline int64_t RenderShipMeasureBody( TableIds & ids, const RenderShip & value )
     }
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
         else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref( 0x17a3a1a985f75aecull, 21 ) ) + 1 + 8; } // flags
-    if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x0bdab42c07f19812ull, 26 ) ) + 1 + 4; } // object_id
-    if ( value.target_object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x6a0c6a156952b9c2ull, 18 ) ) + 1 + 4; } // target_object_id
-    if ( value.thrust != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xcfd587cb3100cd73ull, 51 ) ) + 1 + 4; } // thrust
-    if ( value.object_sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0x5de0015285763c46ull, 27 ) ) + 1 + 1; } // object_sequence
+    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref( 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
+    if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x0bdab42c07f19812ull ) ) + 1 + 4; } // object_id
+    if ( value.target_object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x6a0c6a156952b9c2ull ) ) + 1 + 4; } // target_object_id
+    if ( value.thrust != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xcfd587cb3100cd73ull ) ) + 1 + 4; } // thrust
+    if ( value.object_sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0x5de0015285763c46ull ) ) + 1 + 1; } // object_sequence
     if ( value.ship_type != ShipType::None )
     {
         if ( !TableEnumNamed( value.ship_type ) ) { return -1; } // no variant names this value
-        const uint64_t ref_ship_type = ids.ref( 0x1f7d2e86a2e77268ull, 52 );
+        const uint64_t ref_ship_type = ids.ref( 0x1f7d2e86a2e77268ull );
         uint64_t variant_ship_type = 0;
         if ( !TableEnumRef( ids, value.ship_type, variant_ship_type ) ) { return -1; }
         bytes += TableLebBytes( ref_ship_type ) + 1 + TableLebBytes( variant_ship_type ); // ship_type: the variant's reference
@@ -2344,13 +3684,13 @@ inline int64_t RenderShipMeasureBody( TableIds & ids, const RenderShip & value )
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return -1; }
         bytes += TableLebBytes( ref_team ) + 1 + TableLebBytes( variant_team ); // team: the variant's reference
     }
-    if ( value.has_target_lock != false ) { bytes += TableLebBytes( ids.ref( 0x1554fa45a1220171ull, 53 ) ) + 1 + 1; } // has_target_lock
-    if ( value.predicted_explode != false ) { bytes += TableLebBytes( ids.ref( 0x4d5be97ba1b9cb81ull, 54 ) ) + 1 + 1; } // predicted_explode
+    if ( value.has_target_lock != false ) { bytes += TableLebBytes( ids.ref( 0x1554fa45a1220171ull ) ) + 1 + 1; } // has_target_lock
+    if ( value.predicted_explode != false ) { bytes += TableLebBytes( ids.ref( 0x4d5be97ba1b9cb81ull ) ) + 1 + 1; } // predicted_explode
     return bytes;
 }
 
@@ -2366,7 +3706,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipSaveBody( TableWriter & w, TableIds & ids,
 {
     {
         const int32_t mark_position = ids.count;
-        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull, 14 );
+        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_position > 1 ) // all-default nested elides
@@ -2378,7 +3718,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipSaveBody( TableWriter & w, TableIds & ids,
     }
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_rotation > 1 ) // all-default nested elides
@@ -2390,33 +3730,33 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipSaveBody( TableWriter & w, TableIds & ids,
     }
     if ( value.flags != 0 )
     {
-        w.putleb( ids.ref( 0x17a3a1a985f75aecull, 21 ) ); w.put8( 9 ); // flags
+        w.putleb( ids.ref( 0x17a3a1a985f75aecull ) ); w.put8( 9 ); // flags
         w.put64( uint64_t( value.flags ) );
     }
     if ( value.object_id != 0 )
     {
-        w.putleb( ids.ref( 0x0bdab42c07f19812ull, 26 ) ); w.put8( 8 ); // object_id
+        w.putleb( ids.ref( 0x0bdab42c07f19812ull ) ); w.put8( 8 ); // object_id
         w.put32( uint32_t( value.object_id ) );
     }
     if ( value.target_object_id != 0 )
     {
-        w.putleb( ids.ref( 0x6a0c6a156952b9c2ull, 18 ) ); w.put8( 8 ); // target_object_id
+        w.putleb( ids.ref( 0x6a0c6a156952b9c2ull ) ); w.put8( 8 ); // target_object_id
         w.put32( uint32_t( value.target_object_id ) );
     }
     if ( value.thrust != 0.0f )
     {
-        w.putleb( ids.ref( 0xcfd587cb3100cd73ull, 51 ) ); w.put8( 10 ); // thrust
+        w.putleb( ids.ref( 0xcfd587cb3100cd73ull ) ); w.put8( 10 ); // thrust
         w.put32( table_float_to_bits( value.thrust ) );
     }
     if ( value.object_sequence != 0 )
     {
-        w.putleb( ids.ref( 0x5de0015285763c46ull, 27 ) ); w.put8( 6 ); // object_sequence
+        w.putleb( ids.ref( 0x5de0015285763c46ull ) ); w.put8( 6 ); // object_sequence
         w.put8( uint8_t( value.object_sequence ) );
     }
     if ( value.ship_type != ShipType::None )
     {
         if ( !TableEnumNamed( value.ship_type ) ) { return false; }
-        const uint64_t ref_ship_type = ids.ref( 0x1f7d2e86a2e77268ull, 52 );
+        const uint64_t ref_ship_type = ids.ref( 0x1f7d2e86a2e77268ull );
         uint64_t variant_ship_type = 0;
         if ( !TableEnumRef( ids, value.ship_type, variant_ship_type ) ) { return false; }
         w.putleb( ref_ship_type ); w.put8( 30 ); w.putleb( variant_ship_type ); // ship_type
@@ -2424,19 +3764,19 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipSaveBody( TableWriter & w, TableIds & ids,
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
         w.putleb( ref_team ); w.put8( 30 ); w.putleb( variant_team ); // team
     }
     if ( value.has_target_lock != false )
     {
-        w.putleb( ids.ref( 0x1554fa45a1220171ull, 53 ) ); w.put8( 1 ); // has_target_lock
+        w.putleb( ids.ref( 0x1554fa45a1220171ull ) ); w.put8( 1 ); // has_target_lock
         w.put8( value.has_target_lock ? 1 : 0 );
     }
     if ( value.predicted_explode != false )
     {
-        w.putleb( ids.ref( 0x4d5be97ba1b9cb81ull, 54 ) ); w.put8( 1 ); // predicted_explode
+        w.putleb( ids.ref( 0x4d5be97ba1b9cb81ull ) ); w.put8( 1 ); // predicted_explode
         w.put8( value.predicted_explode ? 1 : 0 );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -2466,7 +3806,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -2765,47 +4105,483 @@ inline bool RenderShipLoad( RenderShip & value, const uint8_t * buffer, int64_t 
     return RenderShipLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
-// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
-// body, and no trailer at all — the connection's announced table is where
-// the ids live. Every reference is a compile-time SLOT, so this walk does
-// no lookup and a save costs what a save costs.
-inline int64_t RenderShipMeasureMessage( const RenderShip & value )
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t RenderShipMeasureMessageBody( int64_t at, const RenderShip & value )
 {
-    TableIds ids;
-    ids.vocabulary = true;
-    const int64_t body = RenderShipMeasureBody( ids, value );
-    if ( body < 0 ) { return -1; }
-    return 1 + body;
+    int64_t bits = 0;
+    {
+        const int64_t body_position = RenderVector3MeasureMessageBody( at + bits, value.position );
+        if ( body_position < 0 ) { return -1; }
+        if ( body_position > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderVector3MeasureMessageBody( at + bits, value.position );
+        }
+    }
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        if ( body_rotation < 0 ) { return -1; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        }
+    }
+    if ( value.flags != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 4;
+    }
+    if ( value.object_id != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.target_object_id != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.thrust != 0.0f )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.object_sequence != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 8;
+    }
+    if ( value.ship_type != ShipType::None )
+    {
+        if ( !TableEnumNamed( value.ship_type ) ) { return -1; }
+        bits += kTableMessageRefBitsHere;
+        bits += kTableMessageRefBitsHere;
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return -1; }
+        bits += kTableMessageRefBitsHere;
+        bits += kTableMessageRefBitsHere;
+    }
+    if ( value.has_target_lock != false )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 1;
+    }
+    if ( value.predicted_explode != false )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 1;
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
 }
 
-inline int64_t RenderShipSaveMessage( const RenderShip & value, uint8_t * buffer, int64_t capacity )
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool RenderShipSaveMessageBody( TableBitWriter & w, const RenderShip & value )
 {
-    TableWriter w( buffer, capacity );
-    TableIds ids;
-    ids.vocabulary = true;
-    w.put8( kTableWireMessageForm );
-    if ( !RenderShipSaveBody( w, ids, value ) || w.overflow ) { return -1; }
-    return w.offset; // == RenderShipMeasureMessage( value )
+    {
+        const int64_t body_position = RenderVector3MeasureMessageBody( 0, value.position );
+        if ( body_position < 0 ) { return false; }
+        if ( body_position > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 13, kTableMessageRefBitsHere );
+            if ( !RenderVector3SaveMessageBody( w, value.position ) ) { return false; }
+        }
+    }
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( 0, value.rotation );
+        if ( body_rotation < 0 ) { return false; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 14, kTableMessageRefBitsHere );
+            if ( !RenderQuaternionSaveMessageBody( w, value.rotation ) ) { return false; }
+        }
+    }
+    if ( value.flags != 0 )
+    {
+        w.put( 50, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.flags ), 4 );
+    }
+    if ( value.object_id != 0 )
+    {
+        w.put( 25, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.object_id ), 32 );
+    }
+    if ( value.target_object_id != 0 )
+    {
+        w.put( 17, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.target_object_id ), 32 );
+    }
+    if ( value.thrust != 0.0f )
+    {
+        w.put( 51, kTableMessageRefBitsHere );
+        w.put( (uint64_t) table_float_to_bits( value.thrust ), 32 );
+    }
+    if ( value.object_sequence != 0 )
+    {
+        w.put( 26, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.object_sequence ), 8 );
+    }
+    if ( value.ship_type != ShipType::None )
+    {
+        if ( !TableEnumNamed( value.ship_type ) ) { return false; }
+        w.put( 52, kTableMessageRefBitsHere );
+        {
+            uint64_t slot = 0;
+            if ( !TableEnumSlot( value.ship_type, slot ) ) { return false; }
+            w.put( slot, kTableMessageRefBitsHere );
+        }
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return false; }
+        w.put( 24, kTableMessageRefBitsHere );
+        {
+            uint64_t slot = 0;
+            if ( !TableEnumSlot( value.team, slot ) ) { return false; }
+            w.put( slot, kTableMessageRefBitsHere );
+        }
+    }
+    if ( value.has_target_lock != false )
+    {
+        w.put( 53, kTableMessageRefBitsHere );
+        w.put( value.has_target_lock ? 1 : 0, 1 );
+    }
+    if ( value.predicted_explode != false )
+    {
+        w.put( 54, kTableMessageRefBitsHere );
+        w.put( value.predicted_explode ? 1 : 0, 1 );
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
 }
 
-// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
-// nothing is decoded, the reader says it holds no table, no counter moves
-// and malformed does not fire. A reader does not fall back to the file
-// form on its own and does not guess a table, because a guessed table
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderShip & value )
+{
+    RenderShipReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0x4cbf3a26fca1d74aull: // position
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderVector3LoadMessageBody( r, vocabulary, report, index_bits, value.position ) ) { return false; }
+                break;
+            }
+            case 0xb51afb05cd34709full: // rotation
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderQuaternionLoadMessageBody( r, vocabulary, report, index_bits, value.rotation ) ) { return false; }
+                break;
+            }
+            case 0x17a3a1a985f75aecull: // flags
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 9 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    uint64_t decoded_v = (uint64_t) decoded_wide;
+                    value.flags = decoded_v;
+                }
+                break;
+            }
+            case 0x0bdab42c07f19812ull: // object_id
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.object_id = decoded_v;
+                }
+                break;
+            }
+            case 0x6a0c6a156952b9c2ull: // target_object_id
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.target_object_id = decoded_v;
+                }
+                break;
+            }
+            case 0xcfd587cb3100cd73ull: // thrust
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 10 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    float decoded_f = 0.0f;
+                    if ( entry.packing == 2 )
+                    {
+                        uint64_t index = 0;
+                        if ( !r.get( index, entry.value_bits ) ) { report->malformed = true; return false; }
+                        if ( index > (uint64_t) entry.qcount ) { report->malformed = true; return false; } // above the step count: the packet wire's own refusal
+                        decoded_f = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount ); // SPEC.md §4.3's rule, in float32
+                    }
+                    else
+                    {
+                        uint64_t raw = 0;
+                        if ( !r.get( raw, 32 ) ) { report->malformed = true; return false; }
+                        decoded_f = table_bits_to_float( (uint32_t) raw );
+                    }
+                    value.thrust = decoded_f;
+                }
+                break;
+            }
+            case 0x5de0015285763c46ull: // object_sequence
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 6 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->clamped++; }
+                    uint8_t decoded_v = (uint8_t) decoded_wide;
+                    value.object_sequence = decoded_v;
+                }
+                break;
+            }
+            case 0x1f7d2e86a2e77268ull: // ship_type
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 30 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref = 0;
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    TableMessageEntry variant_entry;
+                    if ( variant_ref == 0 ) { value.ship_type = ShipType::None; } // the zero reference is the enum's None
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableEnumValue( variant_entry.id, value.ship_type ) ) { value.ship_type = ShipType::None; report->unknown++; }
+                }
+                break;
+            }
+            case 0xfa23d9ef19afc32cull: // team
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 30 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref = 0;
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    TableMessageEntry variant_entry;
+                    if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableEnumValue( variant_entry.id, value.team ) ) { value.team = Team::None; report->unknown++; }
+                }
+                break;
+            }
+            case 0x1554fa45a1220171ull: // has_target_lock
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 1 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                { uint64_t raw = 0; if ( !r.get( raw, 1 ) ) { report->malformed = true; return false; } value.has_target_lock = raw != 0; }
+                break;
+            }
+            case 0x4d5be97ba1b9cb81ull: // predicted_explode
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 1 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                { uint64_t raw = 0; if ( !r.get( raw, 1 ) ) { report->malformed = true; return false; } value.predicted_explode = raw != 0; }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of bodies of
+// ONE ROOT in one buffer, one count and one continuous bit stream with no
+// alignment between them. A single message is the batch of one, and there is
+// no singular verb.
+//
+// Every reference is a compile-time SLOT and every width a literal, so a save
+// does no lookup at all and costs what a save costs.
+//
+// M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
+// verdict set and the reason batch_too_large on it, and nothing written. The
+// refusal is learned at MEASURE time, before a buffer is allocated, and a
+// caller with more bodies calls again.
+inline int64_t RenderShipMeasureMessages( const RenderShip * values, int64_t count, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    int64_t bits = 8; // the body count, a ranged integer over [1, 256]
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const int64_t body = RenderShipMeasureMessageBody( bits, values[i] );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
+}
+
+inline int64_t RenderShipSaveMessages( const RenderShip * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableMessageBatch batch;
+    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( !RenderShipSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        batch.written++;
+    }
+    return TableMessageBatchEnd( batch ); // == RenderShipMeasureMessages( values, count, report )
+}
+
+// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no vocabulary, no counter
+// moves and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a vocabulary, because a guessed one
 // decodes a body under the wrong names in silence.
-inline bool RenderShipLoadMessage( RenderShip & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+//
+// `count` is IN and OUT: in, the storage the caller has room for, and out,
+// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
+// batch_too_large, found from the count before a body is decoded, and count
+// comes back holding the WIRE's M, so the caller calls again with storage at
+// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
+// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
+// after it is not a body.
+inline bool RenderShipLoadMessages( RenderShip * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    RenderShipReset( value );
-    if ( bytes < 1 ) { to->malformed = true; return false; }
-    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
-    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
-    // there is no stray-byte rule to apply between one and a first entry
-    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    return RenderShipLoadBody( r, value );
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    const int64_t capacity = *count;
+    *count = 0;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
+    if ( bodies < 0 ) { return false; }
+    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    for ( int64_t i = 0; i < bodies; i++ )
+    {
+        if ( !RenderShipLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        br.remaining--;
+    }
+    *count = bodies;
+    return TableMessageBatchClose( br );
 }
 
 inline int64_t RenderTurretMeasureBody( TableIds & ids, const RenderTurret & value )
@@ -2813,27 +4589,27 @@ inline int64_t RenderTurretMeasureBody( TableIds & ids, const RenderTurret & val
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
         else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref( 0x17a3a1a985f75aecull, 21 ) ) + 1 + 8; } // flags
-    if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x0bdab42c07f19812ull, 26 ) ) + 1 + 4; } // object_id
-    if ( value.parent_object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x0bee7b3cb4046c93ull, 30 ) ) + 1 + 4; } // parent_object_id
-    if ( value.turret_index != 0 ) { bytes += TableLebBytes( ids.ref( 0x88a11a6aed541f54ull, 56 ) ) + 1 + 4; } // turret_index
-    if ( value.target_object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x6a0c6a156952b9c2ull, 18 ) ) + 1 + 4; } // target_object_id
-    if ( value.object_sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0x5de0015285763c46ull, 27 ) ) + 1 + 1; } // object_sequence
+    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref( 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
+    if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x0bdab42c07f19812ull ) ) + 1 + 4; } // object_id
+    if ( value.parent_object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x0bee7b3cb4046c93ull ) ) + 1 + 4; } // parent_object_id
+    if ( value.turret_index != 0 ) { bytes += TableLebBytes( ids.ref( 0x88a11a6aed541f54ull ) ) + 1 + 4; } // turret_index
+    if ( value.target_object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x6a0c6a156952b9c2ull ) ) + 1 + 4; } // target_object_id
+    if ( value.object_sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0x5de0015285763c46ull ) ) + 1 + 1; } // object_sequence
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return -1; }
         bytes += TableLebBytes( ref_team ) + 1 + TableLebBytes( variant_team ); // team: the variant's reference
     }
-    if ( value.has_target_lock != false ) { bytes += TableLebBytes( ids.ref( 0x1554fa45a1220171ull, 53 ) ) + 1 + 1; } // has_target_lock
+    if ( value.has_target_lock != false ) { bytes += TableLebBytes( ids.ref( 0x1554fa45a1220171ull ) ) + 1 + 1; } // has_target_lock
     return bytes;
 }
 
@@ -2849,7 +4625,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretSaveBody( TableWriter & w, TableIds & id
 {
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_rotation > 1 ) // all-default nested elides
@@ -2861,45 +4637,45 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretSaveBody( TableWriter & w, TableIds & id
     }
     if ( value.flags != 0 )
     {
-        w.putleb( ids.ref( 0x17a3a1a985f75aecull, 21 ) ); w.put8( 9 ); // flags
+        w.putleb( ids.ref( 0x17a3a1a985f75aecull ) ); w.put8( 9 ); // flags
         w.put64( uint64_t( value.flags ) );
     }
     if ( value.object_id != 0 )
     {
-        w.putleb( ids.ref( 0x0bdab42c07f19812ull, 26 ) ); w.put8( 8 ); // object_id
+        w.putleb( ids.ref( 0x0bdab42c07f19812ull ) ); w.put8( 8 ); // object_id
         w.put32( uint32_t( value.object_id ) );
     }
     if ( value.parent_object_id != 0 )
     {
-        w.putleb( ids.ref( 0x0bee7b3cb4046c93ull, 30 ) ); w.put8( 8 ); // parent_object_id
+        w.putleb( ids.ref( 0x0bee7b3cb4046c93ull ) ); w.put8( 8 ); // parent_object_id
         w.put32( uint32_t( value.parent_object_id ) );
     }
     if ( value.turret_index != 0 )
     {
-        w.putleb( ids.ref( 0x88a11a6aed541f54ull, 56 ) ); w.put8( 8 ); // turret_index
+        w.putleb( ids.ref( 0x88a11a6aed541f54ull ) ); w.put8( 8 ); // turret_index
         w.put32( uint32_t( value.turret_index ) );
     }
     if ( value.target_object_id != 0 )
     {
-        w.putleb( ids.ref( 0x6a0c6a156952b9c2ull, 18 ) ); w.put8( 8 ); // target_object_id
+        w.putleb( ids.ref( 0x6a0c6a156952b9c2ull ) ); w.put8( 8 ); // target_object_id
         w.put32( uint32_t( value.target_object_id ) );
     }
     if ( value.object_sequence != 0 )
     {
-        w.putleb( ids.ref( 0x5de0015285763c46ull, 27 ) ); w.put8( 6 ); // object_sequence
+        w.putleb( ids.ref( 0x5de0015285763c46ull ) ); w.put8( 6 ); // object_sequence
         w.put8( uint8_t( value.object_sequence ) );
     }
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
         w.putleb( ref_team ); w.put8( 30 ); w.putleb( variant_team ); // team
     }
     if ( value.has_target_lock != false )
     {
-        w.putleb( ids.ref( 0x1554fa45a1220171ull, 53 ) ); w.put8( 1 ); // has_target_lock
+        w.putleb( ids.ref( 0x1554fa45a1220171ull ) ); w.put8( 1 ); // has_target_lock
         w.put8( value.has_target_lock ? 1 : 0 );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -2929,7 +4705,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -3207,47 +4983,416 @@ inline bool RenderTurretLoad( RenderTurret & value, const uint8_t * buffer, int6
     return RenderTurretLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
-// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
-// body, and no trailer at all — the connection's announced table is where
-// the ids live. Every reference is a compile-time SLOT, so this walk does
-// no lookup and a save costs what a save costs.
-inline int64_t RenderTurretMeasureMessage( const RenderTurret & value )
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t RenderTurretMeasureMessageBody( int64_t at, const RenderTurret & value )
 {
-    TableIds ids;
-    ids.vocabulary = true;
-    const int64_t body = RenderTurretMeasureBody( ids, value );
-    if ( body < 0 ) { return -1; }
-    return 1 + body;
+    int64_t bits = 0;
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        if ( body_rotation < 0 ) { return -1; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        }
+    }
+    if ( value.flags != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.object_id != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.parent_object_id != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.turret_index != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.target_object_id != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.object_sequence != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 8;
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return -1; }
+        bits += kTableMessageRefBitsHere;
+        bits += kTableMessageRefBitsHere;
+    }
+    if ( value.has_target_lock != false )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 1;
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
 }
 
-inline int64_t RenderTurretSaveMessage( const RenderTurret & value, uint8_t * buffer, int64_t capacity )
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool RenderTurretSaveMessageBody( TableBitWriter & w, const RenderTurret & value )
 {
-    TableWriter w( buffer, capacity );
-    TableIds ids;
-    ids.vocabulary = true;
-    w.put8( kTableWireMessageForm );
-    if ( !RenderTurretSaveBody( w, ids, value ) || w.overflow ) { return -1; }
-    return w.offset; // == RenderTurretMeasureMessage( value )
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( 0, value.rotation );
+        if ( body_rotation < 0 ) { return false; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 14, kTableMessageRefBitsHere );
+            if ( !RenderQuaternionSaveMessageBody( w, value.rotation ) ) { return false; }
+        }
+    }
+    if ( value.flags != 0 )
+    {
+        w.put( 20, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.flags ), 64 );
+    }
+    if ( value.object_id != 0 )
+    {
+        w.put( 25, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.object_id ), 32 );
+    }
+    if ( value.parent_object_id != 0 )
+    {
+        w.put( 29, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.parent_object_id ), 32 );
+    }
+    if ( value.turret_index != 0 )
+    {
+        w.put( 56, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.turret_index ), 32 );
+    }
+    if ( value.target_object_id != 0 )
+    {
+        w.put( 17, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.target_object_id ), 32 );
+    }
+    if ( value.object_sequence != 0 )
+    {
+        w.put( 26, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.object_sequence ), 8 );
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return false; }
+        w.put( 24, kTableMessageRefBitsHere );
+        {
+            uint64_t slot = 0;
+            if ( !TableEnumSlot( value.team, slot ) ) { return false; }
+            w.put( slot, kTableMessageRefBitsHere );
+        }
+    }
+    if ( value.has_target_lock != false )
+    {
+        w.put( 53, kTableMessageRefBitsHere );
+        w.put( value.has_target_lock ? 1 : 0, 1 );
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
 }
 
-// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
-// nothing is decoded, the reader says it holds no table, no counter moves
-// and malformed does not fire. A reader does not fall back to the file
-// form on its own and does not guess a table, because a guessed table
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderTurret & value )
+{
+    RenderTurretReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0xb51afb05cd34709full: // rotation
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderQuaternionLoadMessageBody( r, vocabulary, report, index_bits, value.rotation ) ) { return false; }
+                break;
+            }
+            case 0x17a3a1a985f75aecull: // flags
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 9 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    uint64_t decoded_v = (uint64_t) decoded_wide;
+                    value.flags = decoded_v;
+                }
+                break;
+            }
+            case 0x0bdab42c07f19812ull: // object_id
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.object_id = decoded_v;
+                }
+                break;
+            }
+            case 0x0bee7b3cb4046c93ull: // parent_object_id
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.parent_object_id = decoded_v;
+                }
+                break;
+            }
+            case 0x88a11a6aed541f54ull: // turret_index
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.turret_index = decoded_v;
+                }
+                break;
+            }
+            case 0x6a0c6a156952b9c2ull: // target_object_id
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.target_object_id = decoded_v;
+                }
+                break;
+            }
+            case 0x5de0015285763c46ull: // object_sequence
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 6 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->clamped++; }
+                    uint8_t decoded_v = (uint8_t) decoded_wide;
+                    value.object_sequence = decoded_v;
+                }
+                break;
+            }
+            case 0xfa23d9ef19afc32cull: // team
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 30 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref = 0;
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    TableMessageEntry variant_entry;
+                    if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableEnumValue( variant_entry.id, value.team ) ) { value.team = Team::None; report->unknown++; }
+                }
+                break;
+            }
+            case 0x1554fa45a1220171ull: // has_target_lock
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 1 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                { uint64_t raw = 0; if ( !r.get( raw, 1 ) ) { report->malformed = true; return false; } value.has_target_lock = raw != 0; }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of bodies of
+// ONE ROOT in one buffer, one count and one continuous bit stream with no
+// alignment between them. A single message is the batch of one, and there is
+// no singular verb.
+//
+// Every reference is a compile-time SLOT and every width a literal, so a save
+// does no lookup at all and costs what a save costs.
+//
+// M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
+// verdict set and the reason batch_too_large on it, and nothing written. The
+// refusal is learned at MEASURE time, before a buffer is allocated, and a
+// caller with more bodies calls again.
+inline int64_t RenderTurretMeasureMessages( const RenderTurret * values, int64_t count, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    int64_t bits = 8; // the body count, a ranged integer over [1, 256]
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const int64_t body = RenderTurretMeasureMessageBody( bits, values[i] );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
+}
+
+inline int64_t RenderTurretSaveMessages( const RenderTurret * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableMessageBatch batch;
+    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( !RenderTurretSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        batch.written++;
+    }
+    return TableMessageBatchEnd( batch ); // == RenderTurretMeasureMessages( values, count, report )
+}
+
+// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no vocabulary, no counter
+// moves and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a vocabulary, because a guessed one
 // decodes a body under the wrong names in silence.
-inline bool RenderTurretLoadMessage( RenderTurret & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+//
+// `count` is IN and OUT: in, the storage the caller has room for, and out,
+// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
+// batch_too_large, found from the count before a body is decoded, and count
+// comes back holding the WIRE's M, so the caller calls again with storage at
+// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
+// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
+// after it is not a body.
+inline bool RenderTurretLoadMessages( RenderTurret * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    RenderTurretReset( value );
-    if ( bytes < 1 ) { to->malformed = true; return false; }
-    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
-    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
-    // there is no stray-byte rule to apply between one and a first entry
-    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    return RenderTurretLoadBody( r, value );
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    const int64_t capacity = *count;
+    *count = 0;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
+    if ( bodies < 0 ) { return false; }
+    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    for ( int64_t i = 0; i < bodies; i++ )
+    {
+        if ( !RenderTurretLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        br.remaining--;
+    }
+    *count = bodies;
+    return TableMessageBatchClose( br );
 }
 
 inline int64_t RenderMissileMeasureBody( TableIds & ids, const RenderMissile & value )
@@ -3255,7 +5400,7 @@ inline int64_t RenderMissileMeasureBody( TableIds & ids, const RenderMissile & v
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_position = ids.count;
-        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull, 14 );
+        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
@@ -3263,19 +5408,19 @@ inline int64_t RenderMissileMeasureBody( TableIds & ids, const RenderMissile & v
     }
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
         else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref( 0x17a3a1a985f75aecull, 21 ) ) + 1 + 8; } // flags
-    if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x0bdab42c07f19812ull, 26 ) ) + 1 + 4; } // object_id
-    if ( value.object_sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0x5de0015285763c46ull, 27 ) ) + 1 + 1; } // object_sequence
+    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref( 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
+    if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x0bdab42c07f19812ull ) ) + 1 + 4; } // object_id
+    if ( value.object_sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0x5de0015285763c46ull ) ) + 1 + 1; } // object_sequence
     if ( value.missile_type != MissileType::None )
     {
         if ( !TableEnumNamed( value.missile_type ) ) { return -1; } // no variant names this value
-        const uint64_t ref_missile_type = ids.ref( 0x151b2a0e2c07b4bcull, 46 );
+        const uint64_t ref_missile_type = ids.ref( 0x151b2a0e2c07b4bcull );
         uint64_t variant_missile_type = 0;
         if ( !TableEnumRef( ids, value.missile_type, variant_missile_type ) ) { return -1; }
         bytes += TableLebBytes( ref_missile_type ) + 1 + TableLebBytes( variant_missile_type ); // missile_type: the variant's reference
@@ -3283,7 +5428,7 @@ inline int64_t RenderMissileMeasureBody( TableIds & ids, const RenderMissile & v
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return -1; }
         bytes += TableLebBytes( ref_team ) + 1 + TableLebBytes( variant_team ); // team: the variant's reference
@@ -3303,7 +5448,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileSaveBody( TableWriter & w, TableIds & i
 {
     {
         const int32_t mark_position = ids.count;
-        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull, 14 );
+        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_position > 1 ) // all-default nested elides
@@ -3315,7 +5460,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileSaveBody( TableWriter & w, TableIds & i
     }
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_rotation > 1 ) // all-default nested elides
@@ -3327,23 +5472,23 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileSaveBody( TableWriter & w, TableIds & i
     }
     if ( value.flags != 0 )
     {
-        w.putleb( ids.ref( 0x17a3a1a985f75aecull, 21 ) ); w.put8( 9 ); // flags
+        w.putleb( ids.ref( 0x17a3a1a985f75aecull ) ); w.put8( 9 ); // flags
         w.put64( uint64_t( value.flags ) );
     }
     if ( value.object_id != 0 )
     {
-        w.putleb( ids.ref( 0x0bdab42c07f19812ull, 26 ) ); w.put8( 8 ); // object_id
+        w.putleb( ids.ref( 0x0bdab42c07f19812ull ) ); w.put8( 8 ); // object_id
         w.put32( uint32_t( value.object_id ) );
     }
     if ( value.object_sequence != 0 )
     {
-        w.putleb( ids.ref( 0x5de0015285763c46ull, 27 ) ); w.put8( 6 ); // object_sequence
+        w.putleb( ids.ref( 0x5de0015285763c46ull ) ); w.put8( 6 ); // object_sequence
         w.put8( uint8_t( value.object_sequence ) );
     }
     if ( value.missile_type != MissileType::None )
     {
         if ( !TableEnumNamed( value.missile_type ) ) { return false; }
-        const uint64_t ref_missile_type = ids.ref( 0x151b2a0e2c07b4bcull, 46 );
+        const uint64_t ref_missile_type = ids.ref( 0x151b2a0e2c07b4bcull );
         uint64_t variant_missile_type = 0;
         if ( !TableEnumRef( ids, value.missile_type, variant_missile_type ) ) { return false; }
         w.putleb( ref_missile_type ); w.put8( 30 ); w.putleb( variant_missile_type ); // missile_type
@@ -3351,7 +5496,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileSaveBody( TableWriter & w, TableIds & i
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
         w.putleb( ref_team ); w.put8( 30 ); w.putleb( variant_team ); // team
@@ -3383,7 +5528,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -3614,47 +5759,362 @@ inline bool RenderMissileLoad( RenderMissile & value, const uint8_t * buffer, in
     return RenderMissileLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
-// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
-// body, and no trailer at all — the connection's announced table is where
-// the ids live. Every reference is a compile-time SLOT, so this walk does
-// no lookup and a save costs what a save costs.
-inline int64_t RenderMissileMeasureMessage( const RenderMissile & value )
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t RenderMissileMeasureMessageBody( int64_t at, const RenderMissile & value )
 {
-    TableIds ids;
-    ids.vocabulary = true;
-    const int64_t body = RenderMissileMeasureBody( ids, value );
-    if ( body < 0 ) { return -1; }
-    return 1 + body;
+    int64_t bits = 0;
+    {
+        const int64_t body_position = RenderVector3MeasureMessageBody( at + bits, value.position );
+        if ( body_position < 0 ) { return -1; }
+        if ( body_position > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderVector3MeasureMessageBody( at + bits, value.position );
+        }
+    }
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        if ( body_rotation < 0 ) { return -1; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        }
+    }
+    if ( value.flags != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.object_id != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.object_sequence != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 8;
+    }
+    if ( value.missile_type != MissileType::None )
+    {
+        if ( !TableEnumNamed( value.missile_type ) ) { return -1; }
+        bits += kTableMessageRefBitsHere;
+        bits += kTableMessageRefBitsHere;
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return -1; }
+        bits += kTableMessageRefBitsHere;
+        bits += kTableMessageRefBitsHere;
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
 }
 
-inline int64_t RenderMissileSaveMessage( const RenderMissile & value, uint8_t * buffer, int64_t capacity )
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool RenderMissileSaveMessageBody( TableBitWriter & w, const RenderMissile & value )
 {
-    TableWriter w( buffer, capacity );
-    TableIds ids;
-    ids.vocabulary = true;
-    w.put8( kTableWireMessageForm );
-    if ( !RenderMissileSaveBody( w, ids, value ) || w.overflow ) { return -1; }
-    return w.offset; // == RenderMissileMeasureMessage( value )
+    {
+        const int64_t body_position = RenderVector3MeasureMessageBody( 0, value.position );
+        if ( body_position < 0 ) { return false; }
+        if ( body_position > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 13, kTableMessageRefBitsHere );
+            if ( !RenderVector3SaveMessageBody( w, value.position ) ) { return false; }
+        }
+    }
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( 0, value.rotation );
+        if ( body_rotation < 0 ) { return false; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 14, kTableMessageRefBitsHere );
+            if ( !RenderQuaternionSaveMessageBody( w, value.rotation ) ) { return false; }
+        }
+    }
+    if ( value.flags != 0 )
+    {
+        w.put( 20, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.flags ), 64 );
+    }
+    if ( value.object_id != 0 )
+    {
+        w.put( 25, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.object_id ), 32 );
+    }
+    if ( value.object_sequence != 0 )
+    {
+        w.put( 26, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.object_sequence ), 8 );
+    }
+    if ( value.missile_type != MissileType::None )
+    {
+        if ( !TableEnumNamed( value.missile_type ) ) { return false; }
+        w.put( 45, kTableMessageRefBitsHere );
+        {
+            uint64_t slot = 0;
+            if ( !TableEnumSlot( value.missile_type, slot ) ) { return false; }
+            w.put( slot, kTableMessageRefBitsHere );
+        }
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return false; }
+        w.put( 24, kTableMessageRefBitsHere );
+        {
+            uint64_t slot = 0;
+            if ( !TableEnumSlot( value.team, slot ) ) { return false; }
+            w.put( slot, kTableMessageRefBitsHere );
+        }
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
 }
 
-// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
-// nothing is decoded, the reader says it holds no table, no counter moves
-// and malformed does not fire. A reader does not fall back to the file
-// form on its own and does not guess a table, because a guessed table
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderMissile & value )
+{
+    RenderMissileReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0x4cbf3a26fca1d74aull: // position
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderVector3LoadMessageBody( r, vocabulary, report, index_bits, value.position ) ) { return false; }
+                break;
+            }
+            case 0xb51afb05cd34709full: // rotation
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderQuaternionLoadMessageBody( r, vocabulary, report, index_bits, value.rotation ) ) { return false; }
+                break;
+            }
+            case 0x17a3a1a985f75aecull: // flags
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 9 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    uint64_t decoded_v = (uint64_t) decoded_wide;
+                    value.flags = decoded_v;
+                }
+                break;
+            }
+            case 0x0bdab42c07f19812ull: // object_id
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.object_id = decoded_v;
+                }
+                break;
+            }
+            case 0x5de0015285763c46ull: // object_sequence
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 6 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->clamped++; }
+                    uint8_t decoded_v = (uint8_t) decoded_wide;
+                    value.object_sequence = decoded_v;
+                }
+                break;
+            }
+            case 0x151b2a0e2c07b4bcull: // missile_type
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 30 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref = 0;
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    TableMessageEntry variant_entry;
+                    if ( variant_ref == 0 ) { value.missile_type = MissileType::None; } // the zero reference is the enum's None
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableEnumValue( variant_entry.id, value.missile_type ) ) { value.missile_type = MissileType::None; report->unknown++; }
+                }
+                break;
+            }
+            case 0xfa23d9ef19afc32cull: // team
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 30 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref = 0;
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    TableMessageEntry variant_entry;
+                    if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableEnumValue( variant_entry.id, value.team ) ) { value.team = Team::None; report->unknown++; }
+                }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of bodies of
+// ONE ROOT in one buffer, one count and one continuous bit stream with no
+// alignment between them. A single message is the batch of one, and there is
+// no singular verb.
+//
+// Every reference is a compile-time SLOT and every width a literal, so a save
+// does no lookup at all and costs what a save costs.
+//
+// M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
+// verdict set and the reason batch_too_large on it, and nothing written. The
+// refusal is learned at MEASURE time, before a buffer is allocated, and a
+// caller with more bodies calls again.
+inline int64_t RenderMissileMeasureMessages( const RenderMissile * values, int64_t count, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    int64_t bits = 8; // the body count, a ranged integer over [1, 256]
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const int64_t body = RenderMissileMeasureMessageBody( bits, values[i] );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
+}
+
+inline int64_t RenderMissileSaveMessages( const RenderMissile * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableMessageBatch batch;
+    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( !RenderMissileSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        batch.written++;
+    }
+    return TableMessageBatchEnd( batch ); // == RenderMissileMeasureMessages( values, count, report )
+}
+
+// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no vocabulary, no counter
+// moves and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a vocabulary, because a guessed one
 // decodes a body under the wrong names in silence.
-inline bool RenderMissileLoadMessage( RenderMissile & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+//
+// `count` is IN and OUT: in, the storage the caller has room for, and out,
+// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
+// batch_too_large, found from the count before a body is decoded, and count
+// comes back holding the WIRE's M, so the caller calls again with storage at
+// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
+// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
+// after it is not a body.
+inline bool RenderMissileLoadMessages( RenderMissile * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    RenderMissileReset( value );
-    if ( bytes < 1 ) { to->malformed = true; return false; }
-    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
-    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
-    // there is no stray-byte rule to apply between one and a first entry
-    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    return RenderMissileLoadBody( r, value );
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    const int64_t capacity = *count;
+    *count = 0;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
+    if ( bodies < 0 ) { return false; }
+    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    for ( int64_t i = 0; i < bodies; i++ )
+    {
+        if ( !RenderMissileLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        br.remaining--;
+    }
+    *count = bodies;
+    return TableMessageBatchClose( br );
 }
 
 inline int64_t RenderDynamicPropMeasureBody( TableIds & ids, const RenderDynamicProp & value )
@@ -3662,7 +6122,7 @@ inline int64_t RenderDynamicPropMeasureBody( TableIds & ids, const RenderDynamic
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_position = ids.count;
-        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull, 14 );
+        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
@@ -3670,19 +6130,19 @@ inline int64_t RenderDynamicPropMeasureBody( TableIds & ids, const RenderDynamic
     }
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
         else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref( 0x17a3a1a985f75aecull, 21 ) ) + 1 + 8; } // flags
-    if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x0bdab42c07f19812ull, 26 ) ) + 1 + 4; } // object_id
-    if ( value.object_sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0x5de0015285763c46ull, 27 ) ) + 1 + 1; } // object_sequence
+    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref( 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
+    if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x0bdab42c07f19812ull ) ) + 1 + 4; } // object_id
+    if ( value.object_sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0x5de0015285763c46ull ) ) + 1 + 1; } // object_sequence
     if ( value.prop_type != PropType::None )
     {
         if ( !TableEnumNamed( value.prop_type ) ) { return -1; } // no variant names this value
-        const uint64_t ref_prop_type = ids.ref( 0xe5626f155e4c5dadull, 24 );
+        const uint64_t ref_prop_type = ids.ref( 0xe5626f155e4c5dadull );
         uint64_t variant_prop_type = 0;
         if ( !TableEnumRef( ids, value.prop_type, variant_prop_type ) ) { return -1; }
         bytes += TableLebBytes( ref_prop_type ) + 1 + TableLebBytes( variant_prop_type ); // prop_type: the variant's reference
@@ -3690,7 +6150,7 @@ inline int64_t RenderDynamicPropMeasureBody( TableIds & ids, const RenderDynamic
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return -1; }
         bytes += TableLebBytes( ref_team ) + 1 + TableLebBytes( variant_team ); // team: the variant's reference
@@ -3710,7 +6170,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropSaveBody( TableWriter & w, TableIds
 {
     {
         const int32_t mark_position = ids.count;
-        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull, 14 );
+        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_position > 1 ) // all-default nested elides
@@ -3722,7 +6182,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropSaveBody( TableWriter & w, TableIds
     }
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_rotation > 1 ) // all-default nested elides
@@ -3734,23 +6194,23 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropSaveBody( TableWriter & w, TableIds
     }
     if ( value.flags != 0 )
     {
-        w.putleb( ids.ref( 0x17a3a1a985f75aecull, 21 ) ); w.put8( 9 ); // flags
+        w.putleb( ids.ref( 0x17a3a1a985f75aecull ) ); w.put8( 9 ); // flags
         w.put64( uint64_t( value.flags ) );
     }
     if ( value.object_id != 0 )
     {
-        w.putleb( ids.ref( 0x0bdab42c07f19812ull, 26 ) ); w.put8( 8 ); // object_id
+        w.putleb( ids.ref( 0x0bdab42c07f19812ull ) ); w.put8( 8 ); // object_id
         w.put32( uint32_t( value.object_id ) );
     }
     if ( value.object_sequence != 0 )
     {
-        w.putleb( ids.ref( 0x5de0015285763c46ull, 27 ) ); w.put8( 6 ); // object_sequence
+        w.putleb( ids.ref( 0x5de0015285763c46ull ) ); w.put8( 6 ); // object_sequence
         w.put8( uint8_t( value.object_sequence ) );
     }
     if ( value.prop_type != PropType::None )
     {
         if ( !TableEnumNamed( value.prop_type ) ) { return false; }
-        const uint64_t ref_prop_type = ids.ref( 0xe5626f155e4c5dadull, 24 );
+        const uint64_t ref_prop_type = ids.ref( 0xe5626f155e4c5dadull );
         uint64_t variant_prop_type = 0;
         if ( !TableEnumRef( ids, value.prop_type, variant_prop_type ) ) { return false; }
         w.putleb( ref_prop_type ); w.put8( 30 ); w.putleb( variant_prop_type ); // prop_type
@@ -3758,7 +6218,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropSaveBody( TableWriter & w, TableIds
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
         w.putleb( ref_team ); w.put8( 30 ); w.putleb( variant_team ); // team
@@ -3790,7 +6250,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -4021,47 +6481,362 @@ inline bool RenderDynamicPropLoad( RenderDynamicProp & value, const uint8_t * bu
     return RenderDynamicPropLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
-// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
-// body, and no trailer at all — the connection's announced table is where
-// the ids live. Every reference is a compile-time SLOT, so this walk does
-// no lookup and a save costs what a save costs.
-inline int64_t RenderDynamicPropMeasureMessage( const RenderDynamicProp & value )
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t RenderDynamicPropMeasureMessageBody( int64_t at, const RenderDynamicProp & value )
 {
-    TableIds ids;
-    ids.vocabulary = true;
-    const int64_t body = RenderDynamicPropMeasureBody( ids, value );
-    if ( body < 0 ) { return -1; }
-    return 1 + body;
+    int64_t bits = 0;
+    {
+        const int64_t body_position = RenderVector3MeasureMessageBody( at + bits, value.position );
+        if ( body_position < 0 ) { return -1; }
+        if ( body_position > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderVector3MeasureMessageBody( at + bits, value.position );
+        }
+    }
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        if ( body_rotation < 0 ) { return -1; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        }
+    }
+    if ( value.flags != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.object_id != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.object_sequence != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 8;
+    }
+    if ( value.prop_type != PropType::None )
+    {
+        if ( !TableEnumNamed( value.prop_type ) ) { return -1; }
+        bits += kTableMessageRefBitsHere;
+        bits += kTableMessageRefBitsHere;
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return -1; }
+        bits += kTableMessageRefBitsHere;
+        bits += kTableMessageRefBitsHere;
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
 }
 
-inline int64_t RenderDynamicPropSaveMessage( const RenderDynamicProp & value, uint8_t * buffer, int64_t capacity )
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool RenderDynamicPropSaveMessageBody( TableBitWriter & w, const RenderDynamicProp & value )
 {
-    TableWriter w( buffer, capacity );
-    TableIds ids;
-    ids.vocabulary = true;
-    w.put8( kTableWireMessageForm );
-    if ( !RenderDynamicPropSaveBody( w, ids, value ) || w.overflow ) { return -1; }
-    return w.offset; // == RenderDynamicPropMeasureMessage( value )
+    {
+        const int64_t body_position = RenderVector3MeasureMessageBody( 0, value.position );
+        if ( body_position < 0 ) { return false; }
+        if ( body_position > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 13, kTableMessageRefBitsHere );
+            if ( !RenderVector3SaveMessageBody( w, value.position ) ) { return false; }
+        }
+    }
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( 0, value.rotation );
+        if ( body_rotation < 0 ) { return false; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 14, kTableMessageRefBitsHere );
+            if ( !RenderQuaternionSaveMessageBody( w, value.rotation ) ) { return false; }
+        }
+    }
+    if ( value.flags != 0 )
+    {
+        w.put( 20, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.flags ), 64 );
+    }
+    if ( value.object_id != 0 )
+    {
+        w.put( 25, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.object_id ), 32 );
+    }
+    if ( value.object_sequence != 0 )
+    {
+        w.put( 26, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.object_sequence ), 8 );
+    }
+    if ( value.prop_type != PropType::None )
+    {
+        if ( !TableEnumNamed( value.prop_type ) ) { return false; }
+        w.put( 23, kTableMessageRefBitsHere );
+        {
+            uint64_t slot = 0;
+            if ( !TableEnumSlot( value.prop_type, slot ) ) { return false; }
+            w.put( slot, kTableMessageRefBitsHere );
+        }
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return false; }
+        w.put( 24, kTableMessageRefBitsHere );
+        {
+            uint64_t slot = 0;
+            if ( !TableEnumSlot( value.team, slot ) ) { return false; }
+            w.put( slot, kTableMessageRefBitsHere );
+        }
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
 }
 
-// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
-// nothing is decoded, the reader says it holds no table, no counter moves
-// and malformed does not fire. A reader does not fall back to the file
-// form on its own and does not guess a table, because a guessed table
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderDynamicProp & value )
+{
+    RenderDynamicPropReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0x4cbf3a26fca1d74aull: // position
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderVector3LoadMessageBody( r, vocabulary, report, index_bits, value.position ) ) { return false; }
+                break;
+            }
+            case 0xb51afb05cd34709full: // rotation
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderQuaternionLoadMessageBody( r, vocabulary, report, index_bits, value.rotation ) ) { return false; }
+                break;
+            }
+            case 0x17a3a1a985f75aecull: // flags
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 9 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    uint64_t decoded_v = (uint64_t) decoded_wide;
+                    value.flags = decoded_v;
+                }
+                break;
+            }
+            case 0x0bdab42c07f19812ull: // object_id
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.object_id = decoded_v;
+                }
+                break;
+            }
+            case 0x5de0015285763c46ull: // object_sequence
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 6 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->clamped++; }
+                    uint8_t decoded_v = (uint8_t) decoded_wide;
+                    value.object_sequence = decoded_v;
+                }
+                break;
+            }
+            case 0xe5626f155e4c5dadull: // prop_type
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 30 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref = 0;
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    TableMessageEntry variant_entry;
+                    if ( variant_ref == 0 ) { value.prop_type = PropType::None; } // the zero reference is the enum's None
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableEnumValue( variant_entry.id, value.prop_type ) ) { value.prop_type = PropType::None; report->unknown++; }
+                }
+                break;
+            }
+            case 0xfa23d9ef19afc32cull: // team
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 30 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref = 0;
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    TableMessageEntry variant_entry;
+                    if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableEnumValue( variant_entry.id, value.team ) ) { value.team = Team::None; report->unknown++; }
+                }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of bodies of
+// ONE ROOT in one buffer, one count and one continuous bit stream with no
+// alignment between them. A single message is the batch of one, and there is
+// no singular verb.
+//
+// Every reference is a compile-time SLOT and every width a literal, so a save
+// does no lookup at all and costs what a save costs.
+//
+// M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
+// verdict set and the reason batch_too_large on it, and nothing written. The
+// refusal is learned at MEASURE time, before a buffer is allocated, and a
+// caller with more bodies calls again.
+inline int64_t RenderDynamicPropMeasureMessages( const RenderDynamicProp * values, int64_t count, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    int64_t bits = 8; // the body count, a ranged integer over [1, 256]
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const int64_t body = RenderDynamicPropMeasureMessageBody( bits, values[i] );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
+}
+
+inline int64_t RenderDynamicPropSaveMessages( const RenderDynamicProp * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableMessageBatch batch;
+    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( !RenderDynamicPropSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        batch.written++;
+    }
+    return TableMessageBatchEnd( batch ); // == RenderDynamicPropMeasureMessages( values, count, report )
+}
+
+// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no vocabulary, no counter
+// moves and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a vocabulary, because a guessed one
 // decodes a body under the wrong names in silence.
-inline bool RenderDynamicPropLoadMessage( RenderDynamicProp & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+//
+// `count` is IN and OUT: in, the storage the caller has room for, and out,
+// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
+// batch_too_large, found from the count before a body is decoded, and count
+// comes back holding the WIRE's M, so the caller calls again with storage at
+// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
+// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
+// after it is not a body.
+inline bool RenderDynamicPropLoadMessages( RenderDynamicProp * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    RenderDynamicPropReset( value );
-    if ( bytes < 1 ) { to->malformed = true; return false; }
-    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
-    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
-    // there is no stray-byte rule to apply between one and a first entry
-    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    return RenderDynamicPropLoadBody( r, value );
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    const int64_t capacity = *count;
+    *count = 0;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
+    if ( bodies < 0 ) { return false; }
+    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    for ( int64_t i = 0; i < bodies; i++ )
+    {
+        if ( !RenderDynamicPropLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        br.remaining--;
+    }
+    *count = bodies;
+    return TableMessageBatchClose( br );
 }
 
 inline int64_t RenderStaticPropMeasureBody( TableIds & ids, const RenderStaticProp & value )
@@ -4069,7 +6844,7 @@ inline int64_t RenderStaticPropMeasureBody( TableIds & ids, const RenderStaticPr
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_position = ids.count;
-        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull, 14 );
+        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
@@ -4077,19 +6852,19 @@ inline int64_t RenderStaticPropMeasureBody( TableIds & ids, const RenderStaticPr
     }
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
         else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.scale != 0.0 ) { bytes += TableLebBytes( ids.ref( 0x6aacb9fbb71a1d91ull, 20 ) ) + 1 + 8; } // scale
-    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref( 0x17a3a1a985f75aecull, 21 ) ) + 1 + 8; } // flags
-    if ( value.static_prop_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xd23da7ab574b95c3ull, 55 ) ) + 1 + 4; } // static_prop_id
+    if ( value.scale != 0.0 ) { bytes += TableLebBytes( ids.ref( 0x6aacb9fbb71a1d91ull ) ) + 1 + 8; } // scale
+    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref( 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
+    if ( value.static_prop_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xd23da7ab574b95c3ull ) ) + 1 + 4; } // static_prop_id
     if ( value.prop_type != PropType::None )
     {
         if ( !TableEnumNamed( value.prop_type ) ) { return -1; } // no variant names this value
-        const uint64_t ref_prop_type = ids.ref( 0xe5626f155e4c5dadull, 24 );
+        const uint64_t ref_prop_type = ids.ref( 0xe5626f155e4c5dadull );
         uint64_t variant_prop_type = 0;
         if ( !TableEnumRef( ids, value.prop_type, variant_prop_type ) ) { return -1; }
         bytes += TableLebBytes( ref_prop_type ) + 1 + TableLebBytes( variant_prop_type ); // prop_type: the variant's reference
@@ -4097,7 +6872,7 @@ inline int64_t RenderStaticPropMeasureBody( TableIds & ids, const RenderStaticPr
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return -1; }
         bytes += TableLebBytes( ref_team ) + 1 + TableLebBytes( variant_team ); // team: the variant's reference
@@ -4117,7 +6892,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropSaveBody( TableWriter & w, TableIds 
 {
     {
         const int32_t mark_position = ids.count;
-        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull, 14 );
+        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_position > 1 ) // all-default nested elides
@@ -4129,7 +6904,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropSaveBody( TableWriter & w, TableIds 
     }
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_rotation > 1 ) // all-default nested elides
@@ -4141,23 +6916,23 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropSaveBody( TableWriter & w, TableIds 
     }
     if ( value.scale != 0.0 )
     {
-        w.putleb( ids.ref( 0x6aacb9fbb71a1d91ull, 20 ) ); w.put8( 11 ); // scale
+        w.putleb( ids.ref( 0x6aacb9fbb71a1d91ull ) ); w.put8( 11 ); // scale
         w.put64( table_double_to_bits( value.scale ) );
     }
     if ( value.flags != 0 )
     {
-        w.putleb( ids.ref( 0x17a3a1a985f75aecull, 21 ) ); w.put8( 9 ); // flags
+        w.putleb( ids.ref( 0x17a3a1a985f75aecull ) ); w.put8( 9 ); // flags
         w.put64( uint64_t( value.flags ) );
     }
     if ( value.static_prop_id != 0 )
     {
-        w.putleb( ids.ref( 0xd23da7ab574b95c3ull, 55 ) ); w.put8( 8 ); // static_prop_id
+        w.putleb( ids.ref( 0xd23da7ab574b95c3ull ) ); w.put8( 8 ); // static_prop_id
         w.put32( uint32_t( value.static_prop_id ) );
     }
     if ( value.prop_type != PropType::None )
     {
         if ( !TableEnumNamed( value.prop_type ) ) { return false; }
-        const uint64_t ref_prop_type = ids.ref( 0xe5626f155e4c5dadull, 24 );
+        const uint64_t ref_prop_type = ids.ref( 0xe5626f155e4c5dadull );
         uint64_t variant_prop_type = 0;
         if ( !TableEnumRef( ids, value.prop_type, variant_prop_type ) ) { return false; }
         w.putleb( ref_prop_type ); w.put8( 30 ); w.putleb( variant_prop_type ); // prop_type
@@ -4165,7 +6940,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropSaveBody( TableWriter & w, TableIds 
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
         w.putleb( ref_team ); w.put8( 30 ); w.putleb( variant_team ); // team
@@ -4197,7 +6972,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -4436,47 +7211,353 @@ inline bool RenderStaticPropLoad( RenderStaticProp & value, const uint8_t * buff
     return RenderStaticPropLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
-// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
-// body, and no trailer at all — the connection's announced table is where
-// the ids live. Every reference is a compile-time SLOT, so this walk does
-// no lookup and a save costs what a save costs.
-inline int64_t RenderStaticPropMeasureMessage( const RenderStaticProp & value )
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t RenderStaticPropMeasureMessageBody( int64_t at, const RenderStaticProp & value )
 {
-    TableIds ids;
-    ids.vocabulary = true;
-    const int64_t body = RenderStaticPropMeasureBody( ids, value );
-    if ( body < 0 ) { return -1; }
-    return 1 + body;
+    int64_t bits = 0;
+    {
+        const int64_t body_position = RenderVector3MeasureMessageBody( at + bits, value.position );
+        if ( body_position < 0 ) { return -1; }
+        if ( body_position > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderVector3MeasureMessageBody( at + bits, value.position );
+        }
+    }
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        if ( body_rotation < 0 ) { return -1; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        }
+    }
+    if ( value.scale != 0.0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.flags != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.static_prop_id != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.prop_type != PropType::None )
+    {
+        if ( !TableEnumNamed( value.prop_type ) ) { return -1; }
+        bits += kTableMessageRefBitsHere;
+        bits += kTableMessageRefBitsHere;
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return -1; }
+        bits += kTableMessageRefBitsHere;
+        bits += kTableMessageRefBitsHere;
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
 }
 
-inline int64_t RenderStaticPropSaveMessage( const RenderStaticProp & value, uint8_t * buffer, int64_t capacity )
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool RenderStaticPropSaveMessageBody( TableBitWriter & w, const RenderStaticProp & value )
 {
-    TableWriter w( buffer, capacity );
-    TableIds ids;
-    ids.vocabulary = true;
-    w.put8( kTableWireMessageForm );
-    if ( !RenderStaticPropSaveBody( w, ids, value ) || w.overflow ) { return -1; }
-    return w.offset; // == RenderStaticPropMeasureMessage( value )
+    {
+        const int64_t body_position = RenderVector3MeasureMessageBody( 0, value.position );
+        if ( body_position < 0 ) { return false; }
+        if ( body_position > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 13, kTableMessageRefBitsHere );
+            if ( !RenderVector3SaveMessageBody( w, value.position ) ) { return false; }
+        }
+    }
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( 0, value.rotation );
+        if ( body_rotation < 0 ) { return false; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 14, kTableMessageRefBitsHere );
+            if ( !RenderQuaternionSaveMessageBody( w, value.rotation ) ) { return false; }
+        }
+    }
+    if ( value.scale != 0.0 )
+    {
+        w.put( 19, kTableMessageRefBitsHere );
+        w.put( table_double_to_bits( value.scale ), 64 );
+    }
+    if ( value.flags != 0 )
+    {
+        w.put( 20, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.flags ), 64 );
+    }
+    if ( value.static_prop_id != 0 )
+    {
+        w.put( 55, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.static_prop_id ), 32 );
+    }
+    if ( value.prop_type != PropType::None )
+    {
+        if ( !TableEnumNamed( value.prop_type ) ) { return false; }
+        w.put( 23, kTableMessageRefBitsHere );
+        {
+            uint64_t slot = 0;
+            if ( !TableEnumSlot( value.prop_type, slot ) ) { return false; }
+            w.put( slot, kTableMessageRefBitsHere );
+        }
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return false; }
+        w.put( 24, kTableMessageRefBitsHere );
+        {
+            uint64_t slot = 0;
+            if ( !TableEnumSlot( value.team, slot ) ) { return false; }
+            w.put( slot, kTableMessageRefBitsHere );
+        }
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
 }
 
-// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
-// nothing is decoded, the reader says it holds no table, no counter moves
-// and malformed does not fire. A reader does not fall back to the file
-// form on its own and does not guess a table, because a guessed table
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderStaticProp & value )
+{
+    RenderStaticPropReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0x4cbf3a26fca1d74aull: // position
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderVector3LoadMessageBody( r, vocabulary, report, index_bits, value.position ) ) { return false; }
+                break;
+            }
+            case 0xb51afb05cd34709full: // rotation
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderQuaternionLoadMessageBody( r, vocabulary, report, index_bits, value.rotation ) ) { return false; }
+                break;
+            }
+            case 0x6aacb9fbb71a1d91ull: // scale
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 11 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->malformed = true; return false; } value.scale = table_bits_to_double( raw ); }
+                break;
+            }
+            case 0x17a3a1a985f75aecull: // flags
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 9 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    uint64_t decoded_v = (uint64_t) decoded_wide;
+                    value.flags = decoded_v;
+                }
+                break;
+            }
+            case 0xd23da7ab574b95c3ull: // static_prop_id
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.static_prop_id = decoded_v;
+                }
+                break;
+            }
+            case 0xe5626f155e4c5dadull: // prop_type
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 30 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref = 0;
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    TableMessageEntry variant_entry;
+                    if ( variant_ref == 0 ) { value.prop_type = PropType::None; } // the zero reference is the enum's None
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableEnumValue( variant_entry.id, value.prop_type ) ) { value.prop_type = PropType::None; report->unknown++; }
+                }
+                break;
+            }
+            case 0xfa23d9ef19afc32cull: // team
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 30 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref = 0;
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    TableMessageEntry variant_entry;
+                    if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableEnumValue( variant_entry.id, value.team ) ) { value.team = Team::None; report->unknown++; }
+                }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of bodies of
+// ONE ROOT in one buffer, one count and one continuous bit stream with no
+// alignment between them. A single message is the batch of one, and there is
+// no singular verb.
+//
+// Every reference is a compile-time SLOT and every width a literal, so a save
+// does no lookup at all and costs what a save costs.
+//
+// M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
+// verdict set and the reason batch_too_large on it, and nothing written. The
+// refusal is learned at MEASURE time, before a buffer is allocated, and a
+// caller with more bodies calls again.
+inline int64_t RenderStaticPropMeasureMessages( const RenderStaticProp * values, int64_t count, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    int64_t bits = 8; // the body count, a ranged integer over [1, 256]
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const int64_t body = RenderStaticPropMeasureMessageBody( bits, values[i] );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
+}
+
+inline int64_t RenderStaticPropSaveMessages( const RenderStaticProp * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableMessageBatch batch;
+    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( !RenderStaticPropSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        batch.written++;
+    }
+    return TableMessageBatchEnd( batch ); // == RenderStaticPropMeasureMessages( values, count, report )
+}
+
+// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no vocabulary, no counter
+// moves and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a vocabulary, because a guessed one
 // decodes a body under the wrong names in silence.
-inline bool RenderStaticPropLoadMessage( RenderStaticProp & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+//
+// `count` is IN and OUT: in, the storage the caller has room for, and out,
+// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
+// batch_too_large, found from the count before a body is decoded, and count
+// comes back holding the WIRE's M, so the caller calls again with storage at
+// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
+// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
+// after it is not a body.
+inline bool RenderStaticPropLoadMessages( RenderStaticProp * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    RenderStaticPropReset( value );
-    if ( bytes < 1 ) { to->malformed = true; return false; }
-    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
-    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
-    // there is no stray-byte rule to apply between one and a first entry
-    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    return RenderStaticPropLoadBody( r, value );
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    const int64_t capacity = *count;
+    *count = 0;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
+    if ( bodies < 0 ) { return false; }
+    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    for ( int64_t i = 0; i < bodies; i++ )
+    {
+        if ( !RenderStaticPropLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        br.remaining--;
+    }
+    *count = bodies;
+    return TableMessageBatchClose( br );
 }
 
 inline int64_t RenderCosmeticPropMeasureBody( TableIds & ids, const RenderCosmeticProp & value )
@@ -4484,7 +7565,7 @@ inline int64_t RenderCosmeticPropMeasureBody( TableIds & ids, const RenderCosmet
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_position = ids.count;
-        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull, 14 );
+        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
@@ -4492,20 +7573,20 @@ inline int64_t RenderCosmeticPropMeasureBody( TableIds & ids, const RenderCosmet
     }
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
         else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.scale != 0.0 ) { bytes += TableLebBytes( ids.ref( 0x6aacb9fbb71a1d91ull, 20 ) ) + 1 + 8; } // scale
-    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref( 0x17a3a1a985f75aecull, 21 ) ) + 1 + 8; } // flags
-    if ( value.cosmetic_prop_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xb66e4449e56b2e26ull, 22 ) ) + 1 + 4; } // cosmetic_prop_id
-    if ( value.prop_sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0x4d7bf73bcbddc228ull, 23 ) ) + 1 + 1; } // prop_sequence
+    if ( value.scale != 0.0 ) { bytes += TableLebBytes( ids.ref( 0x6aacb9fbb71a1d91ull ) ) + 1 + 8; } // scale
+    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref( 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
+    if ( value.cosmetic_prop_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xb66e4449e56b2e26ull ) ) + 1 + 4; } // cosmetic_prop_id
+    if ( value.prop_sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0x4d7bf73bcbddc228ull ) ) + 1 + 1; } // prop_sequence
     if ( value.prop_type != PropType::None )
     {
         if ( !TableEnumNamed( value.prop_type ) ) { return -1; } // no variant names this value
-        const uint64_t ref_prop_type = ids.ref( 0xe5626f155e4c5dadull, 24 );
+        const uint64_t ref_prop_type = ids.ref( 0xe5626f155e4c5dadull );
         uint64_t variant_prop_type = 0;
         if ( !TableEnumRef( ids, value.prop_type, variant_prop_type ) ) { return -1; }
         bytes += TableLebBytes( ref_prop_type ) + 1 + TableLebBytes( variant_prop_type ); // prop_type: the variant's reference
@@ -4513,7 +7594,7 @@ inline int64_t RenderCosmeticPropMeasureBody( TableIds & ids, const RenderCosmet
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return -1; }
         bytes += TableLebBytes( ref_team ) + 1 + TableLebBytes( variant_team ); // team: the variant's reference
@@ -4533,7 +7614,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropSaveBody( TableWriter & w, TableId
 {
     {
         const int32_t mark_position = ids.count;
-        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull, 14 );
+        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_position > 1 ) // all-default nested elides
@@ -4545,7 +7626,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropSaveBody( TableWriter & w, TableId
     }
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_rotation > 1 ) // all-default nested elides
@@ -4557,28 +7638,28 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropSaveBody( TableWriter & w, TableId
     }
     if ( value.scale != 0.0 )
     {
-        w.putleb( ids.ref( 0x6aacb9fbb71a1d91ull, 20 ) ); w.put8( 11 ); // scale
+        w.putleb( ids.ref( 0x6aacb9fbb71a1d91ull ) ); w.put8( 11 ); // scale
         w.put64( table_double_to_bits( value.scale ) );
     }
     if ( value.flags != 0 )
     {
-        w.putleb( ids.ref( 0x17a3a1a985f75aecull, 21 ) ); w.put8( 9 ); // flags
+        w.putleb( ids.ref( 0x17a3a1a985f75aecull ) ); w.put8( 9 ); // flags
         w.put64( uint64_t( value.flags ) );
     }
     if ( value.cosmetic_prop_id != 0 )
     {
-        w.putleb( ids.ref( 0xb66e4449e56b2e26ull, 22 ) ); w.put8( 8 ); // cosmetic_prop_id
+        w.putleb( ids.ref( 0xb66e4449e56b2e26ull ) ); w.put8( 8 ); // cosmetic_prop_id
         w.put32( uint32_t( value.cosmetic_prop_id ) );
     }
     if ( value.prop_sequence != 0 )
     {
-        w.putleb( ids.ref( 0x4d7bf73bcbddc228ull, 23 ) ); w.put8( 6 ); // prop_sequence
+        w.putleb( ids.ref( 0x4d7bf73bcbddc228ull ) ); w.put8( 6 ); // prop_sequence
         w.put8( uint8_t( value.prop_sequence ) );
     }
     if ( value.prop_type != PropType::None )
     {
         if ( !TableEnumNamed( value.prop_type ) ) { return false; }
-        const uint64_t ref_prop_type = ids.ref( 0xe5626f155e4c5dadull, 24 );
+        const uint64_t ref_prop_type = ids.ref( 0xe5626f155e4c5dadull );
         uint64_t variant_prop_type = 0;
         if ( !TableEnumRef( ids, value.prop_type, variant_prop_type ) ) { return false; }
         w.putleb( ref_prop_type ); w.put8( 30 ); w.putleb( variant_prop_type ); // prop_type
@@ -4586,7 +7667,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropSaveBody( TableWriter & w, TableId
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
         w.putleb( ref_team ); w.put8( 30 ); w.putleb( variant_team ); // team
@@ -4618,7 +7699,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -4872,47 +7953,386 @@ inline bool RenderCosmeticPropLoad( RenderCosmeticProp & value, const uint8_t * 
     return RenderCosmeticPropLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
-// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
-// body, and no trailer at all — the connection's announced table is where
-// the ids live. Every reference is a compile-time SLOT, so this walk does
-// no lookup and a save costs what a save costs.
-inline int64_t RenderCosmeticPropMeasureMessage( const RenderCosmeticProp & value )
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t RenderCosmeticPropMeasureMessageBody( int64_t at, const RenderCosmeticProp & value )
 {
-    TableIds ids;
-    ids.vocabulary = true;
-    const int64_t body = RenderCosmeticPropMeasureBody( ids, value );
-    if ( body < 0 ) { return -1; }
-    return 1 + body;
+    int64_t bits = 0;
+    {
+        const int64_t body_position = RenderVector3MeasureMessageBody( at + bits, value.position );
+        if ( body_position < 0 ) { return -1; }
+        if ( body_position > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderVector3MeasureMessageBody( at + bits, value.position );
+        }
+    }
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        if ( body_rotation < 0 ) { return -1; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        }
+    }
+    if ( value.scale != 0.0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.flags != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.cosmetic_prop_id != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.prop_sequence != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 8;
+    }
+    if ( value.prop_type != PropType::None )
+    {
+        if ( !TableEnumNamed( value.prop_type ) ) { return -1; }
+        bits += kTableMessageRefBitsHere;
+        bits += kTableMessageRefBitsHere;
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return -1; }
+        bits += kTableMessageRefBitsHere;
+        bits += kTableMessageRefBitsHere;
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
 }
 
-inline int64_t RenderCosmeticPropSaveMessage( const RenderCosmeticProp & value, uint8_t * buffer, int64_t capacity )
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool RenderCosmeticPropSaveMessageBody( TableBitWriter & w, const RenderCosmeticProp & value )
 {
-    TableWriter w( buffer, capacity );
-    TableIds ids;
-    ids.vocabulary = true;
-    w.put8( kTableWireMessageForm );
-    if ( !RenderCosmeticPropSaveBody( w, ids, value ) || w.overflow ) { return -1; }
-    return w.offset; // == RenderCosmeticPropMeasureMessage( value )
+    {
+        const int64_t body_position = RenderVector3MeasureMessageBody( 0, value.position );
+        if ( body_position < 0 ) { return false; }
+        if ( body_position > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 13, kTableMessageRefBitsHere );
+            if ( !RenderVector3SaveMessageBody( w, value.position ) ) { return false; }
+        }
+    }
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( 0, value.rotation );
+        if ( body_rotation < 0 ) { return false; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 14, kTableMessageRefBitsHere );
+            if ( !RenderQuaternionSaveMessageBody( w, value.rotation ) ) { return false; }
+        }
+    }
+    if ( value.scale != 0.0 )
+    {
+        w.put( 19, kTableMessageRefBitsHere );
+        w.put( table_double_to_bits( value.scale ), 64 );
+    }
+    if ( value.flags != 0 )
+    {
+        w.put( 20, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.flags ), 64 );
+    }
+    if ( value.cosmetic_prop_id != 0 )
+    {
+        w.put( 21, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.cosmetic_prop_id ), 32 );
+    }
+    if ( value.prop_sequence != 0 )
+    {
+        w.put( 22, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.prop_sequence ), 8 );
+    }
+    if ( value.prop_type != PropType::None )
+    {
+        if ( !TableEnumNamed( value.prop_type ) ) { return false; }
+        w.put( 23, kTableMessageRefBitsHere );
+        {
+            uint64_t slot = 0;
+            if ( !TableEnumSlot( value.prop_type, slot ) ) { return false; }
+            w.put( slot, kTableMessageRefBitsHere );
+        }
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return false; }
+        w.put( 24, kTableMessageRefBitsHere );
+        {
+            uint64_t slot = 0;
+            if ( !TableEnumSlot( value.team, slot ) ) { return false; }
+            w.put( slot, kTableMessageRefBitsHere );
+        }
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
 }
 
-// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
-// nothing is decoded, the reader says it holds no table, no counter moves
-// and malformed does not fire. A reader does not fall back to the file
-// form on its own and does not guess a table, because a guessed table
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderCosmeticProp & value )
+{
+    RenderCosmeticPropReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0x4cbf3a26fca1d74aull: // position
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderVector3LoadMessageBody( r, vocabulary, report, index_bits, value.position ) ) { return false; }
+                break;
+            }
+            case 0xb51afb05cd34709full: // rotation
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderQuaternionLoadMessageBody( r, vocabulary, report, index_bits, value.rotation ) ) { return false; }
+                break;
+            }
+            case 0x6aacb9fbb71a1d91ull: // scale
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 11 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->malformed = true; return false; } value.scale = table_bits_to_double( raw ); }
+                break;
+            }
+            case 0x17a3a1a985f75aecull: // flags
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 9 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    uint64_t decoded_v = (uint64_t) decoded_wide;
+                    value.flags = decoded_v;
+                }
+                break;
+            }
+            case 0xb66e4449e56b2e26ull: // cosmetic_prop_id
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.cosmetic_prop_id = decoded_v;
+                }
+                break;
+            }
+            case 0x4d7bf73bcbddc228ull: // prop_sequence
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 6 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->clamped++; }
+                    uint8_t decoded_v = (uint8_t) decoded_wide;
+                    value.prop_sequence = decoded_v;
+                }
+                break;
+            }
+            case 0xe5626f155e4c5dadull: // prop_type
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 30 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref = 0;
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    TableMessageEntry variant_entry;
+                    if ( variant_ref == 0 ) { value.prop_type = PropType::None; } // the zero reference is the enum's None
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableEnumValue( variant_entry.id, value.prop_type ) ) { value.prop_type = PropType::None; report->unknown++; }
+                }
+                break;
+            }
+            case 0xfa23d9ef19afc32cull: // team
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 30 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref = 0;
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    TableMessageEntry variant_entry;
+                    if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableEnumValue( variant_entry.id, value.team ) ) { value.team = Team::None; report->unknown++; }
+                }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of bodies of
+// ONE ROOT in one buffer, one count and one continuous bit stream with no
+// alignment between them. A single message is the batch of one, and there is
+// no singular verb.
+//
+// Every reference is a compile-time SLOT and every width a literal, so a save
+// does no lookup at all and costs what a save costs.
+//
+// M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
+// verdict set and the reason batch_too_large on it, and nothing written. The
+// refusal is learned at MEASURE time, before a buffer is allocated, and a
+// caller with more bodies calls again.
+inline int64_t RenderCosmeticPropMeasureMessages( const RenderCosmeticProp * values, int64_t count, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    int64_t bits = 8; // the body count, a ranged integer over [1, 256]
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const int64_t body = RenderCosmeticPropMeasureMessageBody( bits, values[i] );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
+}
+
+inline int64_t RenderCosmeticPropSaveMessages( const RenderCosmeticProp * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableMessageBatch batch;
+    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( !RenderCosmeticPropSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        batch.written++;
+    }
+    return TableMessageBatchEnd( batch ); // == RenderCosmeticPropMeasureMessages( values, count, report )
+}
+
+// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no vocabulary, no counter
+// moves and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a vocabulary, because a guessed one
 // decodes a body under the wrong names in silence.
-inline bool RenderCosmeticPropLoadMessage( RenderCosmeticProp & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+//
+// `count` is IN and OUT: in, the storage the caller has room for, and out,
+// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
+// batch_too_large, found from the count before a body is decoded, and count
+// comes back holding the WIRE's M, so the caller calls again with storage at
+// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
+// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
+// after it is not a body.
+inline bool RenderCosmeticPropLoadMessages( RenderCosmeticProp * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    RenderCosmeticPropReset( value );
-    if ( bytes < 1 ) { to->malformed = true; return false; }
-    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
-    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
-    // there is no stray-byte rule to apply between one and a first entry
-    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    return RenderCosmeticPropLoadBody( r, value );
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    const int64_t capacity = *count;
+    *count = 0;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
+    if ( bodies < 0 ) { return false; }
+    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    for ( int64_t i = 0; i < bodies; i++ )
+    {
+        if ( !RenderCosmeticPropLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        br.remaining--;
+    }
+    *count = bodies;
+    return TableMessageBatchClose( br );
 }
 
 inline int64_t RenderLaserMeasureBody( TableIds & ids, const RenderLaser & value )
@@ -4920,7 +8340,7 @@ inline int64_t RenderLaserMeasureBody( TableIds & ids, const RenderLaser & value
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_start = ids.count;
-        const uint64_t ref_start = ids.ref( 0xee5d97ad45ad251full, 42 );
+        const uint64_t ref_start = ids.ref( 0xee5d97ad45ad251full );
         const int64_t body_start = RenderVector3MeasureBody( ids, value.start );
         if ( body_start < 0 ) { return -1; }
         if ( body_start > 1 ) { bytes += TableLebBytes( ref_start ) + 1 + TableLebBytes( (uint64_t) ( body_start ) ) + ( body_start ); } // start
@@ -4928,18 +8348,18 @@ inline int64_t RenderLaserMeasureBody( TableIds & ids, const RenderLaser & value
     }
     {
         const int32_t mark_finish = ids.count;
-        const uint64_t ref_finish = ids.ref( 0x6917a5bab91540f2ull, 43 );
+        const uint64_t ref_finish = ids.ref( 0x6917a5bab91540f2ull );
         const int64_t body_finish = RenderVector3MeasureBody( ids, value.finish );
         if ( body_finish < 0 ) { return -1; }
         if ( body_finish > 1 ) { bytes += TableLebBytes( ref_finish ) + 1 + TableLebBytes( (uint64_t) ( body_finish ) ) + ( body_finish ); } // finish
         else { ids.truncate( mark_finish ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.t != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63e94c860202a3ull, 28 ) ) + 1 + 8; } // t
-    if ( value.laser_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xcd29c05f390294ecull, 44 ) ) + 1 + 4; } // laser_id
+    if ( value.t != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63e94c860202a3ull ) ) + 1 + 8; } // t
+    if ( value.laser_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xcd29c05f390294ecull ) ) + 1 + 4; } // laser_id
     if ( value.laser_type != LaserType::None )
     {
         if ( !TableEnumNamed( value.laser_type ) ) { return -1; } // no variant names this value
-        const uint64_t ref_laser_type = ids.ref( 0x96b593c242133841ull, 45 );
+        const uint64_t ref_laser_type = ids.ref( 0x96b593c242133841ull );
         uint64_t variant_laser_type = 0;
         if ( !TableEnumRef( ids, value.laser_type, variant_laser_type ) ) { return -1; }
         bytes += TableLebBytes( ref_laser_type ) + 1 + TableLebBytes( variant_laser_type ); // laser_type: the variant's reference
@@ -4947,7 +8367,7 @@ inline int64_t RenderLaserMeasureBody( TableIds & ids, const RenderLaser & value
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return -1; }
         bytes += TableLebBytes( ref_team ) + 1 + TableLebBytes( variant_team ); // team: the variant's reference
@@ -4967,7 +8387,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserSaveBody( TableWriter & w, TableIds & ids
 {
     {
         const int32_t mark_start = ids.count;
-        const uint64_t ref_start = ids.ref( 0xee5d97ad45ad251full, 42 );
+        const uint64_t ref_start = ids.ref( 0xee5d97ad45ad251full );
         const int64_t body_start = RenderVector3MeasureBody( ids, value.start );
         if ( body_start < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_start > 1 ) // all-default nested elides
@@ -4979,7 +8399,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserSaveBody( TableWriter & w, TableIds & ids
     }
     {
         const int32_t mark_finish = ids.count;
-        const uint64_t ref_finish = ids.ref( 0x6917a5bab91540f2ull, 43 );
+        const uint64_t ref_finish = ids.ref( 0x6917a5bab91540f2ull );
         const int64_t body_finish = RenderVector3MeasureBody( ids, value.finish );
         if ( body_finish < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_finish > 1 ) // all-default nested elides
@@ -4991,18 +8411,18 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserSaveBody( TableWriter & w, TableIds & ids
     }
     if ( value.t != 0.0 )
     {
-        w.putleb( ids.ref( 0xaf63e94c860202a3ull, 28 ) ); w.put8( 11 ); // t
+        w.putleb( ids.ref( 0xaf63e94c860202a3ull ) ); w.put8( 11 ); // t
         w.put64( table_double_to_bits( value.t ) );
     }
     if ( value.laser_id != 0 )
     {
-        w.putleb( ids.ref( 0xcd29c05f390294ecull, 44 ) ); w.put8( 8 ); // laser_id
+        w.putleb( ids.ref( 0xcd29c05f390294ecull ) ); w.put8( 8 ); // laser_id
         w.put32( uint32_t( value.laser_id ) );
     }
     if ( value.laser_type != LaserType::None )
     {
         if ( !TableEnumNamed( value.laser_type ) ) { return false; }
-        const uint64_t ref_laser_type = ids.ref( 0x96b593c242133841ull, 45 );
+        const uint64_t ref_laser_type = ids.ref( 0x96b593c242133841ull );
         uint64_t variant_laser_type = 0;
         if ( !TableEnumRef( ids, value.laser_type, variant_laser_type ) ) { return false; }
         w.putleb( ref_laser_type ); w.put8( 30 ); w.putleb( variant_laser_type ); // laser_type
@@ -5010,7 +8430,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserSaveBody( TableWriter & w, TableIds & ids
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
         w.putleb( ref_team ); w.put8( 30 ); w.putleb( variant_team ); // team
@@ -5042,7 +8462,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -5255,47 +8675,321 @@ inline bool RenderLaserLoad( RenderLaser & value, const uint8_t * buffer, int64_
     return RenderLaserLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
-// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
-// body, and no trailer at all — the connection's announced table is where
-// the ids live. Every reference is a compile-time SLOT, so this walk does
-// no lookup and a save costs what a save costs.
-inline int64_t RenderLaserMeasureMessage( const RenderLaser & value )
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t RenderLaserMeasureMessageBody( int64_t at, const RenderLaser & value )
 {
-    TableIds ids;
-    ids.vocabulary = true;
-    const int64_t body = RenderLaserMeasureBody( ids, value );
-    if ( body < 0 ) { return -1; }
-    return 1 + body;
+    int64_t bits = 0;
+    {
+        const int64_t body_start = RenderVector3MeasureMessageBody( at + bits, value.start );
+        if ( body_start < 0 ) { return -1; }
+        if ( body_start > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderVector3MeasureMessageBody( at + bits, value.start );
+        }
+    }
+    {
+        const int64_t body_finish = RenderVector3MeasureMessageBody( at + bits, value.finish );
+        if ( body_finish < 0 ) { return -1; }
+        if ( body_finish > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderVector3MeasureMessageBody( at + bits, value.finish );
+        }
+    }
+    if ( value.t != 0.0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.laser_id != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.laser_type != LaserType::None )
+    {
+        if ( !TableEnumNamed( value.laser_type ) ) { return -1; }
+        bits += kTableMessageRefBitsHere;
+        bits += kTableMessageRefBitsHere;
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return -1; }
+        bits += kTableMessageRefBitsHere;
+        bits += kTableMessageRefBitsHere;
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
 }
 
-inline int64_t RenderLaserSaveMessage( const RenderLaser & value, uint8_t * buffer, int64_t capacity )
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool RenderLaserSaveMessageBody( TableBitWriter & w, const RenderLaser & value )
 {
-    TableWriter w( buffer, capacity );
-    TableIds ids;
-    ids.vocabulary = true;
-    w.put8( kTableWireMessageForm );
-    if ( !RenderLaserSaveBody( w, ids, value ) || w.overflow ) { return -1; }
-    return w.offset; // == RenderLaserMeasureMessage( value )
+    {
+        const int64_t body_start = RenderVector3MeasureMessageBody( 0, value.start );
+        if ( body_start < 0 ) { return false; }
+        if ( body_start > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 41, kTableMessageRefBitsHere );
+            if ( !RenderVector3SaveMessageBody( w, value.start ) ) { return false; }
+        }
+    }
+    {
+        const int64_t body_finish = RenderVector3MeasureMessageBody( 0, value.finish );
+        if ( body_finish < 0 ) { return false; }
+        if ( body_finish > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 42, kTableMessageRefBitsHere );
+            if ( !RenderVector3SaveMessageBody( w, value.finish ) ) { return false; }
+        }
+    }
+    if ( value.t != 0.0 )
+    {
+        w.put( 27, kTableMessageRefBitsHere );
+        w.put( table_double_to_bits( value.t ), 64 );
+    }
+    if ( value.laser_id != 0 )
+    {
+        w.put( 43, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.laser_id ), 32 );
+    }
+    if ( value.laser_type != LaserType::None )
+    {
+        if ( !TableEnumNamed( value.laser_type ) ) { return false; }
+        w.put( 44, kTableMessageRefBitsHere );
+        {
+            uint64_t slot = 0;
+            if ( !TableEnumSlot( value.laser_type, slot ) ) { return false; }
+            w.put( slot, kTableMessageRefBitsHere );
+        }
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return false; }
+        w.put( 24, kTableMessageRefBitsHere );
+        {
+            uint64_t slot = 0;
+            if ( !TableEnumSlot( value.team, slot ) ) { return false; }
+            w.put( slot, kTableMessageRefBitsHere );
+        }
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
 }
 
-// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
-// nothing is decoded, the reader says it holds no table, no counter moves
-// and malformed does not fire. A reader does not fall back to the file
-// form on its own and does not guess a table, because a guessed table
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderLaser & value )
+{
+    RenderLaserReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0xee5d97ad45ad251full: // start
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderVector3LoadMessageBody( r, vocabulary, report, index_bits, value.start ) ) { return false; }
+                break;
+            }
+            case 0x6917a5bab91540f2ull: // finish
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderVector3LoadMessageBody( r, vocabulary, report, index_bits, value.finish ) ) { return false; }
+                break;
+            }
+            case 0xaf63e94c860202a3ull: // t
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 11 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->malformed = true; return false; } value.t = table_bits_to_double( raw ); }
+                break;
+            }
+            case 0xcd29c05f390294ecull: // laser_id
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.laser_id = decoded_v;
+                }
+                break;
+            }
+            case 0x96b593c242133841ull: // laser_type
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 30 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref = 0;
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    TableMessageEntry variant_entry;
+                    if ( variant_ref == 0 ) { value.laser_type = LaserType::None; } // the zero reference is the enum's None
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableEnumValue( variant_entry.id, value.laser_type ) ) { value.laser_type = LaserType::None; report->unknown++; }
+                }
+                break;
+            }
+            case 0xfa23d9ef19afc32cull: // team
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 30 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref = 0;
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    TableMessageEntry variant_entry;
+                    if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableEnumValue( variant_entry.id, value.team ) ) { value.team = Team::None; report->unknown++; }
+                }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of bodies of
+// ONE ROOT in one buffer, one count and one continuous bit stream with no
+// alignment between them. A single message is the batch of one, and there is
+// no singular verb.
+//
+// Every reference is a compile-time SLOT and every width a literal, so a save
+// does no lookup at all and costs what a save costs.
+//
+// M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
+// verdict set and the reason batch_too_large on it, and nothing written. The
+// refusal is learned at MEASURE time, before a buffer is allocated, and a
+// caller with more bodies calls again.
+inline int64_t RenderLaserMeasureMessages( const RenderLaser * values, int64_t count, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    int64_t bits = 8; // the body count, a ranged integer over [1, 256]
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const int64_t body = RenderLaserMeasureMessageBody( bits, values[i] );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
+}
+
+inline int64_t RenderLaserSaveMessages( const RenderLaser * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableMessageBatch batch;
+    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( !RenderLaserSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        batch.written++;
+    }
+    return TableMessageBatchEnd( batch ); // == RenderLaserMeasureMessages( values, count, report )
+}
+
+// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no vocabulary, no counter
+// moves and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a vocabulary, because a guessed one
 // decodes a body under the wrong names in silence.
-inline bool RenderLaserLoadMessage( RenderLaser & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+//
+// `count` is IN and OUT: in, the storage the caller has room for, and out,
+// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
+// batch_too_large, found from the count before a body is decoded, and count
+// comes back holding the WIRE's M, so the caller calls again with storage at
+// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
+// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
+// after it is not a body.
+inline bool RenderLaserLoadMessages( RenderLaser * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    RenderLaserReset( value );
-    if ( bytes < 1 ) { to->malformed = true; return false; }
-    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
-    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
-    // there is no stray-byte rule to apply between one and a first entry
-    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    return RenderLaserLoadBody( r, value );
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    const int64_t capacity = *count;
+    *count = 0;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
+    if ( bodies < 0 ) { return false; }
+    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    for ( int64_t i = 0; i < bodies; i++ )
+    {
+        if ( !RenderLaserLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        br.remaining--;
+    }
+    *count = bodies;
+    return TableMessageBatchClose( br );
 }
 
 inline int64_t RenderExplosionMeasureBody( TableIds & ids, const RenderExplosion & value )
@@ -5303,7 +8997,7 @@ inline int64_t RenderExplosionMeasureBody( TableIds & ids, const RenderExplosion
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_position = ids.count;
-        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull, 14 );
+        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
@@ -5311,19 +9005,19 @@ inline int64_t RenderExplosionMeasureBody( TableIds & ids, const RenderExplosion
     }
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
         else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.t != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63e94c860202a3ull, 28 ) ) + 1 + 8; } // t
-    if ( value.explosion_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xfd7f3fa0b16ed778ull, 29 ) ) + 1 + 4; } // explosion_id
-    if ( value.parent_object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x0bee7b3cb4046c93ull, 30 ) ) + 1 + 4; } // parent_object_id
+    if ( value.t != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63e94c860202a3ull ) ) + 1 + 8; } // t
+    if ( value.explosion_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xfd7f3fa0b16ed778ull ) ) + 1 + 4; } // explosion_id
+    if ( value.parent_object_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x0bee7b3cb4046c93ull ) ) + 1 + 4; } // parent_object_id
     if ( value.explosion_type != ExplosionType::None )
     {
         if ( !TableEnumNamed( value.explosion_type ) ) { return -1; } // no variant names this value
-        const uint64_t ref_explosion_type = ids.ref( 0xdc89eb9cd3393be5ull, 31 );
+        const uint64_t ref_explosion_type = ids.ref( 0xdc89eb9cd3393be5ull );
         uint64_t variant_explosion_type = 0;
         if ( !TableEnumRef( ids, value.explosion_type, variant_explosion_type ) ) { return -1; }
         bytes += TableLebBytes( ref_explosion_type ) + 1 + TableLebBytes( variant_explosion_type ); // explosion_type: the variant's reference
@@ -5331,7 +9025,7 @@ inline int64_t RenderExplosionMeasureBody( TableIds & ids, const RenderExplosion
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return -1; }
         bytes += TableLebBytes( ref_team ) + 1 + TableLebBytes( variant_team ); // team: the variant's reference
@@ -5351,7 +9045,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionSaveBody( TableWriter & w, TableIds &
 {
     {
         const int32_t mark_position = ids.count;
-        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull, 14 );
+        const uint64_t ref_position = ids.ref( 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_position > 1 ) // all-default nested elides
@@ -5363,7 +9057,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionSaveBody( TableWriter & w, TableIds &
     }
     {
         const int32_t mark_rotation = ids.count;
-        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full, 15 );
+        const uint64_t ref_rotation = ids.ref( 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_rotation > 1 ) // all-default nested elides
@@ -5375,23 +9069,23 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionSaveBody( TableWriter & w, TableIds &
     }
     if ( value.t != 0.0 )
     {
-        w.putleb( ids.ref( 0xaf63e94c860202a3ull, 28 ) ); w.put8( 11 ); // t
+        w.putleb( ids.ref( 0xaf63e94c860202a3ull ) ); w.put8( 11 ); // t
         w.put64( table_double_to_bits( value.t ) );
     }
     if ( value.explosion_id != 0 )
     {
-        w.putleb( ids.ref( 0xfd7f3fa0b16ed778ull, 29 ) ); w.put8( 8 ); // explosion_id
+        w.putleb( ids.ref( 0xfd7f3fa0b16ed778ull ) ); w.put8( 8 ); // explosion_id
         w.put32( uint32_t( value.explosion_id ) );
     }
     if ( value.parent_object_id != 0 )
     {
-        w.putleb( ids.ref( 0x0bee7b3cb4046c93ull, 30 ) ); w.put8( 8 ); // parent_object_id
+        w.putleb( ids.ref( 0x0bee7b3cb4046c93ull ) ); w.put8( 8 ); // parent_object_id
         w.put32( uint32_t( value.parent_object_id ) );
     }
     if ( value.explosion_type != ExplosionType::None )
     {
         if ( !TableEnumNamed( value.explosion_type ) ) { return false; }
-        const uint64_t ref_explosion_type = ids.ref( 0xdc89eb9cd3393be5ull, 31 );
+        const uint64_t ref_explosion_type = ids.ref( 0xdc89eb9cd3393be5ull );
         uint64_t variant_explosion_type = 0;
         if ( !TableEnumRef( ids, value.explosion_type, variant_explosion_type ) ) { return false; }
         w.putleb( ref_explosion_type ); w.put8( 30 ); w.putleb( variant_explosion_type ); // explosion_type
@@ -5399,7 +9093,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionSaveBody( TableWriter & w, TableIds &
     if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
-        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull, 25 );
+        const uint64_t ref_team = ids.ref( 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
         w.putleb( ref_team ); w.put8( 30 ); w.putleb( variant_team ); // team
@@ -5431,7 +9125,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -5670,57 +9364,364 @@ inline bool RenderExplosionLoad( RenderExplosion & value, const uint8_t * buffer
     return RenderExplosionLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
-// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
-// body, and no trailer at all — the connection's announced table is where
-// the ids live. Every reference is a compile-time SLOT, so this walk does
-// no lookup and a save costs what a save costs.
-inline int64_t RenderExplosionMeasureMessage( const RenderExplosion & value )
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t RenderExplosionMeasureMessageBody( int64_t at, const RenderExplosion & value )
 {
-    TableIds ids;
-    ids.vocabulary = true;
-    const int64_t body = RenderExplosionMeasureBody( ids, value );
-    if ( body < 0 ) { return -1; }
-    return 1 + body;
+    int64_t bits = 0;
+    {
+        const int64_t body_position = RenderVector3MeasureMessageBody( at + bits, value.position );
+        if ( body_position < 0 ) { return -1; }
+        if ( body_position > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderVector3MeasureMessageBody( at + bits, value.position );
+        }
+    }
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        if ( body_rotation < 0 ) { return -1; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += RenderQuaternionMeasureMessageBody( at + bits, value.rotation );
+        }
+    }
+    if ( value.t != 0.0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.explosion_id != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.parent_object_id != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.explosion_type != ExplosionType::None )
+    {
+        if ( !TableEnumNamed( value.explosion_type ) ) { return -1; }
+        bits += kTableMessageRefBitsHere;
+        bits += kTableMessageRefBitsHere;
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return -1; }
+        bits += kTableMessageRefBitsHere;
+        bits += kTableMessageRefBitsHere;
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
 }
 
-inline int64_t RenderExplosionSaveMessage( const RenderExplosion & value, uint8_t * buffer, int64_t capacity )
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool RenderExplosionSaveMessageBody( TableBitWriter & w, const RenderExplosion & value )
 {
-    TableWriter w( buffer, capacity );
-    TableIds ids;
-    ids.vocabulary = true;
-    w.put8( kTableWireMessageForm );
-    if ( !RenderExplosionSaveBody( w, ids, value ) || w.overflow ) { return -1; }
-    return w.offset; // == RenderExplosionMeasureMessage( value )
+    {
+        const int64_t body_position = RenderVector3MeasureMessageBody( 0, value.position );
+        if ( body_position < 0 ) { return false; }
+        if ( body_position > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 13, kTableMessageRefBitsHere );
+            if ( !RenderVector3SaveMessageBody( w, value.position ) ) { return false; }
+        }
+    }
+    {
+        const int64_t body_rotation = RenderQuaternionMeasureMessageBody( 0, value.rotation );
+        if ( body_rotation < 0 ) { return false; }
+        if ( body_rotation > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 14, kTableMessageRefBitsHere );
+            if ( !RenderQuaternionSaveMessageBody( w, value.rotation ) ) { return false; }
+        }
+    }
+    if ( value.t != 0.0 )
+    {
+        w.put( 27, kTableMessageRefBitsHere );
+        w.put( table_double_to_bits( value.t ), 64 );
+    }
+    if ( value.explosion_id != 0 )
+    {
+        w.put( 28, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.explosion_id ), 32 );
+    }
+    if ( value.parent_object_id != 0 )
+    {
+        w.put( 29, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.parent_object_id ), 32 );
+    }
+    if ( value.explosion_type != ExplosionType::None )
+    {
+        if ( !TableEnumNamed( value.explosion_type ) ) { return false; }
+        w.put( 30, kTableMessageRefBitsHere );
+        {
+            uint64_t slot = 0;
+            if ( !TableEnumSlot( value.explosion_type, slot ) ) { return false; }
+            w.put( slot, kTableMessageRefBitsHere );
+        }
+    }
+    if ( value.team != Team::None )
+    {
+        if ( !TableEnumNamed( value.team ) ) { return false; }
+        w.put( 24, kTableMessageRefBitsHere );
+        {
+            uint64_t slot = 0;
+            if ( !TableEnumSlot( value.team, slot ) ) { return false; }
+            w.put( slot, kTableMessageRefBitsHere );
+        }
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
 }
 
-// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
-// nothing is decoded, the reader says it holds no table, no counter moves
-// and malformed does not fire. A reader does not fall back to the file
-// form on its own and does not guess a table, because a guessed table
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderExplosion & value )
+{
+    RenderExplosionReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0x4cbf3a26fca1d74aull: // position
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderVector3LoadMessageBody( r, vocabulary, report, index_bits, value.position ) ) { return false; }
+                break;
+            }
+            case 0xb51afb05cd34709full: // rotation
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !RenderQuaternionLoadMessageBody( r, vocabulary, report, index_bits, value.rotation ) ) { return false; }
+                break;
+            }
+            case 0xaf63e94c860202a3ull: // t
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 11 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->malformed = true; return false; } value.t = table_bits_to_double( raw ); }
+                break;
+            }
+            case 0xfd7f3fa0b16ed778ull: // explosion_id
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.explosion_id = decoded_v;
+                }
+                break;
+            }
+            case 0x0bee7b3cb4046c93ull: // parent_object_id
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 8 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.parent_object_id = decoded_v;
+                }
+                break;
+            }
+            case 0xdc89eb9cd3393be5ull: // explosion_type
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 30 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref = 0;
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    TableMessageEntry variant_entry;
+                    if ( variant_ref == 0 ) { value.explosion_type = ExplosionType::None; } // the zero reference is the enum's None
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableEnumValue( variant_entry.id, value.explosion_type ) ) { value.explosion_type = ExplosionType::None; report->unknown++; }
+                }
+                break;
+            }
+            case 0xfa23d9ef19afc32cull: // team
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 30 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref = 0;
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    TableMessageEntry variant_entry;
+                    if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableEnumValue( variant_entry.id, value.team ) ) { value.team = Team::None; report->unknown++; }
+                }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of bodies of
+// ONE ROOT in one buffer, one count and one continuous bit stream with no
+// alignment between them. A single message is the batch of one, and there is
+// no singular verb.
+//
+// Every reference is a compile-time SLOT and every width a literal, so a save
+// does no lookup at all and costs what a save costs.
+//
+// M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
+// verdict set and the reason batch_too_large on it, and nothing written. The
+// refusal is learned at MEASURE time, before a buffer is allocated, and a
+// caller with more bodies calls again.
+inline int64_t RenderExplosionMeasureMessages( const RenderExplosion * values, int64_t count, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    int64_t bits = 8; // the body count, a ranged integer over [1, 256]
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const int64_t body = RenderExplosionMeasureMessageBody( bits, values[i] );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
+}
+
+inline int64_t RenderExplosionSaveMessages( const RenderExplosion * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableMessageBatch batch;
+    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( !RenderExplosionSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        batch.written++;
+    }
+    return TableMessageBatchEnd( batch ); // == RenderExplosionMeasureMessages( values, count, report )
+}
+
+// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no vocabulary, no counter
+// moves and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a vocabulary, because a guessed one
 // decodes a body under the wrong names in silence.
-inline bool RenderExplosionLoadMessage( RenderExplosion & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+//
+// `count` is IN and OUT: in, the storage the caller has room for, and out,
+// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
+// batch_too_large, found from the count before a body is decoded, and count
+// comes back holding the WIRE's M, so the caller calls again with storage at
+// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
+// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
+// after it is not a body.
+inline bool RenderExplosionLoadMessages( RenderExplosion * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    RenderExplosionReset( value );
-    if ( bytes < 1 ) { to->malformed = true; return false; }
-    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
-    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
-    // there is no stray-byte rule to apply between one and a first entry
-    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    return RenderExplosionLoadBody( r, value );
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    const int64_t capacity = *count;
+    *count = 0;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
+    if ( bodies < 0 ) { return false; }
+    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    for ( int64_t i = 0; i < bodies; i++ )
+    {
+        if ( !RenderExplosionLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        br.remaining--;
+    }
+    *count = bodies;
+    return TableMessageBatchClose( br );
 }
 
 inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.version != 0 ) { bytes += TableLebBytes( ids.ref( 0xbb62c62c9808ea37ull, 32 ) ) + 1 + 8; } // version
+    if ( value.version != 0 ) { bytes += TableLebBytes( ids.ref( 0xbb62c62c9808ea37ull ) ) + 1 + 8; } // version
     if ( value.cameras_count < 0 || value.cameras_count > 1 ) { return -1; } // storage invariant
     if ( value.cameras_count > 0 )
     {
-        const uint64_t ref_cameras = ids.ref( 0x0f9222d2ba7aa2a7ull, 33 );
+        const uint64_t ref_cameras = ids.ref( 0x0f9222d2ba7aa2a7ull );
         int64_t body_cameras = 0;
         body_cameras += 1 + TableLebBytes( (uint64_t) ( value.cameras_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.cameras_count; elem_i++ )
@@ -5734,7 +9735,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
     if ( value.ships_count < 0 || value.ships_count > 4096 ) { return -1; } // storage invariant
     if ( value.ships_count > 0 )
     {
-        const uint64_t ref_ships = ids.ref( 0x294a5c4913e1ad44ull, 34 );
+        const uint64_t ref_ships = ids.ref( 0x294a5c4913e1ad44ull );
         int64_t body_ships = 0;
         body_ships += 1 + TableLebBytes( (uint64_t) ( value.ships_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.ships_count; elem_i++ )
@@ -5748,7 +9749,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
     if ( value.turrets_count < 0 || value.turrets_count > 1024 ) { return -1; } // storage invariant
     if ( value.turrets_count > 0 )
     {
-        const uint64_t ref_turrets = ids.ref( 0x84f8260bc283608cull, 35 );
+        const uint64_t ref_turrets = ids.ref( 0x84f8260bc283608cull );
         int64_t body_turrets = 0;
         body_turrets += 1 + TableLebBytes( (uint64_t) ( value.turrets_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.turrets_count; elem_i++ )
@@ -5762,7 +9763,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
     if ( value.missiles_count < 0 || value.missiles_count > 4096 ) { return -1; } // storage invariant
     if ( value.missiles_count > 0 )
     {
-        const uint64_t ref_missiles = ids.ref( 0x1c3027194b1ba4d0ull, 36 );
+        const uint64_t ref_missiles = ids.ref( 0x1c3027194b1ba4d0ull );
         int64_t body_missiles = 0;
         body_missiles += 1 + TableLebBytes( (uint64_t) ( value.missiles_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.missiles_count; elem_i++ )
@@ -5776,7 +9777,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
     if ( value.dynamic_props_count < 0 || value.dynamic_props_count > 4096 ) { return -1; } // storage invariant
     if ( value.dynamic_props_count > 0 )
     {
-        const uint64_t ref_dynamic_props = ids.ref( 0x43125398a9903d27ull, 37 );
+        const uint64_t ref_dynamic_props = ids.ref( 0x43125398a9903d27ull );
         int64_t body_dynamic_props = 0;
         body_dynamic_props += 1 + TableLebBytes( (uint64_t) ( value.dynamic_props_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.dynamic_props_count; elem_i++ )
@@ -5790,7 +9791,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
     if ( value.static_props_count < 0 || value.static_props_count > 20000 ) { return -1; } // storage invariant
     if ( value.static_props_count > 0 )
     {
-        const uint64_t ref_static_props = ids.ref( 0xc1f8d7edff7fcfd2ull, 38 );
+        const uint64_t ref_static_props = ids.ref( 0xc1f8d7edff7fcfd2ull );
         int64_t body_static_props = 0;
         body_static_props += 1 + TableLebBytes( (uint64_t) ( value.static_props_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.static_props_count; elem_i++ )
@@ -5804,7 +9805,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
     if ( value.cosmetic_props_count < 0 || value.cosmetic_props_count > 8192 ) { return -1; } // storage invariant
     if ( value.cosmetic_props_count > 0 )
     {
-        const uint64_t ref_cosmetic_props = ids.ref( 0x33408e39f5f480ffull, 39 );
+        const uint64_t ref_cosmetic_props = ids.ref( 0x33408e39f5f480ffull );
         int64_t body_cosmetic_props = 0;
         body_cosmetic_props += 1 + TableLebBytes( (uint64_t) ( value.cosmetic_props_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.cosmetic_props_count; elem_i++ )
@@ -5818,7 +9819,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
     if ( value.lasers_count < 0 || value.lasers_count > 32000 ) { return -1; } // storage invariant
     if ( value.lasers_count > 0 )
     {
-        const uint64_t ref_lasers = ids.ref( 0xd982b77b3e92d16dull, 40 );
+        const uint64_t ref_lasers = ids.ref( 0xd982b77b3e92d16dull );
         int64_t body_lasers = 0;
         body_lasers += 1 + TableLebBytes( (uint64_t) ( value.lasers_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.lasers_count; elem_i++ )
@@ -5832,7 +9833,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
     if ( value.explosions_count < 0 || value.explosions_count > 32000 ) { return -1; } // storage invariant
     if ( value.explosions_count > 0 )
     {
-        const uint64_t ref_explosions = ids.ref( 0x876a8c1a85806a69ull, 41 );
+        const uint64_t ref_explosions = ids.ref( 0x876a8c1a85806a69ull );
         int64_t body_explosions = 0;
         body_explosions += 1 + TableLebBytes( (uint64_t) ( value.explosions_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.explosions_count; elem_i++ )
@@ -5858,13 +9859,13 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
 {
     if ( value.version != 0 )
     {
-        w.putleb( ids.ref( 0xbb62c62c9808ea37ull, 32 ) ); w.put8( 9 ); // version
+        w.putleb( ids.ref( 0xbb62c62c9808ea37ull ) ); w.put8( 9 ); // version
         w.put64( uint64_t( value.version ) );
     }
     if ( value.cameras_count < 0 || value.cameras_count > 1 ) { return false; } // storage invariant
     if ( value.cameras_count > 0 )
     {
-        const uint64_t ref_cameras = ids.ref( 0x0f9222d2ba7aa2a7ull, 33 );
+        const uint64_t ref_cameras = ids.ref( 0x0f9222d2ba7aa2a7ull );
         int64_t body_cameras = 0;
         body_cameras += 1 + TableLebBytes( (uint64_t) ( value.cameras_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.cameras_count; elem_i++ )
@@ -5888,7 +9889,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     if ( value.ships_count < 0 || value.ships_count > 4096 ) { return false; } // storage invariant
     if ( value.ships_count > 0 )
     {
-        const uint64_t ref_ships = ids.ref( 0x294a5c4913e1ad44ull, 34 );
+        const uint64_t ref_ships = ids.ref( 0x294a5c4913e1ad44ull );
         int64_t body_ships = 0;
         body_ships += 1 + TableLebBytes( (uint64_t) ( value.ships_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.ships_count; elem_i++ )
@@ -5912,7 +9913,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     if ( value.turrets_count < 0 || value.turrets_count > 1024 ) { return false; } // storage invariant
     if ( value.turrets_count > 0 )
     {
-        const uint64_t ref_turrets = ids.ref( 0x84f8260bc283608cull, 35 );
+        const uint64_t ref_turrets = ids.ref( 0x84f8260bc283608cull );
         int64_t body_turrets = 0;
         body_turrets += 1 + TableLebBytes( (uint64_t) ( value.turrets_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.turrets_count; elem_i++ )
@@ -5936,7 +9937,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     if ( value.missiles_count < 0 || value.missiles_count > 4096 ) { return false; } // storage invariant
     if ( value.missiles_count > 0 )
     {
-        const uint64_t ref_missiles = ids.ref( 0x1c3027194b1ba4d0ull, 36 );
+        const uint64_t ref_missiles = ids.ref( 0x1c3027194b1ba4d0ull );
         int64_t body_missiles = 0;
         body_missiles += 1 + TableLebBytes( (uint64_t) ( value.missiles_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.missiles_count; elem_i++ )
@@ -5960,7 +9961,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     if ( value.dynamic_props_count < 0 || value.dynamic_props_count > 4096 ) { return false; } // storage invariant
     if ( value.dynamic_props_count > 0 )
     {
-        const uint64_t ref_dynamic_props = ids.ref( 0x43125398a9903d27ull, 37 );
+        const uint64_t ref_dynamic_props = ids.ref( 0x43125398a9903d27ull );
         int64_t body_dynamic_props = 0;
         body_dynamic_props += 1 + TableLebBytes( (uint64_t) ( value.dynamic_props_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.dynamic_props_count; elem_i++ )
@@ -5984,7 +9985,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     if ( value.static_props_count < 0 || value.static_props_count > 20000 ) { return false; } // storage invariant
     if ( value.static_props_count > 0 )
     {
-        const uint64_t ref_static_props = ids.ref( 0xc1f8d7edff7fcfd2ull, 38 );
+        const uint64_t ref_static_props = ids.ref( 0xc1f8d7edff7fcfd2ull );
         int64_t body_static_props = 0;
         body_static_props += 1 + TableLebBytes( (uint64_t) ( value.static_props_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.static_props_count; elem_i++ )
@@ -6008,7 +10009,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     if ( value.cosmetic_props_count < 0 || value.cosmetic_props_count > 8192 ) { return false; } // storage invariant
     if ( value.cosmetic_props_count > 0 )
     {
-        const uint64_t ref_cosmetic_props = ids.ref( 0x33408e39f5f480ffull, 39 );
+        const uint64_t ref_cosmetic_props = ids.ref( 0x33408e39f5f480ffull );
         int64_t body_cosmetic_props = 0;
         body_cosmetic_props += 1 + TableLebBytes( (uint64_t) ( value.cosmetic_props_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.cosmetic_props_count; elem_i++ )
@@ -6032,7 +10033,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     if ( value.lasers_count < 0 || value.lasers_count > 32000 ) { return false; } // storage invariant
     if ( value.lasers_count > 0 )
     {
-        const uint64_t ref_lasers = ids.ref( 0xd982b77b3e92d16dull, 40 );
+        const uint64_t ref_lasers = ids.ref( 0xd982b77b3e92d16dull );
         int64_t body_lasers = 0;
         body_lasers += 1 + TableLebBytes( (uint64_t) ( value.lasers_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.lasers_count; elem_i++ )
@@ -6056,7 +10057,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     if ( value.explosions_count < 0 || value.explosions_count > 32000 ) { return false; } // storage invariant
     if ( value.explosions_count > 0 )
     {
-        const uint64_t ref_explosions = ids.ref( 0x876a8c1a85806a69ull, 41 );
+        const uint64_t ref_explosions = ids.ref( 0x876a8c1a85806a69ull );
         int64_t body_explosions = 0;
         body_explosions += 1 + TableLebBytes( (uint64_t) ( value.explosions_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.explosions_count; elem_i++ )
@@ -6104,7 +10105,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -6681,55 +10682,679 @@ inline bool RenderFrameLoad( RenderFrame & value, const uint8_t * buffer, int64_
     return RenderFrameLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
-// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
-// body, and no trailer at all — the connection's announced table is where
-// the ids live. Every reference is a compile-time SLOT, so this walk does
-// no lookup and a save costs what a save costs.
-inline int64_t RenderFrameMeasureMessage( const RenderFrame & value )
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & value )
 {
-    TableIds ids;
-    ids.vocabulary = true;
-    const int64_t body = RenderFrameMeasureBody( ids, value );
-    if ( body < 0 ) { return -1; }
-    return 1 + body;
+    int64_t bits = 0;
+    if ( value.version != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.cameras_count < 0 || value.cameras_count > 1 ) { return -1; } // storage invariant
+    if ( value.cameras_count > 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 1;
+        for ( int32_t i = 0; i < value.cameras_count; i++ )
+        {
+            const int64_t elem = RenderCameraMeasureMessageBody( at + bits, value.cameras[i] );
+            if ( elem < 0 ) { return -1; }
+            bits += elem;
+        }
+    }
+    if ( value.ships_count < 0 || value.ships_count > 4096 ) { return -1; } // storage invariant
+    if ( value.ships_count > 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 13;
+        for ( int32_t i = 0; i < value.ships_count; i++ )
+        {
+            const int64_t elem = RenderShipMeasureMessageBody( at + bits, value.ships[i] );
+            if ( elem < 0 ) { return -1; }
+            bits += elem;
+        }
+    }
+    if ( value.turrets_count < 0 || value.turrets_count > 1024 ) { return -1; } // storage invariant
+    if ( value.turrets_count > 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 11;
+        for ( int32_t i = 0; i < value.turrets_count; i++ )
+        {
+            const int64_t elem = RenderTurretMeasureMessageBody( at + bits, value.turrets[i] );
+            if ( elem < 0 ) { return -1; }
+            bits += elem;
+        }
+    }
+    if ( value.missiles_count < 0 || value.missiles_count > 4096 ) { return -1; } // storage invariant
+    if ( value.missiles_count > 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 13;
+        for ( int32_t i = 0; i < value.missiles_count; i++ )
+        {
+            const int64_t elem = RenderMissileMeasureMessageBody( at + bits, value.missiles[i] );
+            if ( elem < 0 ) { return -1; }
+            bits += elem;
+        }
+    }
+    if ( value.dynamic_props_count < 0 || value.dynamic_props_count > 4096 ) { return -1; } // storage invariant
+    if ( value.dynamic_props_count > 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 13;
+        for ( int32_t i = 0; i < value.dynamic_props_count; i++ )
+        {
+            const int64_t elem = RenderDynamicPropMeasureMessageBody( at + bits, value.dynamic_props[i] );
+            if ( elem < 0 ) { return -1; }
+            bits += elem;
+        }
+    }
+    if ( value.static_props_count < 0 || value.static_props_count > 20000 ) { return -1; } // storage invariant
+    if ( value.static_props_count > 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 15;
+        for ( int32_t i = 0; i < value.static_props_count; i++ )
+        {
+            const int64_t elem = RenderStaticPropMeasureMessageBody( at + bits, value.static_props[i] );
+            if ( elem < 0 ) { return -1; }
+            bits += elem;
+        }
+    }
+    if ( value.cosmetic_props_count < 0 || value.cosmetic_props_count > 8192 ) { return -1; } // storage invariant
+    if ( value.cosmetic_props_count > 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 14;
+        for ( int32_t i = 0; i < value.cosmetic_props_count; i++ )
+        {
+            const int64_t elem = RenderCosmeticPropMeasureMessageBody( at + bits, value.cosmetic_props[i] );
+            if ( elem < 0 ) { return -1; }
+            bits += elem;
+        }
+    }
+    if ( value.lasers_count < 0 || value.lasers_count > 32000 ) { return -1; } // storage invariant
+    if ( value.lasers_count > 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 15;
+        for ( int32_t i = 0; i < value.lasers_count; i++ )
+        {
+            const int64_t elem = RenderLaserMeasureMessageBody( at + bits, value.lasers[i] );
+            if ( elem < 0 ) { return -1; }
+            bits += elem;
+        }
+    }
+    if ( value.explosions_count < 0 || value.explosions_count > 32000 ) { return -1; } // storage invariant
+    if ( value.explosions_count > 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 15;
+        for ( int32_t i = 0; i < value.explosions_count; i++ )
+        {
+            const int64_t elem = RenderExplosionMeasureMessageBody( at + bits, value.explosions[i] );
+            if ( elem < 0 ) { return -1; }
+            bits += elem;
+        }
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
 }
 
-inline int64_t RenderFrameSaveMessage( const RenderFrame & value, uint8_t * buffer, int64_t capacity )
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & value )
 {
-    TableWriter w( buffer, capacity );
-    TableIds ids;
-    ids.vocabulary = true;
-    w.put8( kTableWireMessageForm );
-    if ( !RenderFrameSaveBody( w, ids, value ) || w.overflow ) { return -1; }
-    return w.offset; // == RenderFrameMeasureMessage( value )
+    if ( value.version != 0 )
+    {
+        w.put( 31, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.version ), 64 );
+    }
+    if ( value.cameras_count < 0 || value.cameras_count > 1 ) { return false; } // storage invariant
+    if ( value.cameras_count > 0 )
+    {
+        w.put( 32, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.cameras_count ) - 0, 1 );
+        for ( int32_t i = 0; i < value.cameras_count; i++ )
+        {
+            if ( !RenderCameraSaveMessageBody( w, value.cameras[i] ) ) { return false; }
+        }
+    }
+    if ( value.ships_count < 0 || value.ships_count > 4096 ) { return false; } // storage invariant
+    if ( value.ships_count > 0 )
+    {
+        w.put( 33, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.ships_count ) - 0, 13 );
+        for ( int32_t i = 0; i < value.ships_count; i++ )
+        {
+            if ( !RenderShipSaveMessageBody( w, value.ships[i] ) ) { return false; }
+        }
+    }
+    if ( value.turrets_count < 0 || value.turrets_count > 1024 ) { return false; } // storage invariant
+    if ( value.turrets_count > 0 )
+    {
+        w.put( 34, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.turrets_count ) - 0, 11 );
+        for ( int32_t i = 0; i < value.turrets_count; i++ )
+        {
+            if ( !RenderTurretSaveMessageBody( w, value.turrets[i] ) ) { return false; }
+        }
+    }
+    if ( value.missiles_count < 0 || value.missiles_count > 4096 ) { return false; } // storage invariant
+    if ( value.missiles_count > 0 )
+    {
+        w.put( 35, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.missiles_count ) - 0, 13 );
+        for ( int32_t i = 0; i < value.missiles_count; i++ )
+        {
+            if ( !RenderMissileSaveMessageBody( w, value.missiles[i] ) ) { return false; }
+        }
+    }
+    if ( value.dynamic_props_count < 0 || value.dynamic_props_count > 4096 ) { return false; } // storage invariant
+    if ( value.dynamic_props_count > 0 )
+    {
+        w.put( 36, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.dynamic_props_count ) - 0, 13 );
+        for ( int32_t i = 0; i < value.dynamic_props_count; i++ )
+        {
+            if ( !RenderDynamicPropSaveMessageBody( w, value.dynamic_props[i] ) ) { return false; }
+        }
+    }
+    if ( value.static_props_count < 0 || value.static_props_count > 20000 ) { return false; } // storage invariant
+    if ( value.static_props_count > 0 )
+    {
+        w.put( 37, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.static_props_count ) - 0, 15 );
+        for ( int32_t i = 0; i < value.static_props_count; i++ )
+        {
+            if ( !RenderStaticPropSaveMessageBody( w, value.static_props[i] ) ) { return false; }
+        }
+    }
+    if ( value.cosmetic_props_count < 0 || value.cosmetic_props_count > 8192 ) { return false; } // storage invariant
+    if ( value.cosmetic_props_count > 0 )
+    {
+        w.put( 38, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.cosmetic_props_count ) - 0, 14 );
+        for ( int32_t i = 0; i < value.cosmetic_props_count; i++ )
+        {
+            if ( !RenderCosmeticPropSaveMessageBody( w, value.cosmetic_props[i] ) ) { return false; }
+        }
+    }
+    if ( value.lasers_count < 0 || value.lasers_count > 32000 ) { return false; } // storage invariant
+    if ( value.lasers_count > 0 )
+    {
+        w.put( 39, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.lasers_count ) - 0, 15 );
+        for ( int32_t i = 0; i < value.lasers_count; i++ )
+        {
+            if ( !RenderLaserSaveMessageBody( w, value.lasers[i] ) ) { return false; }
+        }
+    }
+    if ( value.explosions_count < 0 || value.explosions_count > 32000 ) { return false; } // storage invariant
+    if ( value.explosions_count > 0 )
+    {
+        w.put( 40, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.explosions_count ) - 0, 15 );
+        for ( int32_t i = 0; i < value.explosions_count; i++ )
+        {
+            if ( !RenderExplosionSaveMessageBody( w, value.explosions[i] ) ) { return false; }
+        }
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
 }
 
-// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
-// nothing is decoded, the reader says it holds no table, no counter moves
-// and malformed does not fire. A reader does not fall back to the file
-// form on its own and does not guess a table, because a guessed table
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderFrame & value )
+{
+    RenderFrameReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0xbb62c62c9808ea37ull: // version
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 9 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    uint64_t decoded_v = (uint64_t) decoded_wide;
+                    value.version = decoded_v;
+                }
+                break;
+            }
+            case 0x0f9222d2ba7aa2a7ull: // cameras
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 14 || entry.elem_kind != 13 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t n = (uint64_t) entry.min;
+                    const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
+                    if ( count_bits > 0 )
+                    {
+                        uint64_t raw = 0;
+                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                        n = raw + (uint64_t) entry.min;
+                    }
+                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 1 ) { kept = 1; report->clamped++; } else { kept = (int32_t) n; }
+                    const uint64_t walk = n;
+                    for ( uint64_t i = 0; i < walk; i++ )
+                    {
+                        const bool in_bounds = (int32_t) i < kept;
+                        RenderCamera scratch;
+                        RenderCameraReset( scratch );
+                        if ( !RenderCameraLoadMessageBody( r, vocabulary, report, index_bits, ( in_bounds ? value.cameras[i] : scratch ) ) ) { return false; }
+                    }
+                    value.cameras_count = kept;
+                }
+                break;
+            }
+            case 0x294a5c4913e1ad44ull: // ships
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 14 || entry.elem_kind != 13 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t n = (uint64_t) entry.min;
+                    const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
+                    if ( count_bits > 0 )
+                    {
+                        uint64_t raw = 0;
+                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                        n = raw + (uint64_t) entry.min;
+                    }
+                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 4096 ) { kept = 4096; report->clamped++; } else { kept = (int32_t) n; }
+                    const uint64_t walk = n;
+                    for ( uint64_t i = 0; i < walk; i++ )
+                    {
+                        const bool in_bounds = (int32_t) i < kept;
+                        RenderShip scratch;
+                        RenderShipReset( scratch );
+                        if ( !RenderShipLoadMessageBody( r, vocabulary, report, index_bits, ( in_bounds ? value.ships[i] : scratch ) ) ) { return false; }
+                    }
+                    value.ships_count = kept;
+                }
+                break;
+            }
+            case 0x84f8260bc283608cull: // turrets
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 14 || entry.elem_kind != 13 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t n = (uint64_t) entry.min;
+                    const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
+                    if ( count_bits > 0 )
+                    {
+                        uint64_t raw = 0;
+                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                        n = raw + (uint64_t) entry.min;
+                    }
+                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 1024 ) { kept = 1024; report->clamped++; } else { kept = (int32_t) n; }
+                    const uint64_t walk = n;
+                    for ( uint64_t i = 0; i < walk; i++ )
+                    {
+                        const bool in_bounds = (int32_t) i < kept;
+                        RenderTurret scratch;
+                        RenderTurretReset( scratch );
+                        if ( !RenderTurretLoadMessageBody( r, vocabulary, report, index_bits, ( in_bounds ? value.turrets[i] : scratch ) ) ) { return false; }
+                    }
+                    value.turrets_count = kept;
+                }
+                break;
+            }
+            case 0x1c3027194b1ba4d0ull: // missiles
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 14 || entry.elem_kind != 13 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t n = (uint64_t) entry.min;
+                    const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
+                    if ( count_bits > 0 )
+                    {
+                        uint64_t raw = 0;
+                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                        n = raw + (uint64_t) entry.min;
+                    }
+                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 4096 ) { kept = 4096; report->clamped++; } else { kept = (int32_t) n; }
+                    const uint64_t walk = n;
+                    for ( uint64_t i = 0; i < walk; i++ )
+                    {
+                        const bool in_bounds = (int32_t) i < kept;
+                        RenderMissile scratch;
+                        RenderMissileReset( scratch );
+                        if ( !RenderMissileLoadMessageBody( r, vocabulary, report, index_bits, ( in_bounds ? value.missiles[i] : scratch ) ) ) { return false; }
+                    }
+                    value.missiles_count = kept;
+                }
+                break;
+            }
+            case 0x43125398a9903d27ull: // dynamic_props
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 14 || entry.elem_kind != 13 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t n = (uint64_t) entry.min;
+                    const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
+                    if ( count_bits > 0 )
+                    {
+                        uint64_t raw = 0;
+                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                        n = raw + (uint64_t) entry.min;
+                    }
+                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 4096 ) { kept = 4096; report->clamped++; } else { kept = (int32_t) n; }
+                    const uint64_t walk = n;
+                    for ( uint64_t i = 0; i < walk; i++ )
+                    {
+                        const bool in_bounds = (int32_t) i < kept;
+                        RenderDynamicProp scratch;
+                        RenderDynamicPropReset( scratch );
+                        if ( !RenderDynamicPropLoadMessageBody( r, vocabulary, report, index_bits, ( in_bounds ? value.dynamic_props[i] : scratch ) ) ) { return false; }
+                    }
+                    value.dynamic_props_count = kept;
+                }
+                break;
+            }
+            case 0xc1f8d7edff7fcfd2ull: // static_props
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 14 || entry.elem_kind != 13 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t n = (uint64_t) entry.min;
+                    const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
+                    if ( count_bits > 0 )
+                    {
+                        uint64_t raw = 0;
+                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                        n = raw + (uint64_t) entry.min;
+                    }
+                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 20000 ) { kept = 20000; report->clamped++; } else { kept = (int32_t) n; }
+                    const uint64_t walk = n;
+                    for ( uint64_t i = 0; i < walk; i++ )
+                    {
+                        const bool in_bounds = (int32_t) i < kept;
+                        RenderStaticProp scratch;
+                        RenderStaticPropReset( scratch );
+                        if ( !RenderStaticPropLoadMessageBody( r, vocabulary, report, index_bits, ( in_bounds ? value.static_props[i] : scratch ) ) ) { return false; }
+                    }
+                    value.static_props_count = kept;
+                }
+                break;
+            }
+            case 0x33408e39f5f480ffull: // cosmetic_props
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 14 || entry.elem_kind != 13 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t n = (uint64_t) entry.min;
+                    const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
+                    if ( count_bits > 0 )
+                    {
+                        uint64_t raw = 0;
+                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                        n = raw + (uint64_t) entry.min;
+                    }
+                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 8192 ) { kept = 8192; report->clamped++; } else { kept = (int32_t) n; }
+                    const uint64_t walk = n;
+                    for ( uint64_t i = 0; i < walk; i++ )
+                    {
+                        const bool in_bounds = (int32_t) i < kept;
+                        RenderCosmeticProp scratch;
+                        RenderCosmeticPropReset( scratch );
+                        if ( !RenderCosmeticPropLoadMessageBody( r, vocabulary, report, index_bits, ( in_bounds ? value.cosmetic_props[i] : scratch ) ) ) { return false; }
+                    }
+                    value.cosmetic_props_count = kept;
+                }
+                break;
+            }
+            case 0xd982b77b3e92d16dull: // lasers
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 14 || entry.elem_kind != 13 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t n = (uint64_t) entry.min;
+                    const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
+                    if ( count_bits > 0 )
+                    {
+                        uint64_t raw = 0;
+                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                        n = raw + (uint64_t) entry.min;
+                    }
+                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 32000 ) { kept = 32000; report->clamped++; } else { kept = (int32_t) n; }
+                    const uint64_t walk = n;
+                    for ( uint64_t i = 0; i < walk; i++ )
+                    {
+                        const bool in_bounds = (int32_t) i < kept;
+                        RenderLaser scratch;
+                        RenderLaserReset( scratch );
+                        if ( !RenderLaserLoadMessageBody( r, vocabulary, report, index_bits, ( in_bounds ? value.lasers[i] : scratch ) ) ) { return false; }
+                    }
+                    value.lasers_count = kept;
+                }
+                break;
+            }
+            case 0x876a8c1a85806a69ull: // explosions
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 14 || entry.elem_kind != 13 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t n = (uint64_t) entry.min;
+                    const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
+                    if ( count_bits > 0 )
+                    {
+                        uint64_t raw = 0;
+                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                        n = raw + (uint64_t) entry.min;
+                    }
+                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 32000 ) { kept = 32000; report->clamped++; } else { kept = (int32_t) n; }
+                    const uint64_t walk = n;
+                    for ( uint64_t i = 0; i < walk; i++ )
+                    {
+                        const bool in_bounds = (int32_t) i < kept;
+                        RenderExplosion scratch;
+                        RenderExplosionReset( scratch );
+                        if ( !RenderExplosionLoadMessageBody( r, vocabulary, report, index_bits, ( in_bounds ? value.explosions[i] : scratch ) ) ) { return false; }
+                    }
+                    value.explosions_count = kept;
+                }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of bodies of
+// ONE ROOT in one buffer, one count and one continuous bit stream with no
+// alignment between them. A single message is the batch of one, and there is
+// no singular verb.
+//
+// Every reference is a compile-time SLOT and every width a literal, so a save
+// does no lookup at all and costs what a save costs.
+//
+// M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
+// verdict set and the reason batch_too_large on it, and nothing written. The
+// refusal is learned at MEASURE time, before a buffer is allocated, and a
+// caller with more bodies calls again.
+inline int64_t RenderFrameMeasureMessages( const RenderFrame * values, int64_t count, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    int64_t bits = 8; // the body count, a ranged integer over [1, 256]
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const int64_t body = RenderFrameMeasureMessageBody( bits, values[i] );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
+}
+
+inline int64_t RenderFrameSaveMessages( const RenderFrame * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableMessageBatch batch;
+    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( !RenderFrameSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        batch.written++;
+    }
+    return TableMessageBatchEnd( batch ); // == RenderFrameMeasureMessages( values, count, report )
+}
+
+// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no vocabulary, no counter
+// moves and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a vocabulary, because a guessed one
 // decodes a body under the wrong names in silence.
-inline bool RenderFrameLoadMessage( RenderFrame & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+//
+// `count` is IN and OUT: in, the storage the caller has room for, and out,
+// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
+// batch_too_large, found from the count before a body is decoded, and count
+// comes back holding the WIRE's M, so the caller calls again with storage at
+// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
+// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
+// after it is not a body.
+inline bool RenderFrameLoadMessages( RenderFrame * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    RenderFrameReset( value );
-    if ( bytes < 1 ) { to->malformed = true; return false; }
-    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
-    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
-    // there is no stray-byte rule to apply between one and a first entry
-    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    return RenderFrameLoadBody( r, value );
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    const int64_t capacity = *count;
+    *count = 0;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
+    if ( bodies < 0 ) { return false; }
+    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    for ( int64_t i = 0; i < bodies; i++ )
+    {
+        if ( !RenderFrameLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        br.remaining--;
+    }
+    *count = bodies;
+    return TableMessageBatchClose( br );
 }
 
 inline int64_t RenderVector3MeasureBody( TableIds & ids, const RenderVector3 & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.x != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f54c86021707ull, 47 ) ) + 1 + 8; } // x
-    if ( value.y != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f44c86021554ull, 48 ) ) + 1 + 8; } // y
-    if ( value.z != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f74c86021a6dull, 49 ) ) + 1 + 8; } // z
+    if ( value.x != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f54c86021707ull ) ) + 1 + 8; } // x
+    if ( value.y != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f44c86021554ull ) ) + 1 + 8; } // y
+    if ( value.z != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f74c86021a6dull ) ) + 1 + 8; } // z
     return bytes;
 }
 
@@ -6745,17 +11370,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3SaveBody( TableWriter & w, TableIds & i
 {
     if ( value.x != 0.0 )
     {
-        w.putleb( ids.ref( 0xaf63f54c86021707ull, 47 ) ); w.put8( 11 ); // x
+        w.putleb( ids.ref( 0xaf63f54c86021707ull ) ); w.put8( 11 ); // x
         w.put64( table_double_to_bits( value.x ) );
     }
     if ( value.y != 0.0 )
     {
-        w.putleb( ids.ref( 0xaf63f44c86021554ull, 48 ) ); w.put8( 11 ); // y
+        w.putleb( ids.ref( 0xaf63f44c86021554ull ) ); w.put8( 11 ); // y
         w.put64( table_double_to_bits( value.y ) );
     }
     if ( value.z != 0.0 )
     {
-        w.putleb( ids.ref( 0xaf63f74c86021a6dull, 49 ) ); w.put8( 11 ); // z
+        w.putleb( ids.ref( 0xaf63f74c86021a6dull ) ); w.put8( 11 ); // z
         w.put64( table_double_to_bits( value.z ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -6785,7 +11410,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -6928,56 +11553,207 @@ inline bool RenderVector3Load( RenderVector3 & value, const uint8_t * buffer, in
     return RenderVector3LoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
-// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
-// body, and no trailer at all — the connection's announced table is where
-// the ids live. Every reference is a compile-time SLOT, so this walk does
-// no lookup and a save costs what a save costs.
-inline int64_t RenderVector3MeasureMessage( const RenderVector3 & value )
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t RenderVector3MeasureMessageBody( int64_t at, const RenderVector3 & value )
 {
-    TableIds ids;
-    ids.vocabulary = true;
-    const int64_t body = RenderVector3MeasureBody( ids, value );
-    if ( body < 0 ) { return -1; }
-    return 1 + body;
+    int64_t bits = 0;
+    if ( value.x != 0.0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.y != 0.0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.z != 0.0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
 }
 
-inline int64_t RenderVector3SaveMessage( const RenderVector3 & value, uint8_t * buffer, int64_t capacity )
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool RenderVector3SaveMessageBody( TableBitWriter & w, const RenderVector3 & value )
 {
-    TableWriter w( buffer, capacity );
-    TableIds ids;
-    ids.vocabulary = true;
-    w.put8( kTableWireMessageForm );
-    if ( !RenderVector3SaveBody( w, ids, value ) || w.overflow ) { return -1; }
-    return w.offset; // == RenderVector3MeasureMessage( value )
+    if ( value.x != 0.0 )
+    {
+        w.put( 46, kTableMessageRefBitsHere );
+        w.put( table_double_to_bits( value.x ), 64 );
+    }
+    if ( value.y != 0.0 )
+    {
+        w.put( 47, kTableMessageRefBitsHere );
+        w.put( table_double_to_bits( value.y ), 64 );
+    }
+    if ( value.z != 0.0 )
+    {
+        w.put( 48, kTableMessageRefBitsHere );
+        w.put( table_double_to_bits( value.z ), 64 );
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
 }
 
-// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
-// nothing is decoded, the reader says it holds no table, no counter moves
-// and malformed does not fire. A reader does not fall back to the file
-// form on its own and does not guess a table, because a guessed table
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderVector3 & value )
+{
+    RenderVector3Reset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0xaf63f54c86021707ull: // x
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 11 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->malformed = true; return false; } value.x = table_bits_to_double( raw ); }
+                break;
+            }
+            case 0xaf63f44c86021554ull: // y
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 11 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->malformed = true; return false; } value.y = table_bits_to_double( raw ); }
+                break;
+            }
+            case 0xaf63f74c86021a6dull: // z
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 11 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->malformed = true; return false; } value.z = table_bits_to_double( raw ); }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of bodies of
+// ONE ROOT in one buffer, one count and one continuous bit stream with no
+// alignment between them. A single message is the batch of one, and there is
+// no singular verb.
+//
+// Every reference is a compile-time SLOT and every width a literal, so a save
+// does no lookup at all and costs what a save costs.
+//
+// M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
+// verdict set and the reason batch_too_large on it, and nothing written. The
+// refusal is learned at MEASURE time, before a buffer is allocated, and a
+// caller with more bodies calls again.
+inline int64_t RenderVector3MeasureMessages( const RenderVector3 * values, int64_t count, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    int64_t bits = 8; // the body count, a ranged integer over [1, 256]
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const int64_t body = RenderVector3MeasureMessageBody( bits, values[i] );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
+}
+
+inline int64_t RenderVector3SaveMessages( const RenderVector3 * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableMessageBatch batch;
+    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( !RenderVector3SaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        batch.written++;
+    }
+    return TableMessageBatchEnd( batch ); // == RenderVector3MeasureMessages( values, count, report )
+}
+
+// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no vocabulary, no counter
+// moves and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a vocabulary, because a guessed one
 // decodes a body under the wrong names in silence.
-inline bool RenderVector3LoadMessage( RenderVector3 & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+//
+// `count` is IN and OUT: in, the storage the caller has room for, and out,
+// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
+// batch_too_large, found from the count before a body is decoded, and count
+// comes back holding the WIRE's M, so the caller calls again with storage at
+// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
+// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
+// after it is not a body.
+inline bool RenderVector3LoadMessages( RenderVector3 * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    RenderVector3Reset( value );
-    if ( bytes < 1 ) { to->malformed = true; return false; }
-    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
-    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
-    // there is no stray-byte rule to apply between one and a first entry
-    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    return RenderVector3LoadBody( r, value );
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    const int64_t capacity = *count;
+    *count = 0;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
+    if ( bodies < 0 ) { return false; }
+    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    for ( int64_t i = 0; i < bodies; i++ )
+    {
+        if ( !RenderVector3LoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        br.remaining--;
+    }
+    *count = bodies;
+    return TableMessageBatchClose( br );
 }
 
 inline int64_t RenderQuaternionMeasureBody( TableIds & ids, const RenderQuaternion & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.x != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f54c86021707ull, 47 ) ) + 1 + 8; } // x
-    if ( value.y != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f44c86021554ull, 48 ) ) + 1 + 8; } // y
-    if ( value.z != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f74c86021a6dull, 49 ) ) + 1 + 8; } // z
-    if ( value.w != 1.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63ea4c86020456ull, 50 ) ) + 1 + 8; } // w
+    if ( value.x != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f54c86021707ull ) ) + 1 + 8; } // x
+    if ( value.y != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f44c86021554ull ) ) + 1 + 8; } // y
+    if ( value.z != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f74c86021a6dull ) ) + 1 + 8; } // z
+    if ( value.w != 1.0 ) { bytes += TableLebBytes( ids.ref( 0xaf63ea4c86020456ull ) ) + 1 + 8; } // w
     return bytes;
 }
 
@@ -6993,22 +11769,22 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionSaveBody( TableWriter & w, TableIds 
 {
     if ( value.x != 0.0 )
     {
-        w.putleb( ids.ref( 0xaf63f54c86021707ull, 47 ) ); w.put8( 11 ); // x
+        w.putleb( ids.ref( 0xaf63f54c86021707ull ) ); w.put8( 11 ); // x
         w.put64( table_double_to_bits( value.x ) );
     }
     if ( value.y != 0.0 )
     {
-        w.putleb( ids.ref( 0xaf63f44c86021554ull, 48 ) ); w.put8( 11 ); // y
+        w.putleb( ids.ref( 0xaf63f44c86021554ull ) ); w.put8( 11 ); // y
         w.put64( table_double_to_bits( value.y ) );
     }
     if ( value.z != 0.0 )
     {
-        w.putleb( ids.ref( 0xaf63f74c86021a6dull, 49 ) ); w.put8( 11 ); // z
+        w.putleb( ids.ref( 0xaf63f74c86021a6dull ) ); w.put8( 11 ); // z
         w.put64( table_double_to_bits( value.z ) );
     }
     if ( value.w != 1.0 )
     {
-        w.putleb( ids.ref( 0xaf63ea4c86020456ull, 50 ) ); w.put8( 11 ); // w
+        w.putleb( ids.ref( 0xaf63ea4c86020456ull ) ); w.put8( 11 ); // w
         w.put64( table_double_to_bits( value.w ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -7038,7 +11814,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -7204,47 +11980,222 @@ inline bool RenderQuaternionLoad( RenderQuaternion & value, const uint8_t * buff
     return RenderQuaternionLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
-// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
-// body, and no trailer at all — the connection's announced table is where
-// the ids live. Every reference is a compile-time SLOT, so this walk does
-// no lookup and a save costs what a save costs.
-inline int64_t RenderQuaternionMeasureMessage( const RenderQuaternion & value )
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t RenderQuaternionMeasureMessageBody( int64_t at, const RenderQuaternion & value )
 {
-    TableIds ids;
-    ids.vocabulary = true;
-    const int64_t body = RenderQuaternionMeasureBody( ids, value );
-    if ( body < 0 ) { return -1; }
-    return 1 + body;
+    int64_t bits = 0;
+    if ( value.x != 0.0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.y != 0.0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.z != 0.0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.w != 1.0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
 }
 
-inline int64_t RenderQuaternionSaveMessage( const RenderQuaternion & value, uint8_t * buffer, int64_t capacity )
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool RenderQuaternionSaveMessageBody( TableBitWriter & w, const RenderQuaternion & value )
 {
-    TableWriter w( buffer, capacity );
-    TableIds ids;
-    ids.vocabulary = true;
-    w.put8( kTableWireMessageForm );
-    if ( !RenderQuaternionSaveBody( w, ids, value ) || w.overflow ) { return -1; }
-    return w.offset; // == RenderQuaternionMeasureMessage( value )
+    if ( value.x != 0.0 )
+    {
+        w.put( 46, kTableMessageRefBitsHere );
+        w.put( table_double_to_bits( value.x ), 64 );
+    }
+    if ( value.y != 0.0 )
+    {
+        w.put( 47, kTableMessageRefBitsHere );
+        w.put( table_double_to_bits( value.y ), 64 );
+    }
+    if ( value.z != 0.0 )
+    {
+        w.put( 48, kTableMessageRefBitsHere );
+        w.put( table_double_to_bits( value.z ), 64 );
+    }
+    if ( value.w != 1.0 )
+    {
+        w.put( 49, kTableMessageRefBitsHere );
+        w.put( table_double_to_bits( value.w ), 64 );
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
 }
 
-// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
-// nothing is decoded, the reader says it holds no table, no counter moves
-// and malformed does not fire. A reader does not fall back to the file
-// form on its own and does not guess a table, because a guessed table
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderQuaternion & value )
+{
+    RenderQuaternionReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0xaf63f54c86021707ull: // x
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 11 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->malformed = true; return false; } value.x = table_bits_to_double( raw ); }
+                break;
+            }
+            case 0xaf63f44c86021554ull: // y
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 11 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->malformed = true; return false; } value.y = table_bits_to_double( raw ); }
+                break;
+            }
+            case 0xaf63f74c86021a6dull: // z
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 11 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->malformed = true; return false; } value.z = table_bits_to_double( raw ); }
+                break;
+            }
+            case 0xaf63ea4c86020456ull: // w
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 11 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->malformed = true; return false; } value.w = table_bits_to_double( raw ); }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of bodies of
+// ONE ROOT in one buffer, one count and one continuous bit stream with no
+// alignment between them. A single message is the batch of one, and there is
+// no singular verb.
+//
+// Every reference is a compile-time SLOT and every width a literal, so a save
+// does no lookup at all and costs what a save costs.
+//
+// M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
+// verdict set and the reason batch_too_large on it, and nothing written. The
+// refusal is learned at MEASURE time, before a buffer is allocated, and a
+// caller with more bodies calls again.
+inline int64_t RenderQuaternionMeasureMessages( const RenderQuaternion * values, int64_t count, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    int64_t bits = 8; // the body count, a ranged integer over [1, 256]
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const int64_t body = RenderQuaternionMeasureMessageBody( bits, values[i] );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
+}
+
+inline int64_t RenderQuaternionSaveMessages( const RenderQuaternion * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableMessageBatch batch;
+    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( !RenderQuaternionSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        batch.written++;
+    }
+    return TableMessageBatchEnd( batch ); // == RenderQuaternionMeasureMessages( values, count, report )
+}
+
+// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no vocabulary, no counter
+// moves and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a vocabulary, because a guessed one
 // decodes a body under the wrong names in silence.
-inline bool RenderQuaternionLoadMessage( RenderQuaternion & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+//
+// `count` is IN and OUT: in, the storage the caller has room for, and out,
+// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
+// batch_too_large, found from the count before a body is decoded, and count
+// comes back holding the WIRE's M, so the caller calls again with storage at
+// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
+// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
+// after it is not a body.
+inline bool RenderQuaternionLoadMessages( RenderQuaternion * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    RenderQuaternionReset( value );
-    if ( bytes < 1 ) { to->malformed = true; return false; }
-    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
-    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
-    // there is no stray-byte rule to apply between one and a first entry
-    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    return RenderQuaternionLoadBody( r, value );
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    const int64_t capacity = *count;
+    *count = 0;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
+    if ( bodies < 0 ) { return false; }
+    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    for ( int64_t i = 0; i < bodies; i++ )
+    {
+        if ( !RenderQuaternionLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        br.remaining--;
+    }
+    *count = bodies;
+    return TableMessageBatchClose( br );
 }
 
 // ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
@@ -8437,181 +13388,181 @@ inline const TableTypeInfo * RenderQuaternionTableType();
 inline const TableTypeInfo * RenderCameraTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderCamera, position ), (uint32_t) sizeof( RenderCamera::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderCamera, rotation ), (uint32_t) sizeof( RenderCamera::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "camera_id", "camera_id", "uint32", 0x9f61700f084ab92eull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, camera_id ), (uint32_t) sizeof( RenderCamera::camera_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "camera_type", "camera_type", "uint32", 0x336d3dc7fffd0c9bull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, camera_type ), (uint32_t) sizeof( RenderCamera::camera_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, target_object_id ), (uint32_t) sizeof( RenderCamera::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "fov", "fov", "float32", 0xdcb27c18fed9e15cull, 10, false, false, false, 0, (uint32_t) offsetof( RenderCamera, fov ), (uint32_t) sizeof( RenderCamera::fov ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderCamera, position ), (uint32_t) sizeof( RenderCamera::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderCamera, rotation ), (uint32_t) sizeof( RenderCamera::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "camera_id", "camera_id", "uint32", 0x9f61700f084ab92eull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, camera_id ), (uint32_t) sizeof( RenderCamera::camera_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "camera_type", "camera_type", "uint32", 0x336d3dc7fffd0c9bull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, camera_type ), (uint32_t) sizeof( RenderCamera::camera_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, target_object_id ), (uint32_t) sizeof( RenderCamera::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "fov", "fov", "float32", 0xdcb27c18fed9e15cull, 10, false, false, false, 0, (uint32_t) offsetof( RenderCamera, fov ), (uint32_t) sizeof( RenderCamera::fov ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "RenderCamera", (uint32_t) sizeof( RenderCamera ), 6, fields, +[]( void * p ) { RenderCameraReset( *(RenderCamera *) p ); } };
+    static const TableTypeInfo info = { "RenderCamera", (uint32_t) sizeof( RenderCamera ), 6, fields, +[]( void * p ) { RenderCameraReset( *(RenderCamera *) p ); }, TableDocNone, 0, NULL };
     return &info;
 }
 
 inline const TableTypeInfo * RenderShipTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderShip, position ), (uint32_t) sizeof( RenderShip::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderShip, rotation ), (uint32_t) sizeof( RenderShip::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "flags", "flags", "ShipFlags", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderShip, flags ), (uint32_t) sizeof( RenderShip::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) { return FlagNameShipFlags( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "" },
-        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderShip, object_id ), (uint32_t) sizeof( RenderShip::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderShip, target_object_id ), (uint32_t) sizeof( RenderShip::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "thrust", "thrust", "float32", 0xcfd587cb3100cd73ull, 10, false, false, false, 0, (uint32_t) offsetof( RenderShip, thrust ), (uint32_t) sizeof( RenderShip::thrust ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderShip, object_sequence ), (uint32_t) sizeof( RenderShip::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "ship_type", "ship_type", "ShipType", 0x1f7d2e86a2e77268ull, 30, false, false, false, 0, (uint32_t) offsetof( RenderShip, ship_type ), (uint32_t) sizeof( RenderShip::ship_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( ShipType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( ShipType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderShip, team ), (uint32_t) sizeof( RenderShip::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
-        { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, false, false, false, 0, (uint32_t) offsetof( RenderShip, has_target_lock ), (uint32_t) sizeof( RenderShip::has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "predicted_explode", "predicted_explode", "bool", 0x4d5be97ba1b9cb81ull, 1, false, false, false, 0, (uint32_t) offsetof( RenderShip, predicted_explode ), (uint32_t) sizeof( RenderShip::predicted_explode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderShip, position ), (uint32_t) sizeof( RenderShip::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderShip, rotation ), (uint32_t) sizeof( RenderShip::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "flags", "flags", "ShipFlags", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderShip, flags ), (uint32_t) sizeof( RenderShip::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) { return FlagNameShipFlags( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderShip, object_id ), (uint32_t) sizeof( RenderShip::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderShip, target_object_id ), (uint32_t) sizeof( RenderShip::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "thrust", "thrust", "float32", 0xcfd587cb3100cd73ull, 10, false, false, false, 0, (uint32_t) offsetof( RenderShip, thrust ), (uint32_t) sizeof( RenderShip::thrust ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderShip, object_sequence ), (uint32_t) sizeof( RenderShip::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "ship_type", "ship_type", "ShipType", 0x1f7d2e86a2e77268ull, 30, false, false, false, 0, (uint32_t) offsetof( RenderShip, ship_type ), (uint32_t) sizeof( RenderShip::ship_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( ShipType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( ShipType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderShip, team ), (uint32_t) sizeof( RenderShip::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, false, false, false, 0, (uint32_t) offsetof( RenderShip, has_target_lock ), (uint32_t) sizeof( RenderShip::has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "predicted_explode", "predicted_explode", "bool", 0x4d5be97ba1b9cb81ull, 1, false, false, false, 0, (uint32_t) offsetof( RenderShip, predicted_explode ), (uint32_t) sizeof( RenderShip::predicted_explode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "RenderShip", (uint32_t) sizeof( RenderShip ), 11, fields, +[]( void * p ) { RenderShipReset( *(RenderShip *) p ); } };
+    static const TableTypeInfo info = { "RenderShip", (uint32_t) sizeof( RenderShip ), 11, fields, +[]( void * p ) { RenderShipReset( *(RenderShip *) p ); }, TableDocNone, 0, NULL };
     return &info;
 }
 
 inline const TableTypeInfo * RenderTurretTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderTurret, rotation ), (uint32_t) sizeof( RenderTurret::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderTurret, flags ), (uint32_t) sizeof( RenderTurret::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, object_id ), (uint32_t) sizeof( RenderTurret::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, parent_object_id ), (uint32_t) sizeof( RenderTurret::parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "turret_index", "turret_index", "uint32", 0x88a11a6aed541f54ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, turret_index ), (uint32_t) sizeof( RenderTurret::turret_index ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, target_object_id ), (uint32_t) sizeof( RenderTurret::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderTurret, object_sequence ), (uint32_t) sizeof( RenderTurret::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderTurret, team ), (uint32_t) sizeof( RenderTurret::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
-        { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, false, false, false, 0, (uint32_t) offsetof( RenderTurret, has_target_lock ), (uint32_t) sizeof( RenderTurret::has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderTurret, rotation ), (uint32_t) sizeof( RenderTurret::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderTurret, flags ), (uint32_t) sizeof( RenderTurret::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, object_id ), (uint32_t) sizeof( RenderTurret::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, parent_object_id ), (uint32_t) sizeof( RenderTurret::parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "turret_index", "turret_index", "uint32", 0x88a11a6aed541f54ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, turret_index ), (uint32_t) sizeof( RenderTurret::turret_index ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, target_object_id ), (uint32_t) sizeof( RenderTurret::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderTurret, object_sequence ), (uint32_t) sizeof( RenderTurret::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderTurret, team ), (uint32_t) sizeof( RenderTurret::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, false, false, false, 0, (uint32_t) offsetof( RenderTurret, has_target_lock ), (uint32_t) sizeof( RenderTurret::has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "RenderTurret", (uint32_t) sizeof( RenderTurret ), 9, fields, +[]( void * p ) { RenderTurretReset( *(RenderTurret *) p ); } };
+    static const TableTypeInfo info = { "RenderTurret", (uint32_t) sizeof( RenderTurret ), 9, fields, +[]( void * p ) { RenderTurretReset( *(RenderTurret *) p ); }, TableDocNone, 0, NULL };
     return &info;
 }
 
 inline const TableTypeInfo * RenderMissileTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderMissile, position ), (uint32_t) sizeof( RenderMissile::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderMissile, rotation ), (uint32_t) sizeof( RenderMissile::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderMissile, flags ), (uint32_t) sizeof( RenderMissile::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderMissile, object_id ), (uint32_t) sizeof( RenderMissile::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderMissile, object_sequence ), (uint32_t) sizeof( RenderMissile::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "missile_type", "missile_type", "MissileType", 0x151b2a0e2c07b4bcull, 30, false, false, false, 0, (uint32_t) offsetof( RenderMissile, missile_type ), (uint32_t) sizeof( RenderMissile::missile_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( MissileType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( MissileType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderMissile, team ), (uint32_t) sizeof( RenderMissile::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderMissile, position ), (uint32_t) sizeof( RenderMissile::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderMissile, rotation ), (uint32_t) sizeof( RenderMissile::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderMissile, flags ), (uint32_t) sizeof( RenderMissile::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderMissile, object_id ), (uint32_t) sizeof( RenderMissile::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderMissile, object_sequence ), (uint32_t) sizeof( RenderMissile::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "missile_type", "missile_type", "MissileType", 0x151b2a0e2c07b4bcull, 30, false, false, false, 0, (uint32_t) offsetof( RenderMissile, missile_type ), (uint32_t) sizeof( RenderMissile::missile_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( MissileType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( MissileType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderMissile, team ), (uint32_t) sizeof( RenderMissile::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "RenderMissile", (uint32_t) sizeof( RenderMissile ), 7, fields, +[]( void * p ) { RenderMissileReset( *(RenderMissile *) p ); } };
+    static const TableTypeInfo info = { "RenderMissile", (uint32_t) sizeof( RenderMissile ), 7, fields, +[]( void * p ) { RenderMissileReset( *(RenderMissile *) p ); }, TableDocNone, 0, NULL };
     return &info;
 }
 
 inline const TableTypeInfo * RenderDynamicPropTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, position ), (uint32_t) sizeof( RenderDynamicProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, rotation ), (uint32_t) sizeof( RenderDynamicProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, flags ), (uint32_t) sizeof( RenderDynamicProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, object_id ), (uint32_t) sizeof( RenderDynamicProp::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, object_sequence ), (uint32_t) sizeof( RenderDynamicProp::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, prop_type ), (uint32_t) sizeof( RenderDynamicProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, team ), (uint32_t) sizeof( RenderDynamicProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, position ), (uint32_t) sizeof( RenderDynamicProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, rotation ), (uint32_t) sizeof( RenderDynamicProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, flags ), (uint32_t) sizeof( RenderDynamicProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, object_id ), (uint32_t) sizeof( RenderDynamicProp::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, object_sequence ), (uint32_t) sizeof( RenderDynamicProp::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, prop_type ), (uint32_t) sizeof( RenderDynamicProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, team ), (uint32_t) sizeof( RenderDynamicProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "RenderDynamicProp", (uint32_t) sizeof( RenderDynamicProp ), 7, fields, +[]( void * p ) { RenderDynamicPropReset( *(RenderDynamicProp *) p ); } };
+    static const TableTypeInfo info = { "RenderDynamicProp", (uint32_t) sizeof( RenderDynamicProp ), 7, fields, +[]( void * p ) { RenderDynamicPropReset( *(RenderDynamicProp *) p ); }, TableDocNone, 0, NULL };
     return &info;
 }
 
 inline const TableTypeInfo * RenderStaticPropTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, position ), (uint32_t) sizeof( RenderStaticProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, rotation ), (uint32_t) sizeof( RenderStaticProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, scale ), (uint32_t) sizeof( RenderStaticProp::scale ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, flags ), (uint32_t) sizeof( RenderStaticProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "static_prop_id", "static_prop_id", "uint32", 0xd23da7ab574b95c3ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, static_prop_id ), (uint32_t) sizeof( RenderStaticProp::static_prop_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, prop_type ), (uint32_t) sizeof( RenderStaticProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, team ), (uint32_t) sizeof( RenderStaticProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, position ), (uint32_t) sizeof( RenderStaticProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, rotation ), (uint32_t) sizeof( RenderStaticProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, scale ), (uint32_t) sizeof( RenderStaticProp::scale ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, flags ), (uint32_t) sizeof( RenderStaticProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "static_prop_id", "static_prop_id", "uint32", 0xd23da7ab574b95c3ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, static_prop_id ), (uint32_t) sizeof( RenderStaticProp::static_prop_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, prop_type ), (uint32_t) sizeof( RenderStaticProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, team ), (uint32_t) sizeof( RenderStaticProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "RenderStaticProp", (uint32_t) sizeof( RenderStaticProp ), 7, fields, +[]( void * p ) { RenderStaticPropReset( *(RenderStaticProp *) p ); } };
+    static const TableTypeInfo info = { "RenderStaticProp", (uint32_t) sizeof( RenderStaticProp ), 7, fields, +[]( void * p ) { RenderStaticPropReset( *(RenderStaticProp *) p ); }, TableDocNone, 0, NULL };
     return &info;
 }
 
 inline const TableTypeInfo * RenderCosmeticPropTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, position ), (uint32_t) sizeof( RenderCosmeticProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, rotation ), (uint32_t) sizeof( RenderCosmeticProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, scale ), (uint32_t) sizeof( RenderCosmeticProp::scale ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, flags ), (uint32_t) sizeof( RenderCosmeticProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "cosmetic_prop_id", "cosmetic_prop_id", "uint32", 0xb66e4449e56b2e26ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, cosmetic_prop_id ), (uint32_t) sizeof( RenderCosmeticProp::cosmetic_prop_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "prop_sequence", "prop_sequence", "uint8", 0x4d7bf73bcbddc228ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, prop_sequence ), (uint32_t) sizeof( RenderCosmeticProp::prop_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, prop_type ), (uint32_t) sizeof( RenderCosmeticProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, team ), (uint32_t) sizeof( RenderCosmeticProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, position ), (uint32_t) sizeof( RenderCosmeticProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, rotation ), (uint32_t) sizeof( RenderCosmeticProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, scale ), (uint32_t) sizeof( RenderCosmeticProp::scale ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, flags ), (uint32_t) sizeof( RenderCosmeticProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "cosmetic_prop_id", "cosmetic_prop_id", "uint32", 0xb66e4449e56b2e26ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, cosmetic_prop_id ), (uint32_t) sizeof( RenderCosmeticProp::cosmetic_prop_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "prop_sequence", "prop_sequence", "uint8", 0x4d7bf73bcbddc228ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, prop_sequence ), (uint32_t) sizeof( RenderCosmeticProp::prop_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, prop_type ), (uint32_t) sizeof( RenderCosmeticProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, team ), (uint32_t) sizeof( RenderCosmeticProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "RenderCosmeticProp", (uint32_t) sizeof( RenderCosmeticProp ), 8, fields, +[]( void * p ) { RenderCosmeticPropReset( *(RenderCosmeticProp *) p ); } };
+    static const TableTypeInfo info = { "RenderCosmeticProp", (uint32_t) sizeof( RenderCosmeticProp ), 8, fields, +[]( void * p ) { RenderCosmeticPropReset( *(RenderCosmeticProp *) p ); }, TableDocNone, 0, NULL };
     return &info;
 }
 
 inline const TableTypeInfo * RenderLaserTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "start", "start", "RenderVector3", 0xee5d97ad45ad251full, 13, false, false, false, 0, (uint32_t) offsetof( RenderLaser, start ), (uint32_t) sizeof( RenderLaser::start ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "finish", "finish", "RenderVector3", 0x6917a5bab91540f2ull, 13, false, false, false, 0, (uint32_t) offsetof( RenderLaser, finish ), (uint32_t) sizeof( RenderLaser::finish ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderLaser, t ), (uint32_t) sizeof( RenderLaser::t ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "laser_id", "laser_id", "uint32", 0xcd29c05f390294ecull, 8, false, false, false, 0, (uint32_t) offsetof( RenderLaser, laser_id ), (uint32_t) sizeof( RenderLaser::laser_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "laser_type", "laser_type", "LaserType", 0x96b593c242133841ull, 30, false, false, false, 0, (uint32_t) offsetof( RenderLaser, laser_type ), (uint32_t) sizeof( RenderLaser::laser_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( LaserType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( LaserType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderLaser, team ), (uint32_t) sizeof( RenderLaser::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
+        { "start", "start", "RenderVector3", 0xee5d97ad45ad251full, 13, false, false, false, 0, (uint32_t) offsetof( RenderLaser, start ), (uint32_t) sizeof( RenderLaser::start ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "finish", "finish", "RenderVector3", 0x6917a5bab91540f2ull, 13, false, false, false, 0, (uint32_t) offsetof( RenderLaser, finish ), (uint32_t) sizeof( RenderLaser::finish ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderLaser, t ), (uint32_t) sizeof( RenderLaser::t ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "laser_id", "laser_id", "uint32", 0xcd29c05f390294ecull, 8, false, false, false, 0, (uint32_t) offsetof( RenderLaser, laser_id ), (uint32_t) sizeof( RenderLaser::laser_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "laser_type", "laser_type", "LaserType", 0x96b593c242133841ull, 30, false, false, false, 0, (uint32_t) offsetof( RenderLaser, laser_type ), (uint32_t) sizeof( RenderLaser::laser_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( LaserType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( LaserType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderLaser, team ), (uint32_t) sizeof( RenderLaser::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "RenderLaser", (uint32_t) sizeof( RenderLaser ), 6, fields, +[]( void * p ) { RenderLaserReset( *(RenderLaser *) p ); } };
+    static const TableTypeInfo info = { "RenderLaser", (uint32_t) sizeof( RenderLaser ), 6, fields, +[]( void * p ) { RenderLaserReset( *(RenderLaser *) p ); }, TableDocNone, 0, NULL };
     return &info;
 }
 
 inline const TableTypeInfo * RenderExplosionTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, position ), (uint32_t) sizeof( RenderExplosion::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, rotation ), (uint32_t) sizeof( RenderExplosion::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, t ), (uint32_t) sizeof( RenderExplosion::t ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "explosion_id", "explosion_id", "uint32", 0xfd7f3fa0b16ed778ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, explosion_id ), (uint32_t) sizeof( RenderExplosion::explosion_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, parent_object_id ), (uint32_t) sizeof( RenderExplosion::parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "explosion_type", "explosion_type", "ExplosionType", 0xdc89eb9cd3393be5ull, 30, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, explosion_type ), (uint32_t) sizeof( RenderExplosion::explosion_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( ExplosionType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( ExplosionType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, team ), (uint32_t) sizeof( RenderExplosion::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, position ), (uint32_t) sizeof( RenderExplosion::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, rotation ), (uint32_t) sizeof( RenderExplosion::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, t ), (uint32_t) sizeof( RenderExplosion::t ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "explosion_id", "explosion_id", "uint32", 0xfd7f3fa0b16ed778ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, explosion_id ), (uint32_t) sizeof( RenderExplosion::explosion_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, parent_object_id ), (uint32_t) sizeof( RenderExplosion::parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "explosion_type", "explosion_type", "ExplosionType", 0xdc89eb9cd3393be5ull, 30, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, explosion_type ), (uint32_t) sizeof( RenderExplosion::explosion_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( ExplosionType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( ExplosionType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, team ), (uint32_t) sizeof( RenderExplosion::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "RenderExplosion", (uint32_t) sizeof( RenderExplosion ), 7, fields, +[]( void * p ) { RenderExplosionReset( *(RenderExplosion *) p ); } };
+    static const TableTypeInfo info = { "RenderExplosion", (uint32_t) sizeof( RenderExplosion ), 7, fields, +[]( void * p ) { RenderExplosionReset( *(RenderExplosion *) p ); }, TableDocNone, 0, NULL };
     return &info;
 }
 
 inline const TableTypeInfo * RenderFrameTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, false, false, false, 0, (uint32_t) offsetof( RenderFrame, version ), (uint32_t) sizeof( RenderFrame::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "cameras", "cameras", "RenderCamera", 0x0f9222d2ba7aa2a7ull, 13, true, true, false, 1, (uint32_t) offsetof( RenderFrame, cameras ), (uint32_t) sizeof( RenderFrame::cameras[0] ), (uint32_t) offsetof( RenderFrame, cameras_count ), 0xffffffffu, RenderCameraTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "ships", "ships", "RenderShip", 0x294a5c4913e1ad44ull, 13, true, true, false, 4096, (uint32_t) offsetof( RenderFrame, ships ), (uint32_t) sizeof( RenderFrame::ships[0] ), (uint32_t) offsetof( RenderFrame, ships_count ), 0xffffffffu, RenderShipTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "turrets", "turrets", "RenderTurret", 0x84f8260bc283608cull, 13, true, true, false, 1024, (uint32_t) offsetof( RenderFrame, turrets ), (uint32_t) sizeof( RenderFrame::turrets[0] ), (uint32_t) offsetof( RenderFrame, turrets_count ), 0xffffffffu, RenderTurretTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "missiles", "missiles", "RenderMissile", 0x1c3027194b1ba4d0ull, 13, true, true, false, 4096, (uint32_t) offsetof( RenderFrame, missiles ), (uint32_t) sizeof( RenderFrame::missiles[0] ), (uint32_t) offsetof( RenderFrame, missiles_count ), 0xffffffffu, RenderMissileTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "dynamic_props", "dynamic_props", "RenderDynamicProp", 0x43125398a9903d27ull, 13, true, true, false, 4096, (uint32_t) offsetof( RenderFrame, dynamic_props ), (uint32_t) sizeof( RenderFrame::dynamic_props[0] ), (uint32_t) offsetof( RenderFrame, dynamic_props_count ), 0xffffffffu, RenderDynamicPropTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "static_props", "static_props", "RenderStaticProp", 0xc1f8d7edff7fcfd2ull, 13, true, true, false, 20000, (uint32_t) offsetof( RenderFrame, static_props ), (uint32_t) sizeof( RenderFrame::static_props[0] ), (uint32_t) offsetof( RenderFrame, static_props_count ), 0xffffffffu, RenderStaticPropTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "cosmetic_props", "cosmetic_props", "RenderCosmeticProp", 0x33408e39f5f480ffull, 13, true, true, false, 8192, (uint32_t) offsetof( RenderFrame, cosmetic_props ), (uint32_t) sizeof( RenderFrame::cosmetic_props[0] ), (uint32_t) offsetof( RenderFrame, cosmetic_props_count ), 0xffffffffu, RenderCosmeticPropTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "lasers", "lasers", "RenderLaser", 0xd982b77b3e92d16dull, 13, true, true, false, 32000, (uint32_t) offsetof( RenderFrame, lasers ), (uint32_t) sizeof( RenderFrame::lasers[0] ), (uint32_t) offsetof( RenderFrame, lasers_count ), 0xffffffffu, RenderLaserTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "explosions", "explosions", "RenderExplosion", 0x876a8c1a85806a69ull, 13, true, true, false, 32000, (uint32_t) offsetof( RenderFrame, explosions ), (uint32_t) sizeof( RenderFrame::explosions[0] ), (uint32_t) offsetof( RenderFrame, explosions_count ), 0xffffffffu, RenderExplosionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, false, false, false, 0, (uint32_t) offsetof( RenderFrame, version ), (uint32_t) sizeof( RenderFrame::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "cameras", "cameras", "RenderCamera", 0x0f9222d2ba7aa2a7ull, 13, true, true, false, 1, (uint32_t) offsetof( RenderFrame, cameras ), (uint32_t) sizeof( RenderFrame::cameras[0] ), (uint32_t) offsetof( RenderFrame, cameras_count ), 0xffffffffu, RenderCameraTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "ships", "ships", "RenderShip", 0x294a5c4913e1ad44ull, 13, true, true, false, 4096, (uint32_t) offsetof( RenderFrame, ships ), (uint32_t) sizeof( RenderFrame::ships[0] ), (uint32_t) offsetof( RenderFrame, ships_count ), 0xffffffffu, RenderShipTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "turrets", "turrets", "RenderTurret", 0x84f8260bc283608cull, 13, true, true, false, 1024, (uint32_t) offsetof( RenderFrame, turrets ), (uint32_t) sizeof( RenderFrame::turrets[0] ), (uint32_t) offsetof( RenderFrame, turrets_count ), 0xffffffffu, RenderTurretTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "missiles", "missiles", "RenderMissile", 0x1c3027194b1ba4d0ull, 13, true, true, false, 4096, (uint32_t) offsetof( RenderFrame, missiles ), (uint32_t) sizeof( RenderFrame::missiles[0] ), (uint32_t) offsetof( RenderFrame, missiles_count ), 0xffffffffu, RenderMissileTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "dynamic_props", "dynamic_props", "RenderDynamicProp", 0x43125398a9903d27ull, 13, true, true, false, 4096, (uint32_t) offsetof( RenderFrame, dynamic_props ), (uint32_t) sizeof( RenderFrame::dynamic_props[0] ), (uint32_t) offsetof( RenderFrame, dynamic_props_count ), 0xffffffffu, RenderDynamicPropTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "static_props", "static_props", "RenderStaticProp", 0xc1f8d7edff7fcfd2ull, 13, true, true, false, 20000, (uint32_t) offsetof( RenderFrame, static_props ), (uint32_t) sizeof( RenderFrame::static_props[0] ), (uint32_t) offsetof( RenderFrame, static_props_count ), 0xffffffffu, RenderStaticPropTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "cosmetic_props", "cosmetic_props", "RenderCosmeticProp", 0x33408e39f5f480ffull, 13, true, true, false, 8192, (uint32_t) offsetof( RenderFrame, cosmetic_props ), (uint32_t) sizeof( RenderFrame::cosmetic_props[0] ), (uint32_t) offsetof( RenderFrame, cosmetic_props_count ), 0xffffffffu, RenderCosmeticPropTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "lasers", "lasers", "RenderLaser", 0xd982b77b3e92d16dull, 13, true, true, false, 32000, (uint32_t) offsetof( RenderFrame, lasers ), (uint32_t) sizeof( RenderFrame::lasers[0] ), (uint32_t) offsetof( RenderFrame, lasers_count ), 0xffffffffu, RenderLaserTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "explosions", "explosions", "RenderExplosion", 0x876a8c1a85806a69ull, 13, true, true, false, 32000, (uint32_t) offsetof( RenderFrame, explosions ), (uint32_t) sizeof( RenderFrame::explosions[0] ), (uint32_t) offsetof( RenderFrame, explosions_count ), 0xffffffffu, RenderExplosionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "RenderFrame", (uint32_t) sizeof( RenderFrame ), 10, fields, +[]( void * p ) { RenderFrameReset( *(RenderFrame *) p ); } };
+    static const TableTypeInfo info = { "RenderFrame", (uint32_t) sizeof( RenderFrame ), 10, fields, +[]( void * p ) { RenderFrameReset( *(RenderFrame *) p ); }, TableDocNone, 0, NULL };
     return &info;
 }
 
 inline const TableTypeInfo * RenderVector3TableType()
 {
     static const TableFieldInfo fields[] = {
-        { "x", "x", "float64", 0xaf63f54c86021707ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, x ), (uint32_t) sizeof( RenderVector3::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "y", "y", "float64", 0xaf63f44c86021554ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, y ), (uint32_t) sizeof( RenderVector3::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, z ), (uint32_t) sizeof( RenderVector3::z ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "x", "x", "float64", 0xaf63f54c86021707ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, x ), (uint32_t) sizeof( RenderVector3::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "y", "y", "float64", 0xaf63f44c86021554ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, y ), (uint32_t) sizeof( RenderVector3::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, z ), (uint32_t) sizeof( RenderVector3::z ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "RenderVector3", (uint32_t) sizeof( RenderVector3 ), 3, fields, +[]( void * p ) { RenderVector3Reset( *(RenderVector3 *) p ); } };
+    static const TableTypeInfo info = { "RenderVector3", (uint32_t) sizeof( RenderVector3 ), 3, fields, +[]( void * p ) { RenderVector3Reset( *(RenderVector3 *) p ); }, TableDocNone, 0, NULL };
     return &info;
 }
 
 inline const TableTypeInfo * RenderQuaternionTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "x", "x", "float64", 0xaf63f54c86021707ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, x ), (uint32_t) sizeof( RenderQuaternion::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "y", "y", "float64", 0xaf63f44c86021554ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, y ), (uint32_t) sizeof( RenderQuaternion::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, z ), (uint32_t) sizeof( RenderQuaternion::z ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "w", "w", "float64", 0xaf63ea4c86020456ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, w ), (uint32_t) sizeof( RenderQuaternion::w ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "x", "x", "float64", 0xaf63f54c86021707ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, x ), (uint32_t) sizeof( RenderQuaternion::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "y", "y", "float64", 0xaf63f44c86021554ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, y ), (uint32_t) sizeof( RenderQuaternion::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, z ), (uint32_t) sizeof( RenderQuaternion::z ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "w", "w", "float64", 0xaf63ea4c86020456ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, w ), (uint32_t) sizeof( RenderQuaternion::w ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
-    static const TableTypeInfo info = { "RenderQuaternion", (uint32_t) sizeof( RenderQuaternion ), 4, fields, +[]( void * p ) { RenderQuaternionReset( *(RenderQuaternion *) p ); } };
+    static const TableTypeInfo info = { "RenderQuaternion", (uint32_t) sizeof( RenderQuaternion ), 4, fields, +[]( void * p ) { RenderQuaternionReset( *(RenderQuaternion *) p ); }, TableDocNone, 0, NULL };
     return &info;
 }
 

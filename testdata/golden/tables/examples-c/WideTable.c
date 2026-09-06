@@ -1707,12 +1707,12 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
 /* ---- json walk: end ---- */
 
 static const TableFieldInfo schema_tabledemo_wide_blob_fields_[] = {
-    { "label", "label", "string", 0xe16a, 12, 0, 1, 0, 70000, (uint32_t) offsetof( WideBlob, label ), (uint32_t) sizeof( ( (WideBlob *) 0 )->label ), (uint32_t) offsetof( WideBlob, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "payload", "payload", "bytes", 0x44aa, 6, 1, 1, 0, 70000, (uint32_t) offsetof( WideBlob, payload ), (uint32_t) sizeof( ( (WideBlob *) 0 )->payload[0] ), (uint32_t) offsetof( WideBlob, payload_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "samples", "samples", "uint16", 0xaf9a, 7, 1, 1, 0, 70000, (uint32_t) offsetof( WideBlob, samples ), (uint32_t) sizeof( ( (WideBlob *) 0 )->samples[0] ), (uint32_t) offsetof( WideBlob, samples_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "label", "label", "string", 0xe16a, 12, 0, 1, 0, 70000, (uint32_t) offsetof( WideBlob, label ), (uint32_t) sizeof( ( (WideBlob *) 0 )->label ), (uint32_t) offsetof( WideBlob, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "payload", "payload", "bytes", 0x44aa, 6, 1, 1, 0, 70000, (uint32_t) offsetof( WideBlob, payload ), (uint32_t) sizeof( ( (WideBlob *) 0 )->payload[0] ), (uint32_t) offsetof( WideBlob, payload_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "samples", "samples", "uint16", 0xaf9a, 7, 1, 1, 0, 70000, (uint32_t) offsetof( WideBlob, samples ), (uint32_t) sizeof( ( (WideBlob *) 0 )->samples[0] ), (uint32_t) offsetof( WideBlob, samples_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_tabledemo_wide_blob_info_ = { "WideBlob", (uint32_t) sizeof( WideBlob ), 3, schema_tabledemo_wide_blob_fields_, schema_tabledemo_wide_blob_reset_raw_ };
+const TableTypeInfo schema_tabledemo_wide_blob_info_ = { "WideBlob", (uint32_t) sizeof( WideBlob ), 3, schema_tabledemo_wide_blob_fields_, schema_tabledemo_wide_blob_reset_raw_, TableDocNone, 0, NULL };
 
 int schema_tabledemo_wide_blob_from_json_( WideBlob * value, const char * text, int64_t bytes, TableReport * report )
 {

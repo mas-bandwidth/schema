@@ -89,20 +89,44 @@ func (c *Compiler) Pack(u *ir.Unit, root, dir string) ([]byte, []string, TableRe
 // out. The ids live in the CONNECTION's announced table, which the unit's own
 // [Announce] derives, so a message carries no trailer at all.
 func (c *Compiler) PackMessage(u *ir.Unit, root, dir string) ([]byte, []string, TableReport, error) {
-	bytes, skipped, report, err := tablepack.PackMessage(tabletext.NewModel(u), root, dir)
+	return c.PackMessages(u, []MessageTree{{Root: root, Dir: dir}})
+}
+
+// MessageTree is one message of a BATCH: the root it is and the tree that
+// holds it (docs/SPEC-TABLES.md §3.3).
+type MessageTree = tablepack.MessageTree
+
+// PackMessages writes a BATCH, which is the message form's primitive: one
+// buffer, one count and one continuous bit stream.
+func (c *Compiler) PackMessages(u *ir.Unit, trees []MessageTree) ([]byte, []string, TableReport, error) {
+	bytes, skipped, report, err := tablepack.PackMessages(tabletext.NewModel(u), trees)
 	return bytes, skipped, publicReport(report), err
 }
 
-// Announce is the unit's ID TABLE MESSAGE, byte for byte (docs/SPEC-TABLES.md
-// §3.3): an ordinary form 1 file whose one field is the BUILD VERSION under
-// the reserved id, and whose trailer IS the connection's table. Every byte of
-// it is settled by the compiler.
+// Announce is the unit's ANNOUNCEMENT, byte for byte (docs/SPEC-TABLES.md
+// §3.3): an ordinary form 1 file whose body carries the BUILD VERSION and the
+// VOCABULARY under the two reserved ids, and whose trailer is those two ids.
+// Every byte of it is settled by the compiler.
 func (c *Compiler) Announce(u *ir.Unit) []byte { return ir.TableAnnouncement(u) }
+
+// DescribeAnnouncement prints an announcement's vocabulary decoded, one line
+// an entry with its slot, its id, the name this unit's closure gives it, its
+// kind and its shape (docs/SPEC-TABLES.md §3.3).
+func (c *Compiler) DescribeAnnouncement(u *ir.Unit, announcement []byte) (string, TableReport, error) {
+	text, report, err := tablepack.DescribeAnnouncement(tabletext.NewModel(u), announcement)
+	return text, publicReport(report), err
+}
 
 // UnpackMessage is the inverse over the MESSAGE FORM: the announcement is read
 // first, into the connection's table, and the message resolves against it.
 func (c *Compiler) UnpackMessage(u *ir.Unit, root string, announcement, message []byte, dir string, oneFile bool) (TableReport, error) {
-	report, err := tablepack.UnpackMessage(tabletext.NewModel(u), root, announcement, message, dir, oneFile)
+	return c.UnpackMessages(u, []MessageTree{{Root: root, Dir: dir}}, announcement, message, oneFile)
+}
+
+// UnpackMessages reads a BATCH against the announcement that carried it, one
+// root and one output tree per message, in the batch's own order.
+func (c *Compiler) UnpackMessages(u *ir.Unit, trees []MessageTree, announcement, message []byte, oneFile bool) (TableReport, error) {
+	report, err := tablepack.UnpackMessages(tabletext.NewModel(u), trees, announcement, message, oneFile)
 	return publicReport(report), err
 }
 

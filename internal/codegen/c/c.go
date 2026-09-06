@@ -250,6 +250,7 @@ func (g *gen) emitDataHeader(carriesProtocolId bool) {
 func (g *gen) emitConst(d *ir.Const) {
 	// #define rather than a const: it carries no storage, and it works where a
 	// const int does not — array bounds, case labels, other #defines.
+	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("#define %s %s%s\n", screaming(d.Name), g.constValue(d), g.foldComment(d.Expr))
 	g.emitted[d.Name] = true
 }
@@ -293,13 +294,15 @@ func formatFloat32(v float32) string {
 }
 
 func (g *gen) emitEnum(d *ir.Enum) {
-	g.pf("\n/* enum %s — None = 0 implicit, variants dense from 1, wire range [0, %d]\n", d.Name, d.Max)
+	g.pf("\n%s", ir.DocComment(d.Doc, "", "//"))
+	g.pf("/* enum %s — None = 0 implicit, variants dense from 1, wire range [0, %d]\n", d.Name, d.Max)
 	g.pf("   (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying\n")
 	g.pf("   type is implementation-defined, and | max = K headroom makes non-variant\n")
 	g.pf("   values wire-legal, which a C enum cannot hold honestly. */\n")
 	g.pf("typedef %s %s;\n", cUint(d.StorageBits), d.Name)
 	g.pf("#define %s_NONE 0\n", screaming(d.Name))
 	for i, v := range d.Variants {
+		g.pf("%s", ir.DocComment(d.VariantDocs[i], "", "//"))
 		g.pf("#define %s_%s %d\n", screaming(d.Name), screaming(v), i+1)
 	}
 	g.pf("#define %s_COUNT %d\n", screaming(d.Name), len(d.Variants))
@@ -317,10 +320,12 @@ func (g *gen) emitEnum(d *ir.Enum) {
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {
-	g.pf("\n/* flags %s — one bit per variant, consumed as masks; storage uint64 in every\n", d.Name)
+	g.pf("\n%s", ir.DocComment(d.Doc, "", "//"))
+	g.pf("/* flags %s — one bit per variant, consumed as masks; storage uint64 in every\n", d.Name)
 	g.pf("   target, wire %d bits (SPEC §4.2) */\n", d.WireBits)
 	g.pf("typedef uint64_t %s;\n", d.Name)
 	for i, v := range d.Variants {
+		g.pf("%s", ir.DocComment(d.VariantDocs[i], "", "//"))
 		g.pf("#define %s_%s (1ULL << %d)\n", screaming(d.Name), screaming(v), i)
 	}
 	g.pf("#define %s_COUNT %d /* the declared variant count (SPEC §4.2) */\n", screaming(d.Name), len(d.Variants))
@@ -385,7 +390,8 @@ func (g *gen) emitFlagAppendHelpers() {
 }
 
 func (g *gen) emitStruct(d *ir.Struct) {
-	g.pf("\n/* type %s */\n", d.Name)
+	g.pf("\n%s", ir.DocComment(d.Doc, "", "//"))
+	g.pf("/* type %s */\n", d.Name)
 	if len(d.Fields) == 0 {
 		// C forbids an empty struct; one padding byte keeps sizeof() legal and
 		// the type usable. It carries no wire bits.
@@ -394,6 +400,7 @@ func (g *gen) emitStruct(d *ir.Struct) {
 	}
 	g.pf("typedef struct %s {\n", d.Name)
 	for _, f := range d.Fields {
+		g.pf("%s", ir.DocComment(f.Doc, "    ", "//"))
 		g.emitField(f)
 	}
 	g.pf("} %s;\n\n", d.Name)
@@ -409,11 +416,13 @@ func (g *gen) emitStruct(d *ir.Struct) {
 // indeterminate.
 func (g *gen) emitUnion(d *ir.Union) {
 	tag := d.Name + "Type"
-	g.pf("\n/* union %s — first-class one-of (SPEC §4.8): the tag says which arm is\n", d.Name)
+	g.pf("\n%s", ir.DocComment(d.Doc, "", "//"))
+	g.pf("/* union %s — first-class one-of (SPEC §4.8): the tag says which arm is\n", d.Name)
 	g.pf("   live; None = 0 is the empty union, and the tag range is [0, %d]. */\n", d.Max)
 	g.pf("typedef %s %s;\n", cUint(d.StorageBits), tag)
 	g.pf("#define %s_NONE 0\n", screaming(tag))
 	for i, v := range d.Variants {
+		g.pf("%s", ir.DocComment(v.Doc, "", "//"))
 		g.pf("#define %s_%s %d\n", screaming(tag), screaming(v.Name), i+1)
 	}
 	g.pf("#define %s_MAX %d\n", screaming(tag), d.Max)

@@ -486,6 +486,15 @@ final class TableUnionInfo {
   const TableUnionInfo(this.arms);
 }
 
+// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+// block carries a doc column naming this one definition, so absence costs a
+// unit no string data and a printer concatenates doc columns with no null
+// test. Dart gives a string no address identity, so what the rule is READ OFF
+// here is the emitted text: the unit defines the empty doc ONCE and every
+// unannotated row names that definition, rather than each row carrying an
+// inline '' of its own.
+const TableDocNone = '';
+
 final class TableFieldInfo {
   final String name; // schema field name, e.g. "health"
   // the TEXT form's key: the json = "key" attribute, else the field's name
@@ -531,6 +540,15 @@ final class TableFieldInfo {
   final TableTypeInfo? table; // the nested table's descriptor, or null
   final TableUnionInfo? arms; // a union field's arms, or null
 
+  // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+  // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
+  // none, never null. Its tags (SPEC §4.2) follow in declared order, and an
+  // untagged field is 0 beside a null list. Both are const data, allocating
+  // nothing.
+  final String doc;
+  final int numTags;
+  final List<String>? tags;
+
   const TableFieldInfo({
     required this.name,
     required this.json,
@@ -552,6 +570,9 @@ final class TableFieldInfo {
     required this.guard,
     required this.table,
     required this.arms,
+    required this.doc,
+    required this.numTags,
+    required this.tags,
   });
 }
 
@@ -586,6 +607,12 @@ final class TableTypeInfo {
   final void Function(Object owner, int field, int tag) setTag;
   final Object Function(Object owner, int field, int arm) armPayload;
 
+  // the declaration's own doc and tags, on the same terms as a field's
+  // (docs/SPEC-TABLES.md §8.1, SPEC §4.1, §4.2)
+  final String doc;
+  final int numTags;
+  final List<String>? tags;
+
   const TableTypeInfo({
     required this.name,
     required this.fields,
@@ -601,6 +628,9 @@ final class TableTypeInfo {
     required this.getTag,
     required this.setTag,
     required this.armPayload,
+    required this.doc,
+    required this.numTags,
+    required this.tags,
   });
 
   int get numFields => fields.length;
@@ -5746,6 +5776,9 @@ const TableTypeInfo tableEntityTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'pos_x',
@@ -5768,6 +5801,9 @@ const TableTypeInfo tableEntityTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'pos_y',
@@ -5790,6 +5826,9 @@ const TableTypeInfo tableEntityTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'pos_z',
@@ -5812,6 +5851,9 @@ const TableTypeInfo tableEntityTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'yaw',
@@ -5834,6 +5876,9 @@ const TableTypeInfo tableEntityTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'pitch',
@@ -5856,6 +5901,9 @@ const TableTypeInfo tableEntityTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'vel_x',
@@ -5878,6 +5926,9 @@ const TableTypeInfo tableEntityTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'vel_y',
@@ -5900,6 +5951,9 @@ const TableTypeInfo tableEntityTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'vel_z',
@@ -5922,6 +5976,9 @@ const TableTypeInfo tableEntityTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'health',
@@ -5944,6 +6001,9 @@ const TableTypeInfo tableEntityTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'weapon',
@@ -5966,6 +6026,9 @@ const TableTypeInfo tableEntityTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'damage',
@@ -5988,6 +6051,9 @@ const TableTypeInfo tableEntityTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'moving',
@@ -6010,6 +6076,9 @@ const TableTypeInfo tableEntityTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'firing',
@@ -6032,6 +6101,9 @@ const TableTypeInfo tableEntityTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
   ],
   reset: TableEntityTableFields.reset,
@@ -6046,6 +6118,9 @@ const TableTypeInfo tableEntityTableType = TableTypeInfo(
   getTag: TableEntityTableFields.getTag,
   setTag: TableEntityTableFields.setTag,
   armPayload: TableEntityTableFields.armPayload,
+  doc: TableDocNone,
+  numTags: 0,
+  tags: null,
 );
 
 // TableStat's storage, in Dart's own currency: C++ locates a field with an
@@ -6162,6 +6237,9 @@ const TableTypeInfo tableStatTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'delta',
@@ -6184,6 +6262,9 @@ const TableTypeInfo tableStatTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
   ],
   reset: TableStatTableFields.reset,
@@ -6198,6 +6279,9 @@ const TableTypeInfo tableStatTableType = TableTypeInfo(
   getTag: TableStatTableFields.getTag,
   setTag: TableStatTableFields.setTag,
   armPayload: TableStatTableFields.armPayload,
+  doc: TableDocNone,
+  numTags: 0,
+  tags: null,
 );
 
 // TableMixed's storage, in Dart's own currency: C++ locates a field with an
@@ -6478,6 +6562,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'sequence',
@@ -6500,6 +6587,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'ack_sequence',
@@ -6522,6 +6612,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'ack_bits',
@@ -6544,6 +6637,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'session_id',
@@ -6566,6 +6662,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'client_id',
@@ -6588,6 +6687,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'nonce',
@@ -6610,6 +6712,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'world_time',
@@ -6632,6 +6737,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'frame_tick',
@@ -6654,6 +6762,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'server_time',
@@ -6676,6 +6787,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'entities',
@@ -6698,6 +6812,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: tableEntityTableType,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'stats',
@@ -6720,6 +6837,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: tableStatTableType,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'game_event',
@@ -6747,6 +6867,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
         tableChatEventTableType,
         tablePickupEventTableType,
       ]),
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'loadout',
@@ -6769,6 +6892,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'player_name',
@@ -6791,6 +6917,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'payload',
@@ -6813,6 +6942,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'aim_x',
@@ -6835,6 +6967,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'aim_y',
@@ -6857,6 +6992,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'aim_z',
@@ -6879,6 +7017,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'recoil',
@@ -6901,6 +7042,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'drift',
@@ -6923,6 +7067,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'wide_key',
@@ -6945,6 +7092,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'flux',
@@ -6967,6 +7117,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'ping',
@@ -6989,6 +7142,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'crc_hint',
@@ -7011,6 +7167,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'has_extra',
@@ -7033,6 +7192,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'extra',
@@ -7055,6 +7217,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: 'has_extra',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'idle_ticks',
@@ -7077,6 +7242,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
       guard: '!has_extra',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
   ],
   reset: TableMixedTableFields.reset,
@@ -7091,6 +7259,9 @@ const TableTypeInfo tableMixedTableType = TableTypeInfo(
   getTag: TableMixedTableFields.getTag,
   setTag: TableMixedTableFields.setTag,
   armPayload: TableMixedTableFields.armPayload,
+  doc: TableDocNone,
+  numTags: 0,
+  tags: null,
 );
 
 // TableHitEvent's storage, in Dart's own currency: C++ locates a field with an
@@ -7217,6 +7388,9 @@ const TableTypeInfo tableHitEventTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'damage',
@@ -7239,6 +7413,9 @@ const TableTypeInfo tableHitEventTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'hit_kind',
@@ -7261,6 +7438,9 @@ const TableTypeInfo tableHitEventTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'crit',
@@ -7283,6 +7463,9 @@ const TableTypeInfo tableHitEventTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
   ],
   reset: TableHitEventTableFields.reset,
@@ -7297,6 +7480,9 @@ const TableTypeInfo tableHitEventTableType = TableTypeInfo(
   getTag: TableHitEventTableFields.getTag,
   setTag: TableHitEventTableFields.setTag,
   armPayload: TableHitEventTableFields.armPayload,
+  doc: TableDocNone,
+  numTags: 0,
+  tags: null,
 );
 
 // TableChatEvent's storage, in Dart's own currency: C++ locates a field with an
@@ -7413,6 +7599,9 @@ const TableTypeInfo tableChatEventTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'speaker',
@@ -7435,6 +7624,9 @@ const TableTypeInfo tableChatEventTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
   ],
   reset: TableChatEventTableFields.reset,
@@ -7449,6 +7641,9 @@ const TableTypeInfo tableChatEventTableType = TableTypeInfo(
   getTag: TableChatEventTableFields.getTag,
   setTag: TableChatEventTableFields.setTag,
   armPayload: TableChatEventTableFields.armPayload,
+  doc: TableDocNone,
+  numTags: 0,
+  tags: null,
 );
 
 // TablePickupEvent's storage, in Dart's own currency: C++ locates a field with an
@@ -7565,6 +7760,9 @@ const TableTypeInfo tablePickupEventTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
     TableFieldInfo(
       name: 'amount',
@@ -7587,6 +7785,9 @@ const TableTypeInfo tablePickupEventTableType = TableTypeInfo(
       guard: '',
       table: null,
       arms: null,
+      doc: TableDocNone,
+      numTags: 0,
+      tags: null,
     ),
   ],
   reset: TablePickupEventTableFields.reset,
@@ -7601,4 +7802,7 @@ const TableTypeInfo tablePickupEventTableType = TableTypeInfo(
   getTag: TablePickupEventTableFields.getTag,
   setTag: TablePickupEventTableFields.setTag,
   armPayload: TablePickupEventTableFields.armPayload,
+  doc: TableDocNone,
+  numTags: 0,
+  tags: null,
 );

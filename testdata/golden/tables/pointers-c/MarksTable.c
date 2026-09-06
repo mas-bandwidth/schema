@@ -1707,17 +1707,17 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
 /* ---- json walk: end ---- */
 
 static const TableFieldInfo schema_graphdemo_tally_fields_[] = {
-    { "hits", "hits", "int32", 0xb723, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( Tally, hits ), (uint32_t) sizeof( ( (Tally *) 0 )->hits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 10000.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "hits", "hits", "int32", 0xb723, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( Tally, hits ), (uint32_t) sizeof( ( (Tally *) 0 )->hits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 10000.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_graphdemo_tally_info_ = { "Tally", (uint32_t) sizeof( Tally ), 1, schema_graphdemo_tally_fields_, schema_graphdemo_tally_reset_raw_, 0 };
+const TableTypeInfo schema_graphdemo_tally_info_ = { "Tally", (uint32_t) sizeof( Tally ), 1, schema_graphdemo_tally_fields_, schema_graphdemo_tally_reset_raw_, 0, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_graphdemo_marker_fields_[] = {
-    { "label", "label", "string", 0xe16a, 12, 0, 0, 1, 0, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( ( (Marker *) 0 )->label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "note", "note", "Tally", 0x9da7, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Marker, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tally_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "label", "label", "string", 0xe16a, 12, 0, 0, 1, 0, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( ( (Marker *) 0 )->label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "note", "note", "Tally", 0x9da7, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Marker, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tally_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_graphdemo_marker_info_ = { "Marker", (uint32_t) sizeof( Marker ), 2, schema_graphdemo_marker_fields_, schema_graphdemo_marker_reset_raw_, 1 };
+const TableTypeInfo schema_graphdemo_marker_info_ = { "Marker", (uint32_t) sizeof( Marker ), 2, schema_graphdemo_marker_fields_, schema_graphdemo_marker_reset_raw_, 1, TableDocNone, 0, NULL };
 
 int schema_graphdemo_tally_from_json_( Tally * value, const char * text, int64_t bytes, TableReport * report )
 {

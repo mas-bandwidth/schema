@@ -157,6 +157,7 @@ func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
 // ---- storage (table declarations only; closure types come from <Base>.h) ----
 
 func (g *tableGen) emitTableStruct(st *ir.Struct) {
+	g.pf("%s", ir.DocComment(st.Doc, "", "//"))
 	g.pf("/* table %s — TABLE-wire storage: relocatable, bounded. C has no member\n", st.Name)
 	g.pf("   initializers, so the declared defaults live in %s and nowhere\n", g.api(st.Name, "reset"))
 	g.pf("   else — one definition of what a default is (docs/SPEC-TABLES.md) */\n")
@@ -172,6 +173,7 @@ func (g *tableGen) emitTableStruct(st *ir.Struct) {
 			}
 			prevGuard = f.Guard
 		}
+		g.pf("%s", ir.DocComment(f.Doc, "    ", "//"))
 		g.emitTableStorageField(f)
 	}
 	if len(st.Fields) == 0 {
@@ -1238,8 +1240,10 @@ func (g *tableGen) vocabularySymbol(owner, field, what string) string {
 func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	guards := tableGuardStrings(st)
 	if len(st.Fields) == 0 {
-		g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s };\n\n",
-			g.sym(st.Name, "info"), st.Name, st.Name, g.sym(st.Name, "reset_raw"), g.modeColumn(st))
+		g.emitTagsStatic(g.sym(st.Name, "tags"), st.Tags)
+		g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s };\n\n",
+			g.sym(st.Name, "info"), st.Name, st.Name, g.sym(st.Name, "reset_raw"), g.modeColumn(st),
+			annotationColumns(st.Doc, st.Tags, g.sym(st.Name, "tags")))
 		return
 	}
 	// the vocabularies first: an enum's values, a union's arms and a flags
@@ -1248,13 +1252,45 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	for _, f := range st.Fields {
 		g.emitFieldVocabulary(st, f)
 	}
+	// the TAG lists (docs/SPEC-TABLES.md §8.1), one constant per tagged field
+	// and one for a tagged declaration, named from the descriptor row as the
+	// vocabularies are
+	for _, f := range st.Fields {
+		g.emitTagsStatic(g.vocabularySymbol(st.Name, f.Name, "tags"), f.Tags)
+	}
+	g.emitTagsStatic(g.sym(st.Name, "tags"), st.Tags)
 	g.pf("static const TableFieldInfo %s[] = {\n", g.sym(st.Name, "fields"))
 	for _, f := range st.Fields {
 		g.emitFieldDescriptor(st, f, guards[f.Name])
 	}
 	g.pf("};\n\n")
-	g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), %d, %s, %s%s };\n\n",
-		g.sym(st.Name, "info"), st.Name, st.Name, len(st.Fields), g.sym(st.Name, "fields"), g.sym(st.Name, "reset_raw"), g.modeColumn(st))
+	g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), %d, %s, %s%s, %s };\n\n",
+		g.sym(st.Name, "info"), st.Name, st.Name, len(st.Fields), g.sym(st.Name, "fields"), g.sym(st.Name, "reset_raw"), g.modeColumn(st),
+		annotationColumns(st.Doc, st.Tags, g.sym(st.Name, "tags")))
+}
+
+// emitTagsStatic emits one tag list as a constant array of string literals
+// (docs/SPEC-TABLES.md §8.1), and nothing at all for an item with no tags:
+// absence is 0 and NULL in the row, never a per-row empty array.
+func (g *tableGen) emitTagsStatic(name string, tags []string) {
+	if len(tags) == 0 {
+		return
+	}
+	g.pf("static const char * const %s[] = { %s };\n", name, ir.QuotedTags(tags))
+}
+
+// annotationColumns renders a row's doc, num_tags and tags columns: the shared
+// empty doc and a NULL list where the item carries none.
+func annotationColumns(doc string, tags []string, tagsName string) string {
+	docColumn := "TableDocNone"
+	if doc != "" {
+		docColumn = ir.QuoteDoc(doc)
+	}
+	list := "NULL"
+	if len(tags) > 0 {
+		list = tagsName
+	}
+	return fmt.Sprintf("%s, %d, %s", docColumn, len(tags), list)
 }
 
 // emitFieldVocabulary emits one field's variant table, its key table and its
@@ -1458,12 +1494,13 @@ func (g *tableGen) emitFieldDescriptor(st *ir.Struct, f *ir.Field, guard string)
 	if g.anyVariable {
 		pointerColumn = fmt.Sprintf("%s, ", boolC(f.Type.Pointer))
 	}
-	g.pf("    { \"%s\", \"%s\", \"%s\", 0x%04x, %d, %s, %s%s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\" },\n",
+	g.pf("    { \"%s\", \"%s\", \"%s\", 0x%04x, %d, %s, %s%s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s },\n",
 		f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, boolC(isArray), pointerColumn,
 		boolC(counted), boolC(f.Type.Optional), bound,
 		st.Name, f.Name, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, enumMax, variants, hasIds,
-		keyTypeName, keys, keyMax, arms, guard)
+		keyTypeName, keys, keyMax, arms, guard,
+		annotationColumns(f.Doc, f.Tags, g.vocabularySymbol(st.Name, f.Name, "tags")))
 }
 
 func boolC(v bool) string {

@@ -96,6 +96,16 @@ public final class TableFieldInfo {
     // both carry a value -> name function and a variant id.
     public TableUnionInfo arms;
 
+    // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+    // block above it, verbatim (SPEC §4.1). It is TableDocNone.value when
+    // there is none, never null. Its tags (SPEC §4.2) follow in declared
+    // order, and an untagged field is 0 beside null. Constant data built with
+    // the descriptor, so a walk that prints every doc and every tag allocates
+    // nothing.
+    public String doc;
+    public int numTags;
+    public String[] tags;
+
     // ---- the storage location, in Java's own currency ----
     public RawGet getRaw;
     public RawSet setRaw;

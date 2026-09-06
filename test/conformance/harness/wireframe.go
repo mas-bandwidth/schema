@@ -20,6 +20,7 @@ import (
 	"slices"
 	"sort"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -137,30 +138,9 @@ func appendLeb(out []byte, v uint64) []byte {
 func lebBytes(v uint64) []byte { return appendLeb(nil, v) }
 
 // frameWire locates every number in one saved table: the form byte, the id
-// table it ends with, and every spot of the root body between them.
-func frameWire(data []byte) *wireFrame { return frameWireForm(data, nil) }
-
-// frameWireForm is frameWire over EITHER form (docs/SPEC-TABLES.md §3, §3.3).
-// `entries` nil is the FILE form, whose id table is its own trailer; entries
-// non-nil is the MESSAGE FORM, whose table is the CONNECTION's — so the wire
-// is the form byte and the root body, there is no trailer to locate and none
-// to mutate, and the whole of its attack surface is the body.
-func frameWireForm(data []byte, entries []uint64) *wireFrame {
-	if entries != nil {
-		f := &wireFrame{}
-		if len(data) < 2 {
-			return f
-		}
-		f.spots = append(f.spots, wireSpot{kind: spotForm, off: 0, width: 1, limit: len(data), value: uint64(data[0])})
-		f.entries = entries
-		f.entriesAt = len(data)
-		f.countAt = len(data)
-		f.bodyStart = 1
-		f.bodyEnd = len(data)
-		s := &frameScanner{data: data, f: f}
-		s.body(f.bodyStart, f.bodyEnd, true)
-		return f
-	}
+// table it ends with, and every spot of the root body between them. A MESSAGE
+// seed is framed in bits by the engine instead (messageEnumerated).
+func frameWire(data []byte) *wireFrame {
 	f := &wireFrame{}
 	if len(data) < 9 {
 		return f
@@ -501,9 +481,12 @@ type wireSeed struct {
 	// searching for it (testdata/wire/tables/fuzz-vectors/INDEX.txt).
 	vector bool
 	// the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): this seed's mutants are
-	// form-2 wires read against the connection's table, which is what the
-	// replay command has to say to reproduce one.
+	// form-2 wires read against the connection's vocabulary, which is what the
+	// replay command has to say to reproduce one. A message seed has no byte
+	// frame: its numbers are BITS, and `spots` is where they sit.
 	message bool
+	spots   []tablewire.BitSpot
+	entries int // the announced vocabulary's E, which is the reference pass's bound
 }
 
 // wireMutant is one input the leg and the oracle both read.
@@ -660,6 +643,10 @@ func earlyTerminator(seed *wireSeed, sp wireSpot) ([]byte, bool) {
 // whatever N is: these are the mutants that aim at the checks by name, and
 // they cost nothing to run.
 func enumerated(seed *wireSeed, emit func(pass string, data []byte)) {
+	if seed.message {
+		messageEnumerated(seed, emit)
+		return
+	}
 	f := seed.frame
 	wire := seed.wire
 
@@ -834,7 +821,7 @@ func enumerated(seed *wireSeed, emit func(pass string, data []byte)) {
 // every byte of it.
 func truncations(seed *wireSeed) []int {
 	n := len(seed.wire)
-	if n <= truncateEvery {
+	if n <= truncateEvery || seed.frame == nil {
 		out := make([]int, n)
 		for i := range out {
 			out[i] = i
@@ -903,7 +890,11 @@ func randomStep(r *splitmix64, s *wireSeed, seeds []*wireSeed, data []byte) []by
 	if len(data) == 0 {
 		return data
 	}
-	switch r.below(9) {
+	strategy := r.below(9)
+	if s.message && (strategy == 5 || strategy == 6 || strategy == 8) {
+		return messageRandomStep(r, s, data)
+	}
+	switch strategy {
 	case 0: // bit flips
 		for range 1 + r.below(8) {
 			i := r.below(len(data))
@@ -1205,4 +1196,105 @@ func retext(seed *wireSeed, si int, payload []byte) []byte {
 	sp := seed.frame.spots[si]
 	out := append(lebBytes(uint64(len(payload))), payload...)
 	return spliceRange(seed, sp.off, sp.width+int(sp.value), sp.enclosing, out)
+}
+
+// ---------------------------------------------------------------------------
+// the message form's passes (docs/SPEC-TABLES.md §3.3)
+// ---------------------------------------------------------------------------
+
+// messageEnumerated is the enumerated pass over a MESSAGE seed, whose numbers
+// are bits rather than bytes: every truncation, the form byte set to a file's
+// and to two values no reader carries, the body count moved, EVERY REFERENCE
+// set to `E`, the last legal slot, which must RESOLVE, then to `E + 1` and to the
+// largest the width can spell, every node index to null, the root, the last
+// record and past it, and every bit of the batch flipped once.
+func messageEnumerated(seed *wireSeed, emit func(pass string, data []byte)) {
+	wire := seed.wire
+	for _, n := range truncations(seed) {
+		emit("truncate", append([]byte(nil), wire[:n]...))
+	}
+	for _, v := range []uint64{0, ir.TableWireForm, 0xFF} {
+		out := append([]byte(nil), wire...)
+		out[0] = uint8(v)
+		emit("form", out)
+	}
+	if len(wire) > 1 {
+		for _, v := range []uint64{0, 1, 2, 7, 255} {
+			if v != uint64(wire[1]) {
+				out := append([]byte(nil), wire...)
+				out[1] = uint8(v)
+				emit("count", out)
+			}
+		}
+	}
+	entries := uint64(seed.entries)
+	for _, sp := range seed.spots {
+		top := uint64(1)<<uint(sp.Width) - 1
+		if sp.Index {
+			for _, v := range []uint64{0, 1, 2, top - 1, top} {
+				if v != sp.Value && v <= top {
+					emit("index", bitPatched(seed, sp, v))
+				}
+			}
+			continue
+		}
+		for _, v := range []uint64{0, entries, entries + 1, top} {
+			if v != sp.Value && v <= top {
+				emit("reference", bitPatched(seed, sp, v))
+			}
+		}
+	}
+	if len(wire) <= bitFlipEvery {
+		for bit := 8; bit < len(wire)*8; bit++ {
+			out := append([]byte(nil), wire...)
+			out[bit/8] ^= 1 << uint(bit%8)
+			emit("bit", out)
+		}
+	}
+}
+
+// bitFlipEvery is the batch size up to which every bit is flipped once.
+const bitFlipEvery = 512
+
+// bitPatched writes one value at one bit spot of a message seed's copy.
+func bitPatched(seed *wireSeed, sp tablewire.BitSpot, value uint64) []byte {
+	out := append([]byte(nil), seed.wire...)
+	for b := 0; b < sp.Width; b++ {
+		bit := 8 + sp.Off + b // the spot's offset counts from the stream after the form byte
+		mask := byte(1 << uint(bit%8))
+		if value>>uint(b)&1 == 1 {
+			out[bit/8] |= mask
+		} else {
+			out[bit/8] &^= mask
+		}
+	}
+	return out
+}
+
+// messageRandomStep is one strategy of the random pass over a message seed,
+// where a byte frame has nothing to say: a spot set to a value the strategy
+// picks, and otherwise the byte-level strategies the file form shares.
+func messageRandomStep(r *splitmix64, s *wireSeed, data []byte) []byte {
+	if len(s.spots) == 0 || len(data) != len(s.wire) {
+		data[r.below(len(data))] = uint8(r.next())
+		return data
+	}
+	sp := s.spots[r.below(len(s.spots))]
+	top := uint64(1)<<uint(sp.Width) - 1
+	var v uint64
+	switch r.below(4) {
+	case 0:
+		v = r.next() & top
+	case 1:
+		v = sp.Value + 1 + uint64(r.below(4))
+	case 2:
+		v = uint64(s.entries) + uint64(r.below(3))
+	case 3:
+		v = uint64(r.below(4))
+	}
+	if v > top {
+		v = top
+	}
+	copy(data, bitPatched(&wireSeed{wire: data}, sp, v))
+	return data
 }

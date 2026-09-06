@@ -4280,6 +4280,16 @@ node count records, back to back:
   bytes verbatim.** Its type id is one of the three reserved blob ids and it is
   a reference like any other. The align is `string(N)`'s and `bytes(N)`'s, for
   `memcpy`, and a blob is the largest payload this wire carries.
+- **A RECORD'S FRAMING IS ITS TYPE ID'S, AND ITS PLACEMENT IS THE ROOT'S, and
+  those are two questions.** The reserved blob ids say a length, an align and
+  the bytes WHEREVER THEY APPEAR, and every reader knows that by the id alone,
+  because the tail announces all three ids whether or not a root names them
+  (the order, above). Whether this root can PLACE such a node is asked second,
+  of the blob edges its pointers reach (§2.5): a root that reaches none commands
+  no storage for the record, counts one `unknown` at it, and every reference to
+  it reads null. A reader that gated the FRAMING on that second question would
+  read a blob record's bytes as a table body's fields, because a bit stream
+  carries no length for it to step the record over by instead.
 - **A ROOT THAT REACHES NO NODES ELIDES THE FIELD**, like every other empty
   thing on this wire (§3). There is no empty node table and no count of zero: a
   message with no pointers carries no reserved reference at all.
@@ -4296,6 +4306,16 @@ nothing else for an offset to be measured from.
 count and index is a fixed number of bits, so §3's canonicality rules for
 LEB128 have nothing to be applied to here. One value has one spelling because
 the width leaves it no other.
+
+**THE STREAM'S BIT ORDER IS THE PACKET WIRE'S**: bit `i` of the stream is bit
+`i % 8` of byte `i / 8`, low bit first, so a value written here and a value
+written by a generated packet writer are the same bits in the same places
+(SPEC.md §4.3). **THAT ORDER IS ALSO WHAT LETS A CODEC MOVE A VALUE OF ANY
+WIDTH IN ONE UNALIGNED WORD**, read or written little-end-first whatever order
+the host is in, rather than one touch a bit or a byte, and the cost rule below
+is measured on a codec that does. Nine bytes of room is what a word needs, so
+a value inside nine bytes of a buffer's end moves a byte at a time by the same
+arithmetic and lands the same bits.
 
 ---
 
@@ -4335,7 +4355,13 @@ the trailer:
   field of its body is ordinary and tolerant, so an unknown one is skipped and
   counted and **the announcement can GAIN a field in a later minor without a
   lockstep redeploy**. That is the whole reason it is a table body rather than a
-  fixed header.
+  fixed header. **A FAILED STRICT CHECK IS MALFORMED, not a refusal**: the two
+  checks are the two facts an announcement's body must carry, so a body without
+  them says the bytes are not an announcement rather than that this peer
+  declined to announce, and `no_vocabulary` is left to what it names, a BODY
+  from a peer that never announced. **The build version is kept the moment it
+  is read**, refusal or not, so a refusal on that connection names it (above);
+  it is not the vocabulary, and a refused announcement still sets none.
 - **THE WHOLE ANNOUNCEMENT IS A COMPILE-TIME CONSTANT OF THE UNIT**, every byte
   of it settled by the compiler, so a backend emits `Announce` and
   `AnnounceMeasure` as a constant byte array and its length rather than as a
@@ -4485,7 +4511,13 @@ fixed order: the reserved node-table id, then the three blob type ids as
 sorted record order. **A TRIPLE already placed is never placed twice**, so a
 field name three records share at one kind and shape takes the slot its first
 appearance gave it, and the same name at a SECOND kind or shape takes a second
-slot. Two entries that agree on all three parts are malformed.
+slot. Two entries that agree on all three parts are malformed, and both engines
+enforce that at `AnnounceRead` rather than leaving it to a writer's good
+behavior. **An element kind of `12` or `33` in an announced array or keyed
+shape is malformed there too**, because no declaration this language accepts is
+an array of `string(N)` or of `wstring(N)`, so such a shape is refused once at
+the announcement rather than accepted there and refused again by the skip that
+would meet it.
 
 **THREE PROPERTIES FOLLOW from announcing the unit rather than the message.**
 
@@ -4499,6 +4531,45 @@ slot. Two entries that agree on all three parts are malformed.
 - **THE RECEIVER RESOLVES ONCE.** It reads the announcement, resolves every
   entry against its own descriptors, and every body after it dispatches through
   one array index.
+
+**THE RESOLVED VOCABULARY'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND
+THE CODEC NEVER ALLOCATES.** "Resolves once" is a statement about MEMORY as
+well as about work, and this is where that memory lives.
+
+- **THE CALLER DECLARES AN ARRAY OF RESOLVED ENTRIES and hands it to
+  `AnnounceRead` with its CAPACITY.** Where the array sits is the caller's
+  own business, static, on a heap, in an arena, or inside the object that holds
+  the connection, and the library allocates nothing on the announce path, the
+  read path or the write path, which is this library's rule everywhere else
+  and has no exception here.
+- **IT LIVES WITH THE CONNECTION, NOT WITH A CALL.** The announcement is
+  delivered once and holds for the connection's life (the scope, above), so
+  the resolved vocabulary does too: it is filled once when the announcement is
+  accepted and passed by pointer to every `LoadMessages`, `MeasureMessages`
+  and `LoadMeasure` after it. A resolved vocabulary declared inside a read
+  call would be a table rebuilt per batch, which is the property's opposite.
+- **THE ENTRY BOUND IS THAT CAPACITY, and an announcement above it is refused
+  by name as `vocabulary_too_large` before an entry is touched.** The bound is
+  a number the CALLER states rather than a number the wire could name: sizing
+  for the largest vocabulary the wire can spell would be sizing for a peer
+  that does not exist. **A GENERATED CONSTANT GIVES THE UNIT'S OWN ENTRY
+  COUNT**, which is the exact capacity a receiver that talks only to peers of
+  its own schema declares, because the vocabulary is a pure function of the
+  build version (above); a receiver that means to meet other builds declares
+  more, and either way the refusal is what answers a peer it did not size for.
+  **4096 REMAINS THE CONFORMING DEFAULT** where a receiver's storage is grown
+  rather than declared, which is what a language with a growable array does,
+  and the byte bound's 64 KiB does not move (SECURITY, below).
+- **A RESOLVED ENTRY IS WHAT A DECODE READS AND NOTHING MORE**: the id, the
+  kind, the packing, the payload's width already resolved out of the kind and
+  the announced bits, the range base, the array's own bounds, and the
+  quantized facts SPEC.md §4.3's rule leaves behind rather than the two it
+  consumes. It is **96 bytes** in the C++ reference, so the `backenddemo`
+  unit's 33 entries are **3,168 bytes** and the 4096-entry default is 393 KiB
+  for a receiver that asks for it.
+- **PER FIELD ON THE READ PATH THAT IS ONE ARRAY INDEX**: no parse, no LEB128,
+  and no branch on the announcement's format. A reference resolves to an entry
+  by subscript and the decode reads the widths off it.
 
 **THE TAIL IS UNCONDITIONAL, AND THAT IS A CHOICE.** A unit with no pointer
 announces it anyway, because the alternative reshuffles slots for an ordinary
@@ -4589,7 +4660,11 @@ The five ways a batch is damaged, at bit granularity:
 - **A REFERENCE NAMING AN ENTRY OF THE WRONG SORT**, which is a variant
   reference on an entry that is not kind `0` and an arm reference on one that
   is (above). The entry resolved and it contradicts the position it was used
-  in, so the next bit's meaning is what is in doubt.
+  in, so the next bit's meaning is what is in doubt. **Both rules hold on the
+  SKIP path as well as on the decode path**: a variant reference above `E` or
+  on an entry of the wrong sort is damage whether or not this reader was going
+  to keep the value, because it is the next bit's meaning that is in doubt and
+  not the value's.
 - **A LENGTH, COUNT OR INDEX WHOSE PAYLOAD RUNS PAST THE BATCH.** A string
   length, an array count, a node index or an escape's `L` that would read beyond
   the batch's bits is damage at the field that carried it.
@@ -4622,7 +4697,10 @@ WALKED, element by element by its announced shape, and discarded as it goes. The
 walk is bounded by the batch's own bits and stores nothing, so it is linear in
 the surplus and allocates not at all, which is what keeps it a clamp and not a
 refusal. **The reader counts ONE `clamped` for the array**, as §4 says, however
-many elements it walked past.
+many elements it walked past. **A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A
+LIVE DESTINATION**: a fixed-width surplus is stepped over by the arithmetic and
+never decoded at all, and a walked one decodes into a sink the reader throws
+away, so element zero is element zero either way.
 
 ---
 
@@ -4640,8 +4718,8 @@ The alternative was to take `3` and leave `2` as a form no writer writes. It was
 declined because it costs forever what it saves once: every reader in nine
 languages would carry a byte-framed message path for a wire no peer sends, or
 refuse `2` by name and explain why in every page that names the kind space. The
-corpus's form-`2` goldens are re-pinned by the codec change that lands this
-section, which is what a golden is for.
+corpus's form-`2` goldens are the bitpacked bodies' own, re-pinned by the codec
+change this section landed, which is what a golden is for.
 
 **The form byte is exactly what made this safe**, and stating that is the point:
 a reader meets a byte it does not know, refuses by name, and never reports
@@ -4703,8 +4781,8 @@ nameable: a receiver says which build's vocabulary it lacks.
 line an entry carrying the slot, the id, the name where this unit's own closure
 names it, the kind and the shape, because an announcement is an ordinary
 form-`1` file and a tool that could print its two fields as opaque bytes and
-stop would be hiding the only part anyone reads. It is OWED BY THE CODEC PR,
-with the rest of the form-`2` path.
+stop would be hiding the only part anyone reads: `schema unpack --in
+<announcement> <unit>`, with no `--root`, is that print.
 
 **WHAT DOES NOT MOVE.** The BUILD VERSION does not (§20.2 digests wire ids and
 kinds, and none move). The PROTOCOL ID does not (no type-wire fact is touched,
@@ -4730,11 +4808,9 @@ compressed float's quantization is not a §4 row, because §4 has none for it: i
 is the third of the three ways this form changes a value across the forms
 (above), and it is pinned by the round trip's own rows rather than by §4's.
 
-**WHERE THE FORM IS CARRIED TODAY, and this section is ahead of it.** The
-BITPACKED body is specified ahead of its implementation, on the terms §6.6
-takes. What the C++ reference and the compiler's own engine carry today under
-form byte `2` is a BYTE-FRAMED body, and the codec change that lands this
-section replaces it in place and re-pins every form-`2` golden with it. The eight ports carry the FILE form alone: a port's
+**WHERE THE FORM IS CARRIED.** The C++ reference and the compiler's own engine
+carry the BITPACKED body under form byte `2`, and every form-`2` golden in the
+corpus is its. The eight ports carry the FILE form alone: a port's
 `LoadMessages`, `MeasureMessages` and `SaveMessages` are a named follow-on
 beside the wire-form work M20 already registers (test/conformance/README.md),
 and the harness's `message` surface prints ABSENT for each rather than failing
@@ -4749,9 +4825,10 @@ so the claim is deliberately not made in this page's own change, on §6.6's
 precedent.
 
 - **`TableVocabulary`** in the unit-scope registry beside `TableReport` and
-  `TableRetain`, holding one direction's announced entries. It BORROWS the
-  announcement's bytes rather than copying them, so the announcement has to
-  outlive it.
+  `TableRetain`, holding one direction's RESOLVED entries. It indexes the
+  caller's own storage rather than the announcement's bytes (the storage
+  shape, above), so the announcement is free the moment `AnnounceRead`
+  returns.
 - **`Announce`, `AnnounceMeasure` and `AnnounceRead`** in the unit scope beside
   `UnitView`. The announcement is a COMPILE-TIME CONSTANT of the unit, so a
   backend emits the first two as a constant byte array and its length rather
@@ -4805,16 +4882,42 @@ caller's storage and reports how many bodies it read, and neither allocates.
   vocabulary is set, and the check runs once at `AnnounceRead` and never again.
   A width a reader accepted is a width bounded by the kind it came under, so no
   field on any body can ask a reader to move more bits than a `u128` holds.
+  **"What the kind can hold" is TWO CEILINGS and both are named**: a `string`
+  and a `wstring` are bounded by the int32 storage cap the checker applies to
+  every `N` (SPEC §4.3, §6.1), and an array and a keyed entry, on `min` as well
+  as on `max`, by the 32-bit count an unbounded array announces (§2.9), which
+  is the widest count this form spells. A bound above either is a shape no
+  conforming declaration produces, and a reader that carried one would do its
+  length arithmetic in a range that overflows.
+- **A COUNT IS BOUNDED WHILE IT IS STILL WIDE.** Every length and count on this
+  wire is read as a 64-bit number and compared against the reader's own bound
+  as one, and only then narrowed to the `int32` its storage is (§6.1). A reader
+  that narrowed first would turn a count at or above 2^31 negative, and a
+  negative count passes a signed test against a bound untouched: it is the
+  count's own case of the rule the ranged value already states, that the bound
+  applies while the value is wide.
+- **NOTHING IN THIS FORM IS SUPERLINEAR IN A BATCH'S LENGTH, INCLUDING A
+  COUNT.** The clamp's walk of an over-long array is the one place this wire
+  pays for a clamp in work, and it is arithmetic wherever the element is
+  fixed-width (above), which is what makes that true: a ranged element whose
+  `min` equals its `max` rides NO BITS, so a count of 2^31 over one is six
+  bytes of wire, and a reader that looped over it would buy two billion
+  iterations with them. An element that RESOLVES something is walked, because a
+  resolve that contradicts its position is damage the reader must still find,
+  and every such element costs at least a reference, so the batch's own bits
+  bound the walk. An unbounded array's count is bounded the same way the node
+  count is, by the bits that back it at one bit an element.
 - **A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS ALLOCATED.** A
   file's table is bounded by the file's own length and a connection's vocabulary
   is bounded by nothing the wire carries, so **a receiver declares a maximum and
   refuses an announcement above it by name**. The bound is TWO numbers, because
-  an entry is no longer a fixed width: **the conforming defaults are 4096
-  ENTRIES and 64 KiB of VOCABULARY BYTES**, and the byte bound is checked from
-  the field's own `L` before an entry is touched. 4096 entries is eight times
-  the 500-entry unit that is already a large one. A receiver holds ONE
-  vocabulary a direction for the life of the connection, so its memory is that
-  bound and nothing else.
+  an entry is no longer a fixed width: **the ENTRY bound is the capacity of the
+  resolved vocabulary the receiver declared** (the storage shape, above), with
+  **4096 the conforming default where storage is grown rather than declared**,
+  and **the BYTE bound is 64 KiB**, checked from the field's own `L` before an
+  entry is touched. 4096 entries is eight times the 500-entry unit that is
+  already a large one. A receiver holds ONE vocabulary a direction for the life
+  of the connection, so its memory is that bound and nothing else.
 - **THERE IS NO ANNOUNCEMENT STORM, because there is no second announcement.**
   One announcement a direction is the whole of the resolve work a connection can
   ask for, and a peer that sends a second is refused by name, the application
@@ -4851,18 +4954,47 @@ just need to get it less bytes than protobufs, and not be massively slower."*
 
 - **FEWER BYTES THAN proto3**, on the three measured messages and on the general
   shape.
-- **NOT MASSIVELY SLOWER than the byte body, AND THE FACTOR IS TWO.** "Not
+- **NOT MASSIVELY SLOWER than the FILE FORM, AND THE FACTOR IS TWO.** "Not
   massively slower" is A FACTOR OF TWO on the matching read path and on the
-  matching write path, measured against the BYTE BODY over the same values.
+  matching write path, measured against the FILE form's `Save` and `Load` over
+  the same values. **The arm is the file form on both paths**, because the byte
+  body this section replaced is no longer in the tree to measure against: it
+  landed in #549, was never released, and the codec change that lands this
+  section removed it. The file form is §3's byte-framed body over the same
+  values, and it is not the same program: its save INTERNS the ids it uses at
+  run time and its load PARSES a trailer, neither of which a message does.
   Inside two, the form is accepted and the bandwidth is what it bought. **Above
   two on either path, THE BITPACKED BODY REOPENS**, which is a real outcome and
-  not a formality: the byte body is a wire that works, and a form that costs
+  not a formality: the file form is a wire that works, and a form that costs
   more than double the CPU to save a third of the bytes is a trade the owner has
   not made.
-- **MEASURED LATER, AT A NAMED SITTING, AND RECORDED HERE.** The measurement is
-  owed before the form is claimed done and is not owed before the page lands.
-  What it owes is the two ratios, the machine, the build and the date, written
-  onto this page beside the factor they are held to.
+- **MEASURED AT A NAMED SITTING, AND RECORDED HERE.** The sitting: an M-series
+  MacBook Air, macOS 25.6, Apple clang at `-O2 -DNDEBUG -ffp-contract=off`,
+  2026-09-05, one-minute load average 2.5, seven rounds of 100,000 iterations
+  best of rounds and the best of five processes, both arms in one process over
+  the same values. **THE ARM IS THE FILE FORM'S `Save` AND `Load` OVER THOSE
+  VALUES, ON BOTH PATHS**: `Save` against `SaveMessages` and `Load` against
+  `LoadMessages`. It is §3's byte-framed body, and what a file does beside it
+  is the id table: the save INTERNS the ids the body uses as it writes them,
+  and the load PARSES the trailer before it reads a field. The factors below
+  are read against that arm and no other.
+
+  | instance | write factor | read factor |
+  |---|---:|---:|
+  | `LoginRequest`, full | 0.75x | 1.77x |
+  | `MatchResult`, full | 0.90x | 1.64x |
+  | `StorePurchase`, full | 0.86x | 1.64x |
+  | the three, one batch | 0.71x | 1.56x |
+
+  **BOTH PATHS ARE INSIDE THE FACTOR ON EVERY ROW**, and the write path is
+  UNDER the arm. The arm is the file form, whose save interns the ids it uses
+  at run time, so a write factor below one is a fact about those two programs
+  and is not read here as a claim about bit framing against byte framing. What
+  holds the read path inside the factor is the two properties this section
+  states as rules: the receiver resolves the announcement ONCE, so a field
+  costs one array index (the storage shape, above), and the bit stream moves a
+  WORD at a time, so a sixty-four bit field costs one unaligned load rather
+  than sixty-four shifts or eight.
 
 **THIS RULE IS NOT #546's, and the difference matters.** #546 binds
 DIAGNOSTICS to zero measured cost on the read and write path, because a
@@ -5010,9 +5142,11 @@ free either.
 **THE FULL TABLE.** Bytes, every column hand-sized from its own wire model over
 the same six instances. The PACKET WIRE column is what a `type` of the same
 shape would cost (SPEC.md §4.3) and exists so the residual is a number. The BYTE
-BODY column is the byte-framed message body the tree carries today under form
-byte `2`, which this section replaces. The proto3 column is computed from its
-encoding spec over the same values.
+BODY column is the byte-framed message body that held form byte `2` before this
+section: it landed in #549, was never released, and the codec change this
+section lands removed it, so the column is the size it would have written and
+not a wire in the tree. The proto3 column is computed from its encoding spec
+over the same values.
 
   | instance | packet wire | file form | byte body | **bitpacked body** | proto3 |
   |---|---:|---:|---:|---:|---:|
@@ -5180,6 +5314,10 @@ entries announces about 5 KB once.
 - **A reference of the wrong sort.** An enum reference naming a field-name entry,
   and a union arm reference naming a kind-`0` entry. Each malformed, terminal for
   the batch. Red if a leg counts `unknown`, or reads a field after either.
+  Beside them the same two on the SKIP path: a body naming an enum entry the
+  root does not declare, so the field is unknown and stepped over, whose
+  variant reference names a field-name entry in one row and is above `E` in the
+  other. Red if a leg steps over the reference without resolving it.
 - **A ranged offset above the sender's `max`.** A `score` ranged `[0, 100000]`
   whose seventeen bits spell 130000. Red if a leg calls it damage rather than
   reconstructing it and clamping to its own bound with one `clamped`.
@@ -5203,9 +5341,20 @@ entries announces about 5 KB once.
 - **A hostile shape.** An announcement carrying `bits` above 128, an array whose
   `min` exceeds its `max`, an element kind outside the closed set, a quantized
   `f32` triple whose `min` is not below its `max` and one whose `delta / res`
-  is not finite in float32, and a shape
+  is not finite in float32, a `string` bound above the int32 storage cap, an
+  array `min` and an array `max` above the 32-bit count an unbounded array
+  announces, two entries that agree on all three parts, an array over element
+  kind `12` and a keyed entry over element kind `33`, and a shape
   running past the vocabulary field's `L`. Each a refusal by name, and red if a
-  leg allocates or reads a body after one.
+  leg allocates or reads a body after one. Beside them each ceiling's own
+  value, which must be ACCEPTED: an unbounded array announces the array one.
+- **A zero-width element under a wide count.** An array announced over
+  `[2, 2^32 - 1]` whose element is a ranged `uint32` with `min` equal to `max`,
+  so an element rides no bits at all, under a count of `2^31 + 1`, which is six
+  bytes of wire. The reader's own `[2..5]` keeps five, counts ONE `clamped`,
+  lands a count of five, and finds the bit the array ends at by arithmetic. Red
+  if a leg walks the surplus, narrows the count before it bounds it and so
+  lands a negative count, or does not finish.
 - **Per-direction independence.** A vector pair written by two peers whose units
   announce different vocabularies, each decoding the other's bodies against the
   vocabulary that peer announced. Red if a leg resolves against its own.
@@ -5224,9 +5373,13 @@ entries announces about 5 KB once.
 - **The announcement's two strict checks, and its tolerance.** Rows for the build
   version absent, present twice, under a kind other than `9` and at a width that
   is not eight, and rows for the vocabulary absent, present twice and under a
-  wrong element kind, each a refusal. A row carrying an UNKNOWN field beside both,
-  which must set the vocabulary and count one `unknown`. Red if a refusal sets a
-  vocabulary, or if the tolerant row refuses.
+  wrong element kind, each MALFORMED, because a failed strict check says the
+  bytes are not an announcement rather than that this peer declined to
+  announce. A row carrying an UNKNOWN field beside both,
+  which must set the vocabulary and count one `unknown`. Red if a failed check
+  sets a vocabulary, reports a refusal rather than damage, or if the tolerant
+  row refuses. Beside them a refused announcement whose build version WAS read,
+  which must name it.
 - **The two bounds.** An announcement one entry above the entry bound, and one a
   byte above the byte bound with a legal entry count. Red if a leg touches an
   entry before refusing either.
@@ -5242,7 +5395,9 @@ entries announces about 5 KB once.
   checker accepts a planted name, or accepts it as a `was`.
 - **Retention across the forms.** A body loaded with retention and saved in form
   `2`, which must return `-1` and write nothing, and the same load saved in form
-  `1`, which must write every retained record under §6.6's rules.
+  `1`, which must write every retained record under §6.6's rules. The row lands
+  WITH retention, which is not built in any language (§6.6, schema#525), so the
+  suite carries no test for it yet and carries no skipped one either.
 - **The cost rows.** The twelve pinned wires, the batch vector and the
   announcement. A byte figure in the table above that drifts moves a pinned wire.
 
@@ -8461,15 +8616,16 @@ doc comment is not a value. **The pack tree does not see them either**
 tree is ever spelled by a doc or a tag. Documenting and tagging a shipped
 schema is a free edit, and that is the property the open namespace rests on.
 
-**BACKEND STATUS: OWED, not emitted.** The `doc`, `num_tags` and `tags`
-columns are specified ahead of their implementation, on the terms §3.3 and
-§6.6 take. No target emits any of the three on `TableFieldInfo` or on
-`TableTypeInfo` today, no registry row (§8.3) carries them, and nothing
-upstream of the columns exists to fill one: the compiler reads no `///`
-block (SPEC.md §4.1) and carries a tag on a `type` declaration alone
-(SPEC.md §4.2). Owed as schema#523 ruling 4, which lands the front end and
-the columns together, and this line is deleted by the implementation PR that
-lands the behavior.
+**REGISTRY STATUS: the DECLARATION and FIELD columns are emitted, the
+REGISTRY rows are not.** All nine targets carry `doc`, `num_tags` and `tags`
+on `TableFieldInfo` and on `TableTypeInfo`, filled from the `///` block
+(SPEC.md §4.1) and the tags (SPEC.md §4.2) the compiler reads at every
+line kind. What no target emits is the registry itself (§8.3), so an enum
+VARIANT's, a flags BIT's and a record-naming ARM's annotation ride the IR
+and the generated comments and reach no descriptor column. The placement
+rule above names those three, and they land with `UnitView()`. Owed as
+schema#523 ruling 4's registry half, and this line is deleted by the
+implementation PR that lands it.
 
 **A field carries WHERE IT LIVES, and the spelling is the language's.** C++
 carries an offset and a width, because its storage is one flat struct; a
@@ -8775,9 +8931,12 @@ function per unit, name-first in the unit's own namespace beside
 declared:
 
 **BACKEND STATUS: OWED, not emitted.** `UnitView()` is specified ahead of its
-implementation: no backend emits it in any of the nine targets today, and it is
-owed under #523 item 4 with the doc and tag descriptor columns of §8.1. The
-implementation PR that lands it deletes this paragraph.
+implementation: no backend emits it in any of the nine targets. It is the
+remaining half of #523 item 4, whose §8.1 descriptor columns have landed, and
+it carries the `doc` and `tags` of an enum variant, a flags bit and a
+record-naming arm, which are the three rows the placement rule of §8.1 puts
+here and nowhere else. The implementation PR that lands it deletes this
+paragraph.
 
 ```cpp
 struct ViewConstant
@@ -9121,18 +9280,28 @@ also the sharpest form of the independence claim below.
 pinned** (SPEC §4.1), because a rule stated in prose and exercised only on
 `/// Hello` is a rule nothing holds: two leading spaces after the marker
 (one is dropped, one survives), a marker line with nothing after it (an
-empty line inside the text), trailing whitespace on a line (dropped), a
-double quote and a backslash (the target's own string-literal escape, and
-the one escaping rule there is). Its tags exercise the list: a declaration
-with one, an item with several in an order the listing must keep.
+empty line inside the text), and a double quote and a backslash (the
+target's own string-literal escape, and the one escaping rule there is). Its
+tags exercise the list: a declaration with one, an item with several in an
+order the listing must keep.
 
-**Its GOLDEN lands in the same commit as the columns.** `tabledemo` has no
-recorded source golden today — extending the source goldens to the two table
-corpora is the named follow-on §15 carries — so the commit that adds the
-columns records `tabledemo`'s first, and the exhibit is pinned from the
-moment it exists rather than described until the follow-on catches up. Until
-that commit there is no left-hand side for this gate and the section says so
-plainly instead of implying a pin that is not there.
+**TRAILING WHITESPACE IS THE ONE EXTRACTION CASE THE EXHIBIT CANNOT CARRY,
+and the reason is the formatter.** `schemafmt` is the one style (SPEC §7.4)
+and the corpus is written in it, so a `///` line ending in spaces is
+normalized away the next time `make fmt` runs, a corpus exhibit of trailing
+whitespace would be an exhibit the repo's own tooling deletes. The rule is
+real and it is pinned where it can hold still: the compiler's own extraction
+test, over a source the formatter never touches. Every other case rides in
+`tabledemo` where a reader meets it.
+
+**Its GOLDEN lands in the same commit as the columns.** `tabledemo`'s C++
+Table sources are pinned byte for byte under `testdata/golden/tables/`, so
+the commit that adds the columns re-pins them and the exhibit's descriptor
+rows and doc idioms have a left-hand side from the moment they exist.
+Extending the FULL source goldens, every backend's generated text with the
+protocol id beside it, to the two table corpora is the named follow-on §15
+carries, and until it lands the pin is over the C++ reference and the C#,
+C and block sources beside it rather than over all nine.
 
 **The COST claims are held by observables, not by inspection.** Two of them,
 and each has a failure a test can see:
@@ -9142,7 +9311,9 @@ and each has a failure a test can see:
   with no null test. A NULL column faults or throws there rather than
   printing a line that happens to look right, so the rule has a red state;
   the negative control is an emitter patched to write NULL for one absent
-  doc, and it must take the gate down.
+  doc, and it must take the gate down. The DESCRIPTOR half of that walk is
+  the tabledemo closure, reached from its roots through the `table` column,
+  and the REGISTRY half joins it with `UnitView()` (§8.3).
 - **ABSENCE IS ONE SHARED EMPTY STRING.** Where the language has address
   identity — C, C++, Rust — the gate asserts every absent `doc` in a unit
   compares equal BY ADDRESS, one static for the whole unit. Where it does
@@ -10660,6 +10831,21 @@ inspects everything in the schema built:
 
 ## 15. Named follow-ons
 
+- **THE UNIT REGISTRY, and the annotation rows only it carries** (§8.3, §8.7).
+  `UnitView()` is specified and no target emits it, so an enum VARIANT's, a
+  flags BIT's and a record-naming ARM's `doc` and `tags` reach the IR and the
+  generated comments and no descriptor column. Landing it lands
+  `ViewConstant`, `ViewVariant`, `ViewVocabulary` and `ViewType` with their
+  three annotation members, the corpus listing gate that byte-compares a
+  generated program's listing against the compiler's own, and the two
+  same-declaration pairs §8.7 checks there.
+- **THE GENERATED TAG-LIST NAMES ARE NOT CLAIMED** (§11). A tagged field emits
+  a per-row constant named from the declaration and the member, and
+  `internal/check`'s generated-verb set does not carry it, so a unit
+  declaring a table whose name collides with another table's tag-list
+  spelling generates a redeclaration with no refusal. Every backend's
+  spelling differs, and closing it is one pass that adds the verb for all
+  nine at once rather than nine separate edits.
 - **A DECLARED COMPATIBLE SET of build versions for the cooked form.** §7
   loads a cooked file at exactly one build version. The owner's "or a subset
   of versions AT MOST" is the only widening ever contemplated: a build

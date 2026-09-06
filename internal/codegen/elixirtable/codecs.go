@@ -118,6 +118,12 @@ func (g *gen) emitStorage(st *ir.Struct) {
 	g.pf("# its declared default at construction, so %%%s{} IS the value a read\n", g.mod(st.Name))
 	g.pf("# starts from and the write side elides against.\n")
 	g.pf("defmodule %s do\n", g.mod(st.Name))
+	// a DECLARATION's doc reaches generated code as well as the descriptor
+	// column: Elixir hangs it on the module the declaration lowers to
+	// (SPEC §4.1). An undocumented declaration gains no attribute.
+	if st.Doc != "" {
+		g.pf("  @moduledoc %s\n", ir.QuoteDocElixir(st.Doc))
+	}
 	if len(st.Fields) == 0 {
 		g.pf("  # empty body — presence is the payload\n")
 		g.pf("  defstruct []\n")

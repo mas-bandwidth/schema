@@ -356,7 +356,7 @@ C++, C, C#, Go, JS and Java and `///` in Rust and Dart. A line comment ends
 where the line does, so a `*/` or a `<` in your text needs no rule at all,
 which is why no target emits `/** */` or a `<summary>` element. Elixir carries
 the descriptor column alone for a field and a variant, which have no attribute
-to hang a doc on, and emits `@moduledoc` / `@typedoc` for a declaration.
+to hang a doc on, and emits `@moduledoc` for a declaration.
 
 **Every `///` line is part of a doc comment or is refused by name**, because
 silently dropping an opt-in is the outcome opt-in exists to prevent. Refused:

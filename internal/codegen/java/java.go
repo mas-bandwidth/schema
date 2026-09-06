@@ -370,6 +370,7 @@ func (g *gen) emitFile() {
 // constants as float/double per storage.
 func (g *gen) emitConst(d *ir.Const) {
 	name := javaName(d.Name)
+	g.bpf("%s", ir.DocComment(d.Doc, "    ", "//"))
 	if d.IsFloat {
 		if d.Storage == "float32" {
 			g.bpf("    public static final float %s = %sf;%s\n\n", name, formatFloat32(d.Float), g.foldComment(d.Expr))
@@ -413,12 +414,16 @@ func enumJavaType(storageBits int) string {
 // the family's integer-backed enums: a final class of static constants,
 // because storage must hold every wire-legal value and | max = ... headroom
 // values have no Java enum member to be.
-func (g *gen) emitTagEnum(name, typ string, members []string, max int64, comment string) {
+// docs is each arm's doc comment (SPEC §4.1), parallel to members: it reaches
+// the tag's constant as a line comment, the one place the arm is a
+// declaration of its own.
+func (g *gen) emitTagEnum(name, typ string, members, docs []string, max int64, comment string) {
 	g.bpf("    // %s: %s\n", name, comment)
 	g.bpf("    public static final class %s {\n", name)
 	g.bpf("        private %s() {}\n\n", name)
 	g.bpf("        public static final %s none = 0;\n", typ)
 	for i, m := range members {
+		g.bpf("%s", ir.DocComment(docs[i], "        ", "//"))
 		g.bpf("        public static final %s %s = %s;\n", typ, javaName(m), narrowLit(typ, big.NewInt(int64(i+1))))
 	}
 	g.bpf("        // the exported extent (SPEC §4.2)\n")
@@ -428,6 +433,7 @@ func (g *gen) emitTagEnum(name, typ string, members []string, max int64, comment
 
 func (g *gen) emitEnum(d *ir.Enum) {
 	typ := enumJavaType(d.StorageBits)
+	g.bpf("%s", ir.DocComment(d.Doc, "    ", "//"))
 	g.bpf("    // %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
 	g.bpf("    // an int-constant namespace — the Java translation of the family's integer-\n")
 	g.bpf("    // backed enums: storage must hold every wire-legal value, and | max = ...\n")
@@ -436,6 +442,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.bpf("        private %s() {}\n\n", d.Name)
 	g.bpf("        public static final %s none = 0;\n", typ)
 	for i, v := range d.Variants {
+		g.bpf("%s", ir.DocComment(d.VariantDocs[i], "        ", "//"))
 		g.bpf("        public static final %s %s = %s;\n", typ, javaName(v), narrowLit(typ, big.NewInt(int64(i+1))))
 	}
 	g.bpf("        // the declared variant count (SPEC §4.2)\n")
@@ -455,10 +462,12 @@ func (g *gen) emitEnum(d *ir.Enum) {
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {
+	g.bpf("%s", ir.DocComment(d.Doc, "    ", "//"))
 	g.bpf("    // %s — one bit per variant, consumed as masks; flags-typed fields store\n", d.Name)
 	g.bpf("    // uint64 in every target — a bit-transparent long here — wire %d bits\n", d.WireBits)
 	g.bpf("    // (SPEC §4.2). Mask names are the family's flat spelling, lowerCamel.\n")
 	for i, v := range d.Variants {
+		g.bpf("%s", ir.DocComment(d.VariantDocs[i], "    ", "//"))
 		g.bpf("    public static final long %s = 1L << %d;\n", javaName(d.Name+v), i)
 	}
 	g.bpf("    // the declared variant count (SPEC §4.2)\n")
@@ -494,6 +503,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 }
 
 func (g *gen) emitClass(d *ir.Struct) {
+	g.bpf("%s", ir.DocComment(d.Doc, "    ", "//"))
 	if len(d.Tags) > 0 {
 		g.bpf("    // type %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", d.Name, strings.Join(d.Tags, ", "))
 	} else {
@@ -515,6 +525,7 @@ func (g *gen) emitClass(d *ir.Struct) {
 			}
 			prevGuard = f.Guard
 		}
+		g.bpf("%s", ir.DocComment(f.Doc, "        ", "//"))
 		ctor = append(ctor, g.emitStorageField(f)...)
 	}
 	if len(ctor) > 0 {
@@ -747,9 +758,10 @@ func tagJavaType(max int64) string {
 // variant; nothing allocates per value after construction.
 func (g *gen) emitUnion(d *ir.Union) {
 	typ := tagJavaType(d.Max)
-	g.emitTagEnum(d.Name+"Type", typ, variantNames(d), d.Max,
+	g.emitTagEnum(d.Name+"Type", typ, variantNames(d), variantDocs(d), d.Max,
 		fmt.Sprintf("union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)", d.Name))
 
+	g.bpf("%s", ir.DocComment(d.Doc, "    ", "//"))
 	g.bpf("    // %s — at most one of the arms; type says which. Construction is the empty\n", d.Name)
 	g.bpf("    // union (None). A read zero-establishes exactly the selected arm before\n")
 	g.bpf("    // decoding it (SPEC §5); unselected arms keep what they last held — the\n")
@@ -764,6 +776,16 @@ func (g *gen) emitUnion(d *ir.Union) {
 		g.bpf("        public final %s %s = new %s();\n", q, javaName(v.Name), q)
 	}
 	g.bpf("    }\n\n")
+}
+
+// variantDocs is each arm's `///` block (SPEC §4.1), parallel to
+// [variantNames].
+func variantDocs(d *ir.Union) []string {
+	docs := make([]string, len(d.Variants))
+	for i, v := range d.Variants {
+		docs[i] = v.Doc
+	}
+	return docs
 }
 
 func variantNames(d *ir.Union) []string {
