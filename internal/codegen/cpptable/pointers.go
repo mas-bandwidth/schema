@@ -1294,12 +1294,12 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 }
 
 // emitRootNodeBody is PASS TWO's half: decode one record's body into the
-// storage it already owns. It is emitted twice — once plain, and once for the
+// storage it already owns. It is emitted twice, once plain and once for the
 // RETAIN family, where each node body is a path root of its own
 // (docs/SPEC-TABLES.md §6.6).
 func (g *tableGen) emitRootNodeBody(st *ir.Struct, reachable []*ir.Struct, blobs []reachableBlob) {
 	n := st.Name
-	g.pf("// %s%s: PASS TWO's half — decode one record's body into the storage it\n", n, g.verb("", "NodeBody"))
+	g.pf("// %s%s: PASS TWO's half, decoding one record's body into the storage it\n", n, g.verb("", "NodeBody"))
 	g.pf("// already owns.\n")
 	if g.retain {
 		g.pf("// EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the\n")

@@ -117,7 +117,7 @@ struct TableReport
     // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
     // the reason duplicate is: a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
-    // counter above — a retained field still counts unknown, because unknown
+    // counter above. A retained field still counts unknown, because unknown
     // says what a READER could not name and that stays true.
     int32_t retained = 0;    // unknown fields whose bytes were kept
     int32_t retain_lost = 0; // every unknown this load or save could not keep
@@ -3351,14 +3351,24 @@ struct TableRetainIds
 // stores.
 inline int64_t TableRetainIdsBytes( const TableRetainIds & ids ) { return int64_t( ids.count ) * 8 + 8; }
 
+// A TWO-WAY MERGE over the stores' own slot order, and not a scan for each
+// slot. Every entry either store holds took its slot from the same counter, so
+// the two runs interleave to exactly the slots 1 to count and the merge has no
+// case for a slot neither store took.
 inline void TableRetainIdsWrite( TableWriter & w, const TableRetainIds & ids )
 {
+    const int32_t retained = ids.retain != NULL ? ids.retain->id_used : 0;
     int32_t i = 0, j = 0;
-    for ( int32_t slot = 1; slot <= ids.count; slot++ )
+    while ( i < ids.known.count || j < retained )
     {
-        if ( i < ids.known.count && ids.known_slot[i] == slot ) { w.put64( ids.known.ids[i] ); i++; continue; }
-        if ( ids.retain != NULL && j < ids.retain->id_used && ids.retain->ids[j].slot == slot ) { w.put64( ids.retain->ids[j].id ); j++; continue; }
-        w.put64( 0 ); // unreachable: every slot was taken by one store or the other
+        if ( j >= retained || ( i < ids.known.count && ids.known_slot[i] < ids.retain->ids[j].slot ) )
+        {
+            w.put64( ids.known.ids[i] );
+            i++;
+            continue;
+        }
+        w.put64( ids.retain->ids[j].id );
+        j++;
     }
     w.put64( uint64_t( ids.count ) );
 }
@@ -10293,7 +10303,7 @@ inline uint32_t RowNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t le
     return 0;
 }
 
-// RowNodeBody: PASS TWO's half — decode one record's body into the storage it
+// RowNodeBody: PASS TWO's half, decoding one record's body into the storage it
 // already owns.
 inline void RowNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -11197,7 +11207,7 @@ inline uint32_t SheetNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t 
     return 0;
 }
 
-// SheetNodeBody: PASS TWO's half — decode one record's body into the storage it
+// SheetNodeBody: PASS TWO's half, decoding one record's body into the storage it
 // already owns.
 inline void SheetNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -12099,7 +12109,7 @@ inline uint32_t SquadNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t 
     return 0;
 }
 
-// SquadNodeBody: PASS TWO's half — decode one record's body into the storage it
+// SquadNodeBody: PASS TWO's half, decoding one record's body into the storage it
 // already owns.
 inline void SquadNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -12997,7 +13007,7 @@ inline uint32_t ArmyNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t l
     return 0;
 }
 
-// ArmyNodeBody: PASS TWO's half — decode one record's body into the storage it
+// ArmyNodeBody: PASS TWO's half, decoding one record's body into the storage it
 // already owns.
 inline void ArmyNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -13895,7 +13905,7 @@ inline uint32_t DeckNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t l
     return 0;
 }
 
-// DeckNodeBody: PASS TWO's half — decode one record's body into the storage it
+// DeckNodeBody: PASS TWO's half, decoding one record's body into the storage it
 // already owns.
 inline void DeckNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -15977,7 +15987,7 @@ inline bool DeckLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Dec
     }
 }
 
-// RowNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
+// RowNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -16265,7 +16275,7 @@ inline int64_t RowSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// SheetNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
+// SheetNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -16555,7 +16565,7 @@ inline int64_t SheetSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// SquadNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
+// SquadNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -16843,7 +16853,7 @@ inline int64_t SquadSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// ArmyNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
+// ArmyNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -17131,7 +17141,7 @@ inline int64_t ArmySaveRetainMessages( Args &&... )
     return -1;
 }
 
-// DeckNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
+// DeckNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing

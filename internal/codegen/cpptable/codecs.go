@@ -1676,11 +1676,12 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 
 // emitUnknownArm is the field this reader cannot name: skipped by its framing
 // and counted, exactly as it always was. Under RETENTION the same skip runs
-// inside the capture, which copies the field out with every reference resolved
-// — or drops it, counting one retain_lost, where an excluded class, a full
-// buffer or damage the plain read never looked at says it cannot be kept
-// (docs/SPEC-TABLES.md §6.6). Either way the read continues and the reader's
-// own data is exactly what it would have been with retention off.
+// inside the capture, which copies the field out with every reference
+// resolved. It drops the field instead, counting one retain_lost, where an
+// excluded class, a full buffer or damage the plain read never looked at says
+// it cannot be kept (docs/SPEC-TABLES.md §6.6). Either way the read continues
+// and the reader's own data is exactly what it would have been with retention
+// off.
 func (g *tableGen) emitUnknownArm(ind string) {
 	if !g.retain {
 		g.pf("%sif ( !r.skip( kind ) ) { r.report->malformed = true; return false; }\n", ind)
@@ -1734,8 +1735,8 @@ func (g *tableGen) emitEnumRefLoad(f *ir.Field, dst, ind, rdr, onBad string) {
 // emitted into the RETAIN family only and beside the unknown the plain read
 // already counts. The thing excluded is not a self-contained field, so putting
 // it back is a splice into something the reader rebuilds rather than a field
-// appended to a body — and every exclusion counts, so a caller that needs to
-// know retention held reads one number.
+// appended to a body. Every exclusion counts, so a caller that needs to know
+// retention held reads one number.
 func (g *tableGen) retainLostInline() string {
 	if !g.retain {
 		return ""

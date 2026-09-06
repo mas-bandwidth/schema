@@ -2900,7 +2900,7 @@ tables-retain: build/schema_test_retain build/schema_test_retain_asan
 # THE TWO REFUSALS ARE COMPILE ERRORS, and each must name itself (§6.6, §3.3).
 # A refusal that were a MISSING SYMBOL would be a linker error with no reason
 # in it, which is exactly what §11's rule for a surface a class does not carry
-# refuses — so the control asks for the name and greps for the sentence.
+# refuses, so the control asks for the name and greps for the sentence.
 .PHONY: tables-retain-fixed-class-negative-control
 tables-retain-fixed-class-negative-control: build/tables-generated/.stamp
 	@mkdir -p build

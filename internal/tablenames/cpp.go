@@ -10,7 +10,7 @@ func init() {
 		// RETAIN-UNKNOWN's caller-owned storage (docs/SPEC-TABLES.md §6.6): the
 		// record bytes, the retained-id list, and what has been used of each. The
 		// entry type rides INSIDE it and claims no name of its own.
-		Name{Name: "TableRetain", What: "the caller's retention buffer and its retained-id list — the C++ backend emits it"},
+		Name{Name: "TableRetain", What: "the caller's retention buffer and its retained-id list, which the C++ backend emits"},
 		// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3), claimed whenever a unit
 		// declares a table, on the standing rule every runtime name here
 		// follows: a name free today must not become a collision the day a

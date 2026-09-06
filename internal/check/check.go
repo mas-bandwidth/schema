@@ -3691,8 +3691,9 @@ var tableGeneratedVerbs = []string{
 	"Cook", "CookMeasure", "CookBody", "CookLayout", "CookMeasureFrom", "CookFrom",
 	"Open", "TableFields", "TableInfo",
 	// RETAIN-UNKNOWN's own spellings (docs/SPEC-TABLES.md §6.6). Three are the
-	// SURFACE the page owes §11 — LoadRetain, MeasureRetain and SaveRetain —
-	// and the rest are what carries them: the second family of body functions,
+	// SURFACE the page owes §11, which is LoadRetain, MeasureRetain and
+	// SaveRetain, and the rest are what carries them: the second family of
+	// body functions,
 	// the wire pair over a pointered root, the node dispatch that reaches each
 	// record's body, and the form 2 write, which is refused by name (§3.3).
 	// Every one is emitted, so every one is claimed on this list's own rule.

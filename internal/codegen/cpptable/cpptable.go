@@ -135,7 +135,7 @@ type tableGen struct {
 	// one step and the arm is the next: the two steps carry the same field
 	// ordinal, because no body with a field list of its own sits between them.
 	pathExpr string
-	// elemIndex is the second half of a step — the element index inside the
+	// elemIndex is the second half of a step, the element index inside the
 	// field being descended through (§6.6): zero for a scalar body, the loop
 	// variable for an array of any of the four kinds, the arm's own ordinal
 	// for a union, and the key's slot for a map.
@@ -597,7 +597,7 @@ struct TableReport
     // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
     // the reason duplicate is: a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
-    // counter above — a retained field still counts unknown, because unknown
+    // counter above. A retained field still counts unknown, because unknown
     // says what a READER could not name and that stays true.
     int32_t retained = 0;    // unknown fields whose bytes were kept
     int32_t retain_lost = 0; // every unknown this load or save could not keep
@@ -1186,9 +1186,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 					}
 				}
 			}
-			if anyVariable {
-				g.emitRetainRefusals(members)
-			}
+			// IN EVERY UNIT, and not only in one that carries retention: a
+			// name refused by a missing symbol is not refused by name, and
+			// there is no reason for a fixed-class root's answer to depend on
+			// what its neighbors in the unit happen to be.
+			g.emitRetainRefusals(members)
 			g.emitCookSurface(members)
 			g.emitCookWriteSurface(members)
 			g.emitRelocatabilityPreamble()

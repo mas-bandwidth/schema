@@ -394,14 +394,24 @@ struct TableRetainIds
 // stores.
 inline int64_t TableRetainIdsBytes( const TableRetainIds & ids ) { return int64_t( ids.count ) * 8 + 8; }
 
+// A TWO-WAY MERGE over the stores' own slot order, and not a scan for each
+// slot. Every entry either store holds took its slot from the same counter, so
+// the two runs interleave to exactly the slots 1 to count and the merge has no
+// case for a slot neither store took.
 inline void TableRetainIdsWrite( TableWriter & w, const TableRetainIds & ids )
 {
+    const int32_t retained = ids.retain != NULL ? ids.retain->id_used : 0;
     int32_t i = 0, j = 0;
-    for ( int32_t slot = 1; slot <= ids.count; slot++ )
+    while ( i < ids.known.count || j < retained )
     {
-        if ( i < ids.known.count && ids.known_slot[i] == slot ) { w.put64( ids.known.ids[i] ); i++; continue; }
-        if ( ids.retain != NULL && j < ids.retain->id_used && ids.retain->ids[j].slot == slot ) { w.put64( ids.retain->ids[j].id ); j++; continue; }
-        w.put64( 0 ); // unreachable: every slot was taken by one store or the other
+        if ( j >= retained || ( i < ids.known.count && ids.known_slot[i] < ids.retain->ids[j].slot ) )
+        {
+            w.put64( ids.known.ids[i] );
+            i++;
+            continue;
+        }
+        w.put64( ids.retain->ids[j].id );
+        j++;
     }
     w.put64( uint64_t( ids.count ) );
 }
@@ -1431,10 +1441,14 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 // (§11's rule for a surface a class does not carry): the three names are
 // declared, and naming one is a compile error that says why.
 //
-// It lands in a unit that CARRIES retention. A unit whose tables are all
-// fixed-class carries none of the machinery at all, which is §2.2's zero-cost
-// gate, so there the name is free rather than refused. The CHECKER
-// claims the suffix in every unit either way (§11), which is what protects a
+// It lands in EVERY unit, including one whose tables are all fixed-class. The
+// three names are function templates that define nothing and instantiate
+// nothing until one is called, so they cost a unit that carries no retention
+// machinery exactly nothing and §2.2's zero-cost gate scans for the pointer,
+// map and list symbols, none of which is here. A fixed-class root's answer to
+// LoadRetain is therefore the same sentence wherever it is declared, rather
+// than a refusal in one unit and a linker error in another. The CHECKER claims
+// the suffix in every unit either way (§11), which is what protects a
 // declaration from taking it.
 func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
 	first := true
@@ -1443,14 +1457,20 @@ func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
 			continue
 		}
 		if first {
-			g.pf("// ---- retain-unknown on a FIXED-class root: refused by name (§6.6) ----\n")
+			g.pf("%s\n", RetainRefusalOpen)
 			g.pf("//\n")
 			g.pf("// A fixed-class root is a VALUE: no region, no node directory, and so no\n")
 			g.pf("// anchor for a retained record's path. The three names are declared here so\n")
 			g.pf("// that naming one is a refusal that says why, rather than a symbol a linker\n")
 			g.pf("// could not find. The suffixes stay claimed on every closure member all the\n")
 			g.pf("// same (§11): a table gains or loses pointers as an edit, and a name that is\n")
-			g.pf("// free today must not become a collision tomorrow.\n\n")
+			g.pf("// free today must not become a collision tomorrow.\n")
+			g.pf("//\n")
+			g.pf("// NOTHING BETWEEN THESE TWO MARKERS IS MACHINERY. Each name is a function\n")
+			g.pf("// template that defines nothing and instantiates nothing until it is called,\n")
+			g.pf("// so this block lands in a value-only unit at no cost and §2.2's zero-cost\n")
+			g.pf("// scan reads past it: the markers are what lets that scan say so exactly\n")
+			g.pf("// rather than by the absence of the word \"template\".\n\n")
 			first = false
 		}
 		why := fmt.Sprintf("%s is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it.", st.Name)
@@ -1459,7 +1479,20 @@ func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
 			g.pf("    static_assert( sizeof...( Args ) == (size_t) -1,\n        \"%s\" );\n}\n\n", why)
 		}
 	}
+	if !first {
+		g.pf("%s\n\n", RetainRefusalClose)
+	}
 }
+
+// THE MARKERS AROUND THE FIXED-CLASS REFUSAL (docs/SPEC-TABLES.md §6.6, §2.2).
+// The refusal lands in every unit, a value-only one included, so §2.2's
+// zero-cost check has to be able to say "this block is not machinery" exactly.
+// It reads the block out between these two lines and scans everything else,
+// which is the same shape the check already uses for the refusal enum.
+const (
+	RetainRefusalOpen  = "// ---- retain-unknown on a FIXED-class root: refused by name (§6.6) ----"
+	RetainRefusalClose = "// ---- end of the fixed-class retain refusal ----"
+)
 
 // fieldHoldsBodies reports whether a field can carry a retained record beneath
 // it: a nested table, an optional, a union, an array of any of those, a map,

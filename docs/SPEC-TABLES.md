@@ -6840,10 +6840,16 @@ rather than this one.
 **RETENTION IS THE VARIABLE CLASS'S, AND A FIXED-CLASS ROOT GETS NONE.** A
 fixed-class root is a value (§6.1): it has no region and no node directory, so
 the path's first step names nothing and the anchor the round trip rests on does
-not exist. **`LoadRetain` on a fixed-class root is REFUSED BY NAME**, in the
-source the unit does emit rather than as a missing symbol, on §11's rule for a
+not exist. **`LoadRetain` on a fixed-class root is REFUSED BY NAME**, in EVERY
+unit's own source rather than as a missing symbol, on §11's rule for a
 surface a class does not carry, and `MeasureRetain` and `SaveRetain` go with
-it. The three suffixes stay claimed on EVERY closure member all the same
+it. **Every unit, including one whose tables are all fixed-class**: the three
+names are function templates that define nothing and instantiate nothing until
+one is called, so a unit carrying no retention machinery pays nothing for them,
+and §2.2's zero-cost gate, which scans for the pointer, map and list symbols,
+finds none of them here. A fixed-class root's answer is the same sentence
+wherever it is declared, rather than a named refusal in one unit and a linker
+error in another. The three suffixes stay claimed on EVERY closure member all the same
 (§11), fixed and variable alike, because a table gains or loses pointers as an
 edit and a name that is free today must not become a collision tomorrow. **The
 conformance rows below live on POINTERED units** for the same reason, and the
@@ -6862,12 +6868,18 @@ retain.ids = ids;
 retain.id_capacity = sizeof( ids ) / sizeof( ids[ 0 ] );
 
 TableReport report;                        // zeroed once, read at the end
-SceneLoadRetain( scene, region, region_size, wire, wire_size,
-                 &retain, &report );
+const Scene * scene = SceneLoadRetain( region, region_size,
+                                       wire, wire_size,
+                                       &retain, &report );
 // ... the game edits values ...
 int64_t size = SceneMeasureRetain( scene, &retain );
 SceneSaveRetain( scene, &retain, buffer, size, &report );
 ```
+
+`LoadRetain` takes the region and the wire and ANSWERS the root, exactly as
+`Load` does (§6.5), and the root it answers is what `MeasureRetain` and
+`SaveRetain` take. The retention buffer is the one argument the three share,
+and it is the same buffer across all three by construction.
 
 - **`TableRetain` is a byte buffer, a capacity, an id list, an id capacity,
   and what has been used of each.** It allocates nothing, it never grows, and
@@ -6981,7 +6993,7 @@ number and never has to reason about the list.
 |---|---|---|
 | a FIELD id this reader cannot name, of any kind but those below | **yes** | a self-framed unit, and no id this reader writes can collide with it |
 | a field whose payload carries a NODE INDEX anywhere in it: kind `17` itself, an ARRAY whose element kind is `17` (§3.1), and a table, union, array or map whose recursively walked payload meets a `17` at ANY depth | no | the payload is a NODE INDEX into the writer's numbering, and this reader neither keeps that numbering nor retains the record it names, so a re-emitted index would point at another node or at nothing. A `17` met INSIDE an unknown table's or union's payload rejects the WHOLE record, because a record is atomic and a field holding a node index is not self-contained: a save can omit or renumber the node it names. The unrelated unknown siblings inside that outer field are lost with it, and that is the trade, stated: one `retain_lost` for the record and never a partial one |
-| the RESERVED node-table field, id `0xFFFFFFFFFFFFFFFF` under kind `12` (§3.1) | no | it is the writer's whole numbering. A build with no kind `17` counts it one `unknown`, and re-emitting it would put a second numbering in a file whose own numbering the writer re-derives |
+| the RESERVED node-table field, id `0xFFFFFFFFFFFFFFFF` under kind `12` (§3.1) | no | it is the writer's whole numbering, and re-emitting it would put a second numbering in a file whose own numbering the writer re-derives. **It is excluded BY CONSTRUCTION and not by a branch**: every variable body either consumes the id, in the one body whose transport it is, or refuses it, in every other, so it never reaches the unknown arm at all, and a fixed root gets no retention. A build with no kind `17` counts it one `unknown` on the plain read exactly as it always did |
 | an unknown ENUM variant reference (§3) | no | the FIELD is the reader's, and the reader writes its own value under that id, so a retained copy would be a second occurrence of an id the reader already wrote |
 | an unknown UNION arm id (§3) | no | the same, one level in: the union field is the reader's |
 | an unknown KEYED-ARRAY slot (§3.2) | no | a slot is not a field, the reader rewrites the array body whole, and a slot has nowhere to append to |
@@ -7027,6 +7039,28 @@ the sixty-four-bit id it names**, and every length that frames a rewritten
 reference recomputed. It is one walk driven by §3's skip rules and nothing
 else, and it runs in the other direction at save.
 
+**IT IS ONE PASS EACH WAY, and its cost is LINEAR IN THE RECORD'S BYTES.** The
+lengths inside a record are the port's own spelling and nothing outside the
+reader ever reads them, so a port writes each one AFTER the content it frames
+rather than before, and a record costs one pass to capture. The save cannot do
+that, because a wire length is canonical LEB128 and rides first, so it takes
+one POST-ORDER pass that computes each content's wire size and leaves it where
+the emit can read it. **A port that instead measured a content by walking it,
+then walked it again to write it, would double its work at every level of a
+nesting the FILE chooses**, and a field of a couple of hundred bytes would not
+return. That is a bound the wire can drive, and §6.6's security bound forbids
+it. Measured on the reference over one unknown table field: at nesting depth 1
+the record is 55 bytes and `LoadRetain` costs 1.5 times the plain `Load` of the
+same wire, and at depth 8 the record is 230 bytes and it costs 3.3 times. The added
+cost per record byte is the same at both, near five nanoseconds on the load and
+near seven on the save, and the multiple grows only because the record does.
+
+**The walk's nesting cap is a SMALL STATED CONSTANT: 64 nested bodies.** A
+retained record's inner nesting is the WRITER's and not this build's, so it is
+the one depth on this path a file can drive, and a record past the cap is
+dropped on the same rule as any other shape the walk cannot take. It bounds the
+recursion and nothing else: with the walk linear, no cost rests on it.
+
 **A retained record is READER-PRIVATE.** It is not a wire form: it has no form
 byte, no version, no declared byte order, and nothing ever writes one to disk
 or hands one to another process or another build. What this page specifies is
@@ -7069,8 +7103,11 @@ nothing to walk.
 references means reading the field's inner structure, which the plain read did
 not do: the plain read skipped the whole field by its outer framing and was
 right to. So the walk can meet damage the read never looked at: a reference
-above the id table's entry count, a non-canonical length, an inner body whose
-terminator falls short, a nested `L` that runs past its parent. **Any of those
+above the id table's entry count, a reference at an id-table entry of ZERO,
+which names no id at all, a reference at one of the three RESERVED ids (§3.1,
+§3.3), which would be re-emitted into a nested body where it is malformed, a
+non-canonical length, an inner body whose terminator falls short, and a nested
+`L` that runs past its parent. **Any of those
 DROPS THE RECORD, counts one `retain_lost`, and changes nothing else.** In
 particular it **never raises `malformed` on the plain read**: the outer
 framing was sound, the enclosing body walked past the field correctly, every
@@ -7104,7 +7141,11 @@ without re-reading its own error handling.
   DATA-DRIVEN, a map or an unbounded array, be addressed by the same step a
   union and a nested table take: a flat ordinal over a body would have to
   count elements the wire supplies, and an arm-indexed one would have no
-  room for an element. **A pointer field is not a step**, because its target
+  room for an element. **An ARRAY OF UNIONS takes TWO steps and not one**:
+  the array field's step names the element by its index, and the element's
+  own step names the arm by its ordinal, because the array and the union are
+  two bodies and a step descends through one field at a time.
+  **A pointer field is not a step**, because its target
   is a node and takes a first step of its own. **The retention form encodes
   the pair**, both numbers, for every step after the first.
 - **THE ARM ORDINAL IS WHY A SWITCHED ARM DROPS ITS RECORDS.** A caller that
@@ -7278,22 +7319,46 @@ above), the fixed class's own row excepted:
 - a retained field whose inner structure is damaged inside sound outer
   framing, pinning `retain_lost` at one, `malformed` at zero, and every
   sibling field's value intact. Red if the read reports damage it did not see.
-- **SIX ROWS, one per excluded class and each class named ONCE**, every row
-  pinning `retain_lost` at one and `retained` unmoved. Red if the class is
-  retained, and red if the counter lands anywhere but one. The
+- **FIVE ROWS, one per excluded class a wire can carry to the unknown arm**,
+  every row pinning `retain_lost` at one and `retained` unmoved. Red if the
+  class is retained, and red if the counter lands anywhere but one. The
   NODE-INDEX class's row is the RECURSIVE shape, which is the widest case it
   has: an unknown outer table holding a nested pointer three bodies down,
   beside an unknown scalar in that same outer field, with the save carrying
   nothing of the outer field. Red if a leg re-emits the node index, keeps the
   scalar sibling as a record of its own, or counts more than one. The other
-  five rows are the reserved node-table field, an unknown enum variant
-  reference, an unknown union arm id, an unknown keyed-array slot, and a node
-  record whose type id this reader cannot name.
-- an id list one entry short of the retained ids a wire carries: the record
-  whose id has no entry is dropped, `retain_lost` counts one, the save answers
-  the size the measure gave, and the file's own id table carries every other
-  retained id in first-use order. Red if the save is refused, if a record
-  rides without its id, or if the generated id table grew an entry.
+  four rows are an unknown enum variant reference, an unknown union arm id, an
+  unknown keyed-array slot, and a node record whose type id this reader cannot
+  name. **The SIXTH class, the reserved node-table field, has no row, because
+  it is excluded by construction and a test cannot reach it**: every variable
+  body consumes or refuses the id before the unknown arm, and a fixed root gets
+  no retention.
+- an id list one entry short of the retained ids a wire carries: the records
+  whose id has no entry are dropped, `retain_lost` counts EXACTLY ONE for each
+  such record, the save answers the size the measure gave, and the file's own
+  id table carries every other retained id in first-use order. Red if the save
+  is refused, if a record rides without its id, if the count is anything but
+  one per dropped record, or if the generated id table grew an entry.
+- **a retained record forty bodies deep, loaded and saved inside an ABSOLUTE
+  time bound**, with a record one past the walk's cap refused by name and the
+  last depth the cap admits still riding. Red if the walk is not one pass each
+  way: a leg that measures a content by walking it and then walks it again to
+  write it doubles at every level, and this row does not return.
+- **a body-holding field written TWICE with DISJOINT parts**, an enum-keyed
+  array whose two occurrences carry different slots, and a list whose second
+  occurrence is INERT. Both sets of records survive to the save and the writer
+  reads both back. Red if a leg discards at the field on either, which loses
+  the records under the parts the second occurrence never touched, and loses
+  them with no counter moving to say so.
+- **the resolution half read back**: a retained field of kind `13` whose body
+  carries an enum's variant reference, a union's arm, an enum-keyed body's
+  keys, a nested table body and an array of table bodies, every value read
+  again by the build that wrote it. Red if any of the five kinds the walk
+  RESOLVES is copied verbatim instead, which the permuted trailer turns into a
+  reference pointing at another name.
+- **the allocation audit brackets the WHOLE family and not `LoadRetain` alone**:
+  the loads, the measure and the saves all run inside one mark. Red if any of
+  them reaches the allocator.
 - a FIXED-class root, whose `LoadRetain` is refused by name. Red if the call
   compiles, and red if the refusal is a missing symbol rather than a named
   one.

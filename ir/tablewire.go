@@ -203,8 +203,8 @@ func TableWireIdCapacity(u *Unit) int {
 
 // TableWireIds is that same set, in ascending order: every id a unit's table
 // closure can name. Retain-unknown reads it to decide which STORE an id inside
-// a retained record takes — an id this build can name takes its entry from the
-// generated table and any other takes one from the caller's list
+// a retained record takes: an id this build can name takes its entry from the
+// generated table, and any other takes one from the caller's list
 // (docs/SPEC-TABLES.md §6.6).
 func TableWireIds(u *Unit) []uint64 {
 	ids := map[uint64]bool{
