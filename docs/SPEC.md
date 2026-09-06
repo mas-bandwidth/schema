@@ -1975,8 +1975,8 @@ past `L` (SPEC-TABLES.md §3, §4). **Neither reader accepts it**, which is what
 keeps the paragraph above true as written — every generated reader enforces
 these rules, in all nine targets, in every build mode — and what lets the table
 wire's `Save` check the used length alone, because ill-formed text never
-reaches storage from either wire. A group above `0xFFFF` has no case on the table wire at all, two
-bytes being unable to spell one. `string(N)` is held the same way on both
+reaches storage from either wire. A group above `0xFFFF` has no case on the
+table wire at all, two bytes being unable to spell one. `string(N)` is held the same way on both
 wires for the same reason (§4.7).
 A `wstring(N)` MAP KEY is refused by name, the diagnostic naming `string(N)`,
 because `memcmp` over UTF-8 is a portable order and little-endian code units
