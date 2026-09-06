@@ -133,22 +133,11 @@ the churn and introduce the dangerous direction: any wire-affecting fact the
 walk forgot becomes two incompatible builds shaking hands. The projection is
 TEXT: what the id depends on can be printed, read and diffed, and a fact
 missing from it is a review question rather than an implementation detail.
-**The compiler now reads one comment kind** — §4.1's `///` doc block — and
+**The compiler reads one comment kind** — §4.1's `///` doc block — and
 the projection is exactly why that is safe: a source-text hash would have
 turned every edit to an author's prose into a coordinated redeploy, while a
 projection carries the facts the bytes depend on and a doc comment is not
 one of them (Excluded, below).
-
-**Compiler status for that sentence: NO COMMENT KIND IS READ YET.** The
-`///` block is specified ahead of its implementation, on the terms
-SPEC-TABLES.md §3.3 and §6.6 take. The scanner lexes a `///` line as the
-ordinary `//` line comment it is and discards it, no doc text reaches the IR
-or a descriptor column (SPEC-TABLES.md §8.1), and none of §4.1's
-misplacement refusals fires, so a `///` block above `package` and a `///`
-trailing a field both compile today. What this paragraph says about the
-PROJECTION holds either way, because a comment is excluded from it whether or
-not the compiler reads one. Owed as schema#523 ruling 4, and this line is
-deleted by the implementation PR that lands the behavior.
 
 **Included — each fact moves the wire, for every declaration the closure
 below carries:** the package; every type's field order; field NAMES; type
@@ -258,7 +247,10 @@ declaration, because sixty-four bits is the ceiling and the law is append at
 the end, so the case this scoping exists for, a content enum of item kinds,
 quests or achievements growing weekly, cannot arise in one. The other
 positional vocabulary a table could have had is gone rather than excepted:
-`[E.Max]T` is REFUSED in a table body by name (SPEC-TABLES.md §2.4, §11), so
+a positional array whose bound folds from an enum is REFUSED BY NAME in a
+table body and a union arm, and the same array held by a `type` a table
+closure reaches is ruled on schema#606, by that refusal or by a keyed wire
+(SPEC-TABLES.md §2.4, §11), so
 `[E]T` is the table form and an enum a table reaches moves no slot when it
 changes. Flags is therefore the whole of the exception, and there is no
 second.
@@ -358,8 +350,12 @@ Consequences, in both directions:
 - **What scoping OPENED, read against the silent class.** The four edits the
   table wire cannot report (SPEC-TABLES.md §4.1) gain no fifth member, and the
   claim rests on two facts rather than on inspection. **One: a table has
-  exactly one positional vocabulary, and it is `flags`.** `[E.Max]T` is
-  refused in a table body by name (SPEC-TABLES.md §2.4, §11), so an enum a
+  exactly one positional vocabulary, and it is `flags`.** No positional
+  enum-bound array rides anywhere a table closure reaches: the refusal names
+  a table body and a union arm, and the `type`-held case is ruled on
+  schema#606, whose two answers both leave that claim standing
+  (SPEC-TABLES.md §2.4, §11).
+  So an enum a
   table reaches is read by variant name at every site and a variant inserted,
   removed or reordered moves no stored slot. **Two: `flags` is held in this
   projection** (§3.1), so the one vocabulary whose move a table cannot report

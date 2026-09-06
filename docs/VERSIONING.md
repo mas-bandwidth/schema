@@ -74,12 +74,13 @@ what proves them across releases, #463, named in its section below.
    breaks. The cross-release gate that proves this is #463.
 10. **A build can keep what it cannot name, when the caller asks.** Unknown
     fields are dropped on rewrite by default, and the never-clobber rule below
-    is the consequence. A caller that opts in at `Load`, with a bounded side
-    buffer it declares and owns, keeps every unknown FIELD's bytes, and `Save`
+    is the consequence. A caller that opts in at `Load`, with bounded side
+    storage it declares and owns, keeps every unknown FIELD's bytes, and `Save`
     writes them back into the body they came from, so a player who rolls back
     to an older build, saves, and rolls forward again keeps the newer build's
     fields. **The promise is exactly as wide as the sharp edge below says.**
-    It is a REGION round trip and not a builder one. It covers unknown FIELDS
+    It is a REGION round trip and not a builder one, so a root of the variable
+    class has it and a fixed-class root has none. It covers unknown FIELDS
     and not unknown enum variants, union arms, keyed-array slots, node
     records, node indices or the node table itself. And it covers the
     `unknown` class alone, so a load that reported `kind_mismatch`, `clamped`
@@ -364,7 +365,8 @@ checks it before it writes.
 **RETAIN-UNKNOWN is the opt-in that answers the case the rule exists for, and
 it strikes ONE counter out of the never-clobber condition** (SPEC-TABLES.md
 §6.6, owed as #525).
-A caller that hands `LoadRetain` a bounded side buffer it declares and owns
+A caller that hands `LoadRetain` bounded side storage it declares and owns,
+a buffer for the records and a list for their ids,
 keeps every unknown FIELD's bytes, and `SaveRetain` writes them back into the
 body they came from. Retention covers the `unknown` class and nothing else, so
 the rule reads: **a save cycle or a rewriting tool never overwrites a file
@@ -918,19 +920,24 @@ still open.
 - **Unknown fields do not survive a rewrite unless the caller asks, and even
   then not all of them.** The default is a drop, with the never-clobber rule
   as the required consequence and no runtime enforcement. Retain-unknown
-  (SPEC-TABLES.md §6.6, #525) is opt-in, is bounded by a buffer the caller
-  sizes, and is a REGION round trip only: `LoadRetain` loads into a region and
-  `SaveRetain` saves from that region, and the BUILDER path carries no
-  retention, because a builder has no node directory to anchor a record on and
-  re-derives its numbering from the reader's own declaration order. Seven
-  things are still dropped and each counts `retain_lost`. A field of kind
-  `17`, an array whose element kind is `17`, and the reserved node-table field
-  itself, all three because a node index means nothing in a numbering this
-  reader re-derives. An unknown enum variant, an unknown union arm and an
-  unknown keyed-array slot, none of which is a field the reader can append.
-  And a node record whose type id is unnameable, which is a whole node. A
-  record whose inner structure the resolving walk finds damaged is dropped
-  too, and that never turns the plain read `malformed`.
+  (SPEC-TABLES.md §6.6, #525) is opt-in, is bounded by the buffer and the id
+  list the caller sizes, and is a REGION round trip only: `LoadRetain` loads
+  into a region and `SaveRetain` saves from that region, and the BUILDER path
+  carries no retention, because a builder has no node directory to anchor a
+  record on and re-derives its numbering from the reader's own declaration
+  order. A FIXED-class root has no region either, so it gets no retention and
+  `LoadRetain` on one is refused by name. **Six classes are still dropped and
+  each counts `retain_lost`.** A field whose payload carries a node index
+  anywhere in it, which is kind `17`, an array whose element kind is `17`, and
+  any unknown table, union, array or map the resolving walk meets a `17`
+  inside at any depth, the whole record going with it because a node index
+  means nothing in a numbering this reader re-derives. The reserved
+  node-table field itself, which is that numbering. An unknown enum variant,
+  an unknown union arm and an unknown keyed-array slot, none of which is a
+  field the reader can append. And a node record whose type id is unnameable,
+  which is a whole node. A record whose inner structure the resolving walk
+  finds damaged is dropped too, and that never turns the plain read
+  `malformed`.
 - **Retention covers `unknown` and no other counter.** A load that counted
   `kind_mismatch`, `clamped` or `malformed` still loses what those name on a
   rewrite, so the never-clobber condition keeps all three beside
@@ -958,9 +965,15 @@ still open.
   as name hashes, so a reorder is invisible and safe and a rename is
   `unknown`, counted. **Two things had to be true for that to hold, and both
   were made true rather than found true.** `flags`, the one vocabulary where a
-  reorder IS silent, is held in the projection. And `[E.Max]T` is refused in a
-  table body (SPEC-TABLES.md §2.4, §11), so the other positional vocabulary a
-  table could have had is gone rather than excepted. The residue is that a
+  reorder IS silent, is held in the projection. And a positional array whose
+  bound folds from an enum is refused in a table body and a union arm on the
+  bound's provenance rather than its spelling, `[E.Max]T`, `[E.Count]T` and
+  `[N]T` under a `const N` that folds from either (SPEC-TABLES.md §2.4, §11),
+  so the other positional vocabulary a
+  table could have had is gone rather than excepted. The same array held by a
+  `type` a table closure reaches is ruled on schema#606, by that refusal or by
+  a keyed wire, and the vocabulary is gone under either answer. The residue is
+  that a
   table-only enum or union is guarded by the tables baseline and the build
   version and no longer by the connect gate.
 - **A field of a `type` that a table reaches renames under `was`** exactly
@@ -1058,6 +1071,11 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #432: the cook triple, and the byte-order sentences in five places.
 - #441: the retired-names ledger.
 - #446: the evolution table's fixtures.
+- #540: the refusal following the bound's PROVENANCE rather than its spelling.
+  `[E.Max]T` is refused in a table body and a union arm, but `[E.Count]T` and
+  `[N]T` under a `const N` that folds from either still compile there, which
+  SPEC-TABLES.md §2.4 and §11 state as refused, so those two spellings reopen
+  the class §4.1 closed. The `type`-held case is ruled on #606.
 - #525: retain-unknown, the two report counters, and the conformance rows.
 - #522: the `wstring` kind `33` on the id-table wire, `*wstring`, the cooked
   storage, the text row and the table-form goldens (SPEC.md §4.12).
