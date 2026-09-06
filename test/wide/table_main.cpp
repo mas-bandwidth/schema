@@ -588,20 +588,21 @@ static void cook_layout()
         check( mapped->seq == 7 );
 
         // THE UNIT BYTES THEMSELVES. The difference check above is satisfied
-        // by the swapped `label_length` and `seq` alone, so a cook that left
-        // the units byte-identical would pass it. `label` is the record's
+        // by the swapped `label_length` and `seq` alone, so a cook that wrote
+        // the units as a run of bytes would pass it. `label` is the record's
         // first piece and the record sits at the region's base (§7.2), so the
-        // pointer Open returns is where the units begin, and each one is
-        // written at its OWN two-byte width in the cook's byte order: the
-        // asymmetric 0x0041 reads 41 00 little and 00 41 big, and the
-        // symmetric 0xFFFF reads the same in both, which is what pins the
-        // swap to the unit rather than to the run.
+        // pointer Open returns is where the units begin, and all THREE units
+        // of the `char16_t[N + 1]` are read here: the asymmetric first unit
+        // 0x0041 reads 41 00 little and 00 41 big, which is what pins the swap
+        // to the unit rather than to the run, 0xFFFF is symmetric and reads
+        // the same in both, and the TERMINATOR is a unit like any other,
+        // written at its own two-byte width and zero in either order.
         const uint8_t * const at_little = (const uint8_t *) mapped;
         const uint8_t * const at_big = big.data() + ( at_little - little.data() );
-        static const uint8_t want_little[4] = { 0x41, 0x00, 0xFF, 0xFF };
-        static const uint8_t want_big[4] = { 0x00, 0x41, 0xFF, 0xFF };
-        check_vector( memcmp( at_little, want_little, 4 ) == 0, "wstring-table-cook-unit-byte-order" );
-        check_vector( memcmp( at_big, want_big, 4 ) == 0, "wstring-table-cook-unit-byte-order" );
+        static const uint8_t want_little[6] = { 0x41, 0x00, 0xFF, 0xFF, 0x00, 0x00 };
+        static const uint8_t want_big[6] = { 0x00, 0x41, 0xFF, 0xFF, 0x00, 0x00 };
+        check_vector( memcmp( at_little, want_little, 6 ) == 0, "wstring-table-cook-unit-byte-order" );
+        check_vector( memcmp( at_big, want_big, 6 ) == 0, "wstring-table-cook-unit-byte-order" );
     }
 }
 
