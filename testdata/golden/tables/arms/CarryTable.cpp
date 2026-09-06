@@ -979,8 +979,25 @@ inline void TableJsonSpace( TableJsonIn & in )
     {
         char c = in.text[in.pos];
         if ( c == ' ' || c == '\t' || c == '\n' || c == '\r' ) { in.pos++; continue; }
-        // comments are not JSON, and a walk that guessed at one would be
-        // reading a dialect nobody wrote down
+        // COMMENTS ARE ACCEPTED ON READ AND NEVER WRITTEN (docs/SPEC-TABLES.md
+        // §16.2): a line comment runs to the end of the line or of the input,
+        // a block comment to its closing delimiter, which does not nest, and
+        // an UNCLOSED block comment is malformed on the terms an unclosed
+        // string is. Both are legal wherever whitespace is; a lone slash is not JSON.
+        if ( c == '/' && in.pos + 1 < in.size && in.text[in.pos + 1] == '/' )
+        {
+            in.pos += 2;
+            while ( in.pos < in.size && in.text[in.pos] != '\n' ) { in.pos++; }
+            continue;
+        }
+        if ( c == '/' && in.pos + 1 < in.size && in.text[in.pos + 1] == '*' )
+        {
+            int64_t at = in.pos + 2;
+            while ( at + 1 < in.size && !( in.text[at] == '*' && in.text[at + 1] == '/' ) ) { at++; }
+            if ( at + 1 >= in.size ) { in.bad = true; in.pos = in.size; return; }
+            in.pos = at + 2;
+            continue;
+        }
         if ( c == '/' ) { in.bad = true; }
         return;
     }

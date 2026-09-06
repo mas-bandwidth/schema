@@ -85,8 +85,8 @@ struct TableReport
 
 
 // WHY A FILE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5, §7, §19.2): the
-// one vocabulary a cook's Open, a block's BlockOpen and a variable root's load
-// measure share, because a caller asking "why can I not have this file" is
+// one vocabulary a cook's Open, a block's BlockOpen and a load measure's -1
+// share, because a caller asking "why can I not have this file" is
 // asking one question whichever call refused it. The FIRST failing clause names the
 // reason, in the order §7 enumerates, so one file answers one value in every
 // language. A refusal moves no counter, and a match writes nothing: the

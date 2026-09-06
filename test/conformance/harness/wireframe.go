@@ -383,11 +383,12 @@ func (s *frameScanner) nodeTable(off, end int) {
 		id, named := s.f.entryOf(s.f.spots[before].value)
 		blob := named && (id == ir.BytesWireTypeId || id == ir.StringWireTypeId)
 		s.f.records++
-		if named && id == ir.StringWireTypeId {
+		switch {
+		case named && id == ir.StringWireTypeId:
 			off = s.framedText(off, end)
-		} else if blob {
+		case blob:
 			off = s.framed(off, end, nil)
-		} else {
+		default:
 			off = s.framed(off, end, func(a, b int) { s.body(a, b, false) })
 		}
 		if off < 0 {

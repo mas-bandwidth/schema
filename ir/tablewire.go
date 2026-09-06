@@ -113,7 +113,7 @@ const (
 	TableKindNoPayload = 32
 	// KIND 34 IS RESERVED BY NAME FOR float16 AND THE RESERVATION IS OF THE
 	// NAME AND NOTHING ELSE (docs/SPEC-TABLES.md §3): not part of this major,
-	// emitted by no writer, and met by a reader of this major only as damage
+	// emitted by no writer, and met by a reader of this major only as damage.
 	TableKindReservedFloat16 = 34
 )
 
