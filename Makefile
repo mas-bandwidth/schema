@@ -330,6 +330,12 @@ tables-doctags: bin/schema test/tables/doctags_main.cpp
 #   2. A per-row inline empty literal instead of the unit's one TableDocNone.
 #      The text is right and the address is not, which is exactly the failure
 #      the shared-string claim exists to have.
+#
+# Each of the two rides twice, once over the DESCRIPTOR rows in the table
+# header and once over the REGISTRY rows in the view file, and two more break
+# the two places one declaration's annotation is spelled twice: a ViewType
+# against the descriptor its `type` points at, and a general arm's ViewVariant
+# row against the field descriptor that row points at.
 .PHONY: tables-doctags-negative-controls
 tables-doctags-negative-controls: bin/schema test/tables/doctags_main.cpp
 	@rm -rf build/doctags-null && mkdir -p build/doctags-null
@@ -365,6 +371,18 @@ tables-doctags-negative-controls: bin/schema test/tables/doctags_main.cpp
 		echo "NEGATIVE CONTROL FAILED: a NULL doc column on a REGISTRY row did not take the gate down"; exit 1; \
 	fi
 	@echo "doc/tags negative control 3: a NULL doc column on a registry row takes the gate down"
+	@rm -rf build/doctags-registry-inline && mkdir -p build/doctags-registry-inline
+	./bin/schema generate --lang cpp --out build/doctags-registry-inline tables/examples
+	@sed -i.bak 's|, TableDocNone, 0, NULL },|, "", 0, NULL },|' build/doctags-registry-inline/TabledemoView.cpp
+	@grep -q ', "", 0, NULL },' build/doctags-registry-inline/TabledemoView.cpp || \
+		{ echo "NEGATIVE CONTROL: the registry inline-empty sabotage did not apply"; exit 1; }
+	$(CXX) $(CXXFLAGS) -Ibuild/doctags-registry-inline -DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo \
+		test/tables/doctags_main.cpp build/doctags-registry-inline/TablesTable.cpp build/doctags-registry-inline/TabledemoView.cpp \
+		-o build/schema_test_doctags_registry_inline
+	@if ./build/schema_test_doctags_registry_inline > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a per-row empty literal on a REGISTRY row did not take the shared-string gate down"; exit 1; \
+	fi
+	@echo "doc/tags negative control 4: a per-row empty literal on a registry row takes the shared-string gate down"
 	@rm -rf build/doctags-typepair && mkdir -p build/doctags-typepair
 	./bin/schema generate --lang cpp --out build/doctags-typepair tables/examples
 	@sed -i.bak 's|WeaponConfigTableType(), "One weapon|WeaponConfigTableType(), "Drifted weapon|' build/doctags-typepair/TabledemoView.cpp
@@ -375,7 +393,7 @@ tables-doctags-negative-controls: bin/schema test/tables/doctags_main.cpp
 	@if ./build/schema_test_doctags_typepair > /dev/null 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a ViewType and its descriptor disagreeing about doc did not take the gate down"; exit 1; \
 	fi
-	@echo "doc/tags negative control 4: the TYPE pair disagreeing takes the gate down"
+	@echo "doc/tags negative control 5: the TYPE pair disagreeing takes the gate down"
 	@rm -rf build/doctags-armpair && mkdir -p build/doctags-armpair
 	./bin/schema generate --lang cpp --out build/doctags-armpair tables/arms
 	@sed -i.bak 's|&Carry_view_arm_fields\[0\], TableDocNone|\&Carry_view_arm_fields[0], "drifted"|' build/doctags-armpair/ArmdemoView.cpp
@@ -388,7 +406,7 @@ tables-doctags-negative-controls: bin/schema test/tables/doctags_main.cpp
 	@if ./build/schema_test_doctags_armpair > /dev/null 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a general arm's ViewVariant row and its field descriptor disagreeing did not take the gate down"; exit 1; \
 	fi
-	@echo "doc/tags negative control 5: the general ARM pair disagreeing takes the gate down"
+	@echo "doc/tags negative control 6: the general ARM pair disagreeing takes the gate down"
 
 # ---------------------------------------------------------------------------
 # THE UNIT REGISTRY (docs/SPEC-TABLES.md §8.3), and its corpus gate (§8.7).
