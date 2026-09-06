@@ -740,6 +740,73 @@ inline void TableRetainReset( TableRetain * retain, const TableNodeMap & nodes, 
     retain->directory_count = nodes.count;
 }
 
+// ---- RECORD LIFETIME (docs/SPEC-TABLES.md §6.6) ----
+//
+// A RETAINED RECORD BELONGS TO THE BODY OCCURRENCE THAT CARRIED IT, AND DIES
+// WITH IT. Legal input can carry a known child body twice, and the later
+// occurrence resets the child and wins whole (§3, §4): the records retained
+// under the earlier occurrence go with the values it held. The discard moves
+// NEITHER counter — the writer superseded the data, so nothing was lost that
+// the load could have kept, and retained counted the record when its bytes
+// were kept and does not fall when they are let go.
+//
+// The occurrences are four, and each is a body the wire lets a writer put down
+// again: a repeated TABLE field, by value or under ?, a UNION whose arm is
+// written again, a MAP's duplicate key, and a KEYED-ARRAY slot written again.
+// The FIELD form covers the three where the field itself is read again, arm
+// switches and shrinking arrays included; the BODY form covers a duplicate key
+// inside one occurrence of a map, where the field is read once and the entry
+// twice.
+inline bool TableRetainUnder( const uint8_t * record, const void * at, const TableRetain & retain,
+                              const TableRetainPath & path, bool field, uint32_t ordinal )
+{
+    if ( TableRetainRecordAt( retain, record ) != at ) { return false; }
+    const int32_t depth = TableRetainRecordDepth( record );
+    if ( field )
+    {
+        if ( depth <= path.depth ) { return false; }
+    }
+    else if ( depth < path.depth ) { return false; }
+    const uint8_t * steps = TableRetainRecordSteps( record );
+    for ( int32_t i = 0; i < path.depth; i++ )
+    {
+        if ( TableRetainRead32( steps + 8 * i ) != path.steps[i].ordinal ) { return false; }
+        if ( TableRetainRead32( steps + 8 * i + 4 ) != path.steps[i].index ) { return false; }
+    }
+    if ( field && TableRetainRead32( steps + 8 * path.depth ) != ordinal ) { return false; }
+    return true;
+}
+
+inline void TableRetainDiscard( TableRetain * retain, const TableRetainPath & path, bool field, uint32_t ordinal )
+{
+    if ( retain == NULL || retain->count == 0 ) { return; }
+    int64_t read = 0, write = 0;
+    int32_t kept = 0;
+    for ( int32_t k = 0; k < retain->count; k++ )
+    {
+        const int64_t bytes = TableRetainRecordBytes( retain->bytes + read );
+        if ( !TableRetainUnder( retain->bytes + read, path.at, *retain, path, field, ordinal ) )
+        {
+            if ( write != read ) { memmove( retain->bytes + write, retain->bytes + read, (size_t) bytes ); }
+            write += bytes;
+            kept++;
+        }
+        read += bytes;
+    }
+    retain->used = write;
+    retain->count = kept;
+}
+
+inline void TableRetainDiscardBody( TableRetain * retain, const TableRetainPath & path )
+{
+    TableRetainDiscard( retain, path, false, 0 );
+}
+
+inline void TableRetainDiscardField( TableRetain * retain, const TableRetainPath & path, uint32_t ordinal )
+{
+    TableRetainDiscard( retain, path, true, ordinal );
+}
+
 // ---- EMIT: the save side (§6.6) ----
 //
 // The record read back the other way: every resolved id becomes the reference
@@ -1320,4 +1387,24 @@ func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
 			g.pf("    static_assert( sizeof...( Args ) == (size_t) -1,\n        \"%s\" );\n}\n\n", why)
 		}
 	}
+}
+
+// fieldHoldsBodies reports whether a field can carry a retained record beneath
+// it — a nested table, an optional, a union, an array of any of those, a map,
+// an unbounded array or an enum-keyed array. A scalar field holds no body and
+// nothing can be retained under it, so it takes no discard.
+func fieldHoldsBodies(f *ir.Field) bool {
+	if f.IsMap() {
+		return true
+	}
+	if f.Type.Kind != ir.TNamed {
+		return false
+	}
+	switch f.Type.Ref.(type) {
+	case *ir.Union:
+		return true
+	case *ir.Struct:
+		return !f.Type.Pointer // a pointer target is a NODE and has a path of its own
+	}
+	return false
 }

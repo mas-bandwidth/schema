@@ -1518,6 +1518,13 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	// O(bytes) to COMPILE (#320). Reset applies the same declared defaults in
 	// place, with neither cost.
 	g.pf("    %sReset( value ); // prefill declared defaults in place, then overlay\n", st.Name)
+	if g.retain {
+		g.pf("    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT\n")
+		g.pf("    // (docs/SPEC-TABLES.md §6.6): this body is being established, so\n")
+		g.pf("    // whatever an earlier occurrence of it left is discarded before the\n")
+		g.pf("    // winning one is read. The discard moves neither counter.\n")
+		g.pf("    TableRetainDiscardBody( retain, path );\n")
+	}
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint64_t field_ref = 0;\n")
 	g.pf("        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }\n")
@@ -1738,6 +1745,14 @@ func (g *tableGen) retainLostInline() string {
 
 func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 	ind := "                "
+	if g.retain && fieldHoldsBodies(f) {
+		// THE FIELD IS BEING READ AGAIN (docs/SPEC-TABLES.md §6.6): a repeated
+		// table field, a union whose arm is written again — the same arm or
+		// another — a map field written again and a keyed array written again
+		// all reset what they hold, so every record under this field goes
+		// before the winning occurrence is read.
+		g.pf("%sTableRetainDiscardField( retain, path, %d );\n", ind, g.ordinal[f])
+	}
 	if f.IsMap() {
 		g.emitMapReadField(f)
 		return

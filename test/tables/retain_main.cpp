@@ -19,6 +19,7 @@
 #include "RT1Table.h"
 #include "RT2Table.h"
 #include "RT3Table.h"
+#include "wirebuilder.h"
 
 static int failures = 0;
 
@@ -211,11 +212,339 @@ static void round_trip()
     CHECK( w3 == w && memcmp( out, out3, (size_t) w ) == 0 );
 }
 
+
+// ---- THE SIX EXCLUDED CLASSES (docs/SPEC-TABLES.md §6.6) ----
+//
+// The table is the law and its rows are the count. Each row below is one
+// class, and each pins retain_lost where the class is the only thing on the
+// wire this reader cannot keep.
+
+// A helper: load one RT2 wire under RT1 with retention on, and hand back the
+// report and the region.
+struct Loaded
+{
+    Region region;
+    uint8_t storage[ 8192 ];
+    tblrt1::TableRetain::Id ids[ 1024 ];
+    tblrt1::TableRetain retain;
+    tblrt1::TableReport report;
+    const tblrt1::Node * root = NULL;
+
+    void load( const uint8_t * wire, int64_t n )
+    {
+        region.size( tblrt1::NodeLoadMeasure( wire, n ) );
+        retain.bytes = storage;
+        retain.capacity = sizeof( storage );
+        retain.ids = ids;
+        retain.id_capacity = 1024;
+        root = tblrt1::NodeLoadRetain( region.base, region.bytes, wire, n, &retain, &report );
+    }
+};
+
+// ONE RT2 instance carrying exactly one excluded class and nothing else this
+// reader cannot name. `which` picks the class.
+static int64_t write_excluded( uint8_t * buffer, int64_t capacity, int which )
+{
+    tblrt2::NodeBuilder builder;
+    tblrt2::Node * root = builder.GetRoot();
+    root->inner.hits = 1;
+    switch ( which )
+    {
+        case 0: // A FIELD OF KIND 17: a node index this reader neither keeps nor retains
+        {
+            tblrt2::TableSlot<tblrt2::Leaf> ghost = builder.Alloc<tblrt2::Leaf>();
+            ghost->value = 88;
+            root->ghost = ghost;
+            break;
+        }
+        case 1: // AN ARRAY whose element kind is 17
+        {
+            tblrt2::TableSlot<tblrt2::Leaf> ghost = builder.Alloc<tblrt2::Leaf>();
+            ghost->value = 88;
+            root->ghosts_count = 1;
+            root->ghosts[0] = ghost;
+            break;
+        }
+        case 2: // A TABLE whose recursively walked payload meets a 17 three bodies
+                // down, beside an unknown SCALAR in that same outer field. The
+                // WHOLE record goes, and the sibling with it.
+        {
+            tblrt2::TableSlot<tblrt2::Leaf> deep = builder.Alloc<tblrt2::Leaf>();
+            deep->value = 5;
+            root->outer.plain = 99;
+            root->outer.mid.deeper.link = deep;
+            break;
+        }
+        case 3: root->tier = tblrt2::Slot::Extra; break;                 // an unknown ENUM VARIANT
+        case 4: root->pick.type = tblrt2::PickType::Gamma;                // an unknown UNION ARM
+                root->pick.gamma = 3; break;
+        case 5: tblrt2::InnerReset( root->banks.slots[2] );               // an unknown KEYED SLOT
+                root->banks.slots[2].hits = 6; break;
+        default: break;
+    }
+    if ( !builder.Lock() ) { return -1; }
+    return tblrt2::NodeSave( builder, buffer, capacity );
+}
+
+static void excluded_classes()
+{
+    // the node-index class, its array form, and the RECURSIVE shape: each one
+    // record dropped, each counted ONCE, and never a partial one
+    static const int32_t retained_of[] = { 0, 0, 0, 0, 0, 0 };
+    for ( int which = 0; which < 6; which++ )
+    {
+        uint8_t wire[ 8192 ];
+        const int64_t n = write_excluded( wire, sizeof( wire ), which );
+        CHECK( n > 0 );
+        Loaded l;
+        l.load( wire, n );
+        CHECK( l.root != NULL );
+        CHECK( !l.report.malformed );
+        if ( l.report.retain_lost != 1 || l.report.retained != retained_of[ which ] )
+        {
+            printf( "FAIL excluded class %d: retained=%d retain_lost=%d\n", which, l.report.retained, l.report.retain_lost );
+            failures++;
+        }
+        // and the save carries nothing of it
+        tblrt1::TableReport save_report;
+        uint8_t out[ 8192 ];
+        const int64_t m = tblrt1::NodeMeasureRetain( l.root, &l.retain );
+        const int64_t w = tblrt1::NodeSaveRetain( l.root, &l.retain, out, m, &save_report );
+        CHECK( w == m && w > 0 );
+        CHECK( save_report.retain_lost == 0 ); // the load already counted it, and the save has nothing to place
+    }
+}
+
+// A NODE RECORD whose type id this reader cannot name is the sixth class, and
+// RT3 is what isolates it: `head` is the field RT1 already has, at the same id
+// and the same kind, pointing at a table RT1 never heard of.
+static void unknown_node_record()
+{
+    uint8_t wire[ 4096 ];
+    int64_t n = 0;
+    {
+        tblrt3::NodeBuilder builder;
+        tblrt3::Node * root = builder.GetRoot();
+        memcpy( root->name, "beam", 5 );
+        root->name_length = 4;
+        tblrt3::TableSlot<tblrt3::Beam> beam = builder.Alloc<tblrt3::Beam>();
+        beam->value = 3;
+        root->head = beam;
+        CHECK( builder.Lock() );
+        n = tblrt3::NodeSave( builder, wire, sizeof( wire ) );
+    }
+    CHECK( n > 0 );
+    Loaded l;
+    l.load( wire, n );
+    CHECK( l.root != NULL );
+    CHECK( !l.report.malformed );
+    CHECK( l.report.unknown == 1 );     // the record, counted once and not once per pointer
+    CHECK( l.report.retain_lost == 1 ); // a whole node: nothing to append it to
+    CHECK( l.report.retained == 0 );
+}
+
+
+// ---- THE TWO CAPACITIES (docs/SPEC-TABLES.md §6.6) ----
+//
+// REFUSAL IS PER RECORD AND NEVER PARTIAL: a record the remaining capacity
+// cannot hold whole is not written at all, retain_lost counts one, the read
+// continues, and the buffer never holds a truncated field.
+static void capacities()
+{
+    uint8_t wire[ 8192 ];
+    const int64_t n = write_rt2( wire, sizeof( wire ), false );
+    CHECK( n > 0 );
+
+    Loaded full;
+    full.load( wire, n );
+    CHECK( full.root != NULL );
+    const int64_t used = full.retain.used;
+    const int32_t records = full.retain.count;
+    CHECK( records == 8 );
+
+    // ONE BYTE SHORT OF THE LAST RECORD
+    {
+        Region region;
+        region.size( tblrt1::NodeLoadMeasure( wire, n ) );
+        uint8_t storage[ 8192 ];
+        tblrt1::TableRetain::Id ids[ 1024 ];
+        tblrt1::TableRetain retain;
+        retain.bytes = storage;
+        retain.capacity = used - 1;
+        retain.ids = ids;
+        retain.id_capacity = 1024;
+        tblrt1::TableReport report;
+        const tblrt1::Node * root = tblrt1::NodeLoadRetain( region.base, region.bytes, wire, n, &retain, &report );
+        CHECK( root != NULL );
+        CHECK( report.retained == records - 1 );
+        CHECK( report.retain_lost == 3 ); // the two excluded vocabularies, and the record with no room
+        // THE READ'S OWN COUNTERS ARE UNMOVED: a full buffer degrades to the
+        // default behavior one field at a time
+        CHECK( report.unknown == 10 );
+        CHECK( report.kind_mismatch == 0 && report.clamped == 0 && report.widened == 0 );
+        CHECK( !report.malformed );
+        CHECK( retain.used <= used - 1 ); // and the truncated record was never written
+    }
+
+    // AN ID LIST ONE ENTRY SHORT of the retained ids the wire carries. The
+    // record whose id has no entry is dropped, the save answers the size the
+    // measure gave, and the save is NEVER REFUSED.
+    {
+        Region region;
+        region.size( tblrt1::NodeLoadMeasure( wire, n ) );
+        uint8_t storage[ 8192 ];
+        tblrt1::TableRetain::Id ids[ 2 ];
+        tblrt1::TableRetain retain;
+        retain.bytes = storage;
+        retain.capacity = sizeof( storage );
+        retain.ids = ids;
+        retain.id_capacity = 1; // the wire carries TWO distinct retained ids
+        tblrt1::TableReport report;
+        const tblrt1::Node * root = tblrt1::NodeLoadRetain( region.base, region.bytes, wire, n, &retain, &report );
+        CHECK( root != NULL );
+        CHECK( report.retained == records ); // LOAD writes into neither list
+        tblrt1::TableReport save_report;
+        const int64_t m = tblrt1::NodeMeasureRetain( root, &retain );
+        CHECK( m > 0 );
+        uint8_t out[ 8192 ];
+        const int64_t w = tblrt1::NodeSaveRetain( root, &retain, out, m, &save_report );
+        CHECK( w == m );                   // the measure saw the same overflow
+        CHECK( save_report.retain_lost > 0 ); // and the records with no entry were dropped
+        CHECK( retain.id_used == 1 );
+        // the file still reads, and the other retained id rode
+        Region back;
+        back.size( tblrt2::NodeLoadMeasure( out, w ) );
+        tblrt2::TableReport read_report;
+        const tblrt2::Node * reread = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
+        CHECK( reread != NULL && !read_report.malformed );
+    }
+}
+
+// ---- RECORD LIFETIME (docs/SPEC-TABLES.md §6.6) ----
+//
+// A body carrying `inner { future = 7 }` and then `inner { hits = 2 }`: the
+// second occurrence resets the first, the save carries `hits = 2` and no
+// `future`, retain_lost is 0, and retained is unchanged by the discard.
+static void record_lifetime()
+{
+    WireBuilder b;
+    b.field( "inner", 13 );
+    const int64_t first = b.open_len();
+    b.field( "future", 4 );
+    b.u32( 7 );
+    b.end();
+    b.close_len( first );
+    b.field( "inner", 13 );
+    const int64_t second = b.open_len();
+    b.field( "hits", 4 );
+    b.u32( 2 );
+    b.end();
+    b.close_len( second );
+    b.end();
+    uint8_t wire[ 4096 ];
+    const int64_t n = b.finish( wire );
+
+    Loaded l;
+    l.load( wire, n );
+    CHECK( l.root != NULL );
+    CHECK( !l.report.malformed );
+    CHECK( l.root->inner.hits == 2 );
+    CHECK( l.report.unknown == 1 );
+    CHECK( l.report.retained == 1 );    // counted when its bytes were kept
+    CHECK( l.report.retain_lost == 0 ); // and a reset is the writer's act, not a loss
+    CHECK( l.retain.count == 0 );       // the record went with the occurrence that carried it
+
+    tblrt1::TableReport save_report;
+    uint8_t out[ 4096 ];
+    const int64_t m = tblrt1::NodeMeasureRetain( l.root, &l.retain );
+    const int64_t w = tblrt1::NodeSaveRetain( l.root, &l.retain, out, m, &save_report );
+    CHECK( w == m && w > 0 );
+    CHECK( save_report.retain_lost == 0 );
+
+    Region back;
+    back.size( tblrt2::NodeLoadMeasure( out, w ) );
+    tblrt2::TableReport read_report;
+    const tblrt2::Node * reread = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
+    CHECK( reread != NULL );
+    CHECK( reread->inner.hits == 2 );
+    CHECK( reread->inner.future == 0 ); // and `7` was never resurrected beside it
+}
+
+// ---- THE RESOLVING WALK'S VERDICT (docs/SPEC-TABLES.md §6.6) ----
+//
+// A retained field whose INNER structure is damaged inside sound outer
+// framing: retain_lost at one, malformed at ZERO, and every sibling field's
+// value intact. Retention can lose a field; it can never turn a good read into
+// a bad one.
+static void damaged_inner_structure()
+{
+    WireBuilder b;
+    b.field( "name", 12 ); // a sibling the reader does name, before the damage
+    b.leb( 5 );
+    b.raw( "world", 5 );
+    b.field( "future", 13 ); // an unknown TABLE whose body never reaches a terminator
+    const int64_t at = b.open_len();
+    b.leb( b.ref( "deeper" ) );
+    b.u8( 4 );
+    b.u32( 1 ); // and the body ends here, with no zero reference: the L is sound
+    b.close_len( at );
+    b.end();
+    uint8_t wire[ 4096 ];
+    const int64_t n = b.finish( wire );
+
+    Loaded l;
+    l.load( wire, n );
+    CHECK( l.root != NULL );
+    CHECK( !l.report.malformed ); // THE OUTER FRAMING WAS SOUND
+    CHECK( l.root->name_length == 5 ); // and every sibling field's value is intact
+    CHECK( l.report.unknown == 1 );
+    CHECK( l.report.retained == 0 );
+    CHECK( l.report.retain_lost == 1 );
+}
+
+// ---- THE TRAILER IS PERMUTED, AND EVERY REFERENCE MOVES WITH IT ----
+//
+// Moving a field changes the order ids are first used in, and the id table is
+// in FIRST-USE ORDER over the whole wire (§3), so the trailer's entries are
+// permuted and every reference in the body is renumbered with them. A retained
+// record that had been copied VERBATIM would point at other names, silently —
+// which is what the resolved form exists to prevent, and what RT2 reading its
+// own values back out of the permuted file proves.
+static void trailer_is_permuted()
+{
+    uint8_t wire[ 8192 ];
+    const int64_t n = write_rt2( wire, sizeof( wire ), false );
+    Loaded l;
+    l.load( wire, n );
+    CHECK( l.root != NULL );
+    uint8_t out[ 8192 ];
+    tblrt1::TableReport save_report;
+    const int64_t m = tblrt1::NodeMeasureRetain( l.root, &l.retain );
+    const int64_t w = tblrt1::NodeSaveRetain( l.root, &l.retain, out, m, &save_report );
+    CHECK( w == m );
+
+    // the two trailers, read from the END of each file (§3)
+    uint64_t in_count = 0, out_count = 0;
+    for ( int i = 7; i >= 0; i-- ) { in_count = ( in_count << 8 ) | wire[ n - 8 + i ]; }
+    for ( int i = 7; i >= 0; i-- ) { out_count = ( out_count << 8 ) | out[ w - 8 + i ]; }
+    const uint8_t * in_first = wire + n - (int64_t) in_count * 8 - 8;
+    const uint8_t * out_first = out + w - (int64_t) out_count * 8 - 8;
+    bool same_order = in_count == out_count;
+    if ( same_order ) { same_order = memcmp( in_first, out_first, (size_t) in_count * 8 ) == 0; }
+    CHECK( !same_order ); // the move permuted it, which is what makes the check real
+}
+
 int main( int argc, char ** argv )
 {
     (void) argc;
     (void) argv;
     round_trip();
+    excluded_classes();
+    unknown_node_record();
+    capacities();
+    record_lifetime();
+    damaged_inner_structure();
+    trailer_is_permuted();
     if ( failures != 0 )
     {
         printf( "retain: %d failure(s)\n", failures );
