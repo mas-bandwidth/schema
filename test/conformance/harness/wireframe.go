@@ -331,13 +331,7 @@ func (s *frameScanner) arm(off, end int) int {
 	// place and carries an arm reference of its own.
 	after = s.framedAs(off, end, true, kind == ir.TableKindTable, func(a, b int) { s.framedPayload(int(kind), a, b) })
 	if after >= 0 && kind == ir.TableKindString {
-		s.f.spots[s.lastSpot()].text = false
-		for i := len(s.f.spots) - 1; i >= 0; i-- {
-			if s.f.spots[i].kind == spotLength && s.f.spots[i].off == off {
-				s.f.spots[i].text = true
-				break
-			}
-		}
+		s.markText(off)
 	}
 	return after
 }
@@ -1110,7 +1104,7 @@ func rekind(seed *wireSeed, si int, to int) ([]byte, bool) {
 		n := int(cs.value)
 		at := cs.off + cs.width
 		out := append([]byte{uint8(to)}, wire[cs.off:at]...)
-		for i := 0; i < n; i++ {
+		for range n {
 			if sp.role == roleKeyedElement {
 				// a triple: the key reference, then an L that is the
 				// element's own width, then the element
@@ -1167,17 +1161,24 @@ func spliceRange(seed *wireSeed, off, width int, enclosing []int, newBytes []byt
 	return append(out, seed.wire[at:]...)
 }
 
+// markText marks the LENGTH spot that opens the payload at `off` as a kind 12
+// frame, so the text pass can aim at what sits under it. The spot is the LAST
+// one written at that offset: a nested frame may have added spots after it.
+func (s *frameScanner) markText(off int) {
+	for i := range slices.Backward(s.f.spots) {
+		if s.f.spots[i].kind == spotLength && s.f.spots[i].off == off {
+			s.f.spots[i].text = true
+			return
+		}
+	}
+}
+
 // framedText opens one KIND 12 payload's L and marks it as text, so the text
 // pass can aim at what sits under it (§3, §4.2).
 func (s *frameScanner) framedText(off, end int) int {
 	after := s.framed(off, end, nil)
 	if after >= 0 {
-		for i := len(s.f.spots) - 1; i >= 0; i-- {
-			if s.f.spots[i].kind == spotLength && s.f.spots[i].off == off {
-				s.f.spots[i].text = true
-				break
-			}
-		}
+		s.markText(off)
 	}
 	return after
 }
