@@ -2208,6 +2208,10 @@ func annotationColumns(doc string, tags []string, tagsName string) string {
 	return fmt.Sprintf("%s, %d, %s", docColumn, len(tags), list)
 }
 
+// tableZeroId is the id function a descriptor outside a table closure carries:
+// present, and answering 0 for every value (docs/SPEC-TABLES.md §8.2).
+const tableZeroId = "+[]( uint64_t ) -> uint64_t { return 0; }"
+
 // emitFieldInfo emits ONE TableFieldInfo row (docs/SPEC-TABLES.md §8.1). It is
 // the whole descriptor vocabulary in one place: a field of a table and an arm
 // of a union are the same row, differing only in how the storage is spelled.
@@ -2380,6 +2384,15 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 			}
 		}
 	}
+	if sp.outside && variantId != "NULL" {
+		// OUTSIDE A TABLE CLOSURE THE FUNCTION ANSWERS 0
+		// (docs/SPEC-TABLES.md §8.2), the same answer the registry's
+		// ViewVariant rows give: §5's refusals are scoped to the closure, so
+		// nothing ever checked these ids. It stays a FUNCTION rather than
+		// becoming NULL, because a null id function beside a non-null name
+		// function is what identifies a flags field (§8.1).
+		variantId = tableZeroId
+	}
 
 	presentOffset := "0xffffffffu"
 	if f.Type.Optional {
@@ -2395,6 +2408,9 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		keyTypeName = fmt.Sprintf("%q", f.KeyEnum)
 		keyName = fmt.Sprintf("+[]( uint64_t v ) { return EnumName( %s( v ) ); }", f.KeyEnum)
 		keyId = fmt.Sprintf("+[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( %s( v ), id ); return id; }", f.KeyEnum)
+		if sp.outside {
+			keyId = tableZeroId // §8.2, exactly as variant_id above
+		}
 		g.noteRef(f.KeyEnum)
 	}
 

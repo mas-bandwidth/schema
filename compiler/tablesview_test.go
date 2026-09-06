@@ -22,6 +22,7 @@ type Orphan | inspected
     grade Lonely
     marks Marks
     label string(8)
+    slots [Lonely]int32
 }
 
 type Reached
@@ -54,19 +55,22 @@ func TestViewCarriesTheTypesNoTableReaches(t *testing.T) {
 	for _, want := range []string{
 		"const TableTypeInfo * OrphanTableType();", // declared in the header (§8.5)
 		"void OrphanReset( Orphan & value );",
-		// an enum ONLY an out-of-closure type reaches still needs its
-		// value <-> id pair, because that type's descriptor names it
-		"inline bool TableEnumId( Lonely value, uint64_t & id )",
 	} {
 		if !strings.Contains(header, want) {
 			t.Errorf("the view header does not carry %q", want)
 		}
 	}
+	// AN ENUM ONLY AN OUT-OF-CLOSURE TYPE REACHES needs no value <-> id pair,
+	// because the descriptor that names it hands out no id: §8.2 says the id
+	// columns answer 0 outside a closure, so the view emits none of the pair.
+	if strings.Contains(header, "TableEnumId( Lonely value") {
+		t.Error("the view header carries an identity pair for an enum no table closure reaches — nothing calls it (§8.2)")
+	}
 	if strings.Contains(string(files["ProbeTable.h"]), "OrphanTableType") {
 		t.Error("the table header carries the descriptor of a type no table reaches — it belongs in the view file (§8.5)")
 	}
 	// the two table-wire columns, empty on every field of Orphan (§8.2)
-	for _, field := range []string{"grade", "marks", "label"} {
+	for _, field := range []string{"grade", "marks", "label", "slots"} {
 		row := descriptorRow(t, source, field)
 		if !strings.Contains(row, `{ "`+field+`", NULL,`) {
 			t.Errorf("%s: the json column is not NULL outside a table closure: %s", field, row)
@@ -78,6 +82,16 @@ func TestViewCarriesTheTypesNoTableReaches(t *testing.T) {
 	// a closure member keeps both, exactly as it always did
 	if strings.Contains(string(files["ProbeTable.h"]), `{ "hits", NULL,`) {
 		t.Error("a field of a type INSIDE the closure lost its text key")
+	}
+	// THE ID FUNCTIONS ANSWER 0 (§8.2), the same answer the registry's
+	// ViewVariant rows give: a descriptor outside a closure hands out no id,
+	// and the function is present rather than NULL because a null id function
+	// beside a non-null name function is what identifies a FLAGS field (§8.1).
+	zero := "+[]( uint64_t ) -> uint64_t { return 0; }"
+	for _, field := range []string{"grade", "slots"} {
+		if row := descriptorRow(t, source, field); !strings.Contains(row, zero) {
+			t.Errorf("%s: the id function outside a table closure is not the zero lambda: %s", field, row)
+		}
 	}
 }
 

@@ -78,36 +78,6 @@ func generateViewFiles(u *ir.Unit, closure map[string]bool, anyVariable, anyKeye
 	}
 }
 
-// outsideEnumIdentity emits the value <-> id pair of every enum that ONLY a
-// `type` outside the table closure reaches. An enum a table reaches has its
-// pair in the table headers this file includes.
-func (v *viewGen) outsideEnumIdentity(g *tableGen) string {
-	saved := g.body.String()
-	g.body.Reset()
-	seen := map[string]bool{}
-	for _, st := range v.outside {
-		for _, f := range st.Fields {
-			e, isEnum := f.Type.Ref.(*ir.Enum)
-			if !isEnum || f.Type.Kind != ir.TNamed || seen[e.Name] || v.reached[e.Name] {
-				continue
-			}
-			seen[e.Name] = true
-			g.emitEnumIdentity(e)
-		}
-		for _, f := range st.Fields {
-			if f.KeyEnumRef == nil || seen[f.KeyEnumRef.Name] || v.reached[f.KeyEnumRef.Name] {
-				continue
-			}
-			seen[f.KeyEnumRef.Name] = true
-			g.emitEnumIdentity(f.KeyEnumRef)
-		}
-	}
-	identity := g.body.String()
-	g.body.Reset()
-	g.body.WriteString(saved)
-	return identity
-}
-
 // header writes <Package>View.h: the registry's records, the declaration of
 // every out-of-closure type's descriptor, and UnitView() itself. It DECLARES;
 // the translation unit holds the data (docs/SPEC-TABLES.md §8.5).
@@ -136,13 +106,6 @@ func (v *viewGen) header(u *ir.Unit, g *tableGen) string {
 	}
 	fmt.Fprintf(&h, "\nnamespace %s {\n\n", u.Package)
 	h.WriteString(viewRecords)
-	// AN ENUM ONLY AN OUT-OF-CLOSURE TYPE REACHES still needs its value <-> id
-	// pair, because that type's descriptor names it exactly as a closure
-	// member's does. The pair sits behind its own macro guard, so a unit whose
-	// table headers already carry it defines it once (§8.1).
-	if identity := v.outsideEnumIdentity(g); identity != "" {
-		h.WriteString(identity)
-	}
 	if len(v.outside) > 0 {
 		h.WriteString("// THE TYPES NO TABLE REACHES (docs/SPEC-TABLES.md §8.2). A `type` a table\n")
 		h.WriteString("// reaches keeps its descriptor in the table header, where a game that loads\n")
