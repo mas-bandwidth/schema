@@ -1085,7 +1085,13 @@ inline int32_t TableJsonEncodeUtf8( uint32_t code, char * unit )
 // never cut through a multi-byte character. Clamping is counted, never
 // fatal, exactly as it is on the wire (§4). A NULL destination scans past a
 // string without keeping it.
-inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity, int32_t * length )
+//
+// A CALLER THAT TAKES clamped_out OWNS THE COUNTER. The value paths leave it
+// NULL, and the clamp is a value's clamp, counted here. A MAP KEY takes it,
+// because a key never clamps: a key this buffer could not hold whole is not a
+// shorter key, and its entry drops instead (§2.8).
+inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity, int32_t * length,
+                                 bool * clamped_out = NULL )
 {
     if ( TableJsonPeek( in ) != '"' ) { in.bad = true; return false; }
     in.pos++;
@@ -1198,7 +1204,8 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
             clamped = true;
         }
     }
-    if ( clamped ) { in.report->clamped++; }
+    if ( clamped_out != NULL ) { *clamped_out = clamped; }
+    else if ( clamped ) { in.report->clamped++; }
     if ( length != NULL ) { *length = placed; }
     return true;
 }
@@ -2945,7 +2952,8 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         if ( c == 0 ) { in.bad = true; return false; }
         char token[kTableJsonMaxKey];
         int32_t token_length = 0;
-        if ( !TableJsonScanString( in, token, kTableJsonMaxKey - 1, &token_length ) ) { return false; }
+        bool key_over = false; // longer than THIS buffer: never truncated into a key
+        if ( !TableJsonScanString( in, token, kTableJsonMaxKey - 1, &token_length, &key_over ) ) { return false; }
         token[token_length] = 0;
         if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
         in.pos++;
@@ -2953,8 +2961,13 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         bool place = true;
         if ( !TableJsonMapKeyIsString( key ) )
         {
+            // A KEY THIS SCAN COULD NOT HOLD WHOLE IS NOT A NUMBER ANY INTEGER
+            // KIND HOLDS: the token is longer than every integer's spelling, so
+            // the entry drops as kind_mismatch rather than a truncation being
+            // read as a value.
             bool fits = false;
-            if ( !TableJsonMapKeyValue( token, token_length, key, key_value, fits ) )
+            if ( key_over ) { in.report->kind_mismatch++; place = false; }
+            else if ( !TableJsonMapKeyValue( token, token_length, key, key_value, fits ) )
             {
                 // A MALFORMED KEY STOPS THE READ where §16.1's rule stops it,
                 // with the instance holding what was placed before the stop.
@@ -2962,14 +2975,16 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
                 in.bad = true;
                 return false;
             }
-            if ( !fits ) { in.report->kind_mismatch++; place = false; }
+            else if ( !fits ) { in.report->kind_mismatch++; place = false; }
         }
-        else if ( token_length > key->array_bound )
+        else if ( key_over || token_length > key->array_bound )
         {
             // A KEY LONGER THAN N DROPS ITS ENTRY AND COUNTS clamped, the
             // wire's rule, because a clamped key is a merged entry (§2.8). The
             // BOUND IS THE WALKER'S, tested here against the key field's own
-            // descriptor, so placement is left with one failure to report.
+            // descriptor, so placement is left with one failure to report — and
+            // a key past this scan's own buffer is the SAME event, because a
+            // truncated key is the merged entry the rule exists to prevent.
             in.report->clamped++;
             place = false;
         }

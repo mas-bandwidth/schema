@@ -370,7 +370,7 @@ inline int64_t TableLebBytes( uint64_t v )
 // nothing rides.
 struct TableIds
 {
-    static const int32_t kCapacity = 39;
+    static const int32_t kCapacity = 44;
     static const int32_t kBuckets = 128;
 
     uint64_t ids[ kCapacity ];
@@ -809,13 +809,13 @@ static const int64_t kTableMessageRefBitsHere = 6;
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
-static const int64_t kTableMessageEntriesHere = 39;
+static const int64_t kTableMessageEntriesHere = 44;
 
 // The reserved NODE-TABLE id's own slot in this unit's vocabulary (§3.3). A
 // pointered body names the node table through it, and the node table is the
 // ROOT body's FIRST field because a pointer index's width is settled by the
 // node count it carries.
-static const uint64_t kTableNodeTableFieldSlot = 29;
+static const uint64_t kTableNodeTableFieldSlot = 33;
 
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
 // layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
@@ -1337,7 +1337,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
     return -1;
 }
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 39 entries and 459 bytes. It is an
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 44 entries and 521 bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
 // over element kind 6, and a trailer of those two reserved ids.
@@ -1355,10 +1355,10 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
-static const int64_t kTableAnnounceBytes = 459;
+static const int64_t kTableAnnounceBytes = 521;
 static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x74, 0xd0, 0x21, 0x84, 0x99, 0xb2, 0x30, 0x8d, 0x02,
-    0x0e, 0xa3, 0x03, 0x06, 0xa0, 0x03, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
+    0x01, 0x01, 0x09, 0xcf, 0xf7, 0x64, 0x41, 0x5a, 0x7d, 0x45, 0xac, 0x02,
+    0x0e, 0xe1, 0x03, 0x06, 0xde, 0x03, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
     0xc9, 0x3d, 0x0c, 0x20, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
     0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0x10, 0xea,
     0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x00, 0xff, 0xff, 0xff,
@@ -1369,33 +1369,38 @@ static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
     0x08, 0x1a, 0x0d, 0x02, 0xfc, 0xa1, 0xce, 0xa2, 0x59, 0x64, 0x1f, 0x0e,
     0x00, 0x03, 0x0d, 0x5d, 0xf1, 0x50, 0x95, 0xf2, 0x1f, 0x55, 0x70, 0x10,
     0x02, 0x0d, 0xb5, 0xcc, 0x70, 0x05, 0x19, 0xc0, 0x56, 0xe7, 0x0f, 0xe9,
-    0xea, 0x71, 0x6f, 0x0f, 0x01, 0x82, 0xbf, 0x04, 0x00, 0x44, 0xad, 0xe1,
-    0x13, 0x49, 0x5c, 0x4a, 0x29, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
-    0x0d, 0x04, 0x34, 0x8d, 0xe9, 0x46, 0x4c, 0x02, 0x7b, 0x0e, 0x00, 0xff,
-    0xff, 0xff, 0xff, 0x0f, 0x0d, 0x5d, 0x81, 0xb3, 0xa4, 0xc4, 0xa0, 0xdf,
-    0x63, 0x11, 0x70, 0xf0, 0xf5, 0xf0, 0xb3, 0xa1, 0x4f, 0x29, 0x0e, 0x00,
-    0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xce, 0xe3, 0xda, 0x5f, 0x6c, 0xdc,
-    0xd8, 0x6d, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x74, 0xa2,
-    0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x00, 0x53, 0xa2, 0x45, 0x08,
-    0x2c, 0xa7, 0xb2, 0xc5, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d,
-    0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0x08, 0x86, 0x1b,
-    0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x40, 0xcf, 0xa9, 0x8b, 0x28,
-    0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x00, 0x42, 0x4f, 0x4f, 0x30, 0x0d, 0x39,
-    0x84, 0x1c, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x8b, 0xe1,
-    0x45, 0xc2, 0xcb, 0x04, 0xda, 0x4f, 0x00, 0x87, 0x94, 0xb6, 0x96, 0xa7,
-    0x62, 0xb5, 0xa0, 0x00, 0x31, 0x63, 0x3e, 0xd6, 0x95, 0xbb, 0xc2, 0xd5,
-    0x0d, 0x07, 0xb2, 0x52, 0x16, 0x4e, 0x19, 0x4d, 0xfd, 0x04, 0x00, 0xff,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xe4, 0x4f, 0x1c, 0x4f,
-    0x47, 0xc0, 0x2e, 0x2f, 0x00, 0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b,
-    0x70, 0x00, 0xc7, 0xd4, 0x7b, 0x26, 0xb0, 0x9d, 0x29, 0x5f, 0x00, 0x4a,
-    0x0d, 0xe3, 0x6f, 0xdc, 0xd0, 0x31, 0x32, 0x00, 0xaf, 0x79, 0xa2, 0xfb,
-    0x0a, 0xe0, 0x53, 0x0a, 0x00, 0x06, 0x68, 0x47, 0x98, 0xd1, 0xa1, 0xcf,
-    0x52, 0x00, 0xfb, 0x06, 0xc9, 0xfe, 0x19, 0xe1, 0x13, 0xa0, 0x00, 0x0d,
-    0x4f, 0xb1, 0xd1, 0xd2, 0x52, 0x82, 0x75, 0x00, 0x91, 0x0a, 0x55, 0x60,
-    0xf7, 0xa2, 0x07, 0xec, 0x00, 0x16, 0xa3, 0x71, 0x35, 0x4e, 0x96, 0x13,
-    0xb4, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00,
+    0xea, 0x71, 0x6f, 0x0f, 0x01, 0x82, 0xbf, 0x04, 0x00, 0x4f, 0x81, 0x68,
+    0xf2, 0xff, 0x28, 0xb7, 0xaf, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
+    0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0xac, 0x02,
+    0x29, 0xbe, 0xb7, 0x2b, 0x19, 0xea, 0x7d, 0x2b, 0x0e, 0x00, 0xff, 0xff,
+    0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d,
+    0x09, 0x00, 0x44, 0xad, 0xe1, 0x13, 0x49, 0x5c, 0x4a, 0x29, 0x0e, 0x00,
+    0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x04, 0x34, 0x8d, 0xe9, 0x46, 0x4c,
+    0x02, 0x7b, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x5d, 0x81,
+    0xb3, 0xa4, 0xc4, 0xa0, 0xdf, 0x63, 0x11, 0x70, 0xf0, 0xf5, 0xf0, 0xb3,
+    0xa1, 0x4f, 0x29, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xce,
+    0xe3, 0xda, 0x5f, 0x6c, 0xdc, 0xd8, 0x6d, 0x0e, 0x00, 0xff, 0xff, 0xff,
+    0xff, 0x0f, 0x0d, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04,
+    0x00, 0x53, 0xa2, 0x45, 0x08, 0x2c, 0xa7, 0xb2, 0xc5, 0x0e, 0x00, 0xff,
+    0xff, 0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9,
+    0x3d, 0x0c, 0x08, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c,
+    0x40, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x00, 0x42,
+    0x4f, 0x4f, 0x30, 0x0d, 0x39, 0x84, 0x1c, 0x0e, 0x00, 0xff, 0xff, 0xff,
+    0xff, 0x0f, 0x0d, 0x8b, 0xe1, 0x45, 0xc2, 0xcb, 0x04, 0xda, 0x4f, 0x00,
+    0x87, 0x94, 0xb6, 0x96, 0xa7, 0x62, 0xb5, 0xa0, 0x00, 0x31, 0x63, 0x3e,
+    0xd6, 0x95, 0xbb, 0xc2, 0xd5, 0x0d, 0x07, 0xb2, 0x52, 0x16, 0x4e, 0x19,
+    0x4d, 0xfd, 0x04, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0x00, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f, 0x00, 0x58, 0xfc,
+    0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xc7, 0xd4, 0x7b, 0x26, 0xb0,
+    0x9d, 0x29, 0x5f, 0x00, 0x4a, 0x0d, 0xe3, 0x6f, 0xdc, 0xd0, 0x31, 0x32,
+    0x00, 0xf8, 0x36, 0xa0, 0x45, 0xf0, 0x0a, 0x13, 0xe8, 0x00, 0xaf, 0x79,
+    0xa2, 0xfb, 0x0a, 0xe0, 0x53, 0x0a, 0x00, 0x06, 0x68, 0x47, 0x98, 0xd1,
+    0xa1, 0xcf, 0x52, 0x00, 0xfb, 0x06, 0xc9, 0xfe, 0x19, 0xe1, 0x13, 0xa0,
+    0x00, 0x0d, 0x4f, 0xb1, 0xd1, 0xd2, 0x52, 0x82, 0x75, 0x00, 0x91, 0x0a,
+    0x55, 0x60, 0xf7, 0xa2, 0x07, 0xec, 0x00, 0x16, 0xa3, 0x71, 0x35, 0x4e,
+    0x96, 0x13, 0xb4, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
 // TableVocabulary is ONE DIRECTION's announced vocabulary (§3.3): the entries
@@ -3937,7 +3942,7 @@ namespace mapdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x8d30b2998421d074ull;
+static const uint64_t BuildVersion = 0xac457d5a4164f7cfull;
 
 } // namespace mapdemo
 
@@ -4257,12 +4262,38 @@ struct WideRow {
     int32_t after = 0;
 };
 
+// table EdgeRowNamesEntry — TABLE-wire storage: relocatable, bounded, defaults in the
+// member initializers (docs/SPEC-TABLES.md)
+struct EdgeRowNamesEntry {
+    char key[300 + 1] = {}; // string(300): max length, used length beside it
+    int32_t key_length = 0;
+    Item value;
+};
+
+// table EdgeRowIdsEntry — TABLE-wire storage: relocatable, bounded, defaults in the
+// member initializers (docs/SPEC-TABLES.md)
+struct EdgeRowIdsEntry {
+    uint64_t key = 0;
+    Item value;
+};
+
+// table EdgeRow — TABLE-wire storage: relocatable, bounded, defaults in the
+// member initializers (docs/SPEC-TABLES.md)
+struct EdgeRow {
+    TableMap<EdgeRowNamesEntry> names; // map[string(300)]Item — the sorted entry array, empty until an insert
+    TableMap<EdgeRowIdsEntry> ids; // map[uint64]Item — the sorted entry array, empty until an insert
+    int32_t after = 0;
+};
+
 // ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
 
 inline void RowEntriesEntryReset( RowEntriesEntry & value );
 inline void RowReset( Row & value );
 inline void WideRowEntriesEntryReset( WideRowEntriesEntry & value );
 inline void WideRowReset( WideRow & value );
+inline void EdgeRowNamesEntryReset( EdgeRowNamesEntry & value );
+inline void EdgeRowIdsEntryReset( EdgeRowIdsEntry & value );
+inline void EdgeRowReset( EdgeRow & value );
 
 inline void RowEntriesEntryReset( RowEntriesEntry & value )
 {
@@ -4293,6 +4324,30 @@ inline void WideRowReset( WideRow & value )
     value.after = 0;
 }
 
+inline void EdgeRowNamesEntryReset( EdgeRowNamesEntry & value )
+{
+    memset( value.key, 0, sizeof( value.key ) );
+    value.key_length = 0;
+    ItemReset( value.value );
+}
+
+inline void EdgeRowIdsEntryReset( EdgeRowIdsEntry & value )
+{
+    value.key = 0;
+    ItemReset( value.value );
+}
+
+inline void EdgeRowReset( EdgeRow & value )
+{
+    value.names.entries.value = 0; // map[string(300)]Item: empty
+    value.names.count = 0;
+    value.names.padding = 0;
+    value.ids.entries.value = 0; // map[uint64]Item: empty
+    value.ids.count = 0;
+    value.ids.padding = 0;
+    value.after = 0;
+}
+
 inline int64_t RowEntriesEntryMeasureMessageBody( int64_t at, const RowEntriesEntry & value );
 inline bool RowEntriesEntrySaveMessageBody( TableBitWriter & w, const RowEntriesEntry & value );
 inline bool RowEntriesEntryLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RowEntriesEntry & value );
@@ -4307,6 +4362,16 @@ template <typename Ctx> inline int64_t WideRowMeasureMessageBody( const Ctx & ct
 template <typename Ctx> inline bool WideRowSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const WideRow & value );
 inline bool WideRowLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, WideRow & value );
 inline bool WideRowMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at );
+inline int64_t EdgeRowNamesEntryMeasureMessageBody( int64_t at, const EdgeRowNamesEntry & value );
+inline bool EdgeRowNamesEntrySaveMessageBody( TableBitWriter & w, const EdgeRowNamesEntry & value );
+inline bool EdgeRowNamesEntryLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, EdgeRowNamesEntry & value );
+inline int64_t EdgeRowIdsEntryMeasureMessageBody( int64_t at, const EdgeRowIdsEntry & value );
+inline bool EdgeRowIdsEntrySaveMessageBody( TableBitWriter & w, const EdgeRowIdsEntry & value );
+inline bool EdgeRowIdsEntryLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, EdgeRowIdsEntry & value );
+template <typename Ctx> inline int64_t EdgeRowMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const EdgeRow & value );
+template <typename Ctx> inline bool EdgeRowSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const EdgeRow & value );
+inline bool EdgeRowLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, EdgeRow & value );
+inline bool EdgeRowMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at );
 
 // RowEntriesEntryMessageKeyRead: the key of one entry on the message wire, before the
 // slot is chosen (docs/SPEC-TABLES.md §2.8, §3.3), and the bit the entry's
@@ -4409,6 +4474,107 @@ inline WideRowEntriesEntryMessageKeyRead WideRowEntriesEntryMessageReadKey( Tabl
     }
 }
 
+// EdgeRowNamesEntryMessageKeyRead: the key of one entry on the message wire, before the
+// slot is chosen (docs/SPEC-TABLES.md §2.8, §3.3), and the bit the entry's
+// body ends at. Field order inside a body is not contractual, so this scans
+// the whole body by its announced shapes rather than assuming a position.
+struct EdgeRowNamesEntryMessageKeyRead
+{
+    const char * key;   // INTO the batch's bytes, byte-aligned by the string's own align
+    int32_t length;
+    int64_t end;        // the bit after the entry's own zero reference
+    bool found;         // the body carried the key's id
+    bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
+    bool over;          // longer than this reader's bound: the ENTRY is dropped
+    bool malformed;     // the entry's framing gave out
+};
+
+inline EdgeRowNamesEntryMessageKeyRead EdgeRowNamesEntryMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )
+{
+    EdgeRowNamesEntryMessageKeyRead out = { NULL, 0, 0, false, false, false, false, false };
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { out.malformed = true; return out; }
+        if ( ref == 0 ) { out.end = r.offset; return out; } // the terminator: no key field is the key's DEFAULT
+        if ( ref > (uint64_t) vocabulary.count ) { out.malformed = true; return out; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        if ( TableMessageReserved( entry.id ) ) { out.malformed = true; return out; }
+        if ( entry.id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
+        {
+            const bool kind_bad = entry.kind != 12; // THE KEY KIND IS THE READER'S DECLARATION
+            out.kind_bad = kind_bad;
+            out.found = !kind_bad;
+            if ( kind_bad )
+            {
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { out.malformed = true; return out; }
+                continue;
+            }
+            uint64_t key_len = 0;
+            if ( !r.get( key_len, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { out.malformed = true; return out; }
+            if ( !r.has( (int64_t) key_len * 8 ) ) { out.malformed = true; return out; }
+            out.key = (const char *) ( r.buffer + r.offset / 8 );
+            out.length = (int32_t) key_len;
+            out.over = key_len > 300; // KEYS NEVER CLAMP: the entry is dropped whole
+            r.offset += (int64_t) key_len * 8;
+            continue; // the LAST occurrence is the one §3 keeps
+        }
+        if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { out.malformed = true; return out; }
+    }
+}
+
+// EdgeRowIdsEntryMessageKeyRead: the key of one entry on the message wire, before the
+// slot is chosen (docs/SPEC-TABLES.md §2.8, §3.3), and the bit the entry's
+// body ends at. Field order inside a body is not contractual, so this scans
+// the whole body by its announced shapes rather than assuming a position.
+struct EdgeRowIdsEntryMessageKeyRead
+{
+    uint64_t key;
+    int64_t end;        // the bit after the entry's own zero reference
+    bool found;         // the body carried the key's id
+    bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
+    bool over;          // longer than this reader's bound: the ENTRY is dropped
+    bool malformed;     // the entry's framing gave out
+};
+
+inline EdgeRowIdsEntryMessageKeyRead EdgeRowIdsEntryMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )
+{
+    EdgeRowIdsEntryMessageKeyRead out = { 0, 0, false, false, false, false, false };
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { out.malformed = true; return out; }
+        if ( ref == 0 ) { out.end = r.offset; return out; } // the terminator: no key field is the key's DEFAULT
+        if ( ref > (uint64_t) vocabulary.count ) { out.malformed = true; return out; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        if ( TableMessageReserved( entry.id ) ) { out.malformed = true; return out; }
+        if ( entry.id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
+        {
+            const bool kind_bad = entry.kind != 9 && !TableKindWidens( entry.kind, 9 ); // THE KEY KIND IS THE READER'S DECLARATION
+            out.kind_bad = kind_bad;
+            out.found = !kind_bad;
+            out.widened = entry.kind != 9;
+            if ( kind_bad )
+            {
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { out.malformed = true; return out; }
+                continue;
+            }
+            {
+                uint64_t raw = 0;
+                const int64_t width = entry.value_bits;
+                if ( width < 0 || !r.get( raw, width ) ) { out.malformed = true; return out; }
+                int64_t decoded_wide = (int64_t) raw;
+                if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                out.key = (uint64_t) decoded_wide;
+            }
+            continue; // the LAST occurrence is the one §3 keeps
+        }
+        if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { out.malformed = true; return out; }
+    }
+}
+
 // ---- the arena's reset hook (docs/SPEC-TABLES.md §6) ----
 //
 // TableWorker::Alloc is a template and cannot name a member's Reset, so
@@ -4420,6 +4586,9 @@ inline void TableReset( RowEntriesEntry & value ) { RowEntriesEntryReset( value 
 inline void TableReset( Row & value ) { RowReset( value ); }
 inline void TableReset( WideRowEntriesEntry & value ) { WideRowEntriesEntryReset( value ); }
 inline void TableReset( WideRow & value ) { WideRowReset( value ); }
+inline void TableReset( EdgeRowNamesEntry & value ) { EdgeRowNamesEntryReset( value ); }
+inline void TableReset( EdgeRowIdsEntry & value ) { EdgeRowIdsEntryReset( value ); }
+inline void TableReset( EdgeRow & value ) { EdgeRowReset( value ); }
 
 // ---- pointer targets: allocation and resolution (docs/SPEC-TABLES.md §2) ----
 //
@@ -4443,6 +4612,16 @@ template <typename Ctx> inline int64_t WideRowMeasureBody( const Ctx & ctx, cons
 template <typename Ctx> inline bool WideRowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const WideRow & value );
 template <typename Ctx> inline bool WideRowSaveBody( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const WideRow & value );
 inline bool WideRowLoadBody( TableReader & r, const TableNodeMap & nodes, WideRow & value );
+inline int64_t EdgeRowNamesEntryMeasureBody( TableIds & ids, const EdgeRowNamesEntry & value );
+MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntrySaveBody( TableWriter & w, TableIds & ids, const EdgeRowNamesEntry & value );
+MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntryLoadBody( TableReader & r, EdgeRowNamesEntry & value );
+inline int64_t EdgeRowIdsEntryMeasureBody( TableIds & ids, const EdgeRowIdsEntry & value );
+MAPDEMO_TABLE_INLINE bool EdgeRowIdsEntrySaveBody( TableWriter & w, TableIds & ids, const EdgeRowIdsEntry & value );
+MAPDEMO_TABLE_INLINE bool EdgeRowIdsEntryLoadBody( TableReader & r, EdgeRowIdsEntry & value );
+template <typename Ctx> inline int64_t EdgeRowMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const EdgeRow & value );
+template <typename Ctx> inline bool EdgeRowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const EdgeRow & value );
+template <typename Ctx> inline bool EdgeRowSaveBody( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const EdgeRow & value );
+inline bool EdgeRowLoadBody( TableReader & r, const TableNodeMap & nodes, EdgeRow & value );
 
 // ---- pointer-graph walkers: number (measure/save), pack (Lock) ----
 
@@ -4452,6 +4631,9 @@ template <typename Ctx> inline bool RowPack( const Ctx & ctx, TablePackMap & see
 template <typename Ctx> inline bool WideRowNumber( const Ctx & ctx, TableNumbering & numbering, const WideRow & value );
 template <typename Ctx> inline int64_t WideRowPackMeasure( const Ctx & ctx, TablePackMap & seen, const WideRow & value );
 template <typename Ctx> inline bool WideRowPack( const Ctx & ctx, TablePackMap & seen, const WideRow & src, WideRow & dst, uint8_t * base, int64_t capacity, int64_t & used );
+template <typename Ctx> inline bool EdgeRowNumber( const Ctx & ctx, TableNumbering & numbering, const EdgeRow & value );
+template <typename Ctx> inline int64_t EdgeRowPackMeasure( const Ctx & ctx, TablePackMap & seen, const EdgeRow & value );
+template <typename Ctx> inline bool EdgeRowPack( const Ctx & ctx, TablePackMap & seen, const EdgeRow & src, EdgeRow & dst, uint8_t * base, int64_t capacity, int64_t & used );
 
 // ---- the numbering's bridge to each member's codec (docs/SPEC-TABLES.md §3.1) ----
 
@@ -4463,6 +4645,10 @@ template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx & ctx, const 
 template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const WideRow & value ) { return WideRowSaveBody( ctx, numbering, w, ids, value ); }
 template <typename Ctx> inline int64_t TableNodeMessageMeasure( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const WideRow & value ) { return WideRowMeasureMessageBody( ctx, numbering, index_bits, at, value ); }
 template <typename Ctx> inline bool TableNodeMessageSave( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const WideRow & value ) { return WideRowSaveMessageBody( ctx, numbering, index_bits, w, value ); }
+template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const EdgeRow & value ) { return EdgeRowMeasureBody( ctx, numbering, ids, value ); }
+template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const EdgeRow & value ) { return EdgeRowSaveBody( ctx, numbering, w, ids, value ); }
+template <typename Ctx> inline int64_t TableNodeMessageMeasure( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const EdgeRow & value ) { return EdgeRowMeasureMessageBody( ctx, numbering, index_bits, at, value ); }
+template <typename Ctx> inline bool TableNodeMessageSave( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const EdgeRow & value ) { return EdgeRowSaveMessageBody( ctx, numbering, index_bits, w, value ); }
 
 // ---- RowEntriesEntry: the order, the key and the value (docs/SPEC-TABLES.md §2.8) ----
 //
@@ -4629,6 +4815,171 @@ inline WideRowEntriesEntryKeyRead WideRowEntriesEntryReadKey( const uint8_t * bo
     }
 }
 
+// ---- EdgeRowNamesEntry: the order, the key and the value (docs/SPEC-TABLES.md §2.8) ----
+//
+// The four overloads the map runtime's templates reach by argument-dependent
+// lookup. Nothing outside this file names them.
+static_assert( alignof( EdgeRowNamesEntry ) <= kTableAlign, "a map entry's alignment must fit the arena's" );
+static const int32_t kEdgeRowNamesEntryKeyBound = 300; // string(300): the key's storage, and the length an insert refuses past
+
+inline int TableEntryOrder( const EdgeRowNamesEntry & a, const EdgeRowNamesEntry & b )
+{
+    return TableKeyOrder( a.key, a.key_length, b.key, b.key_length );
+}
+// THE ORDER TAKES DATA AND A LENGTH (§2.8): a key holds any byte, U+0000
+// included, so nothing here measures to the first NUL. The const char *
+// overload beside it is the wrapper the public surface spells.
+inline int TableEntryOrder( const EdgeRowNamesEntry & entry, TableMapKeyRef key )
+{
+    return TableKeyOrder( entry.key, entry.key_length, key.data, key.length );
+}
+inline int TableEntryOrder( const EdgeRowNamesEntry & entry, const char * key )
+{
+    return TableEntryOrder( entry, TableMapKeyRef{ key, TableKeyLength( key, kEdgeRowNamesEntryKeyBound ) } );
+}
+inline const char * TableEntryKey( const EdgeRowNamesEntry & entry ) { return entry.key; } // NUL-terminated, the storage's own bytes
+inline void TableEntrySetKey( EdgeRowNamesEntry & entry, TableMapKeyRef key )
+{
+    memcpy( (void *) entry.key, (const void *) key.data, (size_t) key.length );
+    entry.key[key.length] = 0; // NUL-terminated BESIDE its length, for a C call site
+    entry.key_length = key.length;
+}
+inline const Item * TableEntryFound( const EdgeRowNamesEntry * entry ) { return entry != NULL ? &entry->value : NULL; }
+inline Item * TableEntryValue( EdgeRowNamesEntry * entry ) { return &entry->value; }
+struct EdgeRowNamesEntryEach { const char * key; decltype( TableEntryValue( (EdgeRowNamesEntry *) NULL ) ) value; };
+inline EdgeRowNamesEntryEach TableEntryEach( EdgeRowNamesEntry * entry ) { return EdgeRowNamesEntryEach{ TableEntryKey( *entry ), TableEntryValue( entry ) }; }
+inline void TableResetMapValue( EdgeRowNamesEntry & value )
+{
+    ItemReset( value.value );
+}
+
+// EdgeRowNamesEntryReadKey: the key, before the slot is chosen (docs/SPEC-TABLES.md §2.8).
+// Field order inside a body is not contractual (§3), so this scans rather
+// than assuming a position — and this implementation writes the key first,
+// so on any wire it wrote the scan ends at the first header.
+struct EdgeRowNamesEntryKeyRead
+{
+    const char * key;   // INTO the entry body; nothing is copied
+    int32_t length;
+    bool found;         // the body carried the key's id
+    bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
+    bool over;          // longer than this reader's bound: the ENTRY is dropped
+    bool malformed;     // the entry's framing gave out
+};
+
+inline EdgeRowNamesEntryKeyRead EdgeRowNamesEntryReadKey( const uint8_t * body, int64_t length, const TableIdTable * ids )
+{
+    EdgeRowNamesEntryKeyRead out = { NULL, 0, false, false, false, false, false };
+    TableReport scratch; // the scan's own framing damage is the MAP's, raised by the caller
+    TableReader r( body, length, &scratch, ids );
+    for ( ;; )
+    {
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
+        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
+        const uint64_t field_id = ids->at( field_ref );
+        if ( !r.has( 1 ) ) { out.malformed = true; return out; }
+        uint8_t field_kind = r.get8();
+        if ( field_id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
+        {
+            out.kind_bad = field_kind != 12; // THE KEY KIND IS THE READER'S DECLARATION
+            out.found = !out.kind_bad;
+            if ( !out.kind_bad )
+            {
+                uint64_t key_len = 0;
+                if ( !r.getleb( key_len ) || !r.room( key_len ) ) { out.malformed = true; return out; }
+                // a key a string value would refuse as malformed makes the MAP malformed (§2.8, §3)
+                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) key_len ) ) { out.malformed = true; return out; }
+                out.key = (const char *) ( r.buffer + r.offset );
+                out.length = (int32_t) key_len;
+                out.over = key_len > 300; // KEYS NEVER CLAMP: the entry is dropped whole
+                r.offset += (int64_t) key_len;
+                continue; // the LAST occurrence is the one §3 keeps
+            }
+        }
+        if ( !r.skip( field_kind ) ) { out.malformed = true; return out; }
+    }
+}
+
+// ---- EdgeRowIdsEntry: the order, the key and the value (docs/SPEC-TABLES.md §2.8) ----
+//
+// The four overloads the map runtime's templates reach by argument-dependent
+// lookup. Nothing outside this file names them.
+static_assert( alignof( EdgeRowIdsEntry ) <= kTableAlign, "a map entry's alignment must fit the arena's" );
+
+inline int TableEntryOrder( const EdgeRowIdsEntry & a, const EdgeRowIdsEntry & b )
+{
+    return TableKeyOrder( (uint64_t) a.key, (uint64_t) b.key ); // integers compare by VALUE, unsigned here
+}
+inline int TableEntryOrder( const EdgeRowIdsEntry & entry, uint64_t key )
+{
+    return TableKeyOrder( (uint64_t) entry.key, (uint64_t) key );
+}
+inline uint64_t TableEntryKey( const EdgeRowIdsEntry & entry ) { return entry.key; }
+inline void TableEntrySetKey( EdgeRowIdsEntry & entry, uint64_t key ) { entry.key = key; }
+inline const Item * TableEntryFound( const EdgeRowIdsEntry * entry ) { return entry != NULL ? &entry->value : NULL; }
+inline Item * TableEntryValue( EdgeRowIdsEntry * entry ) { return &entry->value; }
+struct EdgeRowIdsEntryEach { uint64_t key; decltype( TableEntryValue( (EdgeRowIdsEntry *) NULL ) ) value; };
+inline EdgeRowIdsEntryEach TableEntryEach( EdgeRowIdsEntry * entry ) { return EdgeRowIdsEntryEach{ TableEntryKey( *entry ), TableEntryValue( entry ) }; }
+inline void TableResetMapValue( EdgeRowIdsEntry & value )
+{
+    ItemReset( value.value );
+}
+
+// EdgeRowIdsEntryReadKey: the key, before the slot is chosen (docs/SPEC-TABLES.md §2.8).
+// Field order inside a body is not contractual (§3), so this scans rather
+// than assuming a position — and this implementation writes the key first,
+// so on any wire it wrote the scan ends at the first header.
+struct EdgeRowIdsEntryKeyRead
+{
+    uint64_t key;
+    bool found;         // the body carried the key's id
+    bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
+    bool over;          // longer than this reader's bound: the ENTRY is dropped
+    bool malformed;     // the entry's framing gave out
+};
+
+inline EdgeRowIdsEntryKeyRead EdgeRowIdsEntryReadKey( const uint8_t * body, int64_t length, const TableIdTable * ids )
+{
+    EdgeRowIdsEntryKeyRead out = { 0, false, false, false, false, false };
+    TableReport scratch; // the scan's own framing damage is the MAP's, raised by the caller
+    TableReader r( body, length, &scratch, ids );
+    for ( ;; )
+    {
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
+        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
+        const uint64_t field_id = ids->at( field_ref );
+        if ( !r.has( 1 ) ) { out.malformed = true; return out; }
+        uint8_t field_kind = r.get8();
+        if ( field_id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
+        {
+            if ( field_kind != 9 && TableKindWidens( field_kind, 9 ) )
+            {
+                out.widened = true;
+                out.found = true;
+                uint64_t widened_v = 0;
+                if ( !TableReadUnsignedAt( r, field_kind, widened_v ) ) { out.malformed = true; return out; }
+                out.key = (uint64_t) widened_v;
+                continue; // the LAST occurrence is the one §3 keeps
+            }
+            out.kind_bad = field_kind != 9; // THE KEY KIND IS THE READER'S DECLARATION
+            out.found = !out.kind_bad;
+            if ( !out.kind_bad )
+            {
+                if ( !r.has( 8 ) ) { out.malformed = true; return out; }
+                out.key = (uint64_t) r.get64();
+                continue; // the LAST occurrence is the one §3 keeps
+            }
+        }
+        if ( !r.skip( field_kind ) ) { out.malformed = true; return out; }
+    }
+}
+
 inline int64_t RowEntriesEntryMeasureBody( TableIds & ids, const RowEntriesEntry & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
@@ -4788,7 +5139,7 @@ inline bool RowEntriesEntrySaveMessageBody( TableBitWriter & w, const RowEntries
     if ( value.key_length < 0 || value.key_length > 8 ) { return false; } // storage invariant
     if ( value.key_length > 0 )
     {
-        w.put( 21, kTableMessageRefBitsHere );
+        w.put( 25, kTableMessageRefBitsHere );
         w.put( (uint64_t) value.key_length, 4 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.key, value.key_length );
@@ -5148,7 +5499,7 @@ inline bool RowSaveMessageBody( const Ctx & ctx, const TableNumbering & numberin
         if ( !order_entries.ok ) { return false; } // the sort could not run
         if ( order_entries.count > 0 )
         {
-            w.put( 20, kTableMessageRefBitsHere );
+            w.put( 24, kTableMessageRefBitsHere );
             w.put( (uint64_t) order_entries.count, 32 ); // the count the data decides
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -5861,7 +6212,7 @@ inline bool WideRowSaveMessageBody( const Ctx & ctx, const TableNumbering & numb
         if ( !order_entries.ok ) { return false; } // the sort could not run
         if ( order_entries.count > 0 )
         {
-            w.put( 20, kTableMessageRefBitsHere );
+            w.put( 24, kTableMessageRefBitsHere );
             w.put( (uint64_t) order_entries.count, 32 ); // the count the data decides
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -5984,6 +6335,1199 @@ inline bool WideRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                         }
                         if ( slot == NULL ) { report->malformed = true; return false; }
                         if ( !WideRowEntriesEntryLoadMessageBody( r, vocabulary, report, index_bits, *slot ) ) { return false; }
+                        if ( r.offset != read.end ) { report->malformed = true; return false; } // the scan and the decode disagree about where the entry ends
+                        last_key = read.key; // the WIRE keys of the entries that LAND
+                        landed = true;
+                    }
+                    TableMapFillEnd( fill );
+                }
+                break;
+            }
+            case 0xbf82010f6f71eae9ull: // after
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 4 || entry.elem_kind != 0 )
+                {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 4 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            else if ( width > 0 && width < 64 )
+                            {
+                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                            }
+                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
+                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
+                            int32_t decoded_v = (int32_t) decoded_wide;
+                            value.after = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    else if ( width > 0 && width < 64 )
+                    {
+                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                    }
+                    if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
+                    if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
+                    int32_t decoded_v = (int32_t) decoded_wide;
+                    value.after = decoded_v;
+                }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+inline int64_t EdgeRowNamesEntryMeasureBody( TableIds & ids, const EdgeRowNamesEntry & value )
+{
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    if ( value.key_length < 0 || value.key_length > 300 ) { return -1; } // storage invariant
+    if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
+    {
+        const int32_t mark_value = ids.count;
+        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const int64_t body_value = ItemMeasureBody( ids, value.value );
+        if ( body_value < 0 ) { return -1; }
+        if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
+        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+    }
+    return bytes;
+}
+
+MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntrySaveBody( TableWriter & w, TableIds & ids, const EdgeRowNamesEntry & value )
+{
+    if ( value.key_length < 0 || value.key_length > 300 ) { return false; } // storage invariant
+    if ( value.key_length > 0 )
+    {
+        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 12 ); // key
+        w.putleb( (uint64_t) value.key_length );
+        w.raw( value.key, value.key_length );
+    }
+    {
+        const int32_t mark_value = ids.count;
+        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const int64_t body_value = ItemMeasureBody( ids, value.value );
+        if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
+        if ( body_value > 1 ) // all-default nested elides
+        {
+            w.putleb( ref_value ); w.put8( 13 ); w.putleb( (uint64_t) body_value ); // value
+            if ( !ItemSaveBody( w, ids, value.value ) ) return false;
+        }
+        else { ids.truncate( mark_value ); }
+    }
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
+}
+
+MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntryLoadBody( TableReader & r, EdgeRowNamesEntry & value )
+{
+    EdgeRowNamesEntryReset( value ); // prefill declared defaults in place, then overlay
+    for ( ;; )
+    {
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
+        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+        uint8_t kind = r.get8();
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        {
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
+        switch ( field_id )
+        {
+            case 0x3dc94a19365b10ecull: // key
+            {
+                if ( kind != 12 )
+                {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                uint64_t len = 0;
+                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
+                // default, one malformed counts, and the parent reads on past L
+                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
+                uint64_t keep = len;
+                if ( keep > 300 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 300 ); r.report->clamped++; } // at a code point boundary (§3)
+                memcpy( value.key, r.buffer + r.offset, (size_t) keep );
+                value.key[keep] = 0;
+                value.key_length = (int32_t) keep;
+                r.offset += (int64_t) len;
+                break;
+            }
+            case 0x7ce4fd9430e80ceaull: // value
+            {
+                if ( kind != 13 )
+                {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                uint64_t body_len = 0;
+                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
+                {
+                    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
+                    ItemLoadBody( sub, value.value );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        ItemReset( value.value );
+                    }
+                }
+                r.offset += (int64_t) body_len;
+                break;
+            }
+            default:
+            {
+                r.report->unknown++;
+                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                break;
+            }
+        }
+    }
+}
+
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t EdgeRowNamesEntryMeasureMessageBody( int64_t at, const EdgeRowNamesEntry & value )
+{
+    int64_t bits = 0;
+    if ( value.key_length < 0 || value.key_length > 300 ) { return -1; } // storage invariant
+    if ( value.key_length > 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 9;
+        bits += TableAlignBits( at + bits );
+        bits += (int64_t) value.key_length * 8;
+    }
+    {
+        const int64_t body_value = ItemMeasureMessageBody( at + bits, value.value );
+        if ( body_value < 0 ) { return -1; }
+        if ( body_value > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += ItemMeasureMessageBody( at + bits, value.value );
+        }
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
+}
+
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool EdgeRowNamesEntrySaveMessageBody( TableBitWriter & w, const EdgeRowNamesEntry & value )
+{
+    if ( value.key_length < 0 || value.key_length > 300 ) { return false; } // storage invariant
+    if ( value.key_length > 0 )
+    {
+        w.put( 15, kTableMessageRefBitsHere );
+        w.put( (uint64_t) value.key_length, 9 );
+        w.align(); // a string or a bytes ALIGNS before its bytes
+        w.putbytes( (const uint8_t *) value.key, value.key_length );
+    }
+    {
+        const int64_t body_value = ItemMeasureMessageBody( 0, value.value );
+        if ( body_value < 0 ) { return false; }
+        if ( body_value > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 2, kTableMessageRefBitsHere );
+            if ( !ItemSaveMessageBody( w, value.value ) ) { return false; }
+        }
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
+}
+
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool EdgeRowNamesEntryLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, EdgeRowNamesEntry & value )
+{
+    EdgeRowNamesEntryReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0x3dc94a19365b10ecull: // key
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 12 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t n = 0;
+                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 300 ) { kept = 300; report->clamped++; } else { kept = (int32_t) n; }
+                    for ( uint64_t i = 0; i < n; i++ )
+                    {
+                        uint64_t by = 0;
+                        if ( !r.get( by, 8 ) ) { report->malformed = true; return false; }
+                        if ( (int32_t) i < kept ) { value.key[i] = (char) by; }
+                    }
+                    value.key[kept] = 0;
+                    value.key_length = kept;
+                }
+                break;
+            }
+            case 0x7ce4fd9430e80ceaull: // value
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !ItemLoadMessageBody( r, vocabulary, report, index_bits, value.value ) ) { return false; }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+inline int64_t EdgeRowIdsEntryMeasureBody( TableIds & ids, const EdgeRowIdsEntry & value )
+{
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull ) ) + 1 + 8; } // key
+    {
+        const int32_t mark_value = ids.count;
+        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const int64_t body_value = ItemMeasureBody( ids, value.value );
+        if ( body_value < 0 ) { return -1; }
+        if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
+        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+    }
+    return bytes;
+}
+
+MAPDEMO_TABLE_INLINE bool EdgeRowIdsEntrySaveBody( TableWriter & w, TableIds & ids, const EdgeRowIdsEntry & value )
+{
+    if ( value.key != 0 )
+    {
+        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 9 ); // key
+        w.put64( uint64_t( value.key ) );
+    }
+    {
+        const int32_t mark_value = ids.count;
+        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const int64_t body_value = ItemMeasureBody( ids, value.value );
+        if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
+        if ( body_value > 1 ) // all-default nested elides
+        {
+            w.putleb( ref_value ); w.put8( 13 ); w.putleb( (uint64_t) body_value ); // value
+            if ( !ItemSaveBody( w, ids, value.value ) ) return false;
+        }
+        else { ids.truncate( mark_value ); }
+    }
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
+}
+
+MAPDEMO_TABLE_INLINE bool EdgeRowIdsEntryLoadBody( TableReader & r, EdgeRowIdsEntry & value )
+{
+    EdgeRowIdsEntryReset( value ); // prefill declared defaults in place, then overlay
+    for ( ;; )
+    {
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
+        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+        uint8_t kind = r.get8();
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        {
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
+        switch ( field_id )
+        {
+            case 0x3dc94a19365b10ecull: // key
+            {
+                if ( kind != 9 )
+                {
+                    if ( TableKindWidens( kind, 9 ) )
+                    {
+                        // WIDENED (§4): a kind that grew since the writer decodes
+                        // exactly at its own width, the value lands, one widened counts
+                        uint64_t widened_v = 0;
+                        if ( !TableReadUnsignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
+                        uint64_t decoded_v = (uint64_t) widened_v;
+                        value.key = decoded_v;
+                        r.report->widened++;
+                        break;
+                    }
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 8 ) ) { r.report->malformed = true; return false; }
+                uint64_t decoded_v = uint64_t( r.get64( ) );
+                value.key = decoded_v;
+                break;
+            }
+            case 0x7ce4fd9430e80ceaull: // value
+            {
+                if ( kind != 13 )
+                {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                uint64_t body_len = 0;
+                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
+                {
+                    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
+                    ItemLoadBody( sub, value.value );
+                    if ( sub.offset != sub.size )
+                    {
+                        r.report->malformed = true;
+                        ItemReset( value.value );
+                    }
+                }
+                r.offset += (int64_t) body_len;
+                break;
+            }
+            default:
+            {
+                r.report->unknown++;
+                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                break;
+            }
+        }
+    }
+}
+
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t EdgeRowIdsEntryMeasureMessageBody( int64_t at, const EdgeRowIdsEntry & value )
+{
+    int64_t bits = 0;
+    if ( value.key != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    {
+        const int64_t body_value = ItemMeasureMessageBody( at + bits, value.value );
+        if ( body_value < 0 ) { return -1; }
+        if ( body_value > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += ItemMeasureMessageBody( at + bits, value.value );
+        }
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
+}
+
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool EdgeRowIdsEntrySaveMessageBody( TableBitWriter & w, const EdgeRowIdsEntry & value )
+{
+    if ( value.key != 0 )
+    {
+        w.put( 17, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.key ), 64 );
+    }
+    {
+        const int64_t body_value = ItemMeasureMessageBody( 0, value.value );
+        if ( body_value < 0 ) { return false; }
+        if ( body_value > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 2, kTableMessageRefBitsHere );
+            if ( !ItemSaveMessageBody( w, value.value ) ) { return false; }
+        }
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
+}
+
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool EdgeRowIdsEntryLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, EdgeRowIdsEntry & value )
+{
+    EdgeRowIdsEntryReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0x3dc94a19365b10ecull: // key
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 9 || entry.elem_kind != 0 )
+                {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 9 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            uint64_t decoded_v = (uint64_t) decoded_wide;
+                            value.key = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    uint64_t decoded_v = (uint64_t) decoded_wide;
+                    value.key = decoded_v;
+                }
+                break;
+            }
+            case 0x7ce4fd9430e80ceaull: // value
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !ItemLoadMessageBody( r, vocabulary, report, index_bits, value.value ) ) { return false; }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+template <typename Ctx>
+inline int64_t EdgeRowMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const EdgeRow & value )
+{
+    (void) ctx; (void) numbering;
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    {
+        // names: a kind 14 array of kind 13 elements, ASCENDING (§2.8)
+        TableMapCursor<EdgeRowNamesEntry> order_names = TableMapOrder( ctx, value.names );
+        if ( !order_names.ok ) { return -1; } // the sort could not run
+        if ( order_names.count > 0 )
+        {
+            const uint64_t ref_names = ids.ref( 0xafb728fff268814full );
+            int64_t body_names = 1 + TableLebBytes( (uint64_t) order_names.count ); // the element kind byte and the count
+            for ( int32_t i = 0; i < order_names.count; i++ )
+            {
+                const int64_t elem_names = EdgeRowNamesEntryMeasureBody( ids, *order_names[i] );
+                if ( elem_names < 0 ) { TableMapRelease( order_names ); return -1; }
+                body_names += TableLebBytes( (uint64_t) ( elem_names ) ) + ( elem_names ); // BUT THE ENTRY ALWAYS RIDES: identity here is the key
+            }
+            bytes += TableLebBytes( ref_names ) + 1 + TableLebBytes( (uint64_t) ( body_names ) ) + ( body_names );
+        }
+        TableMapRelease( order_names );
+    }
+    {
+        // ids: a kind 14 array of kind 13 elements, ASCENDING (§2.8)
+        TableMapCursor<EdgeRowIdsEntry> order_ids = TableMapOrder( ctx, value.ids );
+        if ( !order_ids.ok ) { return -1; } // the sort could not run
+        if ( order_ids.count > 0 )
+        {
+            const uint64_t ref_ids = ids.ref( 0x2b7dea192bb7be29ull );
+            int64_t body_ids = 1 + TableLebBytes( (uint64_t) order_ids.count ); // the element kind byte and the count
+            for ( int32_t i = 0; i < order_ids.count; i++ )
+            {
+                const int64_t elem_ids = EdgeRowIdsEntryMeasureBody( ids, *order_ids[i] );
+                if ( elem_ids < 0 ) { TableMapRelease( order_ids ); return -1; }
+                body_ids += TableLebBytes( (uint64_t) ( elem_ids ) ) + ( elem_ids ); // BUT THE ENTRY ALWAYS RIDES: identity here is the key
+            }
+            bytes += TableLebBytes( ref_ids ) + 1 + TableLebBytes( (uint64_t) ( body_ids ) ) + ( body_ids );
+        }
+        TableMapRelease( order_ids );
+    }
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    return bytes;
+}
+
+template <typename Ctx>
+inline bool EdgeRowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const EdgeRow & value )
+{
+    (void) ctx; (void) numbering;
+    {
+        TableMapCursor<EdgeRowNamesEntry> order_names = TableMapOrder( ctx, value.names ); // names
+        if ( !order_names.ok ) { return false; }
+        if ( order_names.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
+        {
+            const uint64_t ref_names = ids.ref( 0xafb728fff268814full );
+            int64_t body_names = 1 + TableLebBytes( (uint64_t) order_names.count );
+            for ( int32_t i = 0; i < order_names.count; i++ )
+            {
+                const int64_t elem_names = EdgeRowNamesEntryMeasureBody( ids, *order_names[i] );
+                if ( elem_names < 0 ) { TableMapRelease( order_names ); return false; }
+                body_names += TableLebBytes( (uint64_t) ( elem_names ) ) + ( elem_names );
+            }
+            w.putleb( ref_names ); w.put8( 14 ); w.putleb( (uint64_t) body_names );
+            w.put8( 13 ); w.putleb( (uint64_t) order_names.count );
+            for ( int32_t i = 0; i < order_names.count; i++ )
+            {
+                const int64_t elem_len_names = EdgeRowNamesEntryMeasureBody( ids, *order_names[i] );
+                if ( elem_len_names < 0 ) { TableMapRelease( order_names ); return false; }
+                w.putleb( (uint64_t) elem_len_names );
+                if ( !EdgeRowNamesEntrySaveBody( w, ids, *order_names[i] ) ) { TableMapRelease( order_names ); return false; }
+            }
+        }
+        TableMapRelease( order_names );
+    }
+    {
+        TableMapCursor<EdgeRowIdsEntry> order_ids = TableMapOrder( ctx, value.ids ); // ids
+        if ( !order_ids.ok ) { return false; }
+        if ( order_ids.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
+        {
+            const uint64_t ref_ids = ids.ref( 0x2b7dea192bb7be29ull );
+            int64_t body_ids = 1 + TableLebBytes( (uint64_t) order_ids.count );
+            for ( int32_t i = 0; i < order_ids.count; i++ )
+            {
+                const int64_t elem_ids = EdgeRowIdsEntryMeasureBody( ids, *order_ids[i] );
+                if ( elem_ids < 0 ) { TableMapRelease( order_ids ); return false; }
+                body_ids += TableLebBytes( (uint64_t) ( elem_ids ) ) + ( elem_ids );
+            }
+            w.putleb( ref_ids ); w.put8( 14 ); w.putleb( (uint64_t) body_ids );
+            w.put8( 13 ); w.putleb( (uint64_t) order_ids.count );
+            for ( int32_t i = 0; i < order_ids.count; i++ )
+            {
+                const int64_t elem_len_ids = EdgeRowIdsEntryMeasureBody( ids, *order_ids[i] );
+                if ( elem_len_ids < 0 ) { TableMapRelease( order_ids ); return false; }
+                w.putleb( (uint64_t) elem_len_ids );
+                if ( !EdgeRowIdsEntrySaveBody( w, ids, *order_ids[i] ) ) { TableMapRelease( order_ids ); return false; }
+            }
+        }
+        TableMapRelease( order_ids );
+    }
+    if ( value.after != 0 )
+    {
+        w.putleb( ids.ref( 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
+        w.put32( uint32_t( value.after ) );
+    }
+    return !w.overflow;
+}
+
+template <typename Ctx>
+inline bool EdgeRowSaveBody( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const EdgeRow & value )
+{
+    if ( !EdgeRowSaveBodyFields( ctx, numbering, w, ids, value ) ) { return false; }
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
+}
+
+inline bool EdgeRowLoadBody( TableReader & r, const TableNodeMap & nodes, EdgeRow & value )
+{
+    (void) nodes;
+    EdgeRowReset( value ); // prefill declared defaults in place, then overlay
+    for ( ;; )
+    {
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
+        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+        uint8_t kind = r.get8();
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        {
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
+        switch ( field_id )
+        {
+            case 0xafb728fff268814full: // names
+            {
+                if ( kind != 14 )
+                {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                uint64_t body_len = 0;
+                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
+                int64_t body_end = r.offset + (int64_t) body_len;
+                if ( body_len >= 2 )
+                {
+                    uint8_t elem_kind = r.get8();
+                    uint64_t count = 0;
+                    if ( !r.getleb( count ) ) { r.report->malformed = true; r.offset = body_end; break; }
+                    // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
+                    // kind mismatch of §4, and nothing about a map is special-cased
+                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    TableMapFill<EdgeRowNamesEntry> fill = TableMapFillBegin( nodes, value.names, (uint32_t) count );
+                    if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
+                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                    const char * last_key = NULL; int32_t last_length = 0;
+                    bool landed = false;
+                    bool map_widened = false;
+                    for ( uint64_t i = 0; i < count; i++ )
+                    {
+                        uint64_t elem_len = 0;
+                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->malformed = true; break; }
+                        const uint8_t * elem_body = sub.buffer + sub.offset;
+                        sub.offset += (int64_t) elem_len;
+                        EdgeRowNamesEntryKeyRead read = EdgeRowNamesEntryReadKey( elem_body, (int64_t) elem_len, r.ids );
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; r.report->widened++; }
+                        // THE KEY KIND IS CHECKED FIRST: a key read under another kind
+                        // desynchronizes the rest of the scan, and the honest answer to a
+                        // body whose key is not this reader's kind is the KIND, not the
+                        // framing damage that follows from it.
+                        if ( read.kind_bad )
+                        {
+                            // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets
+                            // to EMPTY, ONE kind_mismatch is counted for it, and the rest
+                            // is skipped. Events counted inside earlier entries stand.
+                            r.report->kind_mismatch++;
+                            TableMapFillReset( fill );
+                            break;
+                        }
+                        if ( read.malformed ) { r.report->malformed = true; break; }
+                        if ( read.over ) { r.report->clamped++; continue; } // skipped by its L, one count per entry
+                        const int order = landed ? TableKeyOrder( last_key, last_length, read.key, read.length ) : -1;
+                        if ( order > 0 )
+                        {
+                            // DESCENDING: not a body any conforming writer produced. The map
+                            // keeps the ascending prefix it has, the rest skips by the map's
+                            // L, and the PARENT reads on past the field's length (§4).
+                            r.report->malformed = true;
+                            break;
+                        }
+                        EdgeRowNamesEntry * slot = NULL;
+                        if ( order == 0 )
+                        {
+                            // EQUAL: a DUPLICATE. The slot that entry took is reset to the
+                            // entry's defaults by the decode below, so LAST WINS WHOLE and an
+                            // elided field of the repeat reads as its default. The map's
+                            // count excludes it.
+                            slot = TableMapFillLast( fill );
+                            r.report->duplicate++;
+                        }
+                        else
+                        {
+                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
+                        }
+                        if ( slot == NULL ) { r.report->malformed = true; break; }
+                        {
+                            TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
+                            EdgeRowNamesEntryLoadBody( elem, *slot );
+                        }
+                        last_key = read.key; last_length = read.length; // the WIRE keys of the entries that LAND
+                        landed = true;
+                    }
+                    TableMapFillEnd( fill );
+                }
+                r.offset = body_end; // the remaining entries skip by the map's L
+                break;
+            }
+            case 0x2b7dea192bb7be29ull: // ids
+            {
+                if ( kind != 14 )
+                {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                uint64_t body_len = 0;
+                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
+                int64_t body_end = r.offset + (int64_t) body_len;
+                if ( body_len >= 2 )
+                {
+                    uint8_t elem_kind = r.get8();
+                    uint64_t count = 0;
+                    if ( !r.getleb( count ) ) { r.report->malformed = true; r.offset = body_end; break; }
+                    // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
+                    // kind mismatch of §4, and nothing about a map is special-cased
+                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    TableMapFill<EdgeRowIdsEntry> fill = TableMapFillBegin( nodes, value.ids, (uint32_t) count );
+                    if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
+                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                    uint64_t last_key = 0;
+                    bool landed = false;
+                    bool map_widened = false;
+                    for ( uint64_t i = 0; i < count; i++ )
+                    {
+                        uint64_t elem_len = 0;
+                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->malformed = true; break; }
+                        const uint8_t * elem_body = sub.buffer + sub.offset;
+                        sub.offset += (int64_t) elem_len;
+                        EdgeRowIdsEntryKeyRead read = EdgeRowIdsEntryReadKey( elem_body, (int64_t) elem_len, r.ids );
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; r.report->widened++; }
+                        // THE KEY KIND IS CHECKED FIRST: a key read under another kind
+                        // desynchronizes the rest of the scan, and the honest answer to a
+                        // body whose key is not this reader's kind is the KIND, not the
+                        // framing damage that follows from it.
+                        if ( read.kind_bad )
+                        {
+                            // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets
+                            // to EMPTY, ONE kind_mismatch is counted for it, and the rest
+                            // is skipped. Events counted inside earlier entries stand.
+                            r.report->kind_mismatch++;
+                            TableMapFillReset( fill );
+                            break;
+                        }
+                        if ( read.malformed ) { r.report->malformed = true; break; }
+                        if ( read.over ) { r.report->clamped++; continue; } // skipped by its L, one count per entry
+                        const int order = landed ? TableKeyOrder( (uint64_t) last_key, (uint64_t) read.key ) : -1;
+                        if ( order > 0 )
+                        {
+                            // DESCENDING: not a body any conforming writer produced. The map
+                            // keeps the ascending prefix it has, the rest skips by the map's
+                            // L, and the PARENT reads on past the field's length (§4).
+                            r.report->malformed = true;
+                            break;
+                        }
+                        EdgeRowIdsEntry * slot = NULL;
+                        if ( order == 0 )
+                        {
+                            // EQUAL: a DUPLICATE. The slot that entry took is reset to the
+                            // entry's defaults by the decode below, so LAST WINS WHOLE and an
+                            // elided field of the repeat reads as its default. The map's
+                            // count excludes it.
+                            slot = TableMapFillLast( fill );
+                            r.report->duplicate++;
+                        }
+                        else
+                        {
+                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
+                        }
+                        if ( slot == NULL ) { r.report->malformed = true; break; }
+                        {
+                            TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
+                            EdgeRowIdsEntryLoadBody( elem, *slot );
+                        }
+                        last_key = read.key; // the WIRE keys of the entries that LAND
+                        landed = true;
+                    }
+                    TableMapFillEnd( fill );
+                }
+                r.offset = body_end; // the remaining entries skip by the map's L
+                break;
+            }
+            case 0xbf82010f6f71eae9ull: // after
+            {
+                if ( kind != 4 )
+                {
+                    if ( TableKindWidens( kind, 4 ) )
+                    {
+                        // WIDENED (§4): a kind that grew since the writer decodes
+                        // exactly at its own width, the value lands, one widened counts
+                        int64_t widened_v = 0;
+                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
+                        int32_t decoded_v = (int32_t) widened_v;
+                        value.after = decoded_v;
+                        r.report->widened++;
+                        break;
+                    }
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
+                int32_t decoded_v = int32_t( r.get32( ) );
+                value.after = decoded_v;
+                break;
+            }
+            case 0xffffffffffffffffull:
+            {
+                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                break;
+            }
+            default:
+            {
+                r.report->unknown++;
+                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                break;
+            }
+        }
+    }
+}
+
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+template <typename Ctx>
+inline int64_t EdgeRowMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const EdgeRow & value )
+{
+    (void) ctx; (void) numbering; (void) index_bits;
+    int64_t bits = 0;
+    {
+        TableMapCursor<EdgeRowNamesEntry> order_names = TableMapOrder( ctx, value.names ); // names
+        if ( !order_names.ok ) { return -1; } // the sort could not run
+        if ( order_names.count > 0 )
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += 32; // the count the data decides
+            for ( int32_t i = 0; i < order_names.count; i++ )
+            {
+                const int64_t elem_names = EdgeRowNamesEntryMeasureMessageBody( at + bits, *order_names[i] );
+                if ( elem_names < 0 ) { TableMapRelease( order_names ); return -1; }
+                bits += elem_names; // BUT THE ENTRY ALWAYS RIDES: identity here is the key
+            }
+        }
+        TableMapRelease( order_names );
+    }
+    {
+        TableMapCursor<EdgeRowIdsEntry> order_ids = TableMapOrder( ctx, value.ids ); // ids
+        if ( !order_ids.ok ) { return -1; } // the sort could not run
+        if ( order_ids.count > 0 )
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += 32; // the count the data decides
+            for ( int32_t i = 0; i < order_ids.count; i++ )
+            {
+                const int64_t elem_ids = EdgeRowIdsEntryMeasureMessageBody( at + bits, *order_ids[i] );
+                if ( elem_ids < 0 ) { TableMapRelease( order_ids ); return -1; }
+                bits += elem_ids; // BUT THE ENTRY ALWAYS RIDES: identity here is the key
+            }
+        }
+        TableMapRelease( order_ids );
+    }
+    if ( value.after != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
+}
+
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+template <typename Ctx>
+inline bool EdgeRowSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const EdgeRow & value )
+{
+    (void) ctx; (void) numbering; (void) index_bits;
+    {
+        TableMapCursor<EdgeRowNamesEntry> order_names = TableMapOrder( ctx, value.names ); // names
+        if ( !order_names.ok ) { return false; } // the sort could not run
+        if ( order_names.count > 0 )
+        {
+            w.put( 14, kTableMessageRefBitsHere );
+            w.put( (uint64_t) order_names.count, 32 ); // the count the data decides
+            for ( int32_t i = 0; i < order_names.count; i++ )
+            {
+                if ( !EdgeRowNamesEntrySaveMessageBody( w, *order_names[i] ) ) { TableMapRelease( order_names ); return false; }
+            }
+        }
+        TableMapRelease( order_names );
+    }
+    {
+        TableMapCursor<EdgeRowIdsEntry> order_ids = TableMapOrder( ctx, value.ids ); // ids
+        if ( !order_ids.ok ) { return false; } // the sort could not run
+        if ( order_ids.count > 0 )
+        {
+            w.put( 16, kTableMessageRefBitsHere );
+            w.put( (uint64_t) order_ids.count, 32 ); // the count the data decides
+            for ( int32_t i = 0; i < order_ids.count; i++ )
+            {
+                if ( !EdgeRowIdsEntrySaveMessageBody( w, *order_ids[i] ) ) { TableMapRelease( order_ids ); return false; }
+            }
+        }
+        TableMapRelease( order_ids );
+    }
+    if ( value.after != 0 )
+    {
+        w.put( 13, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.after ), 32 );
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
+}
+
+// EdgeRowMessageExtent: the extent EdgeRow's maps command on the message wire, from
+// the FRAMING alone (docs/SPEC-TABLES.md §2.8, §3.3, §6.5).
+inline bool EdgeRowMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at )
+{
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
+        if ( ref == 0 ) { return true; }
+        if ( ref > (uint64_t) vocabulary.count ) { return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        if ( TableMessageReserved( entry.id ) ) { return false; }
+        if ( entry.id == 0xafb728fff268814full && entry.kind == 14 && entry.elem_kind == 13 ) // names
+        {
+            uint64_t n = 0;
+            if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) ) { return false; }
+            n += (uint64_t) entry.min;
+            at = ( at + 3 ) & ~(int64_t) 3; // at alignof( EdgeRowNamesEntry )
+            at += (int64_t) n * (int64_t) sizeof( EdgeRowNamesEntry ); // the whole array FIRST
+            for ( uint64_t i = 0; i < n; i++ ) // then, entry by entry in key order
+            {
+                if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { return false; }
+            }
+            continue;
+        }
+        if ( entry.id == 0x2b7dea192bb7be29ull && entry.kind == 14 && entry.elem_kind == 13 ) // ids
+        {
+            uint64_t n = 0;
+            if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) ) { return false; }
+            n += (uint64_t) entry.min;
+            at = ( at + 7 ) & ~(int64_t) 7; // at alignof( EdgeRowIdsEntry )
+            at += (int64_t) n * (int64_t) sizeof( EdgeRowIdsEntry ); // the whole array FIRST
+            for ( uint64_t i = 0; i < n; i++ ) // then, entry by entry in key order
+            {
+                if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { return false; }
+            }
+            continue;
+        }
+        if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { return false; }
+    }
+}
+
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool EdgeRowLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, EdgeRow & value )
+{
+    (void) nodes; (void) index_bits;
+    EdgeRowReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0xafb728fff268814full: // names
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 14 || entry.elem_kind != 13 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t count = 0;
+                    if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
+                    count += (uint64_t) entry.min;
+                    TableMapFill<EdgeRowNamesEntry> fill = TableMapFillBegin( nodes, value.names, (uint32_t) count );
+                    if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
+                    const char * last_key = NULL; int32_t last_length = 0;
+                    bool landed = false;
+                    bool map_widened = false;
+                    for ( uint64_t i = 0; i < count; i++ )
+                    {
+                        const EdgeRowNamesEntryMessageKeyRead read = EdgeRowNamesEntryMessageReadKey( r, vocabulary, index_bits );
+                        if ( read.malformed ) { report->malformed = true; return false; }
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; report->widened++; }
+                        if ( read.kind_bad )
+                        {
+                            // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
+                            // EMPTY, ONE kind_mismatch is counted for it, and the rest of its
+                            // entries are stepped over by their shapes
+                            report->kind_mismatch++;
+                            TableMapFillReset( fill );
+                            r.offset = read.end;
+                            for ( uint64_t j = i + 1; j < count; j++ ) { if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { report->malformed = true; return false; } }
+                            break;
+                        }
+                        if ( read.over ) { report->clamped++; r.offset = read.end; continue; } // dropped whole, one count per entry
+                        const int order = landed ? TableKeyOrder( last_key, last_length, read.key, read.length ) : -1;
+                        if ( order > 0 ) { report->malformed = true; return false; } // DESCENDING: not a body any conforming writer produced
+                        EdgeRowNamesEntry * slot = NULL;
+                        if ( order == 0 )
+                        {
+                            // EQUAL: a DUPLICATE. The slot that entry took is reset by the
+                            // decode below, so LAST WINS WHOLE, and the count excludes it.
+                            slot = TableMapFillLast( fill );
+                            report->duplicate++;
+                        }
+                        else
+                        {
+                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
+                        }
+                        if ( slot == NULL ) { report->malformed = true; return false; }
+                        if ( !EdgeRowNamesEntryLoadMessageBody( r, vocabulary, report, index_bits, *slot ) ) { return false; }
+                        if ( r.offset != read.end ) { report->malformed = true; return false; } // the scan and the decode disagree about where the entry ends
+                        last_key = read.key; last_length = read.length; // the WIRE keys of the entries that LAND
+                        landed = true;
+                    }
+                    TableMapFillEnd( fill );
+                }
+                break;
+            }
+            case 0x2b7dea192bb7be29ull: // ids
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 14 || entry.elem_kind != 13 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t count = 0;
+                    if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
+                    count += (uint64_t) entry.min;
+                    TableMapFill<EdgeRowIdsEntry> fill = TableMapFillBegin( nodes, value.ids, (uint32_t) count );
+                    if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
+                    uint64_t last_key = 0;
+                    bool landed = false;
+                    bool map_widened = false;
+                    for ( uint64_t i = 0; i < count; i++ )
+                    {
+                        const EdgeRowIdsEntryMessageKeyRead read = EdgeRowIdsEntryMessageReadKey( r, vocabulary, index_bits );
+                        if ( read.malformed ) { report->malformed = true; return false; }
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; report->widened++; }
+                        if ( read.kind_bad )
+                        {
+                            // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
+                            // EMPTY, ONE kind_mismatch is counted for it, and the rest of its
+                            // entries are stepped over by their shapes
+                            report->kind_mismatch++;
+                            TableMapFillReset( fill );
+                            r.offset = read.end;
+                            for ( uint64_t j = i + 1; j < count; j++ ) { if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { report->malformed = true; return false; } }
+                            break;
+                        }
+                        if ( read.over ) { report->clamped++; r.offset = read.end; continue; } // dropped whole, one count per entry
+                        const int order = landed ? TableKeyOrder( (uint64_t) last_key, (uint64_t) read.key ) : -1;
+                        if ( order > 0 ) { report->malformed = true; return false; } // DESCENDING: not a body any conforming writer produced
+                        EdgeRowIdsEntry * slot = NULL;
+                        if ( order == 0 )
+                        {
+                            // EQUAL: a DUPLICATE. The slot that entry took is reset by the
+                            // decode below, so LAST WINS WHOLE, and the count excludes it.
+                            slot = TableMapFillLast( fill );
+                            report->duplicate++;
+                        }
+                        else
+                        {
+                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
+                        }
+                        if ( slot == NULL ) { report->malformed = true; return false; }
+                        if ( !EdgeRowIdsEntryLoadMessageBody( r, vocabulary, report, index_bits, *slot ) ) { return false; }
                         if ( r.offset != read.end ) { report->malformed = true; return false; } // the scan and the decode disagree about where the entry ends
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;
@@ -6210,6 +7754,119 @@ inline bool WideRowExtentPack( const Ctx & ctx, const WideRow & src, WideRow & d
     return true;
 }
 
+// EdgeRowWireExtent: the extent EdgeRow's lists and maps command, from the FRAMING alone.
+// It reads no field value, so a caller can refuse a number it did not
+// expect before one byte is allocated (docs/SPEC-TABLES.md §6.5).
+inline bool EdgeRowWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason )
+{
+    TableReport scratch; // the scan's framing damage is the LOAD's to report
+    TableReader r( body, length, &scratch, ids );
+    for ( ;; )
+    {
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { return true; }
+        if ( field_ref == 0 ) { return true; }
+        if ( ids == NULL || field_ref > (uint64_t) ids->count ) { return true; }
+        const uint64_t field_id = ids->at( field_ref );
+        if ( !r.has( 1 ) ) { return true; }
+        uint8_t field_kind = r.get8();
+        if ( field_id == 0xafb728fff268814full && field_kind == 14 ) // names
+        {
+            uint64_t map_len = 0;
+            if ( !r.getleb( map_len ) || !r.room( map_len ) ) { return true; }
+            const uint8_t * map_body = r.buffer + r.offset;
+            r.offset += (int64_t) map_len;
+            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( EdgeRowNamesEntry ), (int64_t) alignof( EdgeRowNamesEntry ), NULL, ids, reason ) ) { return false; }
+            continue;
+        }
+        if ( field_id == 0x2b7dea192bb7be29ull && field_kind == 14 ) // ids
+        {
+            uint64_t map_len = 0;
+            if ( !r.getleb( map_len ) || !r.room( map_len ) ) { return true; }
+            const uint8_t * map_body = r.buffer + r.offset;
+            r.offset += (int64_t) map_len;
+            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( EdgeRowIdsEntry ), (int64_t) alignof( EdgeRowIdsEntry ), NULL, ids, reason ) ) { return false; }
+            continue;
+        }
+        if ( !r.skip( field_kind ) ) { return true; }
+    }
+}
+
+// EdgeRowExtentAt: the node extent EdgeRow's lists and maps take, PRE-ORDER, advancing
+// the running offset exactly as EdgeRowExtentPack advances it (§2.8, §2.9).
+template <typename Ctx>
+inline bool EdgeRowExtentAt( const Ctx & ctx, const EdgeRow & value, int64_t & at )
+{
+    {
+        TableMapCursor<EdgeRowNamesEntry> cursor = TableMapOrder( ctx, value.names );
+        if ( !cursor.ok ) { return false; }
+        at = ( at + 3 ) & ~(int64_t) 3; // at alignof( EdgeRowNamesEntry )
+        at += (int64_t) cursor.count * (int64_t) sizeof( EdgeRowNamesEntry ); // the whole array FIRST
+        TableMapRelease( cursor );
+    }
+    {
+        TableMapCursor<EdgeRowIdsEntry> cursor = TableMapOrder( ctx, value.ids );
+        if ( !cursor.ok ) { return false; }
+        at = ( at + 7 ) & ~(int64_t) 7; // at alignof( EdgeRowIdsEntry )
+        at += (int64_t) cursor.count * (int64_t) sizeof( EdgeRowIdsEntry ); // the whole array FIRST
+        TableMapRelease( cursor );
+    }
+    return true;
+}
+
+// the whole extent of one node, from a fresh offset: what a pack reserves
+// for it beside the record's own storage.
+template <typename Ctx>
+inline int64_t EdgeRowExtent( const Ctx & ctx, const EdgeRow & value )
+{
+    int64_t at = 0;
+    if ( !EdgeRowExtentAt( ctx, value, at ) ) { return -1; }
+    return at;
+}
+
+// EdgeRowExtentPack: carve EdgeRow's arrays out of the node's extent and copy the
+// entries in ASCENDING key order and the elements in INDEX order, PRE-ORDER,
+// advancing the same running offset EdgeRowExtentAt advances (§2.8, §2.9).
+template <typename Ctx>
+inline bool EdgeRowExtentPack( const Ctx & ctx, const EdgeRow & src, EdgeRow & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+{
+    {
+        TableMapCursor<EdgeRowNamesEntry> cursor = TableMapOrder( ctx, src.names );
+        if ( !cursor.ok ) { return false; }
+        at = ( at + 3 ) & ~(int64_t) 3;
+        const int64_t bytes = (int64_t) cursor.count * (int64_t) sizeof( EdgeRowNamesEntry );
+        if ( at + bytes > capacity ) { TableMapRelease( cursor ); return false; }
+        EdgeRowNamesEntry * placed = (EdgeRowNamesEntry *) ( extent + at );
+        at += bytes;
+        dst.names.count = cursor.count;
+        dst.names.padding = 0;
+        dst.names.entries.value = cursor.count > 0 ? (int64_t) ( (uint8_t *) placed - (const uint8_t *) &dst.names.entries ) : 0;
+        for ( int32_t i = 0; i < cursor.count; i++ )
+        {
+            memcpy( (void *) ( placed + i ), (const void *) cursor[i], sizeof( EdgeRowNamesEntry ) ); // trivially copyable, by construction
+        }
+        TableMapRelease( cursor );
+    }
+    {
+        TableMapCursor<EdgeRowIdsEntry> cursor = TableMapOrder( ctx, src.ids );
+        if ( !cursor.ok ) { return false; }
+        at = ( at + 7 ) & ~(int64_t) 7;
+        const int64_t bytes = (int64_t) cursor.count * (int64_t) sizeof( EdgeRowIdsEntry );
+        if ( at + bytes > capacity ) { TableMapRelease( cursor ); return false; }
+        EdgeRowIdsEntry * placed = (EdgeRowIdsEntry *) ( extent + at );
+        at += bytes;
+        dst.ids.count = cursor.count;
+        dst.ids.padding = 0;
+        dst.ids.entries.value = cursor.count > 0 ? (int64_t) ( (uint8_t *) placed - (const uint8_t *) &dst.ids.entries ) : 0;
+        for ( int32_t i = 0; i < cursor.count; i++ )
+        {
+            memcpy( (void *) ( placed + i ), (const void *) cursor[i], sizeof( EdgeRowIdsEntry ) ); // trivially copyable, by construction
+        }
+        TableMapRelease( cursor );
+    }
+    return true;
+}
+
 // ---- Row.entries: the builder's five and the side index (§2.8) ----
 
 // INSERT: the key is copied, the value is handed back at its defaults to
@@ -6395,6 +8052,191 @@ inline const Item * WideRowEntriesIndexFind( const TableMapIndex & index, const 
     return NULL;
 }
 
+// ---- EdgeRow.names: the builder's five and the side index (§2.8) ----
+
+// INSERT: the key is copied, the value is handed back at its defaults to
+// fill. A DUPLICATE key REPLACES — the value is reset and the same entry
+// handed back, key and address unchanged — so a caller that wants to know
+// writes Find first. NULL is NOT INSERTED: a key longer than the bound,
+// because a truncated key would be a merged entry, and an arena that
+// cannot carve another segment, alike.
+//
+// It is a WRAPPER: TableMapPlace owns the lookup, the reset, the
+// allocation and the key copy, and this half is the bound and the
+// const char * key's length. Nothing here mutates an entry (§2.8).
+inline Item * EdgeRowNamesInsert( TableWorker & worker, TableMap<EdgeRowNamesEntry> & map, const char * key )
+{
+    if ( key == NULL ) { return NULL; }
+    const TableMapKeyRef bytes = { key, TableKeyLength( key, kEdgeRowNamesEntryKeyBound ) };
+    if ( bytes.length > kEdgeRowNamesEntryKeyBound ) { return NULL; } // KEYS NEVER CLAMP
+    EdgeRowNamesEntry * entry = TableMapPlace( worker, map, bytes );
+    return entry != NULL ? TableEntryValue( entry ) : NULL;
+}
+
+// FIND on the builder: the same linear scan, O( n ) key compares over the
+// segments in insertion order. NULL when absent. The builder builds NO
+// INDEX, and that is a rule — the sort happens once, at Lock, Save or
+// Cook, and every lookup that matters runs over the sorted region.
+inline Item * EdgeRowNamesFind( TableArena & arena, TableMap<EdgeRowNamesEntry> & map, const char * key )
+{
+    EdgeRowNamesEntry * found = TableMapScan( arena, map, key );
+    return found != NULL ? TableEntryValue( found ) : NULL;
+}
+
+// ERASE: marks the entry DEAD, one bit in the segment's slot and not in the
+// entry table. False when absent. Its storage is held until the builder
+// resets and never reused mid-build, because reusing a slot would make "an
+// entry's address is stable" false for exactly one case.
+inline bool EdgeRowNamesErase( TableArena & arena, TableMap<EdgeRowNamesEntry> & map, const char * key )
+{
+    return TableMapErase( arena, map, key );
+}
+
+// EACH on the builder: INSERTION order, live entries only.
+inline TableMapEach<EdgeRowNamesEntry> EdgeRowNamesEach( const TableArena & arena, const TableMap<EdgeRowNamesEntry> & map )
+{
+    return TableMapEachOf( arena, map );
+}
+
+// ---- the OPTIONAL INDEX: caller-owned, built at load, never stored ----
+//
+// Open addressing with linear probing over the sorted array, for a map large
+// enough that log n compares over a cold array cost more than one hash and a
+// probe. ITS HASH AND ITS LOAD FACTOR ARE NOT A CROSS-PORT CONTRACT: the
+// index is never stored, so no golden, no cook-check rule and no
+// build-version line ever names either. What a port is held to is the
+// CONTRACT of the lookup — the same value the sorted array's Find returns
+// for the same key, and no allocation past the storage the caller handed in.
+inline int64_t EdgeRowNamesIndexMeasure( const TableMap<EdgeRowNamesEntry> & map )
+{
+    return (int64_t) TableMapIndexSlots( map.count ) * (int64_t) sizeof( int32_t );
+}
+
+inline TableMapIndex EdgeRowNamesIndex( const TableMap<EdgeRowNamesEntry> & map, void * storage, int64_t bytes )
+{
+    TableMapIndex index;
+    const int32_t slots = TableMapIndexSlots( map.count );
+    if ( storage == NULL || bytes < (int64_t) slots * (int64_t) sizeof( int32_t ) ) { return index; }
+    index.slots = (int32_t *) storage;
+    index.capacity = slots;
+    for ( int32_t i = 0; i < slots; i++ ) { index.slots[i] = 0; }
+    const EdgeRowNamesEntry * entries = map.Entries();
+    for ( int32_t i = 0; i < map.count; i++ ) // ONE PASS over the sorted array
+    {
+        int32_t at = (int32_t) ( TableMapHash( (const void *) entries[i].key, entries[i].key_length ) & (uint64_t) ( slots - 1 ) );
+        while ( index.slots[at] != 0 ) { at = ( at + 1 ) & ( slots - 1 ); }
+        index.slots[at] = i + 1; // slots are ENTRY INDICES; 0 is an empty slot
+    }
+    index.good = true;
+    return index;
+}
+
+inline const Item * EdgeRowNamesIndexFind( const TableMapIndex & index, const TableMap<EdgeRowNamesEntry> & map, const char * key )
+{
+    if ( !index.good ) { return map.Find( key ); } // an index that did not build is not a wrong answer
+    const EdgeRowNamesEntry * entries = map.Entries();
+    int32_t at = (int32_t) ( TableMapHash( (const void *) key, TableKeyLength( key, kEdgeRowNamesEntryKeyBound ) ) & (uint64_t) ( index.capacity - 1 ) );
+    for ( int32_t probe = 0; probe < index.capacity; probe++ )
+    {
+        const int32_t slot = index.slots[at];
+        if ( slot == 0 ) { return NULL; }
+        if ( TableEntryOrder( entries[slot - 1], key ) == 0 ) { return TableEntryFound( entries + slot - 1 ); }
+        at = ( at + 1 ) & ( index.capacity - 1 );
+    }
+    return NULL;
+}
+
+// ---- EdgeRow.ids: the builder's five and the side index (§2.8) ----
+
+// INSERT: the key is copied, the value is handed back at its defaults to
+// fill. A DUPLICATE key REPLACES — the value is reset and the same entry
+// handed back, key and address unchanged — so a caller that wants to know
+// writes Find first. NULL is NOT INSERTED: a key longer than the bound,
+// because a truncated key would be a merged entry, and an arena that
+// cannot carve another segment, alike.
+//
+// It is a WRAPPER: TableMapPlace owns the lookup, the reset, the
+// allocation and the key copy, and this half is the bound and the
+// const char * key's length. Nothing here mutates an entry (§2.8).
+inline Item * EdgeRowIdsInsert( TableWorker & worker, TableMap<EdgeRowIdsEntry> & map, uint64_t key )
+{
+    EdgeRowIdsEntry * entry = TableMapPlace( worker, map, key );
+    return entry != NULL ? TableEntryValue( entry ) : NULL;
+}
+
+// FIND on the builder: the same linear scan, O( n ) key compares over the
+// segments in insertion order. NULL when absent. The builder builds NO
+// INDEX, and that is a rule — the sort happens once, at Lock, Save or
+// Cook, and every lookup that matters runs over the sorted region.
+inline Item * EdgeRowIdsFind( TableArena & arena, TableMap<EdgeRowIdsEntry> & map, uint64_t key )
+{
+    EdgeRowIdsEntry * found = TableMapScan( arena, map, key );
+    return found != NULL ? TableEntryValue( found ) : NULL;
+}
+
+// ERASE: marks the entry DEAD, one bit in the segment's slot and not in the
+// entry table. False when absent. Its storage is held until the builder
+// resets and never reused mid-build, because reusing a slot would make "an
+// entry's address is stable" false for exactly one case.
+inline bool EdgeRowIdsErase( TableArena & arena, TableMap<EdgeRowIdsEntry> & map, uint64_t key )
+{
+    return TableMapErase( arena, map, key );
+}
+
+// EACH on the builder: INSERTION order, live entries only.
+inline TableMapEach<EdgeRowIdsEntry> EdgeRowIdsEach( const TableArena & arena, const TableMap<EdgeRowIdsEntry> & map )
+{
+    return TableMapEachOf( arena, map );
+}
+
+// ---- the OPTIONAL INDEX: caller-owned, built at load, never stored ----
+//
+// Open addressing with linear probing over the sorted array, for a map large
+// enough that log n compares over a cold array cost more than one hash and a
+// probe. ITS HASH AND ITS LOAD FACTOR ARE NOT A CROSS-PORT CONTRACT: the
+// index is never stored, so no golden, no cook-check rule and no
+// build-version line ever names either. What a port is held to is the
+// CONTRACT of the lookup — the same value the sorted array's Find returns
+// for the same key, and no allocation past the storage the caller handed in.
+inline int64_t EdgeRowIdsIndexMeasure( const TableMap<EdgeRowIdsEntry> & map )
+{
+    return (int64_t) TableMapIndexSlots( map.count ) * (int64_t) sizeof( int32_t );
+}
+
+inline TableMapIndex EdgeRowIdsIndex( const TableMap<EdgeRowIdsEntry> & map, void * storage, int64_t bytes )
+{
+    TableMapIndex index;
+    const int32_t slots = TableMapIndexSlots( map.count );
+    if ( storage == NULL || bytes < (int64_t) slots * (int64_t) sizeof( int32_t ) ) { return index; }
+    index.slots = (int32_t *) storage;
+    index.capacity = slots;
+    for ( int32_t i = 0; i < slots; i++ ) { index.slots[i] = 0; }
+    const EdgeRowIdsEntry * entries = map.Entries();
+    for ( int32_t i = 0; i < map.count; i++ ) // ONE PASS over the sorted array
+    {
+        int32_t at = (int32_t) ( TableMapHash( (uint64_t) entries[i].key ) & (uint64_t) ( slots - 1 ) );
+        while ( index.slots[at] != 0 ) { at = ( at + 1 ) & ( slots - 1 ); }
+        index.slots[at] = i + 1; // slots are ENTRY INDICES; 0 is an empty slot
+    }
+    index.good = true;
+    return index;
+}
+
+inline const Item * EdgeRowIdsIndexFind( const TableMapIndex & index, const TableMap<EdgeRowIdsEntry> & map, uint64_t key )
+{
+    if ( !index.good ) { return map.Find( key ); } // an index that did not build is not a wrong answer
+    const EdgeRowIdsEntry * entries = map.Entries();
+    int32_t at = (int32_t) ( TableMapHash( (uint64_t) key ) & (uint64_t) ( index.capacity - 1 ) );
+    for ( int32_t probe = 0; probe < index.capacity; probe++ )
+    {
+        const int32_t slot = index.slots[at];
+        if ( slot == 0 ) { return NULL; }
+        if ( TableEntryOrder( entries[slot - 1], key ) == 0 ) { return TableEntryFound( entries + slot - 1 ); }
+        at = ( at + 1 ) & ( index.capacity - 1 );
+    }
+    return NULL;
+}
+
 // RowNumber: number everything Row POINTS AT, in first-visit order —
 // the fields in declaration order, a by-value edge descended in place.
 // A reference to an entry whose descent is still OPEN is a data cycle,
@@ -6496,6 +8338,59 @@ inline bool WideRowPack( const Ctx & ctx, TablePackMap & seen, const WideRow & s
 
 template <typename Ctx>
 inline bool WideRowPackEdges( const Ctx & ctx, TablePackMap & seen, const WideRow & src, WideRow & dst, uint8_t * base, int64_t capacity, int64_t & used )
+{
+    (void) ctx; (void) seen; (void) src; (void) dst; (void) base; (void) capacity; (void) used;
+    return true;
+}
+
+// EdgeRowNumber: number everything EdgeRow POINTS AT, in first-visit order —
+// the fields in declaration order, a by-value edge descended in place.
+// A reference to an entry whose descent is still OPEN is a data cycle,
+// named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
+template <typename Ctx>
+inline bool EdgeRowNumber( const Ctx & ctx, TableNumbering & numbering, const EdgeRow & value )
+{
+    (void) ctx; (void) numbering; (void) value; // no pointers below this node
+    return true;
+}
+
+// EdgeRowPackMeasure: the packed region bytes of everything EdgeRow POINTS AT.
+// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
+// node two references name is measured ONCE and packed once, and a
+// reference to a node whose descent is still open is a data cycle, refused.
+template <typename Ctx>
+inline int64_t EdgeRowPackMeasure( const Ctx & ctx, TablePackMap & seen, const EdgeRow & value )
+{
+    int64_t bytes = 0;
+    (void) ctx; (void) seen; (void) value; // no pointers below this node
+    return bytes;
+}
+
+// EdgeRowPack: copy src into dst (already placed), then lay every pointee out
+// depth-first behind it, in FIELD ORDER, by bump allocation.
+//
+// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and
+// where it landed, so a node's FIRST reference lays it out and every later
+// reference points BACK at that one body. A region delta therefore has no
+// required sign (§6.3), and sharing and a back-reference are one fact. A
+// reference to a node whose descent is still OPEN is a cycle, and this
+// refuses it rather than packing one.
+template <typename Ctx>
+inline bool EdgeRowPackEdges( const Ctx & ctx, TablePackMap & seen, const EdgeRow & src, EdgeRow & dst, uint8_t * base, int64_t capacity, int64_t & used );
+
+template <typename Ctx>
+inline bool EdgeRowPack( const Ctx & ctx, TablePackMap & seen, const EdgeRow & src, EdgeRow & dst, uint8_t * base, int64_t capacity, int64_t & used )
+{
+    memcpy( (void *) &dst, (const void *) &src, sizeof( EdgeRow ) ); // trivially copyable, by construction
+    int64_t at = 0;
+    uint8_t * extent = (uint8_t *) &dst + TableAlignUp64( (int64_t) sizeof( EdgeRow ) );
+    const int64_t room = capacity - ( (int64_t) ( extent - base ) );
+    if ( !EdgeRowExtentPack( ctx, src, dst, extent, at, room ) ) { return false; }
+    return EdgeRowPackEdges( ctx, seen, src, dst, base, capacity, used );
+}
+
+template <typename Ctx>
+inline bool EdgeRowPackEdges( const Ctx & ctx, TablePackMap & seen, const EdgeRow & src, EdgeRow & dst, uint8_t * base, int64_t capacity, int64_t & used )
 {
     (void) ctx; (void) seen; (void) src; (void) dst; (void) base; (void) capacity; (void) used;
     return true;
@@ -8297,6 +10192,904 @@ inline bool WideRowLoadBuilder( WideRowBuilder & builder, const uint8_t * wire_f
     return ok;
 }
 
+// ---- EdgeRow: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
+//
+// MUTABLE: EdgeRowBuilder — allocate nodes, wire them together, then Lock.
+// CONST:   one packed region, root at its base. Lock produces it and Load
+//          produces it, so a locked structure and a loaded one are the
+//          SAME representation with one view API. There is no unlock:
+//          re-editing means loading the const form into a fresh builder.
+// EdgeRow is never held by value — a file-format-scale structure is a region
+// and a root pointer, not a struct you copy.
+
+struct EdgeRowBuilder
+{
+    TableArena arena;
+    TableWorker main;      // the calling thread's allocation front
+    TableRef root_ref;
+    uint8_t * region = NULL; // the packed const form, produced by Lock()
+    int64_t region_bytes = 0;
+
+    // THE ALLOCATOR IS THE BUILDER'S, and everything this structure ever
+    // allocates goes through it: the arena's segments, Lock's identity map,
+    // the packed region, the wire walks' numbering, and the tool path's node
+    // directory. Name your own and a profiler sees every byte under it.
+    EdgeRowBuilder( TableAllocator allocator = TableDefaultAllocator() )
+    {
+        TableArenaInit( arena, allocator );
+        main.arena = &arena;
+        TableSlot<EdgeRow> slot = main.Alloc<EdgeRow>();
+        root_ref = slot.ref;
+    }
+    ~EdgeRowBuilder() { TableArenaShutdown( arena ); arena.allocator.free( arena.allocator.context, region ); }
+    EdgeRowBuilder( const EdgeRowBuilder & ) = delete;
+    EdgeRowBuilder & operator=( const EdgeRowBuilder & ) = delete;
+
+    // Alloc a node in THIS thread's slab: no lock, no atomic per node.
+    // The result is usable both as the node pointer and as the reference
+    // to store in a pointer field.
+    template <typename T> TableSlot<T> Alloc() { return main.Alloc<T>(); }
+    // a BYTE BUFFER's node of exactly `length` bytes (docs/SPEC-TABLES.md §2.5):
+    // the bytes to write through, and the reference to store in a *bytes
+    // or *string slot; a blob past a slab takes a span of its own
+    TableBytesSlot AllocBytes( int64_t length ) { return main.AllocBytes( length ); }
+    TableStringSlot AllocString( int64_t length ) { return main.AllocString( length ); }
+    // one worker per thread; allocate on your own, and synchronize your own
+    // writes to nodes another worker allocated
+    TableWorker Worker() { TableWorker worker; worker.arena = &arena; return worker; }
+
+    // GetRoot/AsConst, not Root/Const: a member function hides the type
+    // name it shares, and `table Root` is this spec's own canonical
+    // example. The checker refuses a table named after any member here,
+    // so the remaining spellings cannot collide either.
+    EdgeRow * GetRoot() { return arena.locked ? NULL : (EdgeRow *) TableArenaAt( arena, (uint32_t) root_ref.value ); }
+    bool Locked() const { return arena.locked; }
+    const EdgeRow * AsConst() const { return (const EdgeRow *) region; }
+    const uint8_t * Region() const { return region; }
+    int64_t RegionBytes() const { return region_bytes; }
+
+    // Lock is ONE WAY and it is the compaction: the segmented arena becomes
+    // one exact-packed region with zero slack, references rewritten
+    // self-relative, and the mutable life released. Single-threaded: call
+    // it after the workers have joined.
+    bool Lock();
+};
+
+inline bool EdgeRowBuilder::Lock()
+{
+    if ( arena.locked ) { return region != NULL; }
+    if ( root_ref.null() ) { return false; }
+    TableArenaCtx ctx = { &arena };
+    const EdgeRow & root = *(const EdgeRow *) TableArenaAt( arena, (uint32_t) root_ref.value );
+    // The ROOT takes the map's first entry: it is packed at offset 0, and its
+    // descent is open for the whole walk (docs/SPEC-TABLES.md §3.1).
+    TablePackMap seen;
+    TablePackMapInit( seen, arena.allocator );
+    bool root_taken = false;
+    int64_t root_slot = 0;
+    int64_t below = -1;
+    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )
+    {
+        below = EdgeRowPackMeasure( ctx, seen, root );
+    }
+    if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, named at the reference that closes it
+    int64_t root_extent = EdgeRowExtent( ctx, root );
+    if ( root_extent < 0 ) { TablePackMapShutdown( seen ); return false; } // the sort could not run
+    int64_t total = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( EdgeRow ) ) + root_extent ) + below;
+    // the AUTHORING path may allocate (§6.5), and it does so through the
+    // builder's own pair. The region comes back ZEROED, which is the
+    // allocator's contract: a packed region carries node padding.
+    uint8_t * packed = (uint8_t *) arena.allocator.alloc( arena.allocator.context, total );
+    if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }
+    int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( EdgeRow ) ) + root_extent );
+    EdgeRow * destination = new ( packed ) EdgeRow; // lifetime only: the Pack below memcpy's the whole node over it
+    // The pack walk RE-DERIVES the same numbering rather than carrying the
+    // measure's — nothing passes between them, which is what makes
+    // `used == total` below a real check and not a tautology (§3.1). The
+    // map keeps the capacity the measure paid for, so the second walk
+    // rehashes nothing.
+    TablePackMapReset( seen );
+    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||
+         !EdgeRowPack( ctx, seen, root, *destination, packed, total, used ) || used != total )
+    {
+        TablePackMapShutdown( seen );
+        arena.allocator.free( arena.allocator.context, packed );
+        return false;
+    }
+    TablePackMapShutdown( seen );
+    region = packed;
+    region_bytes = total;
+    arena.locked = true; // MONOTONIC: there is no unlock
+    TableArenaShutdown( arena );
+    return true;
+}
+
+// ---- EdgeRow on the wire: the FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1) ----
+//
+// A pointered save writes every reachable node ONCE, into a node table under
+// the reserved id 0xFFFF, and a pointer field rides as a u32 INDEX into it
+// under kind 17. No pointer edge is a nesting level, so a chain's length is
+// not a depth and two references to one node are one node.
+
+// EdgeRowNodeStorage: the region bytes one record commands, or -1 for a type id
+// this build cannot name — which keeps its index and reads null. A BYTE
+// BUFFER's record commands its header and its bytes (docs/SPEC-TABLES.md §2.5),
+// which is the one answer the record's LENGTH decides, and a blob past the
+// size cap answers kTableNodeRefused with its reason (§3.1, §6.5).
+// A MAP'S ENTRIES RIDE IN THEIR HOLDER'S EXTENT (docs/SPEC-TABLES.md §2.8),
+// so a record's storage is its type's PLUS N x sizeof( Entry ) at every
+// depth, summed from the FRAMING: N is framing and not a value, and this
+// reads no field. kTableNodeRefused is a wire whose N its L cannot carry.
+inline int64_t EdgeRowNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
+{
+    (void) length; // no byte buffer below this root: every node's storage is its type's
+    switch ( type_id )
+    {
+        default: break;
+    }
+    (void) reason; // no blob and no extent below this root: nothing here refuses
+    return -1;
+}
+
+// EdgeRowNodePlace: start one record's node's lifetime in the storage pass one
+// reserved for it, holding exactly the declared defaults — a byte buffer's
+// header holds its length, and its bytes come in pass two.
+inline void EdgeRowNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
+{
+    (void) length;
+    (void) at;
+    switch ( type_id )
+    {
+        default: break;
+    }
+}
+
+// EdgeRowNodeRecordBytes: one record's OWN storage, before the extent its maps
+// take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.
+inline int64_t EdgeRowNodeRecordBytes( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        default: break;
+    }
+    return 0;
+}
+
+// EdgeRowNodeAlloc: the TOOL's path — one record's node in the builder's arena.
+// Zero is the arena's null, and it is also what a type id this build cannot
+// name answers.
+inline uint32_t EdgeRowNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
+{
+    (void) length;
+    (void) worker;
+    switch ( type_id )
+    {
+        default: break;
+    }
+    return 0;
+}
+
+// EdgeRowNodeBody: PASS TWO's half — decode one record's body into the storage it
+// already owns.
+inline void EdgeRowNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
+{
+    // the node's own EXTENT, where its lists' and maps' arrays are carved
+    // from, PRE-ORDER as the bodies decode (docs/SPEC-TABLES.md §2.8, §2.9).
+    // The tool's path carries a worker instead: there the arrays are the
+    // arena's.
+    TableExtentCarve carve;
+    carve.worker = nodes.worker;
+    if ( carve.worker == NULL )
+    {
+        TableRefuseReason reason = count_over_length; // pass one already refused what this could refuse
+        const int64_t storage = EdgeRowNodeStorage( type_id, r.size, reason );
+        const int64_t record = storage > 0 ? EdgeRowNodeRecordBytes( type_id ) : 0;
+        carve.at = at + record;
+        carve.left = storage > record ? storage - record : 0;
+    }
+    nodes.carve = &carve;
+    (void) nodes; // every node this root can name is a FIXED table
+    switch ( type_id )
+    {
+        default: break;
+    }
+    nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
+}
+
+// EdgeRowNodeMessageStorage: the region bytes one record commands on the message
+// wire, or -1 for a type id this build cannot name. A table's is its own
+// storage plus the extent its maps take; a byte buffer's is its header and
+// its bytes, which is the one answer the record's LENGTH decides.
+inline int64_t EdgeRowNodeMessageStorage( uint64_t type_id, int64_t extent, int64_t length )
+{
+    (void) length;
+    (void) extent;
+    switch ( type_id )
+    {
+        default: break;
+    }
+    return -1;
+}
+
+// EdgeRowNodeMessageExtent: step over one TABLE record's body, tallying the extent
+// its maps take where its type has any (§2.8). A type this build cannot
+// name is stepped over by its announced shapes and takes no extent.
+inline bool EdgeRowNodeMessageExtent( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & extent )
+{
+    extent = 0;
+    (void) type_id; // no map below any node this root can name
+    return TableMessageSkipBody( r, vocabulary, index_bits );
+}
+
+// EdgeRowNodeMessageBody: PASS TWO's half, which decodes one record's body into
+// storage it already owns, its map entries carved from its own extent.
+inline bool EdgeRowNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )
+{
+    TableExtentCarve carve;
+    carve.at = at + EdgeRowNodeRecordBytes( type_id );
+    carve.left = 0;
+    {
+        // the extent this record was placed with, re-read from the framing
+        TableBitReader walk = r;
+        int64_t extent = 0;
+        if ( !EdgeRowNodeMessageExtent( type_id, walk, vocabulary, index_bits, extent ) ) { report->malformed = true; return false; }
+        carve.left = extent;
+    }
+    TableExtentCarve * const outer = nodes.carve;
+    nodes.carve = &carve;
+    (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
+    bool ok = false;
+    switch ( type_id )
+    {
+        // a record this dispatch cannot name never reaches here: pass one left it absent
+        default: report->malformed = true; break;
+    }
+    nodes.carve = outer;
+    return ok;
+}
+
+// The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
+// root takes index 1 and its entry stays open for the whole walk, so a
+// reference back at it is the cycle it is (§3.1).
+template <typename Ctx>
+inline bool EdgeRowNumberFrom( const Ctx & ctx, TableNumbering & numbering, const EdgeRow & root )
+{
+    bool taken = false;
+    int64_t slot = 0;
+    if ( TablePackMapReach( numbering.seen, (const void *) &root, (int64_t) kTableNodeIndexRoot, taken, slot ) == NULL ) { return false; }
+    return EdgeRowNumber( ctx, numbering, root );
+}
+
+template <typename Ctx>
+inline int64_t EdgeRowMeasureWire( const Ctx & ctx, const EdgeRow & root, TableAllocator allocator )
+{
+    TableNumbering numbering;
+    TableNumberingInit( numbering, allocator );
+    int64_t bytes = -1;
+    if ( EdgeRowNumberFrom( ctx, numbering, root ) )
+    {
+        TableIds ids;
+        bytes = EdgeRowMeasureBody( ctx, numbering, ids, root );
+        if ( bytes >= 0 )
+        {
+            const int64_t table = TableNodeTableMeasure( ctx, ids, numbering );
+            // the FORM BYTE, the ROOT BODY — its own fields, the node table
+            // and the terminator — and the ID TABLE (docs/SPEC-TABLES.md §3)
+            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + TableIdsBytes( ids );
+        }
+    }
+    TableNumberingShutdown( numbering );
+    return bytes;
+}
+
+template <typename Ctx>
+inline int64_t EdgeRowSaveWire( const Ctx & ctx, const EdgeRow & root, uint8_t * buffer, int64_t capacity, TableAllocator allocator )
+{
+    TableNumbering numbering;
+    TableNumberingInit( numbering, allocator );
+    if ( !EdgeRowNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
+    TableWriter w( buffer, capacity );
+    TableIds ids;
+    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
+    // the root's own fields, then the node table's field, then the
+    // terminator: a reader that gives up inside the table has already
+    // decoded the ROOT'S OWN FIELDS (§3.1)
+    bool ok = EdgeRowSaveBodyFields( ctx, numbering, w, ids, root ) && TableNodeTableSave( ctx, w, ids, numbering );
+    TableNumberingShutdown( numbering );
+    if ( !ok || ids.overflow ) { return -1; }
+    w.put8( 0 ); // the ZERO REFERENCE that ends the root body
+    TableIdsWrite( w, ids );
+    if ( w.overflow ) { return -1; } // the caller's buffer was too small
+    return w.offset; // == EdgeRowMeasure( root )
+}
+
+inline int64_t EdgeRowMeasure( const EdgeRow * root, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( root == NULL ) { return -1; }
+    TableRegionCtx ctx;
+    return EdgeRowMeasureWire( ctx, *root, allocator );
+}
+
+inline int64_t EdgeRowSave( const EdgeRow * root, uint8_t * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( root == NULL ) { return -1; }
+    TableRegionCtx ctx;
+    return EdgeRowSaveWire( ctx, *root, buffer, capacity, allocator );
+}
+
+inline int64_t EdgeRowMeasure( const EdgeRowBuilder & builder )
+{
+    if ( builder.region != NULL ) { return EdgeRowMeasure( builder.AsConst(), builder.arena.allocator ); }
+    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
+    TableArenaCtx ctx = { &builder.arena };
+    return EdgeRowMeasureWire( ctx, *(const EdgeRow *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), builder.arena.allocator );
+}
+
+inline int64_t EdgeRowSave( const EdgeRowBuilder & builder, uint8_t * buffer, int64_t capacity )
+{
+    if ( builder.region != NULL ) { return EdgeRowSave( builder.AsConst(), buffer, capacity, builder.arena.allocator ); }
+    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
+    TableArenaCtx ctx = { &builder.arena };
+    return EdgeRowSaveWire( ctx, *(const EdgeRow *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity, builder.arena.allocator );
+}
+
+// ---- EdgeRow on the MESSAGE wire: the batch over a region (docs/SPEC-TABLES.md §3.3) ----
+
+// EdgeRowMessageBodyBits: one root body's bits at bit position `at` of the batch,
+// with the numbering derived from the graph, the node table FIRST, then the
+// fields, then the zero reference. Measure derives the numbering and save
+// derives the same one, and nothing passes between them (§3.1).
+template <typename Ctx>
+inline int64_t EdgeRowMessageBodyBits( const Ctx & ctx, const EdgeRow & root, int64_t at, TableAllocator allocator )
+{
+    TableNumbering numbering;
+    TableNumberingInit( numbering, allocator );
+    int64_t bits = -1;
+    if ( EdgeRowNumberFrom( ctx, numbering, root ) )
+    {
+        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
+        const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
+        if ( table >= 0 )
+        {
+            const int64_t body = EdgeRowMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
+            bits = body < 0 ? -1 : table + body;
+        }
+    }
+    TableNumberingShutdown( numbering );
+    return bits;
+}
+
+template <typename Ctx>
+inline bool EdgeRowMessageBodySave( const Ctx & ctx, const EdgeRow & root, TableBitWriter & w, TableAllocator allocator )
+{
+    TableNumbering numbering;
+    TableNumberingInit( numbering, allocator );
+    bool ok = false;
+    if ( EdgeRowNumberFrom( ctx, numbering, root ) )
+    {
+        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
+        ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && EdgeRowSaveMessageBody( ctx, numbering, index_bits, w, root );
+    }
+    TableNumberingShutdown( numbering );
+    return ok && !w.overflow;
+}
+
+// THE PRIMITIVE IS A BATCH (§3.3): a number of ROOTS in one buffer, one count
+// and one continuous bit stream, each body carrying its own numbering. A
+// root is a locked region's, `builder.AsConst()`, or a loaded one's. M above
+// 256 is a refusal by name, batch_too_large, with nothing written.
+inline int64_t EdgeRowMeasureMessages( const EdgeRow * const * roots, int64_t count, TableReport * report, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( roots == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableRegionCtx ctx;
+    int64_t bits = 8; // the body count
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( roots[i] == NULL ) { return -1; }
+        const int64_t body = EdgeRowMessageBodyBits( ctx, *roots[i], bits, allocator );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return 1 + ( bits + 7 ) / 8;
+}
+
+inline int64_t EdgeRowSaveMessages( const EdgeRow * const * roots, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( roots == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableMessageBatch batch;
+    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
+    TableRegionCtx ctx;
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( roots[i] == NULL || !EdgeRowMessageBodySave( ctx, *roots[i], batch.w, allocator ) ) { return -1; }
+        batch.written++;
+    }
+    return TableMessageBatchEnd( batch ); // == EdgeRowMeasureMessages( roots, count, report, allocator )
+}
+
+// EdgeRowMessageRecordScan: one node record's type id and the extent its maps
+// take, or a blob's length, the reader left after the record. A type id
+// reference of 0, one past E, or one naming anything but a kind-0 entry is
+// damage, as §3.1 and §3.3 say.
+inline bool EdgeRowMessageRecordScan( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, uint64_t & type_id, int64_t & extent, int64_t & length )
+{
+    uint64_t type_ref = 0;
+    if ( !r.get( type_ref, vocabulary.ref_bits ) ) { return false; }
+    TableMessageEntry type_entry;
+    if ( !TableMessageNameEntry( vocabulary, type_ref, type_entry ) ) { return false; }
+    type_id = type_entry.id;
+    extent = 0;
+    length = 0;
+    if ( type_id == kTableBytesTypeId || type_id == kTableStringTypeId )
+    {
+        // A BLOB RECORD CARRIES A LENGTH AT THIRTY-TWO RAW BITS, then ALIGNS,
+        // then the bytes verbatim (§3.3)
+        uint64_t n = 0;
+        if ( !r.get( n, 32 ) || !r.align() || !r.skip( (int64_t) n * 8 ) ) { return false; }
+        length = (int64_t) n;
+        return true;
+    }
+    return EdgeRowNodeMessageExtent( type_id, r, vocabulary, index_bits, extent );
+}
+
+// EdgeRowMessageBodyStorage: one body's node count and data bytes from the FRAMING
+// alone, the reader left at the next body. The node table is walked record
+// by record, a table record's body stepped over by its announced shapes and
+// a blob's by its length, then the root's own fields. False is a numbering
+// that could not be sized; `complete` false is a ROOT body whose own framing
+// gave out, which the load meets as damage inside this body after the
+// bodies before it were delivered, so the batch is sized through this body
+// and no further (§3.3).
+inline bool EdgeRowMessageBodyStorage( TableBitReader & r, const TableVocabulary & vocabulary, int64_t & records, int64_t & data, bool & complete )
+{
+    complete = true;
+    records = 0;
+    data = 0;
+    int64_t count = 0;
+    if ( !TableMessageNodeTableOpen( r, vocabulary, count ) ) { return false; }
+    const int64_t index_bits = TableBitsRequired( 0, count + 1 );
+    for ( int64_t k = 0; k < count; k++ )
+    {
+        uint64_t type_id = 0;
+        int64_t extent = 0, length = 0;
+        if ( !EdgeRowMessageRecordScan( r, vocabulary, index_bits, type_id, extent, length ) ) { return false; }
+        const int64_t storage = EdgeRowNodeMessageStorage( type_id, extent, length );
+        if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
+        records++;
+    }
+    int64_t root_extent = 0;
+    if ( !EdgeRowMessageExtent( r, vocabulary, index_bits, root_extent ) ) { complete = false; }
+    data += TableAlignUp64( TableAlignUp64( (int64_t) sizeof( EdgeRow ) ) + root_extent );
+    return true;
+}
+
+// EdgeRowLoadMeasure's MESSAGE overload: the exact region bytes ONE BATCH needs,
+// which is one measurement, one allocation and one bounds check for however
+// many bodies ride (§3.3, §6.5). It is a scan by the announced shapes and
+// reads no field value. The answer is the data bytes plus the attribution,
+// one node directory a body, and -1 for a wire it cannot size: no vocabulary,
+// another form, or framing that gives out.
+inline int64_t EdgeRowLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, int64_t * attribution_bytes = NULL )
+{
+    TableReport ignored;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, &ignored );
+    if ( bodies < 0 ) { return -1; }
+    int64_t data = 0, attribution = 0;
+    for ( int64_t b = 0; b < bodies; b++ )
+    {
+        int64_t records = 0, body_data = 0;
+        bool complete = true;
+        if ( !EdgeRowMessageBodyStorage( br.r, vocabulary, records, body_data, complete ) ) { return -1; }
+        data += body_data;
+        attribution += ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
+        if ( !complete ) { break; } // damage inside this body: the load delivers the ones before it
+    }
+    if ( attribution_bytes != NULL ) { *attribution_bytes = attribution; }
+    return data + attribution;
+}
+
+// EdgeRowLoadMessageBodyInto: one body of a batch into the region at `used`. Its
+// chunk is the node DIRECTORY, then the records in wire order, then the root
+// and the extent its maps take, so every offset a pass needs is known when
+// the pass reaches it. PASS ONE fills the numbering from the framing and
+// places every node; PASS TWO decodes each record's body into the storage it
+// owns; the ROOT's own body decodes last, so every index it carries resolves
+// against a numbering already known whole.
+inline bool EdgeRowLoadMessageBodyInto( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * out, uint8_t * region, int64_t region_bytes, int64_t & used, const EdgeRow * & root_out )
+{
+    // the node table opens the body, or the body has none
+    int64_t count = 0;
+    if ( !TableMessageNodeTableOpen( r, vocabulary, count ) ) { out->malformed = true; return false; }
+    const int64_t directory_bytes = ( count + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
+    if ( used + directory_bytes > region_bytes ) { out->malformed = true; return false; }
+    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + used );
+    used += directory_bytes;
+    const int64_t index_bits = TableBitsRequired( 0, count + 1 );
+    TableNodeMap nodes;
+    nodes.base = region;
+    nodes.entries = directory;
+    nodes.count = count + 1;
+    nodes.good = false;
+
+    // PASS ONE: the numbering from the framing, every node placed, no body read
+    const int64_t records_start = r.offset;
+    int32_t unknown_records = 0;
+    for ( int64_t k = 0; k < count; k++ )
+    {
+        uint64_t type_id = 0;
+        int64_t extent = 0, length = 0;
+        if ( !EdgeRowMessageRecordScan( r, vocabulary, index_bits, type_id, extent, length ) ) { out->malformed = true; return false; }
+        const int64_t storage = EdgeRowNodeMessageStorage( type_id, extent, length );
+        directory[k + 1].type_id = type_id;
+        if ( storage <= 0 )
+        {
+            // a record whose type id this build cannot name KEEPS ITS INDEX, is
+            // counted once here and not once per pointer, and every reference
+            // to it reads null (§3.1)
+            unknown_records++;
+            directory[k + 1].offset = kTableNodeAbsent;
+            continue;
+        }
+        if ( used + storage > region_bytes ) { out->malformed = true; return false; }
+        directory[k + 1].offset = (uint64_t) used;
+        EdgeRowNodePlace( type_id, region + used, length );
+        used += storage;
+    }
+    const int64_t fields_start = r.offset;
+    int64_t root_extent = 0;
+    {
+        TableBitReader walk = r;
+        if ( !EdgeRowMessageExtent( walk, vocabulary, index_bits, root_extent ) ) { out->malformed = true; return false; }
+    }
+    const int64_t root_bytes = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( EdgeRow ) ) + root_extent );
+    if ( used + root_bytes > region_bytes ) { out->malformed = true; return false; }
+    directory[0].offset = (uint64_t) used;
+    directory[0].type_id = 0xe8130af045a036f8ull;
+    EdgeRow * root = new ( region + used ) EdgeRow; // lifetime only: LoadMessageBody's first act is EdgeRowReset
+    EdgeRowReset( *root );
+    root_out = root;
+    TableExtentCarve root_carve;
+    root_carve.at = region + used + TableAlignUp64( (int64_t) sizeof( EdgeRow ) );
+    root_carve.left = root_extent;
+    used += root_bytes;
+    nodes.good = true;
+    out->unknown += unknown_records;
+
+    // PASS TWO: each record's body into its own storage, in wire order
+    r.offset = records_start;
+    for ( int64_t k = 0; k < count; k++ )
+    {
+        uint64_t type_ref = 0;
+        if ( !r.get( type_ref, vocabulary.ref_bits ) ) { out->malformed = true; return false; }
+        const uint64_t type_id = directory[k + 1].type_id;
+        if ( type_id == kTableBytesTypeId || type_id == kTableStringTypeId )
+        {
+            uint64_t length = 0;
+            if ( !r.get( length, 32 ) || !r.align() || !r.has( (int64_t) length * 8 ) ) { out->malformed = true; return false; }
+            if ( directory[k + 1].offset != kTableNodeAbsent && length > 0 ) { memcpy( region + directory[k + 1].offset + kTableBlobHeader, r.buffer + r.offset / 8, (size_t) length ); }
+            r.offset += (int64_t) length * 8;
+            continue;
+        }
+        if ( directory[k + 1].offset == kTableNodeAbsent )
+        {
+            if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { out->malformed = true; return false; }
+            continue;
+        }
+        if ( !EdgeRowNodeMessageBody( type_id, r, vocabulary, out, nodes, index_bits, region + directory[k + 1].offset ) ) { return false; }
+    }
+    if ( r.offset != fields_start ) { out->malformed = true; return false; } // the two passes disagree about the table's extent
+
+    // and the ROOT's own body last
+    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
+    return EdgeRowLoadMessageBody( r, vocabulary, out, nodes, index_bits, *root );
+}
+
+// EdgeRowLoadMessages: decode a BATCH into the caller's exact-sized region and
+// write each body's root into `roots`. `count` is IN and OUT: the storage the
+// caller has room for, then what it got. M above the capacity is a refusal
+// by name with count holding the wire's M; damage inside body k delivers
+// bodies 1 to k - 1 and count says k - 1 (§3.3). LOAD IS A SCAN: it follows
+// no reference, so there is no depth cap and no visited set. NULL roots
+// beyond count are not bodies.
+inline bool EdgeRowLoadMessages( const EdgeRow ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }
+    const int64_t capacity = *count;
+    *count = 0;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );
+    if ( bodies < 0 ) { return false; }
+    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( out ); return false; }
+    if ( region == NULL || region_bytes < 0 || ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return false; }
+    memset( region, 0, (size_t) region_bytes );
+    int64_t used = 0;
+    for ( int64_t b = 0; b < bodies; b++ )
+    {
+        roots[b] = NULL;
+        if ( !EdgeRowLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { *count = b; return false; }
+        br.remaining--;
+    }
+    *count = bodies;
+    return TableMessageBatchClose( br );
+}
+
+// EdgeRowLoadMeasure: the exact region bytes a wire buffer will need, and it is
+// ONE SCAN — a record's type id gives its storage size, its length gives the
+// next record — reading no field value at all, so the caller owns the
+// allocation and can refuse a number it did not expect (§6.5).
+//
+// It reports the DATA bytes and the ATTRIBUTION bytes separately, because the
+// attribution is the wire's numbering made resident (§6.3) and a caller may
+// release it once Load returns. The answer is their sum.
+inline int64_t EdgeRowLoadMeasure( const uint8_t * wire_file, int64_t wire_file_bytes, int64_t * attribution_bytes = NULL, TableRefuseReason * reason_out = NULL )
+{
+    TableReport ignored;
+    TableIdTable ids_table;
+    int64_t body_bytes = 0;
+    // a FORM BYTE this build does not carry is refused by name (§3, §6.5);
+    // a trailer that cannot be read whole is damage and names no reason
+    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
+    if ( verdict == TableOpenRefused ) { if ( reason_out != NULL ) { *reason_out = unknown_form; } return -1; }
+    if ( verdict != TableOpenOk ) { return -1; }
+    // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY
+    // IS MALFORMED (docs/SPEC-TABLES.md §3): the two ends of the file have
+    // met, nothing is decoded, and no region is sized from it.
+    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) ) { return -1; }
+    const uint8_t * const wire = wire_file + 1;
+    const int64_t wire_bytes = body_bytes;
+    TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );
+    TableRefuseReason reason = count_over_length;
+    int64_t root_extent = 0;
+    if ( !EdgeRowWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( EdgeRow ) ) + root_extent );
+    int64_t records = 0;
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+    while ( TableNodeScanNext( scan, type_id, body, length ) )
+    {
+        records++;
+        int64_t storage = EdgeRowNodeStorage( type_id, length, reason );
+        if ( storage == kTableNodeRefused ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; } // an N the record's framing cannot carry, or a blob past the cap (§2.8, §2.9, §3.1)
+        if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
+    }
+    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
+    if ( attribution_bytes != NULL ) { *attribution_bytes = attribution; }
+    return data + attribution;
+}
+
+// EdgeRowLoad: decode the tolerant wire into the caller's exact-sized region and
+// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
+// follows no reference, so there is no depth cap, no visited set and no
+// ordering rule on the indices. Partial results are kept, as everywhere on
+// this wire — the report says what happened. NULL means the CALLER's buffer
+// was wrong.
+inline const EdgeRow * EdgeRowLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
+    // a file that is both a newer form and damaged is a REFUSAL and never
+    // damage (docs/SPEC-TABLES.md §3).
+    TableIdTable ids_table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        return NULL;
+    }
+    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
+    {
+        out->malformed = true; // a byte no field claims, before the table (§3)
+        return NULL;
+    }
+    const uint8_t * const wire = wire_file + 1;
+    const int64_t wire_bytes = body_bytes;
+    if ( region == NULL || region_bytes < (int64_t) sizeof( EdgeRow ) ) { out->malformed = true; return NULL; }
+    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return NULL; }
+    memset( region, 0, (size_t) region_bytes );
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
+    int64_t root_extent = 0;
+    if ( !EdgeRowWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { out->malformed = true; return NULL; }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( EdgeRow ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            int64_t storage = EdgeRowNodeStorage( type_id, length, reason );
+            if ( storage == kTableNodeRefused ) { out->malformed = true; return NULL; }
+            if ( storage > 0 ) { data += storage; }
+        }
+    }
+    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
+    if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
+
+    TableNodeMap nodes;
+    nodes.base = region;
+    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.count = records + 1;
+    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
+    directory[0].type_id = 0xe8130af045a036f8ull;
+    EdgeRow * root = new ( region ) EdgeRow; // lifetime only: LoadBody's first act is EdgeRowReset
+    EdgeRowReset( *root );
+
+    // PASS ONE: fill the numbering from the framing, so that an index
+    // resolves whichever way it points. It reads no body.
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+        int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( EdgeRow ) ) + root_extent );
+        int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            int64_t storage = EdgeRowNodeStorage( type_id, length, reason );
+            if ( storage <= 0 )
+            {
+                // a record whose type id this build cannot name KEEPS ITS
+                // INDEX, is counted once here and not once per pointer, and
+                // every reference to it reads null (§3.1)
+                unknown_records++;
+                directory[k + 1].offset = kTableNodeAbsent;
+                directory[k + 1].type_id = type_id;
+            }
+            else
+            {
+                directory[k + 1].offset = (uint64_t) used;
+                directory[k + 1].type_id = type_id;
+                EdgeRowNodePlace( type_id, region + used, length );
+                used += storage;
+            }
+            k++;
+        }
+        nodes.good = TableNodeScanWhole( scan );
+        // the table is whole or it is nothing: a scan that failed counts
+        // malformed and NOT the unknowns it met on the way, because the
+        // numbering they belonged to does not exist (§3.1)
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
+    }
+
+    // PASS TWO: decode each body into its own storage. A forward index
+    // resolves without scratch, because pass one already placed every node.
+    if ( nodes.good )
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+        int64_t k = 0;
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            if ( directory[k + 1].offset != kTableNodeAbsent )
+            {
+                TableReader sub( body, length, out, &ids_table );
+                EdgeRowNodeBody( type_id, sub, nodes, region + directory[k + 1].offset );
+            }
+            k++;
+        }
+    }
+
+    // and the ROOT's own body last, so every index it carries resolves
+    // against a numbering already known good or already known bad
+    TableReader r( wire, wire_bytes, out, &ids_table );
+    r.nested = false; // the ROOT body, the one that carries the node table
+    TableExtentCarve root_carve;
+    root_carve.at = region + TableAlignUp64( (int64_t) sizeof( EdgeRow ) );
+    root_carve.left = root_extent;
+    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
+    EdgeRowLoadBody( r, nodes, *root );
+    return root;
+}
+
+// EdgeRowLoadBuilder: the TOOL's path — the same tolerant decode into a fresh
+// builder, so loaded data can be edited and locked again. The numbering is
+// the same one; what differs is where a node lives and therefore what a
+// resolved slot holds — an arena offset here, a self-relative delta there.
+inline bool EdgeRowLoadBuilder( EdgeRowBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    TableIdTable ids_table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; }
+        return false;
+    }
+    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
+    {
+        out->malformed = true; // a byte no field claims, before the table (§3)
+        return false;
+    }
+    const uint8_t * const wire = wire_file + 1;
+    const int64_t wire_bytes = body_bytes;
+    EdgeRow * root = builder.GetRoot();
+    if ( root == NULL ) { out->malformed = true; return false; }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) ) { records++; }
+    }
+    // the AUTHORING side may allocate (§6.5), and this is the tool's path.
+    // It goes through the builder's own pair, like everything else the
+    // builder reaches, and the entries come back zeroed.
+    const TableAllocator allocator = builder.arena.allocator;
+    TableNodeDirEntry * directory = (TableNodeDirEntry *) allocator.alloc( allocator.context, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
+    if ( directory == NULL ) { out->malformed = true; return false; }
+    directory[0].offset = (uint64_t) builder.root_ref.value;
+    directory[0].type_id = 0xe8130af045a036f8ull;
+    TableNodeMap nodes;
+    nodes.base = NULL;
+    nodes.entries = directory;
+    nodes.count = records + 1;
+    nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
+    nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+        int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            uint32_t at = EdgeRowNodeAlloc( type_id, builder.main, length );
+            if ( at == 0 )
+            {
+                unknown_records++;
+                directory[k + 1].offset = kTableNodeAbsent;
+            }
+            else
+            {
+                directory[k + 1].offset = (uint64_t) at;
+            }
+            directory[k + 1].type_id = type_id;
+            k++;
+        }
+        nodes.good = TableNodeScanWhole( scan );
+        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
+    }
+    if ( nodes.good )
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+        int64_t k = 0;
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            if ( directory[k + 1].offset != kTableNodeAbsent )
+            {
+                TableReader sub( body, length, out, &ids_table );
+                EdgeRowNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+            }
+            k++;
+        }
+    }
+    TableReader r( wire, wire_bytes, out, &ids_table );
+    r.nested = false; // the ROOT body, the one that carries the node table
+    TableExtentCarve root_carve;
+    root_carve.worker = &builder.main;
+    nodes.carve = &root_carve;
+    bool ok = EdgeRowLoadBody( r, nodes, *root );
+    // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
+    // §2.9): the partial builder is the caller's to discard, and the report
+    // holds what it held when the count was met
+    ok = ok && !nodes.refused;
+    allocator.free( allocator.context, directory );
+    return ok;
+}
+
 // ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
 
 // RowOpen: match the header and POINT. On a match the bytes ARE what this
@@ -8361,6 +11154,37 @@ inline const WideRow * WideRowOpen( const void * bytes, uint64_t length, TableRe
     return (const WideRow *) TableCookOpen( bytes, length, (uint64_t) sizeof( WideRow ), (uint64_t) alignof( WideRow ), reason );
 }
 
+// EdgeRowOpen: match the header and POINT. On a match the bytes ARE what this
+// build wrote, in this build's layout and this build's byte order, so there
+// is nothing to validate and nothing to fix up and the root comes back as it
+// lies. On ANY refusal it returns NULL and NAMES the refusal in the caller's
+// TableRefuseReason, the first failing clause in §7's order (a wrong build
+// version is a re-cook, a foreign order a cross-endian cook, a truncated
+// file a bad download, an unaligned base the caller's own buffer), and the
+// caller falls back to a wire load, which is the path that carries every
+// version. The reason is written on the refusal path only; a caller that
+// passes nothing gets the null alone.
+//
+// It is O(1) IN THE FILE'S SIZE — the header and nothing per node — so a one
+// megabyte cook and a one gigabyte cook open in the same time, and a mapped
+// file's pages are touched only as they are used. That is a property of
+// touching nothing at open rather than a separate mechanism.
+//
+// A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH EdgeRowAt: the slot holds
+// the signed self-relative byte delta of §6.3, so a deref is one add and
+// needs no base pointer, a whole region relocates by plain memcpy, and a
+// delta of zero is null.
+//
+// There is ONE entry point and no tolerant twin: a build either wrote this
+// file or it did not, and the build version is what says which. Validating a
+// file whose provenance a person doubts is schema cook-check, offline,
+// over the ATTRIBUTION part beside the data — a person's decision, never a
+// parameter on a load.
+inline const EdgeRow * EdgeRowOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
+{
+    return (const EdgeRow *) TableCookOpen( bytes, length, (uint64_t) sizeof( EdgeRow ), (uint64_t) alignof( EdgeRow ), reason );
+}
+
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
 //
 // The bytes are `schema cook`'s, and the tool stays the reference: the two
@@ -8372,6 +11196,9 @@ inline void RowEntriesEntryCookBody( uint8_t * at, const RowEntriesEntry & value
 template <typename Ctx> inline bool RowCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Row & value, TableByteOrder order );
 inline void WideRowEntriesEntryCookBody( uint8_t * at, const WideRowEntriesEntry & value, TableByteOrder order );
 template <typename Ctx> inline bool WideRowCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const WideRow & value, TableByteOrder order );
+inline void EdgeRowNamesEntryCookBody( uint8_t * at, const EdgeRowNamesEntry & value, TableByteOrder order );
+inline void EdgeRowIdsEntryCookBody( uint8_t * at, const EdgeRowIdsEntry & value, TableByteOrder order );
+template <typename Ctx> inline bool EdgeRowCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const EdgeRow & value, TableByteOrder order );
 
 inline void RowEntriesEntryCookBody( uint8_t * at, const RowEntriesEntry & value, TableByteOrder order )
 {
@@ -8404,10 +11231,37 @@ template <typename Ctx> inline bool WideRowCookBody( const Ctx & ctx, const Tabl
     return true;
 }
 
+inline void EdgeRowNamesEntryCookBody( uint8_t * at, const EdgeRowNamesEntry & value, TableByteOrder order )
+{
+    table_cook_bytes( at + 0, value.key, value.key_length, 301 );
+    table_cook_put( at + 304, (uint64_t) (uint32_t) value.key_length, 4, order );
+    ItemCookBody( at + 308, value.value, order );
+}
+
+inline void EdgeRowIdsEntryCookBody( uint8_t * at, const EdgeRowIdsEntry & value, TableByteOrder order )
+{
+    table_cook_put( at + 0, (uint64_t) value.key, 8, order );
+    ItemCookBody( at + 8, value.value, order );
+}
+
+template <typename Ctx> inline bool EdgeRowCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const EdgeRow & value, TableByteOrder order )
+{
+    (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
+    table_cook_put( at + 0, 0, 8, order ); // names: the array's delta, filled by the extent writer
+    table_cook_put( at + 8, 0, 4, order ); // and its count
+    table_cook_put( at + 16, 0, 8, order ); // ids: the array's delta, filled by the extent writer
+    table_cook_put( at + 24, 0, 4, order ); // and its count
+    table_cook_put( at + 32, (uint64_t) value.after, 4, order );
+    return true;
+}
+
 template <typename Ctx> inline bool RowEntriesEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const RowEntriesEntry & value, TableByteOrder order );
 template <typename Ctx> inline bool RowCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Row & value, TableByteOrder order );
 template <typename Ctx> inline bool WideRowEntriesEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const WideRowEntriesEntry & value, TableByteOrder order );
 template <typename Ctx> inline bool WideRowCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const WideRow & value, TableByteOrder order );
+template <typename Ctx> inline bool EdgeRowNamesEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const EdgeRowNamesEntry & value, TableByteOrder order );
+template <typename Ctx> inline bool EdgeRowIdsEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const EdgeRowIdsEntry & value, TableByteOrder order );
+template <typename Ctx> inline bool EdgeRowCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const EdgeRow & value, TableByteOrder order );
 
 // RowEntriesEntryCookExtent: RowEntriesEntry's arrays into the node's extent, PRE-ORDER, a map's entries
 // in ASCENDING key order and a list's elements in INDEX order, each through its
@@ -8475,6 +11329,63 @@ template <typename Ctx> inline bool WideRowCookExtent( const Ctx & ctx, const Ta
     return true;
 }
 
+// EdgeRowNamesEntryCookExtent: EdgeRowNamesEntry's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx> inline bool EdgeRowNamesEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const EdgeRowNamesEntry & value, TableByteOrder order )
+{
+    (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
+    return true; // no list or map below this record
+}
+
+// EdgeRowIdsEntryCookExtent: EdgeRowIdsEntry's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx> inline bool EdgeRowIdsEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const EdgeRowIdsEntry & value, TableByteOrder order )
+{
+    (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
+    return true; // no list or map below this record
+}
+
+// EdgeRowCookExtent: EdgeRow's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx> inline bool EdgeRowCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const EdgeRow & value, TableByteOrder order )
+{
+    (void) region; // a table element's and an entry's references resolve through their own bodies
+    { // names
+        TableMapCursor<EdgeRowNamesEntry> cursor = TableMapOrder( ctx, value.names );
+        if ( !cursor.ok ) { return false; }
+        at = ( at + 3 ) & ~(int64_t) 3; // at alignof( EdgeRowNamesEntry )
+        uint8_t * array = extent + at;
+        at += (int64_t) cursor.count * 312; // the whole array FIRST
+        // the SIXTEEN BYTES of the slot: the self-relative delta, then the count
+        table_cook_put( record + 0, cursor.count > 0 ? (uint64_t) (int64_t) ( array - ( record + 0 ) ) : 0, 8, order );
+        table_cook_put( record + 8, (uint64_t) (uint32_t) cursor.count, 4, order );
+        for ( int32_t i = 0; i < cursor.count; i++ )
+        {
+            EdgeRowNamesEntryCookBody( array + i * 312, *cursor[i], order );
+        }
+        TableMapRelease( cursor );
+    }
+    { // ids
+        TableMapCursor<EdgeRowIdsEntry> cursor = TableMapOrder( ctx, value.ids );
+        if ( !cursor.ok ) { return false; }
+        at = ( at + 7 ) & ~(int64_t) 7; // at alignof( EdgeRowIdsEntry )
+        uint8_t * array = extent + at;
+        at += (int64_t) cursor.count * 16; // the whole array FIRST
+        // the SIXTEEN BYTES of the slot: the self-relative delta, then the count
+        table_cook_put( record + 16, cursor.count > 0 ? (uint64_t) (int64_t) ( array - ( record + 16 ) ) : 0, 8, order );
+        table_cook_put( record + 24, (uint64_t) (uint32_t) cursor.count, 4, order );
+        for ( int32_t i = 0; i < cursor.count; i++ )
+        {
+            EdgeRowIdsEntryCookBody( array + i * 16, *cursor[i], order );
+        }
+        TableMapRelease( cursor );
+    }
+    return true;
+}
+
 // RowEntriesEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
 template <typename Ctx> inline bool RowEntriesEntryCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const RowEntriesEntry & value, TableByteOrder order )
 {
@@ -8507,6 +11418,31 @@ template <typename Ctx> inline bool WideRowCookNode( const Ctx & ctx, const Tabl
     int64_t extent_at = 0;
     if ( !WideRowCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
     return extent_at == WideRowExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+}
+
+// EdgeRowNamesEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
+template <typename Ctx> inline bool EdgeRowNamesEntryCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const EdgeRowNamesEntry & value, TableByteOrder order )
+{
+    EdgeRowNamesEntryCookBody( at, value, order );
+    int64_t extent_at = 0;
+    return EdgeRowNamesEntryCookExtent( ctx, region, at + 312, extent_at, at, value, order );
+}
+
+// EdgeRowIdsEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
+template <typename Ctx> inline bool EdgeRowIdsEntryCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const EdgeRowIdsEntry & value, TableByteOrder order )
+{
+    EdgeRowIdsEntryCookBody( at, value, order );
+    int64_t extent_at = 0;
+    return EdgeRowIdsEntryCookExtent( ctx, region, at + 16, extent_at, at, value, order );
+}
+
+// EdgeRowCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
+template <typename Ctx> inline bool EdgeRowCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const EdgeRow & value, TableByteOrder order )
+{
+    if ( !EdgeRowCookBody( ctx, region, at, value, order ) ) { return false; }
+    int64_t extent_at = 0;
+    if ( !EdgeRowCookExtent( ctx, region, at + 40, extent_at, at, value, order ) ) { return false; }
+    return extent_at == EdgeRowExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // RowCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one
@@ -8835,6 +11771,169 @@ inline bool WideRowCook( const WideRowBuilder & builder, void * out, uint64_t ca
     return WideRowCookFrom( ctx, *(const WideRow *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), out, capacity, order, builder.arena.allocator );
 }
 
+// EdgeRowCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one
+// numbering — the root at zero, then every node in index order at
+// align_up( offset, alignof ) for its OWN type, no slack between them, the
+// data length rounded to the greatest alignment among them and never below
+// eight. The offsets go into the region's table when it has one, and are only
+// summed when it does not (a measure). A type id the numbering carries that
+// this root cannot name is the two walks disagreeing, and it is refused.
+// A NODE'S SIZE DEPENDS ON ITS VALUE where a list or a map rides in its extent
+// (docs/SPEC-TABLES.md §2.8), so the layout takes the resolution context
+// the numbering walked and reads the same arrays that walk read.
+template <typename Ctx>
+inline bool EdgeRowCookLayout( const Ctx & ctx, const EdgeRow & root, const TableNumbering & numbering, TableCookRegion & region )
+{
+    region.numbering = &numbering;
+    region.count = numbering.count + 1;
+    const int64_t root_extent = EdgeRowExtent( ctx, root );
+    if ( root_extent < 0 ) { return false; }
+    int64_t offset = 40 + root_extent; // the root at zero, its extent behind it
+    int64_t align = 8;
+    if ( region.offsets != NULL ) { region.offsets[0] = 0; }
+    for ( int64_t k = 0; k < numbering.count; k++ )
+    {
+        int64_t size = 0;
+        int64_t node_align = 0;
+        switch ( numbering.entries[k].type_id )
+        {
+            default: return false;
+        }
+        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
+        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }
+        offset += size;
+        if ( node_align > align ) { align = node_align; }
+    }
+    region.bytes = ( offset + align - 1 ) & ~( align - 1 );
+    region.align = align;
+    return true;
+}
+
+// EdgeRowCookMeasureFrom: the whole cooked file's bytes for one graph — the header,
+// the data part and the attribution part (§7.1). IT DEPENDS ON THE VALUE,
+// because the answer is the numbering: the depth-first walk of §3.1 is run
+// here and run again by the write, and neither carries the other's (§7.6). A
+// data cycle is refused by the walk and answers -1.
+template <typename Ctx>
+inline int64_t EdgeRowCookMeasureFrom( const Ctx & ctx, const EdgeRow & root, TableAllocator allocator )
+{
+    TableNumbering numbering;
+    TableNumberingInit( numbering, allocator );
+    TableCookRegion region;
+    int64_t bytes = -1;
+    if ( EdgeRowNumberFrom( ctx, numbering, root ) && EdgeRowCookLayout( ctx, root, numbering, region ) )
+    {
+        const int64_t data_offset = ( kTableCookHeaderBytes + region.align - 1 ) & ~( region.align - 1 );
+        bytes = data_offset + region.bytes + region.count * (int64_t) sizeof( TableNodeDirEntry );
+    }
+    TableNumberingShutdown( numbering );
+    return bytes;
+}
+
+// EdgeRowCookFrom: write one cooked file of a pointered graph, in the byte order
+// the caller names. The bytes are `schema cook`'s, byte for byte (§7.6).
+//
+// THE CALLER OWNS THE OUTPUT and nothing is allocated toward it. What is
+// allocated is the numbering — the identity map, the entry array and one
+// offset per node — through the pair handed in, and released before this
+// returns (§6.5, §13.9). A capacity short of the measure writes nothing.
+//
+// THE HEADER IS WRITTEN LAST. A reference the numbering did not carry is
+// found while a body is being written, and a write that refuses there has
+// already put bytes in the buffer; with no magic ahead of them, no Open can
+// mistake them for a cook.
+template <typename Ctx>
+inline bool EdgeRowCookFrom( const Ctx & ctx, const EdgeRow & root, void * out, uint64_t capacity, TableByteOrder order, TableAllocator allocator )
+{
+    if ( out == NULL ) { return false; }
+    TableNumbering numbering;
+    TableNumberingInit( numbering, allocator );
+    TableCookRegion region;
+    bool ok = EdgeRowNumberFrom( ctx, numbering, root );
+    if ( ok )
+    {
+        region.offsets = (int64_t *) allocator.alloc( allocator.context, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );
+        ok = region.offsets != NULL && EdgeRowCookLayout( ctx, root, numbering, region );
+    }
+    if ( ok )
+    {
+        const int64_t data_offset = ( kTableCookHeaderBytes + region.align - 1 ) & ~( region.align - 1 );
+        const int64_t attribution = region.count * (int64_t) sizeof( TableNodeDirEntry );
+        const int64_t need = data_offset + region.bytes + attribution;
+        ok = (uint64_t) need <= capacity;
+        if ( ok )
+        {
+            uint8_t * raw = (uint8_t *) out;
+            memset( raw, 0, (size_t) need ); // EVERY BYTE NO FIELD COVERS IS ZERO (§7.2)
+            region.base = raw + data_offset;
+            // the DATA part: the root at the region's base, then every numbered
+            // node at the offset the layout gave it, each through its own writer
+            ok = EdgeRowCookNode( ctx, region, region.base, root, order );
+            // the ATTRIBUTION part: the node directory (§6.3), one entry per node
+            // in index order, for `schema cook-check`
+            uint8_t * entry = raw + data_offset + region.bytes;
+            table_cook_put( entry, 0, 8, order );
+            table_cook_put( entry + 8, 0xe8130af045a036f8ull, 8, order ); // the root: fnv1a64( "EdgeRow" )
+            for ( int64_t k = 0; k < numbering.count; k++ )
+            {
+                entry += sizeof( TableNodeDirEntry );
+                table_cook_put( entry, (uint64_t) region.offsets[k + 1], 8, order );
+                table_cook_put( entry + 8, numbering.entries[k].type_id, 8, order );
+            }
+            // and the HEADER (§7.1), every word a u64 in the order the file is
+            // produced in; the two RESERVED words are the memset's zeros
+            if ( ok )
+            {
+                table_cook_put( raw + 0, TableCookMagic, 8, order );
+                table_cook_put( raw + 8, BuildVersion, 8, order );
+                table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+                table_cook_put( raw + 24, (uint64_t) region.bytes, 8, order );
+                table_cook_put( raw + 32, (uint64_t) attribution, 8, order );
+                table_cook_put( raw + 40, (uint64_t) region.align, 8, order );
+            }
+        }
+    }
+    allocator.free( allocator.context, region.offsets );
+    TableNumberingShutdown( numbering );
+    return ok;
+}
+
+// EdgeRowCookMeasure / EdgeRowCook over a REGION root — a locked builder's AsConst, a
+// region EdgeRowLoad produced, or an opened cook — with the pair the numbering
+// allocates through as an optional last argument, as the wire's own entries
+// take it (§13.9).
+inline int64_t EdgeRowCookMeasure( const EdgeRow * root, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( root == NULL ) { return -1; }
+    TableRegionCtx ctx;
+    return EdgeRowCookMeasureFrom( ctx, *root, allocator );
+}
+
+inline bool EdgeRowCook( const EdgeRow * root, void * out, uint64_t capacity, TableByteOrder order, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( root == NULL ) { return false; }
+    TableRegionCtx ctx;
+    return EdgeRowCookFrom( ctx, *root, out, capacity, order, allocator );
+}
+
+// and over a BUILDER, locked or not: the builder's own pair, and the arena
+// encoding while it is still mutable (§6.3).
+inline int64_t EdgeRowCookMeasure( const EdgeRowBuilder & builder )
+{
+    if ( builder.region != NULL ) { return EdgeRowCookMeasure( builder.AsConst(), builder.arena.allocator ); }
+    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
+    TableArenaCtx ctx = { &builder.arena };
+    return EdgeRowCookMeasureFrom( ctx, *(const EdgeRow *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), builder.arena.allocator );
+}
+
+inline bool EdgeRowCook( const EdgeRowBuilder & builder, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( builder.region != NULL ) { return EdgeRowCook( builder.AsConst(), out, capacity, order, builder.arena.allocator ); }
+    if ( builder.root_ref.null() ) { return false; } // the root allocation failed
+    TableArenaCtx ctx = { &builder.arena };
+    return EdgeRowCookFrom( ctx, *(const EdgeRow *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), out, capacity, order, builder.arena.allocator );
+}
+
 // ---- relocatability, enforced: the wire is a pure length-prefixed
 // stream AND the decoded storage is pointer-free — every closure type
 // must stay trivially copyable and standard-layout, so instances can be
@@ -8857,6 +11956,12 @@ static_assert( __is_trivially_copyable( WideRowEntriesEntry ), "WideRowEntriesEn
 static_assert( __is_standard_layout( WideRowEntriesEntry ), "WideRowEntriesEntry must stay standard-layout for offsetof" );
 static_assert( __is_trivially_copyable( WideRow ), "WideRow must stay relocatable" );
 static_assert( __is_standard_layout( WideRow ), "WideRow must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( EdgeRowNamesEntry ), "EdgeRowNamesEntry must stay relocatable" );
+static_assert( __is_standard_layout( EdgeRowNamesEntry ), "EdgeRowNamesEntry must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( EdgeRowIdsEntry ), "EdgeRowIdsEntry must stay relocatable" );
+static_assert( __is_standard_layout( EdgeRowIdsEntry ), "EdgeRowIdsEntry must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( EdgeRow ), "EdgeRow must stay relocatable" );
+static_assert( __is_standard_layout( EdgeRow ), "EdgeRow must stay standard-layout for offsetof" );
 
 // ---- the cook's layout contract (docs/SPEC-TABLES.md §20.3) ----
 //
@@ -8881,6 +11986,19 @@ static_assert( sizeof( WideRow ) == 24, "WideRow's sizeof moved: the build versi
 static_assert( alignof( WideRow ) == 8, "WideRow's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( WideRow, entries ) == 0, "WideRow's field entries moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( WideRow, after ) == 16, "WideRow's field after moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( EdgeRowNamesEntry ) == 312, "EdgeRowNamesEntry's sizeof moved: the build version was taken over 312, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( EdgeRowNamesEntry ) == 4, "EdgeRowNamesEntry's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( EdgeRowNamesEntry, key ) == 0, "EdgeRowNamesEntry's field key moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( EdgeRowNamesEntry, value ) == 308, "EdgeRowNamesEntry's field value moved: the build version was taken over offset 308 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( EdgeRowIdsEntry ) == 16, "EdgeRowIdsEntry's sizeof moved: the build version was taken over 16, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( EdgeRowIdsEntry ) == 8, "EdgeRowIdsEntry's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( EdgeRowIdsEntry, key ) == 0, "EdgeRowIdsEntry's field key moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( EdgeRowIdsEntry, value ) == 8, "EdgeRowIdsEntry's field value moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( EdgeRow ) == 40, "EdgeRow's sizeof moved: the build version was taken over 40, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( EdgeRow ) == 8, "EdgeRow's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( EdgeRow, names ) == 0, "EdgeRow's field names moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( EdgeRow, ids ) == 16, "EdgeRow's field ids moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( EdgeRow, after ) == 32, "EdgeRow's field after moved: the build version was taken over offset 32 (docs/SPEC-TABLES.md §20.3)" );
 
 // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 
@@ -8888,6 +12006,9 @@ inline const TableTypeInfo * RowEntriesEntryTableType();
 inline const TableTypeInfo * RowTableType();
 inline const TableTypeInfo * WideRowEntriesEntryTableType();
 inline const TableTypeInfo * WideRowTableType();
+inline const TableTypeInfo * EdgeRowNamesEntryTableType();
+inline const TableTypeInfo * EdgeRowIdsEntryTableType();
+inline const TableTypeInfo * EdgeRowTableType();
 // The descriptors are CONSTANT-INITIALISED data, and a field's target is
 // the ADDRESS of another descriptor. These declarations are what let a
 // self- or mutually-referential graph — Node naming itself through *Node —
@@ -8898,6 +12019,9 @@ extern const TableTypeInfo RowEntriesEntryTableInfo;
 extern const TableTypeInfo RowTableInfo;
 extern const TableTypeInfo WideRowEntriesEntryTableInfo;
 extern const TableTypeInfo WideRowTableInfo;
+extern const TableTypeInfo EdgeRowNamesEntryTableInfo;
+extern const TableTypeInfo EdgeRowIdsEntryTableInfo;
+extern const TableTypeInfo EdgeRowTableInfo;
 
 inline const TableFieldInfo RowEntriesEntryTableFields[] = {
     { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( RowEntriesEntry, key ), (uint32_t) sizeof( RowEntriesEntry::key ), (uint32_t) offsetof( RowEntriesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
@@ -8927,6 +12051,28 @@ inline const TableFieldInfo WideRowTableFields[] = {
 inline const TableTypeInfo WideRowTableInfo = { "WideRow", (uint32_t) sizeof( WideRow ), 2, WideRowTableFields, +[]( void * p ) { WideRowReset( *(WideRow *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * WideRowTableType() { return &WideRowTableInfo; }
 
+inline const TableFieldInfo EdgeRowNamesEntryTableFields[] = {
+    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 300, (uint32_t) offsetof( EdgeRowNamesEntry, key ), (uint32_t) sizeof( EdgeRowNamesEntry::key ), (uint32_t) offsetof( EdgeRowNamesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EdgeRowNamesEntry, value ), (uint32_t) sizeof( EdgeRowNamesEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+};
+inline const TableTypeInfo EdgeRowNamesEntryTableInfo = { "EdgeRowNamesEntry", (uint32_t) sizeof( EdgeRowNamesEntry ), 2, EdgeRowNamesEntryTableFields, +[]( void * p ) { EdgeRowNamesEntryReset( *(EdgeRowNamesEntry *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo * EdgeRowNamesEntryTableType() { return &EdgeRowNamesEntryTableInfo; }
+
+inline const TableFieldInfo EdgeRowIdsEntryTableFields[] = {
+    { "key", "key", "uint64", 0x3dc94a19365b10ecull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EdgeRowIdsEntry, key ), (uint32_t) sizeof( EdgeRowIdsEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EdgeRowIdsEntry, value ), (uint32_t) sizeof( EdgeRowIdsEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+};
+inline const TableTypeInfo EdgeRowIdsEntryTableInfo = { "EdgeRowIdsEntry", (uint32_t) sizeof( EdgeRowIdsEntry ), 2, EdgeRowIdsEntryTableFields, +[]( void * p ) { EdgeRowIdsEntryReset( *(EdgeRowIdsEntry *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo * EdgeRowIdsEntryTableType() { return &EdgeRowIdsEntryTableInfo; }
+
+inline const TableFieldInfo EdgeRowTableFields[] = {
+    { "names", "names", "map[string(300)]Item", 0xafb728fff268814full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( EdgeRow, names ), (uint32_t) sizeof( EdgeRowNamesEntry ), (uint32_t) offsetof( EdgeRow, names.count ), 0xffffffffu, &EdgeRowNamesEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<EdgeRowNamesEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL },
+    { "ids", "ids", "map[uint64]Item", 0x2b7dea192bb7be29ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( EdgeRow, ids ), (uint32_t) sizeof( EdgeRowIdsEntry ), (uint32_t) offsetof( EdgeRow, ids.count ), 0xffffffffu, &EdgeRowIdsEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<EdgeRowIdsEntry> *) slot, (uint64_t) key_value ); }, "", TableDocNone, 0, NULL },
+    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EdgeRow, after ), (uint32_t) sizeof( EdgeRow::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+};
+inline const TableTypeInfo EdgeRowTableInfo = { "EdgeRow", (uint32_t) sizeof( EdgeRow ), 3, EdgeRowTableFields, +[]( void * p ) { EdgeRowReset( *(EdgeRow *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo * EdgeRowTableType() { return &EdgeRowTableInfo; }
+
 // ---- the text form (docs/SPEC-TABLES.md §16) ----
 
 // Row in and out of a JSON text (docs/SPEC-TABLES.md §16.7): read into a
@@ -8942,5 +12088,12 @@ int64_t RowToJson( const Row * root, char * buffer, int64_t capacity, TableAlloc
 bool WideRowFromJson( WideRowBuilder & builder, const char * text, int64_t bytes, TableReport * report );
 int64_t WideRowToJsonMeasure( const WideRow * root, TableAllocator allocator = TableDefaultAllocator() );
 int64_t WideRowToJson( const WideRow * root, char * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() );
+
+// EdgeRow in and out of a JSON text (docs/SPEC-TABLES.md §16.7): read into a
+// builder, written from a region's const root. A node named more than once
+// carries `&node` in the text. Defined in RowsTable.cpp; link it to use them.
+bool EdgeRowFromJson( EdgeRowBuilder & builder, const char * text, int64_t bytes, TableReport * report );
+int64_t EdgeRowToJsonMeasure( const EdgeRow * root, TableAllocator allocator = TableDefaultAllocator() );
+int64_t EdgeRowToJson( const EdgeRow * root, char * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() );
 
 } // namespace mapdemo

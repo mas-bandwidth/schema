@@ -1014,6 +1014,46 @@ static void test_text()
         CHECK_EQ( rb.GetRoot()->entries.count, 1 );
         CHECK_EQ( r.duplicate, 1 );
     }
+    {
+        // A KEY THE WALKER CANNOT HOLD WHOLE MUST NOT BECOME A DIFFERENT KEY
+        // (§2.8). The text walker scans a key into a fixed buffer, so a key
+        // longer than that buffer is truncated there, and two 256-byte keys
+        // that share 255 bytes then merge into ONE entry keyed by a prefix the
+        // text never spelled, while `clamped` -- which the scan counts either
+        // way -- says nothing about it. `names` is string(300), so the
+        // DECLARED bound holds both keys and only the walker's does not.
+        //
+        // What the page states is the IDENTITY, so that is what this pins:
+        // every entry the map holds is a key the text spelled. Whether a key
+        // past the walker's buffer but inside the declared bound should be
+        // DROPPED or held WHOLE is the page's to say, and this row is green
+        // under either answer.
+        char first[257];
+        char second[257];
+        memset( first, 'a', 255 );
+        first[255] = 'b';
+        first[256] = 0;
+        memcpy( second, first, sizeof( first ) );
+        second[255] = 'c';
+        char both[1024];
+        snprintf( both, sizeof( both ), "{\"names\":{\"%s\":{\"count\":1},\"%s\":{\"count\":2}},\"after\":5}",
+                  first, second );
+        EdgeRowBuilder eb;
+        TableReport r;
+        CHECK( EdgeRowFromJson( eb, both, (int64_t) strlen( both ), &r ) );
+        CHECK_EQ( r.duplicate, 0 );
+        for ( auto [ key, item ] : EdgeRowNamesEach( eb.arena, eb.GetRoot()->names ) )
+        {
+            (void) item;
+            if ( strcmp( key, first ) != 0 && strcmp( key, second ) != 0 )
+            {
+                printf( "FAIL %s:%d: the map holds a key the text never spelled, %d bytes long\n",
+                        __FILE__, __LINE__, (int) strlen( key ) );
+                failures++;
+            }
+        }
+        CHECK_EQ( eb.GetRoot()->after, 5 ); // and the parent read on
+    }
     test_text_allocation_refusals();
 }
 

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/hex"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -69,5 +70,61 @@ func TestTheToolWritesTheReferencesMapBytes(t *testing.T) {
 		if hex.EncodeToString(round) != hex.EncodeToString(data) {
 			t.Errorf("%s: text round trip moved bytes", name)
 		}
+	}
+}
+
+// mapsModel is the `tables/maps` corpus as the tool's model, for the rows below
+// that read a text and look at what landed.
+func mapsModel(t *testing.T) *tabletext.Model {
+	t.Helper()
+	paths, err := compiler.GatherPaths([]string{"../../../tables/maps"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tabletext.NewModel(u)
+}
+
+// A KEY THIS READER CANNOT HOLD WHOLE MUST NOT BECOME A DIFFERENT KEY
+// (docs/SPEC-TABLES.md §2.8). The walker scans a key into a fixed buffer, so a
+// key longer than it is truncated there, and two keys that share the prefix it
+// keeps merge into ONE entry keyed by bytes the text never spelled — while
+// `clamped`, which the scan raises either way, says nothing about it.
+// `EdgeRow.names` is string(300), so the DECLARED bound holds both keys and
+// only the reader's own does not.
+//
+// What the page states is the IDENTITY, so that is what this pins: every entry
+// the map holds is a key the text spelled. Whether a key past the reader's
+// buffer but inside the declared bound should be DROPPED or held WHOLE is the
+// page's to say, and this row is green under either answer.
+func TestAMapKeyIsNeverTruncatedIntoAnother(t *testing.T) {
+	m := mapsModel(t)
+	first := strings.Repeat("a", 255) + "b"
+	second := strings.Repeat("a", 255) + "c"
+	text := `{"names":{"` + first + `":{"count":1},"` + second + `":{"count":2}},"after":5}`
+	inst := m.New(m.Lookup("EdgeRow"))
+	var r tabletext.Report
+	if !m.Read(inst, []byte(text), &r) || r.Malformed {
+		t.Fatalf("the text is well formed: %+v", r)
+	}
+	if r.Duplicate != 0 {
+		t.Errorf("two distinct keys are not a duplicate: %+v", r)
+	}
+	fv, ok := inst.FieldByKey("names")
+	if !ok {
+		t.Fatal("no names field")
+	}
+	for _, cell := range fv.Entries {
+		key := string(cell.Tab.Fields[0].Cell.Str)
+		if key != first && key != second {
+			t.Errorf("the map holds a key the text never spelled, %d bytes long", len(key))
+		}
+	}
+	after, ok := inst.FieldByKey("after")
+	if !ok || after.Cell.I != 5 {
+		t.Error("the parent did not read on past the map")
 	}
 }

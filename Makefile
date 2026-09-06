@@ -2814,6 +2814,14 @@ tables-maps-key-length-negative-control: bin/schema build/tables-generated/.stam
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-keylength.log; exit 1; }
 	@echo "negative control: keylength turns the MAP GATE red — $$(grep -c '^FAIL' build/map-keylength.log) failures"
 
+# A KEY THE SCAN COULD NOT HOLD WHOLE IS NOT A SHORTER KEY (§2.8). The EdgeRow
+# row meets it: with the check dropped, two 256-byte keys that share 255 bytes
+# merge into one entry keyed by a prefix the text never spelled, and the `names`
+# bound of 300 is wide enough that the declared bound catches neither.
+.PHONY: tables-maps-key-identity-negative-control
+tables-maps-key-identity-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,keyidentity,'s@else if ( key_over || token_length > key->array_bound )@else if ( token_length > key->array_bound )@',internal/codegen/cpptable/json.go,truncating a key into the walker buffer left the map gate GREEN)
+
 # AN ALLOCATION FAILURE IS NOT AN OVERSIZED KEY (§2.8, §16.1). The refusal row
 # meets it: labelling the arena's refusal `clamped` skips the entry, reads on
 # and calls the whole text clean, which is the one outcome the neighbouring
@@ -2834,6 +2842,7 @@ tables-maps-negative-controls: tables-maps-sort-negative-control \
 	tables-maps-depth-negative-control \
 	tables-maps-text-order-negative-control \
 	tables-maps-key-length-negative-control \
+	tables-maps-key-identity-negative-control \
 	tables-maps-place-failure-negative-control \
 	tables-maps-unreached-negative-control
 

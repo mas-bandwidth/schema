@@ -1650,7 +1650,7 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		key, _, ok := in.scanString(maxJsonKey)
+		key, over, ok := in.scanString(maxJsonKey)
 		if !ok {
 			return false
 		}
@@ -1660,8 +1660,19 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 		}
 		in.pos++
 		entry := in.m.New(f.MapEntry)
-		placed := in.placeMapKey(entry, keyField, key)
+		placed := !over && in.placeMapKey(entry, keyField, key)
 		switch {
+		// A KEY THIS SCAN COULD NOT HOLD WHOLE IS NOT A SHORTER KEY (§2.8):
+		// truncating one there inserts an identity the text never spelled and
+		// merges two keys that share its prefix, so the entry drops instead —
+		// counted `clamped` for a string key, the event a key past its bound
+		// already raises, and `kind_mismatch` for an integer key, whose kinds
+		// hold no number spelled that long.
+		case over && MapKeyIsString(f):
+			in.report.Clamped++
+			if !in.skipValue(depth) {
+				return false
+			}
 		case !placed:
 			in.report.KindMismatch++ // a key that is not the kind's spelling
 			if !in.skipValue(depth) {

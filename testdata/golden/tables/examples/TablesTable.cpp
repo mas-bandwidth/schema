@@ -1085,7 +1085,13 @@ inline int32_t TableJsonEncodeUtf8( uint32_t code, char * unit )
 // never cut through a multi-byte character. Clamping is counted, never
 // fatal, exactly as it is on the wire (§4). A NULL destination scans past a
 // string without keeping it.
-inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity, int32_t * length )
+//
+// A CALLER THAT TAKES clamped_out OWNS THE COUNTER. The value paths leave it
+// NULL, and the clamp is a value's clamp, counted here. A MAP KEY takes it,
+// because a key never clamps: a key this buffer could not hold whole is not a
+// shorter key, and its entry drops instead (§2.8).
+inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity, int32_t * length,
+                                 bool * clamped_out = NULL )
 {
     if ( TableJsonPeek( in ) != '"' ) { in.bad = true; return false; }
     in.pos++;
@@ -1198,7 +1204,8 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
             clamped = true;
         }
     }
-    if ( clamped ) { in.report->clamped++; }
+    if ( clamped_out != NULL ) { *clamped_out = clamped; }
+    else if ( clamped ) { in.report->clamped++; }
     if ( length != NULL ) { *length = placed; }
     return true;
 }
