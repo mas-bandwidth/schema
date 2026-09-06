@@ -55,6 +55,7 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 		g.pf("                // A RANGE that moved is not one: the shapes differ and the entry\n")
 		g.pf("                // carries the SENDER's, so the field decodes and clamps (§4).\n")
 		g.pf("                if ( entry.kind != %d || entry.elem_kind != %d )\n                {\n", mine.Kind, mine.Shape.Elem)
+		g.emitMessageWidenBranch(f, mine, "entry", "                    ")
 		g.pf("                    report->kind_mismatch++;\n")
 		g.pf("                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }\n")
 		g.pf("                    break;\n                }\n")
@@ -66,6 +67,36 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }\n")
 	g.pf("                break;\n")
 	g.pf("        }\n    }\n}\n\n")
+}
+
+// emitMessageWidenBranch is §4's WIDENING RULE at a message field, which §3.3
+// holds to the file form's word: an announced kind below this reader's on the
+// same ladder decodes EXACTLY at the width the ANNOUNCEMENT states, the value
+// lands, and one `widened` counts. It is emitted only where a widening is
+// possible and only INSIDE the mismatch branch the reader already takes, so a
+// payload under the declared kind never reaches it and the matching path pays
+// nothing.
+func (g *tableGen) emitMessageWidenBranch(f *ir.Field, mine ir.TableVocabularyEntry, from, ind string) {
+	switch {
+	case plainScalar(f):
+		g.pf("%sif ( %s.elem_kind == %d && TableKindWidens( %s.kind, %d ) )\n%s{\n", ind, from, mine.Shape.Elem, from, mine.Kind, ind)
+		g.emitMessageReadScalarFromEntry(f, "value."+f.Name, ind+"    ", from, false, true)
+		if f.Type.Optional {
+			g.pf("%s    value.%s_present = true; // the field rode, so it is PRESENT (§2.3)\n", ind, f.Name)
+		}
+		g.pf("%s    report->widened++;\n%s    break;\n%s}\n", ind, ind, ind)
+	case f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed:
+		// a POSITIONAL array only: an enum-keyed body, a map and a blob are
+		// each their own construct with their own reader (§3.2, §2.5, §2.8)
+		if f.KeyEnum != "" || f.IsMap() || f.Type.Blob() || !widenableElement(f) {
+			return
+		}
+		// AN ARRAY COUNTS ONE `widened` FOR THE FIELD however many elements
+		// it holds (§4), and every element decodes at the announced width.
+		g.pf("%sif ( %s.kind == %d && TableKindWidens( %s.elem_kind, %d ) )\n%s{\n", ind, from, mine.Kind, from, mine.Shape.Elem, ind)
+		g.emitMessageReadArrayFrom(f, "value."+f.Name, fmt.Sprintf("value.%s_count", f.Name), ind+"    ", from, true)
+		g.pf("%s    report->widened++;\n%s    break;\n%s}\n", ind, ind, ind)
+	}
 }
 
 func (g *tableGen) emitMessageReadField(f *ir.Field) {
@@ -86,7 +117,7 @@ func (g *tableGen) emitMessageReadField(f *ir.Field) {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 		g.emitMessageReadTextFrom(f, "value."+name, fmt.Sprintf("value.%s_length", name), ind, "entry")
 	case f.Array != ir.ArrayNone:
-		g.emitMessageReadArrayFrom(f, "value."+name, fmt.Sprintf("value.%s_count", name), ind, "entry")
+		g.emitMessageReadArrayFrom(f, "value."+name, fmt.Sprintf("value.%s_count", name), ind, "entry", false)
 	case tableScalarKind(f) == tkUnion:
 		g.emitMessageReadUnion(f, "value."+name, ind)
 	case tableScalarKind(f) == tkTable:
@@ -94,20 +125,20 @@ func (g *tableGen) emitMessageReadField(f *ir.Field) {
 	case tableScalarKind(f) == tkEnum:
 		g.emitMessageReadEnum(f, "value."+name, ind)
 	default:
-		g.emitMessageReadScalarFromEntry(f, "value."+name, ind, "entry", false)
+		g.emitMessageReadScalarFromEntry(f, "value."+name, ind, "entry", false, false)
 	}
 }
 
 func (g *tableGen) emitMessageReadPayload(f *ir.Field, expr, ind string) {
 	switch {
 	case f.Array != ir.ArrayNone:
-		g.emitMessageReadArrayFrom(f, expr, fmt.Sprintf("value.%s_count", f.Name), ind, "entry")
+		g.emitMessageReadArrayFrom(f, expr, fmt.Sprintf("value.%s_count", f.Name), ind, "entry", false)
 	case tableScalarKind(f) == tkTable:
 		g.pf("%sif ( !%s ) { return false; }\n", ind, g.msgLoadCall(f.Type.Name, "r", expr))
 	case tableScalarKind(f) == tkEnum:
 		g.emitMessageReadEnum(f, expr, ind)
 	default:
-		g.emitMessageReadScalarFromEntry(f, expr, ind, "entry", false)
+		g.emitMessageReadScalarFromEntry(f, expr, ind, "entry", false, false)
 	}
 }
 
@@ -181,7 +212,7 @@ func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from 
 // the element's width, and an element that RESOLVES something (a nested body,
 // a union arm, an enum's variant, a node index) is walked, because a resolve
 // that contradicts its position is damage this reader must still find (§3.3).
-func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from string) {
+func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from string, widened bool) {
 	sfx := g.msgEnter()
 	defer g.msgLeave()
 	idx := "i" + sfx
@@ -235,7 +266,7 @@ func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from 
 		// an in-bounds element lands
 		typ, _ := g.cppFieldType(f.Type)
 		g.pf("%s%s scratch%s = %s;\n", inner, typ, sfx, g.fieldDefaultExpr(f))
-		g.emitMessageReadScalarFromEntry(f, "scratch"+sfx, inner, from, true)
+		g.emitMessageReadScalarFromEntry(f, "scratch"+sfx, inner, from, true, widened)
 		g.pf("%sif ( in_bounds%s ) { %s[%s] = scratch%s; }\n", inner, sfx, base, idx, sfx)
 	}
 	g.pf("%s    }\n", ind)
@@ -291,6 +322,18 @@ func (g *tableGen) emitMessageReadUnion(f *ir.Field, dst, ind string) {
 		g.noteRef(v.Type)
 		g.pf("%s            case 0x%016xull: // %s\n%s            {\n", ind, ir.TableWireId(v.Name), v.Name, ind)
 		g.pf("%s                if ( %s.kind != %d || %s.elem_kind != %d )\n%s                {\n", ind, arm, mine.Kind, arm, mine.Shape.Elem, ind)
+		if !v.Void() && !v.Body() && plainScalar(v.F) {
+			// WIDENED AT AN ARM (§3.3, §4): the arm is SELECTED and its
+			// payload decodes at the width the ANNOUNCEMENT states, rather
+			// than skipped. The branch sits inside the mismatch branch the
+			// reader already takes, so the matching path pays nothing.
+			g.pf("%s                    if ( TableKindWidens( %s.kind, %d ) )\n%s                    {\n", ind, arm, mine.Kind, ind)
+			g.pf("%s                        %s.type = %sType::%s;\n", ind, dst, un.Name, ir.GoExportName(v.Name))
+			g.establishArm(v, dst, ind+"                        ")
+			g.emitMessageReadScalarFromEntry(v.F, armValue(dst, v), ind+"                        ", arm, false, true)
+			g.pf("%s                        report->widened++;\n", ind)
+			g.pf("%s                        break;\n%s                    }\n", ind, ind)
+		}
 		g.pf("%s                    %s.type = %sType::None; report->kind_mismatch++;\n", ind, dst, un.Name)
 		g.pf("%s                    if ( !TableMessageSkip( r, vocabulary, index_bits, %s ) ) { report->malformed = true; return false; }\n", ind, arm)
 		g.pf("%s                    break;\n%s                }\n", ind, ind)
@@ -300,7 +343,7 @@ func (g *tableGen) emitMessageReadUnion(f *ir.Field, dst, ind string) {
 		case v.Body():
 			g.pf("%s                if ( !%s ) { return false; }\n", ind, g.msgLoadCall(v.Type, "r", armValue(dst, v)))
 		default:
-			g.emitMessageReadArm(v, dst, ind+"                ", arm)
+			g.emitMessageReadArm(v, dst, ind+"                ", arm, false)
 		}
 		g.pf("%s                break;\n%s            }\n", ind, ind)
 	}
@@ -310,7 +353,7 @@ func (g *tableGen) emitMessageReadUnion(f *ir.Field, dst, ind string) {
 	g.pf("%s                break;\n%s        }\n%s    }\n%s}\n", ind, ind, ind, ind)
 }
 
-func (g *tableGen) emitMessageReadArm(v ir.UnionVariant, base, ind, arm string) {
+func (g *tableGen) emitMessageReadArm(v ir.UnionVariant, base, ind, arm string, widened bool) {
 	af := v.F
 	value, count := armValue(base, v), armCount(base, v)
 	switch {
@@ -319,7 +362,7 @@ func (g *tableGen) emitMessageReadArm(v ir.UnionVariant, base, ind, arm string) 
 	case af.Type.Kind == ir.TString || af.Type.Kind == ir.TBytes || af.Type.Kind == ir.TWString:
 		g.emitMessageReadTextFrom(af, value, count, ind, arm)
 	case af.Array != ir.ArrayNone:
-		g.emitMessageReadArrayFrom(af, value, count, ind, arm)
+		g.emitMessageReadArrayFrom(af, value, count, ind, arm, widened)
 	case tableScalarKind(af) == tkUnion:
 		// a NESTED UNION ARM reads the inner union's own arm reference (§2.6)
 		g.emitMessageReadUnion(af, value, ind)
@@ -328,7 +371,7 @@ func (g *tableGen) emitMessageReadArm(v ir.UnionVariant, base, ind, arm string) 
 	case tableScalarKind(af) == tkTable:
 		g.pf("%sif ( !%s ) { return false; }\n", ind, g.msgLoadCall(af.Type.Name, "r", value))
 	default:
-		g.emitMessageReadScalarFromEntry(af, value, ind, arm, false)
+		g.emitMessageReadScalarFromEntry(af, value, ind, arm, false, widened)
 	}
 }
 
@@ -373,7 +416,7 @@ func (g *tableGen) emitMessageReadKeyed(f *ir.Field, ind string) {
 		// an unknown key's element decodes into scratch and lands nowhere
 		typ, _ := g.cppFieldType(f.Type)
 		g.pf("%s%s scratch%s = %s;\n", inner, typ, sfx, g.fieldDefaultExpr(f))
-		g.emitMessageReadScalarFromEntry(f, "scratch"+sfx, inner, "entry", true)
+		g.emitMessageReadScalarFromEntry(f, "scratch"+sfx, inner, "entry", true, false)
 		g.pf("%sif ( in_bounds%s ) { %s[slot%s] = scratch%s; }\n", inner, sfx, slots, sfx, sfx)
 	}
 	g.pf("%s    }\n%s}\n", ind, ind)
@@ -406,9 +449,12 @@ func (g *tableGen) emitMessageReadMap(f *ir.Field, ind string) {
 		g.pf("%s    %s last_key%s = 0;\n", ind, typ, sfx)
 	}
 	g.pf("%s    bool landed%s = false;\n", ind, sfx)
+	g.pf("%s    bool map_widened%s = false;\n", ind, sfx)
 	g.pf("%s    for ( uint64_t %s = 0; %s < count%s; %s++ )\n%s    {\n", ind, idx, idx, sfx, idx, ind)
 	g.pf("%s        const %sMessageKeyRead read%s = %sMessageReadKey( r, vocabulary, index_bits );\n", ind, n, sfx, n)
 	g.pf("%s        if ( read%s.malformed ) { report->malformed = true; return false; }\n", ind, sfx)
+	g.pf("%s        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)\n", ind)
+	g.pf("%s        if ( read%s.widened && !map_widened%s ) { map_widened%s = true; report->widened++; }\n", ind, sfx, sfx, sfx)
 	g.pf("%s        if ( read%s.kind_bad )\n%s        {\n", ind, sfx, ind)
 	g.pf("%s            // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to\n", ind)
 	g.pf("%s            // EMPTY, ONE kind_mismatch is counted for it, and the rest of its\n", ind)
@@ -455,7 +501,7 @@ func (g *tableGen) emitMessageReadMap(f *ir.Field, ind string) {
 // declared bounds: a value outside them clamps and counts, exactly as it does
 // on a file (§4). The sender's width is a run-time fact, because a body from
 // another build is the ordinary case this wire exists for.
-func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from string, element bool) {
+func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from string, element, widened bool) {
 	sfx := g.msgEnter()
 	defer g.msgLeave()
 	kind := tableScalarKind(f)
@@ -467,6 +513,27 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 	// kind, the packing and the announced bits together settled, computed
 	// once at AnnounceRead (docs/SPEC-TABLES.md §3.3)
 	width := bits
+	if widened && kind == tkF64 {
+		// f32 WIDENED INTO f64 (§3.3, §4): the payload rides at the SENDER's
+		// f32 shape, its quantization or its thirty-two raw bits, and every
+		// float32 value is exactly representable, and a float64 field's
+		// declared range clamps nothing on this wire, exactly as a payload at
+		// sixty-four bits.
+		g.pf("%s{\n", ind)
+		g.pf("%s    if ( %s == 2 )\n%s    {\n", ind, packing, ind)
+		g.pf("%s        uint64_t index%s = 0;\n", ind, sfx)
+		g.pf("%s        if ( !r.get( index%s, %s ) ) { report->malformed = true; return false; }\n", ind, sfx, bits)
+		g.pf("%s        if ( index%s > (uint64_t) %s ) { report->malformed = true; return false; } // above the step count\n", ind, sfx, qcount)
+		g.pf("%s        %s = (double) TableMessageDequantize( (uint32_t) index%s, %s, %s, %s );\n%s    }\n", ind, lvalue, sfx, qmin, qdelta, qcount, ind)
+		g.pf("%s    else\n%s    {\n", ind, ind)
+		g.pf("%s        uint64_t raw%s = 0;\n", ind, sfx)
+		g.pf("%s        if ( !r.get( raw%s, 32 ) ) { report->malformed = true; return false; }\n", ind, sfx)
+		// a NaN's PAYLOAD IS DATA and rides on the bits: the hardware
+		// float32 to float64 conversion would set the quiet bit (§4)
+		g.pf("%s        %s = TableWidenF32( (uint32_t) raw%s );\n%s    }\n", ind, lvalue, sfx, ind)
+		g.pf("%s}\n", ind)
+		return
+	}
 	switch kind {
 	case tkBool:
 		g.pf("%s{ uint64_t raw%s = 0; if ( !r.get( raw%s, 1 ) ) { report->malformed = true; return false; } %s = raw%s != 0; }\n", ind, sfx, sfx, lvalue, sfx)
@@ -501,6 +568,32 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 	decoded := "decoded_v" + sfx
 	g.pf("%s{\n", ind)
 	g.pf("%s    const int64_t width%s = %s;\n", ind, sfx, width)
+	if bytesWide == 16 && widened {
+		// AN INTEGER KIND WIDENED INTO A 128-BIT DECLARATION (§3.3, §4): the
+		// payload rides at the SENDER's width, which is sixty-four bits or
+		// fewer, so it is read there, extended, and only then met by this
+		// reader's own bound, exactly as a payload at 128 bits is.
+		storage := "serialize::uint128_t"
+		if signed {
+			storage = "serialize::int128_t"
+		}
+		g.pf("%s    uint64_t raw%s = 0;\n", ind, sfx)
+		g.pf("%s    if ( width%s < 0 || width%s > 64 || !r.get( raw%s, width%s ) ) { report->malformed = true; return false; }\n", ind, sfx, sfx, sfx, sfx)
+		if signed {
+			g.pf("%s    if ( %s != 1 && width%s > 0 && width%s < 64 )\n%s    {\n", ind, packing, sfx, sfx, ind)
+			g.pf("%s        const uint64_t sign%s = uint64_t(1) << ( width%s - 1 );\n", ind, sfx, sfx)
+			g.pf("%s        if ( ( raw%s & sign%s ) != 0 ) { raw%s = raw%s | ~( ( uint64_t(1) << width%s ) - 1 ); }\n", ind, sfx, sfx, sfx, sfx, sfx)
+			g.pf("%s    }\n", ind)
+			g.pf("%s    serialize::uint128_t raw_v%s = ( serialize::uint128_t( (int64_t) raw%s < 0 ? ~uint64_t(0) : uint64_t(0) ) << 64 ) | serialize::uint128_t( raw%s );\n", ind, sfx, sfx, sfx)
+		} else {
+			g.pf("%s    serialize::uint128_t raw_v%s = serialize::uint128_t( raw%s );\n", ind, sfx, sfx)
+		}
+		g.pf("%s    if ( %s == 1 ) { raw_v%s = raw_v%s + ( ( serialize::uint128_t( (uint64_t) %s ) << 64 ) | serialize::uint128_t( (uint64_t) %s ) ); }\n", ind, packing, sfx, sfx, baseHi, base)
+		g.pf("%s    %s %s = %s( raw_v%s );\n", ind, storage, decoded, storage, sfx)
+		g.emitMessageClamp(f, signed, bytesWide, decoded, ind+"    ")
+		g.pf("%s    %s = %s;\n%s}\n", ind, lvalue, decoded, ind)
+		return
+	}
 	if bytesWide == 16 {
 		// A 128-BIT KIND at the width the SENDER's shape states: the low half
 		// first and the high half where the width reaches it, then the base
@@ -708,7 +801,7 @@ func (g *tableGen) emitMessageReadList(f *ir.Field, ind string) {
 	case tableScalarKind(f) == tkUnion:
 		g.emitMessageReadUnion(f, elem, inner)
 	default:
-		g.emitMessageReadScalarFromEntry(f, elem, inner, "entry", true)
+		g.emitMessageReadScalarFromEntry(f, elem, inner, "entry", true, false)
 	}
 	g.pf("%s    }\n", ind)
 	g.pf("%s    TableListFillEnd( fill%s );\n", ind, sfx)

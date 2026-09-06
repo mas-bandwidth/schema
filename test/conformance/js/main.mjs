@@ -274,7 +274,9 @@ function opens(open, bytes) {
 }
 
 function openBlock(name, source, extent) {
-  const claim = extent < 0 || extent < source.length ? source.length : extent;
+  // A CLAIM SHORTER THAN THE IMAGE IS A TRUNCATION: `place` copies what fits
+  // and zeroes the rest, so the buffer is the claim in that direction too.
+  const claim = extent < 0 ? source.length : extent;
   const block = blockNamed(name);
   return opens((b) => block.Open(b), place(source, claim, 0)) ? "open\n" : "refuse\n";
 }

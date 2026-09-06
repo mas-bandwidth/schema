@@ -20,6 +20,25 @@ func init() {
 		Name{Name: "second_announcement", What: "a second announcement on a connection: it sets nothing and the connection closes"},
 		Name{Name: "vocabulary_too_large", What: "an announcement above the receiver's declared bound"},
 		Name{Name: "message_form_as_file", What: "a form 2 wire where a FILE was expected"},
+		// THE FILE REFUSALS (docs/SPEC-TABLES.md §6.5, §7, §11, §19.2): the one
+		// vocabulary a cook's Open, a block's BlockOpen and LoadMeasure's -1
+		// share, and its values, which sit at namespace scope like the message
+		// reasons above.
+		Name{Name: "TableRefuseReason", What: "why a FILE was refused, by name. Open, BlockOpen and LoadMeasure's -1 share the one vocabulary (§6.5, §7, §19.2)"},
+		Name{Name: "ok", What: "no clause failed: the only refusal value beside a non-null root (§7)"},
+		Name{Name: "not_a_cook", What: "the magic is neither this build's nor its byte reversal (§7)"},
+		Name{Name: "foreign_order", What: "a cook of the other byte order (§7.1)"},
+		Name{Name: "wrong_build_version", What: "a build version this build does not match (§20)"},
+		Name{Name: "reserved_not_zero", What: "a reserved header word that is not zero (§7.1)"},
+		Name{Name: "bad_alignment", What: "an alignment word that is not a region's alignment (§7)"},
+		Name{Name: "truncated", What: "the part lengths against the caller's length (§7)"},
+		Name{Name: "unaligned_base", What: "a base not aligned for the region: the caller's defect (§7)"},
+		Name{Name: "bad_layout", What: "a block's pitch, count, offset or extent that disagrees with this build's (§19.2)"},
+		Name{Name: "unknown_form", What: "a form byte this build does not carry, at a measure (§6.5)"},
+		Name{Name: "count_over_length", What: "an array or map count whose elements cannot fit the field's own L (§6.5)"},
+		Name{Name: "count_over_extent_cap", What: "a count above the int32 extent cap (§6.5)"},
+		Name{Name: "blob_over_size_cap", What: "a blob whose length is past the derived-size cap (§6.5)"},
+		Name{Name: "data_cycle", What: "a data cycle reached from a builder: the authoring side's -1 (§6.5)"},
 		Name{Name: "Announce", What: "the unit's announcement, written into the caller's buffer (§3.3)"},
 		Name{Name: "AnnounceMeasure", What: "the announcement's byte count, a constant of the unit"},
 		Name{Name: "AnnounceRead", What: "read an announcement into one direction's table"},

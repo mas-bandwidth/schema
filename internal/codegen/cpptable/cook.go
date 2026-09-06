@@ -170,22 +170,47 @@ inline uint64_t table_cook_read64( const uint8_t * p )
 // refuse, and an addition that wrapped would be the defect the comparison
 // after it was supposed to catch. Nothing past length is read on any path,
 // including every refusing one.
-inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
+// A REFUSAL NAMES ITSELF, beside the null (docs/SPEC-TABLES.md §7): the reason
+// is written on the refusal path only, so a match costs nothing and a caller
+// that passed no out-parameter pays nothing.
+inline const uint8_t * TableCookRefuse( TableRefuseReason * reason, TableRefuseReason why )
 {
-    if ( bytes == NULL ) { return NULL; }
-    if ( length < (uint64_t) kTableCookHeaderBytes ) { return NULL; }
+    if ( reason != NULL ) { *reason = why; }
+    return NULL;
+}
+
+inline uint64_t table_cook_byteswap64( uint64_t v )
+{
+    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull )
+         | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull )
+         | ( v << 56 );
+}
+
+inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align, TableRefuseReason * reason )
+{
+    // a null buffer is the CALLER's defect, as an unaligned base is; a buffer
+    // shorter than the header has no header to read and is truncated
+    if ( bytes == NULL ) { return TableCookRefuse( reason, unaligned_base ); }
+    if ( length < (uint64_t) kTableCookHeaderBytes ) { return TableCookRefuse( reason, truncated ); }
     const uint8_t * raw = (const uint8_t *) bytes;
     // the MAGIC, bytewise and first: it is what establishes the byte order
     // every other header word is read in, so nothing else may be read before
     // it. A byte-reversed constant is a cook of the other order and refuses
-    // here, which is why the order never reaches a fix-up pass.
-    if ( table_cook_read64( raw ) != TableCookMagic ) { return NULL; }
-    if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return NULL; }
-    if ( table_cook_read64( raw + 8 ) != BuildVersion ) { return NULL; }
+    // here, which is why the order never reaches a fix-up pass; anything else
+    // is not a cook at all, a BLOCK's magic included.
+    const uint64_t magic = table_cook_read64( raw );
+    if ( magic != TableCookMagic )
+    {
+        return TableCookRefuse( reason, magic == table_cook_byteswap64( TableCookMagic ) ? foreign_order : not_a_cook );
+    }
+    // a byte-order word that contradicts its own magic describes no cook in
+    // EITHER order, so it shares the magic's own value (§7.1)
+    if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return TableCookRefuse( reason, not_a_cook ); }
+    if ( table_cook_read64( raw + 8 ) != BuildVersion ) { return TableCookRefuse( reason, wrong_build_version ); }
     // the RESERVED words: a non-zero one means a writer used a form this build
     // does not understand, and Open refuses rather than ignoring it.
-    if ( table_cook_read64( raw + 48 ) != 0 ) { return NULL; }
-    if ( table_cook_read64( raw + 56 ) != 0 ) { return NULL; }
+    if ( table_cook_read64( raw + 48 ) != 0 ) { return TableCookRefuse( reason, reserved_not_zero ); }
+    if ( table_cook_read64( raw + 56 ) != 0 ) { return TableCookRefuse( reason, reserved_not_zero ); }
     const uint64_t data_length = table_cook_read64( raw + 24 );
     const uint64_t attribution_length = table_cook_read64( raw + 32 );
     const uint64_t alignment = table_cook_read64( raw + 40 );
@@ -194,36 +219,38 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
     // region's alignment is a power of two, never below eight (the floor that
     // puts the attribution part on an eight-byte boundary without a second
     // padding rule) and never past the cap above; a word that is none of those
-    // rounds nothing and aligns nothing, so it is refused before it is used.
-    if ( alignment < 8 || alignment > TableCookMaxAlign ) { return NULL; }
-    if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return NULL; }
+    // rounds nothing and aligns nothing, so it is refused before it is used,
+    // which is why bad_alignment precedes both truncated clauses (§7).
+    if ( alignment < 8 || alignment > TableCookMaxAlign ) { return TableCookRefuse( reason, bad_alignment ); }
+    if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return TableCookRefuse( reason, bad_alignment ); }
     // and it must be an alignment THE ROOT CAN SIT AT, since the root is at
     // the region's base: both are powers of two, so "at least the root's"
     // is one division.
-    if ( ( alignment % root_align ) != 0 ) { return NULL; }
+    if ( ( alignment % root_align ) != 0 ) { return TableCookRefuse( reason, bad_alignment ); }
     // The DATA part begins at align_up( 64, alignment ). It is DERIVED and not
     // a header field, because a fact a reader computes is a fact two writers
     // cannot disagree about.
     const uint64_t data_offset = ( (uint64_t) kTableCookHeaderBytes + alignment - 1 ) & ~( alignment - 1 );
-    if ( length < data_offset ) { return NULL; }
+    if ( length < data_offset ) { return TableCookRefuse( reason, truncated ); }
     // the two part lengths against the length the caller passed. The whole
     // file is data_offset + data_length + attribution_length, and a length
     // that is not EXACTLY that refuses — truncation and trailing bytes are one
     // refusal, and both terms are subtracted rather than added so no sum can
     // carry.
-    if ( data_length > length - data_offset ) { return NULL; }
-    if ( attribution_length != length - data_offset - data_length ) { return NULL; }
+    if ( data_length > length - data_offset ) { return TableCookRefuse( reason, truncated ); }
+    if ( attribution_length != length - data_offset - data_length ) { return TableCookRefuse( reason, truncated ); }
     // the ROOT sits at the region's base, so the region has to hold it: a
     // shorter data part describes a root partly outside the file, which is the
     // one way a match-and-point reader could hand back storage it never
-    // received.
-    if ( data_length < root_size ) { return NULL; }
+    // received. It is the second clause on truncated (§7).
+    if ( data_length < root_size ) { return TableCookRefuse( reason, truncated ); }
     const uint8_t * base = raw + data_offset;
-    // the alignment of the BASE. The header pads the data part to the region's
+    // the alignment of the BASE, LAST, because it is the only clause that reads
+    // nothing out of the file. The header pads the data part to the region's
     // alignment, so a base an allocator or mmap gave you is already aligned —
     // mmap gives page alignment for free — and a base that is not is a caller's
-    // buffer this form cannot be read out of.
-    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return NULL; }
+    // buffer this form cannot be read out of: the caller's defect, not the file's.
+    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return TableCookRefuse( reason, unaligned_base ); }
     return base;
 }
 ` + tableCookWriteRuntime + `
@@ -265,8 +292,13 @@ func (g *tableGen) emitCookOpen(st *ir.Struct) {
 	g.pf("// %sOpen: match the header and POINT. On a match the bytes ARE what this\n", n)
 	g.pf("// build wrote, in this build's layout and this build's byte order, so there\n")
 	g.pf("// is nothing to validate and nothing to fix up and the root comes back as it\n")
-	g.pf("// lies. On ANY refusal it returns NULL and the caller falls back to a wire\n")
-	g.pf("// load, which is the path that carries every version.\n")
+	g.pf("// lies. On ANY refusal it returns NULL and NAMES the refusal in the caller's\n")
+	g.pf("// TableRefuseReason, the first failing clause in §7's order (a wrong build\n")
+	g.pf("// version is a re-cook, a foreign order a cross-endian cook, a truncated\n")
+	g.pf("// file a bad download, an unaligned base the caller's own buffer), and the\n")
+	g.pf("// caller falls back to a wire load, which is the path that carries every\n")
+	g.pf("// version. The reason is written on the refusal path only; a caller that\n")
+	g.pf("// passes nothing gets the null alone.\n")
 	g.pf("//\n")
 	g.pf("// It is O(1) IN THE FILE'S SIZE — the header and nothing per node — so a one\n")
 	g.pf("// megabyte cook and a one gigabyte cook open in the same time, and a mapped\n")
@@ -291,8 +323,8 @@ func (g *tableGen) emitCookOpen(st *ir.Struct) {
 	g.pf("// file whose provenance a person doubts is schema cook-check, offline,\n")
 	g.pf("// over the ATTRIBUTION part beside the data — a person's decision, never a\n")
 	g.pf("// parameter on a load.\n")
-	g.pf("inline const %s * %sOpen( const void * bytes, uint64_t length )\n{\n", n, n)
-	g.pf("    return (const %s *) TableCookOpen( bytes, length, (uint64_t) sizeof( %s ), (uint64_t) alignof( %s ) );\n}\n\n", n, n, n)
+	g.pf("inline const %s * %sOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )\n{\n", n, n)
+	g.pf("    return (const %s *) TableCookOpen( bytes, length, (uint64_t) sizeof( %s ), (uint64_t) alignof( %s ), reason );\n}\n\n", n, n, n)
 }
 
 // emitCookLayoutAsserts is this backend's half of the LAYOUT CONTRACT

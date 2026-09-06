@@ -198,7 +198,7 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	if derr != nil {
 		return ans, fmt.Errorf("the oracle refused the root itself: %w", derr)
 	}
-	ans.report = Counts{Unknown: rep.Unknown, KindMismatch: rep.KindMismatch, Clamped: rep.Clamped, Duplicate: rep.Duplicate, Malformed: rep.Malformed || !ok}
+	ans.report = Counts{Unknown: rep.Unknown, KindMismatch: rep.KindMismatch, Widened: rep.Widened, Clamped: rep.Clamped, Duplicate: rep.Duplicate, Malformed: rep.Malformed || !ok}
 	encoded, eerr := encode()
 	if eerr != nil {
 		ans.encFail = true
@@ -306,21 +306,22 @@ func (l *wireLeg) send(rootIndex int, data []byte) error {
 
 func (l *wireLeg) receive() (legReply, error) {
 	var rep legReply
-	// loaded, the four counters, malformed, the REFUSAL VERDICT (§3), the
+	// loaded, the five counters, malformed, the REFUSAL VERDICT (§3), the
 	// measure and the saved length
-	var head [1 + 4*4 + 1 + 1 + 8 + 8]byte
+	var head [1 + 5*4 + 1 + 1 + 8 + 8]byte
 	if _, err := io.ReadFull(l.stdout, head[:]); err != nil {
 		return rep, err
 	}
 	rep.loaded = head[0] != 0
 	rep.report.Unknown = int(int32(binary.LittleEndian.Uint32(head[1:])))
 	rep.report.KindMismatch = int(int32(binary.LittleEndian.Uint32(head[5:])))
-	rep.report.Clamped = int(int32(binary.LittleEndian.Uint32(head[9:])))
-	rep.report.Duplicate = int(int32(binary.LittleEndian.Uint32(head[13:])))
-	rep.report.Malformed = head[17] != 0
-	rep.report.Refused = head[18] != 0
-	rep.measure = int64(binary.LittleEndian.Uint64(head[19:]))
-	n := int64(binary.LittleEndian.Uint64(head[27:]))
+	rep.report.Widened = int(int32(binary.LittleEndian.Uint32(head[9:])))
+	rep.report.Clamped = int(int32(binary.LittleEndian.Uint32(head[13:])))
+	rep.report.Duplicate = int(int32(binary.LittleEndian.Uint32(head[17:])))
+	rep.report.Malformed = head[21] != 0
+	rep.report.Refused = head[22] != 0
+	rep.measure = int64(binary.LittleEndian.Uint64(head[23:]))
+	n := int64(binary.LittleEndian.Uint64(head[31:]))
 	if n < 0 {
 		rep.saveFail = true
 		return rep, nil

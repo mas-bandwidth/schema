@@ -4798,6 +4798,14 @@ an array bound are WIDTH facts on this wire, and a reader that meets a width it
 did not expect reads the sender's and applies its own bound rather than losing
 the field, so unknown, absent, `kind_mismatch`, `widened`, `clamped`,
 `duplicate` and every guard and bound row read exactly as they read on a file.
+**A WIDENING IS THEREFORE FOUND IN THE ANNOUNCEMENT** rather than in a kind
+byte: an announced kind below this reader's on the same ladder decodes at the
+width the announcement states, the value lands, and one `widened` counts, at a
+field, an arm, a positional array's element and a map's key exactly as §4
+counts them. It follows that the wire fuzzer's widen pass has no purchase on
+this form, because a mutant would have to forge the announcement both sides
+read from their own unit, so the row is held by a PEER WHOSE DECLARATION HAS MOVED
+instead, which is the shape every other §4 row on this form is held by.
 §4's framing-damage row says a damaged level stops only itself and the parent
 reads on past its length, and a bitpacked body has no length to read on past,
 so damage is terminal for the batch (above). **§4's MASK ROUND-TRIP ROW moves
@@ -5684,16 +5692,6 @@ games decide their own policy over it. Nothing crashes on data from a
 different schema version, in either direction, and that property is held by
 a both-directions evolution test in the corpus.
 
-**BACKEND STATUS for `widened`: OWED, not counted.** The counter and the two
-ladders above are specified ahead of their implementation, on the terms §3.3
-and §6.6 take. No report struct carries a `widened` member in any target or
-in the tool, and every pair the ladders accept is a `kind_mismatch` today,
-the payload skipped by its framing and the field left at its declared
-default. What a caller sees is the five that remain, `unknown`,
-`kind_mismatch`, `clamped`, `duplicate` and the `malformed` flag. Owed as
-schema#523, and this line is deleted by the implementation PR that lands the
-behavior.
-
 **TWO MORE COUNTERS RIDE ON THE SAME STRUCT AND STAY ZERO UNTIL A CALLER ASKS
 FOR THEM**: `retained` and `retain_lost`, the retain-unknown pair (§6.6). They
 report on RETENTION rather than on the read, and they change no counter above.
@@ -5710,9 +5708,9 @@ declaration and read under another, pinning the six counters and the value:
   the writer's own, every sibling field intact. The pair is on the signed
   ladder, so the arm's kind byte is READ and its payload DECODED rather than
   skipped, which is the widening rule met at an arm (above). Red if another
-  counter moves, if the value is not exact, or if a sibling is lost. **The
-  manifest's pin for this row moves with the implementation**, from one
-  `kind_mismatch` and a `None` union to one `widened` and the value.
+  counter moves, if the value is not exact, or if a sibling is lost. The
+  manifest pins it as one `widened` and the value, and the C++ reference's
+  own arm controls read the same wire to the same answer.
 - an `int32` arm read as a `float32` arm, and a scalar arm read as a
   `string(N)` arm: one `kind_mismatch` in each direction, the union `None`,
   the field at its declared default. Each is red if every counter is zero,
@@ -6547,7 +6545,7 @@ one check rather than two.
 **A BLOB NODE in a region** (§2.5) is an eight-byte header and then the
 bytes: `length (u64)`, then `length` bytes of data at offset eight, so the
 data itself is eight-aligned and the header expresses every length the wire
-can carry (§3); a `*string` blob carries one more
+can carry (§3). A `*string` blob carries one more
 zero byte after its data, which is the terminator `string(N)`'s storage
 carries and the reason a region hands back a C string with no copy. **A
 `*wstring` blob is that same header and two more zero bytes**: its `length` is
@@ -6677,26 +6675,45 @@ The builder is designed to go wide, lock-free by ownership:
 
   | value | what refused, and where it is stated |
   |---|---|
-  | `unknown_form` | a form byte this build does not carry (§3). The read never begins, so it is a refusal and not damage, which is what §3 already says of it |
+  | `unknown_form` | a form byte THIS CALL does not carry (§3). The read never begins, so it is a refusal and not damage, which is what §3 already says of it. **A FILE'S MEASURE ANSWERS IT FOR ANY BYTE THAT IS NOT THE FILE FORM**, form `2` included: a build that carries the message form carries it through the message surface (§3.3), and a batch handed to a file root is a form its file measure does not read. The `Load` beside it distinguishes the two, answering `message_form_as_file` where the byte is `2` and `newer_form` otherwise, because a report has room to say which and a `-1` has one value |
   | `count_over_length` | an array or map count whose elements cannot fit the field's own `L` (§2.8, §2.9) |
   | `count_over_extent_cap` | a count above the `int32` extent cap (§2.2), which no region can hold whatever its size |
   | `blob_over_size_cap` | a blob whose length is past the derived-size cap (§3.1, §11) |
   | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6) |
+
+  **`data_cycle` IS THE ONE VALUE WITH NO CARRIER TODAY, and the ruling is
+  that it gets one rather than that it loses its name**: `LoadMeasure` is the
+  only measure that takes the out-parameter, while the cycle is refused by
+  `Measure`, `CookMeasure`, `Save`, `Cook` and `Lock` (§3.1, §7.6), each of
+  which answers a bare `-1` or `false`. A value no call can write is a case
+  that exists only in the vocabulary, so **`Measure` and `CookMeasure` take
+  the same trailing `TableRefuseReason *` `LoadMeasure` takes**, written on
+  the refusal path only, and the enum keeps one value per clause with nothing
+  hiding behind another. Threading it through the pack walk is a named
+  follow-on rather than part of the row that introduced the enum.
 
   **A REFUSAL MOVES NO COUNTER** (§4): nothing was decoded, so there is nothing
   to report, and the reason is where the answer lives. **This shares a surface
   with the accelerators' refusal and lands with it**, so a build that has one
   has the other.
 
-  **WHERE IT IS CARRIED.** The C++ reference spells `TableRefuseReason` with
-  the two values a map's and an unbounded array's framing can raise,
-  `count_over_length` and `count_over_extent_cap`, as a native enum a unit
-  that declares either construct emits, and `LoadMeasure` there takes it as a
-  trailing out-parameter, `TableRefuseReason * reason_out = NULL`, so a caller
-  that does not ask keeps the signature it had. A unit with neither construct
-  carries neither the enum nor the parameter (§2.2). The other three values,
-  §7's check order and §19.2's block clauses are owed as schema#523, and no
-  port spells the enum yet.
+  **WHERE IT IS CARRIED.** The enum is a NATIVE type in each target's
+  language, a C++ enum, a Go type, a Dart enum, never a schema-language enum,
+  with the same value names in all nine, and its carriage is each language's
+  standard error path: an out-parameter beside the null in C and C++, never
+  an exception, `Result` in Rust, an error value in Go, the language's
+  standard error idiom in C#, Java, JavaScript and Dart, and a tagged tuple in
+  Elixir. The C++ reference spells `TableRefuseReason` in every unit, with
+  §7's eight values first in the order the check runs them, then
+  `bad_layout`, then the five above, and `LoadMeasure` takes it as a trailing
+  out-parameter, `TableRefuseReason * reason_out = NULL`, so a caller that
+  does not ask keeps the signature it had. It is written on the refusal path
+  only: a `-1` for a form byte this build does not carry writes
+  `unknown_form`, one for a count writes its count value, one for a blob past
+  the cap writes `blob_over_size_cap`, and a measure that answers a size
+  writes nothing. A `-1` for a trailer that cannot be read whole, which is
+  damage and not a refusal, writes nothing either. No port spells the enum
+  yet; each claims it with the wire form it lacks (§15).
 - **Into a builder** — the tool's path. The same tolerant decode into a
   fresh builder, so loaded data can be edited and locked again. **Its own
   refusal is a NULL** rather than a `-1`, and the report it leaves behind is
@@ -7349,7 +7366,10 @@ the wire, and keeps the flexibility that comes with it.
   foreign order is a cross-endian cook (§15), a truncated file is a bad
   download, and an unaligned base is the CALLER'S OWN defect and the one it can
   fix on the spot. So every `Open` takes one more out-parameter, an enum named
-  `TableRefuseReason`, and fills it on every call. **The name says REFUSE and
+  `TableRefuseReason`, and fills it ON THE REFUSAL PATH ONLY: a match writes
+  nothing, which is the owner's ruling that a diagnostic costs nothing on the
+  successful open, and a caller that wants `ok` beside a non-null root
+  initializes its own variable to it. **The name says REFUSE and
   not OPEN deliberately**: the same enum answers `LoadMeasure`'s `-1` (§6.5),
   where nothing was opened and nothing could have been, so a name built on
   `Open` would have been wrong at half its call sites the moment it was
@@ -7357,7 +7377,8 @@ the wire, and keeps the flexibility that comes with it.
 
   | clause | reason |
   |---|---|
-  | no clause fails | `ok`, and this is the only value that comes with a non-null root |
+  | no clause fails | `ok`, and this is the only value that comes with a non-null root. `Open` never writes it: the out-parameter is untouched on a match |
+  | a null buffer, or one shorter than the 64-byte header | `unaligned_base` for the null, which is the caller's own buffer and not a file, and `truncated` for the short one, which has no header to read. Neither is a clause of the enumeration below, and each takes the value whose reading it already has |
   | the magic, read bytewise | `not_a_cook` where it is neither this build's constant nor its byte reversal, so the bytes are not a cook at all. A BLOCK reads its own magic here, so a block handed to a cook's `Open` lands on this value and not on a version answer |
   | the same magic, the other way | `foreign_order` where it IS this build's constant byte-reversed: a cook of the other byte order (§7.1) |
   | the BYTE ORDER the magic established | `not_a_cook` again, and this is the one clause with no value of its own. A header whose `byte_order` word contradicts its own magic describes no cook in EITHER order, so there is nothing a distinct value would tell a caller that this one does not (§7.1) |
@@ -7432,14 +7453,18 @@ the wire, and keeps the flexibility that comes with it.
   nothing to validate. One order, one enum, and the two accelerators differ
   only in which clauses they have.
 
-  **BACKEND STATUS: OWED, not emitted.** The out-parameter and its enum are
-  specified ahead of their implementation, on the terms §3.3 and §6.6 take.
-  The C++ reference emits `const Scene * SceneOpen( const void * bytes,
-  uint64_t length )` and nothing more, every other backend's `Open` is that
-  same shape in its own spelling, and the null alone is the whole of a
-  refusal's answer. Owed as schema#523, with §6.5's measure values and
-  §19.2's block clauses, and this line is deleted by the implementation PR
-  that lands the behavior.
+  **The C++ reference carries it**, `const Scene * SceneOpen( const void *
+  bytes, uint64_t length, TableRefuseReason * reason = NULL )`, on every
+  root, with the shared check in `TableCookOpen` naming the first failing
+  clause in the order above. The conformance manifest pins one row per value
+  on the `cook-reason` and `block-reason` surfaces, over the forgery
+  fixtures the `forgery` surfaces already read. **`unaligned_base` IS THE ONE
+  BLOCK VALUE THAT SURFACE DOES NOT CARRY**, because it is a clause over the
+  ADDRESS the caller passed and a manifest row hands a driver a path rather
+  than a pointer. It is held in the C++ reference's own `BlockOpen` gate
+  instead, beside the four readings that are on the surface. Every other backend's `Open`
+  is still the null alone in its own spelling, and takes the parameter with
+  the wire form it lacks (§15).
 
 - **`Open` is the RUNTIME's only entry point.** There is no second one: a
   build either wrote a file or it did not, and the build version is what says
@@ -11486,7 +11511,7 @@ carries three accessors where C++ carries a tag offset and an arm offset.
   form's one formatting opinion, and it is held because a text these files
   exist for is read and diffed by people.
 - **THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE.** Every writer emits
-  it — `ToJson` in every backend, and `schema unpack` — and every reader
+  it, `ToJson` in every backend and `schema unpack` alike, and every reader
   ACCEPTS a text with or without one, because the trailing whitespace a read
   already skips is what makes the two the same text. The byte belongs to the
   FORM rather than to a file convention: a text is written to a file, pasted
@@ -11666,9 +11691,17 @@ value that cannot be written — and a caller that distinguishes them calls
 STORAGE A PROGRAM BUILT and about nothing else.** No wire puts ill-formed text
 into storage: the packet wire refuses it terminally (SPEC.md §4.7, §4.12) and
 the table wire counts it `malformed` and leaves the field at its declared
-default (§3, §4). What remains is an instance built in code, or one a text
-introduced through a lone surrogate escape, and the writer answers for it
-rather than emitting a text no conforming parser can read.
+default (§3, §4). **NEITHER DOES A TEXT**, and this is the same rule met at
+the point the defect ENTERS: RFC 8259 requires a JSON text to be valid UTF-8,
+so a byte in a string body that is not part of a well-formed sequence is not
+a code point either, and the READ replaces it with one `U+FFFD` exactly as a
+lone surrogate escape reads — one per sequence, counted as nothing, and then
+clamped at a code point boundary like any other. Without it the text form
+would build storage the wire cannot carry, and §5's guarantee that an
+instance a tolerant load produced is always one the reference can re-save
+would hold for the wire and not for the text. What remains is an instance
+built in code, and the writer answers for it rather than emitting a text no
+conforming parser can read.
 
 **The two text types answer DIFFERENTLY, because the two failures are
 different things.** A NARROW field's interior ZERO BYTE is `U+0000`, a
@@ -13108,11 +13141,14 @@ schema name, as everywhere else in that backend.
 - **`BlockOpen` checks once and points, and this is the WHOLE check**, in
   §7's own order so that one enum and one order serve both accelerators: the
   magic read bytewise, the byte order it establishes, the build version
-  against this build's own, the used extent against the `bytes` the caller
-  passed, each array's PITCH against this build's own, its COUNT against the
-  declared maximum, its `offset_of` and its extent inside the block, and LAST
-  the base's alignment, which is the only clause that reads nothing out of the
-  block. **A block has no reserved prologue word and no `alignment` word**
+  against this build's own, then each array's PITCH against this build's own,
+  its COUNT against the declared maximum, its `offset_of` and its extent
+  inside the block, THEN the used extent against the `bytes` the caller
+  passed, and LAST the base's alignment, which is the only clause that reads
+  nothing out of the block. **The used extent sits after the arrays because it
+  is derived from them** (§19.1: the greatest `offset_of + count * stride`),
+  so there is no `used` to compare against `bytes` until every triple has
+  been read and agreed with. **A block has no reserved prologue word and no `alignment` word**
   (§19.1: the prologue is exactly `magic`, `build_version` and `byte_order`),
   so two clauses of §7's list are absent here rather than reordered, and the
   values that name them never fire for a block. A count past the maximum is checked HERE as well as at
@@ -13124,20 +13160,26 @@ schema name, as everywhere else in that backend.
   validate and nothing to fix up. On any failure it returns false and points
   at nothing — §7's shape, for §7's reason. **And it NAMES the failure in the
   same `TableRefuseReason` a cook's `Open` fills** (§7), first failing clause
-  first, in the order above: `not_a_cook` where the magic is neither this
-  build's block constant nor its byte reversal, `foreign_order`,
-  `wrong_build_version`, `truncated` where the used extent runs past the
-  `bytes` the caller passed, `bad_layout` for a pitch, a count, an offset or an
-  extent that disagrees with this build's or leaves the block, and
-  `unaligned_base` last. `reserved_not_zero` and `bad_alignment` never fire,
+  first, in the order the arithmetic forces: `not_a_cook` where the magic is
+  neither this build's block constant nor its byte reversal, `foreign_order`,
+  `wrong_build_version`, then `bad_layout` for a pitch, a count, an offset or
+  an extent that disagrees with this build's or leaves the block, then
+  `truncated` where the used extent runs past the `bytes` the caller passed,
+  and `unaligned_base` last. **THE ARRAYS ARE READ BEFORE THE USED EXTENT,
+  because the used extent is DERIVED FROM THEM**: a block whose triples do not
+  agree with this build has no trustworthy `used` to compare against `bytes`,
+  so the per-array clauses answer first and `truncated` speaks only for a
+  layout that already agrees. `reserved_not_zero` and `bad_alignment` never fire,
   for the reason above. One enum serves both
   accelerators because a consumer that falls back from either falls back the
   same way, and two vocabularies would have said the same things twice.
 
-  **BACKEND STATUS: OWED, not emitted**, on the terms §3.3 and §6.6 take.
-  `<Name>BlockOpen` returns a bare `bool` today and names no reason, exactly
-  as a cook's `Open` returns a bare null (§7). Owed as schema#523, and this
-  line is deleted by the implementation PR that lands the behavior.
+  **The C++ reference carries it**, `bool <Name>BlockOpen( <Name>Block &
+  block, void * base, int64_t bytes, TableRefuseReason * reason = NULL )`,
+  written on the refusal path only, and every prologue word is read bytewise
+  so that the base's alignment can be the last clause. A block whose bytes
+  are fewer than its prologue answers `truncated`, and a null base
+  `unaligned_base`, on the readings §7 gives those two.
 - **An array is ITERATED, not indexed by hand.** The accessor yields a
   reference to each row where it lies, at the pitch the instance gives, for
   `count` rows — a range-for in C++, an enumerator in C#, the equivalent per

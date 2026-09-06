@@ -1066,9 +1066,6 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #525: retain-unknown, the two report counters, and the conformance rows.
 - #522: the `wstring` kind `33` on the id-table wire, `*wstring`, the cooked
   storage, the text row and the table-form goldens (SPEC.md §4.12).
-- #523: the `widened` counter and its two integer ladders, the
-  `TableRefuseReason` enum on `Open`, `BlockOpen` and `LoadMeasure`, and `//`
-  and `/* */` comments accepted by the text form's reader.
 - #523: the unbounded array, `[]T` and `[]*T`, its refusals and the
   `list_migrates` golden that pins "the same bytes" as `[..N]T`
   (SPEC-TABLES.md §2.9).

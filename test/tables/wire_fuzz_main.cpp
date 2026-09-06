@@ -12,7 +12,7 @@
 //        u8 form, the WIRE's own form byte (§3, §3.3): 1 a file, 2 a message
 //   out: one byte per root — 1 when this leg has a codec for it, else 0
 //   in:  per mutant: u32 roster index, u32 length, the bytes; EOF ends it
-//   out: per mutant: u8 loaded; i32 unknown, kind_mismatch, clamped,
+//   out: per mutant: u8 loaded; i32 unknown, kind_mismatch, widened, clamped,
 //        duplicate; u8 malformed; u8 refused; i64 measure; i64 saved length (-1 when Save
 //        refused the value), the saved bytes
 //
@@ -65,7 +65,7 @@
 struct Reply
 {
     bool loaded;
-    int32_t unknown, kind_mismatch, clamped, duplicate;
+    int32_t unknown, kind_mismatch, widened, clamped, duplicate;
     bool malformed;
     bool refused; // the VERDICT, not a counter (docs/SPEC-TABLES.md §3)
     int64_t measure;
@@ -78,6 +78,7 @@ static void copy_report( const T & from, Reply & to )
 {
     to.unknown = from.unknown;
     to.kind_mismatch = from.kind_mismatch;
+    to.widened = from.widened;
     to.clamped = from.clamped;
     to.duplicate = from.duplicate;
     to.malformed = from.malformed;
@@ -123,17 +124,20 @@ struct Fixed
 
 // one VARIABLE-class root: LoadMeasure sizes the region, Load fills it and
 // hands back the root, Measure and Save walk the region
-template <typename T, typename Report, typename Allocator>
+// Reason is the unit's own TableRefuseReason (docs/SPEC-TABLES.md §6.5), which
+// every LoadMeasure takes as a trailing out-parameter. A mutant asks for none
+// of it: the refusal reason has its own conformance surface (§7).
+template <typename T, typename Report, typename Allocator, typename Reason>
 struct Variable
 {
-    template <int64_t ( *load_measure )( const uint8_t *, int64_t, int64_t * ),
+    template <int64_t ( *load_measure )( const uint8_t *, int64_t, int64_t *, Reason * ),
               const T * ( *load )( uint8_t *, int64_t, const uint8_t *, int64_t, Report * ),
               int64_t ( *measure )( const T *, Allocator ),
               int64_t ( *save )( const T *, uint8_t *, int64_t, Allocator ),
               Allocator ( *default_allocator )()>
     static void run( const uint8_t * wire, int64_t bytes, Reply & reply )
     {
-        int64_t need = load_measure( wire, bytes, NULL );
+        int64_t need = load_measure( wire, bytes, NULL, NULL );
         reply.measure = need;
         uint8_t * region = (uint8_t *) malloc( need > 0 ? (size_t) need : 1 );
         Report report;
@@ -158,7 +162,7 @@ struct Variable
 #define FIXED( unit_key, ns, type ) \
     { unit_key, #type, 1, Fixed<ns::type, ns::TableReport>::run<ns::type##Load, ns::type##Measure, ns::type##Save> }
 #define VARIABLE( unit_key, ns, type ) \
-    { unit_key, #type, 1, Variable<ns::type, ns::TableReport, ns::TableAllocator>::run<ns::type##LoadMeasure, ns::type##Load, ns::type##Measure, ns::type##Save, ns::TableDefaultAllocator> }
+    { unit_key, #type, 1, Variable<ns::type, ns::TableReport, ns::TableAllocator, ns::TableRefuseReason>::run<ns::type##LoadMeasure, ns::type##Load, ns::type##Measure, ns::type##Save, ns::TableDefaultAllocator> }
 
 // THE MESSAGE FORM's roots (docs/SPEC-TABLES.md §3.3). The connection's table
 // is this unit's own announcement, read once through the same AnnounceRead a
@@ -409,6 +413,7 @@ int main()
         fwrite( &loaded, 1, 1, stdout );
         write_i32( reply.unknown );
         write_i32( reply.kind_mismatch );
+        write_i32( reply.widened );
         write_i32( reply.clamped );
         write_i32( reply.duplicate );
         fwrite( &malformed, 1, 1, stdout );

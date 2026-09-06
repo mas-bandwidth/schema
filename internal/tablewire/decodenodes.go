@@ -150,6 +150,13 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 	st.nodes = make([]Node, len(records))
 	for i, rec := range records {
 		if kind, ok := blobKind[rec.TypeId]; ok {
+			if kind == ir.TString && !textValid(rec.Body) {
+				// A TEXT BLOB'S CONTENT IS REFUSED ON THE SAME TERMS as a kind
+				// 12 payload (§3.1): the record is malformed, and every slot
+				// naming it reads null, which is what an empty node resolves to
+				report.Malformed = true
+				continue
+			}
 			st.nodes[i] = Node{Blob: &tabletext.Blob{Data: append([]byte(nil), rec.Body...)}, Kind: kind}
 			continue
 		}

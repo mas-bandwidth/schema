@@ -93,6 +93,12 @@ struct TableReport
 {
     int32_t unknown = 0;       // unknown field ids skipped (newer data)
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
+    // a kind that GREW since the writer (docs/SPEC-TABLES.md §4): an integer
+    // kind read into a wider one of the same signedness, or f32 into f64,
+    // decoded EXACTLY. One count per field or per map. It is the one counter
+    // that names no loss: the bytes were not the shape this reader declares,
+    // and the number survived.
+    int32_t widened = 0;
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
     // a key the TEXT form saw twice: last wins, and the repeat is counted
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
@@ -111,16 +117,33 @@ struct TableReport
 };
 
 
-// WHY A MEASURE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5): a -1 from
-// LoadMeasure carries one of these as an out-parameter. A REFUSAL moves no
-// counter: nothing was decoded, so there is nothing to report, and the reason
-// is where the answer lives. The two values here are the ones a map's and an
-// unbounded array's framing can raise. The rest of §6.5's vocabulary, the
-// accelerators' refusals, is owed with them (schema#523).
+// WHY A FILE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5, §7, §19.2): the
+// one vocabulary a cook's Open, a block's BlockOpen and a load measure's -1
+// share, because a caller asking "why can I not have this file" is
+// asking one question whichever call refused it. The FIRST failing clause names the
+// reason, in the order §7 enumerates, so one file answers one value in every
+// language. A refusal moves no counter, and a match writes nothing: the
+// out-parameter is touched on the refusal path only.
+//
+// It is not the MESSAGE FORM's vocabulary (TableMessageReason, §3.3): a caller
+// meeting one of these has been refused a FILE, by a header match or by a
+// measure.
 enum TableRefuseReason
 {
+    ok,                    // no clause failed: the only value beside a non-null root (§7)
+    not_a_cook,            // the magic is neither this build's constant nor its byte reversal, or the byte-order word contradicts the magic
+    foreign_order,         // the magic byte-reversed: a cook of the other byte order (§7.1)
+    wrong_build_version,   // the build_version word is not this build's (§20)
+    reserved_not_zero,     // a reserved header word is not zero (§7.1)
+    bad_alignment,         // the alignment word is not a power of two, is below eight, is above sixty-four, or is not a multiple of the root's own alignof
+    truncated,             // the part lengths against the caller's length, or a data part too short to hold the root
+    unaligned_base,        // the pointer the caller passed is not aligned for the region: the caller's defect, not the file's
+    bad_layout,            // BlockOpen (§19.2): a pitch, a count, an offset or an extent that disagrees with this build's or leaves the block
+    unknown_form,          // at a MEASURE (§3, §6.5): a form byte this build does not carry, refused before any read
     count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
-    count_over_extent_cap  // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
+    count_over_extent_cap, // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
+    blob_over_size_cap,    // a blob whose length is past the derived-size cap (§3.1, §11)
+    data_cycle             // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
 };
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
@@ -537,10 +560,137 @@ struct TableReader
                 if ( !getleb( n ) ) return false;
                 return room( n ) ? ( offset += (int64_t) n, true ) : false;
             }
+            // KIND 34 IS RESERVED FOR float16 AND IS NOT PART OF THIS MAJOR (§3):
+            // no writer emits it and no reader has a rule for it, so a reader
+            // meets it only as DAMAGE, exactly as it meets 35 or 200. A bare 34
+            // is a writer that ignored the escape kind 31.
+            case 34: return false;
         }
         return false;
     }
 };
+
+
+// WIDENING (docs/SPEC-TABLES.md §4): a payload under a kind BELOW the reader's
+// on the same ladder decodes exactly. The signed ladder is kinds 2, 3, 4, 5,
+// 18, the unsigned one 6, 7, 8, 9, 19, and 10 into 11 is the float rung. Every
+// other pair is a kind mismatch. The declared kind is a constant at every call
+// site, so this folds to one or two comparisons on the mismatch path and to
+// nothing on the matching one.
+inline bool TableKindWidens( uint8_t kind, uint8_t declared )
+{
+    switch ( declared )
+    {
+        case 3: case 4: case 5: return kind >= 2 && kind < declared;
+        case 18: return kind >= 2 && kind <= 5;
+        case 7: case 8: case 9: return kind >= 6 && kind < declared;
+        case 19: return kind >= 6 && kind <= 9;
+        case 11: return kind == 10;
+    }
+    return false;
+}
+
+// a fixed-width kind's payload width, for the one place the width is a
+// runtime fact: an arm whose kind byte the reader widens, whose L must be the
+// wire kind's own width (§3)
+inline int64_t TableKindWidth( uint8_t kind )
+{
+    switch ( kind )
+    {
+        case 1: case 2: case 6: case 20: case 25: return 1;
+        case 3: case 7: case 21: case 26: return 2;
+        case 4: case 8: case 10: case 22: case 27: return 4;
+        case 5: case 9: case 11: case 23: case 28: return 8;
+        case 18: case 19: case 24: case 29: return 16;
+    }
+    return 0;
+}
+
+// the payload of a kind on the SIGNED ladder (2 to 5), sign-extended to
+// sixty-four bits; false = the body cannot cover it, which is framing damage
+inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
+{
+    switch ( kind )
+    {
+        case 2: if ( !r.has( 1 ) ) { return false; } out = (int8_t) r.get8(); return true;
+        case 3: if ( !r.has( 2 ) ) { return false; } out = (int16_t) r.get16(); return true;
+        case 4: if ( !r.has( 4 ) ) { return false; } out = (int32_t) r.get32(); return true;
+        default: if ( !r.has( 8 ) ) { return false; } out = (int64_t) r.get64(); return true;
+    }
+}
+
+// the payload of a kind on the UNSIGNED ladder (6 to 9), zero-extended
+inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
+{
+    switch ( kind )
+    {
+        case 6: if ( !r.has( 1 ) ) { return false; } out = r.get8(); return true;
+        case 7: if ( !r.has( 2 ) ) { return false; } out = r.get16(); return true;
+        case 8: if ( !r.has( 4 ) ) { return false; } out = r.get32(); return true;
+        default: if ( !r.has( 8 ) ) { return false; } out = r.get64(); return true;
+    }
+}
+
+// f32 into f64, exact: a NaN's payload is data and rides on the bits, since
+// the hardware conversion would set the quiet bit (§4)
+inline double TableWidenF32( uint32_t bits )
+{
+    if ( ( bits & 0x7F800000u ) == 0x7F800000u && ( bits & 0x007FFFFFu ) != 0 )
+    {
+        const uint64_t sign = (uint64_t) ( bits >> 31 ) << 63;
+        const uint64_t payload = (uint64_t) ( bits & 0x007FFFFFu ) << 29;
+        const uint64_t nan_bits = sign | 0x7FF0000000000000ull | payload;
+        double d; memcpy( &d, &nan_bits, 8 ); return d;
+    }
+    float f; memcpy( &f, &bits, 4 ); return (double) f;
+}
+
+// ILL-FORMED TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): a kind 12 payload is
+// well-formed UTF-8 with no zero byte among its bytes, checked AS IT ARRIVES
+// and before the reader's own bound, because a payload that is not text is not
+// text at whatever length the reader would have kept. Rejects a zero byte, a
+// truncated sequence, a bare continuation, an overlong encoding, a surrogate
+// and a code point past U+10FFFF, which is SPEC.md §4.7's rule in this wire's
+// idiom: the field reads its declared default, one malformed counts, and the
+// parent reads on past L.
+inline bool TableUtf8Valid( const uint8_t * bytes, int64_t length )
+{
+    int64_t i = 0;
+    while ( i < length )
+    {
+        const uint8_t lead = bytes[i];
+        int64_t continuations;
+        uint32_t code_point;
+        if ( lead == 0 ) { return false; }
+        if ( lead < 0x80 ) { i++; continue; }
+        else if ( ( lead & 0xE0 ) == 0xC0 ) { continuations = 1; code_point = lead & 0x1F; }
+        else if ( ( lead & 0xF0 ) == 0xE0 ) { continuations = 2; code_point = lead & 0x0F; }
+        else if ( ( lead & 0xF8 ) == 0xF0 ) { continuations = 3; code_point = lead & 0x07; }
+        else { return false; }
+        if ( i + continuations >= length ) { return false; }
+        for ( int64_t k = 1; k <= continuations; k++ )
+        {
+            if ( ( bytes[i + k] & 0xC0 ) != 0x80 ) { return false; }
+            code_point = ( code_point << 6 ) | uint32_t( bytes[i + k] & 0x3F );
+        }
+        if ( continuations == 1 && code_point < 0x80 ) { return false; }
+        if ( continuations == 2 && ( code_point < 0x800 || ( code_point >= 0xD800 && code_point <= 0xDFFF ) ) ) { return false; }
+        if ( continuations == 3 && ( code_point < 0x10000 || code_point > 0x10FFFF ) ) { return false; }
+        i += 1 + continuations;
+    }
+    return true;
+}
+
+// A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
+// that fits within the bound, over a payload the check above already accepted,
+// so a clamp can never invent ill-formed storage.
+inline int64_t TableUtf8Clamp( const uint8_t * bytes, int64_t length, int64_t bound )
+{
+    if ( length <= bound ) { return length; }
+    int64_t cut = bound;
+    while ( cut > 0 && ( bytes[cut] & 0xC0 ) == 0x80 ) { cut--; }
+    return cut;
+}
 
 // The RESERVED node-table id, the one id the language holds back
 // (docs/SPEC-TABLES.md §3.1, §5). It rides in every unit, pointered or not,
@@ -2541,6 +2691,13 @@ static const uint64_t kTableNodeIndexRoot = 1;         // the body that hosts th
 // resolving through it yields NULL and can never fabricate the root.
 static const uint64_t kTableNodeAbsent = 0xFFFFFFFFFFFFFFFFull;
 
+// What a node's storage answers when the FRAMING ITSELF is refused rather than
+// merely unnameable: a count its L cannot carry, one above the int32 cap, or a
+// blob past the size cap (docs/SPEC-TABLES.md §3.1, §6.5). An unnameable type
+// id commands no storage and keeps its index. This one makes the whole measure
+// answer -1 with its reason.
+static const int64_t kTableNodeRefused = -2;
+
 // ---- the numbering, on the SAVE side ----
 //
 // One entry per reachable node in FIRST-VISIT order, so entry k is node index
@@ -3001,12 +3158,6 @@ inline bool TableMessageNodeTableSave( const Ctx & ctx, const TableNumbering & n
 namespace mapdemo {
 
 // ---- the NODE EXTENT: where a map's entries and a list's elements live (§2.8, §2.9) ----
-
-// What a node's storage answers when the FRAMING ITSELF is refused rather than
-// merely unnameable: a count its L cannot carry, or one above the int32 cap
-// (docs/SPEC-TABLES.md §6.5). An unnameable type id commands no storage and
-// keeps its index. This one makes the whole measure answer -1 with its reason.
-static const int64_t kTableNodeRefused = -2;
 
 // TableExtentCarve is a node's extent cursor, PRE-ORDER: a container's whole
 // array first, then, element by element in the container's own order, the
@@ -3866,22 +4017,47 @@ inline uint64_t table_cook_read64( const uint8_t * p )
 // refuse, and an addition that wrapped would be the defect the comparison
 // after it was supposed to catch. Nothing past length is read on any path,
 // including every refusing one.
-inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
+// A REFUSAL NAMES ITSELF, beside the null (docs/SPEC-TABLES.md §7): the reason
+// is written on the refusal path only, so a match costs nothing and a caller
+// that passed no out-parameter pays nothing.
+inline const uint8_t * TableCookRefuse( TableRefuseReason * reason, TableRefuseReason why )
 {
-    if ( bytes == NULL ) { return NULL; }
-    if ( length < (uint64_t) kTableCookHeaderBytes ) { return NULL; }
+    if ( reason != NULL ) { *reason = why; }
+    return NULL;
+}
+
+inline uint64_t table_cook_byteswap64( uint64_t v )
+{
+    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull )
+         | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull )
+         | ( v << 56 );
+}
+
+inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align, TableRefuseReason * reason )
+{
+    // a null buffer is the CALLER's defect, as an unaligned base is; a buffer
+    // shorter than the header has no header to read and is truncated
+    if ( bytes == NULL ) { return TableCookRefuse( reason, unaligned_base ); }
+    if ( length < (uint64_t) kTableCookHeaderBytes ) { return TableCookRefuse( reason, truncated ); }
     const uint8_t * raw = (const uint8_t *) bytes;
     // the MAGIC, bytewise and first: it is what establishes the byte order
     // every other header word is read in, so nothing else may be read before
     // it. A byte-reversed constant is a cook of the other order and refuses
-    // here, which is why the order never reaches a fix-up pass.
-    if ( table_cook_read64( raw ) != TableCookMagic ) { return NULL; }
-    if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return NULL; }
-    if ( table_cook_read64( raw + 8 ) != BuildVersion ) { return NULL; }
+    // here, which is why the order never reaches a fix-up pass; anything else
+    // is not a cook at all, a BLOCK's magic included.
+    const uint64_t magic = table_cook_read64( raw );
+    if ( magic != TableCookMagic )
+    {
+        return TableCookRefuse( reason, magic == table_cook_byteswap64( TableCookMagic ) ? foreign_order : not_a_cook );
+    }
+    // a byte-order word that contradicts its own magic describes no cook in
+    // EITHER order, so it shares the magic's own value (§7.1)
+    if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return TableCookRefuse( reason, not_a_cook ); }
+    if ( table_cook_read64( raw + 8 ) != BuildVersion ) { return TableCookRefuse( reason, wrong_build_version ); }
     // the RESERVED words: a non-zero one means a writer used a form this build
     // does not understand, and Open refuses rather than ignoring it.
-    if ( table_cook_read64( raw + 48 ) != 0 ) { return NULL; }
-    if ( table_cook_read64( raw + 56 ) != 0 ) { return NULL; }
+    if ( table_cook_read64( raw + 48 ) != 0 ) { return TableCookRefuse( reason, reserved_not_zero ); }
+    if ( table_cook_read64( raw + 56 ) != 0 ) { return TableCookRefuse( reason, reserved_not_zero ); }
     const uint64_t data_length = table_cook_read64( raw + 24 );
     const uint64_t attribution_length = table_cook_read64( raw + 32 );
     const uint64_t alignment = table_cook_read64( raw + 40 );
@@ -3890,36 +4066,38 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
     // region's alignment is a power of two, never below eight (the floor that
     // puts the attribution part on an eight-byte boundary without a second
     // padding rule) and never past the cap above; a word that is none of those
-    // rounds nothing and aligns nothing, so it is refused before it is used.
-    if ( alignment < 8 || alignment > TableCookMaxAlign ) { return NULL; }
-    if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return NULL; }
+    // rounds nothing and aligns nothing, so it is refused before it is used,
+    // which is why bad_alignment precedes both truncated clauses (§7).
+    if ( alignment < 8 || alignment > TableCookMaxAlign ) { return TableCookRefuse( reason, bad_alignment ); }
+    if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return TableCookRefuse( reason, bad_alignment ); }
     // and it must be an alignment THE ROOT CAN SIT AT, since the root is at
     // the region's base: both are powers of two, so "at least the root's"
     // is one division.
-    if ( ( alignment % root_align ) != 0 ) { return NULL; }
+    if ( ( alignment % root_align ) != 0 ) { return TableCookRefuse( reason, bad_alignment ); }
     // The DATA part begins at align_up( 64, alignment ). It is DERIVED and not
     // a header field, because a fact a reader computes is a fact two writers
     // cannot disagree about.
     const uint64_t data_offset = ( (uint64_t) kTableCookHeaderBytes + alignment - 1 ) & ~( alignment - 1 );
-    if ( length < data_offset ) { return NULL; }
+    if ( length < data_offset ) { return TableCookRefuse( reason, truncated ); }
     // the two part lengths against the length the caller passed. The whole
     // file is data_offset + data_length + attribution_length, and a length
     // that is not EXACTLY that refuses — truncation and trailing bytes are one
     // refusal, and both terms are subtracted rather than added so no sum can
     // carry.
-    if ( data_length > length - data_offset ) { return NULL; }
-    if ( attribution_length != length - data_offset - data_length ) { return NULL; }
+    if ( data_length > length - data_offset ) { return TableCookRefuse( reason, truncated ); }
+    if ( attribution_length != length - data_offset - data_length ) { return TableCookRefuse( reason, truncated ); }
     // the ROOT sits at the region's base, so the region has to hold it: a
     // shorter data part describes a root partly outside the file, which is the
     // one way a match-and-point reader could hand back storage it never
-    // received.
-    if ( data_length < root_size ) { return NULL; }
+    // received. It is the second clause on truncated (§7).
+    if ( data_length < root_size ) { return TableCookRefuse( reason, truncated ); }
     const uint8_t * base = raw + data_offset;
-    // the alignment of the BASE. The header pads the data part to the region's
+    // the alignment of the BASE, LAST, because it is the only clause that reads
+    // nothing out of the file. The header pads the data part to the region's
     // alignment, so a base an allocator or mmap gave you is already aligned —
     // mmap gives page alignment for free — and a base that is not is a caller's
-    // buffer this form cannot be read out of.
-    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return NULL; }
+    // buffer this form cannot be read out of: the caller's defect, not the file's.
+    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return TableCookRefuse( reason, unaligned_base ); }
     return base;
 }
 
@@ -4201,13 +4379,14 @@ struct FleetShipsEntryMessageKeyRead
     int64_t end;        // the bit after the entry's own zero reference
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline FleetShipsEntryMessageKeyRead FleetShipsEntryMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )
 {
-    FleetShipsEntryMessageKeyRead out = { NULL, 0, 0, false, false, false, false };
+    FleetShipsEntryMessageKeyRead out = { NULL, 0, 0, false, false, false, false, false };
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -4249,13 +4428,14 @@ struct FleetByIdEntryMessageKeyRead
     int64_t end;        // the bit after the entry's own zero reference
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline FleetByIdEntryMessageKeyRead FleetByIdEntryMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )
 {
-    FleetByIdEntryMessageKeyRead out = { 0, 0, false, false, false, false };
+    FleetByIdEntryMessageKeyRead out = { 0, 0, false, false, false, false, false };
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -4266,9 +4446,10 @@ inline FleetByIdEntryMessageKeyRead FleetByIdEntryMessageReadKey( TableBitReader
         if ( TableMessageReserved( entry.id ) ) { out.malformed = true; return out; }
         if ( entry.id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
         {
-            const bool kind_bad = entry.kind != 8; // THE KEY KIND IS THE READER'S DECLARATION
+            const bool kind_bad = entry.kind != 8 && !TableKindWidens( entry.kind, 8 ); // THE KEY KIND IS THE READER'S DECLARATION
             out.kind_bad = kind_bad;
             out.found = !kind_bad;
+            out.widened = entry.kind != 8;
             if ( kind_bad )
             {
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { out.malformed = true; return out; }
@@ -4298,13 +4479,14 @@ struct FleetLoadoutsEntryValueEntryMessageKeyRead
     int64_t end;        // the bit after the entry's own zero reference
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline FleetLoadoutsEntryValueEntryMessageKeyRead FleetLoadoutsEntryValueEntryMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )
 {
-    FleetLoadoutsEntryValueEntryMessageKeyRead out = { 0, 0, false, false, false, false };
+    FleetLoadoutsEntryValueEntryMessageKeyRead out = { 0, 0, false, false, false, false, false };
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -4348,13 +4530,14 @@ struct FleetLoadoutsEntryMessageKeyRead
     int64_t end;        // the bit after the entry's own zero reference
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline FleetLoadoutsEntryMessageKeyRead FleetLoadoutsEntryMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )
 {
-    FleetLoadoutsEntryMessageKeyRead out = { NULL, 0, 0, false, false, false, false };
+    FleetLoadoutsEntryMessageKeyRead out = { NULL, 0, 0, false, false, false, false, false };
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -4396,13 +4579,14 @@ struct FleetTiersEntryMessageKeyRead
     int64_t end;        // the bit after the entry's own zero reference
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline FleetTiersEntryMessageKeyRead FleetTiersEntryMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )
 {
-    FleetTiersEntryMessageKeyRead out = { 0, 0, false, false, false, false };
+    FleetTiersEntryMessageKeyRead out = { 0, 0, false, false, false, false, false };
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -4413,9 +4597,10 @@ inline FleetTiersEntryMessageKeyRead FleetTiersEntryMessageReadKey( TableBitRead
         if ( TableMessageReserved( entry.id ) ) { out.malformed = true; return out; }
         if ( entry.id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
         {
-            const bool kind_bad = entry.kind != 3; // THE KEY KIND IS THE READER'S DECLARATION
+            const bool kind_bad = entry.kind != 3 && !TableKindWidens( entry.kind, 3 ); // THE KEY KIND IS THE READER'S DECLARATION
             out.kind_bad = kind_bad;
             out.found = !kind_bad;
+            out.widened = entry.kind != 3;
             if ( kind_bad )
             {
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { out.malformed = true; return out; }
@@ -4591,13 +4776,14 @@ struct FleetLoadoutsEntryValueEntryKeyRead
     uint8_t key;
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline FleetLoadoutsEntryValueEntryKeyRead FleetLoadoutsEntryValueEntryReadKey( const uint8_t * body, int64_t length, const TableIdTable * ids )
 {
-    FleetLoadoutsEntryValueEntryKeyRead out = { 0, false, false, false, false };
+    FleetLoadoutsEntryValueEntryKeyRead out = { 0, false, false, false, false, false };
     TableReport scratch; // the scan's own framing damage is the MAP's, raised by the caller
     TableReader r( body, length, &scratch, ids );
     for ( ;; )
@@ -4665,13 +4851,14 @@ struct FleetShipsEntryKeyRead
     int32_t length;
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline FleetShipsEntryKeyRead FleetShipsEntryReadKey( const uint8_t * body, int64_t length, const TableIdTable * ids )
 {
-    FleetShipsEntryKeyRead out = { NULL, 0, false, false, false, false };
+    FleetShipsEntryKeyRead out = { NULL, 0, false, false, false, false, false };
     TableReport scratch; // the scan's own framing damage is the MAP's, raised by the caller
     TableReader r( body, length, &scratch, ids );
     for ( ;; )
@@ -4691,6 +4878,8 @@ inline FleetShipsEntryKeyRead FleetShipsEntryReadKey( const uint8_t * body, int6
             {
                 uint64_t key_len = 0;
                 if ( !r.getleb( key_len ) || !r.room( key_len ) ) { out.malformed = true; return out; }
+                // a key a string value would refuse as malformed makes the MAP malformed (§2.8, §3)
+                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) key_len ) ) { out.malformed = true; return out; }
                 out.key = (const char *) ( r.buffer + r.offset );
                 out.length = (int32_t) key_len;
                 out.over = key_len > 32; // KEYS NEVER CLAMP: the entry is dropped whole
@@ -4738,13 +4927,14 @@ struct FleetByIdEntryKeyRead
     uint32_t key;
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline FleetByIdEntryKeyRead FleetByIdEntryReadKey( const uint8_t * body, int64_t length, const TableIdTable * ids )
 {
-    FleetByIdEntryKeyRead out = { 0, false, false, false, false };
+    FleetByIdEntryKeyRead out = { 0, false, false, false, false, false };
     TableReport scratch; // the scan's own framing damage is the MAP's, raised by the caller
     TableReader r( body, length, &scratch, ids );
     for ( ;; )
@@ -4758,6 +4948,15 @@ inline FleetByIdEntryKeyRead FleetByIdEntryReadKey( const uint8_t * body, int64_
         uint8_t field_kind = r.get8();
         if ( field_id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
         {
+            if ( field_kind != 8 && TableKindWidens( field_kind, 8 ) )
+            {
+                out.widened = true;
+                out.found = true;
+                uint64_t widened_v = 0;
+                if ( !TableReadUnsignedAt( r, field_kind, widened_v ) ) { out.malformed = true; return out; }
+                out.key = (uint32_t) widened_v;
+                continue; // the LAST occurrence is the one §3 keeps
+            }
             out.kind_bad = field_kind != 8; // THE KEY KIND IS THE READER'S DECLARATION
             out.found = !out.kind_bad;
             if ( !out.kind_bad )
@@ -4814,13 +5013,14 @@ struct FleetLoadoutsEntryKeyRead
     int32_t length;
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline FleetLoadoutsEntryKeyRead FleetLoadoutsEntryReadKey( const uint8_t * body, int64_t length, const TableIdTable * ids )
 {
-    FleetLoadoutsEntryKeyRead out = { NULL, 0, false, false, false, false };
+    FleetLoadoutsEntryKeyRead out = { NULL, 0, false, false, false, false, false };
     TableReport scratch; // the scan's own framing damage is the MAP's, raised by the caller
     TableReader r( body, length, &scratch, ids );
     for ( ;; )
@@ -4840,6 +5040,8 @@ inline FleetLoadoutsEntryKeyRead FleetLoadoutsEntryReadKey( const uint8_t * body
             {
                 uint64_t key_len = 0;
                 if ( !r.getleb( key_len ) || !r.room( key_len ) ) { out.malformed = true; return out; }
+                // a key a string value would refuse as malformed makes the MAP malformed (§2.8, §3)
+                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) key_len ) ) { out.malformed = true; return out; }
                 out.key = (const char *) ( r.buffer + r.offset );
                 out.length = (int32_t) key_len;
                 out.over = key_len > 16; // KEYS NEVER CLAMP: the entry is dropped whole
@@ -4885,13 +5087,14 @@ struct FleetTiersEntryKeyRead
     int16_t key;
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline FleetTiersEntryKeyRead FleetTiersEntryReadKey( const uint8_t * body, int64_t length, const TableIdTable * ids )
 {
-    FleetTiersEntryKeyRead out = { 0, false, false, false, false };
+    FleetTiersEntryKeyRead out = { 0, false, false, false, false, false };
     TableReport scratch; // the scan's own framing damage is the MAP's, raised by the caller
     TableReader r( body, length, &scratch, ids );
     for ( ;; )
@@ -4905,6 +5108,15 @@ inline FleetTiersEntryKeyRead FleetTiersEntryReadKey( const uint8_t * body, int6
         uint8_t field_kind = r.get8();
         if ( field_id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
         {
+            if ( field_kind != 3 && TableKindWidens( field_kind, 3 ) )
+            {
+                out.widened = true;
+                out.found = true;
+                int64_t widened_v = 0;
+                if ( !TableReadSignedAt( r, field_kind, widened_v ) ) { out.malformed = true; return out; }
+                out.key = (int16_t) widened_v;
+                continue; // the LAST occurrence is the one §3 keeps
+            }
             out.kind_bad = field_kind != 3; // THE KEY KIND IS THE READER'S DECLARATION
             out.found = !out.kind_bad;
             if ( !out.kind_bad )
@@ -5001,8 +5213,11 @@ MAPDEMO_TABLE_INLINE bool ShipConfigLoadBody( TableReader & r, ShipConfig & valu
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
+                // default, one malformed counts, and the parent reads on past L
+                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.name[0] = 0; value.name_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 64 ) { keep = 64; r.report->clamped++; }
+                if ( keep > 64 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 64 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.name, r.buffer + r.offset, (size_t) keep );
                 value.name[keep] = 0;
                 value.name_length = (int32_t) keep;
@@ -5013,6 +5228,17 @@ MAPDEMO_TABLE_INLINE bool ShipConfigLoadBody( TableReader & r, ShipConfig & valu
             {
                 if ( kind != 4 )
                 {
+                    if ( TableKindWidens( kind, 4 ) )
+                    {
+                        // WIDENED (§4): a kind that grew since the writer decodes
+                        // exactly at its own width, the value lands, one widened counts
+                        int64_t widened_v = 0;
+                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
+                        int32_t decoded_v = (int32_t) widened_v;
+                        value.health = decoded_v;
+                        r.report->widened++;
+                        break;
+                    }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
@@ -5186,6 +5412,27 @@ inline bool ShipConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 4 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 4 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            else if ( width > 0 && width < 64 )
+                            {
+                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                            }
+                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
+                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
+                            int32_t decoded_v = (int32_t) decoded_wide;
+                            value.health = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -5355,6 +5602,17 @@ MAPDEMO_TABLE_INLINE bool ItemLoadBody( TableReader & r, Item & value )
             {
                 if ( kind != 4 )
                 {
+                    if ( TableKindWidens( kind, 4 ) )
+                    {
+                        // WIDENED (§4): a kind that grew since the writer decodes
+                        // exactly at its own width, the value lands, one widened counts
+                        int64_t widened_v = 0;
+                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
+                        int32_t decoded_v = (int32_t) widened_v;
+                        value.count = decoded_v;
+                        r.report->widened++;
+                        break;
+                    }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
@@ -5485,6 +5743,27 @@ inline bool ItemLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 4 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 4 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            else if ( width > 0 && width < 64 )
+                            {
+                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                            }
+                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
+                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
+                            int32_t decoded_v = (int32_t) decoded_wide;
+                            value.count = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -5666,8 +5945,11 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntryLoadBody( TableReader & r, FleetShipsEn
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
+                // default, one malformed counts, and the parent reads on past L
+                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 32 ) { keep = 32; r.report->clamped++; }
+                if ( keep > 32 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 32 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
                 value.key[keep] = 0;
                 value.key_length = (int32_t) keep;
@@ -5912,6 +6194,17 @@ inline bool FleetByIdEntryLoadBody( TableReader & r, const TableNodeMap & nodes,
             {
                 if ( kind != 8 )
                 {
+                    if ( TableKindWidens( kind, 8 ) )
+                    {
+                        // WIDENED (§4): a kind that grew since the writer decodes
+                        // exactly at its own width, the value lands, one widened counts
+                        uint64_t widened_v = 0;
+                        if ( !TableReadUnsignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
+                        uint32_t decoded_v = (uint32_t) widened_v;
+                        value.key = decoded_v;
+                        r.report->widened++;
+                        break;
+                    }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
@@ -6041,6 +6334,21 @@ inline bool FleetByIdEntryLoadMessageBody( TableBitReader & r, const TableVocabu
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 8 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 8 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                            uint32_t decoded_v = (uint32_t) decoded_wide;
+                            value.key = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -6422,8 +6730,11 @@ inline bool FleetLoadoutsEntryLoadBody( TableReader & r, const TableNodeMap & no
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
+                // default, one malformed counts, and the parent reads on past L
+                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
                 uint64_t keep = len;
-                if ( keep > 16 ) { keep = 16; r.report->clamped++; }
+                if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, (int64_t) len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
                 value.key[keep] = 0;
                 value.key_length = (int32_t) keep;
@@ -6456,6 +6767,7 @@ inline bool FleetLoadoutsEntryLoadBody( TableReader & r, const TableNodeMap & no
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint8_t last_key = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t elem_len = 0;
@@ -6463,6 +6775,8 @@ inline bool FleetLoadoutsEntryLoadBody( TableReader & r, const TableNodeMap & no
                         const uint8_t * elem_body = sub.buffer + sub.offset;
                         sub.offset += (int64_t) elem_len;
                         FleetLoadoutsEntryValueEntryKeyRead read = FleetLoadoutsEntryValueEntryReadKey( elem_body, (int64_t) elem_len, r.ids );
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; r.report->widened++; }
                         // THE KEY KIND IS CHECKED FIRST: a key read under another kind
                         // desynchronizes the rest of the scan, and the honest answer to a
                         // body whose key is not this reader's kind is the KIND, not the
@@ -6696,10 +7010,13 @@ inline bool FleetLoadoutsEntryLoadMessageBody( TableBitReader & r, const TableVo
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint8_t last_key = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         const FleetLoadoutsEntryValueEntryMessageKeyRead read = FleetLoadoutsEntryValueEntryMessageReadKey( r, vocabulary, index_bits );
                         if ( read.malformed ) { report->malformed = true; return false; }
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; report->widened++; }
                         if ( read.kind_bad )
                         {
                             // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
@@ -6811,6 +7128,17 @@ MAPDEMO_TABLE_INLINE bool FleetTiersEntryLoadBody( TableReader & r, FleetTiersEn
             {
                 if ( kind != 3 )
                 {
+                    if ( TableKindWidens( kind, 3 ) )
+                    {
+                        // WIDENED (§4): a kind that grew since the writer decodes
+                        // exactly at its own width, the value lands, one widened counts
+                        int64_t widened_v = 0;
+                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
+                        int16_t decoded_v = (int16_t) widened_v;
+                        value.key = decoded_v;
+                        r.report->widened++;
+                        break;
+                    }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
@@ -6932,6 +7260,27 @@ inline bool FleetTiersEntryLoadMessageBody( TableBitReader & r, const TableVocab
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 3 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 3 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            else if ( width > 0 && width < 64 )
+                            {
+                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                            }
+                            if ( decoded_wide < -32768ll ) { decoded_wide = -32768ll; report->clamped++; }
+                            if ( decoded_wide > 32767ll ) { decoded_wide = 32767ll; report->clamped++; }
+                            int16_t decoded_v = (int16_t) decoded_wide;
+                            value.key = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -7244,6 +7593,7 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t elem_len = 0;
@@ -7251,6 +7601,8 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                         const uint8_t * elem_body = sub.buffer + sub.offset;
                         sub.offset += (int64_t) elem_len;
                         FleetShipsEntryKeyRead read = FleetShipsEntryReadKey( elem_body, (int64_t) elem_len, r.ids );
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; r.report->widened++; }
                         // THE KEY KIND IS CHECKED FIRST: a key read under another kind
                         // desynchronizes the rest of the scan, and the honest answer to a
                         // body whose key is not this reader's kind is the KIND, not the
@@ -7328,6 +7680,7 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint32_t last_key = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t elem_len = 0;
@@ -7335,6 +7688,8 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                         const uint8_t * elem_body = sub.buffer + sub.offset;
                         sub.offset += (int64_t) elem_len;
                         FleetByIdEntryKeyRead read = FleetByIdEntryReadKey( elem_body, (int64_t) elem_len, r.ids );
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; r.report->widened++; }
                         // THE KEY KIND IS CHECKED FIRST: a key read under another kind
                         // desynchronizes the rest of the scan, and the honest answer to a
                         // body whose key is not this reader's kind is the KIND, not the
@@ -7432,6 +7787,7 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t elem_len = 0;
@@ -7439,6 +7795,8 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                         const uint8_t * elem_body = sub.buffer + sub.offset;
                         sub.offset += (int64_t) elem_len;
                         FleetLoadoutsEntryKeyRead read = FleetLoadoutsEntryReadKey( elem_body, (int64_t) elem_len, r.ids );
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; r.report->widened++; }
                         // THE KEY KIND IS CHECKED FIRST: a key read under another kind
                         // desynchronizes the rest of the scan, and the honest answer to a
                         // body whose key is not this reader's kind is the KIND, not the
@@ -7516,6 +7874,7 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     int16_t last_key = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t elem_len = 0;
@@ -7523,6 +7882,8 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                         const uint8_t * elem_body = sub.buffer + sub.offset;
                         sub.offset += (int64_t) elem_len;
                         FleetTiersEntryKeyRead read = FleetTiersEntryReadKey( elem_body, (int64_t) elem_len, r.ids );
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; r.report->widened++; }
                         // THE KEY KIND IS CHECKED FIRST: a key read under another kind
                         // desynchronizes the rest of the scan, and the honest answer to a
                         // body whose key is not this reader's kind is the KIND, not the
@@ -7862,10 +8223,13 @@ inline bool FleetLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         const FleetShipsEntryMessageKeyRead read = FleetShipsEntryMessageReadKey( r, vocabulary, index_bits );
                         if ( read.malformed ) { report->malformed = true; return false; }
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; report->widened++; }
                         if ( read.kind_bad )
                         {
                             // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
@@ -7921,10 +8285,13 @@ inline bool FleetLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint32_t last_key = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         const FleetByIdEntryMessageKeyRead read = FleetByIdEntryMessageReadKey( r, vocabulary, index_bits );
                         if ( read.malformed ) { report->malformed = true; return false; }
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; report->widened++; }
                         if ( read.kind_bad )
                         {
                             // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
@@ -7998,10 +8365,13 @@ inline bool FleetLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         const FleetLoadoutsEntryMessageKeyRead read = FleetLoadoutsEntryMessageReadKey( r, vocabulary, index_bits );
                         if ( read.malformed ) { report->malformed = true; return false; }
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; report->widened++; }
                         if ( read.kind_bad )
                         {
                             // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
@@ -8057,10 +8427,13 @@ inline bool FleetLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     int16_t last_key = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         const FleetTiersEntryMessageKeyRead read = FleetTiersEntryMessageReadKey( r, vocabulary, index_bits );
                         if ( read.malformed ) { report->malformed = true; return false; }
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; report->widened++; }
                         if ( read.kind_bad )
                         {
                             // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
@@ -9459,12 +9832,13 @@ inline bool FleetBuilder::Lock()
 // FleetNodeStorage: the region bytes one record commands, or -1 for a type id
 // this build cannot name — which keeps its index and reads null. A BYTE
 // BUFFER's record commands its header and its bytes (docs/SPEC-TABLES.md §2.5),
-// which is the one answer the record's LENGTH decides.
+// which is the one answer the record's LENGTH decides, and a blob past the
+// size cap answers kTableNodeRefused with its reason (§3.1, §6.5).
 // A MAP'S ENTRIES RIDE IN THEIR HOLDER'S EXTENT (docs/SPEC-TABLES.md §2.8),
 // so a record's storage is its type's PLUS N x sizeof( Entry ) at every
 // depth, summed from the FRAMING: N is framing and not a value, and this
 // reads no field. kTableNodeRefused is a wire whose N its L cannot carry.
-inline int64_t FleetNodeStorage( uint64_t type_id, int64_t length )
+inline int64_t FleetNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
     switch ( type_id )
@@ -9472,6 +9846,7 @@ inline int64_t FleetNodeStorage( uint64_t type_id, int64_t length )
         case 0x758252d2d1b14f0dull: return TableAlignUp64( (int64_t) sizeof( ShipConfig ) ); // ShipConfig
         default: break;
     }
+    (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
 
@@ -9526,7 +9901,8 @@ inline void FleetNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap
     carve.worker = nodes.worker;
     if ( carve.worker == NULL )
     {
-        const int64_t storage = FleetNodeStorage( type_id, r.size );
+        TableRefuseReason reason = count_over_length; // pass one already refused what this could refuse
+        const int64_t storage = FleetNodeStorage( type_id, r.size, reason );
         const int64_t record = storage > 0 ? FleetNodeRecordBytes( type_id ) : 0;
         carve.at = at + record;
         carve.left = storage > record ? storage - record : 0;
@@ -9977,7 +10353,11 @@ inline int64_t FleetLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
     TableReport ignored;
     TableIdTable ids_table;
     int64_t body_bytes = 0;
-    if ( TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes ) != TableOpenOk ) { return -1; }
+    // a FORM BYTE this build does not carry is refused by name (§3, §6.5);
+    // a trailer that cannot be read whole is damage and names no reason
+    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
+    if ( verdict == TableOpenRefused ) { if ( reason_out != NULL ) { *reason_out = unknown_form; } return -1; }
+    if ( verdict != TableOpenOk ) { return -1; }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY
     // IS MALFORMED (docs/SPEC-TABLES.md §3): the two ends of the file have
     // met, nothing is decoded, and no region is sized from it.
@@ -9996,8 +10376,8 @@ inline int64_t FleetLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
     while ( TableNodeScanNext( scan, type_id, body, length ) )
     {
         records++;
-        int64_t storage = FleetNodeStorage( type_id, length );
-        if ( storage == kTableNodeRefused ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; } // an N the record's framing cannot carry (§2.8, §2.9)
+        int64_t storage = FleetNodeStorage( type_id, length, reason );
+        if ( storage == kTableNodeRefused ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; } // an N the record's framing cannot carry, or a blob past the cap (§2.8, §2.9, §3.1)
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -10052,7 +10432,7 @@ inline const Fleet * FleetLoad( uint8_t * region, int64_t region_bytes, const ui
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             records++;
-            int64_t storage = FleetNodeStorage( type_id, length );
+            int64_t storage = FleetNodeStorage( type_id, length, reason );
             if ( storage == kTableNodeRefused ) { out->malformed = true; return NULL; }
             if ( storage > 0 ) { data += storage; }
         }
@@ -10079,7 +10459,7 @@ inline const Fleet * FleetLoad( uint8_t * region, int64_t region_bytes, const ui
         int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
-            int64_t storage = FleetNodeStorage( type_id, length );
+            int64_t storage = FleetNodeStorage( type_id, length, reason );
             if ( storage <= 0 )
             {
                 // a record whose type id this build cannot name KEEPS ITS
@@ -10237,8 +10617,13 @@ inline bool FleetLoadBuilder( FleetBuilder & builder, const uint8_t * wire_file,
 // ShipConfigOpen: match the header and POINT. On a match the bytes ARE what this
 // build wrote, in this build's layout and this build's byte order, so there
 // is nothing to validate and nothing to fix up and the root comes back as it
-// lies. On ANY refusal it returns NULL and the caller falls back to a wire
-// load, which is the path that carries every version.
+// lies. On ANY refusal it returns NULL and NAMES the refusal in the caller's
+// TableRefuseReason, the first failing clause in §7's order (a wrong build
+// version is a re-cook, a foreign order a cross-endian cook, a truncated
+// file a bad download, an unaligned base the caller's own buffer), and the
+// caller falls back to a wire load, which is the path that carries every
+// version. The reason is written on the refusal path only; a caller that
+// passes nothing gets the null alone.
 //
 // It is O(1) IN THE FILE'S SIZE — the header and nothing per node — so a one
 // megabyte cook and a one gigabyte cook open in the same time, and a mapped
@@ -10254,16 +10639,21 @@ inline bool FleetLoadBuilder( FleetBuilder & builder, const uint8_t * wire_file,
 // file whose provenance a person doubts is schema cook-check, offline,
 // over the ATTRIBUTION part beside the data — a person's decision, never a
 // parameter on a load.
-inline const ShipConfig * ShipConfigOpen( const void * bytes, uint64_t length )
+inline const ShipConfig * ShipConfigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const ShipConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( ShipConfig ), (uint64_t) alignof( ShipConfig ) );
+    return (const ShipConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( ShipConfig ), (uint64_t) alignof( ShipConfig ), reason );
 }
 
 // ItemOpen: match the header and POINT. On a match the bytes ARE what this
 // build wrote, in this build's layout and this build's byte order, so there
 // is nothing to validate and nothing to fix up and the root comes back as it
-// lies. On ANY refusal it returns NULL and the caller falls back to a wire
-// load, which is the path that carries every version.
+// lies. On ANY refusal it returns NULL and NAMES the refusal in the caller's
+// TableRefuseReason, the first failing clause in §7's order (a wrong build
+// version is a re-cook, a foreign order a cross-endian cook, a truncated
+// file a bad download, an unaligned base the caller's own buffer), and the
+// caller falls back to a wire load, which is the path that carries every
+// version. The reason is written on the refusal path only; a caller that
+// passes nothing gets the null alone.
 //
 // It is O(1) IN THE FILE'S SIZE — the header and nothing per node — so a one
 // megabyte cook and a one gigabyte cook open in the same time, and a mapped
@@ -10279,16 +10669,21 @@ inline const ShipConfig * ShipConfigOpen( const void * bytes, uint64_t length )
 // file whose provenance a person doubts is schema cook-check, offline,
 // over the ATTRIBUTION part beside the data — a person's decision, never a
 // parameter on a load.
-inline const Item * ItemOpen( const void * bytes, uint64_t length )
+inline const Item * ItemOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Item *) TableCookOpen( bytes, length, (uint64_t) sizeof( Item ), (uint64_t) alignof( Item ) );
+    return (const Item *) TableCookOpen( bytes, length, (uint64_t) sizeof( Item ), (uint64_t) alignof( Item ), reason );
 }
 
 // FleetOpen: match the header and POINT. On a match the bytes ARE what this
 // build wrote, in this build's layout and this build's byte order, so there
 // is nothing to validate and nothing to fix up and the root comes back as it
-// lies. On ANY refusal it returns NULL and the caller falls back to a wire
-// load, which is the path that carries every version.
+// lies. On ANY refusal it returns NULL and NAMES the refusal in the caller's
+// TableRefuseReason, the first failing clause in §7's order (a wrong build
+// version is a re-cook, a foreign order a cross-endian cook, a truncated
+// file a bad download, an unaligned base the caller's own buffer), and the
+// caller falls back to a wire load, which is the path that carries every
+// version. The reason is written on the refusal path only; a caller that
+// passes nothing gets the null alone.
 //
 // It is O(1) IN THE FILE'S SIZE — the header and nothing per node — so a one
 // megabyte cook and a one gigabyte cook open in the same time, and a mapped
@@ -10305,9 +10700,9 @@ inline const Item * ItemOpen( const void * bytes, uint64_t length )
 // file whose provenance a person doubts is schema cook-check, offline,
 // over the ATTRIBUTION part beside the data — a person's decision, never a
 // parameter on a load.
-inline const Fleet * FleetOpen( const void * bytes, uint64_t length )
+inline const Fleet * FleetOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Fleet *) TableCookOpen( bytes, length, (uint64_t) sizeof( Fleet ), (uint64_t) alignof( Fleet ) );
+    return (const Fleet *) TableCookOpen( bytes, length, (uint64_t) sizeof( Fleet ), (uint64_t) alignof( Fleet ), reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

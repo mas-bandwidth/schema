@@ -453,8 +453,12 @@ func tableHeader(t *testing.T, src string) string {
 // included (docs/SPEC-TABLES.md §16.1), and <cstdlib> is one of the text form's
 // three number-conversion includes rather than the arena's — which is why it
 // left this list when the walk landed.
+// TableRefuseReason IS SANCTIONED and is stripped before the scan: it is the
+// FORM's vocabulary rather than the pointer machinery's, since every unit's
+// cook Open names its refusal in it (docs/SPEC-TABLES.md §7, §11), and
+// `TableRef`, the pointer handle, is a PREFIX of it.
 func TestZeroCostForValueOnlyTables(t *testing.T) {
-	header := tableHeader(t, tableSrc)
+	header := strings.ReplaceAll(tableHeader(t, tableSrc), "TableRefuseReason", "")
 	for _, leak := range []string{
 		"TableArena", "TableSlot", "TableWorker", "TableRef", "TableRegion",
 		"kTableSegment", "kTableSlab", "kTableMaxDepth", "is_pointer", "variable",

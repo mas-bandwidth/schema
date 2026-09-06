@@ -94,6 +94,12 @@ struct TableReport
 {
     int32_t unknown = 0;       // unknown field ids skipped (newer data)
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
+    // a kind that GREW since the writer (docs/SPEC-TABLES.md §4): an integer
+    // kind read into a wider one of the same signedness, or f32 into f64,
+    // decoded EXACTLY. One count per field or per map. It is the one counter
+    // that names no loss: the bytes were not the shape this reader declares,
+    // and the number survived.
+    int32_t widened = 0;
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
     // a key the TEXT form saw twice: last wins, and the repeat is counted
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
@@ -112,16 +118,33 @@ struct TableReport
 };
 
 
-// WHY A MEASURE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5): a -1 from
-// LoadMeasure carries one of these as an out-parameter. A REFUSAL moves no
-// counter: nothing was decoded, so there is nothing to report, and the reason
-// is where the answer lives. The two values here are the ones a map's and an
-// unbounded array's framing can raise. The rest of §6.5's vocabulary, the
-// accelerators' refusals, is owed with them (schema#523).
+// WHY A FILE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5, §7, §19.2): the
+// one vocabulary a cook's Open, a block's BlockOpen and a load measure's -1
+// share, because a caller asking "why can I not have this file" is
+// asking one question whichever call refused it. The FIRST failing clause names the
+// reason, in the order §7 enumerates, so one file answers one value in every
+// language. A refusal moves no counter, and a match writes nothing: the
+// out-parameter is touched on the refusal path only.
+//
+// It is not the MESSAGE FORM's vocabulary (TableMessageReason, §3.3): a caller
+// meeting one of these has been refused a FILE, by a header match or by a
+// measure.
 enum TableRefuseReason
 {
+    ok,                    // no clause failed: the only value beside a non-null root (§7)
+    not_a_cook,            // the magic is neither this build's constant nor its byte reversal, or the byte-order word contradicts the magic
+    foreign_order,         // the magic byte-reversed: a cook of the other byte order (§7.1)
+    wrong_build_version,   // the build_version word is not this build's (§20)
+    reserved_not_zero,     // a reserved header word is not zero (§7.1)
+    bad_alignment,         // the alignment word is not a power of two, is below eight, is above sixty-four, or is not a multiple of the root's own alignof
+    truncated,             // the part lengths against the caller's length, or a data part too short to hold the root
+    unaligned_base,        // the pointer the caller passed is not aligned for the region: the caller's defect, not the file's
+    bad_layout,            // BlockOpen (§19.2): a pitch, a count, an offset or an extent that disagrees with this build's or leaves the block
+    unknown_form,          // at a MEASURE (§3, §6.5): a form byte this build does not carry, refused before any read
     count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
-    count_over_extent_cap  // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
+    count_over_extent_cap, // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
+    blob_over_size_cap,    // a blob whose length is past the derived-size cap (§3.1, §11)
+    data_cycle             // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
 };
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
@@ -538,10 +561,137 @@ struct TableReader
                 if ( !getleb( n ) ) return false;
                 return room( n ) ? ( offset += (int64_t) n, true ) : false;
             }
+            // KIND 34 IS RESERVED FOR float16 AND IS NOT PART OF THIS MAJOR (§3):
+            // no writer emits it and no reader has a rule for it, so a reader
+            // meets it only as DAMAGE, exactly as it meets 35 or 200. A bare 34
+            // is a writer that ignored the escape kind 31.
+            case 34: return false;
         }
         return false;
     }
 };
+
+
+// WIDENING (docs/SPEC-TABLES.md §4): a payload under a kind BELOW the reader's
+// on the same ladder decodes exactly. The signed ladder is kinds 2, 3, 4, 5,
+// 18, the unsigned one 6, 7, 8, 9, 19, and 10 into 11 is the float rung. Every
+// other pair is a kind mismatch. The declared kind is a constant at every call
+// site, so this folds to one or two comparisons on the mismatch path and to
+// nothing on the matching one.
+inline bool TableKindWidens( uint8_t kind, uint8_t declared )
+{
+    switch ( declared )
+    {
+        case 3: case 4: case 5: return kind >= 2 && kind < declared;
+        case 18: return kind >= 2 && kind <= 5;
+        case 7: case 8: case 9: return kind >= 6 && kind < declared;
+        case 19: return kind >= 6 && kind <= 9;
+        case 11: return kind == 10;
+    }
+    return false;
+}
+
+// a fixed-width kind's payload width, for the one place the width is a
+// runtime fact: an arm whose kind byte the reader widens, whose L must be the
+// wire kind's own width (§3)
+inline int64_t TableKindWidth( uint8_t kind )
+{
+    switch ( kind )
+    {
+        case 1: case 2: case 6: case 20: case 25: return 1;
+        case 3: case 7: case 21: case 26: return 2;
+        case 4: case 8: case 10: case 22: case 27: return 4;
+        case 5: case 9: case 11: case 23: case 28: return 8;
+        case 18: case 19: case 24: case 29: return 16;
+    }
+    return 0;
+}
+
+// the payload of a kind on the SIGNED ladder (2 to 5), sign-extended to
+// sixty-four bits; false = the body cannot cover it, which is framing damage
+inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
+{
+    switch ( kind )
+    {
+        case 2: if ( !r.has( 1 ) ) { return false; } out = (int8_t) r.get8(); return true;
+        case 3: if ( !r.has( 2 ) ) { return false; } out = (int16_t) r.get16(); return true;
+        case 4: if ( !r.has( 4 ) ) { return false; } out = (int32_t) r.get32(); return true;
+        default: if ( !r.has( 8 ) ) { return false; } out = (int64_t) r.get64(); return true;
+    }
+}
+
+// the payload of a kind on the UNSIGNED ladder (6 to 9), zero-extended
+inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
+{
+    switch ( kind )
+    {
+        case 6: if ( !r.has( 1 ) ) { return false; } out = r.get8(); return true;
+        case 7: if ( !r.has( 2 ) ) { return false; } out = r.get16(); return true;
+        case 8: if ( !r.has( 4 ) ) { return false; } out = r.get32(); return true;
+        default: if ( !r.has( 8 ) ) { return false; } out = r.get64(); return true;
+    }
+}
+
+// f32 into f64, exact: a NaN's payload is data and rides on the bits, since
+// the hardware conversion would set the quiet bit (§4)
+inline double TableWidenF32( uint32_t bits )
+{
+    if ( ( bits & 0x7F800000u ) == 0x7F800000u && ( bits & 0x007FFFFFu ) != 0 )
+    {
+        const uint64_t sign = (uint64_t) ( bits >> 31 ) << 63;
+        const uint64_t payload = (uint64_t) ( bits & 0x007FFFFFu ) << 29;
+        const uint64_t nan_bits = sign | 0x7FF0000000000000ull | payload;
+        double d; memcpy( &d, &nan_bits, 8 ); return d;
+    }
+    float f; memcpy( &f, &bits, 4 ); return (double) f;
+}
+
+// ILL-FORMED TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): a kind 12 payload is
+// well-formed UTF-8 with no zero byte among its bytes, checked AS IT ARRIVES
+// and before the reader's own bound, because a payload that is not text is not
+// text at whatever length the reader would have kept. Rejects a zero byte, a
+// truncated sequence, a bare continuation, an overlong encoding, a surrogate
+// and a code point past U+10FFFF, which is SPEC.md §4.7's rule in this wire's
+// idiom: the field reads its declared default, one malformed counts, and the
+// parent reads on past L.
+inline bool TableUtf8Valid( const uint8_t * bytes, int64_t length )
+{
+    int64_t i = 0;
+    while ( i < length )
+    {
+        const uint8_t lead = bytes[i];
+        int64_t continuations;
+        uint32_t code_point;
+        if ( lead == 0 ) { return false; }
+        if ( lead < 0x80 ) { i++; continue; }
+        else if ( ( lead & 0xE0 ) == 0xC0 ) { continuations = 1; code_point = lead & 0x1F; }
+        else if ( ( lead & 0xF0 ) == 0xE0 ) { continuations = 2; code_point = lead & 0x0F; }
+        else if ( ( lead & 0xF8 ) == 0xF0 ) { continuations = 3; code_point = lead & 0x07; }
+        else { return false; }
+        if ( i + continuations >= length ) { return false; }
+        for ( int64_t k = 1; k <= continuations; k++ )
+        {
+            if ( ( bytes[i + k] & 0xC0 ) != 0x80 ) { return false; }
+            code_point = ( code_point << 6 ) | uint32_t( bytes[i + k] & 0x3F );
+        }
+        if ( continuations == 1 && code_point < 0x80 ) { return false; }
+        if ( continuations == 2 && ( code_point < 0x800 || ( code_point >= 0xD800 && code_point <= 0xDFFF ) ) ) { return false; }
+        if ( continuations == 3 && ( code_point < 0x10000 || code_point > 0x10FFFF ) ) { return false; }
+        i += 1 + continuations;
+    }
+    return true;
+}
+
+// A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
+// that fits within the bound, over a payload the check above already accepted,
+// so a clamp can never invent ill-formed storage.
+inline int64_t TableUtf8Clamp( const uint8_t * bytes, int64_t length, int64_t bound )
+{
+    if ( length <= bound ) { return length; }
+    int64_t cut = bound;
+    while ( cut > 0 && ( bytes[cut] & 0xC0 ) == 0x80 ) { cut--; }
+    return cut;
+}
 
 // The RESERVED node-table id, the one id the language holds back
 // (docs/SPEC-TABLES.md §3.1, §5). It rides in every unit, pointered or not,
@@ -2432,6 +2582,13 @@ static const uint64_t kTableNodeIndexRoot = 1;         // the body that hosts th
 // resolving through it yields NULL and can never fabricate the root.
 static const uint64_t kTableNodeAbsent = 0xFFFFFFFFFFFFFFFFull;
 
+// What a node's storage answers when the FRAMING ITSELF is refused rather than
+// merely unnameable: a count its L cannot carry, one above the int32 cap, or a
+// blob past the size cap (docs/SPEC-TABLES.md §3.1, §6.5). An unnameable type
+// id commands no storage and keeps its index. This one makes the whole measure
+// answer -1 with its reason.
+static const int64_t kTableNodeRefused = -2;
+
 // ---- the numbering, on the SAVE side ----
 //
 // One entry per reachable node in FIRST-VISIT order, so entry k is node index
@@ -2892,12 +3049,6 @@ inline bool TableMessageNodeTableSave( const Ctx & ctx, const TableNumbering & n
 namespace armdemo {
 
 // ---- the NODE EXTENT: where a map's entries and a list's elements live (§2.8, §2.9) ----
-
-// What a node's storage answers when the FRAMING ITSELF is refused rather than
-// merely unnameable: a count its L cannot carry, or one above the int32 cap
-// (docs/SPEC-TABLES.md §6.5). An unnameable type id commands no storage and
-// keeps its index. This one makes the whole measure answer -1 with its reason.
-static const int64_t kTableNodeRefused = -2;
 
 // TableExtentCarve is a node's extent cursor, PRE-ORDER: a container's whole
 // array first, then, element by element in the container's own order, the
@@ -3605,22 +3756,47 @@ inline uint64_t table_cook_read64( const uint8_t * p )
 // refuse, and an addition that wrapped would be the defect the comparison
 // after it was supposed to catch. Nothing past length is read on any path,
 // including every refusing one.
-inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
+// A REFUSAL NAMES ITSELF, beside the null (docs/SPEC-TABLES.md §7): the reason
+// is written on the refusal path only, so a match costs nothing and a caller
+// that passed no out-parameter pays nothing.
+inline const uint8_t * TableCookRefuse( TableRefuseReason * reason, TableRefuseReason why )
 {
-    if ( bytes == NULL ) { return NULL; }
-    if ( length < (uint64_t) kTableCookHeaderBytes ) { return NULL; }
+    if ( reason != NULL ) { *reason = why; }
+    return NULL;
+}
+
+inline uint64_t table_cook_byteswap64( uint64_t v )
+{
+    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull )
+         | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull )
+         | ( v << 56 );
+}
+
+inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align, TableRefuseReason * reason )
+{
+    // a null buffer is the CALLER's defect, as an unaligned base is; a buffer
+    // shorter than the header has no header to read and is truncated
+    if ( bytes == NULL ) { return TableCookRefuse( reason, unaligned_base ); }
+    if ( length < (uint64_t) kTableCookHeaderBytes ) { return TableCookRefuse( reason, truncated ); }
     const uint8_t * raw = (const uint8_t *) bytes;
     // the MAGIC, bytewise and first: it is what establishes the byte order
     // every other header word is read in, so nothing else may be read before
     // it. A byte-reversed constant is a cook of the other order and refuses
-    // here, which is why the order never reaches a fix-up pass.
-    if ( table_cook_read64( raw ) != TableCookMagic ) { return NULL; }
-    if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return NULL; }
-    if ( table_cook_read64( raw + 8 ) != BuildVersion ) { return NULL; }
+    // here, which is why the order never reaches a fix-up pass; anything else
+    // is not a cook at all, a BLOCK's magic included.
+    const uint64_t magic = table_cook_read64( raw );
+    if ( magic != TableCookMagic )
+    {
+        return TableCookRefuse( reason, magic == table_cook_byteswap64( TableCookMagic ) ? foreign_order : not_a_cook );
+    }
+    // a byte-order word that contradicts its own magic describes no cook in
+    // EITHER order, so it shares the magic's own value (§7.1)
+    if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return TableCookRefuse( reason, not_a_cook ); }
+    if ( table_cook_read64( raw + 8 ) != BuildVersion ) { return TableCookRefuse( reason, wrong_build_version ); }
     // the RESERVED words: a non-zero one means a writer used a form this build
     // does not understand, and Open refuses rather than ignoring it.
-    if ( table_cook_read64( raw + 48 ) != 0 ) { return NULL; }
-    if ( table_cook_read64( raw + 56 ) != 0 ) { return NULL; }
+    if ( table_cook_read64( raw + 48 ) != 0 ) { return TableCookRefuse( reason, reserved_not_zero ); }
+    if ( table_cook_read64( raw + 56 ) != 0 ) { return TableCookRefuse( reason, reserved_not_zero ); }
     const uint64_t data_length = table_cook_read64( raw + 24 );
     const uint64_t attribution_length = table_cook_read64( raw + 32 );
     const uint64_t alignment = table_cook_read64( raw + 40 );
@@ -3629,36 +3805,38 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
     // region's alignment is a power of two, never below eight (the floor that
     // puts the attribution part on an eight-byte boundary without a second
     // padding rule) and never past the cap above; a word that is none of those
-    // rounds nothing and aligns nothing, so it is refused before it is used.
-    if ( alignment < 8 || alignment > TableCookMaxAlign ) { return NULL; }
-    if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return NULL; }
+    // rounds nothing and aligns nothing, so it is refused before it is used,
+    // which is why bad_alignment precedes both truncated clauses (§7).
+    if ( alignment < 8 || alignment > TableCookMaxAlign ) { return TableCookRefuse( reason, bad_alignment ); }
+    if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return TableCookRefuse( reason, bad_alignment ); }
     // and it must be an alignment THE ROOT CAN SIT AT, since the root is at
     // the region's base: both are powers of two, so "at least the root's"
     // is one division.
-    if ( ( alignment % root_align ) != 0 ) { return NULL; }
+    if ( ( alignment % root_align ) != 0 ) { return TableCookRefuse( reason, bad_alignment ); }
     // The DATA part begins at align_up( 64, alignment ). It is DERIVED and not
     // a header field, because a fact a reader computes is a fact two writers
     // cannot disagree about.
     const uint64_t data_offset = ( (uint64_t) kTableCookHeaderBytes + alignment - 1 ) & ~( alignment - 1 );
-    if ( length < data_offset ) { return NULL; }
+    if ( length < data_offset ) { return TableCookRefuse( reason, truncated ); }
     // the two part lengths against the length the caller passed. The whole
     // file is data_offset + data_length + attribution_length, and a length
     // that is not EXACTLY that refuses — truncation and trailing bytes are one
     // refusal, and both terms are subtracted rather than added so no sum can
     // carry.
-    if ( data_length > length - data_offset ) { return NULL; }
-    if ( attribution_length != length - data_offset - data_length ) { return NULL; }
+    if ( data_length > length - data_offset ) { return TableCookRefuse( reason, truncated ); }
+    if ( attribution_length != length - data_offset - data_length ) { return TableCookRefuse( reason, truncated ); }
     // the ROOT sits at the region's base, so the region has to hold it: a
     // shorter data part describes a root partly outside the file, which is the
     // one way a match-and-point reader could hand back storage it never
-    // received.
-    if ( data_length < root_size ) { return NULL; }
+    // received. It is the second clause on truncated (§7).
+    if ( data_length < root_size ) { return TableCookRefuse( reason, truncated ); }
     const uint8_t * base = raw + data_offset;
-    // the alignment of the BASE. The header pads the data part to the region's
+    // the alignment of the BASE, LAST, because it is the only clause that reads
+    // nothing out of the file. The header pads the data part to the region's
     // alignment, so a base an allocator or mmap gave you is already aligned —
     // mmap gives page alignment for free — and a base that is not is a caller's
-    // buffer this form cannot be read out of.
-    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return NULL; }
+    // buffer this form cannot be read out of: the caller's defect, not the file's.
+    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return TableCookRefuse( reason, unaligned_base ); }
     return base;
 }
 
@@ -4061,6 +4239,20 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                         {
                             if ( arm_kind != 4 )
                             {
+                                if ( TableKindWidens( arm_kind, 4 ) )
+                                {
+                                    // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
+                                    // that is not that width is the arm's own framing damage (§3)
+                                    if ( sub.size != TableKindWidth( arm_kind ) ) { value.inner.type = InnerType::None; r.report->malformed = true; break; }
+                                    memset( (void *) &value.inner.plain, 0, sizeof( value.inner.plain ) ); // selection establishes the arm (§2.6)
+                                    int64_t widened_v = 0;
+                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) ) { value.inner.type = InnerType::None; r.report->malformed = true; break; }
+                                    int32_t decoded_v = (int32_t) widened_v;
+                                    value.inner.plain = decoded_v;
+                                    value.inner.type = InnerType::Plain;
+                                    r.report->widened++;
+                                    break;
+                                }
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.inner.type = InnerType::None;
@@ -4263,6 +4455,29 @@ inline bool TwigLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             {
                                 if ( arm.kind != 4 || arm.elem_kind != 0 )
                                 {
+                                    if ( TableKindWidens( arm.kind, 4 ) )
+                                    {
+                                        value.inner.type = InnerType::Plain;
+                                        memset( (void *) &value.inner.plain, 0, sizeof( value.inner.plain ) ); // selection establishes the arm (§2.6)
+                                        {
+                                            const int64_t width_2 = arm.value_bits;
+                                            uint64_t raw_2 = 0;
+                                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
+                                            int64_t decoded_wide_2 = (int64_t) raw_2;
+                                            if ( arm.packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
+                                            else if ( width_2 > 0 && width_2 < 64 )
+                                            {
+                                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
+                                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
+                                            }
+                                            if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->clamped++; }
+                                            if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->clamped++; }
+                                            int32_t decoded_v_2 = (int32_t) decoded_wide_2;
+                                            value.inner.plain = decoded_v_2;
+                                        }
+                                        report->widened++;
+                                        break;
+                                    }
                                     value.inner.type = InnerType::None; report->kind_mismatch++;
                                     if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
                                     break;
@@ -4566,7 +4781,10 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                     {
                                         case 0x24ad84ada20208d5ull: // leaf
                                         {
-                                            if ( arm_inner_kind != 13 ) { value.outer.inner.type = InnerType::None; r.report->kind_mismatch++; break; }
+                                            if ( arm_inner_kind != 13 )
+                                            {
+                                                value.outer.inner.type = InnerType::None; r.report->kind_mismatch++; break;
+                                            }
                                             value.outer.inner.type = InnerType::Leaf;
                                             LeafLoadBody( arm_inner, nodes, value.outer.inner.leaf );
                                             if ( arm_inner.offset != arm_inner.size ) { value.outer.inner.type = InnerType::None; r.report->malformed = true; break; }
@@ -4574,7 +4792,24 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                         }
                                         case 0xfd4d194e1652b207ull: // plain
                                         {
-                                            if ( arm_inner_kind != 4 ) { value.outer.inner.type = InnerType::None; r.report->kind_mismatch++; break; }
+                                            if ( arm_inner_kind != 4 )
+                                            {
+                                                if ( TableKindWidens( arm_inner_kind, 4 ) )
+                                                {
+                                                    // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
+                                                    // that is not that width is the arm's own framing damage (§3)
+                                                    if ( arm_inner.size != TableKindWidth( arm_inner_kind ) ) { value.outer.inner.type = InnerType::None; r.report->malformed = true; break; }
+                                                    memset( (void *) &value.outer.inner.plain, 0, sizeof( value.outer.inner.plain ) ); // selection establishes the arm (§2.6)
+                                                    int64_t widened_v = 0;
+                                                    if ( !TableReadSignedAt( arm_inner, arm_inner_kind, widened_v ) ) { value.outer.inner.type = InnerType::None; r.report->malformed = true; break; }
+                                                    int32_t decoded_v = (int32_t) widened_v;
+                                                    value.outer.inner.plain = decoded_v;
+                                                    value.outer.inner.type = InnerType::Plain;
+                                                    r.report->widened++;
+                                                    break;
+                                                }
+                                                value.outer.inner.type = InnerType::None; r.report->kind_mismatch++; break;
+                                            }
                                             value.outer.inner.type = InnerType::Plain;
                                             if ( arm_inner.size != 4 ) { value.outer.inner.type = InnerType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                                             if ( !arm_inner.has( 4 ) ) { value.outer.inner.type = InnerType::None; r.report->malformed = true; break; }
@@ -4593,6 +4828,20 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                         {
                             if ( arm_kind != 4 )
                             {
+                                if ( TableKindWidens( arm_kind, 4 ) )
+                                {
+                                    // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
+                                    // that is not that width is the arm's own framing damage (§3)
+                                    if ( sub.size != TableKindWidth( arm_kind ) ) { value.outer.type = OuterType::None; r.report->malformed = true; break; }
+                                    memset( (void *) &value.outer.plain, 0, sizeof( value.outer.plain ) ); // selection establishes the arm (§2.6)
+                                    int64_t widened_v = 0;
+                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) ) { value.outer.type = OuterType::None; r.report->malformed = true; break; }
+                                    int32_t decoded_v = (int32_t) widened_v;
+                                    value.outer.plain = decoded_v;
+                                    value.outer.type = OuterType::Plain;
+                                    r.report->widened++;
+                                    break;
+                                }
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.outer.type = OuterType::None;
@@ -4643,7 +4892,37 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                     if ( !counted_ok ) { r.report->malformed = true; }
                     // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's
                     // element-kind rule: the field reads EMPTY and one kind_mismatch counts
-                    else if ( elem_kind != 4 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    else if ( elem_kind != 4 )
+                    {
+                        if ( !TableKindWidens( elem_kind, 4 ) ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                        r.report->widened++;
+                        // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
+                        // cannot fire on it. A count above the int32 storage cap is the
+                        // fill's refusal, and it moves no counter.
+                        TableListFill<int32_t> fill = TableListFillBegin( nodes, value.tail, count );
+                        if ( fill.refused ) { nodes.refused = true; return false; }
+                        if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
+                        // elements are BOUNDED by the field body: a count the length cannot
+                        // cover keeps the decoded prefix, flags malformed, and the parent
+                        // continues at the next field
+                        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        for ( uint64_t i = 0; i < count; i++ )
+                        {
+                            int32_t * slot = TableListFillNext( fill );
+                            if ( slot == NULL ) { r.report->malformed = true; break; } // the arena could not carve
+                            bool landed = false;
+                            do
+                            {
+                                int64_t widened_v = 0;
+                                if ( !TableReadSignedAt( sub, elem_kind, widened_v ) ) { r.report->malformed = true; break; }
+                                int32_t decoded_v = (int32_t) widened_v;
+                                ( *slot ) = decoded_v;
+                                landed = true;
+                            } while ( 0 );
+                            if ( !landed ) { TableListFillDrop( fill ); break; } // the element's own framing gave out before it decoded
+                        }
+                        TableListFillEnd( fill );
+                    }
                     else
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
@@ -4933,6 +5212,29 @@ inline bool NestLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                             {
                                                 if ( arm_2.kind != 4 || arm_2.elem_kind != 0 )
                                                 {
+                                                    if ( TableKindWidens( arm_2.kind, 4 ) )
+                                                    {
+                                                        value.outer.inner.type = InnerType::Plain;
+                                                        memset( (void *) &value.outer.inner.plain, 0, sizeof( value.outer.inner.plain ) ); // selection establishes the arm (§2.6)
+                                                        {
+                                                            const int64_t width_3 = arm_2.value_bits;
+                                                            uint64_t raw_3 = 0;
+                                                            if ( width_3 < 0 || !r.get( raw_3, width_3 ) ) { report->malformed = true; return false; }
+                                                            int64_t decoded_wide_3 = (int64_t) raw_3;
+                                                            if ( arm_2.packing == 1 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
+                                                            else if ( width_3 > 0 && width_3 < 64 )
+                                                            {
+                                                                const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
+                                                                if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
+                                                            }
+                                                            if ( decoded_wide_3 < -2147483648ll ) { decoded_wide_3 = -2147483648ll; report->clamped++; }
+                                                            if ( decoded_wide_3 > 2147483647ll ) { decoded_wide_3 = 2147483647ll; report->clamped++; }
+                                                            int32_t decoded_v_3 = (int32_t) decoded_wide_3;
+                                                            value.outer.inner.plain = decoded_v_3;
+                                                        }
+                                                        report->widened++;
+                                                        break;
+                                                    }
                                                     value.outer.inner.type = InnerType::None; report->kind_mismatch++;
                                                     if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
                                                     break;
@@ -4969,6 +5271,29 @@ inline bool NestLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             {
                                 if ( arm.kind != 4 || arm.elem_kind != 0 )
                                 {
+                                    if ( TableKindWidens( arm.kind, 4 ) )
+                                    {
+                                        value.outer.type = OuterType::Plain;
+                                        memset( (void *) &value.outer.plain, 0, sizeof( value.outer.plain ) ); // selection establishes the arm (§2.6)
+                                        {
+                                            const int64_t width_2 = arm.value_bits;
+                                            uint64_t raw_2 = 0;
+                                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
+                                            int64_t decoded_wide_2 = (int64_t) raw_2;
+                                            if ( arm.packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
+                                            else if ( width_2 > 0 && width_2 < 64 )
+                                            {
+                                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
+                                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
+                                            }
+                                            if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->clamped++; }
+                                            if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->clamped++; }
+                                            int32_t decoded_v_2 = (int32_t) decoded_wide_2;
+                                            value.outer.plain = decoded_v_2;
+                                        }
+                                        report->widened++;
+                                        break;
+                                    }
                                     value.outer.type = OuterType::None; report->kind_mismatch++;
                                     if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
                                     break;
@@ -5657,18 +5982,20 @@ inline bool TwigBuilder::Lock()
 // TwigNodeStorage: the region bytes one record commands, or -1 for a type id
 // this build cannot name — which keeps its index and reads null. A BYTE
 // BUFFER's record commands its header and its bytes (docs/SPEC-TABLES.md §2.5),
-// which is the one answer the record's LENGTH decides.
+// which is the one answer the record's LENGTH decides, and a blob past the
+// size cap answers kTableNodeRefused with its reason (§3.1, §6.5).
 // A MAP'S ENTRIES RIDE IN THEIR HOLDER'S EXTENT (docs/SPEC-TABLES.md §2.8),
 // so a record's storage is its type's PLUS N x sizeof( Entry ) at every
 // depth, summed from the FRAMING: N is framing and not a value, and this
 // reads no field. kTableNodeRefused is a wire whose N its L cannot carry.
-inline int64_t TwigNodeStorage( uint64_t type_id, int64_t length )
+inline int64_t TwigNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
     switch ( type_id )
     {
         default: break;
     }
+    (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
 
@@ -5722,7 +6049,8 @@ inline void TwigNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap 
     carve.worker = nodes.worker;
     if ( carve.worker == NULL )
     {
-        const int64_t storage = TwigNodeStorage( type_id, r.size );
+        TableRefuseReason reason = count_over_length; // pass one already refused what this could refuse
+        const int64_t storage = TwigNodeStorage( type_id, r.size, reason );
         const int64_t record = storage > 0 ? TwigNodeRecordBytes( type_id ) : 0;
         carve.at = at + record;
         carve.left = storage > record ? storage - record : 0;
@@ -6171,7 +6499,11 @@ inline int64_t TwigLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
     TableReport ignored;
     TableIdTable ids_table;
     int64_t body_bytes = 0;
-    if ( TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes ) != TableOpenOk ) { return -1; }
+    // a FORM BYTE this build does not carry is refused by name (§3, §6.5);
+    // a trailer that cannot be read whole is damage and names no reason
+    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
+    if ( verdict == TableOpenRefused ) { if ( reason_out != NULL ) { *reason_out = unknown_form; } return -1; }
+    if ( verdict != TableOpenOk ) { return -1; }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY
     // IS MALFORMED (docs/SPEC-TABLES.md §3): the two ends of the file have
     // met, nothing is decoded, and no region is sized from it.
@@ -6190,8 +6522,8 @@ inline int64_t TwigLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
     while ( TableNodeScanNext( scan, type_id, body, length ) )
     {
         records++;
-        int64_t storage = TwigNodeStorage( type_id, length );
-        if ( storage == kTableNodeRefused ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; } // an N the record's framing cannot carry (§2.8, §2.9)
+        int64_t storage = TwigNodeStorage( type_id, length, reason );
+        if ( storage == kTableNodeRefused ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; } // an N the record's framing cannot carry, or a blob past the cap (§2.8, §2.9, §3.1)
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -6246,7 +6578,7 @@ inline const Twig * TwigLoad( uint8_t * region, int64_t region_bytes, const uint
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             records++;
-            int64_t storage = TwigNodeStorage( type_id, length );
+            int64_t storage = TwigNodeStorage( type_id, length, reason );
             if ( storage == kTableNodeRefused ) { out->malformed = true; return NULL; }
             if ( storage > 0 ) { data += storage; }
         }
@@ -6273,7 +6605,7 @@ inline const Twig * TwigLoad( uint8_t * region, int64_t region_bytes, const uint
         int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
-            int64_t storage = TwigNodeStorage( type_id, length );
+            int64_t storage = TwigNodeStorage( type_id, length, reason );
             if ( storage <= 0 )
             {
                 // a record whose type id this build cannot name KEEPS ITS
@@ -6548,18 +6880,20 @@ inline bool NestBuilder::Lock()
 // NestNodeStorage: the region bytes one record commands, or -1 for a type id
 // this build cannot name — which keeps its index and reads null. A BYTE
 // BUFFER's record commands its header and its bytes (docs/SPEC-TABLES.md §2.5),
-// which is the one answer the record's LENGTH decides.
+// which is the one answer the record's LENGTH decides, and a blob past the
+// size cap answers kTableNodeRefused with its reason (§3.1, §6.5).
 // A MAP'S ENTRIES RIDE IN THEIR HOLDER'S EXTENT (docs/SPEC-TABLES.md §2.8),
 // so a record's storage is its type's PLUS N x sizeof( Entry ) at every
 // depth, summed from the FRAMING: N is framing and not a value, and this
 // reads no field. kTableNodeRefused is a wire whose N its L cannot carry.
-inline int64_t NestNodeStorage( uint64_t type_id, int64_t length )
+inline int64_t NestNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
     switch ( type_id )
     {
         default: break;
     }
+    (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
 
@@ -6613,7 +6947,8 @@ inline void NestNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap 
     carve.worker = nodes.worker;
     if ( carve.worker == NULL )
     {
-        const int64_t storage = NestNodeStorage( type_id, r.size );
+        TableRefuseReason reason = count_over_length; // pass one already refused what this could refuse
+        const int64_t storage = NestNodeStorage( type_id, r.size, reason );
         const int64_t record = storage > 0 ? NestNodeRecordBytes( type_id ) : 0;
         carve.at = at + record;
         carve.left = storage > record ? storage - record : 0;
@@ -7062,7 +7397,11 @@ inline int64_t NestLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
     TableReport ignored;
     TableIdTable ids_table;
     int64_t body_bytes = 0;
-    if ( TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes ) != TableOpenOk ) { return -1; }
+    // a FORM BYTE this build does not carry is refused by name (§3, §6.5);
+    // a trailer that cannot be read whole is damage and names no reason
+    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
+    if ( verdict == TableOpenRefused ) { if ( reason_out != NULL ) { *reason_out = unknown_form; } return -1; }
+    if ( verdict != TableOpenOk ) { return -1; }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY
     // IS MALFORMED (docs/SPEC-TABLES.md §3): the two ends of the file have
     // met, nothing is decoded, and no region is sized from it.
@@ -7081,8 +7420,8 @@ inline int64_t NestLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
     while ( TableNodeScanNext( scan, type_id, body, length ) )
     {
         records++;
-        int64_t storage = NestNodeStorage( type_id, length );
-        if ( storage == kTableNodeRefused ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; } // an N the record's framing cannot carry (§2.8, §2.9)
+        int64_t storage = NestNodeStorage( type_id, length, reason );
+        if ( storage == kTableNodeRefused ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; } // an N the record's framing cannot carry, or a blob past the cap (§2.8, §2.9, §3.1)
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -7137,7 +7476,7 @@ inline const Nest * NestLoad( uint8_t * region, int64_t region_bytes, const uint
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             records++;
-            int64_t storage = NestNodeStorage( type_id, length );
+            int64_t storage = NestNodeStorage( type_id, length, reason );
             if ( storage == kTableNodeRefused ) { out->malformed = true; return NULL; }
             if ( storage > 0 ) { data += storage; }
         }
@@ -7164,7 +7503,7 @@ inline const Nest * NestLoad( uint8_t * region, int64_t region_bytes, const uint
         int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
-            int64_t storage = NestNodeStorage( type_id, length );
+            int64_t storage = NestNodeStorage( type_id, length, reason );
             if ( storage <= 0 )
             {
                 // a record whose type id this build cannot name KEEPS ITS
@@ -7322,8 +7661,13 @@ inline bool NestLoadBuilder( NestBuilder & builder, const uint8_t * wire_file, i
 // TwigOpen: match the header and POINT. On a match the bytes ARE what this
 // build wrote, in this build's layout and this build's byte order, so there
 // is nothing to validate and nothing to fix up and the root comes back as it
-// lies. On ANY refusal it returns NULL and the caller falls back to a wire
-// load, which is the path that carries every version.
+// lies. On ANY refusal it returns NULL and NAMES the refusal in the caller's
+// TableRefuseReason, the first failing clause in §7's order (a wrong build
+// version is a re-cook, a foreign order a cross-endian cook, a truncated
+// file a bad download, an unaligned base the caller's own buffer), and the
+// caller falls back to a wire load, which is the path that carries every
+// version. The reason is written on the refusal path only; a caller that
+// passes nothing gets the null alone.
 //
 // It is O(1) IN THE FILE'S SIZE — the header and nothing per node — so a one
 // megabyte cook and a one gigabyte cook open in the same time, and a mapped
@@ -7340,16 +7684,21 @@ inline bool NestLoadBuilder( NestBuilder & builder, const uint8_t * wire_file, i
 // file whose provenance a person doubts is schema cook-check, offline,
 // over the ATTRIBUTION part beside the data — a person's decision, never a
 // parameter on a load.
-inline const Twig * TwigOpen( const void * bytes, uint64_t length )
+inline const Twig * TwigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Twig *) TableCookOpen( bytes, length, (uint64_t) sizeof( Twig ), (uint64_t) alignof( Twig ) );
+    return (const Twig *) TableCookOpen( bytes, length, (uint64_t) sizeof( Twig ), (uint64_t) alignof( Twig ), reason );
 }
 
 // NestOpen: match the header and POINT. On a match the bytes ARE what this
 // build wrote, in this build's layout and this build's byte order, so there
 // is nothing to validate and nothing to fix up and the root comes back as it
-// lies. On ANY refusal it returns NULL and the caller falls back to a wire
-// load, which is the path that carries every version.
+// lies. On ANY refusal it returns NULL and NAMES the refusal in the caller's
+// TableRefuseReason, the first failing clause in §7's order (a wrong build
+// version is a re-cook, a foreign order a cross-endian cook, a truncated
+// file a bad download, an unaligned base the caller's own buffer), and the
+// caller falls back to a wire load, which is the path that carries every
+// version. The reason is written on the refusal path only; a caller that
+// passes nothing gets the null alone.
 //
 // It is O(1) IN THE FILE'S SIZE — the header and nothing per node — so a one
 // megabyte cook and a one gigabyte cook open in the same time, and a mapped
@@ -7366,9 +7715,9 @@ inline const Twig * TwigOpen( const void * bytes, uint64_t length )
 // file whose provenance a person doubts is schema cook-check, offline,
 // over the ATTRIBUTION part beside the data — a person's decision, never a
 // parameter on a load.
-inline const Nest * NestOpen( const void * bytes, uint64_t length )
+inline const Nest * NestOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Nest *) TableCookOpen( bytes, length, (uint64_t) sizeof( Nest ), (uint64_t) alignof( Nest ) );
+    return (const Nest *) TableCookOpen( bytes, length, (uint64_t) sizeof( Nest ), (uint64_t) alignof( Nest ), reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

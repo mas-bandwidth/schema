@@ -23,7 +23,8 @@ import (
 
 // surfaces, in the order the matrix prints them.
 var surfaces = []string{"wire", "message", "report", "json-read", "json-write", "json-hostile",
-	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery"}
+	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
+	"cook-reason", "block-reason"}
 
 type driver struct {
 	lang string
@@ -187,6 +188,11 @@ func deriveManifest(m *Manifest, path string) error {
 		fmt.Fprintf(&b, "forgery %s %s %s %s %d %s\n",
 			f.Name, f.Kind, f.Subject, repoRelative(f.File), f.Extent, pointer)
 	}
+	for _, r := range m.Refusals {
+		// which forgeries the reason surfaces answer, and on which kind: the
+		// reason itself is the expectation and stays withheld
+		fmt.Fprintf(&b, "refusal %s %s\n", r.Forgery, r.Kind)
+	}
 	return writeFileAtomic(path, []byte(b.String()))
 }
 
@@ -298,6 +304,20 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 				return nil, err
 			}
 			out = append(out, expectation{b.Name, want})
+		}
+	case "cook-reason", "block-reason":
+		// THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §7, §19.2): one word
+		// per forgery a `refusal` line names, the enum's own value name, so a
+		// conformance row pins the first failing clause in every language
+		kind := "block"
+		if surface == "cook-reason" {
+			kind = "cook"
+		}
+		for _, r := range m.Refusals {
+			if r.Kind != kind {
+				continue
+			}
+			out = append(out, expectation{r.Forgery, []byte(r.Reason + "\n")})
 		}
 	case "forgery", "cook-forgery":
 		// one surface per KIND: a backend can have a block reader and no cook

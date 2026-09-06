@@ -3634,12 +3634,65 @@ static void test_json_dialect()
     CHECK( tabledemo::LoadoutConfigFromJson( loadout, array_trailing, (int64_t) strlen( array_trailing ), &report ) );
     CHECK( loadout.grades_count == 2 && loadout.grades[0] == tabledemo::Grade::Gold );
 
-    // comments are not JSON, and a walk that guessed at one would be reading
-    // a dialect nobody wrote down
-    tabledemo::TableReport comment_report;
-    const char * comment = "{ // a note\n \"slot\": 3 }";
-    CHECK( !tabledemo::AttachmentFromJson( value, comment, (int64_t) strlen( comment ), &comment_report ) );
-    CHECK( comment_report.malformed );
+    // THE COMMENT ROWS (docs/SPEC-TABLES.md §16.2, §16.5): comments are accepted
+    // on read and never written. A `//` before the first key, after the last
+    // value and between two entries; a `/* */` inside an array between two
+    // elements and between a key and its value; a `//` as the last line with
+    // no trailing newline, which is accepted; an unclosed `/*` and a `/*/`,
+    // which are malformed on the terms an unclosed string is; and a text of
+    // comments and trailing commas whose instance equals the same text with
+    // both stripped.
+    {
+        tabledemo::TableReport comment_report;
+        const char * commented =
+            "// a note before the first key\n"
+            "{ \"slot\": 3, // after a value\n"
+            "  /* between a key and its value */ \"power\": /* here */ 1.5, }\n"
+            "// the last line, with no trailing newline";
+        CHECK( tabledemo::AttachmentFromJson( value, commented, (int64_t) strlen( commented ), &comment_report ) );
+        CHECK( value.slot == 3 && value.power == 1.5f );
+        CHECK( comment_report.unknown == 0 && !comment_report.malformed );
+        tabledemo::Attachment stripped;
+        tabledemo::TableReport stripped_report;
+        const char * plain = "{ \"slot\": 3, \"power\": 1.5 }";
+        CHECK( tabledemo::AttachmentFromJson( stripped, plain, (int64_t) strlen( plain ), &stripped_report ) );
+        CHECK( memcmp( &stripped, &value, sizeof( value ) ) == 0 );
+    }
+    {
+        tabledemo::LoadoutConfig commented_loadout;
+        tabledemo::TableReport comment_report;
+        const char * array_comment = "{ \"grades\": [ \"Gold\", /* between two elements */ \"Bronze\" ] }";
+        CHECK( tabledemo::LoadoutConfigFromJson( commented_loadout, array_comment, (int64_t) strlen( array_comment ), &comment_report ) );
+        CHECK( commented_loadout.grades_count == 2 && commented_loadout.grades[1] == tabledemo::Grade::Bronze );
+        CHECK( !comment_report.malformed );
+    }
+    {
+        // a `//` and a `/*` INSIDE a string value are ordinary text, and survive
+        // the round trip byte for byte
+        tabledemo::RootConfig noted;
+        tabledemo::TableReport text_report;
+        const char * inside = "{ \"version_note\": \"// not /*\" }";
+        CHECK( tabledemo::RootConfigFromJson( noted, inside, (int64_t) strlen( inside ), &text_report ) );
+        CHECK( !text_report.malformed );
+        CHECK( noted.version_note_length == 9 && memcmp( noted.version_note, "// not /*", 9 ) == 0 );
+        char back[4096];
+        const int64_t wrote = tabledemo::RootConfigToJson( noted, back, sizeof( back ) );
+        CHECK( wrote > 0 && strstr( back, "\"// not /*\"" ) != NULL );
+    }
+    {
+        tabledemo::TableReport unclosed_report;
+        const char * unclosed = "{ \"slot\": 3 /* open";
+        CHECK( !tabledemo::AttachmentFromJson( value, unclosed, (int64_t) strlen( unclosed ), &unclosed_report ) );
+        CHECK( unclosed_report.malformed );
+        tabledemo::TableReport slash_star_slash_report;
+        const char * slash_star_slash = "{ /*/ \"slot\": 3 }";
+        CHECK( !tabledemo::AttachmentFromJson( value, slash_star_slash, (int64_t) strlen( slash_star_slash ), &slash_star_slash_report ) );
+        CHECK( slash_star_slash_report.malformed );
+        tabledemo::TableReport lone_slash_report;
+        const char * lone = "{ / \"slot\": 3 }";
+        CHECK( !tabledemo::AttachmentFromJson( value, lone, (int64_t) strlen( lone ), &lone_slash_report ) );
+        CHECK( lone_slash_report.malformed );
+    }
 
     // whitespace anywhere, and a text that is not an object at all
     const char * spaced = "  \t\n { \n \"slot\" \t : \n 2 \n } \n ";
@@ -3676,9 +3729,12 @@ static void test_json_dialect()
     CHECK( tabledemo::AttachmentFromJson( value, repeated, (int64_t) strlen( repeated ), &duplicate ) );
     CHECK( value.slot == 2 && duplicate.duplicate == 2 );
 
-    // the wire imposes no encoding on a string (docs/SPEC-TABLES.md §3), so the
-    // text must not either: a stray lead byte rides as its own byte and does
-    // NOT swallow the character after it — including the closing quote
+    // A KIND 12 PAYLOAD IS WELL-FORMED UTF-8 (docs/SPEC-TABLES.md §3), so a
+    // byte in a string body that is not part of a well-formed sequence is not
+    // a code point either and READS as U+FFFD (§16.3), one per sequence,
+    // counted as nothing. It does NOT swallow the character after it, the
+    // closing quote included, and the storage it leaves is storage the
+    // wire can carry.
     {
         tabledemo::ProfileConfig stray;
         char text[64];
@@ -3686,14 +3742,14 @@ static void test_json_dialect()
         CHECK( n > 0 );
         tabledemo::TableReport raw;
         CHECK( tabledemo::ProfileConfigFromJson( stray, text, n, &raw ) );
-        CHECK( stray.name_length == 3 && (unsigned char) stray.name[2] == 0xc3 );
-        CHECK( !raw.malformed );
+        CHECK( stray.name_length == 5 );
+        CHECK( (unsigned char) stray.name[2] == 0xef && (unsigned char) stray.name[3] == 0xbf &&
+               (unsigned char) stray.name[4] == 0xbd );
+        CHECK( !raw.malformed && raw.clamped == 0 );
 
-        // ... but the WRITER owes a valid JSON text (RFC 8259 §8.1), so the
-        // byte it cannot spell is written as U+FFFD, one per bad byte. The
-        // round trip is therefore NOT byte-identical for invalid UTF-8, and
-        // that is the trade: a text a conforming parser can read, rather than
-        // one only this walk can (docs/SPEC-TABLES.md §16.2).
+        // and the WRITER owes a valid JSON text (RFC 8259 §8.1), which this
+        // storage already is: the trip is byte-identical from here on, because
+        // the replacement happened where the defect entered.
         int64_t size = tabledemo::ProfileConfigToJsonMeasure( stray );
         std::vector<char> out( (size_t) size + 1 );
         CHECK( tabledemo::ProfileConfigToJson( stray, out.data(), size ) == size );
@@ -6091,10 +6147,10 @@ static void test_message_golden_reload()
 // same names at different types, so each of the reader's answers is named
 // once, by one edit, with the siblings beside it intact:
 //
-//   a  int32 -> int64    a moved width: the arm's L is not the declared one
-//   b  int32 -> float32  one width, one length: SILENT, and the value differs
-//   c  int32 -> string   any length is bytes: SILENT
-//   d  float32 -> Body   four bytes read as a body: framing damage
+//   a  int32 -> int64    a moved width up the signed ladder: WIDENED, the value exact (§4)
+//   b  int32 -> float32  one width, one length: a KIND MISMATCH, the union None
+//   c  int32 -> string   kind 4 against kind 12: a KIND MISMATCH, the union None
+//   d  float32 -> Body   four bytes read as a body: a KIND MISMATCH, the union None
 //   e  Body -> Body      the arm beside them, which still round-trips
 static int64_t save_a1_arm( uint8_t * buffer, int64_t capacity, tbla1::ValueType arm )
 {
@@ -6118,16 +6174,18 @@ static void test_arm_retype_controls()
 {
     uint8_t buffer[256];
 
-    // (1) a MOVED WIDTH is a kind mismatch: the arm skips by its L, the union
-    // reads None, the count fires once, and every sibling lands
+    // (1) a MOVED WIDTH up the signed ladder is WIDENED (§4): the arm's kind
+    // byte is read, its payload decoded at its own width, the value the
+    // writer's own, one widened counted, and every sibling lands
     {
         const int64_t wrote = save_a1_arm( buffer, sizeof( buffer ), tbla1::ValueType::A );
         CHECK( wrote > 0 );
         tbla2::Root got;
         tbla2::TableReport report;
         CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
-        CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
-        CHECK( got.value.type == tbla2::ValueType::None );
+        CHECK( report.widened == 1 && report.kind_mismatch == 0 && report.unknown == 0 && !report.malformed );
+        CHECK( got.value.type == tbla2::ValueType::A );
+        CHECK( got.value.a == 7 );
         CHECK( got.id == 11 && got.tail == 22 );
     }
 
@@ -7015,6 +7073,31 @@ static void test_form_byte_refusals()
         tblv1::TableReport report;
         CHECK( tblv1::CfgLoadVerdict( out, both, 3, &report ) == tblv1::TableOpenRefused );
         CHECK( report.refused && !report.malformed );
+    }
+
+    // A VARIABLE ROOT'S MEASURE ANSWERS THE SAME REFUSAL BY NAME
+    // (docs/SPEC-TABLES.md §3, §6.5): a form byte this build does not carry
+    // makes LoadMeasure -1 with `unknown_form`, refused before any read, and
+    // a form it does carry writes nothing at all, so the caller's own value
+    // stands beside the size, which is what makes a measure that answers cost
+    // nothing.
+    {
+        graphdemo::SceneBuilder builder;
+        build_scene( builder );
+        static uint8_t scene_wire[8192];
+        const int64_t scene_bytes = graphdemo::SceneSave( builder, scene_wire, sizeof( scene_wire ) );
+        CHECK( scene_bytes > 0 );
+
+        graphdemo::TableRefuseReason reason = graphdemo::ok;
+        CHECK( graphdemo::SceneLoadMeasure( scene_wire, scene_bytes, NULL, &reason ) > 0 );
+        CHECK( reason == graphdemo::ok ); // a measure that answers writes nothing
+
+        static uint8_t forged_scene[8192];
+        memcpy( forged_scene, scene_wire, (size_t) scene_bytes );
+        forged_scene[0] = 3;
+        reason = graphdemo::ok;
+        CHECK( graphdemo::SceneLoadMeasure( forged_scene, scene_bytes, NULL, &reason ) == -1 );
+        CHECK( reason == graphdemo::unknown_form );
     }
 }
 
@@ -8251,6 +8334,33 @@ static void test_blob_past_slab()
 // a blob record whose length runs ONE BYTE past its field is §3.1's
 // node-table damage: malformed, every pointer null, the root's own
 // fields surviving
+// A BLOB PAST THE DERIVED-SIZE CAP is refused BY NAME (docs/SPEC-TABLES.md
+// §3.1, §6.5, §11), and the clause is reachable directly: `<Root>NodeStorage`
+// is a pure function of a type id and a length, so the length is handed to it
+// rather than spelled onto a wire that would have to carry four gigabytes to
+// say the same thing. A record's length rides as a `u32`, so the cap is
+// 0xFFFFFFFF and one past it is 0x100000000.
+//
+// Red where the cap is not checked: the storage comes back as a size a caller
+// would then try to allocate.
+static void test_blob_over_size_cap()
+{
+    blobdemo::TableRefuseReason reason = blobdemo::ok;
+    CHECK( blobdemo::CatalogNodeStorage( blobdemo::kTableBytesTypeId, 0x100000000ll, reason ) == blobdemo::kTableNodeRefused );
+    CHECK( reason == blobdemo::blob_over_size_cap );
+
+    // AT the cap it is an ordinary answer, and the reason is untouched
+    reason = blobdemo::ok;
+    CHECK( blobdemo::CatalogNodeStorage( blobdemo::kTableBytesTypeId, 0xFFFFFFFFll, reason ) > 0 );
+    CHECK( reason == blobdemo::ok );
+
+    // and a `*string` blob takes the same clause: the cap is the record's
+    // length, not the terminator its storage adds
+    reason = blobdemo::ok;
+    CHECK( blobdemo::CatalogNodeStorage( blobdemo::kTableStringTypeId, 0x100000000ll, reason ) == blobdemo::kTableNodeRefused );
+    CHECK( reason == blobdemo::blob_over_size_cap );
+}
+
 static void test_blob_record_length_off_by_one()
 {
     blobdemo::CatalogBuilder builder;
@@ -8984,6 +9094,7 @@ int main()
     test_blob_null_and_empty();
     test_blob_past_slab();
     test_blob_string_terminator();
+    test_blob_over_size_cap();
     test_blob_record_length_off_by_one();
     test_blob_kind_mismatch();
     test_blob_cook();
@@ -8998,6 +9109,7 @@ int main()
     test_message_form_wide_vocabulary();
     test_message_form_pointered();
     test_message_form_two_peers();
+    test_message_form_widened();
     test_message_form_refusals();
     test_message_form_five_answers();
     test_message_form_damage_terminal();

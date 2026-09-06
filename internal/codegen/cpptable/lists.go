@@ -720,8 +720,30 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 	g.pf("%s    if ( !counted_ok ) { r.report->malformed = true; }\n", ind)
 	g.pf("%s    // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's\n", ind)
 	g.pf("%s    // element-kind rule: the field reads EMPTY and one kind_mismatch counts\n", ind)
-	g.pf("%s    else if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, elemKind)
+	if widenableElement(f) {
+		// THE WIDENING BRANCH at a list's element kind (§4), inside the
+		// mismatch branch with a fill of its own: ONE count for the field,
+		// every element decoded at the wire kind's width
+		g.pf("%s    else if ( elem_kind != %d )\n%s    {\n", ind, elemKind, ind)
+		g.pf("%s        if ( !TableKindWidens( elem_kind, %d ) ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, elemKind)
+		g.pf("%s        r.report->widened++;\n", ind)
+		g.emitListFill(f, elemKind, ind, true)
+		g.pf("%s    }\n", ind)
+	} else {
+		g.pf("%s    else if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, elemKind)
+	}
 	g.pf("%s    else\n%s    {\n", ind, ind)
+	g.emitListFill(f, elemKind, ind, false)
+	g.pf("%s    }\n", ind)
+	g.pf("%s}\n", ind)
+	g.pf("%sr.offset = body_end; // excess bytes and slack skip via the length\n", ind)
+}
+
+// emitListFill emits the fill of one list's slots from the body's elements:
+// the count taken as the data's, the elements bounded by the body's L, a slot
+// whose element never landed given back. With `widened` each element decodes
+// at the kind the header carried, which the declared kind widens (§4).
+func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened bool) {
 	g.pf("%s        // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped\n", ind)
 	g.pf("%s        // cannot fire on it. A count above the int32 storage cap is the\n", ind)
 	g.pf("%s        // fill's refusal, and it moves no counter.\n", ind)
@@ -737,15 +759,16 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 	g.pf("%s            if ( slot == NULL ) { r.report->malformed = true; break; } // the arena could not carve\n", ind)
 	g.pf("%s            bool landed = false;\n", ind)
 	g.pf("%s            do\n%s            {\n", ind, ind)
-	g.emitTableReadElementInto(f, elemKind, "( *slot )", ind+"                ", "sub", "_"+f.Name)
+	if widened {
+		g.emitWidenedScalar(f, elemKind, "elem_kind", "( *slot )", ind+"                ", "sub", "r.report->malformed = true; break;")
+	} else {
+		g.emitTableReadElementInto(f, elemKind, "( *slot )", ind+"                ", "sub", "_"+f.Name)
+	}
 	g.pf("%s                landed = true;\n", ind)
 	g.pf("%s            } while ( 0 );\n", ind)
 	g.pf("%s            if ( !landed ) { TableListFillDrop( fill ); break; } // the element's own framing gave out before it decoded\n", ind)
 	g.pf("%s        }\n", ind)
 	g.pf("%s        TableListFillEnd( fill );\n", ind)
-	g.pf("%s    }\n", ind)
-	g.pf("%s}\n", ind)
-	g.pf("%sr.offset = body_end; // excess bytes and slack skip via the length\n", ind)
 }
 
 // ---- the three walks at a list (docs/SPEC-TABLES.md §2.9, §3.1) ----

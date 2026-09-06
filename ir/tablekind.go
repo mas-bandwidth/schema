@@ -430,3 +430,28 @@ func RefuseWideTableKinds(u *Unit, backend string) error {
 		"(docs/SPEC-TABLES.md §3, §15: every type the type wire carries rides in a table in the C++ reference and the tool, "+
 		"and each port lands them as a row on schema#366)", backend, strings.Join(fields, ", "))
 }
+
+// TableKindWidens reports whether a payload under `kind` decodes EXACTLY into
+// a field declared at `declared` (docs/SPEC-TABLES.md §4): an integer kind
+// into a WIDER integer kind of the same signedness, and f32 into f64. The
+// signed ladder is kinds 2, 3, 4, 5, 18, the unsigned one 6, 7, 8, 9, 19, and
+// each kind accepts every kind below it on its own ladder. 10 into 11 is the
+// float rung and the only one. Every other pair is a kind mismatch. The rule
+// is decided by the kind pair and by nothing else, so it holds wherever the
+// wire compares kinds: a field's own kind, an arm's, an array's element kind
+// and a map's key kind.
+func TableKindWidens(kind, declared int) bool {
+	switch declared {
+	case TableKindI16, TableKindI32, TableKindI64:
+		return kind >= TableKindI8 && kind < declared
+	case TableKindI128:
+		return kind >= TableKindI8 && kind <= TableKindI64
+	case TableKindU16, TableKindU32, TableKindU64:
+		return kind >= TableKindU8 && kind < declared
+	case TableKindU128:
+		return kind >= TableKindU8 && kind <= TableKindU64
+	case TableKindF64:
+		return kind == TableKindF32
+	}
+	return false
+}

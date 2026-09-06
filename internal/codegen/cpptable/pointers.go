@@ -1101,6 +1101,14 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("        int32_t unknown_records = 0; // counted once the scan is known whole\n")
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
 	g.pf("            uint32_t at = %sNodeAlloc( type_id, builder.main, length );\n", n)
+	if g.rootReachesStringBlob(st) {
+		// the text blob rule (§3.1), on the builder's path as on the region's
+		g.pf("            if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, length ) )\n            {\n")
+		g.pf("                out->malformed = true;\n")
+		g.pf("                directory[k + 1].offset = kTableNodeAbsent;\n")
+		g.pf("                directory[k + 1].type_id = type_id;\n")
+		g.pf("                k++;\n                continue;\n            }\n")
+	}
 	g.pf("            if ( at == 0 )\n            {\n")
 	g.pf("                unknown_records++;\n")
 	g.pf("                directory[k + 1].offset = kTableNodeAbsent;\n")
@@ -1156,7 +1164,8 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	g.pf("// %sNodeStorage: the region bytes one record commands, or -1 for a type id\n", n)
 	g.pf("// this build cannot name — which keeps its index and reads null. A BYTE\n")
 	g.pf("// BUFFER's record commands its header and its bytes (docs/SPEC-TABLES.md §2.5),\n")
-	g.pf("// which is the one answer the record's LENGTH decides.\n")
+	g.pf("// which is the one answer the record's LENGTH decides, and a blob past the\n")
+	g.pf("// size cap answers kTableNodeRefused with its reason (§3.1, §6.5).\n")
 	if g.anyExtent {
 		g.pf("// A MAP'S ENTRIES RIDE IN THEIR HOLDER'S EXTENT (docs/SPEC-TABLES.md §2.8),\n")
 		g.pf("// so a record's storage is its type's PLUS N x sizeof( Entry ) at every\n")
@@ -1188,9 +1197,17 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 		g.pf("        case 0x%016xull: return TableAlignUp64( (int64_t) sizeof( %s ) ); // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name)
 	}
 	for _, b := range blobs {
-		g.pf("        case %s: return TableBlobStorage( length, %v ); // *%s\n", b.constant, b.terminated, b.word)
+		// A BLOB PAST THE SIZE CAP is refused at load (docs/SPEC-TABLES.md
+		// §3.1, §6.5, §11): the measure answers -1 with its reason, and a
+		// Load past it counts malformed
+		g.pf("        case %s: if ( length > kTableBlobMaxLength ) { reason = blob_over_size_cap; return kTableNodeRefused; } return TableBlobStorage( length, %v ); // *%s\n", b.constant, b.terminated, b.word)
 	}
-	g.pf("        default: break;\n    }\n")
+	if len(blobs) == 0 && !anyExtent {
+		g.pf("        default: break;\n    }\n")
+		g.pf("    (void) reason; // no blob and no extent below this root: nothing here refuses\n")
+	} else {
+		g.pf("        default: break;\n    }\n")
+	}
 	g.pf("    return -1;\n}\n\n")
 
 	g.pf("// %sNodePlace: start one record's node's lifetime in the storage pass one\n", n)
@@ -1262,9 +1279,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 		g.pf("    TableExtentCarve carve;\n")
 		g.pf("    carve.worker = nodes.worker;\n")
 		g.pf("    if ( carve.worker == NULL )\n    {\n")
-		if g.rootHasExtent(st) {
-			g.pf("        TableRefuseReason reason = count_over_length; // pass one already refused what this could refuse\n")
-		}
+		g.pf("        TableRefuseReason reason = count_over_length; // pass one already refused what this could refuse\n")
 		g.pf("        const int64_t storage = %sNodeStorage( type_id, %sr.size%s );\n", n, g.nodeStorageReader(st), g.nodeStorageReaderTail(st))
 		g.pf("        const int64_t record = storage > 0 ? %sNodeRecordBytes( type_id ) : 0;\n", n)
 		g.pf("        carve.at = at + record;\n")
@@ -1465,7 +1480,11 @@ func (g *tableGen) emitVariableLoadMeasure(st *ir.Struct) {
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableIdTable ids_table;\n")
 	g.pf("    int64_t body_bytes = 0;\n")
-	g.pf("    if ( TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes ) != TableOpenOk ) { return -1; }\n")
+	g.pf("    // a FORM BYTE this build does not carry is refused by name (§3, §6.5);\n")
+	g.pf("    // a trailer that cannot be read whole is damage and names no reason\n")
+	g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")
+	g.pf("    if ( verdict == TableOpenRefused ) { if ( reason_out != NULL ) { *reason_out = unknown_form; } return -1; }\n")
+	g.pf("    if ( verdict != TableOpenOk ) { return -1; }\n")
 	g.pf("    // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY\n")
 	g.pf("    // IS MALFORMED (docs/SPEC-TABLES.md §3): the two ends of the file have\n")
 	g.pf("    // met, nothing is decoded, and no region is sized from it.\n")
@@ -1473,13 +1492,10 @@ func (g *tableGen) emitVariableLoadMeasure(st *ir.Struct) {
 	g.pf("    const uint8_t * const wire = wire_file + 1;\n")
 	g.pf("    const int64_t wire_bytes = body_bytes;\n")
 	g.pf("    TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );\n")
-	refuse := "return -1;"
-	if g.anyExtent {
-		// A -1 CARRIES A REASON (docs/SPEC-TABLES.md §6.5), as an enum
-		// out-parameter, and a refusal moves no counter
-		g.pf("    TableRefuseReason reason = count_over_length;\n")
-		refuse = "if ( reason_out != NULL ) { *reason_out = reason; } return -1;"
-	}
+	// A -1 CARRIES A REASON (docs/SPEC-TABLES.md §6.5), as an enum
+	// out-parameter, and a refusal moves no counter
+	g.pf("    TableRefuseReason reason = count_over_length;\n")
+	refuse := "if ( reason_out != NULL ) { *reason_out = reason; } return -1;"
 	g.emitRootDataBytes(st, "    ", refuse)
 	g.pf("    int64_t records = 0;\n")
 	g.pf("    uint64_t type_id = 0;\n")
@@ -1488,9 +1504,7 @@ func (g *tableGen) emitVariableLoadMeasure(st *ir.Struct) {
 	g.pf("    while ( TableNodeScanNext( scan, type_id, body, length ) )\n    {\n")
 	g.pf("        records++;\n")
 	g.pf("        int64_t storage = %sNodeStorage( type_id, %slength%s );\n", n, g.nodeStorageArg(st), g.nodeStorageArgTail(st))
-	if g.anyExtent {
-		g.pf("        if ( storage == kTableNodeRefused ) { %s } // an N the record's framing cannot carry (§2.8, §2.9)\n", refuse)
-	}
+	g.pf("        if ( storage == kTableNodeRefused ) { %s } // an N the record's framing cannot carry, or a blob past the cap (§2.8, §2.9, §3.1)\n", refuse)
 	g.pf("        if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none\n")
 	g.pf("    }\n")
 	g.pf("    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );\n")
@@ -1534,9 +1548,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    const uint8_t * body = NULL;\n")
 	g.pf("    int64_t length = 0;\n\n")
 	g.pf("    // the record count and the data bytes, from the FRAMING alone\n")
-	if g.anyExtent {
-		g.pf("    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed\n")
-	}
+	g.pf("    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed\n")
 	g.emitRootDataBytes(st, "    ", "out->malformed = true; return NULL;")
 	g.pf("    int64_t records = 0;\n")
 	g.pf("    {\n")
@@ -1545,9 +1557,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
 	g.pf("            records++;\n")
 	g.pf("            int64_t storage = %sNodeStorage( type_id, %slength%s );\n", n, g.nodeStorageArg(st), g.nodeStorageArgTail(st))
-	if g.anyExtent {
-		g.pf("            if ( storage == kTableNodeRefused ) { out->malformed = true; return NULL; }\n")
-	}
+	g.pf("            if ( storage == kTableNodeRefused ) { out->malformed = true; return NULL; }\n")
 	g.pf("            if ( storage > 0 ) { data += storage; }\n")
 	g.pf("        }\n    }\n")
 	g.pf("    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );\n")
@@ -1574,6 +1584,17 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("        int32_t unknown_records = 0; // counted once the scan is known whole\n")
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
 	g.pf("            int64_t storage = %sNodeStorage( type_id, %slength%s );\n", n, g.nodeStorageArg(st), g.nodeStorageArgTail(st))
+	if g.rootReachesStringBlob(st) {
+		// A TEXT BLOB'S CONTENT IS REFUSED ON THE SAME TERMS as a kind 12
+		// payload (docs/SPEC-TABLES.md §3.1): the record is malformed and
+		// every slot naming it reads null, which is what an absent directory
+		// entry already resolves to
+		g.pf("            if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, length ) )\n            {\n")
+		g.pf("                out->malformed = true;\n")
+		g.pf("                directory[k + 1].offset = kTableNodeAbsent;\n")
+		g.pf("                directory[k + 1].type_id = type_id;\n")
+		g.pf("                k++;\n                continue;\n            }\n")
+	}
 	g.pf("            if ( storage <= 0 )\n            {\n")
 
 	g.pf("                // a record whose type id this build cannot name KEEPS ITS\n")
@@ -1622,12 +1643,9 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    return root;\n}\n\n")
 }
 
-// loadMeasureReasonParam is the out-parameter a LoadMeasure takes where a unit
-// has an extent (docs/SPEC-TABLES.md §6.5): the reason a -1 carries. A unit
-// with neither a list nor a map keeps the signature it always had.
+// loadMeasureReasonParam is the out-parameter every LoadMeasure takes: the
+// reason a -1 carries (docs/SPEC-TABLES.md §6.5), trailing so a caller that
+// does not ask keeps the signature it had, written on the refusal path only.
 func (g *tableGen) loadMeasureReasonParam() string {
-	if g.anyExtent {
-		return ", TableRefuseReason * reason_out = NULL"
-	}
-	return ""
+	return ", TableRefuseReason * reason_out = NULL"
 }

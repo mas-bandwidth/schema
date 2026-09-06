@@ -79,8 +79,7 @@ That narrowness is one of TWO wires, and the other one is the evolution
 answer: declare a `table` and its fields are identified by the hash of their
 NAMES, so a reader takes any data a writer ever wrote — unknown fields skipped
 and counted, absent fields defaulted, changed kinds skipped rather than
-misdecoded, a kind that merely grew decoded exactly and counted `widened`
-(specified, and nothing counts it yet in any language, #523),
+misdecoded, a kind that merely grew decoded exactly and counted `widened`,
 out-of-range values clamped, and every event in a read report. **Nothing is
 fatal below the whole wire**: framing damage stops the damaged nesting level,
 keeps what it decoded there, and the parent reads on past the field's own

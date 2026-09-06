@@ -1,10 +1,9 @@
 // A1.schema — the WRITER of the ARM-RETYPE pair (docs/SPEC-TABLES.md §2.6,
 // §3, §4.1). A2 declares the same arms under the same names — arms ride under
 // their name hash (§5) — at different types, so one saved value read by the
-// other names each of the reader's four answers exactly once: a moved width
-// is a kind mismatch, a same-width retype is silent, a scalar read as a
-// string is silent, and a scalar read as a body is that arm's own framing
-// damage.
+// other names each of the reader's answers exactly once: a width moved up the
+// signed ladder is WIDENED and decodes exactly (§4), and every other retype
+// is a kind mismatch, the union reading None and the siblings intact (§3).
 package tbla1
 
 type Body

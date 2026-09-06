@@ -178,7 +178,17 @@ build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POI
 # THE SCAN IS BY SYMBOL, not by line, and `TableNode` is matched with its whole
 # spelling so a node symbol nobody has written yet is still refused. Exactly one
 # of those spellings is ALLOWED in a pointer-free unit and it is named below.
-TABLES_ZERO_COST_SYMBOLS := TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|TablePack|[A-Za-z_]*TableNode[A-Za-z_]*|is_pointer|Builder|PackMeasure|LoadMeasure|TableBlob|TableBytesView|TableStringView|AllocBytes|AllocString|BytesEmplace|StringEmplace|TableMap|TableMapHead|TableMapSegment|TableMapOrder|TableMapCursor|TableEntryKey|TableKeyOrder|TableResetMapValue|TableEntrySetKey|kTableMapSegment|TableList|TableListHead|TableListSegment|TableListCursor|TableListElements|TableListPlace|kTableListSegment|TableExtentCarve|TableExtentUnreachedEmpty|TableWireExtent|TableRefuseReason|count_over_length|count_over_extent_cap
+# TableRefuseReason IS SANCTIONED, and it is the FORM's vocabulary rather than
+# the map's or the list's: every unit's cook Open names its refusal in it
+# (docs/SPEC-TABLES.md §7, §11), so every unit carries it. It stays in the list
+# below BECAUSE `TableRef`, the pointer handle, is a PREFIX of it, and the
+# extraction takes the longest alternative at a position, so naming the whole
+# spelling here is what makes the token that comes out `TableRefuseReason`
+# rather than `TableRef`, and the sanctioned list below is what then clears it.
+# Its two map-and-list values, count_over_length and count_over_extent_cap, are
+# out of the list for the same reason the enum is sanctioned: they are the
+# enum's members and every unit spells them.
+TABLES_ZERO_COST_SYMBOLS := TableArena|TableSlot|TableWorker|TableRef|TableRefuseReason|TableRegion|kTableSegment|kTableSlab|TablePack|[A-Za-z_]*TableNode[A-Za-z_]*|is_pointer|Builder|PackMeasure|LoadMeasure|TableBlob|TableBytesView|TableStringView|AllocBytes|AllocString|BytesEmplace|StringEmplace|TableMap|TableMapHead|TableMapSegment|TableMapOrder|TableMapCursor|TableEntryKey|TableKeyOrder|TableResetMapValue|TableEntrySetKey|kTableMapSegment|TableList|TableListHead|TableListSegment|TableListCursor|TableListElements|TableListPlace|kTableListSegment|TableExtentCarve|TableExtentUnreachedEmpty|TableWireExtent
 
 # THE ONE NODE SPELLING A POINTER-FREE UNIT CARRIES, and it is the FORM's and
 # not the pointer machinery's (docs/SPEC-TABLES.md §3, §3.1): the reserved
@@ -190,7 +200,11 @@ TABLES_ZERO_COST_SYMBOLS := TableArena|TableSlot|TableWorker|TableRef|TableRegio
 # no extra descriptor column, which is the claim this gate holds. Every other
 # TableNode spelling stays refused, and
 # tables-zero-cost-negative-control shows that it does.
-TABLES_ZERO_COST_ALLOWED := kTableNodeTableFieldId
+#
+# THE SECOND SANCTIONED SPELLING is the refusal enum, for the reason above it:
+# a pointer-free unit's Open answers a TableRefuseReason beside its null, which
+# costs the unit one enum and one out-parameter and no machinery at all.
+TABLES_ZERO_COST_ALLOWED := kTableNodeTableFieldId|TableRefuseReason
 
 TABLES_ZERO_COST_HEADERS := build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
 	build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
@@ -498,7 +512,7 @@ build/cook-fuzz/.stamp: $(wildcard test/cookgen/*.go) $(SCHEMAS_TABLES_POINTERS)
 # carries a comma, and make would read it as another argument.
 BLOCK_FUZZ_SED_CPP_extent := /rows > (uint64_t) bytes - offset_of/d; /padding > bytes - used/d
 BLOCK_FUZZ_SED_CS_extent := /rows > (ulong) bytes - offsetOf/d; /padding > bytes - used/d
-BLOCK_FUZZ_SED_CPP_maximum := /count > (uint64_t) %sBlock/,/overflow on a count the maximum does not bound/d
+BLOCK_FUZZ_SED_CPP_maximum := /past the DECLARED MAXIMUM: Begin refuses/,/count > (uint64_t) %sBlock/d
 BLOCK_FUZZ_SED_CS_maximum := /count > (ulong) %sMax/d
 BLOCK_FUZZ_SED_RUST_extent := /rows > bytes as u64 - offset_of/d; /padding > bytes - used/d
 BLOCK_FUZZ_SED_RUST_maximum := /count > Self::%s_MAX as u64/,/on a count the maximum does not bound/d
@@ -3433,14 +3447,16 @@ tables-cpp-release:
 .PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
 tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
 
-# the string read's `room( len )`: a length past the body is then read anyway,
-# so the sabotaged leg takes a string out of a neighbour's bytes and CLAMPS it
-# to its capacity where the oracle stops at the body — the clamp it counts is
-# a fact about bytes the field never owned. A LENGTH IS A 64-BIT NUMBER (§3),
-# so the check is unsigned: cast to int64 first, 0xFFFFFFFFFFFFFFFF reads as
-# -1 and a negative length looks like room.
+# the string read's `room( len )`. THE ONE CONTENT RULE THE WIRE HAS
+# (docs/SPEC-TABLES.md §3, §4) reads a kind `12` payload AS IT ARRIVES, over
+# the whole of `L` and before the reader's own bound, so `room( len )` is what
+# says those bytes are there at all: a sabotaged leg walks off the end of the
+# buffer on a forged length and DIES on the mutant, where the oracle stops at
+# the body and reports. A LENGTH IS A 64-BIT NUMBER (§3), so the check is
+# unsigned: cast to int64 first, 0xFFFFFFFFFFFFFFFF reads as -1 and a negative
+# length looks like room, which is the length this pass plants.
 tables-wire-fuzz-length-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,length,internal/codegen/cpptable/codecs.go,s|if ( !r.getleb( len ) \|\| !r.room( len ) ) { r.report->malformed = true; return false; }|if ( !r.getleb( len ) ) { r.report->malformed = true; return false; } // NEGATIVE CONTROL: the fit check is gone|,the report differs)
+	$(call wire_fuzz_control,length,internal/codegen/cpptable/codecs.go,s|if ( !r.getleb( len ) \|\| !r.room( len ) ) { r.report->malformed = true; return false; }|if ( !r.getleb( len ) ) { r.report->malformed = true; return false; } // NEGATIVE CONTROL: the fit check is gone|,the leg died on the mutant)
 
 # the numbering's `index - 1 >= map.count`: an index past the node table then
 # reads a directory entry the region does not hold

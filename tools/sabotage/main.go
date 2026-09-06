@@ -113,10 +113,10 @@ var sabotages = map[string][]edit{
 	// no file can satisfy. Every check stays, so the forgery battery keeps
 	// its answers and what goes red is the open-cost gate alone.
 	"cook-open-walk-cpp": {{
-		old: `    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return NULL; }
+		old: `    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return TableCookRefuse( reason, unaligned_base ); }
     return base;
 `,
-		new: `    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return NULL; }
+		new: `    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return TableCookRefuse( reason, unaligned_base ); }
     uint64_t walk = 0; // SABOTAGED: Open walks every word of the region
     for ( uint64_t i = 0; i < length / 8; i++ ) { walk += ( (const uint64_t *) raw )[i]; }
     if ( walk == UINT64_MAX ) { return NULL; }

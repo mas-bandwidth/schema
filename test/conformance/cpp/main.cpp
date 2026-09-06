@@ -163,12 +163,12 @@ static bool spill( const std::string & dir, const std::string & name, const void
 
 // Each unit declares its OWN TableReport — the generated surface is namespaced
 // whole (§6.1) — so the driver carries one report shape of its own and each row
-// copies into it. Five counters is the whole of §4's report, and a row that
+// copies into it. Six counters is the whole of §4's report, and a row that
 // stopped copying one would be caught by the first case that counts it. The
 // REFUSAL VERDICT rides beside them (§3) and is not a counter.
 struct Report
 {
-    int unknown, kind_mismatch, clamped, duplicate;
+    int unknown, kind_mismatch, widened, clamped, duplicate;
     bool malformed;
     bool refused;
 };
@@ -198,6 +198,7 @@ static void copy_report( const T & from, Report * to )
 {
     to->unknown = from.unknown;
     to->kind_mismatch = from.kind_mismatch;
+    to->widened = from.widened;
     to->clamped = from.clamped;
     to->duplicate = from.duplicate;
     to->malformed = from.malformed;
@@ -498,7 +499,11 @@ struct Aligned
     void destroy() { free( raw ); raw = NULL; }
 };
 
-static bool open_block( const std::string & name, const std::vector<uint8_t> & data, int64_t extent )
+// the block opened, and on a refusal the REASON BlockOpen names beside its
+// false (docs/SPEC-TABLES.md §19.2): the caller's own initial value is what
+// a match leaves standing
+static bool open_block( const std::string & name, const std::vector<uint8_t> & data, int64_t extent,
+                        blockdemo::TableRefuseReason * reason = NULL )
 {
     Aligned storage = {};
     if ( !storage.create( data, extent ) ) return false;
@@ -506,12 +511,12 @@ static bool open_block( const std::string & name, const std::vector<uint8_t> & d
     if ( name.rfind( "block_render", 0 ) == 0 )
     {
         blockdemo::RenderFrameBlock block;
-        opened = blockdemo::RenderFrameBlockOpen( block, storage.base, storage.bytes );
+        opened = blockdemo::RenderFrameBlockOpen( block, storage.base, storage.bytes, reason );
     }
     else if ( name.rfind( "block_padded", 0 ) == 0 )
     {
         blockdemo::PaddedFrameBlock block;
-        opened = blockdemo::PaddedFrameBlockOpen( block, storage.base, storage.bytes );
+        opened = blockdemo::PaddedFrameBlockOpen( block, storage.base, storage.bytes, reason );
     }
     else
     {
@@ -849,8 +854,8 @@ static int surface_report( const std::string & out )
         // form byte this reader does not carry moves none of them and reports
         // no damage, and a clean read prints the same five zeros.
         char text[128];
-        int n = snprintf( text, sizeof( text ), "%d,%d,%d,%d,%s,%s\n",
-                          report.unknown, report.kind_mismatch, report.clamped, report.duplicate,
+        int n = snprintf( text, sizeof( text ), "%d,%d,%d,%d,%d,%s,%s\n",
+                          report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate,
                           ( report.malformed || ( !ok && !report.refused ) ) ? "true" : "false",
                           report.refused ? "refused" : "read" );
         if ( !spill( out, f[1], text, (size_t) n ) ) return 1;
@@ -1069,8 +1074,8 @@ static int surface_json_hostile( const std::string & out )
         if ( !ok || report.malformed )
             n = snprintf( verdict, sizeof( verdict ), "refused\n" );
         else
-            n = snprintf( verdict, sizeof( verdict ), "%d,%d,%d,%d,false,read\n",
-                          report.unknown, report.kind_mismatch, report.clamped, report.duplicate );
+            n = snprintf( verdict, sizeof( verdict ), "%d,%d,%d,%d,%d,false,read\n",
+                          report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate );
         if ( !spill( out, f[1], verdict, (size_t) n ) ) return 1;
     }
     return 0;
@@ -1119,6 +1124,55 @@ static int surface_forgery( const std::string & out )
         if ( !slurp( f[4].c_str(), data ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
         const char * verdict = open_block( f[3], data, (int64_t) strtoll( f[5].c_str(), NULL, 0 ) ) ? "open\n" : "refuse\n";
         if ( !spill( out, f[1], verdict, strlen( verdict ) ) ) return 1;
+    }
+    return 0;
+}
+
+// block-reason: the REASON BlockOpen names beside its false, one word per
+// forgery a `refusal` line asks for, spelled as the enum's own value name so
+// the manifest pins the first failing clause (docs/SPEC-TABLES.md §7, §19.2)
+static const char * reason_name( blockdemo::TableRefuseReason reason )
+{
+    switch ( reason )
+    {
+        case blockdemo::ok: return "ok";
+        case blockdemo::not_a_cook: return "not_a_cook";
+        case blockdemo::foreign_order: return "foreign_order";
+        case blockdemo::wrong_build_version: return "wrong_build_version";
+        case blockdemo::reserved_not_zero: return "reserved_not_zero";
+        case blockdemo::bad_alignment: return "bad_alignment";
+        case blockdemo::truncated: return "truncated";
+        case blockdemo::unaligned_base: return "unaligned_base";
+        case blockdemo::bad_layout: return "bad_layout";
+        case blockdemo::unknown_form: return "unknown_form";
+        case blockdemo::count_over_length: return "count_over_length";
+        case blockdemo::count_over_extent_cap: return "count_over_extent_cap";
+        case blockdemo::blob_over_size_cap: return "blob_over_size_cap";
+        case blockdemo::data_cycle: return "data_cycle";
+    }
+    return "?";
+}
+
+static int surface_block_reason( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & r = manifest_lines[i].field;
+        if ( r[0] != "refusal" || r.size() < 3 || r[2] != "block" ) continue;
+        const std::vector<std::string> * forgery = NULL;
+        for ( size_t j = 0; j < manifest_lines.size(); j++ )
+        {
+            const std::vector<std::string> & f = manifest_lines[j].field;
+            if ( f[0] == "forgery" && f[1] == r[1] ) forgery = &f;
+        }
+        if ( forgery == NULL ) { fprintf( stderr, "driver: refusal %s names no forgery\n", r[1].c_str() ); return 1; }
+        const std::vector<std::string> & f = *forgery;
+        std::vector<uint8_t> data;
+        if ( !slurp( f[4].c_str(), data ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
+        blockdemo::TableRefuseReason reason = blockdemo::ok;
+        const bool opened = open_block( f[3], data, (int64_t) strtoll( f[5].c_str(), NULL, 0 ), &reason );
+        std::string answer = std::string( opened ? "ok" : reason_name( reason ) ) + "\n";
+        if ( !spill( out, r[1], answer.data(), answer.size() ) ) return 1;
     }
     return 0;
 }
@@ -1236,7 +1290,7 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
-        printf( "wire\nmessage\nreport\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\n" );
+        printf( "wire\nmessage\nreport\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -1257,5 +1311,6 @@ int main( int argc, char ** argv )
     if ( surface == "block-foreign" ) return surface_block_foreign( out );
     if ( surface == "block-dump" ) return surface_block_dump( out );
     if ( surface == "forgery" ) return surface_forgery( out );
+    if ( surface == "block-reason" ) return surface_block_reason( out );
     return 2;
 }

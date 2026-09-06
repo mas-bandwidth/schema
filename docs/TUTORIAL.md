@@ -2104,13 +2104,14 @@ because the data is yours and half a config is better than none.
 
 ### The report is the witness
 
-`TableReport` is five counters and a verdict:
+`TableReport` is six counters and a verdict:
 
 ```cpp
 struct TableReport
 {
     int32_t unknown = 0;       // unknown field ids skipped (newer data)
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
+    int32_t widened = 0;       // a kind that grew since the writer, decoded exactly
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
     // a key the TEXT form saw twice: last wins, and the repeat is counted
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an

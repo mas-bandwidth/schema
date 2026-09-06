@@ -1979,3 +1979,46 @@ static void test_message_form_cold_read()
         for ( int i = 0; i < 5; i++ ) { CHECK( read.few[i] == 0 ); }
     }
 }
+
+// ---- THE WIDENING ROW ON THIS FORM (docs/SPEC-TABLES.md §3.3, §4) ----------
+
+// §3.3 holds §4's evolution rows to the file form's word, and the widening row
+// is one of them: a kind below this reader's on the same ladder decodes
+// EXACTLY at the width the ANNOUNCEMENT states, the value lands, and one
+// `widened` counts. A1 and A2 are the pair the file form already reads across
+// (the a1_arm_moved_width_as_a2 report row): arm `a` is `int32` under A1 and
+// `int64` under A2, so the same wire under this form names the same answer.
+//
+// Red where a reader treats the announced kind as a mismatch: the arm reads
+// None and `kind_mismatch` moves in `widened`'s place.
+static void test_message_form_widened()
+{
+    static uint8_t a1_announcement[8192];
+    const int64_t a1_announced = tbla1::Announce( a1_announcement, sizeof( a1_announcement ) );
+
+    static tbla1::Root value;
+    tbla1::RootReset( value );
+    value.id = 7;
+    value.tail = 9;
+    value.value.type = tbla1::ValueType::A;
+    value.value.a = 1000;
+    static uint8_t message[1024];
+    tbla1::TableReport write_report;
+    const int64_t bytes = tbla1::RootSaveMessages( &value, 1, message, sizeof( message ), &write_report );
+    CHECK( bytes > 0 );
+
+    // A2 reads A1's message against the vocabulary A1 ANNOUNCED
+    VOCABULARY_ROOM( tbla2, from_a1, 64, 64 );
+    CHECK( tbla2::AnnounceRead( from_a1, a1_announcement, a1_announced, NULL ) );
+    tbla2::Root out;
+    tbla2::RootReset( out );
+    int64_t count = 1;
+    tbla2::TableReport report;
+    CHECK( tbla2::RootLoadMessages( &out, &count, from_a1, message, bytes, &report ) );
+    CHECK( !report.malformed && report.unknown == 0 );
+    CHECK( report.kind_mismatch == 0 ); // a kind the declaration WIDENS is not a mismatch
+    CHECK( report.widened == 1 );       // ONE for the arm
+    CHECK( out.value.type == tbla2::ValueType::A );
+    CHECK( out.value.a == 1000 );       // the value is the writer's own, exactly
+    CHECK( out.id == 7 && out.tail == 9 ); // and the siblings are intact
+}

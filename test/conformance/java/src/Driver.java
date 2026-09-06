@@ -405,7 +405,9 @@ public final class Driver {
     }
 
     private static String openBlock(String name, byte[] bytes, long extent) {
-        long claim = extent < 0 || extent < bytes.length ? bytes.length : extent;
+        // A CLAIM SHORTER THAN THE IMAGE IS A TRUNCATION: place copies what fits
+        // and leaves the rest zero, so the array is the claim in that direction.
+        long claim = extent < 0 ? bytes.length : extent;
         Placed p = place(bytes, claim, 0);
         boolean opened;
         if (name.startsWith("block_render")) {
