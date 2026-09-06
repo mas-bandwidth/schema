@@ -14,6 +14,10 @@ const Dart Backend = 1 << 8
 func init() {
 	define(Dart,
 		Name{Name: "TableReport", What: "the read report — the permissive contract's ledger"},
+		// RETAIN-UNKNOWN's caller-owned storage (docs/SPEC-TABLES.md §6.6): the
+		// record bytes, the retained-id list, and what has been used of each. The
+		// entry type rides INSIDE it and claims no name of its own.
+		Name{Name: "TableRetain", What: "the caller's retention buffer and its retained-id list — claimed with the feature, ahead of the port"},
 		Name{Name: "TableWriter", What: "the wire writer over the caller's buffer"},
 		Name{Name: "TableReader", What: "the wire reader over the caller's buffer"},
 		Name{Name: "TableTypeInfo", What: "a table's reflection descriptor"},

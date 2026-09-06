@@ -4792,8 +4792,8 @@ damage (§3). A wire that had shipped would have taken `3` on that same rule.
 #### Retention, and what does not move
 
 **RETENTION (§6.6) ON A MESSAGE BODY: the load side is unchanged and the save
-side REFUSES.** Retention itself is NOT BUILT in any language (§6.6, owed as
-schema#525), so this paragraph is the rule that lands WITH it.
+side REFUSES.** The C++ reference carries the WRITE half of this
+paragraph — the refusal — and the form 2 `LoadRetain` is not built (§6.6).
 
 `LoadRetain` reads a form-`2` body as it reads a file's, the resolving walk
 replacing every reference with the id it names, against the connection's
@@ -5468,9 +5468,10 @@ entries announces about 5 KB once.
   checker accepts a planted name, or accepts it as a `was`.
 - **Retention across the forms.** A body loaded with retention and saved in form
   `2`, which must return `-1` and write nothing, and the same load saved in form
-  `1`, which must write every retained record under §6.6's rules. The row lands
-  WITH retention, which is not built in any language (§6.6, schema#525), so the
-  suite carries no test for it yet and carries no skipped one either.
+  `1`, which must write every retained record under §6.6's rules. The C++ reference holds
+  the form 2 half as a COMPILE-TIME refusal that names itself (§6.6), and the
+  form 1 half rides in the reference's own retain gate; the suite gains the
+  row when a second port carries retention.
 - **The cost rows.** The twelve pinned wires, the batch vector and the
   announcement. A byte figure in the table above that drifts moves a pinned wire.
 
@@ -7315,10 +7316,14 @@ than from a backend, and it carries no retention today. The leg is not
 buildable until it does, and that is part of what the feature costs rather than
 a detail of it.
 
-**Backend status: NOT BUILT, in any language.** No port carries `TableRetain`
-or the three calls, no generated file mentions them, `internal/tablewire` has
-no retention, and this subsection is the specification a port is written from
-rather than a description of the tree. Owed as schema#525.
+**Backend status: the C++ REFERENCE carries it, and no port does.** The
+reference emits `TableRetain`, the three verbs on every variable-class root,
+the refusal on every fixed-class one, and a second family of body functions
+beside the three the wire already had, so `Load`, `Measure` and `Save` are
+unchanged. What is still owed is the eight ports, `internal/tablewire`'s own
+retention and the fuzzer leg that needs it (§4.2), and the MESSAGE form's
+`LoadRetain` (§3.3): the form 2 write refuses by name and the form 2 read is
+not built.
 
 ## 7. The cooked form
 
@@ -9911,9 +9916,9 @@ in build version (§20.5).
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **41 suffixes**, and a declaration spelling one of them is
+  each of these **52 suffixes**, and a declaration spelling one of them is
   refused naming the collision — the block form's nine and the C backend's
-  seven follow below, for **57 in all**:
+  seven follow below, for **68 in all**:
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
@@ -9925,15 +9930,27 @@ in build version (§20.5).
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
   MeasureMessages  SaveMessages  LoadMessages
+  LoadRetain  MeasureRetain  SaveRetain  SaveRetainMessages
+  LoadBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
+  MeasureWireRetain  SaveWireRetain  NodeBodyRetain
   ```
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. That list is the
-  checker's own, and this section is held to it: the three lists here — 41, then
+  checker's own, and this section is held to it: the three lists here — 52, then
   the block form's nine, then the C backend's seven — are `tableGeneratedVerbs`
-  entire, spelling for spelling and 57 in all, because a claim the page states
+  entire, spelling for spelling and 68 in all, because a claim the page states
   and the checker does not make is a name a user may take.
+
+  **RETAIN-UNKNOWN'S ELEVEN ARE THREE AND EIGHT** (§6.6). `LoadRetain`,
+  `MeasureRetain` and `SaveRetain` are the SURFACE the feature owes this
+  section. The other eight are what carries them, and they are claimed on
+  this list's own rule because they are EMITTED: the second family of body
+  functions, the wire pair a pointered root takes, the node dispatch that
+  reaches each record's own body, and `SaveRetainMessages`, which is REFUSED
+  BY NAME on a form 2 write (§3.3) and is a definition rather than only a
+  claim for exactly that reason.
 
   **`Open` AND `Cook` ARE BOTH EMITTED NOW — in different languages, and that is
   what the C# rule below is for. `OpenWalk` was RETIRED.** The C++ table backend
@@ -10128,7 +10145,7 @@ in build version (§20.5).
     reached through its owner, and a declaration lowers to a module rather than
     to a function of one.
 
-    **DART ADDS SIX, WIDENS SEVEN, AND CLAIMS NINE VERBS AGAINST FIELD
+    **DART ADDS SIX, WIDENS SEVEN, AND CLAIMS TWELVE VERBS AGAINST FIELD
     NAMES.** A Dart library is a file and its privacy is per library, so a
     runtime shared across a unit's files is PUBLIC, and every spelling of it
     is claimed: `TableEnumVocab` (the per-enum vocabularies are its static
@@ -10149,12 +10166,13 @@ in build version (§20.5).
     **And its verbs are MEMBERS**, so a different claim applies to them: a
     table's verbs are methods on its class and a closure `type`'s ride on
     `extension <Name>Table on <Name>` — so `Table` joins the suffix set — and
-    a FIELD whose Dart spelling is `reset`, `measure`, `save`, `saveBody`,
-    `load`, `loadBody`, `fromJson`, `toJson` or `toJsonMeasure` is refused on
+    a FIELD whose Dart spelling is one of the twelve — `reset`, `measure`, `save`, `saveBody`,
+    `load`, `loadBody`, `fromJson`, `toJson`, `toJsonMeasure`, `loadRetain`,
+    `measureRetain` or `saveRetain` is refused on
     every closure member, because on a class it collides with the method and
-    on an extension it silently hides it. The nine are the whole per-member
+    on an extension it silently hides it. The twelve are the whole per-member
     surface: the descriptors stay library-scope constants and the accessors
-    stay on `<Name>TableFields`, precisely so the list is nine and not twenty.
+    stay on `<Name>TableFields`, precisely so the list is twelve and not twenty-five.
 
   **The view's own unit-scope spellings are refused as declaration names in
   every unit, always** (§8.3): `UnitView`, `UnitViewInfo`, `ViewType`,
