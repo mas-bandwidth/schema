@@ -111,6 +111,10 @@ const (
 	TableKindEnum      = 30
 	TableKindEscape    = 31
 	TableKindNoPayload = 32
+	// kind 33 is WIDE TEXT, the table half of `wstring(N)` (docs/SPEC-TABLES.md
+	// §3): on the message form its length rides at bits_required(0, max), NO
+	// align, and SIXTEEN bits a code unit (§3.3).
+	TableKindWstring = 33
 )
 
 // TableWireScalarKind is [TableScalarKind] on this form: an ENUM answers its
@@ -260,52 +264,72 @@ var WstringWireTypeId = TableWireId("wstring")
 // id in any body but the one whose transport it is, is malformed (§3.1).
 const TableBuildVersionWireId = uint64(0xFFFFFFFFFFFFFFFE)
 
+// TableMessageVocabularyWireId is the RESERVED id the ANNOUNCEMENT's second
+// required field rides under (docs/SPEC-TABLES.md §3.3), and the third id the
+// language holds back (§5, §11), beside the node table's and the build
+// version's. Its payload is the VOCABULARY: the entries, each an id beside a
+// kind beside a shape, which is what lets a reader skip an id it cannot name
+// on a body that has no kind byte, and decode one whose declaration moved.
+const TableMessageVocabularyWireId = uint64(0xFFFFFFFFFFFFFFFD)
+
 // TableWireMessageForm is the MESSAGE FORM's form byte (docs/SPEC-TABLES.md
 // §3.3). A form-2 wire is TWO PARTS, the form byte and the root body, and its
 // id table is the CONNECTION's rather than the wire's.
 const TableWireMessageForm = 2
 
-// TableVocabularyMaxEntries is the CONFORMING DEFAULT bound on an
-// announcement's entry count (docs/SPEC-TABLES.md §3.3): 32 KiB a direction,
-// eight times the 500-id unit that is already a large one. A connection's
-// table is bounded by nothing the wire carries, so a receiver declares a
-// maximum and refuses an announcement above it by name — reading the count,
-// comparing it, and touching no entry.
-const TableVocabularyMaxEntries = 4096
+// The CONFORMING DEFAULT BOUNDS on an announcement (docs/SPEC-TABLES.md §3.3).
+// A connection's vocabulary is bounded by nothing the wire carries, so a
+// receiver declares its maxima and refuses an announcement above either by
+// name. The bound is TWO numbers because an entry is no longer a fixed width:
+// 4096 entries is eight times the 500-entry unit that is already a large one,
+// and the byte bound is checked from the vocabulary field's own length before
+// an entry is touched.
+const (
+	TableVocabularyMaxEntries = 4096
+	TableVocabularyMaxBytes   = 64 * 1024
+)
 
-// TableVocabulary is the whole id vocabulary a unit can put on a form-2 wire,
-// in the order §3.3 settles: the reserved build-version id at slot 1, then the
-// COOK PROJECTION's order (§20.2) — each record in the order the projection
-// renders it and each record's fields in the order the projection renders
-// them, then each enum's variants and each union's arms in that same order —
-// then the TAIL the projection does not name: the reserved node-table id, the
-// three blob type ids as `bytes`, `string`, `wstring`, and every table's own
-// name id in the projection's sorted record order.
+// TableVocabulary is the whole vocabulary a unit can put on a form-2 wire, in
+// the order §3.3 settles: the COOK PROJECTION's order (§20.2), each record in
+// the order the projection renders it and each record's fields in the order
+// the projection renders them, then each enum's variants and each union's arms
+// in that same order, then the TAIL the projection does not name: the
+// reserved node-table id, the three blob type ids as `bytes`, `string`,
+// `wstring`, and every table's own name id in the projection's sorted record
+// order.
 //
-// An id already placed is never placed twice, so a field name three records
-// share takes the slot its first appearance gave it. Slot k is entry k counted
-// from 1, which is the returned slice's index k-1.
+// An ENTRY IS A TRIPLE, an id beside a kind beside a shape, and a triple
+// already placed is never placed twice. ONE NAME MAY TAKE TWO SLOTS: a unit
+// declaring `count uint8` in one table and `count uint32` in another announces
+// both, at their own kinds and shapes, and a body names the one it means.
+//
+// THE TWO RESERVED IDS OF THE ANNOUNCEMENT ITSELF ARE NOT HERE. The build
+// version and the vocabulary are the announcement's own transport, they appear
+// in its trailer and never in a message body, so they take no slot. Slot 1 is
+// the first entry of the closure, counted from 1, which is the returned
+// slice's index 0.
 //
 // The tail is UNCONDITIONAL: a unit with no pointer announces the node-table
-// id and the three blob ids anyway, so that an ordinary edit — a first `*T`,
-// or a `*T` at a new type — only ever grows the tail at its end and never
-// reshuffles a slot a generated field header carries as a constant.
-func TableVocabulary(u *Unit) []uint64 {
-	var ids []uint64
-	seen := map[uint64]bool{}
-	place := func(id uint64) {
-		if seen[id] {
+// id and the three blob ids anyway, so that an ordinary edit only ever grows
+// the tail at its end and never reshuffles a slot a generated field header
+// carries as a constant.
+func TableVocabulary(u *Unit) []TableVocabularyEntry {
+	var entries []TableVocabularyEntry
+	seen := map[string]bool{}
+	place := func(e TableVocabularyEntry) {
+		key := e.Key()
+		if seen[key] {
 			return
 		}
-		seen[id] = true
-		ids = append(ids, id)
+		seen[key] = true
+		entries = append(entries, e)
 	}
-	place(TableBuildVersionWireId)
+	name := func(id uint64) { place(TableVocabularyEntry{Id: id}) }
 
 	closure := TableClosure(u)
 	names := make([]string, 0, len(closure))
-	for name := range closure {
-		names = append(names, name)
+	for member := range closure {
+		names = append(names, member)
 	}
 	// THE ORDER IS THE COOK PROJECTION'S, so the members sort by the name the
 	// projection prints — which for a map's generated entry is its anonymous
@@ -317,73 +341,130 @@ func TableVocabulary(u *Unit) []uint64 {
 	enums := map[string]*Enum{}
 	flags := map[string]*Flags{}
 	unions := map[string]*Union{}
-	for _, name := range names {
-		st := memberStruct(u, name)
+	for _, member := range names {
+		st := memberStruct(u, member)
 		if st == nil {
 			continue
 		}
 		for _, fl := range layoutRecord(u, st).Fields {
-			place(TableFieldWireId(fl.Field))
+			place(TableFieldEntry(fl.Field))
+			if fl.Field.IsMap() {
+				// A MAP'S GENERATED ENTRY carries its own two field names
+				// (§2.8), and they are entries like any other.
+				for _, sub := range fl.Field.MapEntry.Fields {
+					place(TableFieldEntry(sub))
+				}
+			}
 			// the vocabularies a field REACHES are collected exactly as the
 			// projection collects them, so the two orders are one order
 			cookFieldLine(u, fl, enums, flags, unions)
 		}
 	}
 	collectArmRefs(enums, flags, unions)
-	for _, name := range sortedKeysOf(enums) {
-		for i := range enums[name].Variants {
-			place(TableWireId(enums[name].VariantWireName(i)))
+	for _, member := range sortedKeysOf(enums) {
+		for i := range enums[member].Variants {
+			// A VARIANT NAME IS REFERENCED AS A VALUE and carries no payload,
+			// so its framing is not an entry's to give: kind 0, no shape. The
+			// id is the wire name's, so a `was` rename moves no slot (§5).
+			name(TableWireId(enums[member].VariantWireName(i)))
 		}
 	}
 	// A `flags` DECLARATION NAMES NOTHING ON THIS WIRE: a mask rides raw, so
-	// no variant of it is ever an id (§20.1). It is skipped here rather than
-	// left unmentioned, because the projection renders a block for it between
-	// the enums and the unions.
-	for _, name := range sortedKeysOf(unions) {
-		for _, v := range unions[name].Variants {
-			place(TableWireId(v.WireName()))
+	// no variant of it is ever an entry (§20.1). It is skipped here rather
+	// than left unmentioned, because the projection renders a block for it
+	// between the enums and the unions.
+	for _, member := range sortedKeysOf(unions) {
+		for _, v := range unions[member].Variants {
+			// AN ARM HEADER IS A FIELD HEADER (§3): an arm's name carries the
+			// arm's own kind and shape.
+			place(TableArmEntry(v))
 		}
 	}
 
-	place(TableNodeWireId)
-	place(BytesWireTypeId)
-	place(StringWireTypeId)
-	place(WstringWireTypeId)
-	for _, name := range names {
+	name(TableNodeWireId)
+	name(BytesWireTypeId)
+	name(StringWireTypeId)
+	name(WstringWireTypeId)
+	for _, member := range names {
 		// A MAP'S GENERATED ENTRY IS NOT A TABLE OF THE DECLARATION'S, and
 		// its name is generated: it is reached only through the map that
 		// generates it, never through a pointer, so its name id is on no wire
 		// and hashing it here would let a `was` rename of the holder move a
 		// slot (§2.8, §20.2).
-		if st := memberStruct(u, name); st == nil || st.MapEntryOf != "" {
+		if st := memberStruct(u, member); st == nil || st.MapEntryOf != "" {
 			continue
 		}
-		if u.Tables[name] == nil {
+		if u.Tables[member] == nil {
 			continue // a `type` in the closure is nested by value and never pointed at
 		}
-		place(TableWireId(u.Tables[name].WireName()))
+		// The id is the table's WIRE name, so a `was` rename moves no slot (§5).
+		name(TableWireId(u.Tables[member].WireName()))
 	}
-	return ids
+	return entries
+}
+
+// TableVocabularyBytes is the vocabulary as the announcement carries it: the
+// entries back to back, each an id, a kind and a shape.
+func TableVocabularyBytes(entries []TableVocabularyEntry) []byte {
+	var out []byte
+	for _, e := range entries {
+		out = e.Encode(out)
+	}
+	return out
+}
+
+// TableVocabularySlots is the writer's half: the SLOT each entry takes, keyed
+// by the triple, so a generated field header carries its reference as a
+// literal and a save does no lookup at all.
+func TableVocabularySlots(u *Unit) map[string]uint64 {
+	slots := map[string]uint64{}
+	for i, e := range TableVocabulary(u) {
+		slots[e.Key()] = uint64(i + 1)
+	}
+	return slots
 }
 
 // TableAnnouncement is the unit's ID TABLE MESSAGE, byte for byte
 // (docs/SPEC-TABLES.md §3.3). It is an ordinary form-`1` FILE whose body
-// carries one field, the BUILD VERSION under the reserved build-version id at
-// kind `9`, and whose trailer is the whole connection table: slot `1` the
-// reserved id, slots `2` and up the vocabulary.
+// carries TWO fields, the BUILD VERSION under the reserved build-version id at
+// kind `9` and the VOCABULARY under the reserved vocabulary id at kind `14`
+// over element kind `6`, and whose trailer is those two reserved ids and
+// nothing else.
+//
+// THE VOCABULARY IS A FIELD AND NOT THE TRAILER, and that buys three things:
+// §3's writer rule that an id no body references is never written is restored
+// unbroken, an entry can carry a KIND and a SHAPE which a trailer of bare ids
+// cannot, and one NAME can appear at two shapes.
 //
 // Every byte of it is settled by the compiler, which is why a backend may emit
 // it as a constant byte array and its length rather than as a walk.
 func TableAnnouncement(u *Unit) []byte {
-	ids := TableVocabulary(u)
-	out := make([]byte, 0, 1+11+8*len(ids)+8)
+	vocabulary := TableVocabularyBytes(TableVocabulary(u))
+	out := make([]byte, 0, 32+len(vocabulary)+24)
 	out = append(out, TableWireForm)
 	out = append(out, 1)                   // reference 1: the reserved build-version id, first-use
 	out = append(out, uint8(TableKindU64)) // kind 9
 	out = binary.LittleEndian.AppendUint64(out, BuildVersion(u))
+	out = append(out, 2, uint8(TableKindArray)) // reference 2: the vocabulary
+	body := make([]byte, 0, len(vocabulary)+16)
+	body = append(body, uint8(TableKindU8)) // the element kind: bytes
+	body = appendLebBytes(body, uint64(len(vocabulary)))
+	body = append(body, vocabulary...)
+	out = appendLebBytes(out, uint64(len(body)))
+	out = append(out, body...)
 	out = append(out, 0) // the zero reference that ends the body
-	for _, id := range ids {
-		out = binary.LittleEndian.AppendUint64(out, id)
+	out = binary.LittleEndian.AppendUint64(out, TableBuildVersionWireId)
+	out = binary.LittleEndian.AppendUint64(out, TableMessageVocabularyWireId)
+	return binary.LittleEndian.AppendUint64(out, 2)
+}
+
+// appendLebBytes writes one length in the canonical LEB128 every length,
+// count and reference of a FILE takes (docs/SPEC-TABLES.md §3). The
+// announcement is a file, so it spells its lengths the file's way.
+func appendLebBytes(out []byte, v uint64) []byte {
+	for v >= 0x80 {
+		out = append(out, uint8(v)|0x80)
+		v >>= 7
 	}
-	return binary.LittleEndian.AppendUint64(out, uint64(len(ids)))
+	return append(out, uint8(v))
 }

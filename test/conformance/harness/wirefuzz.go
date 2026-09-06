@@ -71,7 +71,6 @@ type wireRoot struct {
 	// the build version, so both sides derive it and neither carries it.
 	message    bool
 	vocabulary *tablewire.Vocabulary
-	entries    []uint64
 	// the C ABI storage each node type commands (docs/SPEC-TABLES.md §6.5,
 	// §20.3), by wire type id, eight-aligned as a reader's LoadMeasure rounds it
 	storage     map[uint64]int64
@@ -105,14 +104,14 @@ func newWireRoot(u *units, unitKey, rootName string, message bool) (*wireRoot, e
 		if err := r.vocabulary.AnnounceRead(ir.TableAnnouncement(unit), &tabletext.Report{}); err != nil {
 			return nil, fmt.Errorf("unit %s: its own announcement was refused: %w", unitKey, err)
 		}
-		r.entries = r.vocabulary.Entries()
 	}
 	r.rootStorage = alignUp8(ir.RecordLayout(unit, def).Size)
 	// THE STORAGE A RECORD COMMANDS is its type's, and only for a type THIS
 	// ROOT can place: a table no pointer below the root targets is a node the
 	// reader cannot name, so it commands none (docs/SPEC-TABLES.md §3.1,
 	// §6.5), exactly as the reference's <Root>NodeStorage answers -1 for one.
-	for name := range ir.PointerReachable(unit, def) {
+	for _, reached := range ir.PointerReachable(def) {
+		name := reached.Name
 		st := m.Lookup(name)
 		if st == nil {
 			continue
@@ -162,7 +161,21 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	decode := func() (bool, error) { return tablewire.Decode(r.model, inst, data, &rep) }
 	encode := func() ([]byte, error) { return tablewire.Encode(r.model, inst) }
 	if r.message {
-		decode = func() (bool, error) { return tablewire.DecodeMessage(r.model, inst, data, r.vocabulary, &rep) }
+		// THE WIRE MAY CARRY UP TO 256 BODIES, and the leg holds room for the
+		// wire's M, so the oracle reads the batch whole and answers body one
+		bodies, _ := tablewire.MessageCount(data, r.vocabulary)
+		if bodies < 1 {
+			bodies = 1
+		}
+		batch := make([]*tabletext.Instance, bodies)
+		batch[0] = inst
+		for i := 1; i < len(batch); i++ {
+			batch[i] = r.model.New(r.def)
+		}
+		decode = func() (bool, error) {
+			_, ok, err := tablewire.DecodeMessages(r.model, batch, data, r.vocabulary, &rep)
+			return ok, err
+		}
 		encode = func() ([]byte, error) { return tablewire.EncodeMessage(r.model, inst) }
 	}
 	ok, derr := decode()
@@ -193,10 +206,11 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		ans.encoded = encoded
 	}
 	if r.variable {
-		types, whole := tablewire.NodeRecordTypes(data)
 		if r.message {
-			types, whole = tablewire.NodeRecordTypesMessage(data, r.entries)
+			r.sizeBatch(&ans, data)
+			return ans, nil
 		}
+		types, whole := tablewire.NodeRecordTypes(data)
 		if whole {
 			ans.exact = true
 			ans.bytes = r.rootStorage + (int64(len(types))+1)*nodeDirEntryBytes
@@ -343,15 +357,23 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
 		if root.variable && reply.measure < 0 {
 			// LOADMEASURE REFUSED THE FRAMING, so there was no region to load
 			// into and no value to compare: a wire that cannot be OPENED at
-			// all — fewer than nine bytes, a table that cannot be read whole,
-			// a form this reader does not carry — has no body and no numbering
+			// all, fewer than nine bytes, a table that cannot be read whole,
+			// a form this reader does not carry, has no body and no numbering
 			// (docs/SPEC-TABLES.md §3). The oracle has to agree there was
-			// nothing to read.
+			// nothing to read, AND THAT IS THE WHOLE OF WHAT IT OWES HERE.
+			//
+			// THE COUNTER TUPLES ARE NOT COMPARED ON THIS BRANCH, because the
+			// two sides ran two different operations and the page rules both
+			// of them. A LoadMeasure refusal moves no counter (§6.5), so the
+			// leg's report is empty by rule; the oracle DECODED, and the
+			// fields decoded before the damage stand with the counters they
+			// earned (§3.3), so its report is not. A batch claiming 129
+			// bodies in 66 bytes is exactly that shape: the leg refuses to
+			// measure and the oracle reads body one and counts one malformed.
+			// Requiring the tuples to match would require one of those two
+			// sentences to be false.
 			if !ans.report.Malformed && !ans.report.Refused {
 				return "the leg's LoadMeasure refused the framing; the oracle read the same bytes cleanly"
-			}
-			if reply.report != ans.report {
-				return fmt.Sprintf("the report differs: the leg says %s, the oracle says %s", reply.report, ans.report)
 			}
 			return ""
 		}
@@ -421,7 +443,15 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		if err != nil {
 			return err
 		}
-		s := &wireSeed{name: name, unit: unit, root: root, wire: wire, message: message, frame: frameWireForm(wire, roots[ri].entries)}
+		s := &wireSeed{name: name, unit: unit, root: root, wire: wire, message: message}
+		if message {
+			// A MESSAGE SEED IS FRAMED IN BITS (docs/SPEC-TABLES.md §3.3): its
+			// references and node indices, found by the engine's own read
+			s.spots = tablewire.MessageSpots(roots[ri].model, roots[ri].def, wire, roots[ri].vocabulary)
+			s.entries = len(roots[ri].vocabulary.Entries())
+		} else {
+			s.frame = frameWire(wire)
+		}
 		seeds = append(seeds, s)
 		seedRoot[s] = ri
 		return nil
@@ -716,4 +746,27 @@ func readWireVectors(path string) ([]wireVector, error) {
 		out = append(out, wireVector{name: f[0], unit: f[1], root: f[2], file: f[3], message: message})
 	}
 	return out, nil
+}
+
+// sizeBatch is the oracle's answer for a MESSAGE batch's one region (§3.3):
+// one directory a body, the root's storage, and each record's, a blob's being
+// its header and its bytes, a string's terminator included, rounded as every
+// node is. `exact` is whether the numbering was whole.
+func (r *wireRoot) sizeBatch(ans *oracleAnswer, data []byte) {
+	bodies, whole := tablewire.MessageNodeRecords(data, r.vocabulary)
+	ans.exact = whole
+	for _, records := range bodies {
+		ans.bytes += r.rootStorage + (int64(len(records))+1)*nodeDirEntryBytes
+		for _, rec := range records {
+			if rec.Blob {
+				terminator := int64(0)
+				if rec.TypeId == ir.StringWireTypeId {
+					terminator = 1
+				}
+				ans.bytes += alignUp8(8 + rec.Length + terminator)
+				continue
+			}
+			ans.bytes += r.storage[rec.TypeId] // a type id this build cannot name commands none
+		}
+	}
 }

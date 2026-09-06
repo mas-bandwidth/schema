@@ -1015,8 +1015,21 @@ func (c *checker) resolveArm(union string, v ast.UnionVariant) *ir.Field {
 	case f.KeyEnum != "":
 		c.errf(v.Arm.Pos, "%s: an enum-keyed array is not an arm — a keyed body elides slots by name, and its None slot wants its rule stated before it is wire; declare [..N]T or [N]T (docs/SPEC-TABLES.md §2.6, §3.2, §15)", where)
 		return nil
+	case f.Array != ir.ArrayNone && !f.Type.Pointer && armNamesTable(f):
+		// `[..N]T` and `[N]T` over a table T: the walks descend a table arm
+		// as ONE body, the extent asks Body(), which an array arm is not,
+		// and the tool's edge walk skips the shape, so it is refused until
+		// it is ruled (schema#579)
+		c.errf(v.Arm.Pos, "%s: an array of tables is not an arm — a union arm is one table, not an array of tables (docs/SPEC-TABLES.md §2.6); declare a table holding the array and make that table the arm (§15)", where)
+		return nil
 	}
 	return f
+}
+
+// armNamesTable reports an arm whose element type is a declared `table`.
+func armNamesTable(f *ir.Field) bool {
+	st, ok := f.Type.Ref.(*ir.Struct)
+	return ok && st.IsTable
 }
 
 type scopeFrame struct {
@@ -2068,8 +2081,8 @@ func (c *checker) checkReservedWireIds(names []string) {
 		// THE EFFECTIVE NAME: a table renamed under `was` rides under the
 		// hash of its old name (docs/SPEC-TABLES.md §5), so that is the id
 		// the reserved check and the collision check see
-		if id := ir.TableWireId(st.WireName()); id == ir.TableNodeWireId || id == ir.TableBuildVersionWireId {
-			c.errf(at, "%s %s: its name takes one of the two ids the language holds back, 0x%016x — rename it (docs/SPEC-TABLES.md §3.1, §3.3, §5)",
+		if id := ir.TableWireId(st.WireName()); id == ir.TableNodeWireId || id == ir.TableBuildVersionWireId || id == ir.TableMessageVocabularyWireId {
+			c.errf(at, "%s %s: its name takes one of the three ids the language holds back, 0x%016x, so rename it (docs/SPEC-TABLES.md §3.1, §3.3, §5)",
 				what, describeTableName(st), id)
 		} else if prev, dup := byId[id]; dup {
 			c.errf(at, "tables %s and %s collide on table-wire type id 0x%016x — a node record says what it is by that id alone, so the two would be indistinguishable in a save; rename one (docs/SPEC-TABLES.md §3.1, §5)",
@@ -2078,16 +2091,17 @@ func (c *checker) checkReservedWireIds(names []string) {
 			byId[id] = describeTableName(st)
 		}
 		for _, f := range st.Fields {
-			// THE TWO RESERVED IDS (docs/SPEC-TABLES.md §3.1, §3.3, §5): the
-			// node table's 0xFFFFFFFFFFFFFFFF and the announcement's build
-			// version 0xFFFFFFFFFFFFFFFE. A reserved id in any body but the
-			// one whose transport it is, is malformed, so a declared name that
-			// takes one — a `was` included — is refused at the source.
+			// THE THREE RESERVED IDS (docs/SPEC-TABLES.md §3.1, §3.3, §5): the
+			// node table's 0xFFFFFFFFFFFFFFFF, the announcement's build
+			// version 0xFFFFFFFFFFFFFFFE and its vocabulary 0xFFFFFFFFFFFFFFFD.
+			// A reserved id in any body but the one whose transport it is, is
+			// malformed, so a declared name that takes one, a `was` included,
+			// is refused at the source.
 			id := ir.TableFieldWireId(f)
-			if id != ir.TableNodeWireId && id != ir.TableBuildVersionWireId {
+			if id != ir.TableNodeWireId && id != ir.TableBuildVersionWireId && id != ir.TableMessageVocabularyWireId {
 				continue
 			}
-			c.errf(at, "%s %s: field %s takes one of the two ids the language holds back, 0x%016x — rename it, or name another `was` (docs/SPEC-TABLES.md §3.1, §3.3, §5)",
+			c.errf(at, "%s %s: field %s takes one of the three ids the language holds back, 0x%016x, so rename it or name another `was` (docs/SPEC-TABLES.md §3.1, §3.3, §5)",
 				what, name, describeTableField(f), id)
 		}
 	}

@@ -224,6 +224,11 @@ func main() {
 		// not read one holds no table and refuses every message on the wire.
 		message := fs.Bool("message", false, "write the `message` form (docs/SPEC-TABLES.md §3.3) instead of the file form")
 		announce := fs.String("announce", "", "with --message, also write the unit's announcement to this `file`")
+		// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of
+		// messages in one buffer, one count and one bit stream. --root and its
+		// tree are the first message; each --batch names another, in order.
+		var batch messageTrees
+		fs.Var(&batch, "batch", "with --message, another message of the batch, as `Table=tree-dir` (repeatable)")
 		fs.BoolVar(&verbose, "verbose", false, "print the read report even when it is silent, and name what the walk passed over")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		dir, rest := packTree("pack", fs.Args())
@@ -233,12 +238,19 @@ func main() {
 		if *announce != "" && !*message {
 			fatalf("--announce is the message form's own: pass --message beside it (docs/SPEC-TABLES.md §3.3)")
 		}
-		unit := loadUnit(c, rest)
-		pack := c.Pack
-		if *message {
-			pack = c.PackMessage
+		if len(batch) > 0 && !*message {
+			fatalf("--batch is the message form's own: pass --message beside it (docs/SPEC-TABLES.md §3.3)")
 		}
-		bytes, skipped, report, err := pack(unit, *root, dir)
+		unit := loadUnit(c, rest)
+		var bytes []byte
+		var skipped []string
+		var report compiler.TableReport
+		var err error
+		if *message {
+			bytes, skipped, report, err = c.PackMessages(unit, append([]compiler.MessageTree{{Root: *root, Dir: dir}}, batch...))
+		} else {
+			bytes, skipped, report, err = c.Pack(unit, *root, dir)
+		}
 		if err != nil {
 			fail(err)
 		}
@@ -275,16 +287,31 @@ func main() {
 		// on its own is not readable, and this flag is where the other half
 		// comes from.
 		announce := fs.String("announce", "", "read --in as the `message` form against the announcement in this file (docs/SPEC-TABLES.md §3.3)")
+		var batch messageTrees
+		fs.Var(&batch, "batch", "with --announce, another message of the batch, as `Table=tree-dir` (repeatable)")
 		fs.BoolVar(&verbose, "verbose", false, "print the read report even when it is silent")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
-		dir, rest := packTree("unpack", fs.Args())
-		if *root == "" || *in == "" {
-			fatalf("unpack needs --root <Table> and --in <file>")
+		if *in == "" {
+			fatalf("unpack needs --in <file>, and --root <Table> for a wire that is not an announcement")
 		}
 		wire, err := os.ReadFile(*in)
 		if err != nil {
 			fatalf("%v", err)
 		}
+		if *root == "" {
+			unit := loadUnit(c, fs.Args())
+			// HANDED AN ANNOUNCEMENT, unpack prints the VOCABULARY DECODED
+			// (docs/SPEC-TABLES.md §3.3): one line an entry with its slot, its id,
+			// the name this unit's closure gives it, its kind and its shape
+			text, described, derr := c.DescribeAnnouncement(unit, wire)
+			if derr != nil {
+				fail(derr)
+			}
+			fmt.Print(text)
+			reportLine(described, verbose, *tolerate)
+			return
+		}
+		dir, rest := packTree("unpack", fs.Args())
 		unit := loadUnit(c, rest)
 		var report compiler.TableReport
 		if *announce != "" {
@@ -292,8 +319,11 @@ func main() {
 			if aerr != nil {
 				fatalf("%v", aerr)
 			}
-			report, err = c.UnpackMessage(unit, *root, announcement, wire, dir, *oneFile)
+			report, err = c.UnpackMessages(unit, append([]compiler.MessageTree{{Root: *root, Dir: dir}}, batch...), announcement, wire, *oneFile)
 		} else {
+			if len(batch) > 0 {
+				fatalf("--batch is the message form's own: pass --announce beside it (docs/SPEC-TABLES.md §3.3)")
+			}
 			unpack := c.Unpack
 			if *oneFile {
 				unpack = c.UnpackOneFile
@@ -575,7 +605,7 @@ func usage() {
   schema build-version [--facts] [dir|files...]
   schema tables-baseline [--update --reason "..."] [--verbose] [dir|files...]
   schema fmt        [--verbose] [dir|files...]
-  schema pack       --root <Table> --out <file> [--message [--announce <file>]] [--tolerate] [--verbose] <tree-dir> [dir|files...]
+  schema pack       --root <Table> --out <file> [--message [--announce <file>] [--batch <Table>=<dir>]...] [--tolerate] [--verbose] <tree-dir> [dir|files...]
   schema unpack     --root <Table> --in  <file> [--announce <file>] [--one-file] [--tolerate] [--verbose] <tree-dir> [dir|files...]
   schema cook       --root <Table> --in  <file|tree-dir> --out <file> [--byte-order little|big] [--attribution <file>] [--tolerate] [--verbose] [dir|files...]
   schema cook-check [--root <Table>] [--attribution <file>] [--verbose] <file.cook> [dir|files...]
@@ -622,4 +652,21 @@ func loadUnit(c *compiler.Compiler, args []string) *ir.Unit {
 		fail(err)
 	}
 	return u
+}
+
+// messageTrees is the repeatable `--batch <Table>=<tree-dir>` flag: the
+// messages of a BATCH after the first, in the order they ride
+// (docs/SPEC-TABLES.md §3.3). Which root each message is, is the
+// application's, so the tool asks rather than guessing.
+type messageTrees []compiler.MessageTree
+
+func (t *messageTrees) String() string { return "" }
+
+func (t *messageTrees) Set(value string) error {
+	root, dir, found := strings.Cut(value, "=")
+	if !found || root == "" || dir == "" {
+		return fmt.Errorf("--batch takes Table=tree-dir, and %q is not one", value)
+	}
+	*t = append(*t, compiler.MessageTree{Root: root, Dir: dir})
+	return nil
 }

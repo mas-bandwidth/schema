@@ -3,7 +3,7 @@
 [![CI](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml/badge.svg)](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-**Schema: the data language for games.**
+**Schema. The data language for games.**
 
 If you write a game in more than one language, or ship a client and server that
 have to agree on every bit, schema is a language that will help you do this
@@ -11,15 +11,17 @@ without ever having to hand-code definitions in each language ever again.
 
 ## Design
 
-**schema** is meant to serve all your needs for data types across all languages used when developing a game:
+**Schema** defines your data types across all languages used when developing a game:
 
-* The packet between a client and a server, where every bit counts and both sides ship together.
-* The message between the server and a backend that needs versioning.
-* The save game that has to load in a build its writer never saw.
-* The render data C++ writes and C# reads sixty times a second.
-* The asset that tools build and cook to an efficient runtime binary format.
+* Packets sent between a client and a server.
+* Messages sent between the server and backend.
+* Save game files that must load in a future game build.
+* Render data written by C++ and read sixty times per-second in C#.
+* Game assets cooked to an efficient runtime binary format.
 
-One system does all of it, so you never end up with schema for the packets and something else for everything else.
+One system does it all, so you never end up with schema for the packets and something else for everything else.
+
+Schema is currently under active development. See **[ROADMAP.md](ROADMAP.md)** for details.
 
 If this work helps you, please support it: **[Become a supporter](https://www.patreon.com/MasBandwidth/membership)**
 
@@ -29,7 +31,7 @@ If this work helps you, please support it: **[Become a supporter](https://www.pa
 2. Generate fast bit-packed serialization for struct types that do not need versioning, such as client/server packets and state.
 3. _coming soon_ -- Generate versioned tables for messages, data, assets, save game files and everything else.
 4. _coming soon_ -- Tables can point at tables, so trees and graphs are tables too.
-5. _coming soon_ -- Cook tables to a binary format the game runtime loads for tool pipelines and asset loading.
+5. _coming soon_ -- Cook tables to an efficient binary format for asset loading.
 
 Supported languages: C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust.
 
@@ -113,6 +115,7 @@ sandboxed build and an editor integration all work.
 
 | Document | What's in it |
 |---|---|
+| **[ROADMAP.md](ROADMAP.md)** | Where schema stands, feature by feature and language by language, what we are building next, and how to support the work. |
 | **[TUTORIAL.md](docs/TUTORIAL.md)** | Fourteen parts, from an empty directory to a program that uses every feature. Start here. |
 | **[USAGE.md](docs/USAGE.md)** | Every language feature, with the code it generates. |
 | **[SPEC.md](docs/SPEC.md)** | The normative reference for the type wire: grammar, wire law, every edge case. |

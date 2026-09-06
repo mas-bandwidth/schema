@@ -270,10 +270,62 @@ func PointerTargets(u *Unit) map[string]bool {
 	return targets
 }
 
-// PointerReachable is the set of tables A ROOT's numbering can place: the
-// tables some pointer reachable FROM THAT ROOT targets, following by-value
-// edges through nested tables, union arms and map entries exactly as the
-// numbering walk does (docs/SPEC-TABLES.md §3.1, §2.6, §2.8).
+// reachableEdges walks a root's closure in the numbering walk's order
+// (docs/SPEC-TABLES.md §3.1) and calls edge at every FIELD LINE that names a
+// node: a `*T` field or element, a POINTER ARM (§2.6) and a byte buffer
+// (§2.5). It descends every by-value edge there is, a nested table, an
+// array's element, a map's entry (§2.8), a list's element (§2.9) and a union's
+// arms, nested unions included, and it descends a pointee too, because the
+// pointers inside a node the root names are the root's to name. Each
+// declaration is entered once.
+func reachableEdges(root *Struct, edge func(f *Field)) {
+	visited := map[string]bool{}
+	seen := map[*Union]bool{}
+	var descend func(st *Struct)
+	var line func(f *Field)
+	line = func(f *Field) {
+		if f.IsMap() {
+			descend(f.MapEntry)
+			return
+		}
+		if f.Type.Pointer {
+			edge(f)
+		}
+		if f.Type.Kind != TNamed {
+			return
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *Struct:
+			descend(ref)
+		case *Union:
+			if seen[ref] {
+				return
+			}
+			seen[ref] = true
+			for _, v := range ref.Variants {
+				if v.F != nil {
+					line(v.F)
+				}
+			}
+		}
+	}
+	descend = func(st *Struct) {
+		if st == nil || visited[st.Name] {
+			return
+		}
+		visited[st.Name] = true
+		for _, f := range st.Fields {
+			line(f)
+		}
+	}
+	descend(root)
+}
+
+// PointerReachable is the set of tables A ROOT's numbering can place, in
+// FIRST-VISIT order: the tables some pointer reachable FROM THAT ROOT targets,
+// a pointer field's, an array's or a list's element's, or a POINTER ARM's,
+// found by the walk the numbering takes (docs/SPEC-TABLES.md §3.1, §2.6, §2.8,
+// §2.9).
 //
 // It is narrower than [PointerTargets], which is the unit's whole set, and the
 // difference is what a READER owes: a node record whose type id no pointer
@@ -282,43 +334,21 @@ func PointerTargets(u *Unit) map[string]bool {
 // §6.5). A file never carries one, because a writer writes only the ids its
 // own body used; the MESSAGE form can, because a connection's table announces
 // every table's name id whether or not a pointer names it (§3.3).
-func PointerReachable(u *Unit, root *Struct) map[string]bool {
+func PointerReachable(root *Struct) []*Struct {
 	named := map[string]bool{}
-	visited := map[string]bool{}
-	var descend func(st *Struct)
-	descend = func(st *Struct) {
-		if st == nil || visited[st.Name] {
+	var out []*Struct
+	reachableEdges(root, func(f *Field) {
+		if f.Type.Blob() {
 			return
 		}
-		visited[st.Name] = true
-		for _, f := range st.Fields {
-			if f.IsMap() {
-				descend(f.MapEntry)
-				continue
-			}
-			if f.Type.Kind != TNamed {
-				continue
-			}
-			if un, isUnion := f.Type.Ref.(*Union); isUnion {
-				for _, v := range un.Variants {
-					if v.Ref != nil {
-						descend(v.Ref)
-					}
-				}
-				continue
-			}
-			ref, ok := f.Type.Ref.(*Struct)
-			if !ok {
-				continue
-			}
-			if f.Type.Pointer {
-				named[ref.Name] = true
-			}
-			descend(ref)
+		ref, ok := f.Type.Ref.(*Struct)
+		if !ok || named[ref.Name] {
+			return
 		}
-	}
-	descend(root)
-	return named
+		named[ref.Name] = true
+		out = append(out, ref)
+	})
+	return out
 }
 
 // PointerReachableBlobs is [PointerReachable]'s answer for the two RESERVED
@@ -331,44 +361,16 @@ func PointerReachable(u *Unit, root *Struct) map[string]bool {
 // its body is skipped and one `unknown` is counted (§3.1, §6.5). A file never
 // carries one; the MESSAGE form can, because §3.3's unconditional tail
 // announces both reserved ids whether or not the root names them.
-func PointerReachableBlobs(u *Unit, root *Struct) (bytes bool, str bool) {
-	visited := map[string]bool{}
-	var descend func(st *Struct)
-	descend = func(st *Struct) {
-		if st == nil || visited[st.Name] {
-			return
+func PointerReachableBlobs(root *Struct) (bytes bool, str bool) {
+	reachableEdges(root, func(f *Field) {
+		switch {
+		case !f.Type.Blob():
+		case f.Type.Kind == TString:
+			str = true
+		default:
+			bytes = true
 		}
-		visited[st.Name] = true
-		for _, f := range st.Fields {
-			if f.IsMap() {
-				descend(f.MapEntry)
-				continue
-			}
-			if f.Type.Blob() {
-				if f.Type.Kind == TString {
-					str = true
-				} else {
-					bytes = true
-				}
-				continue
-			}
-			if f.Type.Kind != TNamed {
-				continue
-			}
-			if un, isUnion := f.Type.Ref.(*Union); isUnion {
-				for _, v := range un.Variants {
-					if v.Ref != nil {
-						descend(v.Ref)
-					}
-				}
-				continue
-			}
-			if ref, ok := f.Type.Ref.(*Struct); ok {
-				descend(ref)
-			}
-		}
-	}
-	descend(root)
+	})
 	return bytes, str
 }
 

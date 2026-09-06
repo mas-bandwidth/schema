@@ -140,14 +140,60 @@ func pointeeName(f *ir.Field) string {
 type edgeExpr struct {
 	Src string // the path under the read subject
 	Dst string // the same path under the write subject; "" when there is none
+	// At is the BYTE ADDRESS of the same storage in a record being written
+	// piece by piece, the cook's, as a base expression and a constant offset
+	// from it, and "" where the emitter lays no bytes. A record's field spells
+	// its offset as a literal beside the base even when it is zero, and an
+	// array element folds its index term into the base.
+	At       string
+	Off      int64
+	constant bool
+}
+
+// addr spells the byte address `extra` bytes into this storage.
+func (e edgeExpr) addr(extra int64) string {
+	off := e.Off + extra
+	if !e.constant && off == 0 {
+		return e.At
+	}
+	return fmt.Sprintf("%s + %d", e.At, off)
+}
+
+// member is one named member of this storage: an arm of a union, or the
+// value beside an arm's companion. `offset` is the member's byte offset in
+// the storage, spent only where bytes are being laid.
+func (e edgeExpr) member(name string, offset int64) edgeExpr {
+	out := edgeExpr{Src: e.Src + "." + name, At: e.At, Off: e.Off + offset, constant: e.constant}
+	if e.Dst != "" {
+		out.Dst = e.Dst + "." + name
+	}
+	return out
+}
+
+// index is one element of this storage, an array's slot `i`, `stride` bytes
+// apart where bytes are being laid.
+func (e edgeExpr) index(i string, stride int64) edgeExpr {
+	out := edgeExpr{Src: e.Src + "[" + i + "]"}
+	if e.Dst != "" {
+		out.Dst = e.Dst + "[" + i + "]"
+	}
+	if e.At != "" {
+		out.At = fmt.Sprintf("%s + %s * %d", e.addr(0), i, stride)
+	}
+	return out
 }
 
 // edgeVisitor is what one emitter does at the kinds of edge the walk reaches.
 // read is the expression the fields hang off; write is its twin where the
-// emitter copies (the pack), "" where it does not.
+// emitter copies (the pack), "" where it does not. bytes is the record's
+// byte address where the emitter lays bytes (the cook), "" where it does not.
 type edgeVisitor struct {
 	read  string
 	write string
+	bytes string
+	// owner is the record the fields belong to, which is where a field's byte
+	// offset comes from
+	owner *ir.Struct
 	// pointer is one live pointer slot: the field itself, one element of an
 	// array of pointers (§2.1), or a POINTER ARM (§2.6)
 	pointer func(f *ir.Field, slot edgeExpr)
@@ -180,6 +226,38 @@ func (v edgeVisitor) at(path string) edgeExpr {
 	return out
 }
 
+// field spells one field's storage under the subjects, its byte address
+// included where the visitor lays bytes.
+func (g *tableGen) fieldExpr(v edgeVisitor, f *ir.Field) edgeExpr {
+	out := v.at("." + f.Name)
+	if v.bytes != "" {
+		out.At, out.Off, out.constant = v.bytes, g.fieldOffset(v.owner, f), true
+	}
+	return out
+}
+
+// element spells one slot of an array field under the subjects: a keyed
+// array's storage is its `.slots` in a table body (§2.4).
+func (g *tableGen) elementExpr(v edgeVisitor, f *ir.Field, i string) edgeExpr {
+	out := v.at(g.arrayBase(".", f) + "[" + i + "]")
+	if v.bytes != "" {
+		out.At = fmt.Sprintf("%s + %d + %s * %d", v.bytes, g.fieldOffset(v.owner, f), i, cookElementBytes(g.unit, f))
+	}
+	return out
+}
+
+// fieldOffset is one field's byte offset in its record, from the compiler's
+// own layout model (docs/SPEC-TABLES.md §20.3).
+func (g *tableGen) fieldOffset(owner *ir.Struct, f *ir.Field) int64 {
+	ml := ir.RecordLayout(g.unit, owner)
+	for i := range ml.Fields {
+		if ml.Fields[i].Field == f {
+			return ml.Fields[i].Offset
+		}
+	}
+	return 0
+}
+
 // edgeKind is what one field is to the walk.
 type edgeKind int
 
@@ -210,6 +288,9 @@ func (g *tableGen) edgeOf(f *ir.Field) edgeKind {
 			return edgeList
 		}
 		if ref := listElementStruct(f); ref != nil && g.isVar(ref.Name) {
+			return edgeList
+		}
+		if un := listElementUnion(f); un != nil && g.unionHasEdge(un, map[*ir.Union]bool{}) {
 			return edgeList
 		}
 		return edgeNone
@@ -286,6 +367,7 @@ func (g *tableGen) noVariableEdges(st *ir.Struct) bool {
 // field names. It is the same walk `Lock` lays a region out in, so the region
 // holds no such node either.
 func (g *tableGen) emitEdgeWalk(st *ir.Struct, v edgeVisitor) {
+	v.owner = st
 	guards := guardWalk(st, v.read+".")
 	for _, f := range st.Fields {
 		if g.edgeOf(f) == edgeNone {
@@ -337,15 +419,15 @@ func (g *tableGen) emitVariableByValueWalk(f *ir.Field, v edgeVisitor, body func
 	switch f.Array {
 	case ir.ArrayNone:
 		g.pf("    { // %s (nested by value)\n", f.Name)
-		body(v.at("." + f.Name))
+		body(g.fieldExpr(v, f))
 		g.pf("    }\n")
 	case ir.ArrayCounted:
 		g.pf("    for ( int32_t i = 0; i < %s.%s_count && i < %d; i++ ) // %s\n    {\n", v.read, f.Name, f.ArrayBound, f.Name)
-		body(v.at(fmt.Sprintf(".%s[i]", f.Name)))
+		body(g.elementExpr(v, f, "i"))
 		g.pf("    }\n")
 	default:
 		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s\n    {\n", f.ArrayBound, f.Name)
-		body(v.at(g.arrayBase(".", f) + "[i]"))
+		body(g.elementExpr(v, f, "i"))
 		g.pf("    }\n")
 	}
 }
@@ -412,10 +494,14 @@ func (g *tableGen) emitNodeThunkOverloads(vars []*ir.Struct) {
 			// existed — it takes neither the context nor the numbering
 			g.pf("template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx &, const TableNumbering &, TableIds & ids, const %s & value ) { return %sMeasureBody( ids, value ); }\n", st.Name, st.Name)
 			g.pf("template <typename Ctx> inline bool TableNodeSave( const Ctx &, const TableNumbering &, TableWriter & w, TableIds & ids, const %s & value ) { return %sSaveBody( w, ids, value ); }\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline int64_t TableNodeMessageMeasure( const Ctx &, const TableNumbering &, int64_t, int64_t at, const %s & value ) { return %sMeasureMessageBody( at, value ); }\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline bool TableNodeMessageSave( const Ctx &, const TableNumbering &, int64_t, TableBitWriter & w, const %s & value ) { return %sSaveMessageBody( w, value ); }\n", st.Name, st.Name)
 			continue
 		}
 		g.pf("template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const %s & value ) { return %sMeasureBody( ctx, numbering, ids, value ); }\n", st.Name, st.Name)
 		g.pf("template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const %s & value ) { return %sSaveBody( ctx, numbering, w, ids, value ); }\n", st.Name, st.Name)
+		g.pf("template <typename Ctx> inline int64_t TableNodeMessageMeasure( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const %s & value ) { return %sMeasureMessageBody( ctx, numbering, index_bits, at, value ); }\n", st.Name, st.Name)
+		g.pf("template <typename Ctx> inline bool TableNodeMessageSave( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const %s & value ) { return %sSaveMessageBody( ctx, numbering, index_bits, w, value ); }\n", st.Name, st.Name)
 	}
 	g.pf("\n")
 }
@@ -543,6 +629,8 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 			g.pf("                node.type_slot = %s; // its slot in the unit's vocabulary (§3.3)\n", g.slotOf(ir.TableWireId(wire)))
 			g.pf("                node.measure = &TableNodeMeasureThunk<Ctx, %s>;\n", t)
 			g.pf("                node.save = &TableNodeSaveThunk<Ctx, %s>;\n", t)
+			g.pf("                node.message_measure = &TableNodeMessageMeasureThunk<Ctx, %s>;\n", t)
+			g.pf("                node.message_save = &TableNodeMessageSaveThunk<Ctx, %s>;\n", t)
 			g.pf("                if ( !TableNumberingAppend( numbering, node ) ) { return false; }\n")
 			g.pf("                if ( !%sNumber( ctx, numbering, *pointee ) ) { return false; }\n", t)
 			g.pf("                TablePackMapClose( numbering.seen, (const void *) pointee, slot );\n")
@@ -568,6 +656,8 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 			g.pf("                node.type_slot = %s; // its slot in the unit's vocabulary (§3.3)\n", g.slotOf(blobTypeId(f)))
 			g.pf("                node.measure = &TableBlobMeasureThunk<Ctx>;\n")
 			g.pf("                node.save = &TableBlobSaveThunk<Ctx>;\n")
+			g.pf("                node.message_measure = &TableBlobMessageMeasureThunk<Ctx>;\n")
+			g.pf("                node.message_save = &TableBlobMessageSaveThunk<Ctx>;\n")
 			g.pf("                if ( !TableNumberingAppend( numbering, node ) ) { return false; } // a blob reaches nothing: no descent\n")
 			g.pf("                TablePackMapClose( numbering.seen, (const void *) blob, slot );\n")
 			g.pf("            }\n")
@@ -883,6 +973,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("// not a depth and two references to one node are one node.\n\n")
 
 	g.emitRootNodeDispatch(st)
+	g.emitRootNodeMessageDispatch(st)
 
 	g.pf("// The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the\n")
 	g.pf("// root takes index 1 and its entry stays open for the whole walk, so a\n")
@@ -893,35 +984,29 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    if ( TablePackMapReach( numbering.seen, (const void *) &root, (int64_t) kTableNodeIndexRoot, taken, slot ) == NULL ) { return false; }\n")
 	g.pf("    return %sNumber( ctx, numbering, root );\n}\n\n", n)
 
-	g.pf("// `message` selects the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the same\n")
-	g.pf("// walk over the same graph, with every reference a compile-time SLOT of\n")
-	g.pf("// the connection's announced table and no trailer to write.\n")
-	g.pf("template <typename Ctx>\ninline int64_t %sMeasureWire( const Ctx & ctx, const %s & root, TableAllocator allocator, bool message = false )\n{\n", n, n)
+	g.pf("template <typename Ctx>\ninline int64_t %sMeasureWire( const Ctx & ctx, const %s & root, TableAllocator allocator )\n{\n", n, n)
 	g.pf("    TableNumbering numbering;\n")
 	g.pf("    TableNumberingInit( numbering, allocator );\n")
 	g.pf("    int64_t bytes = -1;\n")
 	g.pf("    if ( %sNumberFrom( ctx, numbering, root ) )\n    {\n", n)
 	g.pf("        TableIds ids;\n")
-	g.pf("        ids.vocabulary = message;\n")
 	g.pf("        bytes = %sMeasureBody( ctx, numbering, ids, root );\n", n)
 	g.pf("        if ( bytes >= 0 )\n        {\n")
 	g.pf("            const int64_t table = TableNodeTableMeasure( ctx, ids, numbering );\n")
 	g.pf("            // the FORM BYTE, the ROOT BODY — its own fields, the node table\n")
 	g.pf("            // and the terminator — and the ID TABLE (docs/SPEC-TABLES.md §3)\n")
-	g.pf("            const int64_t trailer = message ? 0 : TableIdsBytes( ids );\n")
-	g.pf("            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + trailer;\n")
+	g.pf("            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + TableIdsBytes( ids );\n")
 	g.pf("        }\n    }\n")
 	g.pf("    TableNumberingShutdown( numbering );\n")
 	g.pf("    return bytes;\n}\n\n")
 
-	g.pf("template <typename Ctx>\ninline int64_t %sSaveWire( const Ctx & ctx, const %s & root, uint8_t * buffer, int64_t capacity, TableAllocator allocator, bool message = false )\n{\n", n, n)
+	g.pf("template <typename Ctx>\ninline int64_t %sSaveWire( const Ctx & ctx, const %s & root, uint8_t * buffer, int64_t capacity, TableAllocator allocator )\n{\n", n, n)
 	g.pf("    TableNumbering numbering;\n")
 	g.pf("    TableNumberingInit( numbering, allocator );\n")
 	g.pf("    if ( !%sNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }\n", n)
 	g.pf("    TableWriter w( buffer, capacity );\n")
 	g.pf("    TableIds ids;\n")
-	g.pf("    ids.vocabulary = message;\n")
-	g.pf("    w.put8( message ? kTableWireMessageForm : kTableWireForm ); // the FORM BYTE is the whole header (§3)\n")
+	g.pf("    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)\n")
 	g.pf("    // the root's own fields, then the node table's field, then the\n")
 	g.pf("    // terminator: a reader that gives up inside the table has already\n")
 	g.pf("    // decoded the ROOT'S OWN FIELDS (§3.1)\n")
@@ -929,9 +1014,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    TableNumberingShutdown( numbering );\n")
 	g.pf("    if ( !ok || ids.overflow ) { return -1; }\n")
 	g.pf("    w.put8( 0 ); // the ZERO REFERENCE that ends the root body\n")
-	g.pf("    // A MESSAGE HAS NO TRAILER: its last byte is the body's terminator,\n")
-	g.pf("    // because the ids live in the connection's table (§3.3).\n")
-	g.pf("    if ( !message ) { TableIdsWrite( w, ids ); }\n")
+	g.pf("    TableIdsWrite( w, ids );\n")
 	g.pf("    if ( w.overflow ) { return -1; } // the caller's buffer was too small\n")
 	g.pf("    return w.offset; // == %sMeasure( root )\n}\n\n", n)
 
@@ -960,38 +1043,12 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    return %sSaveWire( ctx, *(const %s *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity, builder.arena.allocator );\n}\n\n", n, n)
 
 	// THE MESSAGE FORM over a POINTERED root (docs/SPEC-TABLES.md §3.3): the
-	// node table is a FIELD of the root body under the reserved node-table id,
-	// not part of the trailer, so it is inside what a form 2 message carries.
-	// Its records name their type ids through the connection's table like every
-	// other reference, and the numbering, the flat encoding and every malformed
-	// rule of §3.1 are untouched.
-	g.pf("inline int64_t %sMeasureMessage( const %s * root, TableAllocator allocator = TableDefaultAllocator() )\n{\n", n, n)
-	g.pf("    if ( root == NULL ) { return -1; }\n")
-	g.pf("    TableRegionCtx ctx;\n")
-	g.pf("    return %sMeasureWire( ctx, *root, allocator, true );\n}\n\n", n)
-	g.pf("inline int64_t %sSaveMessage( const %s * root, uint8_t * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() )\n{\n", n, n)
-	g.pf("    if ( root == NULL ) { return -1; }\n")
-	g.pf("    TableRegionCtx ctx;\n")
-	g.pf("    return %sSaveWire( ctx, *root, buffer, capacity, allocator, true );\n}\n\n", n)
-	g.pf("inline int64_t %sMeasureMessage( const %sBuilder & builder )\n{\n", n, n)
-	g.pf("    if ( builder.region != NULL ) { return %sMeasureMessage( builder.AsConst(), builder.arena.allocator ); }\n", n)
-	g.pf("    if ( builder.root_ref.null() ) { return -1; }\n")
-	g.pf("    TableArenaCtx ctx = { &builder.arena };\n")
-	g.pf("    return %sMeasureWire( ctx, *(const %s *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), builder.arena.allocator, true );\n}\n\n", n, n)
-	g.pf("inline int64_t %sSaveMessage( const %sBuilder & builder, uint8_t * buffer, int64_t capacity )\n{\n", n, n)
-	g.pf("    if ( builder.region != NULL ) { return %sSaveMessage( builder.AsConst(), buffer, capacity, builder.arena.allocator ); }\n", n)
-	g.pf("    if ( builder.root_ref.null() ) { return -1; }\n")
-	g.pf("    TableArenaCtx ctx = { &builder.arena };\n")
-	g.pf("    return %sSaveWire( ctx, *(const %s *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity, builder.arena.allocator, true );\n}\n\n", n, n)
+	// batch's three verbs over a region, beside the file form's.
+	g.emitVariableMessageSurface(st)
 
 	// load
-	g.emitVariableLoadMeasure(st, false)
-	g.emitVariableLoad(st, false)
-	// AND THE SAME TWO OVER THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the
-	// connection's announced table in place of the wire's own trailer, and no
-	// other difference at all.
-	g.emitVariableLoadMeasure(st, true)
-	g.emitVariableLoad(st, true)
+	g.emitVariableLoadMeasure(st)
+	g.emitVariableLoad(st)
 
 	g.pf("// %sLoadBuilder: the TOOL's path — the same tolerant decode into a fresh\n", n)
 	g.pf("// builder, so loaded data can be edited and locked again. The numbering is\n")
@@ -1093,8 +1150,8 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 // other needs no registry and no cross-file cycle (§11).
 func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	n := st.Name
-	reachable := g.pointerReachable(st)
-	blobs := g.reachableBlobs(st)
+	reachable := ir.PointerReachable(st)
+	blobs := reachableBlobs(st)
 
 	g.pf("// %sNodeStorage: the region bytes one record commands, or -1 for a type id\n", n)
 	g.pf("// this build cannot name — which keeps its index and reads null. A BYTE\n")
@@ -1252,50 +1309,11 @@ type reachableBlob struct {
 	terminated bool
 }
 
-// reachableBlobs lists the byte buffer shapes a root's numbering can name —
-// `*bytes`, `*string`, or both — over the same closure pointerReachable
-// walks: a blob inside a pointed-at table is this root's to load.
-func (g *tableGen) reachableBlobs(root *ir.Struct) []reachableBlob {
-	bytes, str := false, false
-	visited := map[string]bool{}
-	var descend func(st *ir.Struct)
-	descend = func(st *ir.Struct) {
-		if visited[st.Name] {
-			return
-		}
-		visited[st.Name] = true
-		for _, f := range st.Fields {
-			if f.IsMap() {
-				// a map's ENTRY is a by-value edge (docs/SPEC-TABLES.md §2.8):
-				// a blob inside an entry's value is this root's to load
-				descend(f.MapEntry)
-				continue
-			}
-			if f.Type.Blob() {
-				if f.Type.Kind == ir.TString {
-					str = true
-				} else {
-					bytes = true
-				}
-				continue
-			}
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			if un, isUnion := f.Type.Ref.(*ir.Union); isUnion {
-				for _, v := range un.Variants {
-					if v.Ref != nil {
-						descend(v.Ref)
-					}
-				}
-				continue
-			}
-			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
-				descend(ref)
-			}
-		}
-	}
-	descend(root)
+// reachableBlobs lists the byte buffer shapes a root's numbering can name,
+// `*bytes`, `*string`, or both, as ir.PointerReachableBlobs finds them over
+// the numbering's own walk.
+func reachableBlobs(root *ir.Struct) []reachableBlob {
+	bytes, str := ir.PointerReachableBlobs(root)
 	var out []reachableBlob
 	if bytes {
 		out = append(out, reachableBlob{constant: "kTableBytesTypeId", word: "bytes"})
@@ -1303,54 +1321,6 @@ func (g *tableGen) reachableBlobs(root *ir.Struct) []reachableBlob {
 	if str {
 		out = append(out, reachableBlob{constant: "kTableStringTypeId", word: "string", terminated: true})
 	}
-	return out
-}
-
-// pointerReachable returns the closure members this root's numbering can name:
-// every table reached through a POINTER EDGE, directly or by descending through
-// by-value nesting to reach the pointer fields inside it, in first-visit order.
-func (g *tableGen) pointerReachable(root *ir.Struct) []*ir.Struct {
-	named := map[string]bool{}
-	visited := map[string]bool{}
-	var out []*ir.Struct
-	var descend func(st *ir.Struct)
-	descend = func(st *ir.Struct) {
-		if visited[st.Name] {
-			return
-		}
-		visited[st.Name] = true
-		for _, f := range st.Fields {
-			if f.IsMap() {
-				// a map's ENTRY is a by-value edge (docs/SPEC-TABLES.md §2.8),
-				// so a *T VALUE names a node this root's numbering must resolve
-				descend(f.MapEntry)
-				continue
-			}
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			if un, isUnion := f.Type.Ref.(*ir.Union); isUnion {
-				// a union's arms are by-value edges (docs/SPEC-TABLES.md §2.6):
-				// the pointers inside a table arm are this root's to name
-				for _, v := range un.Variants {
-					if v.Ref != nil {
-						descend(v.Ref)
-					}
-				}
-				continue
-			}
-			ref, ok := f.Type.Ref.(*ir.Struct)
-			if !ok {
-				continue
-			}
-			if f.Type.Pointer && !named[ref.Name] {
-				named[ref.Name] = true
-				out = append(out, ref)
-			}
-			descend(ref)
-		}
-	}
-	descend(root)
 	return out
 }
 
@@ -1384,67 +1354,70 @@ func (g *tableGen) modeColumn(st *ir.Struct) string {
 	return fmt.Sprintf(", %v", g.isVar(st.Name))
 }
 
-// emitVariableUnionWalk emits the switch over a union field's SET arm and calls
-// body once per variable arm with the arm's table name and member name; an arm
-// that is fixed, or a type, holds no pointer and takes no case.
+// emitVariableUnionWalk emits the walk over a union field: the switch over
+// ONE union value's set arm, once for a scalar field and once per element of
+// an array of unions, the live elements of a counted array only, because a
+// slot past the count is not written (§2.6, §3.1).
 func (g *tableGen) emitVariableUnionWalk(f *ir.Field, v edgeVisitor) {
 	un := f.Type.Ref.(*ir.Union)
-	// AN ARM IS AN EDGE OF ITS OWN KIND (§2.6): a variable table arm is
-	// descended by value, a POINTER arm is the pointer edge itself, a byte
-	// buffer arm is that node, and an arm that is another union asks the same
-	// switch one level in — all in the union field's own declaration-order
-	// position, so a node an arm reaches is numbered where the field sits.
-	var each func(un *ir.Union, path, indent string)
-	each = func(un *ir.Union, path, indent string) {
-		g.pf("%sswitch ( %s.type ) // %s: the set arm is the edge\n%s{\n", indent, v.read+path, f.Name, indent)
-		for _, arm := range un.Variants {
-			if arm.F == nil {
-				continue
-			}
-			armPath := path + "." + arm.Name
-			switch {
-			case arm.F.Type.Blob():
-				g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
-				v.blob(arm.F, v.at(armPath))
-				g.pf("%s        break;\n%s    }\n", indent, indent)
-			case arm.F.Type.Pointer:
-				g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
-				slots, count := armPath, ""
-				if armCompanioned(arm) {
-					slots, count = armPath+".value", v.read+armPath+".value_count"
-				}
-				g.emitPointerSlotsAt(arm.F, v, slots, count, func(slot edgeExpr) { v.pointer(arm.F, slot) })
-				g.pf("%s        break;\n%s    }\n", indent, indent)
-			case arm.Type != "" && g.isVar(arm.Type):
-				g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
-				v.descend(arm.Type, v.at(armPath), indent+"        ")
-				g.pf("%s        break;\n%s    }\n", indent, indent)
-			default:
-				inner, isUnion := arm.F.Type.Ref.(*ir.Union)
-				if !isUnion || !g.unionHasEdge(inner, map[*ir.Union]bool{}) {
-					continue
-				}
-				g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
-				each(inner, armPath, indent+"        ")
-				g.pf("%s        break;\n%s    }\n", indent, indent)
-			}
-		}
-		g.pf("%s    default: break;\n%s}\n", indent, indent)
-	}
-	// an ARRAY of unions (§2.6) is that switch per element, the live elements
-	// of a counted array only — a slot past the count is not written (§3.1)
 	switch f.Array {
 	case ir.ArrayCounted:
 		g.pf("    for ( int32_t i = 0; i < %s.%s_count && i < %d; i++ ) // %s: [..%d]%s\n    {\n", v.read, f.Name, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
-		each(un, fmt.Sprintf(".%s[i]", f.Name), "    ")
+		g.emitUnionArmWalk(un, g.elementExpr(v, f, "i"), v, f.Name, "    ")
 		g.pf("    }\n")
 	case ir.ArrayFixed:
 		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s: [%d]%s\n    {\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
-		each(un, fmt.Sprintf(".%s[i]", f.Name), "    ")
+		g.emitUnionArmWalk(un, g.elementExpr(v, f, "i"), v, f.Name, "    ")
 		g.pf("    }\n")
 	default:
-		each(un, "."+f.Name, "    ")
+		g.emitUnionArmWalk(un, g.fieldExpr(v, f), v, f.Name, "    ")
 	}
+}
+
+// emitUnionArmWalk emits the switch over ONE UNION VALUE's set arm and visits
+// the arm as the edge it is. AN ARM IS AN EDGE OF ITS OWN KIND (§2.6): a
+// variable table arm is descended by value, a POINTER arm is the pointer edge
+// itself, a byte buffer arm is that node, and an arm that is another union
+// asks the same switch one level in, all where the value sits, so a node an
+// arm reaches is numbered where the field, the element or the list element
+// holding the union sits. `value` is the union's storage under the walk's
+// subjects, and `label` names the field for the comment.
+func (g *tableGen) emitUnionArmWalk(un *ir.Union, value edgeExpr, v edgeVisitor, label, indent string) {
+	_, _, _, armOffset := ir.UnionLayout(g.unit, un)
+	g.pf("%sswitch ( %s.type ) // %s: the set arm is the edge\n%s{\n", indent, value.Src, label, indent)
+	for _, arm := range un.Variants {
+		if arm.F == nil {
+			continue
+		}
+		armExpr := value.member(arm.Name, armOffset)
+		switch {
+		case arm.F.Type.Blob():
+			g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
+			v.blob(arm.F, armExpr)
+			g.pf("%s        break;\n%s    }\n", indent, indent)
+		case arm.F.Type.Pointer:
+			g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
+			slots, count := armExpr, ""
+			if armCompanioned(arm) {
+				slots, count = armExpr.member("value", 0), armExpr.Src+".value_count"
+			}
+			g.emitPointerSlotsOf(arm.F, slots, count, func(slot edgeExpr) { v.pointer(arm.F, slot) })
+			g.pf("%s        break;\n%s    }\n", indent, indent)
+		case arm.Type != "" && g.isVar(arm.Type):
+			g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
+			v.descend(arm.Type, armExpr, indent+"        ")
+			g.pf("%s        break;\n%s    }\n", indent, indent)
+		default:
+			inner, isUnion := arm.F.Type.Ref.(*ir.Union)
+			if !isUnion || !g.unionHasEdge(inner, map[*ir.Union]bool{}) {
+				continue
+			}
+			g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
+			g.emitUnionArmWalk(inner, armExpr, v, label, indent+"        ")
+			g.pf("%s        break;\n%s    }\n", indent, indent)
+		}
+	}
+	g.pf("%s    default: break;\n%s}\n", indent, indent)
 }
 
 // emitPointerSlots emits one block per POINTER SLOT of a field — the field
@@ -1452,30 +1425,33 @@ func (g *tableGen) emitVariableUnionWalk(f *ir.Field, v edgeVisitor) {
 // in index order, the live slots of a counted array only — and calls body with
 // the slot's expression under the given subject (`value`, `src`).
 func (g *tableGen) emitPointerSlots(f *ir.Field, v edgeVisitor, body func(slot edgeExpr)) {
-	g.emitPointerSlotsAt(f, v, "."+f.Name, fmt.Sprintf("%s.%s_count", v.read, f.Name), body)
+	g.emitPointerSlotsOf(f, v.at("."+f.Name), fmt.Sprintf("%s.%s_count", v.read, f.Name), body)
 }
 
-// emitPointerSlotsAt is that walk over an explicit storage PATH, which a
-// pointer ARM needs: an arm's slots live in the overlay, and a counted array
-// arm's count is the companion beside them (docs/SPEC-TABLES.md §2.6).
-func (g *tableGen) emitPointerSlotsAt(f *ir.Field, v edgeVisitor, path, count string, body func(slot edgeExpr)) {
+// emitPointerSlotsOf is that walk over an explicit storage, which a pointer
+// ARM needs: an arm's slots live in the overlay, and a counted array arm's
+// count is the companion beside them (docs/SPEC-TABLES.md §2.6). The slot
+// index is `k`, its own spelling everywhere, because under a list or an
+// array of unions the slot loop runs inside the element loop's `i`, and slot
+// k of element i must read element i.
+func (g *tableGen) emitPointerSlotsOf(f *ir.Field, base edgeExpr, count string, body func(slot edgeExpr)) {
 	switch f.Array {
 	case ir.ArrayCounted:
-		g.pf("    for ( int32_t i = 0; i < %s && i < %d; i++ ) // %s: [..%d]*%s\n    {\n", count, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
-		body(v.at(path + "[i]"))
+		g.pf("    for ( int32_t k = 0; k < %s && k < %d; k++ ) // %s: [..%d]*%s\n    {\n", count, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		body(base.index("k", 8))
 		g.pf("    }\n")
 	case ir.ArrayFixed:
-		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s: [%d]*%s\n    {\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
-		body(v.at(path + "[i]"))
+		g.pf("    for ( int32_t k = 0; k < %d; k++ ) // %s: [%d]*%s\n    {\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		body(base.index("k", 8))
 		g.pf("    }\n")
 	default:
-		body(v.at(path))
+		body(base)
 	}
 }
 
 // emitVariableLoadMeasure emits a pointered root's LoadMeasure over one FORM:
 // the file's own trailer, or the connection's announced table (§3.3, §6.5).
-func (g *tableGen) emitVariableLoadMeasure(st *ir.Struct, message bool) {
+func (g *tableGen) emitVariableLoadMeasure(st *ir.Struct) {
 	n := st.Name
 	g.pf("// %sLoadMeasure: the exact region bytes a wire buffer will need, and it is\n", n)
 	g.pf("// ONE SCAN — a record's type id gives its storage size, its length gives the\n")
@@ -1485,30 +1461,17 @@ func (g *tableGen) emitVariableLoadMeasure(st *ir.Struct, message bool) {
 	g.pf("// It reports the DATA bytes and the ATTRIBUTION bytes separately, because the\n")
 	g.pf("// attribution is the wire's numbering made resident (§6.3) and a caller may\n")
 	g.pf("// release it once Load returns. The answer is their sum.\n")
-	if message {
-		// THE MESSAGE FORM'S SIZING (docs/SPEC-TABLES.md §3.3): the table is
-		// the connection's rather than the wire's, so there is no trailer to
-		// locate and no stray-byte rule between a terminator and a first
-		// entry — the message's last byte IS the body's terminator.
-		g.pf("inline int64_t %sLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * message, int64_t message_bytes, int64_t * attribution_bytes = NULL%s )\n{\n", n, g.loadMeasureReasonParam())
-		g.pf("    TableReport ignored;\n")
-		g.pf("    if ( message_bytes < 1 || message[0] != kTableWireMessageForm || !vocabulary.announced ) { return -1; }\n")
-		g.pf("    const TableIdTable & ids_table = vocabulary.table;\n")
-		g.pf("    const uint8_t * const wire = message + 1;\n")
-		g.pf("    const int64_t wire_bytes = message_bytes - 1;\n")
-	} else {
-		g.pf("inline int64_t %sLoadMeasure( const uint8_t * wire_file, int64_t wire_file_bytes, int64_t * attribution_bytes = NULL%s )\n{\n", n, g.loadMeasureReasonParam())
-		g.pf("    TableReport ignored;\n")
-		g.pf("    TableIdTable ids_table;\n")
-		g.pf("    int64_t body_bytes = 0;\n")
-		g.pf("    if ( TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes ) != TableOpenOk ) { return -1; }\n")
-		g.pf("    // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY\n")
-		g.pf("    // IS MALFORMED (docs/SPEC-TABLES.md §3): the two ends of the file have\n")
-		g.pf("    // met, nothing is decoded, and no region is sized from it.\n")
-		g.pf("    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) ) { return -1; }\n")
-		g.pf("    const uint8_t * const wire = wire_file + 1;\n")
-		g.pf("    const int64_t wire_bytes = body_bytes;\n")
-	}
+	g.pf("inline int64_t %sLoadMeasure( const uint8_t * wire_file, int64_t wire_file_bytes, int64_t * attribution_bytes = NULL%s )\n{\n", n, g.loadMeasureReasonParam())
+	g.pf("    TableReport ignored;\n")
+	g.pf("    TableIdTable ids_table;\n")
+	g.pf("    int64_t body_bytes = 0;\n")
+	g.pf("    if ( TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes ) != TableOpenOk ) { return -1; }\n")
+	g.pf("    // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY\n")
+	g.pf("    // IS MALFORMED (docs/SPEC-TABLES.md §3): the two ends of the file have\n")
+	g.pf("    // met, nothing is decoded, and no region is sized from it.\n")
+	g.pf("    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) ) { return -1; }\n")
+	g.pf("    const uint8_t * const wire = wire_file + 1;\n")
+	g.pf("    const int64_t wire_bytes = body_bytes;\n")
 	g.pf("    TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );\n")
 	refuse := "return -1;"
 	if g.anyExtent {
@@ -1538,50 +1501,32 @@ func (g *tableGen) emitVariableLoadMeasure(st *ir.Struct, message bool) {
 // emitVariableLoad emits a pointered root's Load over one FORM. The scan, the
 // numbering and the two passes are ONE walk: only where the id table comes
 // from differs (docs/SPEC-TABLES.md §3.1, §3.3).
-func (g *tableGen) emitVariableLoad(st *ir.Struct, message bool) {
+func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	n := st.Name
 	verb := "Load"
-	if message {
-		verb = "LoadMessage"
-	}
 	g.pf("// %s%s: decode the tolerant wire into the caller's exact-sized region and\n", n, verb)
 	g.pf("// return the root. LOAD IS A SCAN, and that is the whole of its bound: it\n")
 	g.pf("// follows no reference, so there is no depth cap, no visited set and no\n")
 	g.pf("// ordering rule on the indices. Partial results are kept, as everywhere on\n")
 	g.pf("// this wire — the report says what happened. NULL means the CALLER's buffer\n")
 	g.pf("// was wrong.\n")
-	if message {
-		g.pf("inline const %s * %sLoadMessage( uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * message, int64_t message_bytes, TableReport * report )\n{\n", n, n)
-		g.pf("    TableReport ignored;\n")
-		g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
-		g.pf("    // THE FORM BYTE IS READ FIRST, and then the connection's own table:\n")
-		g.pf("    // a message with no table is REFUSED BY NAME, nothing is decoded, no\n")
-		g.pf("    // counter moves and malformed does not fire (docs/SPEC-TABLES.md §3.3).\n")
-		g.pf("    if ( message_bytes < 1 ) { out->malformed = true; return NULL; }\n")
-		g.pf("    if ( message[0] != kTableWireMessageForm ) { out->refused = true; out->reason = newer_form; return NULL; }\n")
-		g.pf("    if ( !vocabulary.announced ) { out->refused = true; out->reason = no_vocabulary; return NULL; }\n")
-		g.pf("    const TableIdTable & ids_table = vocabulary.table;\n")
-		g.pf("    const uint8_t * const wire = message + 1;\n")
-		g.pf("    const int64_t wire_bytes = message_bytes - 1;\n")
-	} else {
-		g.pf("inline const %s * %sLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )\n{\n", n, n)
-		g.pf("    TableReport ignored;\n")
-		g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
-		g.pf("    // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:\n")
-		g.pf("    // a file that is both a newer form and damaged is a REFUSAL and never\n")
-		g.pf("    // damage (docs/SPEC-TABLES.md §3).\n")
-		g.pf("    TableIdTable ids_table;\n")
-		g.pf("    int64_t body_bytes = 0;\n")
-		g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")
-		g.pf("    if ( verdict != TableOpenOk )\n    {\n")
-		g.pf("        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }\n")
-		g.pf("        return NULL;\n    }\n")
-		g.pf("    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )\n    {\n")
-		g.pf("        out->malformed = true; // a byte no field claims, before the table (§3)\n")
-		g.pf("        return NULL;\n    }\n")
-		g.pf("    const uint8_t * const wire = wire_file + 1;\n")
-		g.pf("    const int64_t wire_bytes = body_bytes;\n")
-	}
+	g.pf("inline const %s * %sLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )\n{\n", n, n)
+	g.pf("    TableReport ignored;\n")
+	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
+	g.pf("    // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:\n")
+	g.pf("    // a file that is both a newer form and damaged is a REFUSAL and never\n")
+	g.pf("    // damage (docs/SPEC-TABLES.md §3).\n")
+	g.pf("    TableIdTable ids_table;\n")
+	g.pf("    int64_t body_bytes = 0;\n")
+	g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")
+	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
+	g.pf("        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }\n")
+	g.pf("        return NULL;\n    }\n")
+	g.pf("    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )\n    {\n")
+	g.pf("        out->malformed = true; // a byte no field claims, before the table (§3)\n")
+	g.pf("        return NULL;\n    }\n")
+	g.pf("    const uint8_t * const wire = wire_file + 1;\n")
+	g.pf("    const int64_t wire_bytes = body_bytes;\n")
 	g.pf("    if ( region == NULL || region_bytes < (int64_t) sizeof( %s ) ) { out->malformed = true; return NULL; }\n", n)
 	g.pf("    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return NULL; }\n")
 	g.pf("    memset( region, 0, (size_t) region_bytes );\n")
