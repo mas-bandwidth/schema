@@ -67,6 +67,12 @@ type wireSpot struct {
 	// string arm, a string element or a *string blob record. The text pass
 	// rewrites what sits under it with every ill-formed shape §3 refuses.
 	text bool
+	// wtext marks a length that frames a KIND 33 payload — wide text at a
+	// field, an arm or an element (§3). It is a SEPARATE flag from text
+	// because the two kinds refuse different content and the pass that plants
+	// it must plant the right one: UTF-8's malformations under kind 12, and an
+	// unpaired surrogate, a zero code unit or an ODD `L` under kind 33.
+	wtext bool
 	// enclosing is every length spot framing this one, outermost first, so a
 	// splice can keep the framing consistent
 	enclosing []int
@@ -273,6 +279,8 @@ func (s *frameScanner) payload(off, end int, kind uint8, nodeTable bool) int {
 			return s.framed(off, end, inner)
 		}
 		return s.framedText(off, end)
+	case ir.TableKindWstring:
+		return s.framedWideText(off, end)
 	case ir.TableKindTable:
 		return s.framedAs(off, end, false, true, func(a, b int) { s.body(a, b, false) })
 	case ir.TableKindArray:
@@ -312,6 +320,9 @@ func (s *frameScanner) arm(off, end int) int {
 	after = s.framedAs(off, end, true, kind == ir.TableKindTable, func(a, b int) { s.framedPayload(int(kind), a, b) })
 	if after >= 0 && kind == ir.TableKindString {
 		s.markText(off)
+	}
+	if after >= 0 && kind == ir.TableKindWstring {
+		s.markWideText(off)
 	}
 	return after
 }
@@ -716,6 +727,11 @@ func enumerated(seed *wireSeed, emit func(pass string, data []byte)) {
 			if sp.text {
 				for _, payload := range illFormedText {
 					emit("text", retext(seed, si, payload))
+				}
+			}
+			if sp.wtext {
+				for _, payload := range illFormedWideText {
+					emit("wide-text", retext(seed, si, payload))
 				}
 			}
 		case spotCount:
@@ -1174,6 +1190,26 @@ func (s *frameScanner) framedText(off, end int) int {
 	return after
 }
 
+// markWideText marks the LENGTH spot that opens the payload at `off` as a kind
+// 33 frame, on markText's own rule.
+func (s *frameScanner) markWideText(off int) {
+	for i := range slices.Backward(s.f.spots) {
+		if s.f.spots[i].kind == spotLength && s.f.spots[i].off == off {
+			s.f.spots[i].wtext = true
+			return
+		}
+	}
+}
+
+// framedWideText opens one KIND 33 payload's L and marks it as wide text.
+func (s *frameScanner) framedWideText(off, end int) int {
+	after := s.framed(off, end, nil)
+	if after >= 0 {
+		s.markWideText(off)
+	}
+	return after
+}
+
 // ILL-FORMED TEXT at every kind 12 position (§3, §4.2): a truncated UTF-8
 // sequence, an overlong encoding, a lone continuation byte, a surrogate
 // encoded in UTF-8, and a zero byte at the front, the middle and the end of
@@ -1188,6 +1224,31 @@ var illFormedText = [][]byte{
 	{'a', 0x00, 'b'},                   // a zero byte in the middle
 	{'a', 'b', 0x00},                   // a zero byte at the end
 	{'o', 'k', 0xF0, 0x9F, 0x98, 0x80}, // well formed, an astral code point: the clamp's boundary
+}
+
+// ILL-FORMED WIDE TEXT at every kind 33 position (§3, §4.2): a lone high
+// surrogate, a lone low surrogate, a reversed pair and a zero unit, each at
+// the front, the middle and the end of the payload. Each must count exactly
+// one malformed, leave the field at its declared default and let the parent
+// read on past L. The last two rows are the other edge: an ODD `L`, which is
+// this kind's own framing damage and has no kind 12 twin, and a well-formed
+// astral pair, which is the clamp's boundary.
+var illFormedWideText = [][]byte{
+	{0x3D, 0xD8},                                     // a lone high surrogate, alone
+	{0x3D, 0xD8, 0x41, 0x00},                         // a lone high surrogate at the front
+	{0x41, 0x00, 0x3D, 0xD8},                         // a high surrogate as the final unit
+	{0x41, 0x00, 0x3D, 0xD8, 0x42, 0x00},             // a high surrogate in the middle
+	{0xA9, 0xDC},                                     // a lone low surrogate, alone
+	{0xA9, 0xDC, 0x41, 0x00},                         // a low surrogate at the front
+	{0x41, 0x00, 0xA9, 0xDC},                         // a low surrogate at the end
+	{0xA9, 0xDC, 0x3D, 0xD8},                         // a REVERSED pair
+	{0x00, 0x00},                                     // a zero unit, alone
+	{0x00, 0x00, 0x41, 0x00},                         // a zero unit at the front
+	{0x41, 0x00, 0x00, 0x00, 0x42, 0x00},             // a zero unit in the middle
+	{0x41, 0x00, 0x00, 0x00},                         // a zero unit at the end
+	{0x41},                                           // an ODD L: one byte is half a code unit
+	{0x41, 0x00, 0x42},                               // an ODD L over a whole unit and a half
+	{0x41, 0x00, 0x3D, 0xD8, 0xA9, 0xDC, 0x42, 0x00}, // well formed, an astral pair: the clamp's boundary
 }
 
 // retext rewrites the payload under one text length spot with `payload`,

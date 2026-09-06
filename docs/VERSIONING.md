@@ -1077,8 +1077,10 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
   SPEC-TABLES.md §2.4 and §11 state as refused, so those two spellings reopen
   the class §4.1 closed. The `type`-held case is ruled on #606.
 - #525: retain-unknown, the two report counters, and the conformance rows.
-- #522: the `wstring` kind `33` on the id-table wire, `*wstring`, the cooked
-  storage, the text row and the table-form goldens (SPEC.md §4.12).
+- #522: `*wstring`, the unbounded twin of wide text — the blob record is
+  specified and no backend emits one (SPEC-TABLES.md §2.5). The BOUNDED
+  spelling's table half, kind `33`, has landed in the C++ reference and the
+  tool with the storage, the cook, the text row and the table-form goldens.
 - #523: the unbounded array, `[]T` and `[]*T`, its refusals and the
   `list_migrates` golden that pins "the same bytes" as `[..N]T`
   (SPEC-TABLES.md §2.9).

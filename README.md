@@ -5,35 +5,23 @@
 
 **Schema. The data language for games.**
 
-If you write a game in more than one language, or ship a client and server that
-have to agree on every bit, schema is a language that will help you do this
-without ever having to hand-code definitions in each language ever again.
+Schema is a data language where you define your constants, enums, flags, types and tables for your game. 
+
+From this one definition, schema generates code in multiple languages: C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust.
+
+Schema is currently under active development. See **[ROADMAP.md](ROADMAP.md)** for details.
+
+If this work helps you, please support it: **[Become a supporter](https://www.patreon.com/MasBandwidth/membership)**
 
 ## Design
 
-**Schema** defines your data types across all languages used when developing a game:
+Schema is designed to support the following use-cases common in game development:
 
 * Packets sent between a client and a server.
 * Messages sent between your server and backend.
 * Save game files that must load in a future game build.
 * Game assets cooked to an efficient runtime binary format.
 * Render data written in one language and read in another - sixty times per-second.
-
-One system does it all, so you never end up with schema for the packets and something else for everything else.
-
-## Features
-
-1. Define constants, enums, flags, types and tables in one language.
-2. Generate fast bit-packed serialization for struct types that do not need versioning, such as client/server packets and state.
-3. _coming soon_ -- Generate versioned tables for messages, data, assets, save game files and everything else.
-4. _coming soon_ -- Tables can point at tables, so trees and graphs are tables too.
-5. _coming soon_ -- Cook tables to an efficient binary format for asset loading.
-
-Supported languages: C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust.
-
-Schema is currently under active development. See **[ROADMAP.md](ROADMAP.md)** for details.
-
-If this work helps you, please support it: **[Become a supporter](https://www.patreon.com/MasBandwidth/membership)**
 
 ## Example
 

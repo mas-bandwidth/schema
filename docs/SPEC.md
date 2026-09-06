@@ -731,8 +731,10 @@ FloatExpr   = float expression over float literals, int literals and const names
   On the TABLE wire a field at its declared default elides and an
   absent field reads as it, whatever the kind (SPEC-TABLES.md §4), so the
   string, bytes and flags defaults are part of that wire's contract exactly
-  as a scalar's is. The C++ reference carries the three, and every other
-  backend refuses a unit that declares one, naming the follow-on.
+  as a scalar's is. C++ carries all three on both wires. Go carries them for
+  packet-only fields; a default reachable from any table is refused by name
+  in Go. Every other backend refuses a unit that declares one, naming the
+  follow-on.
   **On the packet wire, defaults initialize storage without eliding fields.**
   A selected union payload starts at these construction values before its
   fields are decoded (§4.8). The ordinary field encodings still apply,
@@ -1884,16 +1886,17 @@ compile error, the same floor `string(N)` carries (§4.6).
 
 **Backend status: ONE TARGET CARRIES WIDE TEXT TODAY.** This section is
 written for all nine and one of them has landed it, on the terms §3.1
-and §4.2 take. The C++ packet emitter carries the storage, the wire and
-every read refusal below. The other eight REFUSE a unit declaring a
-`wstring(N)` field by name at generate time, rather than emit a member
+and §4.2 take. The C++ emitter carries the storage, the wire and
+every read refusal below, on BOTH wires: the packet wire's groups here and
+kind `33` on the id-table wire (SPEC-TABLES.md §3). The other eight REFUSE a
+unit declaring a `wstring(N)` field by name at generate time, whichever wire
+declares it, rather than emit a member
 they never laid out and a wire that skips it, so the storage and
 boundary table below states what each target owes rather than what it
-runs. The TABLE wire's half of the row (kind `33` and `*wstring`) has
-landed nowhere and a `wstring` inside a table closure is refused by name
-in the front end, which is SPEC-TABLES.md §11 and schema#522. Owed as
-schema#188, narrowed by each target that lands the codec, and this line
-is deleted by the last of them.
+runs. `*wstring`, the unbounded twin, is specified ahead of its
+implementation and no backend emits the blob record (SPEC-TABLES.md §2.5).
+Owed as schema#188, narrowed by each target that lands the codec, and this
+line is deleted by the last of them.
 
 **Why the language carries a wide type at all:** on a host whose native text
 is already UTF-16, the wire and the string hold the same units, so text
@@ -1961,8 +1964,8 @@ path, both in all nine targets, and both terminal.
 
 **BOTH WIRES CARRY `wstring(N)`, and they validate it differently on
 purpose.** The table wire gives wide text KIND `33`, `L` bytes holding `L / 2`
-UTF-16 code units two bytes each little-endian, with an odd `L` as framing
-damage and nothing else refused (SPEC-TABLES.md §3). Its unbounded twin is
+UTF-16 code units two bytes each little-endian, an odd `L` being framing
+damage on the body that carries it (SPEC-TABLES.md §3). Its unbounded twin is
 `*wstring`, a blob node under the reserved id `fnv1a64( "wstring" )`
 (SPEC-TABLES.md §2.5, §3.1), its storage is `char16_t[N + 1]` and an `int32`
 used length in code units (SPEC-TABLES.md §7.2), and its text form is a JSON
@@ -1974,10 +1977,10 @@ length-framed, so the same content is FRAMING-CLASS DAMAGE there: the field
 reads its declared default, one `malformed` counts, and the parent reads on
 past `L` (SPEC-TABLES.md §3, §4). **Neither reader accepts it**, which is what
 keeps the paragraph above true as written — every generated reader enforces
-these rules, in all nine targets, in every build mode — and what keeps the
-write side unrescoped, because ill-formed text never reaches storage from
-either wire. A group above `0xFFFF` has no case on the table wire at all, two
-bytes being unable to spell one. `string(N)` is held the same way on both
+these rules, in all nine targets, in every build mode — and what lets the table
+wire's `Save` check the used length alone, because ill-formed text never
+reaches storage from either wire. A group above `0xFFFF` has no case on the
+table wire at all, two bytes being unable to spell one. `string(N)` is held the same way on both
 wires for the same reason (§4.7).
 A `wstring(N)` MAP KEY is refused by name, the diagnostic naming `string(N)`,
 because `memcmp` over UTF-8 is a portable order and little-endian code units
@@ -1986,12 +1989,16 @@ have none (SPEC-TABLES.md §2.8, §11). The protocol id needs no
 capacity beside its kind (§3.1), and no unit could declare the construct
 before.
 
-**The write side** follows §5's doctrine and §4.7's precedent exactly. Two
-things are checked on every write, in every target, in that target's own
-idiom (§5): **the used length is within [0, N]**, because it guards the
-copy, and **a zero code unit among the used units is refused**, exactly as
-§4.7 refuses the interior null and symmetric with the reader's zero-group
-refusal. Surrogate pairing is NOT checked on write. It is a writer
+**The packet wire's write side** follows §5's doctrine and §4.7's precedent
+exactly. Two things are checked on every packet write, in every target, in
+that target's own idiom (§5): **the used length is within [0, N]**, because it
+guards the copy, and **a zero code unit among the used units is refused**,
+exactly as §4.7 refuses the interior null and symmetric with the reader's
+zero-group refusal. **The table wire's `Save` checks the used length and
+nothing about the content**, which is the shape kind `12` already has there:
+ill-formed text is a READ-side verdict on that wire, framing-class damage the
+reader answers with the declared default and one `malformed`
+(SPEC-TABLES.md §3). Surrogate pairing is NOT checked on write. It is a writer
 obligation whose enforcement is the reader on the other end, which refuses
 an unpaired surrogate under the rules above. A code unit above `0xFFFF`
 cannot be written at all, because the storage holds 16 bits per unit in

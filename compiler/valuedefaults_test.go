@@ -1,5 +1,5 @@
-// A string, bytes or flags default (SPEC §4.2) is C++'s today: the reference
-// carries it on both wires, and every other target refuses the unit by name.
+// A string, bytes or flags default (SPEC §4.2) has separate packet and table
+// carriers. C++ carries both; Go carries packet-only defaults.
 package compiler
 
 import (
@@ -31,7 +31,7 @@ table Fleet
 }
 `
 
-func TestValueDefaultsAreCppOnly(t *testing.T) {
+func TestTableValueDefaultsAreCppOnly(t *testing.T) {
 	u := unitFromSource(t, valueDefaultsUnit)
 	c := New()
 	for _, target := range c.Targets() {

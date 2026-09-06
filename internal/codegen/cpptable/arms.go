@@ -32,6 +32,8 @@ func (g *tableGen) emitArmStorage(v ir.UnionVariant) {
 		g.pf("        TableRef %s; // *%s — a node index on the wire (§3.1)\n", v.Name, f.Type.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("        struct { char value[%d + 1]; int32_t value_length; } %s; // string(%d)\n", f.Type.Size, v.Name, f.Type.Size)
+	case f.Type.Kind == ir.TWString:
+		g.pf("        struct { char16_t value[%d + 1]; int32_t value_length; } %s; // wstring(%d), the used length in CODE UNITS\n", f.Type.Size, v.Name, f.Type.Size)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("        struct { uint8_t value[%d]; int32_t value_length; } %s; // bytes(%d)\n", f.Type.Size, v.Name, f.Type.Size)
 	case f.Array == ir.ArrayCounted:
@@ -63,7 +65,7 @@ func armCompanioned(v ir.UnionVariant) bool {
 	if f.Type.Pointer && f.Array == ir.ArrayNone {
 		return false
 	}
-	return f.Array == ir.ArrayCounted || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes
+	return f.Array == ir.ArrayCounted || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes
 }
 
 // armValue is the arm's payload lvalue under a union expression.
@@ -156,6 +158,9 @@ func (g *tableGen) emitArmMeasure(v ir.UnionVariant, base, into, ind, onBad, sfx
 	case f.Type.Kind == ir.TString:
 		g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.Type.Size, onBad)
 		g.pf("%s%s += %s; // the string's bytes under the arm's L\n", ind, into, count)
+	case f.Type.Kind == ir.TWString:
+		g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.Type.Size, onBad)
+		g.pf("%s%s += (int64_t) %s * 2; // the code units under the arm's L, which is a BYTE length (§3)\n", ind, into, count)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.Type.Size, onBad)
 		g.pf("%s%s += 1 + TableLebBytes( (uint64_t) %s ) + %s; // element kind 6, N, then the bytes\n", ind, into, count, count)
@@ -215,6 +220,9 @@ func (g *tableGen) emitArmSave(v ir.UnionVariant, base, ind, onBad, sfx string) 
 	case f.Type.Kind == ir.TString:
 		g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.Type.Size, onBad)
 		g.pf("%sw.raw( %s, %s );\n", ind, value, count)
+	case f.Type.Kind == ir.TWString:
+		g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.Type.Size, onBad)
+		g.pf("%sfor ( int32_t i%s = 0; i%s < %s; i%s++ ) { w.put16( (uint16_t) %s[i%s] ); } // two bytes each, little-endian\n", ind, sfx, sfx, count, sfx, value, sfx)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.Type.Size, onBad)
 		g.pf("%sw.put8( %d ); w.putleb( (uint64_t) %s ); // bytes ride as an array of u8 (§2.5)\n", ind, tkU8, count)
@@ -289,6 +297,21 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s    %s[%s] = 0;\n", ind, value, keep)
 		g.pf("%s    %s = (int32_t) %s;\n", ind, count, keep)
 		g.pf("%s    %s.offset += %s;\n%s}\n", ind, rdr, length, ind)
+	case f.Type.Kind == ir.TWString:
+		// AN ARM'S L IS THE WSTRING'S BYTE LENGTH (§3's arm payload table), so
+		// an ODD L is that arm's own framing damage: the union reads None.
+		g.pf("%sif ( ( %s.size & 1 ) != 0 ) { %s = %s; r.report->malformed = true; break; } // an odd L is not a wstring at any length (§3)\n", ind, rdr, tag, none)
+		g.establishArm(v, base, ind)
+		units, keep := "arm_units"+sfx, "arm_keep"+sfx
+		g.pf("%s{\n%s    const int64_t %s = %s.size / 2;\n", ind, ind, units, rdr)
+		g.pf("%s    int64_t %s = %s;\n", ind, keep, units)
+		g.pf("%s    // ILL-FORMED TEXT at an arm (§3): the union reads None, one malformed counts\n", ind)
+		g.pf("%s    if ( !TableUtf16Valid( %s.buffer + %s.offset, %s ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, rdr, units, tag, none)
+		g.pf("%s    if ( %s > %d ) { %s = TableUtf16Clamp( %s.buffer + %s.offset, %s, %d ); r.report->clamped++; } // never splitting a pair\n", ind, keep, f.Type.Size, keep, rdr, rdr, units, f.Type.Size)
+		g.pf("%s    for ( int64_t i%s = 0; i%s < %s; i%s++ ) { %s[i%s] = (char16_t) TableUtf16Unit( %s.buffer + %s.offset, i%s ); }\n", ind, sfx, sfx, keep, sfx, value, sfx, rdr, rdr, sfx)
+		g.pf("%s    %s[%s] = 0;\n", ind, value, keep)
+		g.pf("%s    %s = (int32_t) %s;\n", ind, count, keep)
+		g.pf("%s    %s.offset += %s.size;\n%s}\n", ind, rdr, rdr, ind)
 	case f.Type.Kind == ir.TBytes || f.Array != ir.ArrayNone:
 		g.establishArm(v, base, ind)
 		bound := armBound(v)

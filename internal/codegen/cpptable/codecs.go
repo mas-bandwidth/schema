@@ -267,6 +267,13 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	case f.Type.Kind == ir.TString:
 		g.pf("    char %s[%d + 1] = {}; // string(%d): max length, used length beside it\n", f.Name, f.Type.Size, f.Type.Size)
 		g.pf("    int32_t %s_length = 0;\n", f.Name)
+	case f.Type.Kind == ir.TWString:
+		// WIDE TEXT's cooked storage row (docs/SPEC-TABLES.md §7.2): a
+		// `char16_t[N + 1]` and an int32 used length in CODE UNITS, with the
+		// terminating zero unit at index length that SPEC.md §4.12 states for
+		// C and C++. It takes no specified default (SPEC.md §4.12).
+		g.pf("    char16_t %s[%d + 1] = {}; // wstring(%d): max length in UTF-16 code units, used length beside it\n", f.Name, f.Type.Size, f.Type.Size)
+		g.pf("    int32_t %s_length = 0;\n", f.Name)
 	case f.Type.Kind == ir.TBytes && hasByteDefault(f):
 		g.pf("    uint8_t %s[%d] = %s; // bytes(%d): fixed buffer, used length beside it; the declared default\n", f.Name, f.Type.Size, byteListLit(f.DefBytes), f.Type.Size)
 		g.pf("    int32_t %s_length = %d;\n", f.Name, len(f.DefBytes))
@@ -399,7 +406,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		g.pf("    memset( value.%s, 0, sizeof( value.%s ) );\n", f.Name, f.Name)
 		g.pf("    memcpy( value.%s, %s_default, %d ); // the declared default\n", f.Name, f.Name, len(f.DefBytes))
 		g.pf("    value.%s_length = %d;\n", f.Name, len(f.DefBytes))
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
 		g.pf("    memset( value.%s, 0, sizeof( value.%s ) );\n", f.Name, f.Name)
 		g.pf("    value.%s_length = 0;\n", f.Name)
 	case f.KeyEnum != "":
@@ -880,6 +887,11 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 	case f.Type.Kind == ir.TString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		g.pf("    if ( %s ) { bytes += %s + %s; } // %s\n", g.lengthRidesTest(f), g.hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
+	case f.Type.Kind == ir.TWString:
+		// KIND 33's `L` IS A BYTE LENGTH like every `L` on this wire
+		// (docs/SPEC-TABLES.md §3), so it is TWICE the used code unit count.
+		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+		g.pf("    if ( value.%s_length > 0 ) { bytes += %s + %s; } // %s\n", f.Name, g.hdrBytes(id), framed(fmt.Sprintf("(int64_t) value.%s_length * 2", f.Name)), f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		g.emitBytesDefaultLocal(f)
@@ -1292,6 +1304,12 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", g.wireRef(id), tkString, f.Name)
 		g.pf("        w.putleb( (uint64_t) value.%s_length );\n", f.Name)
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
+	case f.Type.Kind == ir.TWString:
+		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+		g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
+		g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", g.wireRef(id), tkWstring, f.Name)
+		g.pf("        w.putleb( (uint64_t) value.%s_length * 2 ); // L is a BYTE length (§3)\n", f.Name)
+		g.pf("        for ( int32_t i = 0; i < value.%s_length; i++ ) { w.put16( (uint16_t) value.%s[i] ); } // two bytes each, little-endian\n    }\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		g.emitBytesDefaultLocal(f)
@@ -1695,6 +1713,20 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%suint64_t keep = len;\n", ind)
 		g.pf("%sif ( keep > %d ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, %d ); r.report->clamped++; } // at a code point boundary (§3)\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%smemcpy( value.%s, r.buffer + r.offset, (size_t) keep );\n", ind, f.Name)
+		g.pf("%svalue.%s[keep] = 0;\n", ind, f.Name)
+		g.pf("%svalue.%s_length = (int32_t) keep;\n", ind, f.Name)
+		g.pf("%sr.offset += (int64_t) len;\n", ind)
+	case f.Type.Kind == ir.TWString:
+		g.pf("%suint64_t len = 0;\n", ind)
+		g.pf("%sif ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%s// AN ODD L IS FRAMING DAMAGE on the body that carries it (§3): the\n%s// value is L / 2 code units, so an odd L is not a wstring at any length.\n", ind, ind)
+		g.pf("%sif ( ( len & 1 ) != 0 ) { r.report->malformed = true; value.%s[0] = 0; value.%s_length = 0; r.offset += (int64_t) len; break; }\n", ind, f.Name, f.Name)
+		g.pf("%sconst int64_t units = (int64_t) ( len / 2 );\n", ind)
+		g.pf("%s// ILL-FORMED TEXT IS DAMAGE (§3, §4): an unpaired surrogate or a zero\n%s// code unit reads the declared default, one malformed counts, and the\n%s// parent reads on past L\n", ind, ind, ind)
+		g.pf("%sif ( !TableUtf16Valid( r.buffer + r.offset, units ) ) { r.report->malformed = true; value.%s[0] = 0; value.%s_length = 0; r.offset += (int64_t) len; break; }\n", ind, f.Name, f.Name)
+		g.pf("%sint64_t keep = units;\n", ind)
+		g.pf("%sif ( keep > %d ) { keep = TableUtf16Clamp( r.buffer + r.offset, units, %d ); r.report->clamped++; } // never splitting a pair (§3)\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%sfor ( int64_t i = 0; i < keep; i++ ) { value.%s[i] = (char16_t) TableUtf16Unit( r.buffer + r.offset, i ); }\n", ind, f.Name)
 		g.pf("%svalue.%s[keep] = 0;\n", ind, f.Name)
 		g.pf("%svalue.%s_length = (int32_t) keep;\n", ind, f.Name)
 		g.pf("%sr.offset += (int64_t) len;\n", ind)
@@ -2237,7 +2269,7 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	if f.Type.Pointer {
 		kind = tkNodeIndex // the descriptor states the WIRE (§8.1, §3.1); a byte buffer's slot is a node index too (§2.5)
 	}
-	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString
+	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString
 
 	// the count column, spelled the way the storage spells its own
 	// extent: a keyed array DERIVES it from the key enum, so nothing
@@ -2248,7 +2280,9 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		bound = fmt.Sprintf("(int32_t) %s::Max", f.KeyEnum)
 	case f.Array != ir.ArrayNone:
 		bound = strconv.FormatInt(f.ArrayBound, 10)
-	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+		// WIDE TEXT's bound is in CODE UNITS, which is what N counts
+		// (SPEC.md §4.12) and what the text form clamps against (§16.2)
 		bound = strconv.FormatInt(f.Type.Size, 10)
 	}
 
@@ -2271,7 +2305,7 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	countOffset := "0xffffffffu"
 	if counted {
 		companion := sp.member + "_count"
-		if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString {
+		if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString {
 			companion = sp.member + "_length"
 		}
 		countOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s )", sp.owner, companion)

@@ -16,6 +16,13 @@ type cTarget struct{}
 func (cTarget) Names() []string { return []string{"c"} }
 
 func (cTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	// WIDE TEXT FIRST, ahead of every form refusal: it is a STORAGE
+	// construct (SPEC §4.12), so a target that has not laid out the
+	// member cannot emit the field under any form, and naming that is
+	// more use to a port author than naming a form the field sits in.
+	if err := refuseWideText(u, "c"); err != nil {
+		return nil, err
+	}
 	if err := refuseUnported(u, "c"); err != nil {
 		return nil, err
 	}
@@ -26,12 +33,6 @@ func (cTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 		return nil, err
 	}
 	if err := refuseLists(u, "c"); err != nil {
-		return nil, err
-	}
-	// WIDE TEXT is the C++ reference's today (SPEC §4.12): this target
-	// refuses a unit that declares one by name rather than emitting a
-	// field it never laid out.
-	if err := refuseWideText(u, "c"); err != nil {
 		return nil, err
 	}
 	files, err := cgen.Generate(u)
@@ -54,6 +55,4 @@ func (cTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() {
-	registerBuiltin(cTarget{}, true, false, false, false)
-}
+func init() { registerBuiltin(cTarget{}, true, false, false, false) }

@@ -63,6 +63,57 @@ var sabotages = map[string][]edit{
 			g.pf("            return 1; /* payload-free arm — the tag is the whole wire (SPEC §4.8) */\n")`,
 	}},
 
+	// docs/SPEC-TABLES.md §3: a kind 33 payload carrying an UNPAIRED SURROGATE
+	// is DAMAGE, not data. Take the pairing rule out of the table runtime's
+	// content check and the gate's surrogate rows stop being refused. The zero
+	// unit stays refused, so what goes red is the pairing and nothing else.
+	"table-wstring-accept-unpaired-surrogate": {{
+		old: `        if ( unit >= 0xD800 && unit <= 0xDBFF )
+        {
+            if ( i + 1 >= units ) { return false; } // a high surrogate with no low half
+            const uint16_t low = TableUtf16Unit( bytes, i + 1 );
+            if ( low < 0xDC00 || low > 0xDFFF ) { return false; }
+            i += 2;
+            continue;
+        }
+        if ( unit >= 0xDC00 && unit <= 0xDFFF ) { return false; } // a low surrogate first`,
+		new: `        // SABOTAGED: the pairing rule removed`,
+	}},
+
+	// docs/SPEC-TABLES.md §3: a ZERO CODE UNIT among a kind 33 payload's units
+	// is DAMAGE, on the rule kind 12 takes for a zero byte. Take it out and the
+	// gate's three nul rows stop being refused, while the surrogate rows stay.
+	"table-wstring-accept-zero-unit": {{
+		old: `        if ( unit == 0 ) { return false; }`,
+		new: `        if ( false ) { return false; } // SABOTAGED: the zero-unit rule removed`,
+	}},
+
+	// docs/SPEC-TABLES.md §3: a clamp keeps the first N code units, and where
+	// the last kept unit is a HIGH SURROGATE whose low half did not fit, that
+	// unit is dropped with it — so a clamp can never invent an unpaired
+	// surrogate. Take the drop out and the clamp splits the pair.
+	"table-wstring-clamp-splits-a-pair": {{
+		old: `        const uint16_t last = TableUtf16Unit( bytes, cut - 1 );
+        if ( last >= 0xD800 && last <= 0xDBFF ) { cut--; }`,
+		new: `        (void) bytes; // SABOTAGED: the high surrogate whose low half did not fit is kept`,
+	}},
+
+	// docs/SPEC-TABLES.md §3: `L` is a BYTE length like every `L` on this wire,
+	// so an ODD `L` is framing damage on the body that carries it. Take the
+	// check out and half a code unit reads as a code unit.
+	"table-wstring-accept-odd-length": {{
+		old: `		g.pf("%sif ( ( len & 1 ) != 0 ) { r.report->malformed = true; value.%s[0] = 0; value.%s_length = 0; r.offset += (int64_t) len; break; }\n", ind, f.Name, f.Name)`,
+		new: `		g.pf("%s(void) 0; // SABOTAGED: the odd-L rule removed (%s, %s)\n", ind, f.Name, f.Name)`,
+	}},
+
+	// docs/SPEC-TABLES.md §3: a kind 33 field's `L` is TWICE the code unit
+	// count, because every `L` on this wire is a byte length. Write the unit
+	// count instead and the field's own bytes stop being what §3 frames.
+	"table-wstring-length-in-units": {{
+		old: `		g.pf("        w.putleb( (uint64_t) value.%s_length * 2 ); // L is a BYTE length (§3)\n", f.Name)`,
+		new: `		g.pf("        w.putleb( (uint64_t) value.%s_length ); // SABOTAGED: L in code units\n", f.Name)`,
+	}},
+
 	// SPEC §4.12: `wstring(N)` performs NO alignment. serialize.modern's
 	// wstring_ inserts an align between the length and the code units, and
 	// that align is the one thing schema does not do. Put it back on both

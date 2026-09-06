@@ -20,7 +20,7 @@
 #include <cstring>
 #include <cstdint>
 
-#include "WideWire.h"
+#include "WideTextWire.h"
 
 using namespace wide;
 

@@ -92,6 +92,19 @@ inline void table_cook_bytes( uint8_t * at, const void * source, int64_t used, i
     const int64_t n = used < capacity ? used : capacity;
     memcpy( at, source, (size_t) n );
 }
+
+// A WIDE TEXT buffer piece (docs/SPEC-TABLES.md §7.2): the USED code units,
+// each a TWO-BYTE SCALAR in the cook's byte order. A record is written piece
+// by piece and never memcpy'd, and a swap has to know where every scalar
+// begins — a char16_t is one, so the units go one store each rather than as
+// bytes. The tail is already zero, as the narrow twin's is, so the terminating
+// zero unit at index used costs nothing here.
+inline void table_cook_units( uint8_t * at, const char16_t * source, int64_t used, int64_t capacity, TableByteOrder order )
+{
+    if ( used <= 0 ) { return; }
+    const int64_t n = used < capacity ? used : capacity;
+    for ( int64_t i = 0; i < n; i++ ) { table_cook_put( at + i * 2, (uint64_t) (uint16_t) source[i], 2, order ); }
+}
 `
 
 // tableCookWriteVariableRuntime is the write side's POINTERED half, emitted
@@ -328,6 +341,11 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 		// the buffer, then the int32 used length beside it — two pieces, each
 		// aligned on its own, which is what the generated record declares
 		g.pf("    table_cook_bytes( %s + %d, %s, %s_length, %d );\n", base, value.Offset, name, name, value.Size)
+		g.pf("    table_cook_put( %s + %d, (uint64_t) (uint32_t) %s_length, 4, order );\n", base, pieces[1].Offset, name)
+	case f.Type.Kind == ir.TWString:
+		// char16_t[N + 1] and the int32 used length in CODE UNITS (§7.2), the
+		// units each a two-byte scalar in the cook's byte order
+		g.pf("    table_cook_units( %s + %d, %s, %s_length, %d, order );\n", base, value.Offset, name, name, f.Type.Size+1)
 		g.pf("    table_cook_put( %s + %d, (uint64_t) (uint32_t) %s_length, 4, order );\n", base, pieces[1].Offset, name)
 	case f.KeyEnum != "", f.Array == ir.ArrayFixed, f.Array == ir.ArrayCounted:
 		stride := cookElementBytes(g.unit, f)

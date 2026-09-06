@@ -8029,7 +8029,7 @@ fields would get wrong:
 | a scalar, an enum, a `flags` | the value at its storage width |
 | a 128-bit scalar (`int128`, `uint128`, a `fixed` or `ufixed` of 128 bits) | SIXTEEN BYTES AT SIXTEEN — the C ABI's natural alignment for a 128-bit integer, and the one a table's C++ storage spells out (`alignas( 16 )`) on every such member, so serialize's emulated pair — not naturally sixteen-aligned — lays out exactly as native `__int128` does, and every compiler lays the record out the same way (§19.3). The slot holds the value in the cook's byte order: the low 64-bit half first in a little-endian cook, the high half first — each half big-endian — in a big-endian one, exactly as a `u64` is one eight-byte lane. A narrower `fixed` is its raw integer at its storage width, like any scalar |
 | `string(N)` | `char[N + 1]`, then `int32` used length |
-| `wstring(N)` | `char16_t[N + 1]`, then `int32` used length, the used length in CODE UNITS (SPEC.md §4.12) |
+| `wstring(N)` | `char16_t[N + 1]`, then `int32` used length, the used length in CODE UNITS (SPEC.md §4.12). A code unit is a two-byte SCALAR, so EACH UNIT is written at its own two-byte width in the cook's byte order, never as a run of bytes. The terminating zero unit at index `length` is a unit like any other, and reads zero in either order |
 | `bytes(N)` | `uint8[N]`, then `int32` used length |
 | `[N]T` | `N` elements at the element's `sizeof` |
 | `[..N]T` | `N` elements, then `int32` used count |
@@ -9843,13 +9843,6 @@ in build version (§20.5).
   **`*wstring` is the third spelling and takes every clause above**, its bound
   `*wstring(N)` refused with the other two, because a buffer at its used size
   has no bound to declare whatever units it holds (§2.5).
-- **Wide text in a table closure** (SPEC.md §4.12): a `wstring(N)` field
-  anywhere a table reaches, until the table wire's kind `33` lands
-  (schema#522). A table body's own field and a union arm are refused where
-  they resolve; a field of a `type` is refused once the closure is known,
-  through any nesting of `type`, union, array, bounded array, optional, map
-  value and pointer, naming the field and the edge that put the `type` in the
-  closure. A `type` no table reaches keeps its wide text on the packet wire.
 - **The block form** (§2.7), each refusal naming the table and the field or
   declaration at fault. **Nothing declares the form, so nothing is refused
   FOR it** — a table that cannot have one simply has none (§19) — and there

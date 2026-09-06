@@ -16,6 +16,13 @@ type rustTarget struct{}
 func (rustTarget) Names() []string { return []string{"rust"} }
 
 func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	// WIDE TEXT FIRST, ahead of every form refusal: it is a STORAGE
+	// construct (SPEC §4.12), so a target that has not laid out the
+	// member cannot emit the field under any form, and naming that is
+	// more use to a port author than naming a form the field sits in.
+	if err := refuseWideText(u, "rust"); err != nil {
+		return nil, err
+	}
 	if err := refuseUnported(u, "rust"); err != nil {
 		return nil, err
 	}
@@ -26,12 +33,6 @@ func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 		return nil, err
 	}
 	if err := refuseLists(u, "rust"); err != nil {
-		return nil, err
-	}
-	// WIDE TEXT is the C++ reference's today (SPEC §4.12): this target
-	// refuses a unit that declares one by name rather than emitting a
-	// field it never laid out.
-	if err := refuseWideText(u, "rust"); err != nil {
 		return nil, err
 	}
 	files, err := rust.Generate(u)

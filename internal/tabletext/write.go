@@ -101,7 +101,7 @@ func (m *Model) countField(g *graphOut, fv *Field, open map[*Instance]bool) erro
 		return nil
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return m.countNode(g, fv.Cell.Node, open)
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
 		return nil
 	case f.IsMap():
 		// A MAP'S ENTRIES ARE BY-VALUE RECORDS (§2.8), and the value inside
@@ -305,6 +305,9 @@ func (m *Model) writeField(w *writer, fv *Field, depth int) error {
 		return nil
 	case f.Type.Kind == ir.TString:
 		writeString(w, fv.Cell.Str)
+		return nil
+	case f.Type.Kind == ir.TWString:
+		writeWString(w, fv.Cell.Units)
 		return nil
 	case f.Type.Kind == ir.TBytes:
 		writeBase64(w, fv.Cell.Str)
@@ -622,6 +625,54 @@ func writeString(w *writer, s []byte) {
 					i += width - 1
 				}
 			}
+		}
+	}
+	w.put('"')
+}
+
+// writeWString is a WIDE field's text (docs/SPEC-TABLES.md §16.2): the code
+// units transcoded back to UTF-8. A SURROGATE PAIR is one code point; an
+// UNPAIRED SURROGATE is not a code point at all, encodes to nothing, and
+// writes one U+FFFD per ill-formed unit; a ZERO UNIT is U+0000, which JSON has
+// an escape for, and writes \u0000 (§16.3). No wire can put either into
+// storage (§3), so both answer for storage a PROGRAM built.
+func writeWString(w *writer, units []uint16) {
+	const hex = "0123456789abcdef"
+	w.put('"')
+	for i := 0; i < len(units); i++ {
+		code := uint32(units[i])
+		if code >= 0xd800 && code <= 0xdbff && i+1 < len(units) {
+			if low := uint32(units[i+1]); low >= 0xdc00 && low <= 0xdfff {
+				code = 0x10000 + (code-0xd800)<<10 + (low - 0xdc00)
+				i++
+			}
+		}
+		if code >= 0xd800 && code <= 0xdfff {
+			code = 0xfffd // an unpaired surrogate
+		}
+		switch code {
+		case '"':
+			w.raw("\\\"")
+		case '\\':
+			w.raw("\\\\")
+		case '\b':
+			w.raw("\\b")
+		case '\f':
+			w.raw("\\f")
+		case '\n':
+			w.raw("\\n")
+		case '\r':
+			w.raw("\\r")
+		case '\t':
+			w.raw("\\t")
+		default:
+			if code < 0x20 {
+				w.raw("\\u00")
+				w.put(hex[code>>4])
+				w.put(hex[code&0xf])
+				continue
+			}
+			w.raw(string(encodeUTF8(code)))
 		}
 	}
 	w.put('"')
