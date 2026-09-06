@@ -829,7 +829,7 @@ func (g *tableGen) emitMessageMapKeyReader(me *ir.Struct) {
 	}
 	// the WIDENING RULE at a map's KEY (§2.8, §4): where the declared key kind
 	// has kinds below it on its ladder, a key under one of them is not a
-	// disagreement — it rides at the announced width the read already uses
+	// disagreement, and it rides at the announced width the read already uses
 	keyWiden := ""
 	if !stringKey && widenable(kind) {
 		keyWiden = fmt.Sprintf(" && !TableKindWidens( entry.kind, %d )", kind)

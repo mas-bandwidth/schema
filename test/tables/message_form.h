@@ -1986,8 +1986,8 @@ static void test_message_form_cold_read()
 // is one of them: a kind below this reader's on the same ladder decodes
 // EXACTLY at the width the ANNOUNCEMENT states, the value lands, and one
 // `widened` counts. A1 and A2 are the pair the file form already reads across
-// (the a1_arm_moved_width_as_a2 report row) — arm `a` is `int32` under A1 and
-// `int64` under A2 — so the same wire under this form names the same answer.
+// (the a1_arm_moved_width_as_a2 report row): arm `a` is `int32` under A1 and
+// `int64` under A2, so the same wire under this form names the same answer.
 //
 // Red where a reader treats the announced kind as a mismatch: the arm reads
 // None and `kind_mismatch` moves in `widened`'s place.

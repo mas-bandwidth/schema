@@ -515,7 +515,7 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 	width := bits
 	if widened && kind == tkF64 {
 		// f32 WIDENED INTO f64 (§3.3, §4): the payload rides at the SENDER's
-		// f32 shape — its quantization or its thirty-two raw bits — every
+		// f32 shape, its quantization or its thirty-two raw bits, and every
 		// float32 value is exactly representable, and a float64 field's
 		// declared range clamps nothing on this wire, exactly as a payload at
 		// sixty-four bits.

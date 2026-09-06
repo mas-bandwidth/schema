@@ -841,7 +841,7 @@ report r2_cfg_as_r1 tblr1 Cfg testdata/wire/tables/r2_cfg.bin
 # Rust, C#, Java, JavaScript and Dart -- not because their readers lacked the
 # clause but because their drivers raised a claim SHORTER than the image to the
 # image's own length, so the input had never been expressible in those five
-# (schema#598; schema#387 is the pointer column's half of the same driver work).
+# (schema#598, and schema#387 is the pointer column's half of that driver work).
 # All nine answer `refuse` now. THE BLOCK'S `unaligned_base` IS STILL NOT
 # HERE, and that is about the forgery it would need rather than about the
 # reason: it is a clause over the ADDRESS the caller passed, and a manifest row

@@ -733,7 +733,7 @@ int main( int argc, char ** argv )
         // arrays are read BEFORE the used extent, because the used extent is
         // derived from them, so this is `truncated` and not `bad_layout`. A
         // block of its own is laid out for it, with counts whose greatest end
-        // is not a multiple of 64 — the corpus frame's is.
+        // is not a multiple of 64, which the corpus frame's is.
         {
             RenderFrameBlockStorage pad_storage;
             check( pad_storage.Create( counting_allocator() ), "the padding reading's storage allocates" );
