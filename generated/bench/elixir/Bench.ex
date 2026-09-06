@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package bench — protocol id 0x5b8227d21cba8abf
+# package bench — protocol id 0x06845f749d2417b4
 #
 # The shipped Elixir wire path (issue #167): the serialize.elixir port's
 # measured shapes — byte-granular 32-bit-group packing and 40-bit read
@@ -256,7 +256,7 @@ defmodule Bench.Bench do
 
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
-  def protocol_id, do: 0x5B8227D21CBA8ABF
+  def protocol_id, do: 0x06845F749D2417B4
 
   # bench_packet_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
   # bench_packet_max_bytes is rounded up to the family 8-byte write-buffer granularity.

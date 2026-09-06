@@ -183,7 +183,7 @@ Open `gen/Game.h`:
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package starlight — protocol id 0x657f3fb8771fbe6e
+// package starlight — protocol id 0xff86e6e5b9a15fa5
 
 #pragma once
 
@@ -193,7 +193,7 @@ namespace starlight {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0x657f3fb8771fbe6eull;
+inline constexpr uint64_t ProtocolId = 0xff86e6e5b9a15fa5ull;
 
 inline constexpr int64_t MaxPlayers = 64;
 inline constexpr int64_t TickRate = 60;
@@ -224,7 +224,7 @@ why are:
 
 ```
 $ schema id .
-0x657f3fb8771fbe6e
+0xff86e6e5b9a15fa5
 ```
 
 and `schema projection .`, which prints the exact text the id hashes. Diff
@@ -4150,7 +4150,7 @@ file to diff when you want to know **why** the version moved:
 ```
 $ schema build-version --facts .
 schema-build-version 3
-protocol b786cca203ebb6ea
+protocol 60d7cbad6bb296f2
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record GameConfig sizeof=384 alignof=8

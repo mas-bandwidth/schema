@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package realworld — protocol id 0x0eefe6bcd2596139
+// package realworld — protocol id 0x11a7ba9416ba6b58
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an interior null)
@@ -155,7 +155,7 @@ namespace Realworld
     {
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
-        public const ulong ProtocolId = 0x0eefe6bcd2596139;
+        public const ulong ProtocolId = 0x11a7ba9416ba6b58;
 
         // EnumNamePacketMode: debug/log/tooling name for any PacketMode wire value —
         // out-of-set values (wire-legal up to the declared max) name as "???"

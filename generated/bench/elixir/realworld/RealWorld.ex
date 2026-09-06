@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package realworld — protocol id 0x0eefe6bcd2596139
+# package realworld — protocol id 0x11a7ba9416ba6b58
 #
 # The shipped Elixir wire path (issue #167): the serialize.elixir port's
 # measured shapes — byte-granular 32-bit-group packing and 40-bit read
@@ -357,7 +357,7 @@ defmodule Realworld.RealWorld do
 
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
-  def protocol_id, do: 0x0EEFE6BCD2596139
+  def protocol_id, do: 0x11A7BA9416BA6B58
 
   # enum_name_packet_mode: debug/log/tooling name for any PacketMode wire value —
   # out-of-set values (wire-legal up to the declared max) name as "???"
