@@ -491,6 +491,49 @@ tables-view-negative-controls: build/tables-generated/.stamp test/tables/view_ma
 	fi
 	@echo "unit registry negative control 3: a general arm's moved offset takes the corpus gate down"
 
+# THE CONTAINMENT GATE (docs/SPEC-TABLES.md §8.4, §8.7), in §2.2's shape: not
+# one of the six registry symbols appears in any generated file but the view
+# pair. Nothing selects the view, so what a build pays is what it compiles, and
+# that answer only holds while the registry stays inside its own file. The gate
+# asks "did the registry leak out of its file?" and never "is there a
+# descriptor here?" — the descriptor vocabulary is §8.1's and rides where it
+# always did, which is why the pattern is the six names and nothing else.
+#
+# UnitView covers UnitViewInfo, being its prefix.
+#
+# The grep runs over the CODE, with every // comment stripped first, on the
+# same terms as the block zero-cost gate above: a comment naming the registry
+# is prose, not a symbol.
+VIEW_REGISTRY_SYMBOLS := UnitView|ViewType|ViewVocabulary|ViewVariant|ViewConstant
+
+.PHONY: tables-view-containment
+tables-view-containment: build/tables-generated/.stamp
+	@$(MAKE) --no-print-directory view-containment-scan VIEW_SCAN_DIR=build/tables-generated
+	@echo "unit registry containment gate: no generated file but the view pair carries one of the six registry symbols"
+
+# the scan itself, over one directory, so the gate and its negative control run
+# the SAME grep rather than two greps that agree today
+.PHONY: view-containment-scan
+view-containment-scan:
+	@for f in $(VIEW_SCAN_DIR)/*/*; do \
+		case $$f in *View.h|*View.cpp) continue;; esac; \
+		if sed -E 's://.*$$::' $$f | grep -nE "$(VIEW_REGISTRY_SYMBOLS)"; then \
+			echo "VIEW CONTAINMENT GATE FAILED: a registry symbol leaked into $$f"; exit 1; \
+		fi; \
+	done
+
+.PHONY: tables-view-containment-negative-control
+tables-view-containment-negative-control: build/tables-generated/.stamp
+	@rm -rf build/view-containment-negative && mkdir -p build/view-containment-negative/examples
+	@cp build/tables-generated/examples/*.h build/tables-generated/examples/*.cpp build/view-containment-negative/examples/
+	@printf 'const schema_view_leak::ViewVariant * leaked();\n' >> build/view-containment-negative/examples/TablesTable.h
+	@grep -q 'ViewVariant \* leaked' build/view-containment-negative/examples/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL: the planted registry symbol did not apply"; exit 1; }
+	@if $(MAKE) --no-print-directory view-containment-scan VIEW_SCAN_DIR=build/view-containment-negative > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a registry symbol in a Table header did not take the containment gate down"; exit 1; \
+	fi
+	@echo "unit registry containment negative control: a registry symbol planted in a non-view file takes the gate down"
+
 # ---------------------------------------------------------------------------
 # The BLOCK FORM (docs/SPEC-TABLES.md §19). Nothing declares it: every fixed table
 # has one, emitted on the side into <Base>Block.h/.cpp and <Base>Block.cs, and
@@ -2690,6 +2733,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-doctags-negative-controls
 	$(MAKE) tables-view
 	$(MAKE) tables-view-negative-controls
+	$(MAKE) tables-view-containment
+	$(MAKE) tables-view-containment-negative-control
 	$(MAKE) tables-ports-refuse-wide-scalars
 	$(MAKE) tables-scalars-block-asserts
 	# THE CONFORMANCE HARNESS (test/conformance/README.md): the same corpus as
