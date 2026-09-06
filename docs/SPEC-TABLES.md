@@ -4798,6 +4798,14 @@ an array bound are WIDTH facts on this wire, and a reader that meets a width it
 did not expect reads the sender's and applies its own bound rather than losing
 the field, so unknown, absent, `kind_mismatch`, `widened`, `clamped`,
 `duplicate` and every guard and bound row read exactly as they read on a file.
+**A WIDENING IS THEREFORE FOUND IN THE ANNOUNCEMENT** rather than in a kind
+byte: an announced kind below this reader's on the same ladder decodes at the
+width the announcement states, the value lands, and one `widened` counts, at a
+field, an arm, a positional array's element and a map's key exactly as §4
+counts them. It follows that the wire fuzzer's widen pass has no purchase on
+this form — a mutant would have to forge the announcement both sides read from
+their own unit — so the row is held by a PEER WHOSE DECLARATION HAS MOVED
+instead, which is the shape every other §4 row on this form is held by.
 §4's framing-damage row says a damaged level stops only itself and the parent
 reads on past its length, and a bitpacked body has no length to read on past,
 so damage is terminal for the batch (above). **§4's MASK ROUND-TRIP ROW moves

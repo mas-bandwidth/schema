@@ -1208,6 +1208,15 @@ func retext(seed *wireSeed, si int, payload []byte) []byte {
 // set to `E`, the last legal slot, which must RESOLVE, then to `E + 1` and to the
 // largest the width can spell, every node index to null, the root, the last
 // record and past it, and every bit of the batch flipped once.
+//
+// THE FILE FORM'S WIDEN PASS HAS NO COUNTERPART HERE, and that is a fact about
+// the form rather than a gap in the pass: a form-2 body carries no kind byte at
+// all, so the kind a reader compares against is the ANNOUNCEMENT's, which both
+// this engine and the leg read from their OWN unit. A widening mutant would
+// have to hand both sides a forged announcement, and this driver's protocol
+// carries a body. §4's widening row on this form is held by a peer whose
+// declaration has MOVED instead (messagerules_test.go, TestAWidenedKindOnAMessage,
+// and test/tables/message_form.h's A1-to-A2 row).
 func messageEnumerated(seed *wireSeed, emit func(pass string, data []byte)) {
 	wire := seed.wire
 	for _, n := range truncations(seed) {

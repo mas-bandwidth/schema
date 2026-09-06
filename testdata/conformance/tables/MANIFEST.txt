@@ -837,7 +837,11 @@ report r2_cfg_as_r1 tblr1 Cfg testdata/wire/tables/r2_cfg.bin
 # THE BLOCK'S `truncated` REACHES THIS SURFACE THROUGH THE EXTENT COLUMN, which
 # is a caller's length and not a patched word: block_extent_padding leaves the
 # image alone and claims one byte less than the used extent's rounding, on the
-# precedent cook_claim_one_short set. THE BLOCK'S `unaligned_base` IS STILL NOT
+# precedent cook_claim_one_short set. FIVE PORTS ANSWER `open` TO IT TODAY --
+# Rust, C#, Java, JavaScript and Dart -- because their drivers raise a claim
+# SHORTER than the image to the image's own length, so the clause has never been
+# reachable in those five (schema#598, and schema#387 for the pointer column's
+# half of the same driver work). THE BLOCK'S `unaligned_base` IS STILL NOT
 # HERE, and that is about the forgery it would need rather than about the
 # reason: it is a clause over the ADDRESS the caller passed, and a manifest row
 # hands a driver a path rather than a pointer. test/tables/block_main.cpp's

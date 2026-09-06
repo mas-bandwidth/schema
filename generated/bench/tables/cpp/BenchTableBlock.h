@@ -451,8 +451,9 @@ inline int64_t TableEntityBlockBytes( const TableEntityBlock & block )
 // nothing to validate and nothing to fix up. On any failure it returns false,
 // points at nothing, and NAMES the first failing clause in the caller's
 // TableRefuseReason, the same enum a cook's Open fills (§7): not_a_cook,
-// foreign_order, wrong_build_version, truncated, bad_layout for a pitch, a
-// count, an offset or an extent, and unaligned_base. The reason is written
+// foreign_order, wrong_build_version, bad_layout for a pitch, a count, an
+// offset or an extent, truncated where the used extent the arrays derive
+// runs past the caller's bytes, and unaligned_base. The reason is written
 // on the refusal path only.
 //
 // There is ONE entry point, and no tolerant twin: the block form is same-build
@@ -621,8 +622,9 @@ inline int64_t TableStatBlockBytes( const TableStatBlock & block )
 // nothing to validate and nothing to fix up. On any failure it returns false,
 // points at nothing, and NAMES the first failing clause in the caller's
 // TableRefuseReason, the same enum a cook's Open fills (§7): not_a_cook,
-// foreign_order, wrong_build_version, truncated, bad_layout for a pitch, a
-// count, an offset or an extent, and unaligned_base. The reason is written
+// foreign_order, wrong_build_version, bad_layout for a pitch, a count, an
+// offset or an extent, truncated where the used extent the arrays derive
+// runs past the caller's bytes, and unaligned_base. The reason is written
 // on the refusal path only.
 //
 // There is ONE entry point, and no tolerant twin: the block form is same-build
