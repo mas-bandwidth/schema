@@ -327,13 +327,14 @@ func (g *gen) emitUnion(d *ir.Union) {
 	if hasVoid {
 		g.pf("// Payload-free arms select by assigning the tag alone; they have no storage.\n")
 	}
-	if firstPayload != nil {
+	switch {
+	case firstPayload != nil:
 		g.pf("// Application code must include <new> before constructing an arm in place:\n")
 		g.pf("// ::new ( (void*) &value.%s ) %s{}; value.type = %sType::%s;\n",
 			firstPayload.Name, firstPayload.Type, d.Name, ir.GoExportName(firstPayload.Name))
-	} else if len(d.Variants) > 0 {
+	case len(d.Variants) > 0:
 		g.pf("// For example: value.type = %sType::%s;\n", d.Name, ir.GoExportName(d.Variants[0].Name))
-	} else {
+	default:
 		g.pf("// there is no payload to construct in this empty union.\n")
 	}
 	g.pf("// Bytes of unselected arms are indeterminate.\n")
