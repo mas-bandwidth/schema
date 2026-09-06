@@ -71,8 +71,16 @@ type Cell struct {
 	// zero, so a fresh cell and an elided field agree without a materialized
 	// big.Int per slot.
 	Wide *big.Int
-	Str  []byte    // string / bytes payload, at its used extent
-	Tab  *Instance // a nested table or type, or a union arm's declared-type payload
+	Str  []byte // string / bytes payload, at its used extent
+	// Units is a `wstring(N)` value's UTF-16 CODE UNITS, at its used extent
+	// (docs/SPEC-TABLES.md §3's kind 33, SPEC.md §4.12). It is a separate
+	// member from Str for the reason the two are separate KINDS: a wstring's
+	// extent is counted in units and a string's in bytes, and one member
+	// holding both would make the count's meaning a field's type rather than
+	// the member's. Wide text takes no specified default, so nil is the whole
+	// of an unset one.
+	Units []uint16
+	Tab   *Instance // a nested table or type, or a union arm's declared-type payload
 
 	// Arm is a UNION ARM that names no declaration (docs/SPEC-TABLES.md
 	// §2.6): an arm is a field line, so its storage is a field's storage —
@@ -227,6 +235,10 @@ func (m *Model) reset(fv *Field) {
 			fv.Cell.Str = append([]byte(nil), f.DefBytes...)
 			fv.Count = len(f.DefBytes)
 		}
+		return
+	case f.Type.Kind == ir.TWString:
+		// WIDE TEXT TAKES NO SPECIFIED DEFAULT (SPEC.md §4.12), so the empty
+		// value is the whole of it and there is nothing to establish
 		return
 	case f.Array != ir.ArrayNone:
 		fv.Elems = make([]Cell, f.ArrayBound)

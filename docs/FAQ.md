@@ -308,10 +308,11 @@ generated tag surface, in every target. Rust's
 `#[repr(C)]` storage is what makes relocatability actually true there rather
 than incidental.
 
-One type is specified and not yet emitted anywhere, so it is named rather than
+One type is carried by ONE target rather than nine, so it is named rather than
 counted as parity: `wstring(N)`, the wide-text type, whose reader rules,
-storage and goldens are SPEC.md §4.12 and whose first implementation lands
-them in every target at once.
+storage and goldens are SPEC.md §4.12. C++ carries it on both wires — the
+packet wire's 32-bit groups and kind `33` on the table wire (SPEC-TABLES.md
+§3) — and the other eight refuse a unit that declares one, by name.
 
 ## What does the language NOT have?
 

@@ -234,7 +234,7 @@ func (r *wireReader) skip(kind uint8) bool {
 		_, ok := r.leb()
 		return ok
 	case ir.TableKindString, ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed,
-		ir.TableKindEscape, ir.TableKindNoPayload:
+		ir.TableKindEscape, ir.TableKindNoPayload, ir.TableKindWstring:
 		n, ok := r.leb()
 		if !ok || !r.has(int(n)) || n > uint64(len(r.buf)) {
 			return false
@@ -439,6 +439,42 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		fv.Cell.Str = append([]byte(nil), r.buf[r.off:r.off+keep]...)
 		fv.Count = keep
 		r.off += int(n)
+		return true
+	case f.Type.Kind == ir.TWString:
+		n, ok := r.leb()
+		if !ok || !r.has(int(n)) || n > uint64(len(r.buf)) {
+			r.report.Malformed = true
+			return false
+		}
+		payload := r.buf[r.off : r.off+int(n)]
+		r.off += int(n)
+		if n&1 != 0 {
+			// AN ODD L IS FRAMING DAMAGE on the body that carries it (§3): the
+			// value is L / 2 code units, so an odd L is not a wstring at any
+			// length. The field reads its declared default and the parent
+			// reads on past L.
+			r.report.Malformed = true
+			fv.Cell = r.m.FieldDefaultCell(f)
+			fv.Count = len(fv.Cell.Units)
+			return true
+		}
+		units := wideUnits(payload)
+		if !wideValid(units) {
+			// ILL-FORMED TEXT IS DAMAGE (§3, §4): an unpaired surrogate or a
+			// zero code unit reads the declared default, one malformed counts
+			r.report.Malformed = true
+			fv.Cell = r.m.FieldDefaultCell(f)
+			fv.Count = len(fv.Cell.Units)
+			return true
+		}
+		keep := len(units)
+		if bound := int(f.Type.Size); keep > bound {
+			// A CLAMP NEVER SPLITS A PAIR (§3)
+			keep = wideBoundary(units, bound)
+			r.report.Clamped++
+		}
+		fv.Cell.Units = units[:keep]
+		fv.Count = keep
 		return true
 	case f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		return r.array(fv)
@@ -1103,6 +1139,27 @@ func (r *wireReader) arm(cell *tabletext.Cell, arm ir.UnionVariant, tag, n int) 
 			r.report.Clamped++
 		}
 		fv.Cell.Str = append([]byte(nil), r.buf[r.off:r.off+keep]...)
+		fv.Count = keep
+		r.off += n
+	case f.Type.Kind == ir.TWString:
+		if n&1 != 0 {
+			// an ODD L is that arm's own framing damage: the union reads None
+			r.report.Malformed = true
+			return false
+		}
+		units := wideUnits(r.buf[r.off : r.off+n])
+		if !wideValid(units) {
+			// ILL-FORMED TEXT at an arm: the union reads None, one malformed
+			// counts, and the parent reads on past L (§3)
+			r.report.Malformed = true
+			return false
+		}
+		keep := len(units)
+		if bound := int(f.Type.Size); keep > bound {
+			keep = wideBoundary(units, bound)
+			r.report.Clamped++
+		}
+		fv.Cell.Units = units[:keep]
 		fv.Count = keep
 		r.off += n
 	case f.Type.Kind == ir.TBytes, f.Array != ir.ArrayNone:

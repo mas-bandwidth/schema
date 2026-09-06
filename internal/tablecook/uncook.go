@@ -119,6 +119,21 @@ func (r *regionReader) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		fv.Cell.Str = append([]byte(nil), r.buf[value.Offset:value.Offset+n]...)
 		fv.Count = int(n)
 		return nil
+	case f.Type.Kind == ir.TWString:
+		// the used length is in CODE UNITS (§7.2), so the buffer's bytes are
+		// twice it and each unit reads at the region's byte order
+		n := int64(int32(r.ord.Uint32(r.buf[pieces[1].Offset:])))
+		bound := f.Type.Size
+		if n < 0 || n > bound {
+			return fmt.Errorf("field %s: the used length %d is outside its declared bound %d", f.Name, n, bound)
+		}
+		units := make([]uint16, n)
+		for i := range units {
+			units[i] = r.ord.Uint16(r.buf[value.Offset+int64(i)*2:])
+		}
+		fv.Cell.Units = units
+		fv.Count = int(n)
+		return nil
 	case f.KeyEnum != "", f.Array == ir.ArrayFixed:
 		return r.slots(value.Offset, f, fv.Elems, len(fv.Elems))
 	case f.Array == ir.ArrayCounted:

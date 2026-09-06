@@ -241,6 +241,15 @@ func (w *regionWriter) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		w.putBytes(value.Offset, value.Size, fv.Cell.Str)
 		w.putI32(pieces[1].Offset, int32(len(fv.Cell.Str)))
 		return nil
+	case f.Type.Kind == ir.TWString:
+		// char16_t[N+1]: the used CODE UNITS, each a two-byte scalar in the
+		// cook's byte order, then a zero tail — the terminating zero unit the
+		// generated buffer carries is the first unit of that tail (§7.2). A
+		// record is written piece by piece and never memcpy'd, and a swap has
+		// to know where every scalar begins.
+		w.putUnits(value.Offset, value.Size, fv.Cell.Units)
+		w.putI32(pieces[1].Offset, int32(len(fv.Cell.Units)))
+		return nil
 	case f.Type.Kind == ir.TBytes:
 		w.putBytes(value.Offset, value.Size, fv.Cell.Str)
 		w.putI32(pieces[1].Offset, int32(len(fv.Cell.Str)))
@@ -423,6 +432,19 @@ func (w *regionWriter) putWidth(at, width int64, v uint64) {
 func (w *regionWriter) putBytes(at, size int64, src []byte) {
 	n := min(int64(len(src)), size)
 	copy(w.buf[at:at+n], src[:n])
+	for i := at + n; i < at+size; i++ {
+		w.buf[i] = 0
+	}
+}
+
+// putUnits is putBytes over UTF-16 CODE UNITS: `size` is the piece's byte
+// extent, `src` the used units, and each one is a two-byte scalar in the
+// region's byte order (docs/SPEC-TABLES.md §7.2).
+func (w *regionWriter) putUnits(at, size int64, src []uint16) {
+	n := min(int64(len(src))*2, size)
+	for i := int64(0); i < n/2; i++ {
+		w.ord.PutUint16(w.buf[at+i*2:], src[i])
+	}
 	for i := at + n; i < at+size; i++ {
 		w.buf[i] = 0
 	}
