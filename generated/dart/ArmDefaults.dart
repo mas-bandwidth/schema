@@ -533,7 +533,8 @@ int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
   }
   switch (value.choice.type) {
     case 1:
-      if (value.choice.first.entriesCount < 0 || value.choice.first.entriesCount > 2) {
+      if (value.choice.first.entriesCount < 0 ||
+          value.choice.first.entriesCount > 2) {
         return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
       }
       v = ((value.choice.first.entriesCount) & 0x3);
@@ -571,7 +572,8 @@ int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
         scratch = v >>> (3 - scratchBits);
       }
     case 2:
-      if (value.choice.second.entriesCount < 0 || value.choice.second.entriesCount > 2) {
+      if (value.choice.second.entriesCount < 0 ||
+          value.choice.second.entriesCount > 2) {
         return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
       }
       v = ((value.choice.second.entriesCount) & 0x3);
@@ -1089,7 +1091,8 @@ int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
   }
   switch (value.type) {
     case 1:
-      if (value.first.payload.entriesCount < 0 || value.first.payload.entriesCount > 2) {
+      if (value.first.payload.entriesCount < 0 ||
+          value.first.payload.entriesCount > 2) {
         return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
       }
       v = ((value.first.payload.entriesCount) & 0x3);
@@ -1172,7 +1175,8 @@ int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
         }
       }
     case 2:
-      if (value.second.payload.entriesCount < 0 || value.second.payload.entriesCount > 2) {
+      if (value.second.payload.entriesCount < 0 ||
+          value.second.payload.entriesCount > 2) {
         return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
       }
       v = ((value.second.payload.entriesCount) & 0x3);

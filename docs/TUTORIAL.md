@@ -1488,12 +1488,12 @@ struct WeaponFire
         MissileFire missile;
     };
 
-    WeaponFire() : type( WeaponFireType::None ) {} // the tag only — arms are zero-established at selection
+    WeaponFire() : type( WeaponFireType::None ) {} // the tag only; construct an arm when selecting it
 };
 ```
 
 Like the enum, **every union has an implicit `None = 0`**, the empty union, in
-band. A zero-initialized union field carries "nothing" without a has-flag, and
+band. A default-constructed union carries "nothing" without a has-flag, and
 a stream of unions can end on `None`. The program below prints that tag.
 
 The tag enum is a full enum. It carries `None`, the variants, `Count` and
@@ -1504,19 +1504,20 @@ there to reach the payload, which a name cannot do. Because the enum carries
 `Count`, `count` is a refused arm name on a packet union, alongside `none` and
 `max`.
 
-To select an arm in C++, set the tag and value-establish the arm, both, in that
-order of importance:
+To select an arm in C++, construct the payload and set its tag:
 
 ```cpp
+    ::new ( (void*) &first.fire ) FireCommand{}; // start its lifetime with construction defaults
     first.type = PayloadType::Fire;
-    first.fire = FireCommand{};            // zero-establish the arm
-    first.fire.ship_id = 7;                // then fill it
+    first.fire.ship_id = 7;                     // then fill it
 ```
 
 Forget the tag and the write emits `None`, tag only, with your payload silently
 absent, because tag `None` is a legal value and nothing asserts. Forget the
-establishment and the arm's bytes are whatever was there. Treat the pair as one
-motion. Rust ties the two together by construction with a real
+construction and the payload has no established lifetime or defaults. Treat
+the pair as one motion. Decoding constructs the selected payload with its
+defaults on every selection, including a repeated tag, before reading its
+fields. Rust ties the tag and payload together by construction with a real
 `enum WeaponFire { None, Laser(LaserFire), ... }`.
 
 The wire is the tag in minimal bits for `[0, variant count]`, two bits here,
@@ -1642,6 +1643,7 @@ length, align, then the raw bytes.
 #include "NetWire.h"
 #include <cstdio>
 #include <cstring>
+#include <new>
 
 int main()
 {
@@ -1653,17 +1655,17 @@ int main()
     packet.payloads_count = 2;
 
     Payload & first = packet.payloads[0];
+    ::new ( (void*) &first.fire ) FireCommand{};
     first.type = PayloadType::Fire;
-    first.fire = FireCommand{};
     first.fire.ship_id = 7;
+    ::new ( (void*) &first.fire.fire.laser ) LaserFire{};
     first.fire.fire.type = WeaponFireType::Laser;
-    first.fire.fire.laser = LaserFire{};
     first.fire.fire.laser.target_id = 12;
     first.fire.fire.laser.power = 0.75f;
 
     Payload & second = packet.payloads[1];
+    ::new ( (void*) &second.chat ) ChatLine{};
     second.type = PayloadType::Chat;
-    second.chat = ChatLine{};
     second.chat.speaker = 7;
     strcpy( second.chat.text, "on my way" );
     second.chat.text_length = 9;

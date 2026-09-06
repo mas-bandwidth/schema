@@ -250,16 +250,16 @@ void testSelectedArmDefaults() {
       first.entries[i].retries = 99;
       first.entries[i].preferred = Weapon.missile;
     }
-    check(
-      readDefaultChoice(output, wire, 7),
-      'decode DefaultChoice, same tag included',
-    );
-    check(
-      output.type == DefaultChoiceType.first &&
-          first.entriesCount == 0 &&
-          first.marker == 5,
-      'DefaultChoice selected fields',
-    );
+    final readOK = readDefaultChoice(output, wire, 7);
+    check(readOK, 'decode DefaultChoice, same tag included');
+    final selectedOK = output.type == DefaultChoiceType.first &&
+        first.entriesCount == 0 &&
+        first.marker == 5;
+    check(selectedOK, 'DefaultChoice selected fields');
+    // The control's backing-default marker requires a successful oracle decode.
+    if (!readOK || !selectedOK) {
+      return;
+    }
     for (var i = 0; i < 2; i++) {
       check(
         first.entries[i].retries == -1 &&

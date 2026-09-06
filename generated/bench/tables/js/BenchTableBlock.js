@@ -31,7 +31,7 @@
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-export const BuildVersion = 0xbee10aff8f660e35n;
+export const BuildVersion = 0xa9aa850e9c82a97fn;
 
 // The block's magic (docs/SPEC-TABLES.md §19.1), read as an explicit
 // little-endian word: it is what separates a block written by a build of this

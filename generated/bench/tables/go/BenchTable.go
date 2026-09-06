@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0x88cf953e975ace60
+// package benchtable — protocol id 0x0926221bcb6f475f
 
 package benchtable
 
@@ -15,7 +15,7 @@ import (
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const ProtocolId uint64 = 0x88cf953e975ace60
+const ProtocolId uint64 = 0x0926221bcb6f475f
 
 // ErrValidation is returned when a read rejects the wire: a wrong constant,
 // nonzero reserved bits, or an interior null in a string (SPEC §4.3, §4.7).
@@ -327,7 +327,7 @@ func EnumNameTableEventType(value uint64) string {
 }
 
 // TableEvent — at most one of the arms; Type says which. The zero value is the
-// empty union (None). A read zero-establishes exactly the selected arm before
+// empty union (None). A read constructs the selected arm with its defaults before
 // decoding it (SPEC §5); unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 type TableEvent struct {
@@ -373,13 +373,13 @@ func ReadTableEvent(stream *serialize.ReadStream, value *TableEvent) error {
 	}
 	switch value.Type {
 	case TableEventTypeHit:
-		value.Hit = TableHitEvent{} // the selected arm starts from the zero form (SPEC §5)
+		value.Hit = TableHitEvent{} // fresh payload on every selection (SPEC §4.8)
 		return ReadTableHitEvent(stream, &value.Hit)
 	case TableEventTypeChat:
-		value.Chat = TableChatEvent{} // the selected arm starts from the zero form (SPEC §5)
+		value.Chat = TableChatEvent{} // fresh payload on every selection (SPEC §4.8)
 		return ReadTableChatEvent(stream, &value.Chat)
 	case TableEventTypePickup:
-		value.Pickup = TablePickupEvent{} // the selected arm starts from the zero form (SPEC §5)
+		value.Pickup = TablePickupEvent{} // fresh payload on every selection (SPEC §4.8)
 		return ReadTablePickupEvent(stream, &value.Pickup)
 	}
 	return stream.Err() // None

@@ -711,10 +711,15 @@ public final class Main {
                 first.entries[i].retries = 99;
                 first.entries[i].preferred = Wire.Weapon.missile;
             }
-            check(ArmDefaults.readDefaultChoice(output, new byte[] { 0x51 }, 7),
-                    "decode DefaultChoice, same tag included");
-            check(output.type == ArmDefaults.DefaultChoiceType.first && first.entriesCount == 0 && first.marker == 5,
-                    "DefaultChoice selected fields");
+            final boolean readOK = ArmDefaults.readDefaultChoice(output, new byte[] { 0x51 }, 7);
+            check(readOK, "decode DefaultChoice, same tag included");
+            final boolean selectedOK = output.type == ArmDefaults.DefaultChoiceType.first
+                    && first.entriesCount == 0 && first.marker == 5;
+            check(selectedOK, "DefaultChoice selected fields");
+            // The control's backing-default marker requires a successful oracle decode.
+            if (!readOK || !selectedOK) {
+                return;
+            }
             for (int i = 0; i < 2; i++) {
                 check(first.entries[i].retries == -1 && first.entries[i].preferred == Wire.Weapon.railgun,
                         "selected unused backing entry receives its defaults");

@@ -223,19 +223,27 @@ function textBytes(s) {
         entry.Retries = 37 + pass;
         entry.Preferred = ex.Weapon.None;
       }
+      let readOK;
+      let consumedOK = true;
       if (tier === "runtime") {
         const rs = new ReadStream(expected);
-        check(armDefaults.ReadDefaultChoicePacket(rs, out), `${tier} default arm read ${pass}`);
-        check(rs.bitsProcessed() === 7, `${tier} default arm consumes seven bits ${pass}`);
+        readOK = armDefaults.ReadDefaultChoicePacket(rs, out);
+        check(readOK, `${tier} default arm read ${pass}`);
+        consumedOK = rs.bitsProcessed() === 7;
+        check(consumedOK, `${tier} default arm consumes seven bits ${pass}`);
       } else {
         const buffer = new Uint8Array(expected.length + 8);
         buffer.set(expected);
-        check(armDefaultsFlat.ReadDefaultChoicePacketFlat(out, new DataView(buffer.buffer), 7),
-          `${tier} default arm accepts exactly seven bits ${pass}`);
+        readOK = armDefaultsFlat.ReadDefaultChoicePacketFlat(out, new DataView(buffer.buffer), 7);
+        check(readOK, `${tier} default arm accepts exactly seven bits ${pass}`);
       }
-      check(out.Choice.Type === armDefaults.DefaultChoiceType.First &&
-        selected.EntriesCount === 0 && selected.Marker === 5,
-        `${tier} default arm receives count and marker ${pass}`);
+      const selectedOK = out.Choice.Type === armDefaults.DefaultChoiceType.First &&
+        selected.EntriesCount === 0 && selected.Marker === 5;
+      check(selectedOK, `${tier} default arm receives count and marker ${pass}`);
+      // The control's backing-default marker requires a successful oracle decode.
+      if (!readOK || !consumedOK || !selectedOK) {
+        continue;
+      }
       check(selectedEntries.every((entry) =>
         entry.Retries === -1 && entry.Preferred === ex.Weapon.Railgun),
         `${tier} default arm restores both unused entries on every selection ${pass}`);

@@ -1675,8 +1675,8 @@ union Value
   objects and buffers in place. The payload then follows §5's normal decoding
   rules, including the treatment of untaken branches. Arms not selected by a read are
   unspecified: in the C/C++ union representation their bytes are
-  indeterminate; in targets whose storage lays every arm out separately
-  (Go, C#, JS) an unselected arm keeps whatever it last held — the reused-
+  indeterminate; in mutable targets whose storage lays every arm out separately
+  (Go, C#, JS, Dart, Java) an unselected arm keeps whatever it last held — the reused-
   storage discipline (§5's stale-tail carve-out extends to unselected union
   arms; whole-object comparison in the conformance matrix is over a fresh
   output or the selected arm). Consumers read the selected arm only. Nothing branches on

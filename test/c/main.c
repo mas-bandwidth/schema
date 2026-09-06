@@ -154,9 +154,13 @@ static void test_default_arm_initialization( void )
             check( 0, "read independent DefaultChoice oracle" );
             return;
         }
-        check( serialize_read_bits_processed( &rs ) == 7, "DefaultChoice consumes exactly 7 bits" );
-        check( output.type == DEFAULT_CHOICE_TYPE_FIRST && output.as.first.entries_count == 0 && output.as.first.marker == 5,
-               "DefaultChoice selects First and reads count zero, marker five" );
+        const int consumed_ok = serialize_read_bits_processed( &rs ) == 7;
+        const int selected_ok = output.type == DEFAULT_CHOICE_TYPE_FIRST && output.as.first.entries_count == 0 && output.as.first.marker == 5;
+        check( consumed_ok, "DefaultChoice consumes exactly 7 bits" );
+        check( selected_ok, "DefaultChoice selects First and reads count zero, marker five" );
+        /* The control's backing-default marker requires a successful oracle decode. */
+        if ( !consumed_ok || !selected_ok )
+            return;
         for ( i = 0; i < 2; i++ )
             check( output.as.first.entries[i].retries == -1 && output.as.first.entries[i].preferred == WEAPON_RAILGUN,
                    "DefaultChoice reconstructs both backing entries, including repeated tags" );

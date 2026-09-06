@@ -245,7 +245,7 @@ type Collider
 ```
 
 **Every union has an implicit `None = 0`** — the empty union, in band, so a
-zero-initialized union field carries "no shape" without a has-flag. The
+default-constructed union carries "no shape" without a has-flag. The
 compiler generates the tag enum `ColliderShapeType` (`None = 0`, variants in
 declared order, then `Count` and `Max`), and the wire is the tag in minimal
 bits for `[0, variant count]` followed by **the selected payload only**:
@@ -274,8 +274,9 @@ BoxCollider }` repeated per shape — which spends a bit per absent arm and
 lets illegal states (two shapes at once) exist for every consumer to police.
 A read **rejects a tag above the count**, and a write validates the tag
 before it rides. The representation is per target, all nine covered: C++ and
-C generate the tagged union above; Go, C#, JS, Dart, Java and Elixir lay the
-tag beside one pre-allocated arm per variant; Rust gets a real
+C generate the tagged union above; Go, C#, JS, Dart and Java lay the
+tag beside one pre-allocated arm per variant; Elixir uses immutable structs
+with a tag and arm fields; Rust gets a real
 `enum ColliderShape { None, Box(BoxCollider), ... }`.
 
 Selecting an arm initializes its payload with its declared defaults, just
@@ -286,7 +287,8 @@ in C#, JavaScript, Java and Dart to initialize an existing payload in place.
 For C++, construct the member in place, for example
 `::new ( (void*) &shape.sphere ) SphereCollider{}`. Decoding performs the same
 initialization on every selection, even when the tag repeats, before reading
-the payload. It does not allocate new managed arm objects or clear other arms.
+the payload. Mutable managed targets keep their existing arm objects and
+leave unselected arms unchanged.
 
 An arm is a field line: its type is any type a field's is, and an arm may
 name no type at all, which is an arm that selects and carries nothing. A

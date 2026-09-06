@@ -312,9 +312,14 @@ static class Program
             }
             ReadStream rs = new ReadStream(new byte[] { 0x51 });
             // This scalar-only union's public entry runs its batch core.
-            Check(ReadDefaultChoice(rs, output), "decode DefaultChoice, same tag included");
-            Check(rs.BitsProcessed == 7 && output.Type == DefaultChoiceType.First &&
-                  first.EntriesCount == 0 && first.Marker == 5, "DefaultChoice selected fields and bit count");
+            bool readOK = ReadDefaultChoice(rs, output);
+            Check(readOK, "decode DefaultChoice, same tag included");
+            bool selectedOK = rs.BitsProcessed == 7 && output.Type == DefaultChoiceType.First &&
+                              first.EntriesCount == 0 && first.Marker == 5;
+            Check(selectedOK, "DefaultChoice selected fields and bit count");
+            // The control's backing-default marker requires a successful oracle decode.
+            if (!readOK || !selectedOK)
+                return;
             for (int i = 0; i < 2; i++)
             {
                 Check(first.Entries[i].Retries == -1 && first.Entries[i].Preferred == Weapon.Railgun,

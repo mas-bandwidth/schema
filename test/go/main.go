@@ -82,10 +82,16 @@ func testDefaultArmInitialization() {
 			out.First.Entries[i] = example.ProbeConfig{Retries: 123, Preferred: example.WeaponLaser}
 		}
 		rs := serialize.NewReadStream(oracle)
-		checkErr(example.ReadDefaultChoice(rs, &out), "read independent DefaultChoice oracle")
-		check(rs.BitsProcessed() == 7, "DefaultChoice consumes exactly 7 bits")
-		check(out.Type == example.DefaultChoiceTypeFirst && out.First.EntriesCount == 0 && out.First.Marker == 5,
-			"DefaultChoice selects First and reads count zero, marker five")
+		err := example.ReadDefaultChoice(rs, &out)
+		checkErr(err, "read independent DefaultChoice oracle")
+		consumedOK := rs.BitsProcessed() == 7
+		check(consumedOK, "DefaultChoice consumes exactly 7 bits")
+		selectedOK := out.Type == example.DefaultChoiceTypeFirst && out.First.EntriesCount == 0 && out.First.Marker == 5
+		check(selectedOK, "DefaultChoice selects First and reads count zero, marker five")
+		// The control's backing-default marker requires a successful oracle decode.
+		if err != nil || !consumedOK || !selectedOK {
+			return
+		}
 		for _, entry := range out.First.Entries {
 			check(entry.Retries == -1 && entry.Preferred == example.WeaponRailgun,
 				"DefaultChoice reconstructs both backing entries, including repeated tags")

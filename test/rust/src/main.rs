@@ -90,11 +90,22 @@ fn test_default_arm_initialization() {
             }
         }
         let mut rs = ReadStream::new(&oracle, 1);
-        check_err(read_default_choice(&mut rs, &mut output), "read independent DefaultChoice oracle");
-        check(rs.bits_processed() == 7, "DefaultChoice consumes exactly 7 bits");
+        let result = read_default_choice(&mut rs, &mut output);
+        let read_ok = result.is_ok();
+        check_err(result, "read independent DefaultChoice oracle");
+        let consumed_ok = rs.bits_processed() == 7;
+        check(consumed_ok, "DefaultChoice consumes exactly 7 bits");
+        // The control's backing-default marker requires a successful oracle decode.
+        if !read_ok || !consumed_ok {
+            return;
+        }
         match &output {
             DefaultChoice::First(arm) => {
-                check(arm.entries_count == 0 && arm.marker == 5, "DefaultChoice reads count zero, marker five");
+                let selected_ok = arm.entries_count == 0 && arm.marker == 5;
+                check(selected_ok, "DefaultChoice reads count zero, marker five");
+                if !selected_ok {
+                    return;
+                }
                 for entry in &arm.entries {
                     check(
                         entry.retries == -1 && entry.preferred == Weapon::RAILGUN,

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package realworld — protocol id 0x11a7ba9416ba6b58
+// package realworld — protocol id 0x1922430092518648
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an out-of-contract
@@ -22,7 +22,7 @@ const BOOL_SCRATCH = { value: false };
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-export const ProtocolId = 0x11a7ba9416ba6b58n;
+export const ProtocolId = 0x1922430092518648n;
 
 // PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
@@ -232,7 +232,108 @@ export class RealPacket {
 export const RealPacketMaxBits = 1810;
 export const RealPacketMaxBytes = 232;
 
-// The §5 zero form: all-zero storage; specified defaults live only in construction.
+// InitRealPacket restores fresh construction values in place, preserving storage.
+export function InitRealPacket(value) {
+  value.F001Int = 0;
+  value.F002F64 = 0;
+  value.F003Int = 0;
+  value.F004Cf32 = 0;
+  value.F005Uint = 0;
+  value.F006Int = 0;
+  value.F007F32 = 0;
+  value.F008U64 = 0n;
+  value.F009Int = 0;
+  value.F010F32 = 0;
+  value.F011Bits = 0;
+  value.F012Bool = true;
+  value.F013F32 = 0;
+  value.F014Uint = 0;
+  value.F015Int = 0;
+  value.F016Fixed = 0;
+  value.F017Uint = 0;
+  value.F018Int = 0;
+  value.F019F64 = 0;
+  value.F020F32 = 0;
+  value.F021Ufixed = 0;
+  value.F022F32 = 0;
+  value.F023Bits = 0;
+  value.F024F32 = 0;
+  value.F025Fixed = 0;
+  value.F026Bits = 0;
+  value.F027Cf32 = 0;
+  value.F028Bits = 0;
+  value.F029I64 = 0n;
+  value.F030F32 = 0;
+  value.F031Bits = 0;
+  value.F032Int = 0;
+  value.F033Uint = 0;
+  value.F034Uint = 0;
+  value.F035Bits = 0;
+  value.F036Enum = PacketMode.None;
+  value.F037Bool = false;
+  value.F038Bool = false;
+  value.F039Bits = 0;
+  value.F040Fixed = 0;
+  value.F041Int = 0;
+  value.F042Bits = 0;
+  value.F043Bool = false;
+  value.F044F32 = 0;
+  value.F045Bits = 0;
+  value.F046Uint = 0;
+  value.F047Int = 0;
+  value.F048F64 = 0;
+  value.F049Ufixed = 0;
+  value.F050Bool = true;
+  value.F051Bool = false;
+  value.F052Int = 0;
+  value.F053F32 = 0;
+  value.F054Int = 0;
+  value.F055Bool = false;
+  value.F056Int = 0;
+  value.F057Int = 0;
+  value.F058F32 = 0;
+  value.F059F64 = 0;
+  value.F060Bits = 0;
+  value.F061Cf32 = 0;
+  value.F062Uint = 0;
+  value.F063I64 = 0n;
+  value.F064Uint = 0;
+  value.F065Cf32 = 0;
+  value.F066Ufixed = 0;
+  value.F067Cf32 = 0;
+  value.F068Cf32 = 0;
+  value.F069Bits = 0;
+  value.F070Uint = 0;
+  value.F071Cf32 = 0;
+  value.F072Cf32 = 0;
+  value.F073Int = 0;
+  value.F074Bool = false;
+  value.F075U64 = 0n;
+  value.F076Int = 0;
+  value.F077Int = 0;
+  value.F078Bits = 0;
+  value.F079Uint = 0;
+  value.F080Bool = false;
+  value.F081Bits = 0;
+  value.F082Bits = 0;
+  value.F083Enum = PacketMode.None;
+  value.F084Ufixed = 0;
+  value.F085Bits = 0;
+  value.F086Uint = 0;
+  value.F087F64 = 0;
+  value.F088Int = 0;
+  value.F089Bits = 0n;
+  value.F090Uint = 0;
+  value.F091Flags = 0n;
+  value.F092Bool = false;
+  value.F093Bits = 0n;
+  value.F094Bool = false;
+  value.F095Fixed = 0;
+  value.F096Bits = 0;
+  value.F097Bits = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroRealPacket(value) {
   value.F001Int = 0;
   value.F002F64 = 0;

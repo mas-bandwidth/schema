@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0x88cf953e975ace60
+// package benchtable — protocol id 0x0926221bcb6f475f
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an interior null)
@@ -76,8 +76,8 @@ namespace Benchtable
     }
 
     // TableEvent — at most one of the arms; Type says which. Construction is the empty
-    // union (None). A read zero-establishes exactly the selected arm before
-    // decoding it (SPEC §5); unselected arms keep what they last held — the
+    // union (None). Every read selection initializes the chosen payload from
+    // construction defaults; unselected arms keep what they last held — the
     // MessageStorage reuse discipline. Consumers read the selected arm only.
     public sealed class TableEvent
     {
@@ -94,7 +94,7 @@ namespace Benchtable
     {
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
-        public const ulong ProtocolId = 0x88cf953e975ace60;
+        public const ulong ProtocolId = 0x0926221bcb6f475f;
 
         // EnumNameTableWeapon: debug/log/tooling name for any TableWeapon wire value —
         // out-of-set values (wire-legal up to the declared max) name as "???"
@@ -228,6 +228,15 @@ namespace Benchtable
             value.Crit = false;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitTableHitEvent(TableHitEvent value)
+        {
+            value.TargetId = 0;
+            value.Damage = 0;
+            value.HitKind = 0;
+            value.Crit = false;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteTableHitEvent(WriteStream stream, TableHitEvent value)
@@ -310,6 +319,13 @@ namespace Benchtable
             value.Speaker = 0;
         }
 
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitTableChatEvent(TableChatEvent value)
+        {
+            value.Channel = 0;
+            value.Speaker = 0;
+        }
+
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteTableChatEvent(WriteStream stream, TableChatEvent value)
@@ -377,6 +393,13 @@ namespace Benchtable
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroTablePickupEvent(TablePickupEvent value)
+        {
+            value.ItemId = 0;
+            value.Amount = 0;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitTablePickupEvent(TablePickupEvent value)
         {
             value.ItemId = 0;
             value.Amount = 0;
@@ -468,7 +491,7 @@ namespace Benchtable
 
         // ZeroTableEvent resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
-        // is unselected at None; an arm re-zeroes at its next selection.
+        // is unselected at None; an arm initializes at its next selection.
         public static void ZeroTableEvent(TableEvent value)
         {
             value.Type = TableEventType.None;
@@ -530,13 +553,13 @@ namespace Benchtable
             switch (value.Type)
             {
                 case TableEventType.Hit:
-                    ZeroTableHitEvent(value.Hit); // the selected arm starts from the zero form (SPEC §5)
+                    InitTableHitEvent(value.Hit); // every selection starts from construction defaults
                     return ReadTableHitEventBatch(ref batch, value.Hit);
                 case TableEventType.Chat:
-                    ZeroTableChatEvent(value.Chat); // the selected arm starts from the zero form (SPEC §5)
+                    InitTableChatEvent(value.Chat); // every selection starts from construction defaults
                     return ReadTableChatEventBatch(ref batch, value.Chat);
                 case TableEventType.Pickup:
-                    ZeroTablePickupEvent(value.Pickup); // the selected arm starts from the zero form (SPEC §5)
+                    InitTablePickupEvent(value.Pickup); // every selection starts from construction defaults
                     return ReadTablePickupEventBatch(ref batch, value.Pickup);
             }
             return true; // None
