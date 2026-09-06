@@ -15,40 +15,42 @@ namespace benchtable {
 
 // ---- the block form of table TableEntity: the open path and the descriptors ----
 
-bool TableEntityBlockOpen( TableEntityBlock & block, void * base, int64_t bytes )
+bool TableEntityBlockOpen( TableEntityBlock & block, void * base, int64_t bytes, TableRefuseReason * reason )
 {
     block.base = NULL;
     block.projection = NULL;
     block.bytes = 0;
-    if ( base == NULL || bytes < 88 )
-        return false;
-    if ( ( (uintptr_t) base % 64 ) != 0 )
-        return false; // the base's alignment
+    // a null buffer is the CALLER's defect, as an unaligned base is; a buffer
+    // shorter than the prologue has no prologue to read and is truncated
+    if ( base == NULL ) { return TableCookRefuse( reason, unaligned_base ) != NULL; }
+    if ( bytes < 88 ) { return TableCookRefuse( reason, truncated ) != NULL; }
+    // EVERY PROLOGUE WORD IS READ BYTEWISE, because the base's alignment is
+    // the LAST clause (§7, §19.2) and nothing before it may assume one
     const uint8_t * raw = (const uint8_t *) base;
     const uint64_t magic = table_block_read64( raw );
     if ( magic != TableBlockMagic )
     {
         // a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else is
-        // not a block at all. Both refuse; the distinction is here so a
-        // reader of this code knows the check covers the order too.
-        (void) table_block_byteswap64( magic );
-        return false;
+        // not a block at all: a cook's magic lands here too
+        return TableCookRefuse( reason, magic == table_block_byteswap64( TableBlockMagic ) ? foreign_order : not_a_cook ) != NULL;
     }
-    if ( table_block_read64( raw + 8 ) != BuildVersion )
-        return false;
-    if ( table_block_read64( raw + 16 ) != TableBlockByteOrder )
-        return false; // a block of the other byte order: the fix-up path is a named obligation
-    TableEntityBlock::Projection * projection = (TableEntityBlock::Projection *) base;
+    // a byte-order word that contradicts its own magic describes no block in
+    // either order, so it shares the magic's own value (§7.1, §19.1)
+    if ( table_block_read64( raw + 16 ) != TableBlockByteOrder ) { return TableCookRefuse( reason, not_a_cook ) != NULL; }
+    if ( table_block_read64( raw + 8 ) != BuildVersion ) { return TableCookRefuse( reason, wrong_build_version ) != NULL; }
     int64_t used = 88;
     // the used extent, rounded to 64 WITHOUT the rounding itself carrying past
     // the top of the type: used is already inside bytes, and the padding is
     // paid out of the slack that is left rather than added and compared after.
+    // An extent the caller's bytes do not cover is truncated (§19.2).
     const int64_t padding = ( 64 - ( used % 64 ) ) % 64;
-    if ( padding > bytes - used )
-        return false;
+    if ( padding > bytes - used ) { return TableCookRefuse( reason, truncated ) != NULL; }
     used += padding;
+    // the base's alignment, LAST: the only clause that reads nothing out of
+    // the block, and the caller's defect rather than the file's
+    if ( ( (uintptr_t) base % 64 ) != 0 ) { return TableCookRefuse( reason, unaligned_base ) != NULL; }
     block.base = (uint8_t *) base;
-    block.projection = projection;
+    block.projection = (TableEntityBlock::Projection *) base;
     block.bytes = used;
     return true;
 }
@@ -84,40 +86,42 @@ const TableBlockInfo * TableEntityBlock::Type() { return &tableentity_block_proj
 
 // ---- the block form of table TableStat: the open path and the descriptors ----
 
-bool TableStatBlockOpen( TableStatBlock & block, void * base, int64_t bytes )
+bool TableStatBlockOpen( TableStatBlock & block, void * base, int64_t bytes, TableRefuseReason * reason )
 {
     block.base = NULL;
     block.projection = NULL;
     block.bytes = 0;
-    if ( base == NULL || bytes < 32 )
-        return false;
-    if ( ( (uintptr_t) base % 64 ) != 0 )
-        return false; // the base's alignment
+    // a null buffer is the CALLER's defect, as an unaligned base is; a buffer
+    // shorter than the prologue has no prologue to read and is truncated
+    if ( base == NULL ) { return TableCookRefuse( reason, unaligned_base ) != NULL; }
+    if ( bytes < 32 ) { return TableCookRefuse( reason, truncated ) != NULL; }
+    // EVERY PROLOGUE WORD IS READ BYTEWISE, because the base's alignment is
+    // the LAST clause (§7, §19.2) and nothing before it may assume one
     const uint8_t * raw = (const uint8_t *) base;
     const uint64_t magic = table_block_read64( raw );
     if ( magic != TableBlockMagic )
     {
         // a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else is
-        // not a block at all. Both refuse; the distinction is here so a
-        // reader of this code knows the check covers the order too.
-        (void) table_block_byteswap64( magic );
-        return false;
+        // not a block at all: a cook's magic lands here too
+        return TableCookRefuse( reason, magic == table_block_byteswap64( TableBlockMagic ) ? foreign_order : not_a_cook ) != NULL;
     }
-    if ( table_block_read64( raw + 8 ) != BuildVersion )
-        return false;
-    if ( table_block_read64( raw + 16 ) != TableBlockByteOrder )
-        return false; // a block of the other byte order: the fix-up path is a named obligation
-    TableStatBlock::Projection * projection = (TableStatBlock::Projection *) base;
+    // a byte-order word that contradicts its own magic describes no block in
+    // either order, so it shares the magic's own value (§7.1, §19.1)
+    if ( table_block_read64( raw + 16 ) != TableBlockByteOrder ) { return TableCookRefuse( reason, not_a_cook ) != NULL; }
+    if ( table_block_read64( raw + 8 ) != BuildVersion ) { return TableCookRefuse( reason, wrong_build_version ) != NULL; }
     int64_t used = 32;
     // the used extent, rounded to 64 WITHOUT the rounding itself carrying past
     // the top of the type: used is already inside bytes, and the padding is
     // paid out of the slack that is left rather than added and compared after.
+    // An extent the caller's bytes do not cover is truncated (§19.2).
     const int64_t padding = ( 64 - ( used % 64 ) ) % 64;
-    if ( padding > bytes - used )
-        return false;
+    if ( padding > bytes - used ) { return TableCookRefuse( reason, truncated ) != NULL; }
     used += padding;
+    // the base's alignment, LAST: the only clause that reads nothing out of
+    // the block, and the caller's defect rather than the file's
+    if ( ( (uintptr_t) base % 64 ) != 0 ) { return TableCookRefuse( reason, unaligned_base ) != NULL; }
     block.base = (uint8_t *) base;
-    block.projection = projection;
+    block.projection = (TableStatBlock::Projection *) base;
     block.bytes = used;
     return true;
 }

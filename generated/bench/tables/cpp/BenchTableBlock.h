@@ -248,6 +248,13 @@ inline uint64_t table_block_read64( const uint8_t * p )
     return v;
 }
 
+inline uint32_t table_block_read32( const uint8_t * p )
+{
+    uint32_t v = 0;
+    memcpy( &v, p, 4 );
+    return v;
+}
+
 inline int64_t table_block_align( int64_t offset, int64_t alignment )
 {
     return ( offset + alignment - 1 ) / alignment * alignment;
@@ -433,22 +440,27 @@ inline int64_t TableEntityBlockBytes( const TableEntityBlock & block )
 
 // ---- block fill path: end ----
 
-// BlockOpen checks once and points, and this is the WHOLE check (§19.2): the
-// magic read bytewise, the BYTE ORDER the prologue carries against this
-// build's own, the BUILD VERSION against this build's own, each array's
-// pitch, its offset_of, its COUNT against the declared maximum and its
-// extent inside the block, the used extent against the bytes the caller
-// passed, and the base's alignment.
+// BlockOpen checks once and points, and this is the WHOLE check (§19.2), in
+// §7's own order: the magic read bytewise, the BYTE ORDER the prologue
+// carries against this build's own, the BUILD VERSION against this build's
+// own, each array's pitch, its COUNT against the declared maximum, its
+// offset_of and its extent inside the block, the used extent against the
+// bytes the caller passed, and LAST the base's alignment, the one clause
+// that reads nothing out of the block.
 // On a match the bytes are what a build with this layout wrote, so there is
-// nothing to validate and nothing to fix up. On any failure it returns false
-// and points at nothing.
+// nothing to validate and nothing to fix up. On any failure it returns false,
+// points at nothing, and NAMES the first failing clause in the caller's
+// TableRefuseReason, the same enum a cook's Open fills (§7): not_a_cook,
+// foreign_order, wrong_build_version, truncated, bad_layout for a pitch, a
+// count, an offset or an extent, and unaligned_base. The reason is written
+// on the refusal path only.
 //
 // There is ONE entry point, and no tolerant twin: the block form is same-build
 // by construction — both sides are generated from one declaration at one build
 // and ship together — so a consumer older than its producer is not a case. A
 // mismatch is a refusal; regenerate both sides. Data that must outlive the
 // build that wrote it takes the wire (§3), which this same table still has.
-bool TableEntityBlockOpen( TableEntityBlock & block, void * base, int64_t bytes );
+bool TableEntityBlockOpen( TableEntityBlock & block, void * base, int64_t bytes, TableRefuseReason * reason = NULL );
 
 // ---- the block form of table TableEntity: end ----
 
@@ -598,22 +610,27 @@ inline int64_t TableStatBlockBytes( const TableStatBlock & block )
 
 // ---- block fill path: end ----
 
-// BlockOpen checks once and points, and this is the WHOLE check (§19.2): the
-// magic read bytewise, the BYTE ORDER the prologue carries against this
-// build's own, the BUILD VERSION against this build's own, each array's
-// pitch, its offset_of, its COUNT against the declared maximum and its
-// extent inside the block, the used extent against the bytes the caller
-// passed, and the base's alignment.
+// BlockOpen checks once and points, and this is the WHOLE check (§19.2), in
+// §7's own order: the magic read bytewise, the BYTE ORDER the prologue
+// carries against this build's own, the BUILD VERSION against this build's
+// own, each array's pitch, its COUNT against the declared maximum, its
+// offset_of and its extent inside the block, the used extent against the
+// bytes the caller passed, and LAST the base's alignment, the one clause
+// that reads nothing out of the block.
 // On a match the bytes are what a build with this layout wrote, so there is
-// nothing to validate and nothing to fix up. On any failure it returns false
-// and points at nothing.
+// nothing to validate and nothing to fix up. On any failure it returns false,
+// points at nothing, and NAMES the first failing clause in the caller's
+// TableRefuseReason, the same enum a cook's Open fills (§7): not_a_cook,
+// foreign_order, wrong_build_version, truncated, bad_layout for a pitch, a
+// count, an offset or an extent, and unaligned_base. The reason is written
+// on the refusal path only.
 //
 // There is ONE entry point, and no tolerant twin: the block form is same-build
 // by construction — both sides are generated from one declaration at one build
 // and ship together — so a consumer older than its producer is not a case. A
 // mismatch is a refusal; regenerate both sides. Data that must outlive the
 // build that wrote it takes the wire (§3), which this same table still has.
-bool TableStatBlockOpen( TableStatBlock & block, void * base, int64_t bytes );
+bool TableStatBlockOpen( TableStatBlock & block, void * base, int64_t bytes, TableRefuseReason * reason = NULL );
 
 // ---- the block form of table TableStat: end ----
 

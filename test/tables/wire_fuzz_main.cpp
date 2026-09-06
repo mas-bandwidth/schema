@@ -123,17 +123,20 @@ struct Fixed
 
 // one VARIABLE-class root: LoadMeasure sizes the region, Load fills it and
 // hands back the root, Measure and Save walk the region
-template <typename T, typename Report, typename Allocator>
+// Reason is the unit's own TableRefuseReason (docs/SPEC-TABLES.md §6.5), which
+// every LoadMeasure takes as a trailing out-parameter. A mutant asks for none
+// of it: the refusal reason has its own conformance surface (§7).
+template <typename T, typename Report, typename Allocator, typename Reason>
 struct Variable
 {
-    template <int64_t ( *load_measure )( const uint8_t *, int64_t, int64_t * ),
+    template <int64_t ( *load_measure )( const uint8_t *, int64_t, int64_t *, Reason * ),
               const T * ( *load )( uint8_t *, int64_t, const uint8_t *, int64_t, Report * ),
               int64_t ( *measure )( const T *, Allocator ),
               int64_t ( *save )( const T *, uint8_t *, int64_t, Allocator ),
               Allocator ( *default_allocator )()>
     static void run( const uint8_t * wire, int64_t bytes, Reply & reply )
     {
-        int64_t need = load_measure( wire, bytes, NULL );
+        int64_t need = load_measure( wire, bytes, NULL, NULL );
         reply.measure = need;
         uint8_t * region = (uint8_t *) malloc( need > 0 ? (size_t) need : 1 );
         Report report;
@@ -158,7 +161,7 @@ struct Variable
 #define FIXED( unit_key, ns, type ) \
     { unit_key, #type, 1, Fixed<ns::type, ns::TableReport>::run<ns::type##Load, ns::type##Measure, ns::type##Save> }
 #define VARIABLE( unit_key, ns, type ) \
-    { unit_key, #type, 1, Variable<ns::type, ns::TableReport, ns::TableAllocator>::run<ns::type##LoadMeasure, ns::type##Load, ns::type##Measure, ns::type##Save, ns::TableDefaultAllocator> }
+    { unit_key, #type, 1, Variable<ns::type, ns::TableReport, ns::TableAllocator, ns::TableRefuseReason>::run<ns::type##LoadMeasure, ns::type##Load, ns::type##Measure, ns::type##Save, ns::TableDefaultAllocator> }
 
 // THE MESSAGE FORM's roots (docs/SPEC-TABLES.md §3.3). The connection's table
 // is this unit's own announcement, read once through the same AnnounceRead a
@@ -220,12 +223,12 @@ struct FixedMessage
 
 // one VARIABLE-class root under the message form: the region is sized from the
 // message and the table, exactly as a file's is sized from the file
-template <typename T, typename Report, typename Vocabulary, typename Allocator>
+template <typename T, typename Report, typename Vocabulary, typename Allocator, typename Reason>
 struct VariableMessage
 {
     template <int64_t ( *announce_measure )(), int64_t ( *announce )( uint8_t *, int64_t ),
               bool ( *announce_read )( Vocabulary &, const uint8_t *, int64_t, Report * ),
-              int64_t ( *load_measure )( const Vocabulary &, const uint8_t *, int64_t, int64_t * ),
+              int64_t ( *load_measure )( const Vocabulary &, const uint8_t *, int64_t, int64_t *, Reason * ),
               const T * ( *load )( uint8_t *, int64_t, const Vocabulary &, const uint8_t *, int64_t, Report * ),
               int64_t ( *measure )( const T *, Allocator ),
               int64_t ( *save )( const T *, uint8_t *, int64_t, Allocator ),
@@ -233,7 +236,7 @@ struct VariableMessage
     static void run( const uint8_t * wire, int64_t bytes, Reply & reply )
     {
         const Vocabulary * vocabulary = announced_to_itself<Vocabulary, Report>( announce_measure, announce, announce_read );
-        int64_t need = load_measure( *vocabulary, wire, bytes, NULL );
+        int64_t need = load_measure( *vocabulary, wire, bytes, NULL, NULL );
         reply.measure = need;
         uint8_t * region = (uint8_t *) malloc( need > 0 ? (size_t) need : 1 );
         Report report;
@@ -260,7 +263,7 @@ struct VariableMessage
         ns::AnnounceMeasure, ns::Announce, ns::AnnounceRead, \
         ns::type##LoadMessage, ns::type##MeasureMessage, ns::type##SaveMessage> }
 #define MESSAGE_VARIABLE( unit_key, ns, type ) \
-    { unit_key, #type, 2, VariableMessage<ns::type, ns::TableReport, ns::TableVocabulary, ns::TableAllocator>::run< \
+    { unit_key, #type, 2, VariableMessage<ns::type, ns::TableReport, ns::TableVocabulary, ns::TableAllocator, ns::TableRefuseReason>::run< \
         ns::AnnounceMeasure, ns::Announce, ns::AnnounceRead, \
         ns::type##LoadMeasure, ns::type##LoadMessage, ns::type##MeasureMessage, ns::type##SaveMessage, ns::TableDefaultAllocator> }
 

@@ -3387,14 +3387,16 @@ tables-cpp-release:
 .PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
 tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
 
-# the string read's `room( len )`: a length past the body is then read anyway,
-# so the sabotaged leg takes a string out of a neighbour's bytes and CLAMPS it
-# to its capacity where the oracle stops at the body — the clamp it counts is
-# a fact about bytes the field never owned. A LENGTH IS A 64-BIT NUMBER (§3),
-# so the check is unsigned: cast to int64 first, 0xFFFFFFFFFFFFFFFF reads as
-# -1 and a negative length looks like room.
+# the string read's `room( len )`. THE ONE CONTENT RULE THE WIRE HAS
+# (docs/SPEC-TABLES.md §3, §4) reads a kind `12` payload AS IT ARRIVES, over
+# the whole of `L` and before the reader's own bound, so `room( len )` is what
+# says those bytes are there at all: a sabotaged leg walks off the end of the
+# buffer on a forged length and DIES on the mutant, where the oracle stops at
+# the body and reports. A LENGTH IS A 64-BIT NUMBER (§3), so the check is
+# unsigned: cast to int64 first, 0xFFFFFFFFFFFFFFFF reads as -1 and a negative
+# length looks like room, which is the length this pass plants.
 tables-wire-fuzz-length-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,length,internal/codegen/cpptable/codecs.go,s|if ( !r.getleb( len ) \|\| !r.room( len ) ) { r.report->malformed = true; return false; }|if ( !r.getleb( len ) ) { r.report->malformed = true; return false; } // NEGATIVE CONTROL: the fit check is gone|,the report differs)
+	$(call wire_fuzz_control,length,internal/codegen/cpptable/codecs.go,s|if ( !r.getleb( len ) \|\| !r.room( len ) ) { r.report->malformed = true; return false; }|if ( !r.getleb( len ) ) { r.report->malformed = true; return false; } // NEGATIVE CONTROL: the fit check is gone|,the leg died on the mutant)
 
 # the numbering's `index - 1 >= map.count`: an index past the node table then
 # reads a directory entry the region does not hold
