@@ -8790,7 +8790,7 @@ inline uint32_t RingNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t l
     return 0;
 }
 
-// RingNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// RingNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void RingNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -9692,7 +9692,7 @@ inline uint32_t RackNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t l
     return 0;
 }
 
-// RackNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// RackNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void RackNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -10594,7 +10594,7 @@ inline uint32_t TrayNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t l
     return 0;
 }
 
-// TrayNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// TrayNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void TrayNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -12502,7 +12502,7 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
     }
 }
 
-// RingNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// RingNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -12793,7 +12793,7 @@ inline int64_t RingSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// RackNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// RackNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -13084,7 +13084,7 @@ inline int64_t RackSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// TrayNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// TrayNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing

@@ -5632,7 +5632,7 @@ inline uint32_t MarkerNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t
     return 0;
 }
 
-// MarkerNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// MarkerNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void MarkerNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -6536,7 +6536,7 @@ inline bool MarkerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, M
     }
 }
 
-// MarkerNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// MarkerNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing

@@ -10233,7 +10233,7 @@ inline uint32_t ListNodeNodeAlloc( uint64_t type_id, TableWorker & worker, int64
     return 0;
 }
 
-// ListNodeNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// ListNodeNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void ListNodeNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -11062,7 +11062,7 @@ inline uint32_t TreeNodeNodeAlloc( uint64_t type_id, TableWorker & worker, int64
     return 0;
 }
 
-// TreeNodeNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// TreeNodeNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void TreeNodeNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -11891,7 +11891,7 @@ inline uint32_t LayerNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t 
     return 0;
 }
 
-// LayerNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// LayerNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void LayerNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -12726,7 +12726,7 @@ inline uint32_t SceneNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t 
     return 0;
 }
 
-// SceneNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// SceneNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void SceneNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -13561,7 +13561,7 @@ inline uint32_t DepotNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t 
     return 0;
 }
 
-// DepotNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// DepotNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void DepotNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -14396,7 +14396,7 @@ inline uint32_t AlbumNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t 
     return 0;
 }
 
-// AlbumNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// AlbumNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void AlbumNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -16944,7 +16944,7 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
     }
 }
 
-// ListNodeNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// ListNodeNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -17212,7 +17212,7 @@ inline int64_t ListNodeSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// TreeNodeNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// TreeNodeNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -17480,7 +17480,7 @@ inline int64_t TreeNodeSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// LayerNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// LayerNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -17748,7 +17748,7 @@ inline int64_t LayerSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// SceneNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// SceneNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -18024,7 +18024,7 @@ inline int64_t SceneSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// DepotNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// DepotNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -18292,7 +18292,7 @@ inline int64_t DepotSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// AlbumNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// AlbumNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing

@@ -7470,7 +7470,7 @@ inline uint32_t UnboundedNodeAlloc( uint64_t type_id, TableWorker & worker, int6
     return 0;
 }
 
-// UnboundedNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// UnboundedNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void UnboundedNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -8668,7 +8668,7 @@ inline bool UnboundedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes
     }
 }
 
-// UnboundedNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// UnboundedNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing

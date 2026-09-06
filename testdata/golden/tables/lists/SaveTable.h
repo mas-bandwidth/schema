@@ -10081,7 +10081,7 @@ inline uint32_t SaveNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t l
     return 0;
 }
 
-// SaveNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// SaveNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void SaveNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -10981,7 +10981,7 @@ inline uint32_t MixedNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t 
     return 0;
 }
 
-// MixedNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// MixedNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void MixedNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -13053,7 +13053,7 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
     }
 }
 
-// SaveNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// SaveNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -13344,7 +13344,7 @@ inline int64_t SaveSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// MixedNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// MixedNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing

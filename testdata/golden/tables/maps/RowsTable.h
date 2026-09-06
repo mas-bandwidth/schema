@@ -9742,7 +9742,7 @@ inline uint32_t RowNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t le
     return 0;
 }
 
-// RowNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// RowNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void RowNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -10640,7 +10640,7 @@ inline uint32_t WideRowNodeAlloc( uint64_t type_id, TableWorker & worker, int64_
     return 0;
 }
 
-// WideRowNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// WideRowNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void WideRowNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -11538,7 +11538,7 @@ inline uint32_t EdgeRowNodeAlloc( uint64_t type_id, TableWorker & worker, int64_
     return 0;
 }
 
-// EdgeRowNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// EdgeRowNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void EdgeRowNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -13624,7 +13624,7 @@ inline bool EdgeRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
     }
 }
 
-// RowNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// RowNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -13912,7 +13912,7 @@ inline int64_t RowSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// WideRowNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// WideRowNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -14200,7 +14200,7 @@ inline int64_t WideRowSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// EdgeRowNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// EdgeRowNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing

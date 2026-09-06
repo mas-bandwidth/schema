@@ -7187,7 +7187,7 @@ inline uint32_t TwigNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t l
     return 0;
 }
 
-// TwigNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// TwigNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void TwigNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -8085,7 +8085,7 @@ inline uint32_t NestNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t l
     return 0;
 }
 
-// NestNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// NestNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void NestNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -9477,7 +9477,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
     }
 }
 
-// TwigNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// TwigNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -9765,7 +9765,7 @@ inline int64_t TwigSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// NestNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// NestNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing

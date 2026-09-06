@@ -6981,7 +6981,7 @@ inline uint32_t ChunkNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t 
     return 0;
 }
 
-// ChunkNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// ChunkNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void ChunkNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -7810,7 +7810,7 @@ inline uint32_t FeedNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t l
     return 0;
 }
 
-// FeedNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// FeedNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void FeedNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -9362,7 +9362,7 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
     }
 }
 
-// ChunkNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// ChunkNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -9630,7 +9630,7 @@ inline int64_t ChunkSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// FeedNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// FeedNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing

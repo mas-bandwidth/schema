@@ -8507,7 +8507,7 @@ inline uint32_t LeafNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t l
     return 0;
 }
 
-// LeafNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// LeafNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void LeafNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -9405,7 +9405,7 @@ inline uint32_t HolderNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t
     return 0;
 }
 
-// HolderNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// HolderNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void HolderNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -10303,7 +10303,7 @@ inline uint32_t HandNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t l
     return 0;
 }
 
-// HandNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// HandNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void HandNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -11201,7 +11201,7 @@ inline uint32_t ChainNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t 
     return 0;
 }
 
-// ChainNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// ChainNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void ChainNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -13092,7 +13092,7 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
     }
 }
 
-// LeafNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// LeafNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -13380,7 +13380,7 @@ inline int64_t LeafSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// HolderNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// HolderNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -13668,7 +13668,7 @@ inline int64_t HolderSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// HandNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// HandNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -13956,7 +13956,7 @@ inline int64_t HandSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// ChainNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// ChainNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing

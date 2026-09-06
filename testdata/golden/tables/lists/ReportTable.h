@@ -7802,7 +7802,7 @@ inline uint32_t BytesNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t 
     return 0;
 }
 
-// BytesNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// BytesNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void BytesNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -8700,7 +8700,7 @@ inline uint32_t IntsNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t l
     return 0;
 }
 
-// IntsNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// IntsNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void IntsNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -9598,7 +9598,7 @@ inline uint32_t FloatsNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t
     return 0;
 }
 
-// FloatsNodeBody: PASS TWO's half, decoding one record's body into the storage it
+// FloatsNodeBody: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 inline void FloatsNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
@@ -10915,7 +10915,7 @@ inline bool FloatsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, F
     }
 }
 
-// BytesNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// BytesNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -11203,7 +11203,7 @@ inline int64_t BytesSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// IntsNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// IntsNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
@@ -11491,7 +11491,7 @@ inline int64_t IntsSaveRetainMessages( Args &&... )
     return -1;
 }
 
-// FloatsNodeBodyRetain: PASS TWO's half, decoding one record's body into the storage it
+// FloatsNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
 // index is the region directory's, which Load fills from the wire's framing
