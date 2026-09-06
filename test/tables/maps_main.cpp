@@ -1071,6 +1071,67 @@ static void test_text()
         CHECK( EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 10000000000000000000ull ) != NULL );
         CHECK( EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 18446744073709551615ull ) != NULL );
     }
+    {
+        // A KEY IS THE INTEGER'S SPELLING AND NOTHING AROUND IT (§16.2). The
+        // integer rule reads RFC 8259's number grammar, which has no room in it
+        // for whitespace, so a padded spelling is not a JSON number at all: it
+        // is malformed on the same terms as "1-2", and the read stops there
+        // with the instance holding what was placed before the stop (§16.1).
+        //
+        // A walker that steps over the padding on its way in hands the digit
+        // path a byte that is not a digit, and what comes back is a key of its
+        // own making. This text spells 2402 once and a padded 2 beside it, and
+        // the two are never one entry.
+        const char * t = "{\"ids\":{\"2402\":{\"count\":7},\" 2\":{\"count\":1}}}";
+        EdgeRowBuilder eb;
+        TableReport r;
+        CHECK( !EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.malformed );
+        CHECK_EQ( r.duplicate, 0 );
+        for ( auto [ key, item ] : EdgeRowIdsEach( eb.arena, eb.GetRoot()->ids ) )
+        {
+            (void) item;
+            CHECK_EQ( key, 2402 );
+        }
+    }
+    {
+        // AN INTEGER KEY SPELLED WITH A DECIMAL POINT IS PARSED AS AN INTEGER,
+        // never through a double (§16.2). A double carries 53 bits of mantissa,
+        // so it cannot tell 9007199254740993 from its neighbour, and a key read
+        // through one lands on the neighbour's identity: two keys the text
+        // spells separately become one entry.
+        const char * t = "{\"ids\":{\"9007199254740992\":{\"count\":1},"
+                         "\"9007199254740993.0\":{\"count\":2}}}";
+        EdgeRowBuilder eb;
+        TableReport r;
+        CHECK( EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK_EQ( eb.GetRoot()->ids.count, 2 );
+        CHECK_EQ( r.duplicate, 0 );
+        CHECK_EQ( r.kind_mismatch, 0 );
+        CHECK_EQ( r.clamped, 0 );
+        CHECK( EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 9007199254740992ull ) != NULL );
+        CHECK( EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 9007199254740993ull ) != NULL );
+    }
+    {
+        // THE SAME VALUE SPELLED TWO WAYS IS THE SAME KEY (§16.2): 2 and 2.0
+        // are the integer 2 wherever an integer is read, and that holds at the
+        // top of the uint64 domain as well as at the bottom. Read through a
+        // double, 18446744073709551615.0 rounds UP to 2^64 and is dropped as
+        // outside the kind, where the digits alone are exactly the key the kind
+        // holds.
+        const char * t = "{\"ids\":{\"18446744073709551615\":{\"count\":1},"
+                         "\"18446744073709551615.0\":{\"count\":2}}}";
+        EdgeRowBuilder eb;
+        TableReport r;
+        CHECK( EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK_EQ( eb.GetRoot()->ids.count, 1 );
+        CHECK_EQ( r.kind_mismatch, 0 );
+        CHECK_EQ( r.clamped, 0 );
+        CHECK_EQ( r.duplicate, 1 ); // the two spellings are one key
+        const Item * item = EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 18446744073709551615ull );
+        CHECK( item != NULL );
+        if ( item != NULL ) { CHECK_EQ( item->count, 2 ); } // last wins
+    }
     test_text_allocation_refusals();
 }
 
