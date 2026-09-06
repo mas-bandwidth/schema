@@ -1186,7 +1186,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 					}
 				}
 			}
-			g.emitRetainRefusals(members)
+			if anyVariable {
+				g.emitRetainRefusals(members)
+			}
 			g.emitCookSurface(members)
 			g.emitCookWriteSurface(members)
 			g.emitRelocatabilityPreamble()

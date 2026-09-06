@@ -1382,6 +1382,12 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 // The refusal is IN THE SOURCE THE UNIT DOES EMIT rather than a missing symbol
 // (§11's rule for a surface a class does not carry): the three names are
 // declared, and naming one is a compile error that says why.
+//
+// It lands in a unit that CARRIES retention. A unit whose tables are all
+// fixed-class carries none of the machinery at all, which is §2.2's zero-cost
+// gate, so there the name is free rather than refused — and the CHECKER
+// claims the suffix in every unit either way (§11), which is what protects a
+// declaration from taking it.
 func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
 	first := true
 	for _, st := range members {

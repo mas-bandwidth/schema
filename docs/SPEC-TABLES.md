@@ -6904,7 +6904,10 @@ SceneSaveRetain( scene, &retain, buffer, size, &report );
   `SaveRetain` in `tableGeneratedVerbs`, and **Dart's three member spellings**
   `loadRetain`, `measureRetain` and `saveRetain`, which take that backend's
   nine claimed field-name verbs to twelve (§11), plus `TableRetain` in the
-  Dart library-scope registry the names negative control holds.
+  Dart library-scope registry, which lands with THAT PORT rather than with the
+  feature: the registry says what a backend DEFINES, and a gate holds it to
+  that, so a name Dart does not define yet cannot be registered there without
+  taking the gate away.
 
 **THE RETAINED IDS' STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE
 CODEC NEVER ALLOCATES.** A save names every id it writes through a table, and
