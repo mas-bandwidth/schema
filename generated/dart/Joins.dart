@@ -11,11 +11,11 @@ final class ArmsAgree {
   int lead = 0;
   bool flag = false;
 
-  // if flag — wire branch; storage holds both sides, a read zeroes the
+  // flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int a = 0;
 
-  // if flag else — wire branch; storage holds both sides, a read zeroes the
+  // !flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int b = 0;
 
@@ -170,11 +170,11 @@ final class ArmsDisagree {
   int lead = 0;
   bool flag = false;
 
-  // if flag — wire branch; storage holds both sides, a read zeroes the
+  // flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int a = 0;
 
-  // if flag else — wire branch; storage holds both sides, a read zeroes the
+  // !flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int b = 0;
 
@@ -348,7 +348,7 @@ final class ArmEmpty {
   int lead = 0;
   bool flag = false;
 
-  // if flag — wire branch; storage holds both sides, a read zeroes the
+  // flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int a = 0;
 
@@ -497,19 +497,19 @@ final class ArmsNested {
   int lead = 0;
   bool outer = false;
 
-  // if outer — wire branch; storage holds both sides, a read zeroes the
+  // outer — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   bool inner = false;
 
-  // if outer / if inner — wire branch; storage holds both sides, a read zeroes the
+  // outer && inner — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int x = 0;
 
-  // if outer / if inner else — wire branch; storage holds both sides, a read zeroes the
+  // outer && !inner — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int y = 0;
 
-  // if outer else — wire branch; storage holds both sides, a read zeroes the
+  // !outer — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int z = 0;
 
@@ -742,13 +742,13 @@ final class ArmAlign {
   int lead = 0;
   bool flag = false;
 
-  // if flag — wire branch; storage holds both sides, a read zeroes the
+  // flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   // string(4): max length, used length beside it (SPEC §4.7)
   final Uint8List s = Uint8List(4);
   int sLength = 0;
 
-  // if flag else — wire branch; storage holds both sides, a read zeroes the
+  // !flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int b = 0;
 
@@ -999,13 +999,13 @@ final class ArmArray {
   int lead = 0;
   bool flag = false;
 
-  // if flag — wire branch; storage holds both sides, a read zeroes the
+  // flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   // wire [0, 8191]
   final Uint16List items = Uint16List(3);
   int itemsCount = 0;
 
-  // if flag else — wire branch; storage holds both sides, a read zeroes the
+  // !flag — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int b = 0;
 

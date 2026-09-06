@@ -1785,12 +1785,12 @@ final class BenchMixed {
   // specified default at construction; zero* gives the §5 zero form
   bool hasExtra = true;
 
-  // if has_extra — wire branch; storage holds both sides, a read zeroes the
+  // has_extra — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   // wire [0, 255]
   int extra = 0;
 
-  // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+  // !has_extra — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   // wire [0, 15]
   int idleTicks = 0;

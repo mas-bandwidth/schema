@@ -6,46 +6,46 @@
 
 # type ArmsAgree
 defmodule Example.ArmsAgree do
-  # if flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
-  # if flag else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, a: 0, b: 0, tail: 0
 end
 
 # type ArmsDisagree
 defmodule Example.ArmsDisagree do
-  # if flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
-  # if flag else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, a: 0, b: 0, tail: 0
 end
 
 # type ArmEmpty
 defmodule Example.ArmEmpty do
-  # if flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, a: 0, tail: 0
 end
 
 # type ArmsNested
 defmodule Example.ArmsNested do
-  # if outer — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
-  # if outer / if inner — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
-  # if outer / if inner else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
-  # if outer else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # outer — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # outer && inner — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # outer && !inner — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !outer — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, outer: false, inner: false, x: 0, y: 0, z: 0, tail: 0
 end
 
 # type ArmAlign
 defmodule Example.ArmAlign do
-  # if flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # s: string(4) — a UTF-8 binary; byte_size is the used length (SPEC §4.7)
-  # if flag else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, s: <<>>, b: 0, tail: 0
 end
 
 # type ArmArray
 defmodule Example.ArmArray do
-  # if flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # items: counted array — a list of up to 3 elements; wire [0, 8191]
-  # if flag else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, items: [], b: 0, tail: 0
 end
 

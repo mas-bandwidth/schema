@@ -79,11 +79,11 @@ type TableMixed struct {
 	CrcHint          uint32
 	HasExtra         bool
 
-	// if has_extra — guarded fields stay off the wire when the guard says so;
+	// has_extra — guarded fields stay off the wire when the guard says so;
 	// a read's restored defaults stand in for the untaken side
 	Extra int32
 
-	// if has_extra else — guarded fields stay off the wire when the guard says so;
+	// !has_extra — guarded fields stay off the wire when the guard says so;
 	// a read's restored defaults stand in for the untaken side
 	IdleTicks int32
 }

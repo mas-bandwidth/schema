@@ -1096,7 +1096,7 @@ public final class Types {
         public final Quat orientation = new Quat();
         public boolean atRest;
 
-        // if !at_rest — wire branch; storage holds both sides, a read zeroes the
+        // !at_rest — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public final Vec3 linearVelocity = new Vec3();
         public final Vec3 angularVelocity = new Vec3();
@@ -2596,7 +2596,7 @@ public final class Types {
         public final QuantizedVelocity linearVelocity = new QuantizedVelocity();
         public boolean hasFlags;
 
-        // if has_flags — wire branch; storage holds both sides, a read zeroes the
+        // has_flags — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         // ShipFlags — consumed as masks, uint64 storage (SPEC §4.2)
         public long flags;

@@ -1085,11 +1085,11 @@ pub struct BenchMixed {
     pub crc_hint: u32,
     pub has_extra: bool, // = true in new() (zero value otherwise)
 
-    // if has_extra — wire branch; storage holds both sides, a read zeroes the
+    // has_extra — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub extra: i32, // wire [0, 255]
 
-    // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+    // !has_extra — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub idle_ticks: i32, // wire [0, 15]
 }

@@ -241,16 +241,16 @@ export class ProbeSample {
     this.RawDelta = 0;
     this.BigDelta = 0n;
 
-    // if active — wire branch; storage holds both sides, a read zeroes the
+    // active — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.Weapon = Weapon.None;
     this.HasTarget = false;
 
-    // if active / if has_target — wire branch; storage holds both sides, a read zeroes the
+    // active && has_target — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.TargetId = 0;
 
-    // if active else — wire branch; storage holds both sides, a read zeroes the
+    // !active — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.IdleTicks = 0;
 

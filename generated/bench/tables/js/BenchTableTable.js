@@ -1956,11 +1956,11 @@ export class TableMixed {
     this.CrcHint = 0;
     this.HasExtra = false;
 
-    // if has_extra — guarded fields stay off the wire when the guard says so;
+    // has_extra — guarded fields stay off the wire when the guard says so;
     // a read's restored defaults stand in for the untaken side
     this.Extra = 0;
 
-    // if has_extra else — guarded fields stay off the wire when the guard says so;
+    // !has_extra — guarded fields stay off the wire when the guard says so;
     // a read's restored defaults stand in for the untaken side
     this.IdleTicks = 0;
   }

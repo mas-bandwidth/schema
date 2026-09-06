@@ -80,11 +80,11 @@ public final class BenchTableTable {
         public int crcHint;
         public boolean hasExtra;
 
-        // if has_extra — guarded fields stay off the wire when the guard says so;
+        // has_extra — guarded fields stay off the wire when the guard says so;
         // a read's restored defaults stand in for the untaken side
         public int extra;
 
-        // if has_extra else — guarded fields stay off the wire when the guard says so;
+        // !has_extra — guarded fields stay off the wire when the guard says so;
         // a read's restored defaults stand in for the untaken side
         public int idleTicks;
 

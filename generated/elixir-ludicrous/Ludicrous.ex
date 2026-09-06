@@ -83,7 +83,7 @@ end
 # type LudicrousState
 defmodule Ludicrous.LudicrousState do
   # keys: counted array — a list of up to 4 elements
-  # if has_target — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # has_target — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct mode: 0,
             probe: %Ludicrous.FixedProbe{},
             wide: %Ludicrous.WideProbe{},

@@ -14,11 +14,11 @@ pub struct ArmsAgree {
     pub lead: u32,
     pub flag: bool,
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub a: u32,
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub b: u32,
 
@@ -106,11 +106,11 @@ pub struct ArmsDisagree {
     pub lead: u32,
     pub flag: bool,
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub a: u32,
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub b: u32,
 
@@ -198,7 +198,7 @@ pub struct ArmEmpty {
     pub lead: u32,
     pub flag: bool,
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub a: u32,
 
@@ -275,19 +275,19 @@ pub struct ArmsNested {
     pub lead: u32,
     pub outer: bool,
 
-    // if outer — wire branch; storage holds both sides, a read zeroes the
+    // outer — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub inner: bool,
 
-    // if outer / if inner — wire branch; storage holds both sides, a read zeroes the
+    // outer && inner — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub x: u32,
 
-    // if outer / if inner else — wire branch; storage holds both sides, a read zeroes the
+    // outer && !inner — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub y: u32,
 
-    // if outer else — wire branch; storage holds both sides, a read zeroes the
+    // !outer — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub z: u32,
 
@@ -400,12 +400,12 @@ pub struct ArmAlign {
     pub lead: u32,
     pub flag: bool,
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub s: [u8; 4], // string(4): max length, used length beside it (SPEC §4.7)
     pub s_length: i32,
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub b: u32,
 
@@ -506,12 +506,12 @@ pub struct ArmArray {
     pub lead: u32,
     pub flag: bool,
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub items: [u16; 3], // used count beside it; wire count in [0, 3]
     pub items_count: i32,
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub b: u32,
 

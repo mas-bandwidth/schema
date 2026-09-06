@@ -585,11 +585,11 @@ typedef struct TableMixed {
     uint32_t crc_hint;
     uint8_t has_extra;
 
-    /* if has_extra — guarded fields stay off the wire when the guard says so;
+    /* has_extra — guarded fields stay off the wire when the guard says so;
        a read's prefilled defaults stand in for the untaken side */
     int32_t extra;
 
-    /* if has_extra else — guarded fields stay off the wire when the guard says so;
+    /* !has_extra — guarded fields stay off the wire when the guard says so;
        a read's prefilled defaults stand in for the untaken side */
     int32_t idle_ticks;
 } TableMixed;

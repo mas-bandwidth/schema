@@ -1999,11 +1999,11 @@ struct TableMixed {
     uint32_t crc_hint = 0;
     bool has_extra = false;
 
-    // if has_extra — guarded fields stay off the wire when the guard says so;
+    // has_extra — guarded fields stay off the wire when the guard says so;
     // a read's prefilled defaults stand in for the untaken side
     int32_t extra = 0;
 
-    // if has_extra else — guarded fields stay off the wire when the guard says so;
+    // !has_extra — guarded fields stay off the wire when the guard says so;
     // a read's prefilled defaults stand in for the untaken side
     int32_t idle_ticks = 0;
 };

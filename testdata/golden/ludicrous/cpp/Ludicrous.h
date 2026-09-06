@@ -87,7 +87,7 @@ struct LudicrousState {
     int32_t keys_count = 0;
     bool has_target = false;
 
-    // if has_target — wire branch; storage holds both sides, a read zeroes the
+    // has_target — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     serialize::uint128_t target_id = 0;
 };

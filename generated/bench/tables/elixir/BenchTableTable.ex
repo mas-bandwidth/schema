@@ -56,8 +56,8 @@ defmodule Benchtable.TableMixed do
   # player_name: string(15) — a binary whose byte_size IS the used length
   # payload: bytes(16) — a binary whose byte_size IS the used length
   # flux: wire [-1000000000000000000, 1000000000000000000] — a value outside it CLAMPS and counts (§4)
-  # extra: wire [0, 255] — a value outside it CLAMPS and counts (§4); under if has_extra — a field its guard excludes is elided (§3)
-  # idle_ticks: wire [0, 15] — a value outside it CLAMPS and counts (§4); under if has_extra else — a field its guard excludes is elided (§3)
+  # extra: wire [0, 255] — a value outside it CLAMPS and counts (§4); under has_extra — a field its guard excludes is elided (§3)
+  # idle_ticks: wire [0, 15] — a value outside it CLAMPS and counts (§4); under !has_extra — a field its guard excludes is elided (§3)
   defstruct protocol_magic: 0,
             sequence: 0,
             ack_sequence: 0,

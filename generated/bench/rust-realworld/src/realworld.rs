@@ -150,7 +150,7 @@ pub struct RealPacket {
     pub f011_bits: u32,
     pub f012_bool: bool, // = true in new() (zero value otherwise)
 
-    // if f012_bool — wire branch; storage holds both sides, a read zeroes the
+    // f012_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub f013_f32: f32,
     pub f014_uint: u16, // wire [0, 775]
@@ -185,7 +185,7 @@ pub struct RealPacket {
     pub f042_bits: u32,
     pub f043_bool: bool, // = false in new() (zero value otherwise)
 
-    // if f043_bool — wire branch; storage holds both sides, a read zeroes the
+    // f043_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub f044_f32: f32,
     pub f045_bits: u32,
@@ -196,7 +196,7 @@ pub struct RealPacket {
     pub f049_ufixed: u16, // wire [0, 3]
     pub f050_bool: bool, // = true in new() (zero value otherwise)
 
-    // if f050_bool — wire branch; storage holds both sides, a read zeroes the
+    // f050_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub f051_bool: bool,
     pub f052_int: i8, // wire [-57, 57]
@@ -224,7 +224,7 @@ pub struct RealPacket {
     pub f073_int: i8, // wire [-4, 4]
     pub f074_bool: bool, // = false in new() (zero value otherwise)
 
-    // if f074_bool — wire branch; storage holds both sides, a read zeroes the
+    // f074_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub f075_u64: u64,
     pub f076_int: i16, // wire [-26218, 26218]

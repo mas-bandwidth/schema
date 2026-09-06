@@ -367,11 +367,11 @@ struct BenchMixed {
     uint32_t crc_hint = 0;
     bool has_extra = true;
 
-    // if has_extra — wire branch; storage holds both sides, a read zeroes the
+    // has_extra — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     int32_t extra = 0; // wire [0, 255]
 
-    // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+    // !has_extra — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     int32_t idle_ticks = 0; // wire [0, 15]
 };

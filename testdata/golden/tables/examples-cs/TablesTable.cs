@@ -93,7 +93,7 @@ namespace Tabledemo
         public float[] Ratings = new float[4];
         public bool HasLoadout;
 
-        // if has_loadout — guarded fields stay off the wire when the guard says so;
+        // has_loadout — guarded fields stay off the wire when the guard says so;
         // a read's restored defaults stand in for the untaken side
         public LoadoutConfig Loadout = new LoadoutConfig();
     }

@@ -124,11 +124,11 @@ pub struct TableMixed {
     pub crc_hint: u32,
     pub has_extra: bool,
 
-    // if has_extra — guarded fields stay off the wire when the guard says so;
+    // has_extra — guarded fields stay off the wire when the guard says so;
     // a read's restored defaults stand in for the untaken side
     pub extra: i32,
 
-    // if has_extra else — guarded fields stay off the wire when the guard says so;
+    // !has_extra — guarded fields stay off the wire when the guard says so;
     // a read's restored defaults stand in for the untaken side
     pub idle_ticks: i32,
 }

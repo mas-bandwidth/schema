@@ -16,11 +16,11 @@ export class ArmsAgree {
     this.Lead = 0;
     this.Flag = false;
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.A = 0;
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.B = 0;
 
@@ -104,11 +104,11 @@ export class ArmsDisagree {
     this.Lead = 0;
     this.Flag = false;
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.A = 0;
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.B = 0;
 
@@ -192,7 +192,7 @@ export class ArmEmpty {
     this.Lead = 0;
     this.Flag = false;
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.A = 0;
 
@@ -265,19 +265,19 @@ export class ArmsNested {
     this.Lead = 0;
     this.Outer = false;
 
-    // if outer — wire branch; storage holds both sides, a read zeroes the
+    // outer — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.Inner = false;
 
-    // if outer / if inner — wire branch; storage holds both sides, a read zeroes the
+    // outer && inner — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.X = 0;
 
-    // if outer / if inner else — wire branch; storage holds both sides, a read zeroes the
+    // outer && !inner — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.Y = 0;
 
-    // if outer else — wire branch; storage holds both sides, a read zeroes the
+    // !outer — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.Z = 0;
 
@@ -389,12 +389,12 @@ export class ArmAlign {
     this.Lead = 0;
     this.Flag = false;
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.S = new Uint8Array(4); // string(4): max length, used length beside it (SPEC §4.7)
     this.SLength = 0;
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.B = 0;
 
@@ -494,12 +494,12 @@ export class ArmArray {
     this.Lead = 0;
     this.Flag = false;
 
-    // if flag — wire branch; storage holds both sides, a read zeroes the
+    // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.Items = new Array(3).fill(0); // wire [0, 8191]
     this.ItemsCount = 0;
 
-    // if flag else — wire branch; storage holds both sides, a read zeroes the
+    // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.B = 0;
 

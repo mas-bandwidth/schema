@@ -1067,18 +1067,25 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 				} else if cond.Type.Kind != ir.TBool || cond.Array != ir.ArrayNone {
 					c.errf(item.Cond.Pos, "if condition %s must be a bool field (SPEC §4.6)", item.Cond.Text)
 				}
-				neg := ""
-				if item.Neg {
-					neg = "!"
+				// the branch condition, spelled the way the reflection
+				// descriptors spell it: at_rest, !at_rest, active &&
+				// has_target. One spelling for the guard a reader meets in a
+				// storage comment and the guard a table-JSON walker parses at
+				// runtime (SPEC §4.5).
+				and := func(outer, inner string) string {
+					if outer == "" {
+						return inner
+					}
+					return outer + " && " + inner
 				}
-				g := "if " + neg + item.Cond.Text
-				if guard != "" {
-					g = guard + " / " + g
+				pos, negated := item.Cond.Text, "!"+item.Cond.Text
+				if item.Neg {
+					pos, negated = negated, pos
 				}
 				br := &ir.Branch{Neg: item.Neg, Cond: item.Cond.Text}
-				br.Then = walk(item.Then, g, append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
+				br.Then = walk(item.Then, and(guard, pos), append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
 				if item.Else != nil {
-					br.Else = walk(item.Else, g+" else", append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
+					br.Else = walk(item.Else, and(guard, negated), append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
 				}
 				items = append(items, br)
 			case *ast.ConstField:

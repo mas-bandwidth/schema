@@ -17,20 +17,20 @@ namespace Tabledemo
     {
         public bool Active;
 
-        // if active — guarded fields stay off the wire when the guard says so;
+        // active — guarded fields stay off the wire when the guard says so;
         // a read's restored defaults stand in for the untaken side
         public float Speed = 1.0f;
         public bool HasTarget;
 
-        // if active / if has_target — guarded fields stay off the wire when the guard says so;
+        // active && has_target — guarded fields stay off the wire when the guard says so;
         // a read's restored defaults stand in for the untaken side
         public int TargetId = 0;
 
-        // if active / if has_target else — guarded fields stay off the wire when the guard says so;
+        // active && !has_target — guarded fields stay off the wire when the guard says so;
         // a read's restored defaults stand in for the untaken side
         public float Wander = 0.5f;
 
-        // if active else — guarded fields stay off the wire when the guard says so;
+        // !active — guarded fields stay off the wire when the guard says so;
         // a read's restored defaults stand in for the untaken side
         public byte[] Note = new byte[8]; // string(8): max length, used length beside it
         public int NoteLength;

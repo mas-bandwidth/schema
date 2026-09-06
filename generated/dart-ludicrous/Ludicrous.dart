@@ -776,7 +776,7 @@ final class LudicrousState {
   int keysCount = 0;
   bool hasTarget = false;
 
-  // if has_target — wire branch; storage holds both sides, a read zeroes the
+  // has_target — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   UInt128 targetId = UInt128.zero;
 }

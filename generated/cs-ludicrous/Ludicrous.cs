@@ -71,7 +71,7 @@ namespace Ludicrous
         public int KeysCount;
         public bool HasTarget;
 
-        // if has_target — wire branch; storage holds both sides, a read zeroes the
+        // has_target — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public UInt128Value TargetId;
     }

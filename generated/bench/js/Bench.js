@@ -1088,11 +1088,11 @@ export class BenchMixed {
     this.CrcHint = 0;
     this.HasExtra = true; // specified default at construction; Zero* gives the §5 zero form
 
-    // if has_extra — wire branch; storage holds both sides, a read zeroes the
+    // has_extra — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.Extra = 0; // wire [0, 255]
 
-    // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+    // !has_extra — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     this.IdleTicks = 0; // wire [0, 15]
   }

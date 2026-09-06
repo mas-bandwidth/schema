@@ -882,7 +882,7 @@ final class RigidBody {
   final Quat orientation = Quat();
   bool atRest = false;
 
-  // if !at_rest — wire branch; storage holds both sides, a read zeroes the
+  // !at_rest — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   final Vec3 linearVelocity = Vec3();
   final Vec3 angularVelocity = Vec3();
@@ -1804,7 +1804,7 @@ final class ShipCreate {
   final QuantizedVelocity linearVelocity = QuantizedVelocity();
   bool hasFlags = false;
 
-  // if has_flags — wire branch; storage holds both sides, a read zeroes the
+  // has_flags — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   // ShipFlags — consumed as masks, uint64 storage (SPEC §4.2)
   int flags = 0;

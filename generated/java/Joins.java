@@ -23,11 +23,11 @@ public final class Joins {
         public int lead;
         public boolean flag;
 
-        // if flag — wire branch; storage holds both sides, a read zeroes the
+        // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int a;
 
-        // if flag else — wire branch; storage holds both sides, a read zeroes the
+        // !flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int b;
 
@@ -217,11 +217,11 @@ public final class Joins {
         public int lead;
         public boolean flag;
 
-        // if flag — wire branch; storage holds both sides, a read zeroes the
+        // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int a;
 
-        // if flag else — wire branch; storage holds both sides, a read zeroes the
+        // !flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int b;
 
@@ -428,7 +428,7 @@ public final class Joins {
         public int lead;
         public boolean flag;
 
-        // if flag — wire branch; storage holds both sides, a read zeroes the
+        // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int a;
 
@@ -608,19 +608,19 @@ public final class Joins {
         public int lead;
         public boolean outer;
 
-        // if outer — wire branch; storage holds both sides, a read zeroes the
+        // outer — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public boolean inner;
 
-        // if outer / if inner — wire branch; storage holds both sides, a read zeroes the
+        // outer && inner — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int x;
 
-        // if outer / if inner else — wire branch; storage holds both sides, a read zeroes the
+        // outer && !inner — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int y;
 
-        // if outer else — wire branch; storage holds both sides, a read zeroes the
+        // !outer — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int z;
 
@@ -888,13 +888,13 @@ public final class Joins {
         public int lead;
         public boolean flag;
 
-        // if flag — wire branch; storage holds both sides, a read zeroes the
+        // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         // string(4): max length, used length beside it (SPEC §4.7)
         public final byte[] s = new byte[4];
         public int sLength;
 
-        // if flag else — wire branch; storage holds both sides, a read zeroes the
+        // !flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int b;
 
@@ -1160,13 +1160,13 @@ public final class Joins {
         public int lead;
         public boolean flag;
 
-        // if flag — wire branch; storage holds both sides, a read zeroes the
+        // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         // wire [0, 8191]
         public final short[] items = new short[3];
         public int itemsCount;
 
-        // if flag else — wire branch; storage holds both sides, a read zeroes the
+        // !flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int b;
 

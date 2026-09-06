@@ -185,9 +185,9 @@ defmodule Bench.BenchMixed do
   # flux: wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
   # ping: fixed point Q8.8 — the raw scaled integer; wire [0, 250]
   # has_extra: specified default at construction; zero_* gives the §5 zero form
-  # if has_extra — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # has_extra — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # extra: wire [0, 255]
-  # if has_extra else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !has_extra — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # idle_ticks: wire [0, 15]
   defstruct sequence: 0,
             ack_sequence: 0,

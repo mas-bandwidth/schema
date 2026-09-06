@@ -489,16 +489,16 @@ final class ProbeSample {
   int rawDelta = 0;
   int bigDelta = 0;
 
-  // if active — wire branch; storage holds both sides, a read zeroes the
+  // active — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int weapon = Weapon.none;
   bool hasTarget = false;
 
-  // if active / if has_target — wire branch; storage holds both sides, a read zeroes the
+  // active && has_target — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int targetId = 0;
 
-  // if active else — wire branch; storage holds both sides, a read zeroes the
+  // !active — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
   int idleTicks = 0;
 

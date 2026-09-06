@@ -35,9 +35,9 @@ end
 defmodule Example.ProbeSample do
   # active: specified default at construction; zero_* gives the §5 zero form
   # orientation: compressed float [-180.0, 180.0] @ 0.01
-  # if active — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
-  # if active / if has_target — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
-  # if active else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # active — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # active && has_target — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # !active — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # samples: counted array — a list of up to 8 elements
   defstruct active: true,
             orientation: 0.0,

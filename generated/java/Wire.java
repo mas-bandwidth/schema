@@ -580,16 +580,16 @@ public final class Wire {
         public int rawDelta;
         public long bigDelta;
 
-        // if active — wire branch; storage holds both sides, a read zeroes the
+        // active — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public byte weapon;
         public boolean hasTarget;
 
-        // if active / if has_target — wire branch; storage holds both sides, a read zeroes the
+        // active && has_target — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public short targetId;
 
-        // if active else — wire branch; storage holds both sides, a read zeroes the
+        // !active — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int idleTicks;
 

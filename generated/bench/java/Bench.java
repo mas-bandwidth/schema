@@ -2530,12 +2530,12 @@ public final class Bench {
         // specified default at construction; zero* gives the §5 zero form
         public boolean hasExtra = true;
 
-        // if has_extra — wire branch; storage holds both sides, a read zeroes the
+        // has_extra — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         // wire [0, 255]
         public int extra;
 
-        // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+        // !has_extra — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         // wire [0, 15]
         public int idleTicks;

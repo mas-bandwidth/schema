@@ -218,16 +218,16 @@ type ProbeSample struct {
 	RawDelta    int32
 	BigDelta    int64
 
-	// if active — wire branch; storage holds both sides, a read zeroes the
+	// active — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	Weapon    Weapon
 	HasTarget bool
 
-	// if active / if has_target — wire branch; storage holds both sides, a read zeroes the
+	// active && has_target — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	TargetId uint16
 
-	// if active else — wire branch; storage holds both sides, a read zeroes the
+	// !active — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	IdleTicks uint32
 

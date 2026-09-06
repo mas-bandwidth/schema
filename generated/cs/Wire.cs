@@ -49,16 +49,16 @@ namespace Example
         public int RawDelta;
         public long BigDelta;
 
-        // if active — wire branch; storage holds both sides, a read zeroes the
+        // active — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public Weapon Weapon;
         public bool HasTarget;
 
-        // if active / if has_target — wire branch; storage holds both sides, a read zeroes the
+        // active && has_target — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public ushort TargetId;
 
-        // if active else — wire branch; storage holds both sides, a read zeroes the
+        // !active — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public uint IdleTicks;
 

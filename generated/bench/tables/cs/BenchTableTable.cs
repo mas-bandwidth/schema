@@ -380,11 +380,11 @@ namespace Benchtable
         public uint CrcHint;
         public bool HasExtra;
 
-        // if has_extra — guarded fields stay off the wire when the guard says so;
+        // has_extra — guarded fields stay off the wire when the guard says so;
         // a read's restored defaults stand in for the untaken side
         public int Extra;
 
-        // if has_extra else — guarded fields stay off the wire when the guard says so;
+        // !has_extra — guarded fields stay off the wire when the guard says so;
         // a read's restored defaults stand in for the untaken side
         public int IdleTicks;
 

@@ -2170,7 +2170,7 @@ struct ProfileConfig {
     float ratings[4] = {};
     bool has_loadout = false;
 
-    // if has_loadout — guarded fields stay off the wire when the guard says so;
+    // has_loadout — guarded fields stay off the wire when the guard says so;
     // a read's prefilled defaults stand in for the untaken side
     LoadoutConfig loadout;
 };

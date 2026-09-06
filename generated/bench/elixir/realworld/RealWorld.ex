@@ -55,7 +55,7 @@ defmodule Realworld.RealPacket do
   # f006_int: wire [-1513, 1513]
   # f009_int: wire [-22, 22]
   # f012_bool: specified default at construction; zero_* gives the §5 zero form
-  # if f012_bool — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # f012_bool — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # f014_uint: wire [0, 775]
   # f015_int: wire [-21, 21]
   # f016_fixed: fixed point Q12.20 — the raw scaled integer; wire [-36, 36]
@@ -70,12 +70,12 @@ defmodule Realworld.RealPacket do
   # f040_fixed: fixed point Q4.12 — the raw scaled integer; wire [-5, 5]
   # f041_int: wire [-55, 55]
   # f043_bool: specified default at construction; zero_* gives the §5 zero form
-  # if f043_bool — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # f043_bool — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # f046_uint: wire [0, 76063]
   # f047_int: wire [-430976, 430976]
   # f049_ufixed: fixed point Q2.14 — the raw scaled integer; wire [0, 3]
   # f050_bool: specified default at construction; zero_* gives the §5 zero form
-  # if f050_bool — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # f050_bool — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # f052_int: wire [-57, 57]
   # f054_int: wire [-35, 35]
   # f056_int: wire [-13, 13]
@@ -92,7 +92,7 @@ defmodule Realworld.RealPacket do
   # f072_cf32: compressed float [0.0, 100.0] @ 0.01
   # f073_int: wire [-4, 4]
   # f074_bool: specified default at construction; zero_* gives the §5 zero form
-  # if f074_bool — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # f074_bool — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # f076_int: wire [-26218, 26218]
   # f077_int: wire [-17, 17]
   # f079_uint: wire [0, 17]

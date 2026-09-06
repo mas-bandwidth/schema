@@ -935,11 +935,11 @@ type BenchMixed struct {
 	CrcHint          uint32
 	HasExtra         bool // = true in New* (zero value otherwise)
 
-	// if has_extra — wire branch; storage holds both sides, a read zeroes the
+	// has_extra — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	Extra int32 // wire [0, 255]
 
-	// if has_extra else — wire branch; storage holds both sides, a read zeroes the
+	// !has_extra — wire branch; storage holds both sides, a read zeroes the
 	// untaken side (SPEC §5)
 	IdleTicks int32 // wire [0, 15]
 }

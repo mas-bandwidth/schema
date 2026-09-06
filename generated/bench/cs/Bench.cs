@@ -192,11 +192,11 @@ namespace Bench
         public uint CrcHint;
         public bool HasExtra = true; // specified default at construction; Zero* gives the §5 zero form
 
-        // if has_extra — wire branch; storage holds both sides, a read zeroes the
+        // has_extra — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int Extra; // wire [0, 255]
 
-        // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+        // !has_extra — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public int IdleTicks; // wire [0, 15]
 

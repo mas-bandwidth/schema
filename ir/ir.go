@@ -307,8 +307,11 @@ const (
 // Field is one storage-carrying member of a struct, with its resolved wire
 // refinements.
 type Field struct {
-	Name  string
-	Guard string // "" or "if !at_rest" — branch context, kept as a comment
+	Name string
+	// Guard is the field's branch context, kept as a comment: "" outside a
+	// branch, otherwise the condition spelled as the reflection descriptors
+	// spell it — "at_rest", "!at_rest", "active && has_target".
+	Guard string
 
 	// WasName is the `was = "old_name"` rename alias (docs/SPEC-TABLES.md): the
 	// field's TABLE-wire id derives from this name instead of Name, so wire

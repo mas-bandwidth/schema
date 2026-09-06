@@ -255,16 +255,16 @@ pub struct ProbeSample {
     pub raw_delta: i32,
     pub big_delta: i64,
 
-    // if active — wire branch; storage holds both sides, a read zeroes the
+    // active — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub weapon: Weapon,
     pub has_target: bool,
 
-    // if active / if has_target — wire branch; storage holds both sides, a read zeroes the
+    // active && has_target — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub target_id: u16,
 
-    // if active else — wire branch; storage holds both sides, a read zeroes the
+    // !active — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
     pub idle_ticks: u32,
 
