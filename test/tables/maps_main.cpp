@@ -1093,6 +1093,71 @@ static void test_depth()
     CHECK( memcmp( relocked, wire, (size_t) n ) == 0 );
 }
 
+// ---- the MESSAGE FORM over maps (docs/SPEC-TABLES.md §2.8, §3.3) ----
+//
+// A map rides on the message wire as its thirty-two bit count and its entries
+// in ascending key order, each a bitpacked body with no length, and the
+// reader carves the entries from the node's extent read off the framing. The
+// fleet's three depths, its shared node and its signed key all ride: the
+// loaded region's FILE form is the builder's, byte for byte.
+
+static void test_message_form()
+{
+    // THE RESOLVED VOCABULARY'S STORAGE IS THE CALLER'S (§3.3)
+    static TableMessageEntry entries[ kTableMessageEntriesHere ];
+    TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
+    static uint8_t announcement[16384];
+    const int64_t announced = Announce( announcement, sizeof( announcement ) );
+    CHECK( announced == AnnounceMeasure() );
+    CHECK( AnnounceRead( vocabulary, announcement, announced, NULL ) );
+    pin_golden( "map_conn", announcement, announced );
+
+    FleetBuilder b;
+    build_fleet( b, false );
+    CHECK( b.Lock() );
+    const Fleet * roots[1] = { b.AsConst() };
+    static uint8_t message[1u << 16];
+    TableReport report;
+    const int64_t bytes = FleetSaveMessages( roots, 1, message, sizeof( message ), &report );
+    CHECK( bytes > 0 && bytes == FleetMeasureMessages( roots, 1, &report ) );
+    CHECK( bytes < bytes_full ); // the message form is the wire optimized for bandwidth
+    pin_golden( "map_full_message", message, bytes );
+
+    int64_t attribution = 0;
+    const int64_t need = FleetLoadMeasure( vocabulary, message, bytes, &attribution );
+    CHECK( need > 0 );
+    static uint8_t region[1u << 16];
+    const Fleet * loaded[1] = { NULL };
+    int64_t count = 1;
+    CHECK( FleetLoadMessages( loaded, &count, region, need, vocabulary, message, bytes, &report ) );
+    CHECK( count == 1 && loaded[0] != NULL );
+    CHECK( !report.malformed && !report.refused && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && report.duplicate == 0 );
+    if ( loaded[0] != NULL )
+    {
+        const Fleet * fleet = loaded[0];
+        CHECK( fleet->ships.size() == 3 );
+        const ShipConfig * bomber = fleet->ships.Find( "bomber" );
+        CHECK( bomber != NULL && bomber->health == 400 );
+        // TWO KEYS, ONE NODE, and the pointer field naming it a third time
+        const ShipConfig * seven = fleet->by_id.Find( (uint32_t) 7 );
+        const ShipConfig * twelve = fleet->by_id.Find( (uint32_t) 12 );
+        CHECK( seven != NULL && twelve != NULL && seven == twelve && seven == ShipConfigAt( fleet->flagship ) );
+        const TableMap<FleetLoadoutsEntryValueEntry> * kit = fleet->loadouts.Find( "kit" );
+        CHECK( kit != NULL && kit->size() == 2 );
+        const Item * nine = kit != NULL ? kit->Find( (uint8_t) 9 ) : NULL;
+        CHECK( nine != NULL && nine->count == 99 );
+        const Item * low = fleet->tiers.Find( (int16_t) -3 );
+        CHECK( low != NULL && low->count == -3 );
+        // THE LOADED REGION'S FILE FORM IS THE BUILDER'S, byte for byte
+        static uint8_t again[1u << 16];
+        const int64_t file_bytes = FleetSave( fleet, again, sizeof( again ) );
+        CHECK( file_bytes == bytes_full && memcmp( again, wire_full, (size_t) bytes_full ) == 0 );
+        // and the message re-saves to itself
+        static uint8_t again_message[1u << 16];
+        CHECK( FleetSaveMessages( loaded, 1, again_message, sizeof( again_message ), &report ) == bytes );
+        CHECK( memcmp( again_message, message, (size_t) bytes ) == 0 );
+    }
+}
 int main( int argc, char ** argv )
 {
     if ( argc > 1 && strcmp( argv[1], "measure-refusals" ) == 0 )
@@ -1115,6 +1180,7 @@ int main( int argc, char ** argv )
     test_measure_refusals();
     test_text();
     test_depth();
+    test_message_form();
 
     if ( failures != 0 )
     {

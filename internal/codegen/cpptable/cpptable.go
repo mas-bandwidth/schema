@@ -111,7 +111,15 @@ type tableGen struct {
 	// (docs/SPEC-TABLES.md §3.3). Every id a generated field header can name
 	// has one, and the slot rides at the header as a LITERAL beside the id, so
 	// a form-`2` save does no lookup at all.
-	slots map[uint64]uint64
+	// slots is the unit's MESSAGE-FORM vocabulary: the SLOT each announced
+	// entry takes, keyed by the triple (§3.3), so a generated field header
+	// carries its reference as a literal and a save does no lookup at all.
+	slots map[string]uint64
+	// msgDepth is the message codec's nesting depth while it emits: every
+	// loop variable and local a nested payload declares carries the depth as
+	// a suffix, so an element's decode inside an element's decode shadows
+	// nothing (docs/SPEC-TABLES.md §13.9 holds the reference to -Wshadow).
+	msgDepth int
 }
 
 // wireRef is a field header's id reference: the id and its MESSAGE-FORM SLOT,
@@ -119,7 +127,7 @@ type tableGen struct {
 // reference; the MESSAGE form answers the slot and never touches the table
 // (docs/SPEC-TABLES.md §3, §3.3).
 func (g *tableGen) wireRef(id uint64) string {
-	return fmt.Sprintf("ids.ref( 0x%016xull, %d )", id, g.slots[id])
+	return fmt.Sprintf("ids.ref( 0x%016xull )", id)
 }
 
 // hdrBytes is a field header's cost: the id reference and the kind byte, which
@@ -129,7 +137,9 @@ func (g *tableGen) hdrBytes(id uint64) string {
 }
 
 // slotOf is one id's message-form slot as a C++ literal.
-func (g *tableGen) slotOf(id uint64) string { return strconv.FormatUint(g.slots[id], 10) }
+func (g *tableGen) slotOf(id uint64) string {
+	return strconv.FormatUint(g.slots[ir.TableVocabularyEntry{Id: id}.Key()], 10)
+}
 
 func (g *tableGen) pf(format string, args ...any) {
 	s := fmt.Sprintf(format, args...)
@@ -382,7 +392,7 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 	}
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
 	forceInline := tableInlineMacro(pkg)
-	messageForm := tableMessageForm(u, forceInline, anyVariable)
+	messageForm := tableMessageForm(u, anyVariable)
 	// the two pointer-era descriptor members exist only in a unit that HAS
 	// pointers: a unit of value-only tables emits the descriptor surface it
 	// always emitted, to the byte (docs/SPEC-TABLES.md §2, the zero-cost gate)
@@ -472,7 +482,8 @@ enum TableMessageReason
     no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
     second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
     vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
-    message_form_as_file  // a form 2 wire where a FILE was expected: its table is somewhere else
+    message_form_as_file, // a form 2 wire where a FILE was expected: its table is somewhere else
+    batch_too_large       // a batch of more than 256 bodies on the write side, or of more than the caller has room for on the read side: nothing is written or decoded, and the count says what the wire carries
 };
 
 // The table-wire read report — the permissive contract's ledger. Silence
@@ -703,16 +714,8 @@ struct TableIds
     int32_t head[ kBuckets ];
     int32_t count;
     bool overflow;
-    // THE MESSAGE FORM'S SLOTS (docs/SPEC-TABLES.md §3.3). A form 2 wire
-    // names ids through the CONNECTION's table, which is the unit's whole
-    // vocabulary in a compiler-settled order — so every reference is known at
-    // compile time and rides at the header as a literal beside the id. This
-    // flag is what selects it: false interns the id in first-use order and
-    // writes a trailer, true answers the slot and writes none, and the walk
-    // that decides is one walk.
-    bool vocabulary;
 
-    TableIds() : count( 0 ), overflow( false ), vocabulary( false )
+    TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
     }
@@ -722,16 +725,10 @@ struct TableIds
         return uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> ` + idShift + ` ) & uint32_t( kBuckets - 1 );
     }
 
-    // the reference an id takes: its message-form SLOT under the connection's
-    // table, or the file's own first-use entry
-    ` + forceInline + ` uint64_t ref( uint64_t id, uint64_t slot )
-    {
-        if ( vocabulary ) { return slot; }
-        return intern( id );
-    }
-
-    // the FILE form's half, appending the id on first use
-    uint64_t intern( uint64_t id )
+    // the reference an id takes: the file's own first-use entry, appended on
+    // first use. The MESSAGE form names no id at all: its references are
+    // compile-time slots of the announced vocabulary (docs/SPEC-TABLES.md §3.3).
+    ` + forceInline + ` uint64_t ref( uint64_t id )
     {
         const uint32_t b = bucket_of( id );
         for ( int32_t i = head[b]; i >= 0; i = chain[i] )
@@ -747,8 +744,6 @@ struct TableIds
     // recent one in its bucket, so it sits at that bucket's head.
     void truncate( int32_t mark )
     {
-        // a SLOT costs no entry, so an elided field has nothing to undo
-        if ( vocabulary ) { return; }
         while ( count > mark )
         {
             count--;
@@ -1021,10 +1016,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// for the unit: every id the closure can put on a wire, and the slot the
 	// compiler settled for it. A generated field header carries the slot as a
 	// literal beside the id.
-	slots := map[uint64]uint64{}
-	for i, id := range ir.TableVocabulary(u) {
-		slots[id] = uint64(i + 1)
-	}
+	slots := ir.TableVocabularySlots(u)
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
 			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots}
@@ -1066,6 +1058,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			for _, st := range members {
 				g.emitTableReset(st)
 			}
+			g.emitMessageBodyDeclarations(members)
 			g.emitCodecDeclarations(members)
 			g.emitMapSurfaces(members)
 			for _, st := range members {
@@ -1074,6 +1067,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.emitTableWrite(st)
 				g.emitTableSave(st)
 				g.emitTableRead(st)
+				g.emitMessageCodec(st)
 				g.emitMessageEntries(st)
 			}
 			g.emitVariableSurface(members)
@@ -1183,6 +1177,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		if anyVariable {
 			h.WriteString("\n")
 			h.WriteString(tableArenaRuntime(u.Package, anyExtent))
+			// the node table on the MESSAGE wire (docs/SPEC-TABLES.md §3.3),
+			// spelled in terms of the numbering the arena runtime declares
+			h.WriteString("\n")
+			nodeGuard := strings.ToUpper(u.Package) + "_SCHEMA_TABLE_MESSAGE_NODES"
+			h.WriteString("#ifndef " + nodeGuard + "\n#define " + nodeGuard + "\n\nnamespace " + u.Package + " {\n\n" + cppMessageNodeRuntime + "} // namespace " + u.Package + "\n\n#endif // " + nodeGuard + "\n")
 		}
 		if anyExtent {
 			// the NODE EXTENT runtime (docs/SPEC-TABLES.md §2.8, §2.9): what a

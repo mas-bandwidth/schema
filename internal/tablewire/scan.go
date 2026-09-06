@@ -23,18 +23,6 @@ func NodeRecordTypes(data []byte) (types []uint64, whole bool) {
 	return nodeRecordTypes(body, ids)
 }
 
-// NodeRecordTypesMessage is the same scan over the MESSAGE form
-// (docs/SPEC-TABLES.md §3.3): the wire is the form byte and the root body, so
-// the body runs to the last byte and the ids are the CONNECTION's table rather
-// than a trailer of its own. Everything the scan then does is §3.1's, because
-// the node table is a field of the root body and never part of a trailer.
-func NodeRecordTypesMessage(data []byte, ids []uint64) (types []uint64, whole bool) {
-	if len(data) < 1 || data[0] != ir.TableWireMessageForm {
-		return nil, false
-	}
-	return nodeRecordTypes(data[1:], ids)
-}
-
 func nodeRecordTypes(body []byte, ids []uint64) (types []uint64, whole bool) {
 	var ignored tabletext.Report
 	payload, present, framed := nodeTableBytes(body, ids, &ignored)

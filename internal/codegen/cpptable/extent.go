@@ -945,3 +945,12 @@ func (g *tableGen) emitUnreachedExtentRefusal(f *ir.Field, ref *ir.Struct, subje
 	g.pf("        if ( !TableExtentUnreachedEmpty( %sExtent( ctx, %s.%s[i] ) ) ) { return false; }\n", ref.Name, subject, f.Name)
 	g.pf("    }\n")
 }
+
+// alignOfList is one list element's alignment in the region, which is where
+// a list's carved array begins.
+func alignOfList(u *ir.Unit, f *ir.Field) int64 {
+	if _, align := ir.ListElementLayout(u, f); align > 0 {
+		return align
+	}
+	return 8
+}

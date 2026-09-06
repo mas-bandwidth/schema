@@ -46,7 +46,8 @@ int main( int argc, char ** argv )
         printf( "message slot control: the announcement did not write\n" );
         return 2;
     }
-    backenddemo::TableVocabulary vocabulary;
+    std::vector<backenddemo::TableMessageEntry> entries( (size_t) backenddemo::kTableMessageEntriesHere );
+    backenddemo::TableVocabulary vocabulary( entries.data(), backenddemo::kTableMessageEntriesHere );
     if ( !backenddemo::AnnounceRead( vocabulary, announcement.data(), (int64_t) announcement.size(), NULL ) )
     {
         printf( "message slot control: this unit's own announcement was refused\n" );
@@ -55,7 +56,8 @@ int main( int argc, char ** argv )
 
     backenddemo::LoginRequest value;
     backenddemo::TableReport report;
-    if ( !backenddemo::LoginRequestLoadMessage( value, vocabulary, golden.data(), (int64_t) golden.size(), &report ) )
+    int64_t count = 1;
+    if ( !backenddemo::LoginRequestLoadMessages( &value, &count, vocabulary, golden.data(), (int64_t) golden.size(), &report ) || count != 1 )
     {
         printf( "message slot control: the golden did not load\n" );
         return 1;
@@ -66,9 +68,9 @@ int main( int argc, char ** argv )
                 report.unknown, report.kind_mismatch, (int) report.malformed );
         return 1;
     }
-    const int64_t size = backenddemo::LoginRequestMeasureMessage( value );
+    const int64_t size = backenddemo::LoginRequestMeasureMessages( &value, 1, &report );
     std::vector<uint8_t> again( size > 0 ? (size_t) size : 1 );
-    if ( backenddemo::LoginRequestSaveMessage( value, again.data(), size ) != size )
+    if ( backenddemo::LoginRequestSaveMessages( &value, 1, again.data(), size, &report ) != size )
     {
         printf( "message slot control: the save refused\n" );
         return 1;

@@ -70,7 +70,8 @@ enum TableMessageReason
     no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
     second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
     vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
-    message_form_as_file  // a form 2 wire where a FILE was expected: its table is somewhere else
+    message_form_as_file, // a form 2 wire where a FILE was expected: its table is somewhere else
+    batch_too_large       // a batch of more than 256 bodies on the write side, or of more than the caller has room for on the read side: nothing is written or decoded, and the count says what the wire carries
 };
 
 // The table-wire read report — the permissive contract's ledger. Silence
@@ -301,16 +302,8 @@ struct TableIds
     int32_t head[ kBuckets ];
     int32_t count;
     bool overflow;
-    // THE MESSAGE FORM'S SLOTS (docs/SPEC-TABLES.md §3.3). A form 2 wire
-    // names ids through the CONNECTION's table, which is the unit's whole
-    // vocabulary in a compiler-settled order — so every reference is known at
-    // compile time and rides at the header as a literal beside the id. This
-    // flag is what selects it: false interns the id in first-use order and
-    // writes a trailer, true answers the slot and writes none, and the walk
-    // that decides is one walk.
-    bool vocabulary;
 
-    TableIds() : count( 0 ), overflow( false ), vocabulary( false )
+    TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
     }
@@ -320,16 +313,10 @@ struct TableIds
         return uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> 58 ) & uint32_t( kBuckets - 1 );
     }
 
-    // the reference an id takes: its message-form SLOT under the connection's
-    // table, or the file's own first-use entry
-    SCALARDEMO_TABLE_INLINE uint64_t ref( uint64_t id, uint64_t slot )
-    {
-        if ( vocabulary ) { return slot; }
-        return intern( id );
-    }
-
-    // the FILE form's half, appending the id on first use
-    uint64_t intern( uint64_t id )
+    // the reference an id takes: the file's own first-use entry, appended on
+    // first use. The MESSAGE form names no id at all: its references are
+    // compile-time slots of the announced vocabulary (docs/SPEC-TABLES.md §3.3).
+    SCALARDEMO_TABLE_INLINE uint64_t ref( uint64_t id )
     {
         const uint32_t b = bucket_of( id );
         for ( int32_t i = head[b]; i >= 0; i = chain[i] )
@@ -345,8 +332,6 @@ struct TableIds
     // recent one in its bucket, so it sits at that bucket's head.
     void truncate( int32_t mark )
     {
-        // a SLOT costs no entry, so an elided field has nothing to undo
-        if ( vocabulary ) { return; }
         while ( count > mark )
         {
             count--;
@@ -582,126 +567,731 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
     }
 }
 
-// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): a FILE carries its own id
-// table and a MESSAGE STREAM announces one and then carries none.
+// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): a batch of BITPACKED bodies
+// under one announced vocabulary.
 //
-// A form 2 wire is TWO PARTS, the form byte and the root body: the body ends
-// at its own zero reference as it does in a file, there is no trailer, and the
-// message's last byte is the body's terminator. Its references resolve against
-// the CONNECTION's table, which is the unit's whole vocabulary in the order
-// the compiler settled.
+// A form 2 wire is THREE PARTS: the form byte, the body count, and the bodies
+// as one continuous bit stream, zero-padded to the next byte at the end and
+// nowhere else. A body is a sequence of fields, each a REFERENCE followed by a
+// PAYLOAD and nothing else: no kind byte and no length, because the
+// announcement carries the kind and the shape of every entry.
 const uint8_t kTableWireMessageForm = 2;
 
-// The RESERVED build-version id, the second id the language holds back (§5,
-// §11), beside the node table's. It is the announcement's one required field,
-// and a reserved id in any body but the one whose transport it is, is
-// malformed (§3.1).
+// THE COUNT IS A RANGED INTEGER OVER [1, 256], eight bits carrying M - 1. 256
+// is a WIRE CONSTANT of this form rather than a receiver's policy, because the
+// count's WIDTH depends on it and two peers that disagreed on the width would
+// not be reading the same wire. A batch of zero is not spellable.
+static const int64_t kTableMessageBatchMax = 256;
+
+// The RESERVED ids of the announcement's own two fields (§5, §11), beside the
+// node table's. They are the announcement's transport, they never appear in a
+// body, and they take no slot in the vocabulary.
 static const uint64_t kTableBuildVersionFieldId = 0xFFFFFFFFFFFFFFFEull;
+static const uint64_t kTableMessageVocabularyFieldId = 0xFFFFFFFFFFFFFFFDull;
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 32 entries and 276 bytes. It is an
-// ordinary form 1 FILE — the form byte, a body carrying the BUILD VERSION
-// under the reserved id at kind 9, and the trailer that IS the connection's
-// table, slot 1 the reserved id and slots 2 and up the vocabulary under one
-// numbering.
-//
-// The vocabulary is the unit's whole closure in the COOK PROJECTION's order
-// (§20.2) — each record in the order the projection renders it and each
-// record's fields in the order the projection renders them, then each enum's
-// variants and each union's arms — followed by the tail the projection does
-// not name: the reserved node-table id, the three blob type ids as bytes,
-// string and wstring, and every table's own name id in the projection's sorted
-// record order. The tail is UNCONDITIONAL, so an ordinary edit only ever grows
-// it at its end and never moves a slot a generated field header carries as a
-// literal.
-static const int64_t kTableAnnounceBytes = 276;
-static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x7c, 0x7b, 0x01, 0xaa, 0xf9, 0x72, 0x70, 0x61, 0x00,
-    0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x07, 0x17, 0x02, 0x86,
-    0x4c, 0xf5, 0x63, 0xaf, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf,
-    0x75, 0x0f, 0xca, 0x90, 0x91, 0x82, 0x28, 0xb1, 0xc6, 0xaf, 0x9b, 0x2e,
-    0xef, 0x88, 0x50, 0x1e, 0x38, 0x86, 0x15, 0x06, 0xcd, 0xb8, 0x1a, 0x40,
-    0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x58, 0xb8, 0xde, 0x05,
-    0xf3, 0xa1, 0x1d, 0x89, 0xb5, 0x25, 0x3e, 0x6a, 0x6c, 0x26, 0xd9, 0x7f,
-    0xe4, 0xad, 0x77, 0x81, 0x11, 0x24, 0xc9, 0xfb, 0x40, 0x0e, 0x20, 0xa0,
-    0x8a, 0x49, 0x81, 0x22, 0xe1, 0xd0, 0x3c, 0x09, 0x19, 0xc0, 0x7d, 0x8b,
-    0xb1, 0x0a, 0x7b, 0xce, 0xa2, 0x57, 0x37, 0x1f, 0x6f, 0xe6, 0xb4, 0x28,
-    0x67, 0x90, 0xe5, 0x23, 0x42, 0x26, 0xaf, 0x08, 0x79, 0xdd, 0x1b, 0xd6,
-    0x15, 0x2f, 0xef, 0x40, 0x91, 0x4f, 0xfd, 0xf2, 0x12, 0x67, 0xe3, 0x78,
-    0x66, 0xfd, 0xfc, 0x23, 0x91, 0x1d, 0x1a, 0xb7, 0xfb, 0xb9, 0xac, 0x6a,
-    0xdc, 0xdd, 0x48, 0x3b, 0x6a, 0xca, 0xb1, 0xe3, 0x1e, 0x41, 0x8a, 0xf0,
-    0x6e, 0x4b, 0x49, 0xb1, 0xb8, 0x67, 0x9c, 0x0d, 0x84, 0x9e, 0x96, 0x32,
-    0x6d, 0xe1, 0x4a, 0x1b, 0x30, 0xac, 0xf1, 0x5a, 0x64, 0x70, 0x95, 0xa8,
-    0x0d, 0xd8, 0x2f, 0x8c, 0x98, 0x1f, 0x0e, 0xb2, 0x8a, 0xf7, 0x28, 0x43,
-    0x67, 0x4d, 0x02, 0x86, 0x4c, 0x15, 0x64, 0xaf, 0xb4, 0x4b, 0x02, 0x86,
-    0x4c, 0x14, 0x64, 0xaf, 0xcd, 0x50, 0x02, 0x86, 0x4c, 0x17, 0x64, 0xaf,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xe4, 0x4f, 0x1c, 0x4f,
-    0x47, 0xc0, 0x2e, 0x2f, 0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70,
-    0xc7, 0xd4, 0x7b, 0x26, 0xb0, 0x9d, 0x29, 0x5f, 0xc9, 0xf0, 0xa4, 0x99,
-    0x2d, 0x6b, 0x52, 0xde, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+// THE WIDEST COUNT THIS FORM SPELLS, which is the count an UNBOUNDED array
+// announces (§2.9): an unbounded array states no bound, so the announcement
+// states the widest one a batch could carry. It is the ceiling an array's or a
+// keyed entry's announced min and max are checked against.
+static const uint64_t kTableMessageListMax = 0xFFFFFFFFull;
 
-// AnnounceMeasure is the announcement's byte count, which is a constant of the
-// unit and not a walk.
-inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+// THIS UNIT'S OWN REFERENCE WIDTH: the bits a writer spends on every reference
+// of every body it writes, which is a compile-time constant because the
+// vocabulary is. A READER spends the width the SENDER's vocabulary settles.
+static const int64_t kTableMessageRefBitsHere = 5;
 
-// Announce writes the announcement into the caller's buffer and answers the
-// bytes written — exactly AnnounceMeasure's answer — or -1 when the buffer is
-// too small. It allocates nothing and walks nothing.
-inline int64_t Announce( uint8_t * buffer, int64_t capacity )
+// THIS UNIT'S OWN ENTRY COUNT, which is the CAPACITY a receiver declares for
+// its resolved vocabulary when it talks only to peers of this schema (§3.3).
+// The vocabulary is a pure function of the build version, so a peer at this
+// build announces exactly this many entries; a receiver that means to meet
+// OTHER builds declares more, and an announcement above whatever it declared
+// is refused as vocabulary_too_large.
+static const int64_t kTableMessageEntriesHere = 31;
+
+// THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
+// layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
+// so a value written here and a value written by a generated packet writer are
+// the same bits in the same places.
+
+// EIGHT BYTES OF THE STREAM AS ONE WORD, and the word is LITTLE-END-FIRST
+// whatever order this host is in, because the stream's own definition puts
+// bit i in byte i/8: byte 0 of the run holds the word's low eight bits. That
+// is what lets one value of any width move in one unaligned load or store
+// instead of one touch a byte, and the BITS ON THE WIRE do not move.
+inline uint64_t table_message_byteswap64( uint64_t v )
 {
-    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
-    memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
-    return kTableAnnounceBytes;
+    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull )
+         | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull )
+         | ( v << 56 );
 }
 
-// TableVocabulary is ONE DIRECTION of ONE CONNECTION's id table (§3.3): the
-// entries an announcement carried, whole, under one numbering with slot 1 the
-// reserved build-version id.
-//
-// A peer holds TWO of these for a connection, the one it writes with and the
-// one it reads with, and neither is the other's. A restart opens a fresh
-// connection with empty tables and nothing is cached across connections, so
-// its whole life is one connection's. It BORROWS the announcement's bytes rather than
-// copying them, so a receiver holds one table a direction and its memory is
-// the bound below and nothing else.
-struct TableVocabulary
+inline uint64_t table_message_load64( const uint8_t * p )
 {
-    // THE CONFORMING DEFAULT BOUND (§3.3): 32 KiB a direction, eight times the
-    // 500-id unit that is already a large one. A connection's table is bounded
-    // by nothing the wire carries, so the receiver declares the maximum and an
-    // announcement above it is refused by name before an entry is touched.
-    static const int64_t kDefaultMaxEntries = 4096;
+    uint64_t v = 0;
+    memcpy( &v, p, 8 );
+#if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    v = table_message_byteswap64( v );
+#endif
+    return v;
+}
 
-    TableIdTable table;
-    uint64_t build_version = 0;
-    bool announced = false;
-    int64_t max_entries = kDefaultMaxEntries;
+inline void table_message_store64( uint8_t * p, uint64_t v )
+{
+#if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    v = table_message_byteswap64( v );
+#endif
+    memcpy( p, &v, 8 );
+}
+
+struct TableBitWriter
+{
+    uint8_t * buffer;
+    int64_t capacity; // bytes
+    int64_t bits;
+    bool overflow;
+
+    TableBitWriter() : buffer( NULL ), capacity( 0 ), bits( 0 ), overflow( false ) {}
+    TableBitWriter( uint8_t * to_buffer, int64_t to_capacity ) : buffer( to_buffer ), capacity( to_capacity ), bits( 0 ), overflow( false ) {}
+
+    // ONE WORD AT A TIME, never one bit and never one byte of arithmetic: the
+    // value is shifted into place in a REGISTER once, and the bytes it
+    // occupies are stored from that register with no read back. A sixty-four
+    // bit field costs one shift rather than nine masked read-modify-writes.
+    // The word is assembled little-end-first, so the BITS ON THE WIRE are the
+    // same bits in the same places, bit i in byte i/8 at position i%8 with the
+    // low bit first, which is what the pinned goldens hold. IT WRITES EXACTLY
+    // THE BYTES THE VALUE OCCUPIES and never one past them, so a caller's
+    // buffer beyond the batch is its own.
+    void put( uint64_t value, int64_t n )
+    {
+        if ( n <= 0 ) { return; }
+        if ( ( bits + n + 7 ) / 8 > capacity ) { overflow = true; bits += n; return; }
+        if ( n < 64 ) { value &= ( uint64_t( 1 ) << n ) - 1; } // a caller's high bits never leak
+        const int64_t index = bits >> 3;
+        const int64_t bit = bits & 7;
+        // the byte the write STARTS in keeps the bits already written to it,
+        // and every byte after it is this value's own
+        const uint64_t head = bit != 0 ? ( uint64_t( buffer[index] ) & ( ( uint64_t( 1 ) << bit ) - 1 ) ) : 0;
+        const uint64_t word = head | ( value << bit );
+        const int64_t need = ( bit + n + 7 ) >> 3; // 1 to 9 bytes
+        if ( need >= 8 )
+        {
+            table_message_store64( buffer + index, word );
+            if ( need > 8 ) { buffer[index + 8] = uint8_t( value >> ( 64 - bit ) ); }
+        }
+        else
+        {
+            for ( int64_t i = 0; i < need; i++ ) { buffer[index + i] = uint8_t( word >> ( 8 * i ) ); }
+        }
+        bits += n;
+    }
+
+    // THE ALIGN IS WHAT BUYS THIS (docs/SPEC-TABLES.md §3.3): a string(N), a
+    // bytes(N) and a blob record align before their bytes precisely so the
+    // largest payload on the wire moves as ONE memcpy. Off a boundary there is
+    // nothing to memcpy and the bytes go through put.
+    void putbytes( const uint8_t * data, int64_t n )
+    {
+        if ( n <= 0 ) { return; }
+        if ( ( bits & 7 ) == 0 )
+        {
+            if ( ( bits >> 3 ) + n > capacity ) { overflow = true; bits += n * 8; return; }
+            memcpy( buffer + ( bits >> 3 ), data, (size_t) n );
+            bits += n * 8;
+            return;
+        }
+        for ( int64_t i = 0; i < n; i++ ) { put( (uint64_t) data[i], 8 ); }
+    }
+
+    // a string's or a bytes' payload ALIGNS before its bytes, and a batch
+    // aligns once at its end. Both are zero fill, spent in one call.
+    void align() { put( 0, ( 8 - ( bits & 7 ) ) & 7 ); }
 };
 
-// AnnounceRead reads an announcement into one direction's table (§3.3).
+// TableAlignBits is what an align costs from a bit position, which a measure
+// spends exactly where a save does.
+inline int64_t TableAlignBits( int64_t bits ) { return ( 8 - ( bits % 8 ) ) % 8; }
+
+struct TableBitReader
+{
+    const uint8_t * buffer;
+    int64_t bits;   // the stream's extent, in bits
+    int64_t offset; // bits consumed
+
+    TableBitReader() : buffer( NULL ), bits( 0 ), offset( 0 ) {}
+    TableBitReader( const uint8_t * from_buffer, int64_t from_bytes ) : buffer( from_buffer ), bits( from_bytes * 8 ), offset( 0 ) {}
+
+    bool has( int64_t n ) const { return n >= 0 && offset + n <= bits; }
+
+    // the primitive is sixty-four bits, and a width above it is refused
+    // here as well as at the announcement: no field on any body can ask this
+    // reader to move more bits than it holds
+    // ONE WORD OF THE BUFFER AT A TIME, the mirror of the writer's put: the
+    // eight bytes the value starts in load as one little-end-first word and a
+    // ninth byte carries the spill a value that straddles the word needs.
+    // Within nine bytes of the stream's end there is no room for a word load
+    // and the bytes come one at a time, by the same arithmetic.
+    bool get( uint64_t & value, int64_t n )
+    {
+        if ( n > 64 || !has( n ) ) { return false; }
+        value = 0;
+        if ( n == 0 ) { return true; }
+        const int64_t index = offset >> 3;
+        const int64_t bit = offset & 7;
+        const int64_t bytes = ( bits + 7 ) >> 3;
+        if ( index + 9 <= bytes )
+        {
+            uint64_t v = table_message_load64( buffer + index ) >> bit;
+            if ( bit != 0 && bit + n > 64 ) { v |= uint64_t( buffer[index + 8] ) << ( 64 - bit ); }
+            value = n == 64 ? v : ( v & ( ( uint64_t( 1 ) << n ) - 1 ) );
+            offset += n;
+            return true;
+        }
+        int64_t got = 0;
+        while ( got < n )
+        {
+            const int64_t byte = offset >> 3;
+            const int64_t off = offset & 7;
+            const int64_t room = 8 - off;
+            const int64_t take = ( n - got ) < room ? ( n - got ) : room;
+            const uint64_t chunk = ( uint64_t( buffer[byte] ) >> off ) & ( ( uint64_t( 1 ) << take ) - 1 );
+            value |= chunk << got;
+            offset += take;
+            got += take;
+        }
+        return true;
+    }
+
+    // the bytes of an ALIGNED payload, which is the read side of the memcpy
+    // the align buys (docs/SPEC-TABLES.md §3.3)
+    bool getbytes( uint8_t * out, int64_t n )
+    {
+        if ( n < 0 || !has( n * 8 ) ) { return false; }
+        if ( ( offset & 7 ) == 0 )
+        {
+            memcpy( out, buffer + ( offset >> 3 ), (size_t) n );
+            offset += n * 8;
+            return true;
+        }
+        for ( int64_t i = 0; i < n; i++ )
+        {
+            uint64_t by = 0;
+            if ( !get( by, 8 ) ) { return false; }
+            out[i] = (uint8_t) by;
+        }
+        return true;
+    }
+
+    bool skip( int64_t n ) { if ( !has( n ) ) { return false; } offset += n; return true; }
+
+    // the pad to the next byte boundary is VERIFIED ZERO, which is the packet
+    // wire's rule for the same reason (SPEC.md §4.3)
+    bool align()
+    {
+        const int64_t pad = ( 8 - ( offset & 7 ) ) & 7;
+        if ( pad == 0 ) { return true; }
+        uint64_t bits_read = 0;
+        return get( bits_read, pad ) && bits_read == 0;
+    }
+};
+
+// TableBitsRequired is bits_required( min, max ): the bit length of max - min,
+// and zero where the two are equal, which is a value that spends no bit at all.
+inline int64_t TableBitsRequired( int64_t min, int64_t max )
+{
+    if ( max <= min ) { return 0; }
+    uint64_t span = (uint64_t) ( max - min );
+    int64_t n = 0;
+    while ( span > 0 ) { n++; span >>= 1; }
+    return n;
+}
+
+// THE ANNOUNCED ENTRY (§3.3): an id, a kind, and a SHAPE, which is the width
+// and range facts a reader needs to SKIP a field exactly and to DECODE one
+// whose own declaration has moved. One name may take TWO entries, at two kinds or two
+// shapes, and a body names the one it means.
 //
-// THE BOUND IS CHECKED BEFORE ANYTHING IS ALLOCATED: the entry count is a
-// fixed little-endian u64 at the end, so a receiver reads it, compares it and
-// refuses without touching an entry. After that it is §3's ordinary FILE read,
-// because the announcement IS a file, with EXACTLY ONE STRICT CHECK over its
-// body: the reserved build-version field present, exactly once, under kind 9,
-// eight bytes wide. Everything else is an ordinary field under §4's tolerance,
-// so an unknown one is skipped and counted and the announcement can GAIN a
-// field in a later minor without a lockstep redeploy.
+// The ELEMENT's own facts ride beside the field's because an array's element
+// is the one nesting this wire has: an array of arrays is not a table-wire
+// construct, so one level is every level.
 //
-// The FIRST announcement sets the table and it is the only one that can. A
-// SECOND is refused by name: it does not replace the table, it does not amend
-// it and it changes nothing. A refused announcement sets NO TABLE.
+// IT IS THE RESOLVED ENTRY AND THE CALLER SIZES AN ARRAY OF THEM, so it
+// carries what a DECODE takes and nothing a decode does not: qmin, qdelta and
+// qcount are what SPEC.md §4.3's rule leaves behind, and the qmax and qres
+// that rule CONSUMES are locals of the parse. The widths are int16 because a
+// width is bounded by the kind it came under and no kind holds more than 128
+// bits.
+struct TableMessageEntry
+{
+    uint64_t id = 0;
+    int64_t min = 0;        // an array's minimum count
+    int64_t max = 0;        // an array's maximum count, a string's capacity, a keyed array's slots
+    int64_t base_lo = 0;    // the ranged base, low half: a signed kind's sign-extends, an unsigned kind's is whole
+    int64_t base_hi = 0;    // its high half, for a 128-bit kind
+    int64_t elem_max = 0;
+    int64_t elem_base_lo = 0;
+    int64_t elem_base_hi = 0;
+    // what SPEC.md §4.3's derivation leaves: the base, the step and the count
+    float qmin = 0.0f;
+    float qdelta = 0.0f;
+    uint32_t qcount = 0;
+    float elem_qmin = 0.0f;
+    float elem_qdelta = 0.0f;
+    uint32_t elem_qcount = 0;
+    // THE PAYLOAD'S WIDTH, RESOLVED: what the kind, the packing and the
+    // announced bits together say, computed once at AnnounceRead, and -1
+    // where the payload is not a fixed-width value at all
+    int16_t value_bits = -1;
+    int16_t elem_value_bits = -1;
+    uint8_t kind = 0;
+    uint8_t packing = 0;
+    uint8_t elem_kind = 0;
+    uint8_t elem_packing = 0;
+};
+
+// TableMessageEntrySame reports whether two RESOLVED entries carry the same
+// shape, which is every fact of the entry but its id and its kind. It is what
+// the announcement's duplicate rule is asked in: two entries that agree on all
+// three parts are malformed (§3.3).
+inline bool TableMessageEntrySame( const TableMessageEntry & a, const TableMessageEntry & b )
+{
+    return a.min == b.min && a.max == b.max && a.base_lo == b.base_lo && a.base_hi == b.base_hi
+        && a.elem_max == b.elem_max && a.elem_base_lo == b.elem_base_lo && a.elem_base_hi == b.elem_base_hi
+        && a.qmin == b.qmin && a.qdelta == b.qdelta && a.qcount == b.qcount
+        && a.elem_qmin == b.elem_qmin && a.elem_qdelta == b.elem_qdelta && a.elem_qcount == b.elem_qcount
+        && a.value_bits == b.value_bits && a.elem_value_bits == b.elem_value_bits
+        && a.packing == b.packing && a.elem_kind == b.elem_kind && a.elem_packing == b.elem_packing;
+}
+
+// TableMessageKindBits is the widest RANGED value a kind can carry, its own
+// storage width: a width above it is a hostile width on the announcement.
+inline int64_t TableMessageKindBits( uint8_t kind )
+{
+    switch ( kind )
+    {
+        case 2: case 6: case 20: case 25: return 8;
+        case 3: case 7: case 21: case 26: return 16;
+        case 4: case 8: case 22: case 27: return 32;
+        case 5: case 9: case 23: case 28: return 64;
+        default: return 128;
+    }
+}
+
+// TableMessageQuantization is SPEC.md §4.3's derivation over an announced
+// triple, in float32 and by nothing else: delta, the step count and the
+// width. False is a triple SPEC.md calls non-conforming, which on the
+// announcement is a hostile width like any other (§3.3).
+inline bool TableMessageQuantization( float qmin, float qmax, float qres, float & delta, uint32_t & count, int64_t & bits )
+{
+    if ( !( qmin < qmax ) || !( qres > 0.0f ) ) { return false; }
+    delta = qmax - qmin;
+    float values = delta / qres;
+    if ( !( delta - delta == 0.0f ) || !( values - values == 0.0f ) ) { return false; } // Inf - Inf is NaN
+    if ( !( values >= 1.0f ) ) { values = 1.0f; }
+    else if ( values > 4294967040.0f ) { values = 4294967040.0f; } // the largest float below 2^32
+    count = (uint32_t) values;
+    if ( (float) count < values ) { count++; } // ceil, on a value the cast holds exactly
+    bits = TableBitsRequired( 0, (int64_t) count );
+    return true;
+}
+
+// The two roundings on each side of the rule (SPEC.md §7.2): the product
+// rounds to float32 BEFORE the add, which a compiler permitted to contract
+// would otherwise fuse into one rounding and move the wire.
+#if ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) )
+#define TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+w" ( x ) )
+#elif ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) )
+#define TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+x" ( x ) )
+#else
+#define TABLE_FLOAT_FORCE_ROUND( x ) do { volatile float table_float_force_round_slot = ( x ); ( x ) = table_float_force_round_slot; } while ( 0 )
+#endif
+
+// TableMessageQuantize is the writer's half: the index a value takes.
+inline uint32_t TableMessageQuantize( float value, float qmin, float delta, uint32_t count )
+{
+    float normalized = ( value - qmin ) / delta;
+    if ( !( normalized >= 0.0f ) ) { normalized = 0.0f; }
+    else if ( !( normalized <= 1.0f ) ) { normalized = 1.0f; }
+    float scaled = normalized * (float) count;
+    TABLE_FLOAT_FORCE_ROUND( scaled );
+    uint32_t index = (uint32_t) ( scaled + 0.5f ); // floor of a non-negative value
+    if ( index > count ) { index = count; }
+    return index;
+}
+
+// TableMessageDequantize is the reader's half: the float an index names.
+inline float TableMessageDequantize( uint32_t index, float qmin, float delta, uint32_t count )
+{
+    if ( index > count ) { index = count; }
+    const float normalized = index / (float) count;
+    float scaled = normalized * delta;
+    TABLE_FLOAT_FORCE_ROUND( scaled );
+    return scaled + qmin;
+}
+
+inline bool TableMessageIntegerKind( uint8_t kind )
+{
+    return ( kind >= 2 && kind <= 9 ) || kind == 18 || kind == 19;
+}
+
+inline bool TableMessageFixedKind( uint8_t kind ) { return kind >= 20 && kind <= 29; }
+
+inline bool TableMessageKnownKind( uint8_t kind )
+{
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+}
+
+// A CANONICAL LEB128, which is the announcement's own integer: the
+// announcement is a form 1 FILE and takes §3's rule.
+inline bool TableMessageLeb( const uint8_t * in, int64_t size, int64_t & at, uint64_t & value )
+{
+    value = 0;
+    for ( int64_t shift = 0; at < size; shift += 7 )
+    {
+        if ( shift >= 64 ) { return false; }
+        const uint8_t by = in[ at++ ];
+        value |= uint64_t( by & 0x7F ) << shift;
+        if ( ( by & 0x80 ) == 0 ) { return !( shift > 0 && by == 0 ); }
+    }
+    return false;
+}
+
+// TableMessageShapeFacts is where one shape's facts land: the field's own,
+// or its element's, which is the one nesting this wire has.
+struct TableMessageShapeFacts
+{
+    uint8_t & packing; int64_t & value_bits; int64_t & base_lo; int64_t & base_hi;
+    float & qmin; float & qmax; float & qres; float & qdelta; uint32_t & qcount;
+    int64_t & min; int64_t & max; uint8_t & elem_kind;
+};
+
+inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & at, uint8_t kind, TableMessageShapeFacts f );
+inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t value_bits );
+
+// TableMessageEntryRead parses ONE entry, and answers false for a HOSTILE
+// SHAPE: bits above the kind's own domain, an array whose min exceeds its
+// max, an element kind outside the closed set, a quantized triple SPEC.md
+// calls non-conforming, or a shape running past the vocabulary's own bytes.
+inline bool TableMessageEntryRead( const uint8_t * in, int64_t size, int64_t & at, TableMessageEntry & entry )
+{
+    if ( at + 9 > size ) { return false; }
+    entry = TableMessageEntry();
+    for ( int i = 0; i < 8; i++ ) { entry.id |= uint64_t( in[ at + i ] ) << ( 8 * i ); }
+    entry.kind = in[ at + 8 ];
+    at += 9;
+    if ( !TableMessageKnownKind( entry.kind ) ) { return false; }
+    // The parse lands in LOCALS and the entry keeps what a decode reads: the
+    // quantized max and res are the derivation's inputs and never a field's.
+    uint8_t packing = 0, elem_kind = 0;
+    int64_t bits = 0, base_lo = 0, base_hi = 0, min = 0, max = 0;
+    float qmin = 0.0f, qmax = 0.0f, qres = 0.0f, qdelta = 0.0f;
+    uint32_t qcount = 0;
+    TableMessageShapeFacts own = { packing, bits, base_lo, base_hi,
+                                   qmin, qmax, qres, qdelta, qcount,
+                                   min, max, elem_kind };
+    if ( !TableMessageShapeRead( in, size, at, entry.kind, own ) ) { return false; }
+    entry.packing = packing;
+    entry.value_bits = (int16_t) TableMessageValueBits( entry.kind, packing, bits );
+    entry.base_lo = base_lo;
+    entry.base_hi = base_hi;
+    entry.qmin = qmin;
+    entry.qdelta = qdelta;
+    entry.qcount = qcount;
+    entry.min = min;
+    entry.max = max;
+    entry.elem_kind = elem_kind;
+    if ( entry.kind == 14 || entry.kind == 16 )
+    {
+        uint8_t elem_packing = 0, inner_kind = 0;
+        int64_t elem_bits = 0, elem_base_lo = 0, elem_base_hi = 0, elem_min = 0, elem_max = 0;
+        float elem_qmin = 0.0f, elem_qmax = 0.0f, elem_qres = 0.0f, elem_qdelta = 0.0f;
+        uint32_t elem_qcount = 0;
+        TableMessageShapeFacts elem = { elem_packing, elem_bits, elem_base_lo, elem_base_hi,
+                                        elem_qmin, elem_qmax, elem_qres, elem_qdelta, elem_qcount,
+                                        elem_min, elem_max, inner_kind };
+        if ( !TableMessageShapeRead( in, size, at, entry.elem_kind, elem ) ) { return false; }
+        entry.elem_packing = elem_packing;
+        entry.elem_value_bits = (int16_t) TableMessageValueBits( entry.elem_kind, elem_packing, elem_bits );
+        entry.elem_base_lo = elem_base_lo;
+        entry.elem_base_hi = elem_base_hi;
+        entry.elem_qmin = elem_qmin;
+        entry.elem_qdelta = elem_qdelta;
+        entry.elem_qcount = elem_qcount;
+        entry.elem_max = elem_max;
+    }
+    return true;
+}
+
+// TableMessageShapeRead is one shape, by the kind that names it (§3.3's shape
+// table). Every number in it is a canonical LEB128 except where the row says
+// otherwise: a RANGED BASE IS ENCODED BY ITS KIND'S SIGNEDNESS, zigzag for the
+// signed kinds, unsigned for the unsigned kinds and sixteen bytes for the
+// 128-bit and fixed-point kinds, and a QUANTIZED f32 carries min, max and res
+// as float32, from which the step count and the width derive by SPEC.md
+// §4.3's rule and by nothing else.
+inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & at, uint8_t kind, TableMessageShapeFacts f )
+{
+    uint64_t v = 0;
+    if ( TableMessageIntegerKind( kind ) || TableMessageFixedKind( kind ) || kind == 10 )
+    {
+        if ( at >= size ) { return false; }
+        f.packing = in[ at++ ];
+        if ( f.packing == 0 ) { return true; }
+        if ( f.packing == 1 && kind != 10 )
+        {
+            if ( !TableMessageLeb( in, size, at, v ) || (int64_t) v > TableMessageKindBits( kind ) ) { return false; }
+            f.value_bits = (int64_t) v;
+            if ( kind == 18 || kind == 19 || TableMessageFixedKind( kind ) )
+            {
+                if ( at + 16 > size ) { return false; }
+                uint64_t lo = 0, hi = 0;
+                for ( int i = 0; i < 8; i++ ) { lo |= uint64_t( in[ at + i ] ) << ( 8 * i ); }
+                for ( int i = 0; i < 8; i++ ) { hi |= uint64_t( in[ at + 8 + i ] ) << ( 8 * i ); }
+                f.base_lo = (int64_t) lo; f.base_hi = (int64_t) hi;
+                at += 16;
+                return true;
+            }
+            if ( !TableMessageLeb( in, size, at, v ) ) { return false; }
+            if ( kind >= 2 && kind <= 5 ) { f.base_lo = (int64_t) ( v >> 1 ) ^ -(int64_t) ( v & 1 ); } // zigzag
+            else { f.base_lo = (int64_t) v; }                                                       // the unsigned domain, whole
+            return true;
+        }
+        if ( f.packing == 2 && kind == 10 )
+        {
+            if ( at + 12 > size ) { return false; }
+            uint32_t raw[3] = { 0, 0, 0 };
+            for ( int k = 0; k < 3; k++ ) { for ( int i = 0; i < 4; i++ ) { raw[k] |= uint32_t( in[ at + 4 * k + i ] ) << ( 8 * i ); } }
+            at += 12;
+            memcpy( &f.qmin, &raw[0], 4 );
+            memcpy( &f.qmax, &raw[1], 4 );
+            memcpy( &f.qres, &raw[2], 4 );
+            return TableMessageQuantization( f.qmin, f.qmax, f.qres, f.qdelta, f.qcount, f.value_bits );
+        }
+        return false; // a packing outside the closed set
+    }
+    // A MAX ABOVE WHAT THE KIND CAN HOLD IS A HOSTILE WIDTH (§3.3). A string
+    // and a wide string are bounded by the int32 storage cap the checker
+    // applies to every N (SPEC §4.3, §6.1), and an array and a keyed entry by
+    // the 32-bit count an unbounded array announces (§2.9), which is the
+    // widest count this form spells. A larger bound is a shape no conforming
+    // declaration can produce, and a reader that carried it would do its
+    // length arithmetic in a range that overflows.
+    if ( kind == 12 || kind == 33 )
+    {
+        if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) INT32_MAX ) { return false; }
+        f.max = (int64_t) v;
+        return true;
+    }
+    if ( kind == 14 || kind == 16 )
+    {
+        if ( kind == 14 )
+        {
+            if ( !TableMessageLeb( in, size, at, v ) || v > kTableMessageListMax ) { return false; }
+            f.min = (int64_t) v;
+        }
+        if ( !TableMessageLeb( in, size, at, v ) || v > kTableMessageListMax ) { return false; }
+        if ( (int64_t) v < f.min ) { return false; }
+        f.max = (int64_t) v;
+        if ( at >= size ) { return false; }
+        f.elem_kind = in[ at++ ];
+        if ( !TableMessageKnownKind( f.elem_kind ) ) { return false; }
+        // AND AN ELEMENT KIND OF 12 OR 33 IS REFUSED HERE, at the
+        // announcement, rather than at the skip that would meet it (§3.3): no
+        // declaration this language accepts is an array of string(N) or of
+        // wstring(N), so a shape announcing one is one rule's business and not
+        // two.
+        if ( f.elem_kind == 12 || f.elem_kind == 33 ) { return false; }
+        return true;
+    }
+    return true;
+}
+
+// TableMessageValueBits is one value's width under a shape, and -1 where the
+// kind's payload is not a fixed-width value at all.
+inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t value_bits )
+{
+    if ( kind == 1 ) { return 1; }
+    if ( kind == 11 ) { return 64; }
+    if ( kind == 10 ) { return packing == 2 ? value_bits : 32; }
+    if ( TableMessageIntegerKind( kind ) || TableMessageFixedKind( kind ) )
+    {
+        if ( packing == 1 ) { return value_bits; }
+        switch ( kind )
+        {
+            case 2: case 6: case 20: case 25: return 8;
+            case 3: case 7: case 21: case 26: return 16;
+            case 4: case 8: case 22: case 27: return 32;
+            case 5: case 9: case 23: case 28: return 64;
+            default: return 128;
+        }
+    }
+    return -1;
+}
+
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 31 entries and 677 bytes. It is an
+// ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
+// the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
+// over element kind 6, and a trailer of those two reserved ids.
+//
+// THE VOCABULARY IS A FIELD AND NOT THE TRAILER, and that buys three things:
+// §3's writer rule that an id no body references is never written is restored
+// unbroken, an entry can carry a KIND and a SHAPE which a trailer of bare ids
+// cannot, and one NAME can appear at two shapes.
+//
+// The order is the COOK PROJECTION's (§20.2): each record in the order the
+// projection renders it and each record's fields in the order the projection
+// renders them, then each enum's variants and each union's arms. Then comes
+// the tail the projection does not name: the reserved node-table id, the three
+// blob type ids as bytes, string and wstring, and every table's own name id in
+// the projection's sorted record order. The tail is UNCONDITIONAL, so an
+// ordinary edit only ever grows it at its end and never moves a slot a
+// generated field header carries as a literal.
+static const int64_t kTableAnnounceBytes = 677;
+static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
+    0x01, 0x01, 0x09, 0x7c, 0x7b, 0x01, 0xaa, 0xf9, 0x72, 0x70, 0x61, 0x02,
+    0x0e, 0xfd, 0x04, 0x06, 0xfa, 0x04, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+    0x63, 0xaf, 0x17, 0x01, 0x20, 0x00, 0x00, 0xd0, 0x8a, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x54, 0x15, 0x02,
+    0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x17, 0x01, 0x20, 0x00, 0x00, 0xd0, 0x8a,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0x75, 0x0f, 0xca, 0x90, 0x91, 0x82, 0x28, 0xb1, 0x1b, 0x01, 0x19, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xc6, 0xaf, 0x9b, 0x2e, 0xef, 0x88, 0x50, 0x1e, 0x14,
+    0x01, 0x08, 0x80, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x38, 0x86, 0x15, 0x06, 0xcd, 0xb8,
+    0x1a, 0x40, 0x16, 0x01, 0x19, 0x00, 0x00, 0x4c, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x4a, 0xd7, 0xa1,
+    0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x17, 0x01, 0x20, 0x00, 0x00, 0xd0, 0x8a,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0x58, 0xb8, 0xde, 0x05, 0xf3, 0xa1, 0x1d, 0x89, 0x18, 0x01, 0x25, 0x00,
+    0x00, 0xc0, 0xbd, 0xf0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xb5, 0x25, 0x3e, 0x6a, 0x6c, 0x26, 0xd9, 0x7f, 0x16,
+    0x01, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe4, 0xad, 0x77, 0x81, 0x11, 0x24,
+    0xc9, 0xfb, 0x19, 0x01, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x0e, 0x20,
+    0xa0, 0x8a, 0x49, 0x81, 0x22, 0x1b, 0x01, 0x1a, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xe1, 0xd0, 0x3c, 0x09, 0x19, 0xc0, 0x7d, 0x8b, 0x1c, 0x01, 0x40, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xb1, 0x0a, 0x7b, 0xce, 0xa2, 0x57, 0x37, 0x1f, 0x1d,
+    0x01, 0x25, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6f, 0xe6, 0xb4, 0x28, 0x67, 0x90,
+    0xe5, 0x23, 0x1b, 0x01, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42, 0x26, 0xaf,
+    0x08, 0x79, 0xdd, 0x1b, 0xd6, 0x12, 0x01, 0x66, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0xff, 0xff, 0xff,
+    0x15, 0x2f, 0xef, 0x40, 0x91, 0x4f, 0xfd, 0xf2, 0x12, 0x01, 0x22, 0x00,
+    0x0e, 0xfa, 0xd5, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x13,
+    0x00, 0x91, 0x1d, 0x1a, 0xb7, 0xfb, 0xb9, 0xac, 0x6a, 0x16, 0x01, 0x15,
+    0x00, 0x00, 0xf8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xdc, 0xdd, 0x48, 0x3b, 0x6a, 0xca, 0xb1, 0xe3,
+    0x0e, 0x03, 0x03, 0x16, 0x01, 0x15, 0x00, 0x00, 0xf8, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x1e, 0x41,
+    0x8a, 0xf0, 0x6e, 0x4b, 0x49, 0xb1, 0x0e, 0x00, 0x04, 0x1a, 0x01, 0x0f,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0xb8, 0x67, 0x9c, 0x0d, 0x84, 0x9e, 0x96, 0x32,
+    0x10, 0x03, 0x17, 0x01, 0x28, 0x00, 0x00, 0x00, 0x00, 0x9c, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x6d, 0xe1, 0x4a,
+    0x1b, 0x30, 0xac, 0xf1, 0x5a, 0x0e, 0x00, 0x02, 0x13, 0x00, 0x64, 0x70,
+    0x95, 0xa8, 0x0d, 0xd8, 0x2f, 0x8c, 0x0d, 0x98, 0x1f, 0x0e, 0xb2, 0x8a,
+    0xf7, 0x28, 0x43, 0x0d, 0x67, 0x4d, 0x02, 0x86, 0x4c, 0x15, 0x64, 0xaf,
+    0x00, 0xb4, 0x4b, 0x02, 0x86, 0x4c, 0x14, 0x64, 0xaf, 0x00, 0xcd, 0x50,
+    0x02, 0x86, 0x4c, 0x17, 0x64, 0xaf, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0x00, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f,
+    0x00, 0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xc7, 0xd4,
+    0x7b, 0x26, 0xb0, 0x9d, 0x29, 0x5f, 0x00, 0xc9, 0xf0, 0xa4, 0x99, 0x2d,
+    0x6b, 0x52, 0xde, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+// TableVocabulary is ONE DIRECTION's announced vocabulary (§3.3): the entries
+// an announcement carried, RESOLVED ONCE, under one numbering.
+//
+// THE RECEIVER RESOLVES ONCE (§3.3), so this holds the entries themselves and
+// not the announcement's bytes: every entry is parsed at AnnounceRead, and
+// every body after it dispatches through ONE ARRAY INDEX with nothing to
+// re-read and nothing to decide. The announcement is free the moment
+// AnnounceRead returns.
+//
+// THE STORAGE IS THE CALLER'S and this library never allocates. The caller
+// declares an array of entries wherever it wants it, static, on a heap, in an
+// arena or beside its connection, and hands it here with its CAPACITY. The
+// announcement holds for the life of the connection (§3.3), so the array does
+// too, and a peer holds TWO for a connection, the one it writes with and the
+// one it reads with. A restart opens a fresh connection with an empty
+// vocabulary and nothing is cached across connections.
+//
+// kTableMessageEntriesHere is the capacity a receiver that talks only to peers
+// of THIS schema declares, and a receiver meeting other builds declares more.
+struct TableVocabulary
+{
+    // THE CONFORMING DEFAULT BYTE BOUND (§3.3). The ENTRY bound has no default
+    // because it IS the caller's capacity: an announcement naming more entries
+    // than the caller made room for is refused as vocabulary_too_large before
+    // an entry is touched, and the byte bound is read off the vocabulary
+    // field's own length before that.
+    static const int64_t kDefaultMaxBytes = 64 * 1024;
+
+    TableVocabulary( TableMessageEntry * storage, int64_t capacity )
+        : entries( storage ), max_entries( capacity ) {}
+
+    TableMessageEntry * entries; // THE CALLER'S, capacity max_entries
+    int64_t max_entries;
+    int64_t count = 0;
+    int64_t ref_bits = 0;
+    uint64_t build_version = 0;
+    bool announced = false;
+    // REFUSAL IS TERMINAL (§3.3): a connection whose first announcement was
+    // refused, for any reason, carries no vocabulary for its life, and every
+    // announcement after it is refused as second_announcement
+    bool refused = false;
+    int64_t max_bytes = kDefaultMaxBytes;
+};
+
+// TableVocabularyEntryAt is the entry a reference names, counted from 1: ONE
+// ARRAY INDEX into the caller's resolved storage, no parse and no branch.
+inline const TableMessageEntry & TableVocabularyEntryAt( const TableVocabulary & vocabulary, uint64_t slot )
+{
+    return vocabulary.entries[ slot - 1 ];
+}
+
+// AnnounceRead reads an announcement into one direction's vocabulary (§3.3).
+//
+// The announcement IS a file, so every malformed rule of §3 already covers it.
+// Over its body there are EXACTLY TWO STRICT CHECKS: the BUILD VERSION
+// present, exactly once, under kind 9, eight bytes wide, and the VOCABULARY
+// present, exactly once, under kind 14 over element kind 6. Everything else is
+// ordinary and tolerant, so an unknown field is skipped and counted and the
+// announcement can GAIN a field in a later minor without a lockstep redeploy.
+//
+// The FIRST announcement sets the vocabulary and it is the only one that can.
+// A SECOND is refused by name: it does not replace it, does not amend it and
+// changes nothing. A refused announcement sets NO VOCABULARY, and the refusal
+// is TERMINAL: every announcement after it, whether or not the first set
+// anything, is second_announcement, so a peer holds no retry on the
+// connection and cannot buy a second resolve by having its first refused.
+inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * to );
+
 inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( vocabulary.announced )
+    if ( vocabulary.announced || vocabulary.refused )
     {
         to->refused = true;
         to->reason = second_announcement;
         return false;
     }
+    const bool set = AnnounceReadOnce( vocabulary, buffer, bytes, to );
+    if ( !set ) { vocabulary.refused = true; }
+    return set;
+}
+
+inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * to )
+{
     if ( bytes < 1 ) { to->malformed = true; return false; }
     if ( buffer[0] != kTableWireForm )
     {
@@ -710,15 +1300,6 @@ inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, 
         return false;
     }
     if ( bytes < 9 ) { to->malformed = true; return false; }
-    const uint8_t * tail = buffer + bytes - 8;
-    uint64_t lo = uint64_t( tail[0] ) | uint64_t( tail[1] ) << 8 | uint64_t( tail[2] ) << 16 | uint64_t( tail[3] ) << 24;
-    uint64_t hi = uint64_t( tail[4] ) | uint64_t( tail[5] ) << 8 | uint64_t( tail[6] ) << 16 | uint64_t( tail[7] ) << 24;
-    if ( ( lo | ( hi << 32 ) ) > (uint64_t) vocabulary.max_entries )
-    {
-        to->refused = true;
-        to->reason = vocabulary_too_large;
-        return false;
-    }
     TableIdTable table;
     int64_t body_bytes = 0;
     const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
@@ -729,10 +1310,11 @@ inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, 
         return false;
     }
     if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) ) { to->malformed = true; return false; }
-    // the body, under §4's tolerance and this form's one strict check
     TableReader r( buffer + 1, body_bytes, to, &table );
     uint64_t version = 0;
-    int32_t seen = 0;
+    const uint8_t * words = NULL;
+    int64_t words_bytes = 0;
+    int32_t seen_version = 0, seen_vocabulary = 0;
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -741,20 +1323,394 @@ inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, 
         if ( ref > (uint64_t) table.count || !r.has( 1 ) ) { to->malformed = true; return false; }
         const uint64_t id = table.at( ref );
         const uint8_t kind = r.get8();
-        if ( id != kTableBuildVersionFieldId )
+        if ( id == kTableBuildVersionFieldId )
         {
-            to->unknown++;
-            if ( !r.skip( kind ) ) { to->malformed = true; return false; }
+            if ( kind != 9 || !r.has( 8 ) ) { to->malformed = true; return false; }
+            version = r.get64();
+            // THE BUILD VERSION IS KEPT THE MOMENT IT IS READ, refusal or not, so
+            // that a refusal on this connection NAMES IT (§3.3). It is not the
+            // vocabulary, and a refused announcement still sets none.
+            vocabulary.build_version = version;
+            seen_version++;
             continue;
         }
-        if ( kind != 9 || !r.has( 8 ) ) { to->refused = true; to->reason = no_vocabulary; return false; }
-        version = r.get64();
-        seen++;
+        if ( id == kTableMessageVocabularyFieldId )
+        {
+            // kind 14 over element kind 6, which is §3's spelling for an
+            // opaque run of bytes
+            uint64_t framed = 0;
+            if ( kind != 14 || !r.getleb( framed ) || !r.has( (int64_t) framed ) ) { to->malformed = true; return false; }
+            const int64_t begin = r.offset, end = r.offset + (int64_t) framed;
+            r.offset = end;
+            if ( begin >= end || r.buffer[ begin ] != 6 ) { to->malformed = true; return false; }
+            int64_t at = begin + 1;
+            uint64_t length = 0;
+            if ( !TableMessageLeb( r.buffer, end, at, length ) || at + (int64_t) length != end ) { to->malformed = true; return false; }
+            if ( (int64_t) length > vocabulary.max_bytes ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
+            words = r.buffer + at;
+            words_bytes = (int64_t) length;
+            seen_vocabulary++;
+            continue;
+        }
+        to->unknown++;
+        if ( !r.skip( kind ) ) { to->malformed = true; return false; }
     }
-    if ( seen != 1 ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    vocabulary.table = table;
+    if ( seen_version != 1 || seen_vocabulary != 1 ) { to->malformed = true; return false; }
+
+    // THE ENTRIES, RESOLVED ONCE into the caller's storage (§3.3): every width
+    // is checked here and never again, and no body after this parses a byte of
+    // an announcement. An entry count above the caller's CAPACITY is refused
+    // by name before the entry is touched.
+    int64_t at = 0, count = 0, node_table_slots = 0;
+    while ( at < words_bytes )
+    {
+        if ( count >= vocabulary.max_entries ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
+        TableMessageEntry & parsed = vocabulary.entries[ count ];
+        if ( !TableMessageEntryRead( words, words_bytes, at, parsed ) ) { to->malformed = true; return false; }
+        // THE RESERVED IDS WHERE THEY DO NOT BELONG (§3.3): the announcement's
+        // own two never take a slot, and the node-table id takes exactly one,
+        // so a vocabulary carrying either of the first or a SECOND node-table
+        // id is malformed whole and sets nothing
+        if ( parsed.id == kTableBuildVersionFieldId || parsed.id == kTableMessageVocabularyFieldId ) { to->malformed = true; return false; }
+        if ( parsed.id == kTableNodeTableFieldId ) { if ( node_table_slots++ > 0 ) { to->malformed = true; return false; } }
+        // A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE, so two entries that
+        // agree on the id, the kind and every fact of the shape are malformed
+        // (§3.3): no writer this wire has produces one, and a reader that took
+        // it would carry two slots naming one thing. The scan is quadratic in
+        // the entry count, and the entry count is bounded above at 4096, so it
+        // is at most eight million compares on a path that runs ONCE a
+        // connection and never again.
+        for ( int64_t seen = 0; seen < count; seen++ )
+        {
+            const TableMessageEntry & other = vocabulary.entries[ seen ];
+            if ( other.id == parsed.id && other.kind == parsed.kind && TableMessageEntrySame( other, parsed ) ) { to->malformed = true; return false; }
+        }
+        count++;
+    }
+    vocabulary.count = count;
+    vocabulary.ref_bits = TableBitsRequired( 0, count );
     vocabulary.build_version = version;
     vocabulary.announced = true;
+    return true;
+}
+
+// TableMessageReserved is one of the three ids the language holds back (§3.1,
+// §3.3, §5): each is malformed anywhere but its own transport, and the rule
+// OUTRANKS the wrong-sort rule below.
+inline bool TableMessageReserved( uint64_t id )
+{
+    // THE THREE ARE THE TOP THREE VALUES a uint64 holds, so the test is ONE
+    // comparison: 0xFFFFFFFFFFFFFFFD, FE and FF and nothing else is at or
+    // above the vocabulary's own id, and a declaration hashing to any of them
+    // is refused by name (§11)
+    return id >= kTableMessageVocabularyFieldId;
+}
+
+// TableMessageNameEntry resolves a reference used as a VALUE, which is an
+// enum's variant, a keyed array's slot key or a node record's type id, and
+// which must name a kind-0 entry (§3.3). A reference of 0 where an entry is required, one
+// above E, one naming a reserved id and one naming an entry that carries a
+// payload are each damage: the reader RESOLVED the entry and it contradicts
+// the position it was used in, so the next bit's meaning is what is in doubt.
+inline bool TableMessageNameEntry( const TableVocabulary & vocabulary, uint64_t ref, TableMessageEntry & entry )
+{
+    if ( ref == 0 || ref > (uint64_t) vocabulary.count ) { return false; }
+    entry = TableVocabularyEntryAt( vocabulary, ref );
+    return !TableMessageReserved( entry.id ) && entry.kind == 0;
+}
+
+// TableMessageArmEntry resolves a UNION's arm reference, which must name an
+// entry carrying the arm's own kind and shape: a kind-0 entry frames nothing,
+// and a reserved id belongs to no arm (§3.3).
+inline bool TableMessageArmEntry( const TableVocabulary & vocabulary, uint64_t ref, TableMessageEntry & entry )
+{
+    if ( ref == 0 || ref > (uint64_t) vocabulary.count ) { return false; }
+    entry = TableVocabularyEntryAt( vocabulary, ref );
+    return !TableMessageReserved( entry.id ) && entry.kind != 0;
+}
+
+// TableMessageSkipVariant steps over an ENUM's variant reference on a SKIP
+// path and RESOLVES it while it is there: 0 is None and the whole payload, and
+// every other reference must name a kind-0 entry, because every reference
+// above E is damage and one naming an entry that carries a payload
+// contradicts the position it was used in, whether or not this reader was
+// going to keep the value (§3.3).
+inline bool TableMessageSkipVariant( TableBitReader & r, const TableVocabulary & vocabulary )
+{
+    uint64_t ref = 0;
+    if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
+    if ( ref == 0 ) { return true; }
+    TableMessageEntry named;
+    return TableMessageNameEntry( vocabulary, ref, named );
+}
+// TableMessageSkip steps over one field's payload without decoding it, using
+// the announced ENTRY alone (§3.3). It is what makes an unknown entry
+// skippable on a body with no kind byte, and it is ONE function over every
+// table, because a shape says everything a skipper needs.
+inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits );
+inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry );
+
+// TableMessageSkipElement steps over ONE element of an array or keyed entry
+// by the element's own announced shape: a nested body to its zero reference,
+// a variant or a node index at its reference width, a union arm by its own
+// entry, and a fixed-width value at its bits.
+inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry )
+{
+    switch ( entry.elem_kind )
+    {
+        case 13: return TableMessageSkipBody( r, vocabulary, index_bits );
+        case 30: return TableMessageSkipVariant( r, vocabulary );
+        case 17: return index_bits > 0 && r.skip( index_bits );
+        case 15:
+        {
+            TableMessageEntry inner;
+            inner.kind = 15;
+            return TableMessageSkip( r, vocabulary, index_bits, inner );
+        }
+        default:
+        {
+            const int64_t elem = entry.elem_value_bits;
+            return elem >= 0 && r.skip( elem );
+        }
+    }
+}
+
+// TableMessageElementRunBits is the bits ONE element of an array or a keyed
+// entry occupies on the SKIP path, where nothing is resolved and a run of them
+// is one multiplication, and -1 where the element's width is its own
+// content's. A ZERO is a real answer, and it is why this exists: a ranged
+// element whose min equals its max rides no bits at all (§3.3).
+inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, const TableMessageEntry & entry )
+{
+    int64_t elem = 0;
+    switch ( entry.elem_kind )
+    {
+        // a nested body, a union arm, an enum's variant and a node index each
+        // RESOLVE something, and a resolve that contradicts its position is
+        // damage this reader must still find, so they are walked
+        case 13: case 15: case 30: case 17: return -1;
+        default: elem = entry.elem_value_bits; break;
+    }
+    if ( elem < 0 ) { return -1; }
+    if ( entry.kind == 16 ) { elem += vocabulary.ref_bits; } // a keyed slot's own key reference
+    return elem;
+}
+
+// TableMessageSkipRun steps over n elements of one fixed width in a single
+// arithmetic step. A FIXED-WIDTH ELEMENT IS ARITHMETIC (§3.3), and a loop here
+// would be the one superlinear thing in this form: a zero-width element under
+// a count of 2^31 is six bytes of wire.
+inline bool TableMessageSkipRun( TableBitReader & r, uint64_t n, int64_t width )
+{
+    if ( width < 0 ) { return false; }
+    if ( width == 0 ) { return true; }
+    if ( n > (uint64_t) ( INT64_MAX / width ) ) { return false; }
+    return r.skip( (int64_t) ( n * (uint64_t) width ) );
+}
+
+inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry )
+{
+    switch ( entry.kind )
+    {
+        case 0: case 32: return true;              // a name, and a payload-free arm
+        case 30: return TableMessageSkipVariant( r, vocabulary );
+        case 13: return TableMessageSkipBody( r, vocabulary, index_bits );
+        case 17: return index_bits > 0 && r.skip( index_bits ); // a node index, at the width the body's node count settled
+        case 15:
+        {
+            uint64_t arm = 0;
+            if ( !r.get( arm, vocabulary.ref_bits ) ) { return false; }
+            if ( arm == 0 ) { return true; }
+            TableMessageEntry arm_entry;
+            if ( !TableMessageArmEntry( vocabulary, arm, arm_entry ) ) { return false; }
+            return TableMessageSkip( r, vocabulary, index_bits, arm_entry );
+        }
+        case 12:
+        {
+            uint64_t n = 0;
+            if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
+            return r.skip( (int64_t) n * 8 );
+        }
+        case 33:
+        {
+            // the length, NO align, then SIXTEEN bits a code unit (§3.3)
+            uint64_t n = 0;
+            if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) ) { return false; }
+            return r.skip( (int64_t) n * 16 );
+        }
+        case 31:
+        {
+            // THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
+            // the one path a later-major writer has on this form (§3.3)
+            uint64_t n = 0;
+            if ( !r.align() || !r.get( n, 32 ) ) { return false; }
+            return r.skip( (int64_t) n * 8 );
+        }
+        case 14: case 16:
+        {
+            uint64_t n = (uint64_t) entry.min;
+            const int64_t width = entry.kind == 16 ? TableBitsRequired( 0, entry.max ) : TableBitsRequired( entry.min, entry.max );
+            if ( entry.kind == 16 ) { n = 0; }
+            if ( width > 0 )
+            {
+                uint64_t raw = 0;
+                if ( !r.get( raw, width ) ) { return false; }
+                n = entry.kind == 16 ? raw : raw + (uint64_t) entry.min;
+            }
+            if ( entry.kind == 14 && entry.elem_kind == 6 && !r.align() ) { return false; }
+            // A RUN OF FIXED-WIDTH ELEMENTS IS ONE MULTIPLICATION (§3.3), and
+            // only an element whose width is its own content's is walked
+            const int64_t run = TableMessageElementRunBits( vocabulary, entry );
+            if ( run >= 0 ) { return TableMessageSkipRun( r, n, run ); }
+            for ( uint64_t i = 0; i < n; i++ )
+            {
+                if ( entry.kind == 16 && !r.skip( vocabulary.ref_bits ) ) { return false; }
+                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry ) ) { return false; }
+            }
+            return true;
+        }
+    }
+    const int64_t width = entry.value_bits;
+    return width >= 0 && r.skip( width );
+}
+
+inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits )
+{
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
+        if ( ref == 0 ) { return true; }
+        if ( ref > (uint64_t) vocabulary.count ) { return false; }
+        if ( !TableMessageSkip( r, vocabulary, index_bits, TableVocabularyEntryAt( vocabulary, ref ) ) ) { return false; }
+    }
+}
+
+// TableMessageNodeTableOpen reads the node table's opening when a body has
+// one: the reserved id's reference and the count at thirty-two raw bits. A
+// body whose first reference is anything else has no node table, and the
+// reader is left where it was. False is damage: a reference past E, or bits
+// that run out.
+inline bool TableMessageNodeTableOpen( TableBitReader & r, const TableVocabulary & vocabulary, int64_t & count )
+{
+    count = 0;
+    const int64_t at = r.offset;
+    uint64_t ref = 0;
+    if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
+    if ( ref == 0 ) { r.offset = at; return true; }
+    if ( ref > (uint64_t) vocabulary.count ) { return false; }
+    if ( TableVocabularyEntryAt( vocabulary, ref ).id != kTableNodeTableFieldId ) { r.offset = at; return true; }
+    uint64_t n = 0;
+    if ( !r.get( n, 32 ) ) { return false; }
+    count = (int64_t) n;
+    return true;
+}
+// AnnounceMeasure is the announcement's byte count, which is a constant of the
+// unit and not a walk.
+inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+
+// Announce writes the announcement into the caller's buffer and answers the
+// bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
+// buffer is too small. It allocates nothing and walks nothing.
+inline int64_t Announce( uint8_t * buffer, int64_t capacity )
+{
+    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
+    return kTableAnnounceBytes;
+}
+
+// THE PRIMITIVE IS A BATCH (§3.3): a number of bodies of ONE ROOT in one
+// buffer, one count and one continuous bit stream with no alignment between
+// them. A single message is the batch of one.
+//
+// The count rides ahead of the bodies, so a writer declares it at Begin and
+// End refuses a batch that wrote a different number: a count the bodies do not
+// match is not a wire this writer will hand anyone.
+struct TableMessageBatch
+{
+    TableBitWriter w;
+    int64_t declared = 0;
+    int64_t written = 0;
+};
+
+inline bool TableMessageBatchBegin( TableMessageBatch & batch, uint8_t * buffer, int64_t capacity, int64_t bodies )
+{
+    if ( buffer == NULL || capacity < 1 || bodies < 1 || bodies > kTableMessageBatchMax ) { return false; }
+    buffer[0] = kTableWireMessageForm; // the FORM BYTE is read first, always
+    batch.w = TableBitWriter( buffer + 1, capacity - 1 );
+    batch.declared = bodies;
+    batch.written = 0;
+    batch.w.put( (uint64_t) ( bodies - 1 ), 8 ); // a ranged integer over [1, 256]
+    return true;
+}
+
+// TableMessageBatchEnd zero-fills to the next byte, the one alignment a batch
+// spends at its end, and answers the whole batch's byte count, or -1.
+inline int64_t TableMessageBatchEnd( TableMessageBatch & batch )
+{
+    if ( batch.written != batch.declared || batch.w.overflow ) { return -1; }
+    batch.w.align();
+    if ( batch.w.overflow ) { return -1; }
+    return 1 + batch.w.bits / 8;
+}
+
+// TableMessageBatchBytes is a batch's byte count from its bodies' BIT count,
+// which is what every <Root>MeasureMessages answers.
+inline int64_t TableMessageBatchBytes( int64_t body_bits )
+{
+    if ( body_bits < 0 ) { return -1; }
+    return 1 + ( 8 + body_bits + 7 ) / 8;
+}
+
+// The reading half. A batch is opened once and its bodies are then read in
+// order into the storage the caller sized for them: which root a batch carries
+// is the APPLICATION's and never this wire's.
+struct TableMessageBatchReader
+{
+    TableBitReader r;
+    const TableVocabulary * vocabulary = NULL;
+    TableReport * report = NULL;
+    int64_t remaining = 0;
+    // THE SINK A CALLER THAT PASSED NO REPORT WRITES INTO IS THE READER'S OWN,
+    // not a static: a static is shared mutable state, and two threads reading
+    // two batches without reports would be writing one object. LoadMessages
+    // already keeps its sink locally, for the same reason.
+    TableReport ignored;
+};
+
+// TableMessageBatchOpen answers the batch's body count, or -1 with the refusal
+// on the report: a form byte this reader does not carry, or a body from a peer
+// that never announced.
+inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    br.report = report != NULL ? report : &br.ignored;
+    br.vocabulary = &vocabulary;
+    if ( bytes < 1 ) { br.report->malformed = true; return -1; }
+    if ( buffer[0] != kTableWireMessageForm ) { br.report->refused = true; br.report->reason = newer_form; return -1; }
+    if ( !vocabulary.announced ) { br.report->refused = true; br.report->reason = no_vocabulary; return -1; }
+    br.r = TableBitReader( buffer + 1, bytes - 1 );
+    uint64_t count = 0;
+    if ( !br.r.get( count, 8 ) ) { br.report->malformed = true; return -1; }
+    br.remaining = (int64_t) count + 1;
+    return br.remaining;
+}
+
+// TableMessageRefuseBatch is the batch's own refusal (§3.3): M above 256 on the
+// write side, or above the caller's capacity on the read side. Nothing is
+// written or decoded, no counter moves, and the reason names it.
+inline void TableMessageRefuseBatch( TableReport * report )
+{
+    if ( report == NULL ) { return; }
+    report->refused = true;
+    report->reason = batch_too_large;
+}
+
+// TableMessageBatchClose verifies the trailing pad, and that NOTHING FOLLOWS
+// IT: the batch ends at the pad to the byte boundary, and a buffer with bytes
+// left over describes no batch this reader can name (§3.3).
+inline bool TableMessageBatchClose( TableMessageBatchReader & br )
+{
+    if ( br.remaining != 0 || !br.r.align() || br.r.offset != br.r.bits ) { br.report->malformed = true; return false; }
     return true;
 }
 
@@ -1144,9 +2100,9 @@ inline bool TableEnumRef( TableIds & ids, Axis value, uint64_t & ref )
     switch ( value )
     {
         case Axis::None: ref = 0; return true;
-        case Axis::X: ref = ids.ref( 0xaf64154c86024d67ull, 25 ); return true;
-        case Axis::Y: ref = ids.ref( 0xaf64144c86024bb4ull, 26 ); return true;
-        case Axis::Z: ref = ids.ref( 0xaf64174c860250cdull, 27 ); return true;
+        case Axis::X: ref = ids.ref( 0xaf64154c86024d67ull ); return true;
+        case Axis::Y: ref = ids.ref( 0xaf64144c86024bb4ull ); return true;
+        case Axis::Z: ref = ids.ref( 0xaf64174c860250cdull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -1159,6 +2115,17 @@ inline bool TableEnumNamed( Axis value )
         case Axis::Y: return true;
         case Axis::Z: return true;
         default: return false;
+    }
+}
+inline bool TableEnumSlot( Axis value, uint64_t & slot )
+{
+    switch ( value )
+    {
+        case Axis::None: slot = 0; return true;
+        case Axis::X: slot = 24; return true;
+        case Axis::Y: slot = 25; return true;
+        case Axis::Z: slot = 26; return true;
+        default: return false; // no variant names this value: no wire identity
     }
 }
 inline bool TableEnumId( Axis value, uint64_t & id )
@@ -1218,6 +2185,13 @@ inline void SimStateReset( SimState & value )
 
 inline void PoseReset( Pose & value ) { value = Pose(); }
 
+inline int64_t SimStateMeasureMessageBody( int64_t at, const SimState & value );
+inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value );
+inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, SimState & value );
+inline int64_t PoseMeasureMessageBody( int64_t at, const Pose & value );
+inline bool PoseSaveMessageBody( TableBitWriter & w, const Pose & value );
+inline bool PoseLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Pose & value );
+
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value );
@@ -1230,26 +2204,26 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value );
 inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.tilt != 0 ) { bytes += TableLebBytes( ids.ref( 0x1e5088ef2e9bafc6ull, 5 ) ) + 1 + 1; } // tilt
-    if ( value.angle != 0 ) { bytes += TableLebBytes( ids.ref( 0x401ab8cd06158638ull, 6 ) ) + 1 + 4; } // angle
-    if ( value.position != 0 ) { bytes += TableLebBytes( ids.ref( 0x4cbf3a26fca1d74aull, 7 ) ) + 1 + 8; } // position
-    if ( value.reach != 0 ) { bytes += TableLebBytes( ids.ref( 0x891da1f305deb858ull, 8 ) ) + 1 + 16; } // reach
-    if ( value.ticks != 0 ) { bytes += TableLebBytes( ids.ref( 0x7fd9266c6a3e25b5ull, 9 ) ) + 1 + 4; } // ticks
-    if ( value.ratio != 0 ) { bytes += TableLebBytes( ids.ref( 0xfbc924118177ade4ull, 10 ) ) + 1 + 1; } // ratio
-    if ( value.speed != 0 ) { bytes += TableLebBytes( ids.ref( 0x2281498aa0200e40ull, 11 ) ) + 1 + 4; } // speed
-    if ( value.span != 0 ) { bytes += TableLebBytes( ids.ref( 0x8b7dc019093cd0e1ull, 12 ) ) + 1 + 8; } // span
-    if ( value.mass != 0 ) { bytes += TableLebBytes( ids.ref( 0x1f3757a2ce7b0ab1ull, 13 ) ) + 1 + 16; } // mass
-    if ( value.frames != 0 ) { bytes += TableLebBytes( ids.ref( 0x23e5906728b4e66full, 14 ) ) + 1 + 4; } // frames
-    if ( value.flux != 0 ) { bytes += TableLebBytes( ids.ref( 0xd61bdd7908af2642ull, 15 ) ) + 1 + 16; } // flux
-    if ( value.energy != serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551366ull ) ) ) { bytes += TableLebBytes( ids.ref( 0xf2fd4f9140ef2f15ull, 16 ) ) + 1 + 16; } // energy
-    if ( value.entity_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x23fcfd6678e36712ull, 17 ) ) + 1 + 16; } // entity_id
-    if ( value.scale != 65536 ) { bytes += TableLebBytes( ids.ref( 0x6aacb9fbb71a1d91ull, 18 ) ) + 1 + 4; } // scale
+    if ( value.tilt != 0 ) { bytes += TableLebBytes( ids.ref( 0x1e5088ef2e9bafc6ull ) ) + 1 + 1; } // tilt
+    if ( value.angle != 0 ) { bytes += TableLebBytes( ids.ref( 0x401ab8cd06158638ull ) ) + 1 + 4; } // angle
+    if ( value.position != 0 ) { bytes += TableLebBytes( ids.ref( 0x4cbf3a26fca1d74aull ) ) + 1 + 8; } // position
+    if ( value.reach != 0 ) { bytes += TableLebBytes( ids.ref( 0x891da1f305deb858ull ) ) + 1 + 16; } // reach
+    if ( value.ticks != 0 ) { bytes += TableLebBytes( ids.ref( 0x7fd9266c6a3e25b5ull ) ) + 1 + 4; } // ticks
+    if ( value.ratio != 0 ) { bytes += TableLebBytes( ids.ref( 0xfbc924118177ade4ull ) ) + 1 + 1; } // ratio
+    if ( value.speed != 0 ) { bytes += TableLebBytes( ids.ref( 0x2281498aa0200e40ull ) ) + 1 + 4; } // speed
+    if ( value.span != 0 ) { bytes += TableLebBytes( ids.ref( 0x8b7dc019093cd0e1ull ) ) + 1 + 8; } // span
+    if ( value.mass != 0 ) { bytes += TableLebBytes( ids.ref( 0x1f3757a2ce7b0ab1ull ) ) + 1 + 16; } // mass
+    if ( value.frames != 0 ) { bytes += TableLebBytes( ids.ref( 0x23e5906728b4e66full ) ) + 1 + 4; } // frames
+    if ( value.flux != 0 ) { bytes += TableLebBytes( ids.ref( 0xd61bdd7908af2642ull ) ) + 1 + 16; } // flux
+    if ( value.energy != serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551366ull ) ) ) { bytes += TableLebBytes( ids.ref( 0xf2fd4f9140ef2f15ull ) ) + 1 + 16; } // energy
+    if ( value.entity_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x23fcfd6678e36712ull ) ) + 1 + 16; } // entity_id
+    if ( value.scale != 65536 ) { bytes += TableLebBytes( ids.ref( 0x6aacb9fbb71a1d91ull ) ) + 1 + 4; } // scale
     {
         bool all_default_samples = true;
         for ( int32_t i = 0; i < 3; i++ ) { if ( value.samples[i] != 0 ) { all_default_samples = false; break; } }
         if ( !all_default_samples )
         {
-            const uint64_t ref_samples = ids.ref( 0xe3b1ca6a3b48dddcull, 19 );
+            const uint64_t ref_samples = ids.ref( 0xe3b1ca6a3b48dddcull );
             int64_t body_samples = 0;
             body_samples += 1 + TableLebBytes( (uint64_t) ( 3 ) ); // the element kind byte and the count
             body_samples += (int64_t) ( 3 ) * 4;
@@ -1259,7 +2233,7 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
     if ( value.weights_count < 0 || value.weights_count > 4 ) { return -1; } // storage invariant
     if ( value.weights_count > 0 )
     {
-        const uint64_t ref_weights = ids.ref( 0xb1494b6ef08a411eull, 20 );
+        const uint64_t ref_weights = ids.ref( 0xb1494b6ef08a411eull );
         int64_t body_weights = 0;
         body_weights += 1 + TableLebBytes( (uint64_t) ( value.weights_count ) ); // the element kind byte and the count
         body_weights += (int64_t) ( value.weights_count ) * 2;
@@ -1267,7 +2241,7 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
     }
     {
         const int32_t mark_axes = ids.count;
-        const uint64_t ref_axes = ids.ref( 0x32969e840d9c67b8ull, 21 );
+        const uint64_t ref_axes = ids.ref( 0x32969e840d9c67b8ull );
         int64_t pairs_axes = 0, body_axes = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Axis]: every stored slot is a named variant's
         {
@@ -1286,7 +2260,7 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
     if ( value.seeds_count < 0 || value.seeds_count > 2 ) { return -1; } // storage invariant
     if ( value.seeds_count > 0 )
     {
-        const uint64_t ref_seeds = ids.ref( 0x5af1ac301b4ae16dull, 22 );
+        const uint64_t ref_seeds = ids.ref( 0x5af1ac301b4ae16dull );
         int64_t body_seeds = 0;
         body_seeds += 1 + TableLebBytes( (uint64_t) ( value.seeds_count ) ); // the element kind byte and the count
         body_seeds += (int64_t) ( value.seeds_count ) * 16;
@@ -1294,7 +2268,7 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
     }
     {
         const int32_t mark_pose = ids.count;
-        const uint64_t ref_pose = ids.ref( 0x8c2fd80da8957064ull, 23 );
+        const uint64_t ref_pose = ids.ref( 0x8c2fd80da8957064ull );
         const int64_t body_pose = PoseMeasureBody( ids, value.pose );
         if ( body_pose < 0 ) { return -1; }
         if ( body_pose > 1 ) { bytes += TableLebBytes( ref_pose ) + 1 + TableLebBytes( (uint64_t) ( body_pose ) ) + ( body_pose ); } // pose
@@ -1302,7 +2276,7 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
     }
     if ( value.spawn_present ) // ?Pose: presence decides, not content
     {
-        const uint64_t ref_spawn = ids.ref( 0x4328f78ab20e1f98ull, 24 );
+        const uint64_t ref_spawn = ids.ref( 0x4328f78ab20e1f98ull );
         const int64_t body_spawn = PoseMeasureBody( ids, value.spawn );
         if ( body_spawn < 0 ) { return -1; }
         bytes += TableLebBytes( ref_spawn ) + 1 + TableLebBytes( (uint64_t) ( body_spawn ) ) + ( body_spawn ); // spawn
@@ -1322,72 +2296,72 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
 {
     if ( value.tilt != 0 )
     {
-        w.putleb( ids.ref( 0x1e5088ef2e9bafc6ull, 5 ) ); w.put8( 20 ); // tilt
+        w.putleb( ids.ref( 0x1e5088ef2e9bafc6ull ) ); w.put8( 20 ); // tilt
         w.put8( uint8_t( value.tilt ) );
     }
     if ( value.angle != 0 )
     {
-        w.putleb( ids.ref( 0x401ab8cd06158638ull, 6 ) ); w.put8( 22 ); // angle
+        w.putleb( ids.ref( 0x401ab8cd06158638ull ) ); w.put8( 22 ); // angle
         w.put32( uint32_t( value.angle ) );
     }
     if ( value.position != 0 )
     {
-        w.putleb( ids.ref( 0x4cbf3a26fca1d74aull, 7 ) ); w.put8( 23 ); // position
+        w.putleb( ids.ref( 0x4cbf3a26fca1d74aull ) ); w.put8( 23 ); // position
         w.put64( uint64_t( value.position ) );
     }
     if ( value.reach != 0 )
     {
-        w.putleb( ids.ref( 0x891da1f305deb858ull, 8 ) ); w.put8( 24 ); // reach
+        w.putleb( ids.ref( 0x891da1f305deb858ull ) ); w.put8( 24 ); // reach
         { serialize::uint128_t raw_v = serialize::uint128_t( value.reach ); w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) ); }
     }
     if ( value.ticks != 0 )
     {
-        w.putleb( ids.ref( 0x7fd9266c6a3e25b5ull, 9 ) ); w.put8( 22 ); // ticks
+        w.putleb( ids.ref( 0x7fd9266c6a3e25b5ull ) ); w.put8( 22 ); // ticks
         w.put32( uint32_t( value.ticks ) );
     }
     if ( value.ratio != 0 )
     {
-        w.putleb( ids.ref( 0xfbc924118177ade4ull, 10 ) ); w.put8( 25 ); // ratio
+        w.putleb( ids.ref( 0xfbc924118177ade4ull ) ); w.put8( 25 ); // ratio
         w.put8( uint8_t( value.ratio ) );
     }
     if ( value.speed != 0 )
     {
-        w.putleb( ids.ref( 0x2281498aa0200e40ull, 11 ) ); w.put8( 27 ); // speed
+        w.putleb( ids.ref( 0x2281498aa0200e40ull ) ); w.put8( 27 ); // speed
         w.put32( uint32_t( value.speed ) );
     }
     if ( value.span != 0 )
     {
-        w.putleb( ids.ref( 0x8b7dc019093cd0e1ull, 12 ) ); w.put8( 28 ); // span
+        w.putleb( ids.ref( 0x8b7dc019093cd0e1ull ) ); w.put8( 28 ); // span
         w.put64( uint64_t( value.span ) );
     }
     if ( value.mass != 0 )
     {
-        w.putleb( ids.ref( 0x1f3757a2ce7b0ab1ull, 13 ) ); w.put8( 29 ); // mass
+        w.putleb( ids.ref( 0x1f3757a2ce7b0ab1ull ) ); w.put8( 29 ); // mass
         { serialize::uint128_t raw_v = serialize::uint128_t( value.mass ); w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) ); }
     }
     if ( value.frames != 0 )
     {
-        w.putleb( ids.ref( 0x23e5906728b4e66full, 14 ) ); w.put8( 27 ); // frames
+        w.putleb( ids.ref( 0x23e5906728b4e66full ) ); w.put8( 27 ); // frames
         w.put32( uint32_t( value.frames ) );
     }
     if ( value.flux != 0 )
     {
-        w.putleb( ids.ref( 0xd61bdd7908af2642ull, 15 ) ); w.put8( 18 ); // flux
+        w.putleb( ids.ref( 0xd61bdd7908af2642ull ) ); w.put8( 18 ); // flux
         { serialize::uint128_t raw_v = serialize::uint128_t( value.flux ); w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) ); }
     }
     if ( value.energy != serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551366ull ) ) )
     {
-        w.putleb( ids.ref( 0xf2fd4f9140ef2f15ull, 16 ) ); w.put8( 18 ); // energy
+        w.putleb( ids.ref( 0xf2fd4f9140ef2f15ull ) ); w.put8( 18 ); // energy
         { serialize::uint128_t raw_v = serialize::uint128_t( value.energy ); w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) ); }
     }
     if ( value.entity_id != 0 )
     {
-        w.putleb( ids.ref( 0x23fcfd6678e36712ull, 17 ) ); w.put8( 19 ); // entity_id
+        w.putleb( ids.ref( 0x23fcfd6678e36712ull ) ); w.put8( 19 ); // entity_id
         { serialize::uint128_t raw_v = serialize::uint128_t( value.entity_id ); w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) ); }
     }
     if ( value.scale != 65536 )
     {
-        w.putleb( ids.ref( 0x6aacb9fbb71a1d91ull, 18 ) ); w.put8( 22 ); // scale
+        w.putleb( ids.ref( 0x6aacb9fbb71a1d91ull ) ); w.put8( 22 ); // scale
         w.put32( uint32_t( value.scale ) );
     }
     {
@@ -1395,7 +2369,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
         for ( int32_t i = 0; i < 3; i++ ) { if ( value.samples[i] != 0 ) { all_default_samples = false; break; } }
         if ( !all_default_samples )
         {
-            const uint64_t ref_samples = ids.ref( 0xe3b1ca6a3b48dddcull, 19 );
+            const uint64_t ref_samples = ids.ref( 0xe3b1ca6a3b48dddcull );
             int64_t body_samples = 0;
             body_samples += 1 + TableLebBytes( (uint64_t) ( 3 ) ); // the element kind byte and the count
             body_samples += (int64_t) ( 3 ) * 4;
@@ -1410,7 +2384,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     if ( value.weights_count < 0 || value.weights_count > 4 ) { return false; } // storage invariant
     if ( value.weights_count > 0 )
     {
-        const uint64_t ref_weights = ids.ref( 0xb1494b6ef08a411eull, 20 );
+        const uint64_t ref_weights = ids.ref( 0xb1494b6ef08a411eull );
         int64_t body_weights = 0;
         body_weights += 1 + TableLebBytes( (uint64_t) ( value.weights_count ) ); // the element kind byte and the count
         body_weights += (int64_t) ( value.weights_count ) * 2;
@@ -1423,7 +2397,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     }
     {
         const int32_t mark_axes = ids.count;
-        const uint64_t ref_axes = ids.ref( 0x32969e840d9c67b8ull, 21 );
+        const uint64_t ref_axes = ids.ref( 0x32969e840d9c67b8ull );
         int64_t pairs_axes = 0, body_axes = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Axis]: every stored slot is a named variant's
         {
@@ -1458,7 +2432,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     if ( value.seeds_count < 0 || value.seeds_count > 2 ) { return false; } // storage invariant
     if ( value.seeds_count > 0 )
     {
-        const uint64_t ref_seeds = ids.ref( 0x5af1ac301b4ae16dull, 22 );
+        const uint64_t ref_seeds = ids.ref( 0x5af1ac301b4ae16dull );
         int64_t body_seeds = 0;
         body_seeds += 1 + TableLebBytes( (uint64_t) ( value.seeds_count ) ); // the element kind byte and the count
         body_seeds += (int64_t) ( value.seeds_count ) * 16;
@@ -1471,7 +2445,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     }
     {
         const int32_t mark_pose = ids.count;
-        const uint64_t ref_pose = ids.ref( 0x8c2fd80da8957064ull, 23 );
+        const uint64_t ref_pose = ids.ref( 0x8c2fd80da8957064ull );
         const int64_t body_pose = PoseMeasureBody( ids, value.pose );
         if ( body_pose < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_pose > 1 ) // all-default nested elides
@@ -1483,7 +2457,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     }
     if ( value.spawn_present ) // ?Pose
     {
-        const uint64_t ref_spawn = ids.ref( 0x4328f78ab20e1f98ull, 24 );
+        const uint64_t ref_spawn = ids.ref( 0x4328f78ab20e1f98ull );
         const int64_t body_spawn = PoseMeasureBody( ids, value.spawn );
         if ( body_spawn < 0 ) return false; // storage invariant, refused as measure refuses it
         w.putleb( ref_spawn ); w.put8( 13 ); w.putleb( (uint64_t) body_spawn ); // spawn
@@ -1516,7 +2490,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -2078,55 +3052,986 @@ inline bool SimStateLoad( SimState & value, const uint8_t * buffer, int64_t byte
     return SimStateLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
-// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
-// body, and no trailer at all — the connection's announced table is where
-// the ids live. Every reference is a compile-time SLOT, so this walk does
-// no lookup and a save costs what a save costs.
-inline int64_t SimStateMeasureMessage( const SimState & value )
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t SimStateMeasureMessageBody( int64_t at, const SimState & value )
 {
-    TableIds ids;
-    ids.vocabulary = true;
-    const int64_t body = SimStateMeasureBody( ids, value );
-    if ( body < 0 ) { return -1; }
-    return 1 + body;
+    int64_t bits = 0;
+    if ( value.tilt != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 8;
+    }
+    if ( value.angle != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 25;
+    }
+    if ( value.position != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.reach != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 37;
+    }
+    if ( value.ticks != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 20;
+    }
+    if ( value.ratio != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 8;
+    }
+    if ( value.speed != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 26;
+    }
+    if ( value.span != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 64;
+    }
+    if ( value.mass != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 37;
+    }
+    if ( value.frames != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.flux != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 102;
+    }
+    if ( value.energy != serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551366ull ) ) )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 34;
+    }
+    if ( value.entity_id != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 128;
+    }
+    if ( value.scale != 65536 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 21;
+    }
+    {
+        bool rides_samples = false;
+        for ( int32_t i = 0; i < 3; i++ ) { if ( value.samples[i] != 0 ) { rides_samples = true; break; } }
+        if ( rides_samples )
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += (int64_t) ( 3 ) * 21;
+        }
+    }
+    if ( value.weights_count < 0 || value.weights_count > 4 ) { return -1; } // storage invariant
+    if ( value.weights_count > 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 3;
+        bits += (int64_t) ( value.weights_count ) * 15;
+    }
+    {
+        int64_t pairs_axes = 0;
+        for ( int32_t i = 0; i < 3; i++ ) // [Axis]: every stored slot is a named variant's
+        {
+            if ( !TableEnumNamed( (Axis) ( i + 1 ) ) ) { return -1; }
+            if ( value.axes.slots[i] == 0 ) { continue; } // a default slot elides
+            pairs_axes++;
+        }
+        if ( pairs_axes > 0 )
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += 2;
+            // ASCENDING BY VARIANT ORDINAL, which is slot order. It is
+            // this writer's choice and a reader must not rely on it: every
+            // is found by its key (docs/SPEC-TABLES.md §3.2)
+            for ( int32_t i = 0; i < 3; i++ )
+            {
+                if ( !TableEnumNamed( (Axis) ( i + 1 ) ) ) { return -1; }
+                if ( value.axes.slots[i] == 0 ) { continue; } // a default slot elides
+                bits += kTableMessageRefBitsHere; // the slot's VARIANT reference, not its position
+                bits += 40;
+            }
+        }
+    }
+    if ( value.seeds_count < 0 || value.seeds_count > 2 ) { return -1; } // storage invariant
+    if ( value.seeds_count > 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 2;
+        bits += (int64_t) ( value.seeds_count ) * 128;
+    }
+    {
+        const int64_t body_pose = PoseMeasureMessageBody( at + bits, value.pose );
+        if ( body_pose < 0 ) { return -1; }
+        if ( body_pose > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            bits += kTableMessageRefBitsHere;
+            bits += PoseMeasureMessageBody( at + bits, value.pose );
+        }
+    }
+    if ( value.spawn_present ) // ?Pose
+    {
+        bits += kTableMessageRefBitsHere;
+        {
+            const int64_t body = PoseMeasureMessageBody( at + bits, value.spawn );
+            if ( body < 0 ) { return -1; }
+            bits += body;
+        }
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
 }
 
-inline int64_t SimStateSaveMessage( const SimState & value, uint8_t * buffer, int64_t capacity )
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value )
 {
-    TableWriter w( buffer, capacity );
-    TableIds ids;
-    ids.vocabulary = true;
-    w.put8( kTableWireMessageForm );
-    if ( !SimStateSaveBody( w, ids, value ) || w.overflow ) { return -1; }
-    return w.offset; // == SimStateMeasureMessage( value )
+    if ( value.tilt != 0 )
+    {
+        w.put( 4, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.tilt ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551488ull ) ); w.put( uint64_t( raw_v ), 8 ); }
+    }
+    if ( value.angle != 0 )
+    {
+        w.put( 5, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.angle ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073697755136ull ) ); w.put( uint64_t( raw_v ), 25 ); }
+    }
+    if ( value.position != 0 )
+    {
+        w.put( 6, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.position ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744071743471616ull ) ); w.put( uint64_t( raw_v ), 32 ); }
+    }
+    if ( value.reach != 0 )
+    {
+        w.put( 7, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.reach ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ); w.put( uint64_t( raw_v ), 37 ); }
+    }
+    if ( value.ticks != 0 )
+    {
+        w.put( 8, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.ticks ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 20 ); }
+    }
+    if ( value.ratio != 0 )
+    {
+        w.put( 9, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.ratio ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 8 ); }
+    }
+    if ( value.speed != 0 )
+    {
+        w.put( 10, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.speed ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 26 ); }
+    }
+    if ( value.span != 0 )
+    {
+        w.put( 11, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.span ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 64 ); }
+    }
+    if ( value.mass != 0 )
+    {
+        w.put( 12, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.mass ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 37 ); }
+    }
+    if ( value.frames != 0 )
+    {
+        w.put( 13, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.frames ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 32 ); }
+    }
+    if ( value.flux != 0 )
+    {
+        w.put( 14, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.flux ) - ( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); w.put( uint64_t( raw_v ), 64 ); w.put( uint64_t( raw_v >> 64 ), 38 ); }
+    }
+    if ( value.energy != serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551366ull ) ) )
+    {
+        w.put( 15, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.energy ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ); w.put( uint64_t( raw_v ), 34 ); }
+    }
+    if ( value.entity_id != 0 )
+    {
+        w.put( 16, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.entity_id ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 64 ); w.put( uint64_t( raw_v >> 64 ), 64 ); }
+    }
+    if ( value.scale != 65536 )
+    {
+        w.put( 17, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.scale ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709027328ull ) ); w.put( uint64_t( raw_v ), 21 ); }
+    }
+    {
+        bool rides_samples = false;
+        for ( int32_t i = 0; i < 3; i++ ) { if ( value.samples[i] != 0 ) { rides_samples = true; break; } }
+        if ( rides_samples )
+        {
+            w.put( 18, kTableMessageRefBitsHere );
+            for ( int32_t i = 0; i < 3; i++ )
+            {
+                { serialize::uint128_t raw_v_2 = serialize::uint128_t( value.samples[i] ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709027328ull ) ); w.put( uint64_t( raw_v_2 ), 21 ); }
+            }
+        }
+    }
+    if ( value.weights_count < 0 || value.weights_count > 4 ) { return false; } // storage invariant
+    if ( value.weights_count > 0 )
+    {
+        w.put( 19, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.weights_count ) - 0, 3 );
+        for ( int32_t i = 0; i < value.weights_count; i++ )
+        {
+            { serialize::uint128_t raw_v_2 = serialize::uint128_t( value.weights[i] ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v_2 ), 15 ); }
+        }
+    }
+    {
+        int64_t pairs_axes = 0;
+        for ( int32_t i = 0; i < 3; i++ ) // [Axis]: every stored slot is a named variant's
+        {
+            if ( !TableEnumNamed( (Axis) ( i + 1 ) ) ) { return false; }
+            if ( value.axes.slots[i] == 0 ) { continue; } // a default slot elides
+            pairs_axes++;
+        }
+        if ( pairs_axes > 0 )
+        {
+            w.put( 20, kTableMessageRefBitsHere );
+            w.put( (uint64_t) pairs_axes, 2 );
+            // ASCENDING BY VARIANT ORDINAL, which is slot order. It is
+            // this writer's choice and a reader must not rely on it: every
+            // is found by its key (docs/SPEC-TABLES.md §3.2)
+            for ( int32_t i = 0; i < 3; i++ )
+            {
+                if ( !TableEnumNamed( (Axis) ( i + 1 ) ) ) { return false; }
+                if ( value.axes.slots[i] == 0 ) { continue; } // a default slot elides
+                uint64_t key_slot = 0;
+                if ( !TableEnumSlot( (Axis) ( i + 1 ), key_slot ) ) { return false; }
+                w.put( key_slot, kTableMessageRefBitsHere ); // the slot's VARIANT reference, not its position
+                { serialize::uint128_t raw_v_2 = serialize::uint128_t( value.axes.slots[i] ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446743644212822016ull ) ); w.put( uint64_t( raw_v_2 ), 40 ); }
+            }
+        }
+    }
+    if ( value.seeds_count < 0 || value.seeds_count > 2 ) { return false; } // storage invariant
+    if ( value.seeds_count > 0 )
+    {
+        w.put( 21, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.seeds_count ) - 0, 2 );
+        for ( int32_t i = 0; i < value.seeds_count; i++ )
+        {
+            { serialize::uint128_t raw_v_2 = serialize::uint128_t( value.seeds[i] ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v_2 ), 64 ); w.put( uint64_t( raw_v_2 >> 64 ), 64 ); }
+        }
+    }
+    {
+        const int64_t body_pose = PoseMeasureMessageBody( 0, value.pose );
+        if ( body_pose < 0 ) { return false; }
+        if ( body_pose > kTableMessageRefBitsHere ) // an all-default nested table elides
+        {
+            w.put( 22, kTableMessageRefBitsHere );
+            if ( !PoseSaveMessageBody( w, value.pose ) ) { return false; }
+        }
+    }
+    if ( value.spawn_present ) // ?Pose
+    {
+        w.put( 23, kTableMessageRefBitsHere );
+        if ( !PoseSaveMessageBody( w, value.spawn ) ) { return false; }
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
 }
 
-// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
-// nothing is decoded, the reader says it holds no table, no counter moves
-// and malformed does not fire. A reader does not fall back to the file
-// form on its own and does not guess a table, because a guessed table
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, SimState & value )
+{
+    SimStateReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0x1e5088ef2e9bafc6ull: // tilt
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 20 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    else if ( width > 0 && width < 64 )
+                    {
+                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                    }
+                    if ( decoded_wide < -128ll ) { decoded_wide = -128ll; report->clamped++; }
+                    if ( decoded_wide > 112ll ) { decoded_wide = 112ll; report->clamped++; }
+                    int8_t decoded_v = (int8_t) decoded_wide;
+                    value.tilt = decoded_v;
+                }
+                break;
+            }
+            case 0x401ab8cd06158638ull: // angle
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 22 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    else if ( width > 0 && width < 64 )
+                    {
+                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                    }
+                    if ( decoded_wide < -11796480ll ) { decoded_wide = -11796480ll; report->clamped++; }
+                    if ( decoded_wide > 11796480ll ) { decoded_wide = 11796480ll; report->clamped++; }
+                    int32_t decoded_v = (int32_t) decoded_wide;
+                    value.angle = decoded_v;
+                }
+                break;
+            }
+            case 0x4cbf3a26fca1d74aull: // position
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 23 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    else if ( width > 0 && width < 64 )
+                    {
+                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                    }
+                    if ( decoded_wide < -1966080000ll ) { decoded_wide = -1966080000ll; report->clamped++; }
+                    if ( decoded_wide > 1966080000ll ) { decoded_wide = 1966080000ll; report->clamped++; }
+                    int64_t decoded_v = (int64_t) decoded_wide;
+                    value.position = decoded_v;
+                }
+                break;
+            }
+            case 0x891da1f305deb858ull: // reach
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 24 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t lo_v = 0, hi_v = 0;
+                    if ( width < 0 || !r.get( lo_v, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi_v, width - 64 ) ) ) { report->malformed = true; return false; }
+                    serialize::uint128_t raw_v = ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v );
+                    if ( entry.packing == 1 ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
+                    serialize::int128_t decoded_v = serialize::int128_t( raw_v );
+                    if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ); report->clamped++; }
+                    else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ); report->clamped++; }
+                    value.reach = decoded_v;
+                }
+                break;
+            }
+            case 0x7fd9266c6a3e25b5ull: // ticks
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 22 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    else if ( width > 0 && width < 64 )
+                    {
+                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                    }
+                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
+                    if ( decoded_wide > 1000000ll ) { decoded_wide = 1000000ll; report->clamped++; }
+                    int32_t decoded_v = (int32_t) decoded_wide;
+                    value.ticks = decoded_v;
+                }
+                break;
+            }
+            case 0xfbc924118177ade4ull: // ratio
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 25 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 240ull ) { decoded_wide = (int64_t) 240ull; report->clamped++; }
+                    uint8_t decoded_v = (uint8_t) decoded_wide;
+                    value.ratio = decoded_v;
+                }
+                break;
+            }
+            case 0x2281498aa0200e40ull: // speed
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 27 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 65536000ull ) { decoded_wide = (int64_t) 65536000ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.speed = decoded_v;
+                }
+                break;
+            }
+            case 0x8b7dc019093cd0e1ull: // span
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 28 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 18446744073709486080ull ) { decoded_wide = (int64_t) 18446744073709486080ull; report->clamped++; }
+                    uint64_t decoded_v = (uint64_t) decoded_wide;
+                    value.span = decoded_v;
+                }
+                break;
+            }
+            case 0x1f3757a2ce7b0ab1ull: // mass
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 29 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t lo_v = 0, hi_v = 0;
+                    if ( width < 0 || !r.get( lo_v, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi_v, width - 64 ) ) ) { report->malformed = true; return false; }
+                    serialize::uint128_t raw_v = ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v );
+                    if ( entry.packing == 1 ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
+                    serialize::uint128_t decoded_v = serialize::uint128_t( raw_v );
+                    if ( decoded_v > ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ) ) { decoded_v = ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ); report->clamped++; }
+                    value.mass = decoded_v;
+                }
+                break;
+            }
+            case 0x23e5906728b4e66full: // frames
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 27 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.frames = decoded_v;
+                }
+                break;
+            }
+            case 0xd61bdd7908af2642ull: // flux
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 18 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t lo_v = 0, hi_v = 0;
+                    if ( width < 0 || !r.get( lo_v, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi_v, width - 64 ) ) ) { report->malformed = true; return false; }
+                    serialize::uint128_t raw_v = ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v );
+                    if ( entry.packing == 1 ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
+                    serialize::int128_t decoded_v = serialize::int128_t( raw_v );
+                    if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); report->clamped++; }
+                    else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); report->clamped++; }
+                    value.flux = decoded_v;
+                }
+                break;
+            }
+            case 0xf2fd4f9140ef2f15ull: // energy
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 18 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t lo_v = 0, hi_v = 0;
+                    if ( width < 0 || !r.get( lo_v, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi_v, width - 64 ) ) ) { report->malformed = true; return false; }
+                    serialize::uint128_t raw_v = ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v );
+                    if ( entry.packing == 1 ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
+                    serialize::int128_t decoded_v = serialize::int128_t( raw_v );
+                    if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ); report->clamped++; }
+                    else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ); report->clamped++; }
+                    value.energy = decoded_v;
+                }
+                break;
+            }
+            case 0x23fcfd6678e36712ull: // entity_id
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 19 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t lo_v = 0, hi_v = 0;
+                    if ( width < 0 || !r.get( lo_v, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi_v, width - 64 ) ) ) { report->malformed = true; return false; }
+                    serialize::uint128_t raw_v = ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v );
+                    if ( entry.packing == 1 ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
+                    serialize::uint128_t decoded_v = serialize::uint128_t( raw_v );
+                    value.entity_id = decoded_v;
+                }
+                break;
+            }
+            case 0x6aacb9fbb71a1d91ull: // scale
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 22 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    else if ( width > 0 && width < 64 )
+                    {
+                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                    }
+                    if ( decoded_wide < -524288ll ) { decoded_wide = -524288ll; report->clamped++; }
+                    if ( decoded_wide > 524288ll ) { decoded_wide = 524288ll; report->clamped++; }
+                    int32_t decoded_v = (int32_t) decoded_wide;
+                    value.scale = decoded_v;
+                }
+                break;
+            }
+            case 0xe3b1ca6a3b48dddcull: // samples
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 14 || entry.elem_kind != 22 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t n = (uint64_t) entry.min;
+                    const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
+                    if ( count_bits > 0 )
+                    {
+                        uint64_t raw = 0;
+                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                        n = raw + (uint64_t) entry.min;
+                    }
+                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 3 ) { kept = 3; report->clamped++; } else { kept = (int32_t) n; }
+                    const int64_t surplus_bits = entry.elem_value_bits;
+                    uint64_t walk = n;
+                    if ( surplus_bits >= 0 && walk > (uint64_t) 3 ) { walk = (uint64_t) 3; } // the surplus is arithmetic
+                    for ( uint64_t i = 0; i < walk; i++ )
+                    {
+                        const bool in_bounds = (int32_t) i < kept;
+                        int32_t scratch = 0;
+                        {
+                            const int64_t width_2 = entry.elem_value_bits;
+                            uint64_t raw_2 = 0;
+                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide_2 = (int64_t) raw_2;
+                            if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
+                            else if ( width_2 > 0 && width_2 < 64 )
+                            {
+                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
+                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
+                            }
+                            if ( decoded_wide_2 < -524288ll ) { decoded_wide_2 = -524288ll; report->clamped++; }
+                            if ( decoded_wide_2 > 524288ll ) { decoded_wide_2 = 524288ll; report->clamped++; }
+                            int32_t decoded_v_2 = (int32_t) decoded_wide_2;
+                            scratch = decoded_v_2;
+                        }
+                        if ( in_bounds ) { value.samples[i] = scratch; }
+                    }
+                    if ( walk < n && !TableMessageSkipRun( r, n - walk, surplus_bits ) ) { report->malformed = true; return false; }
+                }
+                break;
+            }
+            case 0xb1494b6ef08a411eull: // weights
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 14 || entry.elem_kind != 26 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t n = (uint64_t) entry.min;
+                    const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
+                    if ( count_bits > 0 )
+                    {
+                        uint64_t raw = 0;
+                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                        n = raw + (uint64_t) entry.min;
+                    }
+                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 4 ) { kept = 4; report->clamped++; } else { kept = (int32_t) n; }
+                    const int64_t surplus_bits = entry.elem_value_bits;
+                    uint64_t walk = n;
+                    if ( surplus_bits >= 0 && walk > (uint64_t) 4 ) { walk = (uint64_t) 4; } // the surplus is arithmetic
+                    for ( uint64_t i = 0; i < walk; i++ )
+                    {
+                        const bool in_bounds = (int32_t) i < kept;
+                        uint16_t scratch = 0;
+                        {
+                            const int64_t width_2 = entry.elem_value_bits;
+                            uint64_t raw_2 = 0;
+                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide_2 = (int64_t) raw_2;
+                            if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
+                            if ( (uint64_t) decoded_wide_2 > 25600ull ) { decoded_wide_2 = (int64_t) 25600ull; report->clamped++; }
+                            uint16_t decoded_v_2 = (uint16_t) decoded_wide_2;
+                            scratch = decoded_v_2;
+                        }
+                        if ( in_bounds ) { value.weights[i] = scratch; }
+                    }
+                    if ( walk < n && !TableMessageSkipRun( r, n - walk, surplus_bits ) ) { report->malformed = true; return false; }
+                    value.weights_count = kept;
+                }
+                break;
+            }
+            case 0x32969e840d9c67b8ull: // axes
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 16 || entry.elem_kind != 23 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t n = 0;
+                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) ) { report->malformed = true; return false; }
+                    for ( uint64_t p = 0; p < n; p++ )
+                    {
+                        uint64_t key_ref = 0;
+                        if ( !r.get( key_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                        TableMessageEntry key_entry;
+                        if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { report->malformed = true; return false; }
+                        Axis key = Axis::None;
+                        const bool named = TableEnumValue( key_entry.id, key );
+                        if ( !named ) { report->unknown++; }
+                        const int32_t slot = named ? (int32_t) key - 1 : -1;
+                        const bool in_bounds = slot >= 0 && slot < 3;
+                        int64_t scratch = 0;
+                        {
+                            const int64_t width_2 = entry.elem_value_bits;
+                            uint64_t raw_2 = 0;
+                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide_2 = (int64_t) raw_2;
+                            if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
+                            else if ( width_2 > 0 && width_2 < 64 )
+                            {
+                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
+                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
+                            }
+                            if ( decoded_wide_2 < -429496729600ll ) { decoded_wide_2 = -429496729600ll; report->clamped++; }
+                            if ( decoded_wide_2 > 429496729600ll ) { decoded_wide_2 = 429496729600ll; report->clamped++; }
+                            int64_t decoded_v_2 = (int64_t) decoded_wide_2;
+                            scratch = decoded_v_2;
+                        }
+                        if ( in_bounds ) { value.axes.slots[slot] = scratch; }
+                    }
+                }
+                break;
+            }
+            case 0x5af1ac301b4ae16dull: // seeds
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 14 || entry.elem_kind != 19 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    uint64_t n = (uint64_t) entry.min;
+                    const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
+                    if ( count_bits > 0 )
+                    {
+                        uint64_t raw = 0;
+                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                        n = raw + (uint64_t) entry.min;
+                    }
+                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                    int32_t kept = 0;
+                    if ( n > (uint64_t) 2 ) { kept = 2; report->clamped++; } else { kept = (int32_t) n; }
+                    const int64_t surplus_bits = entry.elem_value_bits;
+                    uint64_t walk = n;
+                    if ( surplus_bits >= 0 && walk > (uint64_t) 2 ) { walk = (uint64_t) 2; } // the surplus is arithmetic
+                    for ( uint64_t i = 0; i < walk; i++ )
+                    {
+                        const bool in_bounds = (int32_t) i < kept;
+                        serialize::uint128_t scratch = 0;
+                        {
+                            const int64_t width_2 = entry.elem_value_bits;
+                            uint64_t lo_v_2 = 0, hi_v_2 = 0;
+                            if ( width_2 < 0 || !r.get( lo_v_2, width_2 < 64 ? width_2 : 64 ) || ( width_2 > 64 && !r.get( hi_v_2, width_2 - 64 ) ) ) { report->malformed = true; return false; }
+                            serialize::uint128_t raw_v_2 = ( serialize::uint128_t( hi_v_2 ) << 64 ) | serialize::uint128_t( lo_v_2 );
+                            if ( entry.elem_packing == 1 ) { raw_v_2 = raw_v_2 + ( ( serialize::uint128_t( (uint64_t) entry.elem_base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.elem_base_lo ) ); }
+                            serialize::uint128_t decoded_v_2 = serialize::uint128_t( raw_v_2 );
+                            scratch = decoded_v_2;
+                        }
+                        if ( in_bounds ) { value.seeds[i] = scratch; }
+                    }
+                    if ( walk < n && !TableMessageSkipRun( r, n - walk, surplus_bits ) ) { report->malformed = true; return false; }
+                    value.seeds_count = kept;
+                }
+                break;
+            }
+            case 0x8c2fd80da8957064ull: // pose
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !PoseLoadMessageBody( r, vocabulary, report, index_bits, value.pose ) ) { return false; }
+                break;
+            }
+            case 0x4328f78ab20e1f98ull: // spawn
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 13 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                if ( !PoseLoadMessageBody( r, vocabulary, report, index_bits, value.spawn ) ) { return false; }
+                value.spawn_present = true; // the field rode, so it is PRESENT (§2.3)
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of bodies of
+// ONE ROOT in one buffer, one count and one continuous bit stream with no
+// alignment between them. A single message is the batch of one, and there is
+// no singular verb.
+//
+// Every reference is a compile-time SLOT and every width a literal, so a save
+// does no lookup at all and costs what a save costs.
+//
+// M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
+// verdict set and the reason batch_too_large on it, and nothing written. The
+// refusal is learned at MEASURE time, before a buffer is allocated, and a
+// caller with more bodies calls again.
+inline int64_t SimStateMeasureMessages( const SimState * values, int64_t count, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    int64_t bits = 8; // the body count, a ranged integer over [1, 256]
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const int64_t body = SimStateMeasureMessageBody( bits, values[i] );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
+}
+
+inline int64_t SimStateSaveMessages( const SimState * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableMessageBatch batch;
+    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( !SimStateSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        batch.written++;
+    }
+    return TableMessageBatchEnd( batch ); // == SimStateMeasureMessages( values, count, report )
+}
+
+// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no vocabulary, no counter
+// moves and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a vocabulary, because a guessed one
 // decodes a body under the wrong names in silence.
-inline bool SimStateLoadMessage( SimState & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+//
+// `count` is IN and OUT: in, the storage the caller has room for, and out,
+// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
+// batch_too_large, found from the count before a body is decoded, and count
+// comes back holding the WIRE's M, so the caller calls again with storage at
+// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
+// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
+// after it is not a body.
+inline bool SimStateLoadMessages( SimState * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    SimStateReset( value );
-    if ( bytes < 1 ) { to->malformed = true; return false; }
-    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
-    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
-    // there is no stray-byte rule to apply between one and a first entry
-    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    return SimStateLoadBody( r, value );
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    const int64_t capacity = *count;
+    *count = 0;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
+    if ( bodies < 0 ) { return false; }
+    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    for ( int64_t i = 0; i < bodies; i++ )
+    {
+        if ( !SimStateLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        br.remaining--;
+    }
+    *count = bodies;
+    return TableMessageBatchClose( br );
 }
 
 inline int64_t PoseMeasureBody( TableIds & ids, const Pose & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.x != 32768ll ) { bytes += TableLebBytes( ids.ref( 0xaf63f54c86021707ull, 2 ) ) + 1 + 8; } // x
-    if ( value.y != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f44c86021554ull, 3 ) ) + 1 + 8; } // y
-    if ( value.heading != 0 ) { bytes += TableLebBytes( ids.ref( 0xb128829190ca0f75ull, 4 ) ) + 1 + 4; } // heading
+    if ( value.x != 32768ll ) { bytes += TableLebBytes( ids.ref( 0xaf63f54c86021707ull ) ) + 1 + 8; } // x
+    if ( value.y != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f44c86021554ull ) ) + 1 + 8; } // y
+    if ( value.heading != 0 ) { bytes += TableLebBytes( ids.ref( 0xb128829190ca0f75ull ) ) + 1 + 4; } // heading
     return bytes;
 }
 
@@ -2142,17 +4047,17 @@ SCALARDEMO_TABLE_INLINE bool PoseSaveBody( TableWriter & w, TableIds & ids, cons
 {
     if ( value.x != 32768ll )
     {
-        w.putleb( ids.ref( 0xaf63f54c86021707ull, 2 ) ); w.put8( 23 ); // x
+        w.putleb( ids.ref( 0xaf63f54c86021707ull ) ); w.put8( 23 ); // x
         w.put64( uint64_t( value.x ) );
     }
     if ( value.y != 0 )
     {
-        w.putleb( ids.ref( 0xaf63f44c86021554ull, 3 ) ); w.put8( 23 ); // y
+        w.putleb( ids.ref( 0xaf63f44c86021554ull ) ); w.put8( 23 ); // y
         w.put64( uint64_t( value.y ) );
     }
     if ( value.heading != 0 )
     {
-        w.putleb( ids.ref( 0xb128829190ca0f75ull, 4 ) ); w.put8( 27 ); // heading
+        w.putleb( ids.ref( 0xb128829190ca0f75ull ) ); w.put8( 27 ); // heading
         w.put32( uint32_t( value.heading ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -2182,7 +4087,7 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId )
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -2306,47 +4211,237 @@ inline bool PoseLoad( Pose & value, const uint8_t * buffer, int64_t bytes, Table
     return PoseLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
-// The MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the form byte and the root
-// body, and no trailer at all — the connection's announced table is where
-// the ids live. Every reference is a compile-time SLOT, so this walk does
-// no lookup and a save costs what a save costs.
-inline int64_t PoseMeasureMessage( const Pose & value )
+// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
+// body's own bit position in the batch, because a `string(N)` ALIGNS before
+// its bytes and an align costs what the position says it costs.
+inline int64_t PoseMeasureMessageBody( int64_t at, const Pose & value )
 {
-    TableIds ids;
-    ids.vocabulary = true;
-    const int64_t body = PoseMeasureBody( ids, value );
-    if ( body < 0 ) { return -1; }
-    return 1 + body;
+    int64_t bits = 0;
+    if ( value.x != 32768ll )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.y != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 32;
+    }
+    if ( value.heading != 0 )
+    {
+        bits += kTableMessageRefBitsHere;
+        bits += 25;
+    }
+    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
+    (void) at;
+    return bits;
 }
 
-inline int64_t PoseSaveMessage( const Pose & value, uint8_t * buffer, int64_t capacity )
+// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
+// kind byte rides at all, and no length frames a nested body, because a
+// body is self-delimiting: it is written where the file form put an L.
+inline bool PoseSaveMessageBody( TableBitWriter & w, const Pose & value )
 {
-    TableWriter w( buffer, capacity );
-    TableIds ids;
-    ids.vocabulary = true;
-    w.put8( kTableWireMessageForm );
-    if ( !PoseSaveBody( w, ids, value ) || w.overflow ) { return -1; }
-    return w.offset; // == PoseMeasureMessage( value )
+    if ( value.x != 32768ll )
+    {
+        w.put( 1, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.x ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744071743471616ull ) ); w.put( uint64_t( raw_v ), 32 ); }
+    }
+    if ( value.y != 0 )
+    {
+        w.put( 2, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.y ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744071743471616ull ) ); w.put( uint64_t( raw_v ), 32 ); }
+    }
+    if ( value.heading != 0 )
+    {
+        w.put( 3, kTableMessageRefBitsHere );
+        { serialize::uint128_t raw_v = serialize::uint128_t( value.heading ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 25 ); }
+    }
+    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
 }
 
-// A form 2 message with NO TABLE for the connection is REFUSED BY NAME:
-// nothing is decoded, the reader says it holds no table, no counter moves
-// and malformed does not fire. A reader does not fall back to the file
-// form on its own and does not guess a table, because a guessed table
+// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
+// defaults first, then whatever the wire says, field by field. An entry this
+// build cannot name is skipped by its SHAPE and counted; one whose kind is
+// not this field's is a kind mismatch and skipped the same way.
+inline bool PoseLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Pose & value )
+{
+    PoseReset( value );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
+        // field and is read before this walk begins, so meeting one here is
+        // a second numbering wherever it sits
+        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        switch ( entry.id )
+        {
+            case 0xaf63f54c86021707ull: // x
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 23 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    else if ( width > 0 && width < 64 )
+                    {
+                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                    }
+                    if ( decoded_wide < -1966080000ll ) { decoded_wide = -1966080000ll; report->clamped++; }
+                    if ( decoded_wide > 1966080000ll ) { decoded_wide = 1966080000ll; report->clamped++; }
+                    int64_t decoded_v = (int64_t) decoded_wide;
+                    value.x = decoded_v;
+                }
+                break;
+            }
+            case 0xaf63f44c86021554ull: // y
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 23 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    else if ( width > 0 && width < 64 )
+                    {
+                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                    }
+                    if ( decoded_wide < -1966080000ll ) { decoded_wide = -1966080000ll; report->clamped++; }
+                    if ( decoded_wide > 1966080000ll ) { decoded_wide = 1966080000ll; report->clamped++; }
+                    int64_t decoded_v = (int64_t) decoded_wide;
+                    value.y = decoded_v;
+                }
+                break;
+            }
+            case 0xb128829190ca0f75ull: // heading
+            {
+                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
+                // A RANGE that moved is not one: the shapes differ and the entry
+                // carries the SENDER's, so the field decodes and clamps (§4).
+                if ( entry.kind != 27 || entry.elem_kind != 0 )
+                {
+                    report->kind_mismatch++;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    break;
+                }
+                {
+                    const int64_t width = entry.value_bits;
+                    uint64_t raw = 0;
+                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    int64_t decoded_wide = (int64_t) raw;
+                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( (uint64_t) decoded_wide > 23592960ull ) { decoded_wide = (int64_t) 23592960ull; report->clamped++; }
+                    uint32_t decoded_v = (uint32_t) decoded_wide;
+                    value.heading = decoded_v;
+                }
+                break;
+            }
+            default:
+                report->unknown++;
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                break;
+        }
+    }
+}
+
+// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of bodies of
+// ONE ROOT in one buffer, one count and one continuous bit stream with no
+// alignment between them. A single message is the batch of one, and there is
+// no singular verb.
+//
+// Every reference is a compile-time SLOT and every width a literal, so a save
+// does no lookup at all and costs what a save costs.
+//
+// M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
+// verdict set and the reason batch_too_large on it, and nothing written. The
+// refusal is learned at MEASURE time, before a buffer is allocated, and a
+// caller with more bodies calls again.
+inline int64_t PoseMeasureMessages( const Pose * values, int64_t count, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    int64_t bits = 8; // the body count, a ranged integer over [1, 256]
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const int64_t body = PoseMeasureMessageBody( bits, values[i] );
+        if ( body < 0 ) { return -1; }
+        bits += body;
+    }
+    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
+}
+
+inline int64_t PoseSaveMessages( const Pose * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( values == NULL || count < 1 ) { return -1; }
+    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    TableMessageBatch batch;
+    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( !PoseSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        batch.written++;
+    }
+    return TableMessageBatchEnd( batch ); // == PoseMeasureMessages( values, count, report )
+}
+
+// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
+// nothing is decoded, the reader says it holds no vocabulary, no counter
+// moves and malformed does not fire. A reader does not fall back to the file
+// form on its own and does not guess a vocabulary, because a guessed one
 // decodes a body under the wrong names in silence.
-inline bool PoseLoadMessage( Pose & value, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+//
+// `count` is IN and OUT: in, the storage the caller has room for, and out,
+// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
+// batch_too_large, found from the count before a body is decoded, and count
+// comes back holding the WIRE's M, so the caller calls again with storage at
+// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
+// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
+// after it is not a body.
+inline bool PoseLoadMessages( Pose * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    PoseReset( value );
-    if ( bytes < 1 ) { to->malformed = true; return false; }
-    if ( buffer[0] != kTableWireMessageForm ) { to->refused = true; to->reason = newer_form; return false; }
-    if ( !vocabulary.announced ) { to->refused = true; to->reason = no_vocabulary; return false; }
-    // a form 2 wire has NO TRAILER, so the body runs to the last byte and
-    // there is no stray-byte rule to apply between one and a first entry
-    TableReader r( buffer + 1, bytes - 1, to, &vocabulary.table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    return PoseLoadBody( r, value );
+    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    const int64_t capacity = *count;
+    *count = 0;
+    TableMessageBatchReader br;
+    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
+    if ( bodies < 0 ) { return false; }
+    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    for ( int64_t i = 0; i < bodies; i++ )
+    {
+        if ( !PoseLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        br.remaining--;
+    }
+    *count = bodies;
+    return TableMessageBatchClose( br );
 }
 
 // ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
