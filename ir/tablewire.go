@@ -197,6 +197,15 @@ func ArmWireFixedWidth(f *Field) int {
 // reserved blob ids, and the node table's reserved id. It is a compile-time
 // fact, so a save allocates nothing for the table it writes.
 func TableWireIdCapacity(u *Unit) int {
+	return len(TableWireIds(u))
+}
+
+// TableWireIds is that same set, in ascending order: every id a unit's table
+// closure can name. Retain-unknown reads it to decide which STORE an id inside
+// a retained record takes — an id this build can name takes its entry from the
+// generated table and any other takes one from the caller's list
+// (docs/SPEC-TABLES.md §6.6).
+func TableWireIds(u *Unit) []uint64 {
 	ids := map[uint64]bool{
 		TableNodeWireId:  true,
 		BytesWireTypeId:  true,
@@ -252,7 +261,12 @@ func TableWireIdCapacity(u *Unit) int {
 			noteField(f)
 		}
 	}
-	return len(ids)
+	out := make([]uint64, 0, len(ids))
+	for id := range ids {
+		out = append(out, id)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
 
 // WstringWireTypeId is the third RESERVED node type id the message form's

@@ -762,7 +762,9 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 	if widened {
 		g.emitWidenedScalar(f, elemKind, "elem_kind", "( *slot )", ind+"                ", "sub", "r.report->malformed = true; break;")
 	} else {
-		g.emitTableReadElementInto(f, elemKind, "( *slot )", ind+"                ", "sub", "_"+f.Name)
+		g.inStep("i", func() {
+			g.emitTableReadElementInto(f, elemKind, "( *slot )", ind+"                ", "sub", "_"+f.Name)
+		})
 	}
 	g.pf("%s                landed = true;\n", ind)
 	g.pf("%s            } while ( 0 );\n", ind)

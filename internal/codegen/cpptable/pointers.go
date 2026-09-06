@@ -33,21 +33,43 @@ func (g *tableGen) isVar(name string) bool { return g.variable[name] }
 // measureCall renders a nested MEASURE call on a closure member: a variable
 // member takes the resolution context, a fixed one takes none — so a fixed
 // table's codec is character-for-character what it was before pointers existed.
-func (g *tableGen) measureCall(name, expr string) string {
+// UNDER RETENTION each of the three descends into the RETAIN family and
+// carries the path a step further (docs/SPEC-TABLES.md §6.6): the step is
+// computed LOCALLY, at the moment the walk descends, so neither side numbers a
+// tree and the same address is available on both.
+func (g *tableGen) measureCall(f *ir.Field, name, expr string) string {
+	if g.retain {
+		if g.isVar(name) {
+			return fmt.Sprintf("%sMeasureBodyRetain( ctx, numbering, ids, %s, retain, %s )", name, expr, g.step(f))
+		}
+		return fmt.Sprintf("%sMeasureBodyRetain( ids, %s, retain, %s )", name, expr, g.step(f))
+	}
 	if g.isVar(name) {
 		return fmt.Sprintf("%sMeasureBody( ctx, numbering, ids, %s )", name, expr)
 	}
 	return fmt.Sprintf("%sMeasureBody( ids, %s )", name, expr)
 }
 
-func (g *tableGen) saveCall(name, expr string) string {
+func (g *tableGen) saveCall(f *ir.Field, name, expr string) string {
+	if g.retain {
+		if g.isVar(name) {
+			return fmt.Sprintf("%sSaveBodyRetain( ctx, numbering, w, ids, %s, retain, %s )", name, expr, g.step(f))
+		}
+		return fmt.Sprintf("%sSaveBodyRetain( w, ids, %s, retain, %s )", name, expr, g.step(f))
+	}
 	if g.isVar(name) {
 		return fmt.Sprintf("%sSaveBody( ctx, numbering, w, ids, %s )", name, expr)
 	}
 	return fmt.Sprintf("%sSaveBody( w, ids, %s )", name, expr)
 }
 
-func (g *tableGen) loadCall(name, reader, expr string) string {
+func (g *tableGen) loadCall(f *ir.Field, name, reader, expr string) string {
+	if g.retain {
+		if g.isVar(name) {
+			return fmt.Sprintf("%sLoadBodyRetain( %s, nodes, %s, retain, %s )", name, reader, expr, g.step(f))
+		}
+		return fmt.Sprintf("%sLoadBodyRetain( %s, %s, retain, %s )", name, reader, expr, g.step(f))
+	}
 	if g.isVar(name) {
 		return fmt.Sprintf("%sLoadBody( %s, nodes, %s )", name, reader, expr)
 	}

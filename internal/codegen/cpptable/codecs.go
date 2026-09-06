@@ -713,11 +713,16 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 // element expression carrying one %s for the loop variable.
 func (g *tableGen) emitArrayBodyMeasure(f *ir.Field, elemKind int, into, n, access, ind, onBad, sfx string) {
 	i := "elem_i" + sfx
+	// an element is a STEP, and its index is the second half of the pair
+	// (docs/SPEC-TABLES.md §6.6)
+	was := g.elemIndex
+	g.elemIndex = i
+	defer func() { g.elemIndex = was }()
 	g.pf("%s%s += 1 + TableLebBytes( (uint64_t) ( %s ) ); // the element kind byte and the count\n", ind, into, n)
 	switch elemKind {
 	case tkTable:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
-		g.pf("%s    const int64_t elem_bytes%s = %s;\n", ind, sfx, g.measureCall(f.Type.Name, fmt.Sprintf(access, i)))
+		g.pf("%s    const int64_t elem_bytes%s = %s;\n", ind, sfx, g.measureCall(f, f.Type.Name, fmt.Sprintf(access, i)))
 		g.pf("%s    if ( elem_bytes%s < 0 ) { %s }\n", ind, sfx, onBad)
 		g.pf("%s    %s += %s;\n%s}\n", ind, into, framed("elem_bytes"+sfx), ind)
 	case tkEnum:
@@ -789,7 +794,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			g.pf("        bytes += TableLebBytes( ref_%s ) + 1 + %s; // %s\n", f.Name, framed("body_"+f.Name), f.Name)
 		case kind == tkTable:
 			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
-			g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, "value."+f.Name))
+			g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f, f.Type.Name, "value."+f.Name))
 			g.pf("        if ( body_%s < 0 ) { return -1; }\n", f.Name)
 			g.pf("        bytes += TableLebBytes( ref_%s ) + 1 + %s; // %s\n", f.Name, framed("body_"+f.Name), f.Name)
 		case kind == tkEnum:
@@ -939,7 +944,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("    {\n")
 		g.pf("        const int32_t mark_%s = ids.count;\n", f.Name)
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
-		g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, "value."+f.Name))
+		g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f, f.Type.Name, "value."+f.Name))
 		g.pf("        if ( body_%s < 0 ) { return -1; }\n", f.Name)
 		g.pf("        if ( body_%s > 1 ) { bytes += TableLebBytes( ref_%s ) + 1 + %s; } // %s\n", f.Name, f.Name, framed("body_"+f.Name), f.Name)
 		g.pf("        else { ids.truncate( mark_%s ); } // an all-default nested table elides, and costs no entry\n", f.Name)
@@ -962,14 +967,17 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 func (g *tableGen) emitUnionPayloadMeasure(f *ir.Field, expr, into, ind, sfx string) {
 	un := f.Type.Ref.(*ir.Union)
 	body := "arm_payload" + sfx
+	wasField := g.unionField
+	g.unionField = f
+	defer func() { g.unionField = wasField }()
 	g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
 	g.pf("%s    case %sType::None: break;\n", ind, un.Name)
-	for _, v := range un.Variants {
+	for ai, v := range un.Variants {
 		g.noteRef(v.Type)
 		g.pf("%s    case %sType::%s:\n%s    {\n", ind, un.Name, ir.GoExportName(v.Name), ind)
 		g.pf("%s        int64_t %s = 0;\n", ind, body)
 		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.WireName())))
-		g.emitArmMeasure(v, expr, body, ind+"        ", "return -1;", sfx)
+		g.inStep(strconv.Itoa(ai), func() { g.emitArmMeasure(v, expr, body, ind+"        ", "return -1;", sfx) })
 		g.pf("%s        %s += TableLebBytes( arm_ref%s ) + 1 + %s;\n", ind, into, sfx, framed(body))
 		g.pf("%s        break;\n%s    }\n", ind, ind)
 	}
@@ -984,7 +992,7 @@ func (g *tableGen) emitUnionElementMeasure(f *ir.Field, expr, into, ind, sfx str
 	un := f.Type.Ref.(*ir.Union)
 	g.pf("%sif ( %s.type == %sType::None ) { %s += 1; } // a None element is the zero reference in its place\n", ind, expr, un.Name, into)
 	g.pf("%selse\n%s{\n", ind, ind)
-	g.emitUnionPayloadMeasure(f, expr, into, ind+"    ", sfx)
+	g.inElementStep(f, func() { g.emitUnionPayloadMeasure(f, expr, into, ind+"    ", sfx) })
 	g.pf("%s}\n", ind)
 }
 
@@ -1001,6 +1009,10 @@ func (g *tableGen) emitUnionElementMeasure(f *ir.Field, expr, into, ind, sfx str
 // THE KEY'S REFERENCE IS INTERNED BEFORE THE ELEMENT'S IDS, because the key
 // rides first, and a slot that turns out to elide undoes both.
 func (g *tableGen) emitKeyedSlotRides(f *ir.Field, kind int, ind, onBad string) {
+	// a KEYED slot's own index is the element index of the step (§6.6, §3.2)
+	was := g.elemIndex
+	g.elemIndex = "i"
+	defer func() { g.elemIndex = was }()
 	expr := g.keyedSlots("value.", f) + "[i]"
 	if kind != tkTable {
 		switch kind {
@@ -1021,7 +1033,7 @@ func (g *tableGen) emitKeyedSlotRides(f *ir.Field, kind int, ind, onBad string) 
 		ind, f.KeyEnum, onBad)
 	switch kind {
 	case tkTable:
-		g.pf("%sconst int64_t elem_bytes = %s;\n", ind, g.measureCall(f.Type.Name, expr))
+		g.pf("%sconst int64_t elem_bytes = %s;\n", ind, g.measureCall(f, f.Type.Name, expr))
 		g.pf("%sif ( elem_bytes < 0 ) { %s }\n", ind, onBad)
 		g.pf("%sif ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides\n", ind)
 	case tkEnum:
@@ -1130,6 +1142,9 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 // and the elements at their own framing (docs/SPEC-TABLES.md §3).
 func (g *tableGen) emitArrayBodyWrite(f *ir.Field, elemKind int, n, access, ind, sfx string) {
 	i := "elem_i" + sfx
+	was := g.elemIndex
+	g.elemIndex = i
+	defer func() { g.elemIndex = was }()
 	g.pf("%sw.put8( %d ); w.putleb( (uint64_t) ( %s ) );\n", ind, elemKind, n)
 	g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
 	g.emitTableWriteElement(f, elemKind, fmt.Sprintf(access, i), ind+"    ", sfx)
@@ -1181,10 +1196,10 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.emitArrayField(f, id, elemKind, count, "value."+f.Name+"[%s]", "        ")
 		case kind == tkTable:
 			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
-			g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, "value."+f.Name))
+			g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f, f.Type.Name, "value."+f.Name))
 			g.pf("        if ( body_%s < 0 ) return false; // storage invariant, refused as measure refuses it\n", f.Name)
 			g.pf("        w.putleb( ref_%s ); w.put8( %d ); w.putleb( (uint64_t) body_%s ); // %s\n", f.Name, tkTable, f.Name, f.Name)
-			g.pf("        if ( !%s ) return false;\n", g.saveCall(f.Type.Name, "value."+f.Name))
+			g.pf("        if ( !%s ) return false;\n", g.saveCall(f, f.Type.Name, "value."+f.Name))
 		case kind == tkEnum:
 			g.pf("        if ( !TableEnumNamed( value.%s ) ) { return false; }\n", f.Name)
 			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
@@ -1232,7 +1247,9 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		switch kind {
 		case tkTable:
 			g.pf("                w.putleb( (uint64_t) elem_bytes );\n")
-			g.pf("                if ( !%s ) return false;\n", g.saveCall(f.Type.Name, g.keyedSlots("value.", f)+"[i]"))
+			g.inStep("i", func() {
+				g.pf("                if ( !%s ) return false;\n", g.saveCall(f, f.Type.Name, g.keyedSlots("value.", f)+"[i]"))
+			})
 		case tkEnum:
 			// the slot's reference is already resolved above, like key_ref:
 			// writing it here rather than resolving the same value twice
@@ -1348,11 +1365,11 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("    {\n")
 		g.pf("        const int32_t mark_%s = ids.count;\n", f.Name)
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
-		g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, "value."+f.Name))
+		g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f, f.Type.Name, "value."+f.Name))
 		g.pf("        if ( body_%s < 0 ) return false; // storage invariant, refused as measure refuses it\n", f.Name)
 		g.pf("        if ( body_%s > 1 ) // all-default nested elides\n        {\n", f.Name)
 		g.pf("            w.putleb( ref_%s ); w.put8( %d ); w.putleb( (uint64_t) body_%s ); // %s\n", f.Name, tkTable, f.Name, f.Name)
-		g.pf("            if ( !%s ) return false;\n", g.saveCall(f.Type.Name, "value."+f.Name))
+		g.pf("            if ( !%s ) return false;\n", g.saveCall(f, f.Type.Name, "value."+f.Name))
 		g.pf("        }\n")
 		g.pf("        else { ids.truncate( mark_%s ); }\n", f.Name)
 		g.pf("    }\n")
@@ -1381,15 +1398,18 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 func (g *tableGen) emitUnionPayloadSave(f *ir.Field, expr, ind, onBad, sfx string) {
 	un := f.Type.Ref.(*ir.Union)
 	body := "arm_payload" + sfx
+	wasField := g.unionField
+	g.unionField = f
+	defer func() { g.unionField = wasField }()
 	g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
-	for _, v := range un.Variants {
+	for ai, v := range un.Variants {
 		g.noteRef(v.Type)
 		g.pf("%s    case %sType::%s:\n%s    {\n", ind, un.Name, ir.GoExportName(v.Name), ind)
 		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.WireName())))
 		g.pf("%s        int64_t %s = 0;\n", ind, body)
-		g.emitArmMeasure(v, expr, body, ind+"        ", onBad, sfx)
+		g.inStep(strconv.Itoa(ai), func() { g.emitArmMeasure(v, expr, body, ind+"        ", onBad, sfx) })
 		g.pf("%s        w.putleb( arm_ref%s ); w.put8( %d ); w.putleb( (uint64_t) %s ); // %s\n", ind, sfx, armWireKind(v), body, v.Name)
-		g.emitArmSave(v, expr, ind+"        ", onBad, sfx)
+		g.inStep(strconv.Itoa(ai), func() { g.emitArmSave(v, expr, ind+"        ", onBad, sfx) })
 		g.pf("%s        break;\n%s    }\n", ind, ind)
 	}
 	g.pf("%s    default: %s // write validates the tag before it rides\n%s}\n", ind, onBad, ind)
@@ -1408,17 +1428,17 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind, sfx s
 	case tkF64:
 		g.pf("%sw.put64( table_double_to_bits( %s ) );\n", ind, expr)
 	case tkTable:
-		g.pf("%s{\n%s    const int64_t elem_len%s = %s;\n", ind, ind, sfx, g.measureCall(f.Type.Name, expr))
+		g.pf("%s{\n%s    const int64_t elem_len%s = %s;\n", ind, ind, sfx, g.measureCall(f, f.Type.Name, expr))
 		g.pf("%s    if ( elem_len%s < 0 ) return false;\n", ind, sfx)
 		g.pf("%s    w.putleb( (uint64_t) elem_len%s );\n", ind, sfx)
-		g.pf("%s    if ( !%s ) return false;\n%s}\n", ind, g.saveCall(f.Type.Name, expr), ind)
+		g.pf("%s    if ( !%s ) return false;\n%s}\n", ind, g.saveCall(f, f.Type.Name, expr), ind)
 	case tkUnion:
 		// one element of an array of unions: an ARM HEADER in its place, and
 		// None is the single zero reference (§3)
 		un := f.Type.Ref.(*ir.Union)
 		g.pf("%sif ( %s.type == %sType::None ) { w.putleb( 0 ); } // a None element rides in its place\n", ind, expr, un.Name)
 		g.pf("%selse\n%s{\n", ind, ind)
-		g.emitUnionPayloadSave(f, expr, ind+"    ", "return false;", sfx+"u")
+		g.inElementStep(f, func() { g.emitUnionPayloadSave(f, expr, ind+"    ", "return false;", sfx+"u") })
 		g.pf("%s}\n", ind)
 	case tkNodeIndex:
 		// one slot of an array of pointers: its node index, null as 0 (§3.1)
@@ -1748,7 +1768,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 			g.pf("%s    uint64_t decoded = 0;\n", ind)
 		}
 		g.pf("%s    for ( uint64_t i = 0; i < keep; i++ )\n%s    {\n", ind, ind)
-		g.emitTableReadElement(f, kind, ind+"        ")
+		g.inStep("i", func() { g.emitTableReadElement(f, kind, ind+"        ") })
 		if counted {
 			g.pf("%s        decoded = i + 1;\n", ind)
 		}
@@ -1774,7 +1794,10 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%sif ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );\n", ind, ind)
 		g.pf("%s    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n%s    {\n", ind, ind)
-		for _, v := range un.Variants {
+		wasField := g.unionField
+		g.unionField = f
+		defer func() { g.unionField = wasField }()
+		for ai, v := range un.Variants {
 			g.pf("%s        case 0x%016xull: // %s\n%s        {\n", ind, ir.TableWireId(v.WireName()), v.Name, ind)
 			g.pf("%s            if ( arm_kind != %d )\n%s            {\n", ind, armWireKind(v), ind)
 			g.emitArmWiden(v, "value."+f.Name, "arm_kind", "sub", fmt.Sprintf("value.%s.type", f.Name),
@@ -1784,8 +1807,10 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 			g.pf("%s                value.%s.type = %sType::None;\n", ind, f.Name, un.Name)
 			g.pf("%s                r.report->kind_mismatch++;\n%s                break;\n%s            }\n", ind, ind, ind)
 			g.pf("%s            value.%s.type = %sType::%s;\n", ind, f.Name, un.Name, ir.GoExportName(v.Name))
-			g.emitArmLoad(v, "value."+f.Name, ind+"            ", "sub",
-				fmt.Sprintf("value.%s.type", f.Name), un.Name+"Type::None", "")
+			g.inStep(strconv.Itoa(ai), func() {
+				g.emitArmLoad(v, "value."+f.Name, ind+"            ", "sub",
+					fmt.Sprintf("value.%s.type", f.Name), un.Name+"Type::None", "")
+			})
 			g.pf("%s            break;\n%s        }\n", ind, ind)
 		}
 		g.pf("%s        default:\n", ind)
@@ -1802,7 +1827,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%suint64_t body_len = 0;\n", ind)
 		g.pf("%sif ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );\n", ind, ind)
-		g.pf("%s    %s;\n", ind, g.loadCall(f.Type.Name, "sub", "value."+f.Name))
+		g.pf("%s    %s;\n", ind, g.loadCall(f, f.Type.Name, "sub", "value."+f.Name))
 		// A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3): a body whose
 		// terminator is not the last byte of its `L` is framing damage —
 		// the payload stops, the field reads its declared defaults, and the
@@ -1840,6 +1865,9 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 		un := f.Type.Ref.(*ir.Union)
 		ref, id, length := "elem_arm_ref"+sfx, "elem_arm_id"+sfx, "elem_arm_len"+sfx
 		armKind := "elem_arm_kind" + sfx
+		wasPath, wasIndex := g.pathExpr, g.elemIndex
+		g.pathExpr, g.elemIndex = g.step(f), "0"
+		defer func() { g.pathExpr, g.elemIndex = wasPath, wasIndex }()
 		g.pf("%s{\n%s    uint64_t %s = 0;\n", ind, ind, ref)
 		g.pf("%s    if ( !%s.getleb( %s ) ) { r.report->malformed = true; break; }\n", ind, rdr, ref)
 		g.pf("%s    %s.type = %sType::None;\n", ind, dst, un.Name)
@@ -1852,14 +1880,19 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 		g.pf("%s        if ( !%s.getleb( %s ) || !%s.room( %s ) ) { r.report->malformed = true; break; }\n", ind, rdr, length, rdr, length)
 		g.pf("%s        TableReader elem_arm%s( %s.buffer + %s.offset, (int64_t) %s, r.report, r.ids );\n", ind, sfx, rdr, rdr, length)
 		g.pf("%s        switch ( %s ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n%s        {\n", ind, id, ind)
-		for _, v := range un.Variants {
+		wasField := g.unionField
+		g.unionField = f
+		defer func() { g.unionField = wasField }()
+		for ai, v := range un.Variants {
 			g.pf("%s            case 0x%016xull: // %s\n%s            {\n", ind, ir.TableWireId(v.WireName()), v.Name, ind)
 			g.pf("%s                if ( %s != %d )\n%s                {\n", ind, armKind, armWireKind(v), ind)
 			g.emitArmWiden(v, dst, armKind, "elem_arm"+sfx, dst+".type",
 				un.Name+"Type::"+ir.GoExportName(v.Name), un.Name+"Type::None", ind+"                    ")
 			g.pf("%s                    %s.type = %sType::None; r.report->kind_mismatch++; break;\n%s                }\n", ind, dst, un.Name, ind)
 			g.pf("%s                %s.type = %sType::%s;\n", ind, dst, un.Name, ir.GoExportName(v.Name))
-			g.emitArmLoad(v, dst, ind+"                ", "elem_arm"+sfx, dst+".type", un.Name+"Type::None", sfx+"a")
+			g.inStep(strconv.Itoa(ai), func() {
+				g.emitArmLoad(v, dst, ind+"                ", "elem_arm"+sfx, dst+".type", un.Name+"Type::None", sfx+"a")
+			})
 			g.pf("%s                break;\n%s            }\n", ind, ind)
 		}
 		g.pf("%s            default: r.report->unknown++; break; // an arm this reader cannot name: the element reads None, the body skips by its length\n", ind)
@@ -1874,7 +1907,7 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 		g.pf("%suint64_t elem_len%s = 0;\n", ind, sfx)
 		g.pf("%sif ( !%s.getleb( elem_len%s ) || !%s.room( elem_len%s ) ) { r.report->malformed = true; break; }\n", ind, rdr, sfx, rdr, sfx)
 		g.pf("%s{\n%s    TableReader elem%s( %s.buffer + %s.offset, (int64_t) elem_len%s, r.report, r.ids );\n", ind, ind, sfx, rdr, rdr, sfx)
-		g.pf("%s    %s;\n", ind, g.loadCall(f.Type.Name, "elem"+sfx, dst))
+		g.pf("%s    %s;\n", ind, g.loadCall(f, f.Type.Name, "elem"+sfx, dst))
 		g.pf("%s}\n", ind)
 		g.pf("%s%s.offset += (int64_t) elem_len%s;\n", ind, rdr, sfx)
 	case tkEnum:

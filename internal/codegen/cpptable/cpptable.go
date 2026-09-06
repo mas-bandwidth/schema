@@ -120,6 +120,66 @@ type tableGen struct {
 	// a suffix, so an element's decode inside an element's decode shadows
 	// nothing (docs/SPEC-TABLES.md §13.9 holds the reference to -Wshadow).
 	msgDepth int
+	// retain is the RETAIN-UNKNOWN family being emitted (docs/SPEC-TABLES.md
+	// §6.6): the same field emitters, writing <T>LoadBodyRetain,
+	// <T>MeasureBodyRetain and <T>SaveBodyRetainFields instead of the three
+	// they always wrote, with the PATH threaded at every child-body descent
+	// and the unknown arm capturing rather than only skipping. Load, Measure
+	// and Save are emitted with it false and are not touched by it at all.
+	retain bool
+	// ordinal is the owner's FIELD ORDINALS, in the reader's own declaration
+	// order, which is the first half of a path step (§6.6).
+	ordinal map[*ir.Field]int
+	// pathExpr names the path IN SCOPE at the descent being emitted. It is
+	// `path` everywhere but inside an ARRAY OF UNIONS, where the element is
+	// one step and the arm is the next: the two steps carry the same field
+	// ordinal, because no body with a field list of its own sits between them.
+	pathExpr string
+	// elemIndex is the second half of a step — the element index inside the
+	// field being descended through (§6.6): zero for a scalar body, the loop
+	// variable for an array of any of the four kinds, the arm's own ordinal
+	// for a union, and the key's slot for a map.
+	elemIndex string
+	// unionField is the union FIELD whose arms are being emitted, which is
+	// what an arm's own descent takes its ordinal from.
+	unionField *ir.Field
+}
+
+// step renders one path step at a child-body descent: the field's ordinal in
+// the body being descended from, and the element index inside that field
+// (docs/SPEC-TABLES.md §6.6). The pair is what lets a body whose element count
+// is DATA-DRIVEN be addressed by the same step a union and a nested table take.
+func (g *tableGen) step(f *ir.Field) string {
+	at, index := g.pathExpr, g.elemIndex
+	if at == "" {
+		at = "path"
+	}
+	if index == "" {
+		index = "0"
+	}
+	return fmt.Sprintf("TableRetainStepInto( %s, %d, (uint32_t) ( %s ) )", at, g.ordinal[f], index)
+}
+
+// inStep runs `emit` with the element index set, and puts back what was there:
+// an arm's elements nest inside walks that already spell one.
+func (g *tableGen) inStep(index string, emit func()) {
+	was := g.elemIndex
+	g.elemIndex = index
+	emit()
+	g.elemIndex = was
+}
+
+// inElementStep runs `emit` one step deeper: the ARRAY OF UNIONS case, where
+// the element is a step and the arm is the next one. The two carry the same
+// field ordinal, because no body with a field list of its own sits between
+// them, and the pair is what keeps an element's arm out of a sibling's body
+// (docs/SPEC-TABLES.md §6.6).
+func (g *tableGen) inElementStep(f *ir.Field, emit func()) {
+	wasPath, wasIndex := g.pathExpr, g.elemIndex
+	g.pathExpr = g.step(f)
+	g.elemIndex = "0"
+	emit()
+	g.pathExpr, g.elemIndex = wasPath, wasIndex
 }
 
 // wireRef is a field header's id reference: the id and its MESSAGE-FORM SLOT,
@@ -505,6 +565,13 @@ struct TableReport
     // was not refused has no reason, and this member is the one the caller
     // must not look at then (docs/SPEC-TABLES.md §3.3).
     TableMessageReason reason = newer_form;
+    // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
+    // the reason duplicate is: a caller has one report type and not two. Both
+    // are ZERO in every read that did not opt in, and retention moves no
+    // counter above — a retained field still counts unknown, because unknown
+    // says what a READER could not name and that stays true.
+    int32_t retained = 0;    // unknown fields whose bytes were kept
+    int32_t retain_lost = 0; // every unknown this load or save could not keep
 };
 ` + refuseReason + `
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----

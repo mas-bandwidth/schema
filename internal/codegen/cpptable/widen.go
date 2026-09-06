@@ -273,7 +273,9 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 	case widened:
 		g.emitWidenedScalar(f, kind, "elem_kind", slot, ind+"            ", "elem", onTrunc)
 	case kind == tkTable:
-		g.pf("%s            %s;\n", ind, g.loadCall(f.Type.Name, "elem", slot))
+		g.inStep("int32_t( slot ) - 1", func() {
+			g.pf("%s            %s;\n", ind, g.loadCall(f, f.Type.Name, "elem", slot))
+		})
 	case kind == tkEnum:
 		g.emitEnumRefLoad(f, slot, ind+"            ", "elem", onTrunc)
 	default:

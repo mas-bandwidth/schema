@@ -138,7 +138,7 @@ func (g *tableGen) emitArmMeasure(v ir.UnionVariant, base, into, ind, onBad, sfx
 	switch {
 	case v.Body():
 		g.noteRef(v.Type)
-		g.pf("%s{\n%s    const int64_t %s = %s;\n", ind, ind, body, g.measureCall(v.Type, value))
+		g.pf("%s{\n%s    const int64_t %s = %s;\n", ind, ind, body, g.measureCall(g.unionField, v.Type, value))
 		g.pf("%s    if ( %s < 0 ) { %s }\n", ind, body, onBad)
 		g.pf("%s    %s += %s; // the arm's own table body (§3)\n%s}\n", ind, into, body, ind)
 	case f.Type.Blob():
@@ -199,7 +199,7 @@ func (g *tableGen) emitArmSave(v ir.UnionVariant, base, ind, onBad, sfx string) 
 	index := "arm_index" + sfx
 	switch {
 	case v.Body():
-		g.pf("%sif ( !%s ) { %s }\n", ind, g.saveCall(v.Type, value), onBad)
+		g.pf("%sif ( !%s ) { %s }\n", ind, g.saveCall(g.unionField, v.Type, value), onBad)
 	case f.Type.Blob():
 		blob := "arm_blob" + sfx
 		g.pf("%s{\n%s    const TableBlob * %s = TableBlobAt( ctx, %s );\n", ind, ind, blob, value)
@@ -267,7 +267,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 	}
 	switch {
 	case v.Body():
-		g.pf("%s%s;\n", ind, g.loadCall(v.Type, rdr, value))
+		g.pf("%s%s;\n", ind, g.loadCall(g.unionField, v.Type, rdr, value))
 		// A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3): an arm whose
 		// terminator is not the last byte of its `L` is framing damage — the
 		// payload stops, the union reads None, and the enclosing body
@@ -343,7 +343,9 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 				g.pf("%s    uint64_t %s = 0;\n", ind, decoded)
 			}
 			g.pf("%s    for ( uint64_t %s = 0; %s < %s; %s++ )\n%s    {\n", ind, i, i, keep, i, ind)
-			g.emitTableReadElementInto(f, elemKind, value+"[(int32_t) "+i+"]", ind+"        ", sub, sfx+"e")
+			g.inStep(i, func() {
+				g.emitTableReadElementInto(f, elemKind, value+"[(int32_t) "+i+"]", ind+"        ", sub, sfx+"e")
+			})
 			if counted {
 				g.pf("%s        %s = %s + 1;\n", ind, decoded, i)
 			}
