@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"sort"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -330,6 +331,15 @@ func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
 			for len(unit) < want && in.pos < len(in.text) && in.text[in.pos]&0xc0 == 0x80 {
 				unit = append(unit, in.text[in.pos])
 				in.pos++
+			}
+			// A SEQUENCE THAT IS NOT A CODE POINT READS AS U+FFFD, which is
+			// §16.3's rule at the point the defect ENTERS rather than at the
+			// point it leaves: a lone surrogate escape already reads that way
+			// above, RFC 8259 requires a JSON text to be valid UTF-8, and a
+			// kind 12 payload is well-formed UTF-8 (§3), so storage the text
+			// form built has to be storage the wire can carry (§5).
+			if !utf8.Valid(unit) {
+				unit = encodeUTF8(0xfffd)
 			}
 		}
 		if capacity >= 0 && len(out)+len(unit) > capacity {

@@ -1732,6 +1732,16 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
             {
                 unit[unit_length++] = in.text[in.pos++];
             }
+            // A SEQUENCE THAT IS NOT A CODE POINT READS AS U+FFFD, which is
+            // §16.3's rule at the point the defect ENTERS rather than at the
+            // point it leaves: a lone surrogate escape already reads that way
+            // above, RFC 8259 requires a JSON text to be valid UTF-8, and a
+            // kind 12 payload is well-formed UTF-8 (§3), so storage the text
+            // form built has to be storage the wire can carry (§5).
+            if ( !TableUtf8Valid( (const uint8_t *) unit, unit_length ) )
+            {
+                unit_length = TableJsonEncodeUtf8( 0xfffd, unit );
+            }
         }
         if ( out == NULL )
         {

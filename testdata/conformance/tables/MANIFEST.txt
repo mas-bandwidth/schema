@@ -620,7 +620,7 @@ json-hostile num-two-exponents            tabledemo RootConfig  testdata/conform
 json-hostile optional-present-empty       tabledemo PackConfig  testdata/conformance/tables/json-hostile/optional-present-empty       0,0,0,0,0,false,read
 json-hostile optional-wrong-shape         tabledemo PackConfig  testdata/conformance/tables/json-hostile/optional-wrong-shape         0,1,0,0,0,false,read
 json-hostile str-clamp-boundary           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-clamp-boundary           0,0,0,1,0,false,read
-json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       0,0,0,0,0,false,read
+json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       0,0,0,1,0,false,read
 json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,0,false,read
 json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,0,false,read
 json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,0,false,read

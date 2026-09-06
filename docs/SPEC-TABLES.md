@@ -11482,9 +11482,17 @@ value that cannot be written — and a caller that distinguishes them calls
 STORAGE A PROGRAM BUILT and about nothing else.** No wire puts ill-formed text
 into storage: the packet wire refuses it terminally (SPEC.md §4.7, §4.12) and
 the table wire counts it `malformed` and leaves the field at its declared
-default (§3, §4). What remains is an instance built in code, or one a text
-introduced through a lone surrogate escape, and the writer answers for it
-rather than emitting a text no conforming parser can read.
+default (§3, §4). **NEITHER DOES A TEXT**, and this is the same rule met at
+the point the defect ENTERS: RFC 8259 requires a JSON text to be valid UTF-8,
+so a byte in a string body that is not part of a well-formed sequence is not
+a code point either, and the READ replaces it with one `U+FFFD` exactly as a
+lone surrogate escape reads — one per sequence, counted as nothing, and then
+clamped at a code point boundary like any other. Without it the text form
+would build storage the wire cannot carry, and §5's guarantee that an
+instance a tolerant load produced is always one the reference can re-save
+would hold for the wire and not for the text. What remains is an instance
+built in code, and the writer answers for it rather than emitting a text no
+conforming parser can read.
 
 **The two text types answer DIFFERENTLY, because the two failures are
 different things.** A NARROW field's interior ZERO BYTE is `U+0000`, a
