@@ -3289,7 +3289,8 @@ language's own int32 storage cap.
 The descriptors above answer "what is in this table". The **view** answers
 "what is in this build" — every declaration the schema made, walkable by a
 tool that has the generated code and no schema files at all. Nothing asks
-for it: every unit generates one more pair of files beside the rest,
+for it: every unit that declares a table generates one more pair of files
+beside the rest,
 
 ```
 generated/TabledemoView.h

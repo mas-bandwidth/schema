@@ -8962,15 +8962,16 @@ by **the highest declared BIT INDEX** — not a count, so a walker loops
 union's arms. It carries no per-variant wire id, because a mask's variants
 ride by position and have none (§4); a null id function beside a non-null
 name function is what identifies a flags field, and a `ViewVariant` row for a
-bit carries the reserved id of §3.1 in its `id` column (below).
+bit carries `0` in its `id` column (below).
 
-**AN ID COLUMN SAYS "NO TABLE-WIRE IDENTITY" WITH THE RESERVED ID OF §3.1**,
-one value everywhere a descriptor has no id to give, because at sixty-four
-bits a hash of `0` is an ordinary id a real name can produce (§5) and a
-descriptor that spelled absence as `0` would collide with it. So
-**`key_id( 0 )` is the reserved id**, with `key_name( 0 )` reading `"None"`
-beside it, because the columns are functions of the KEY and `None` is a key
-the enum has. No storage index maps to it (§2.4), so nothing a walker
+**AN ID COLUMN SAYS "NO TABLE-WIRE IDENTITY" WITH `0`**, one value
+everywhere a descriptor has no id to give. `0` is the value no declared name
+folds to, and the wire already reads it that way: `None` rides as the zero
+REFERENCE and names no variant (§3, §3.2), so a tool testing an id against
+`0` tests the same thing on a descriptor column as it does on the wire. So
+**`key_id( 0 )` is `0`**, with `key_name( 0 )` reading `"None"` beside it,
+because the columns are functions of the KEY and `None` is a key the enum
+has. No storage index maps to it (§2.4), so nothing a walker
 enumerates reaches it; the row exists so that a tool holding a key from
 somewhere else, a wire body, a text key or a user's input, can ask about
 `None` and be answered rather than be left to a rule about slot indices.
@@ -9293,10 +9294,13 @@ const UnitViewInfo * UnitView();
   would be the one artifact in the tree that did. Name order is stable under
   both, it is still one byte comparison for §8.7, and grouping a listing by
   file stays one pass over the `file` column.
-- **It is constant data.** In C++ the whole registry is constant-initialised
-  and `UnitView()` returns its address: a lookup, never a parse, and no
-  mutable state on the surface — the property §8.1 already holds for
-  descriptors, carried up to the unit. In C# the registry is a static
+- **It is IMMUTABLE data, initialized on first use.** In C++ the whole
+  registry is a function-local static and `UnitView()` returns its address:
+  the first call initializes it behind the guard the language emits for one,
+  every call after is a lookup, never a parse, and no mutable state is on the
+  surface — the property §8.1 already holds for descriptors, which take the
+  same form, and it is carried up to the unit. The `type` column of a `ViewType`
+  reaches its descriptor through `<Name>TableType()` for the same reason. In C# the registry is a static
   instance on `Schema`, and a `ViewType`'s descriptor is reached through a
   factory rather than held as a value, because C# gives no initialization
   order across a partial class's files and a registry names every

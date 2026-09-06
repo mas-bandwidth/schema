@@ -8,11 +8,11 @@
 // unions and the constants, and walks each one's properties with no schema
 // files on hand.
 //
-// NOTHING SELECTS IT (§8.4). This pair is emitted for every unit and carries
-// every declaration; what a build pays is what it COMPILES. A tool that walks
-// declarations includes this header and compiles the source beside it; a game
-// includes neither and its binary carries not one descriptor the type wire
-// did not already need.
+// NOTHING SELECTS IT (§8.4). This pair is emitted for every unit that declares
+// a table and carries every declaration; what a build pays is what it COMPILES.
+// A tool that walks declarations includes this header and compiles the source
+// beside it; a game includes neither and its binary carries not one descriptor
+// the type wire did not already need.
 //
 // It sits at the LEAF of the unit's include graph: it includes the unit's data
 // headers and its table headers, and nothing includes it.
@@ -107,8 +107,9 @@ struct UnitViewInfo
     int32_t num_constants;  const ViewConstant * constants;
 };
 
-// THE ENTRY POINT (docs/SPEC-TABLES.md §8.3). It returns the address of
-// constant data: a lookup, never a parse, and no mutable state on the surface.
+// THE ENTRY POINT (docs/SPEC-TABLES.md §8.3). The registry is a function-local
+// static, initialized on first use, and this returns its address: a lookup,
+// never a parse, and no mutable state on the surface.
 const UnitViewInfo * UnitView();
 
 } // namespace benchtable
