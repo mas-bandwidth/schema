@@ -1133,16 +1133,6 @@ its bytes are the packet wire's, and every fact of it projects (SPEC.md
 §3.1). The refusal is the TABLE body's alone, and it is what §2.2's mode
 derivation already made a per-body question.
 
-**CHECKER STATUS: NOT REFUSED YET.** The refusal is specified ahead of its
-implementation, on the terms §3.3 and §6.6 take. `schema check` accepts
-`[E.Max]T` in a table body today, with no diagnostic and exit 0, so a unit
-that spells the array positionally compiles and carries the positional class
-this rule exists to close. Two sections rest on the refusal being made,
-§4.1's count of the silent class and SPEC.md §3.1's one exception to
-reachability, and each is written from this rule rather than from the tree.
-Owed as schema#540, and this line is deleted by the implementation PR that
-lands the behavior.
-
 **A KEY ENUM IS IN THE TABLE CLOSURE'S VOCABULARY**, and the closure's
 rules reach it through the keying field. An enum that a table closure
 reaches ONLY as an array key — never as a field type — still rides by
@@ -9562,9 +9552,6 @@ in build version (§20.5).
   table closure, `| max = K` headroom and variant id collisions, each
   diagnostic naming the keying field that pulled the enum in. A slot value no variant names is a SAVE failure, not a silent `None`
   (§3.2).
-  **CHECKER STATUS: the positional spelling is NOT REFUSED YET**, accepted in
-  a table body today with no diagnostic, owed as schema#540 (§2.4), and this
-  sentence is deleted by the implementation PR that lands it.
 - **Maps** (§2.8): a map in a `type` body; a key that is an enum (the
   diagnostic names `[E]T`), a `bool`, a float, a `flags`, a `bits(N)`, a
   `bytes(N)`, a `wstring(N)` (the diagnostic names `string(N)`, because

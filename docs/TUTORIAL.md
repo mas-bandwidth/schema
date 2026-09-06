@@ -1723,29 +1723,25 @@ Now the promise from Part 1 comes due. Look at the id, then add one arm to
 
 ```
 $ schema id .
-0xb786cca203ebb6ea
+0x60d7cbad6bb296f2
 $ # add:  railgun LaserFire  to union WeaponFire, then schema fmt .
 $ schema id .
-0x799890f44a60c51f
+0x31c8d2175ac80ef7
 ```
 
-Take the arm back out and the id returns to `0xb786cca203ebb6ea`, because the
+Take the arm back out and the id returns to `0x60d7cbad6bb296f2`, because the
 id is a pure function of the unit's text. `schema projection` prints the exact
 text that gets hashed:
 
 ```
 $ schema projection .
-schema-wire-projection 2
+schema-wire-projection 3
 schema-wire-law 1
 package starlight
-enum Pending max=0 storage=8 variants=0
 enum ShipType max=3 storage=8 variants=3
   variant 1 name=Fighter
   variant 2 name=Freighter
   variant 3 name=Corvette
-enum Weapon max=15 storage=8 variants=2
-  variant 1 name=Laser
-  variant 2 name=Missile
 flags SystemFlags wirebits=4
   bit 0 name=Shields
   bit 1 name=Cloak
@@ -1754,6 +1750,18 @@ flags SystemFlags wirebits=4
 ```
 
 and it continues through every type, field kind, width and range in the unit.
+
+`Pending` and `Weapon` are declared in this unit and are not in that text,
+because **the projection lists what a `type` REACHES**. Every `type` is a root,
+since any of them may be handed to a writer, and the walk goes from there
+through field types, array elements, array bounds, keyed-array keys, constants,
+union arms and both sides of every branch. Nothing in Starlight's types names
+`Pending` or `Weapon`, so neither puts a byte on a packet and neither moves the
+id: add a variant to `Weapon` today and every deployed client still connects.
+Give `ShipState` a `weapon Weapon` field and it joins the text, with the id move
+that field was going to cost anyway. `flags` is the one exception and rides
+whether a type reaches it or not, which is why `SystemFlags` is there: a flags
+bit is a position, and Part 6's table wire has no way to report one moving.
 Nothing on the wire identifies fields, and both sides simply know the layout
 because they were generated from the same schema. That is what makes the wire
 this small, and it means both sides must **be** the same. The contract:
@@ -1861,13 +1869,13 @@ Part 12, so ignore it until then. The table header is includable from any
 translation unit and depends on nothing but the C standard headers:
 
 ```cpp
-// package starlight — protocol id 0xb786cca203ebb6ea (packets only: tables version by field id, not by protocol id)
+// package starlight — protocol id 0x60d7cbad6bb296f2 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 ```
 
 Note that banner. Adding a whole table to the unit did **not** move the
-protocol id: it is still `0xb786cca203ebb6ea`, the number Part 5 printed. The
+protocol id: it is still `0x60d7cbad6bb296f2`, the number Part 5 printed. The
 id covers what the packet wire reaches, and a table is not on it.
 
 The storage struct lives in the table header, and it looks exactly like a
@@ -4073,7 +4081,7 @@ $ schema check .
 $ echo $?
 0
 $ schema id .
-0xb786cca203ebb6ea
+0x60d7cbad6bb296f2
 $ schema build-version .
 0x7d56db7dd7e25376
 $ ./cook Game.cook
@@ -4766,7 +4774,7 @@ func main() {
 ```
 $ go build -o docsgen . && ./docsgen
 [c cpp cs dart docs elixir go java js rust]
-package starlight, protocol id 0xb786cca203ebb6ea
+package starlight, protocol id 0x60d7cbad6bb296f2
 ## ChatLine — 990 bits max
 ## Contact — 34 bits max
 ## FireCommand — 41 bits max

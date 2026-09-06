@@ -475,9 +475,10 @@ func TestFrozenTableToken(t *testing.T) {
 // The protocol-free neutrality probe: a unit of types, enums, flags, unions,
 // constants and a COMPRESSED FLOAT (the composition matters — a float-free
 // probe could not see the round token), with its id and full projection
-// pinned as literals. Any rendering change that moves this unit's id is a
-// compatibility break for every protocol-free unit in the wild and must be
-// a deliberate ProjectionVersion bump.
+// pinned as literals. Every declaration in it is REACHED, which is what makes
+// the pin a rendering pin rather than a scoping one. Any rendering change that
+// moves this unit's id is a compatibility break for every protocol-free unit
+// in the wild and must be a deliberate ProjectionVersion bump.
 func TestProtocolFreeUnitIdPinned(t *testing.T) {
 	u := build(t, `package probe
 
@@ -500,12 +501,17 @@ union Shape {
     ring     Ring
     attitude Attitude
 }
+
+type Holder {
+    shape Shape
+    team  Team
+}
 `)
-	const pinnedId = uint64(0x0d68b71928bcbcf0)
+	const pinnedId = uint64(0xe1efac76426db8d2)
 	if u.ProtocolId != pinnedId {
 		t.Fatalf("the neutrality probe's id moved: 0x%016x, pinned 0x%016x", u.ProtocolId, pinnedId)
 	}
-	const pinnedProjection = `schema-wire-projection 2
+	const pinnedProjection = `schema-wire-projection 3
 schema-wire-law 1
 package probe
 enum Team max=2 storage=8 variants=2
@@ -518,6 +524,9 @@ flags ProbeFlags wirebits=3
 type Attitude table=false message=false
   field orientation kind=3 floatrange=[0,360] res=0.1 steps=3600 round=nearest
   field health kind=0 width=32 signed=true intrange=[0,1000]
+type Holder table=false message=false
+  field shape kind=8 type=Shape
+  field team kind=8 type=Team
 type Ring table=false message=false
   field radius kind=0 width=16 signed=false
 union Shape max=2
@@ -529,13 +538,16 @@ union Shape max=2
 	}
 }
 
-// EVERY ARM PROJECTS AS THE FIELD LINE IT IS (docs/SPEC-TABLES.md §2.6): an
-// arm's own facts are wire facts, so adding a scalar arm to a union a TABLE
-// holds moves the unit's protocol id exactly as adding a field does, and a
-// bound moved on an arm moves it too. An arm renamed does not: the ordinal is
-// the wire, the enum-variant rule (SPEC §3.1).
-func TestArmProjectsAsAFieldLine(t *testing.T) {
-	const armSchema = `package probe
+// A UNION ONLY A TABLE CLOSURE REACHES CONTRIBUTES NOTHING TO THIS ID
+// (SPEC §3.1, §3.2). The projection is the closure over the unit's `type`
+// declarations, so a union a table holds and no type names has no packet byte
+// to describe: adding an arm to it, moving an arm's bound, retyping an arm and
+// renaming an arm all leave the id where it was. The same union under a `type`
+// field is in the closure, and every one of those edits moves the id there —
+// which is the pair that says the scoping is reachability and not a blanket
+// exclusion of unions a table happens to hold.
+func TestUnionOutsideTheClosureMovesNoId(t *testing.T) {
+	const tableHeld = `package probe
 
 type Ring {
     radius uint16
@@ -550,29 +562,303 @@ table Holder {
     shape Shape
 }
 `
-	base := build(t, armSchema).ProtocolId
+	base := build(t, tableHeld).ProtocolId
 
+	still := []struct {
+		name   string
+		source string
+	}{
+		{"a scalar arm added", strings.Replace(tableHeld, "    count int32 | min = 0, max = 100\n",
+			"    count int32 | min = 0, max = 100\n    tally int32 | min = 0, max = 100\n", 1)},
+		{"an arm's declared maximum moved", strings.Replace(tableHeld, "max = 100", "max = 200", 1)},
+		{"an arm's type moved under one width", strings.Replace(tableHeld,
+			"    count int32 | min = 0, max = 100\n", "    count float32\n", 1)},
+		{"a payload-free arm added", strings.Replace(tableHeld, "    ring  Ring\n", "    ring  Ring\n    idle\n", 1)},
+		{"an arm renamed", strings.Replace(tableHeld, "    ring  Ring\n", "    hoop  Ring\n", 1)},
+	}
+	for _, tc := range still {
+		if got := build(t, tc.source).ProtocolId; got != base {
+			t.Errorf("%s moved the protocol id (0x%016x -> 0x%016x) — no `type` reaches this union, so it writes no packet byte and buys no redeploy",
+				tc.name, base, got)
+		}
+	}
+	if strings.Contains(ir.WireProjection(build(t, tableHeld)), "union Shape") {
+		t.Error("a union no `type` reaches is in the projection — the scoping is not the closure SPEC §3.1 states")
+	}
+
+	// the same union inside the closure: a `type` body takes `type` payloads
+	// only (docs/SPEC-TABLES.md §2.6), so the reached form is the all-type
+	// union, and every arm edit it can express moves the id
+	const typeHeld = `package probe
+
+type Ring {
+    radius uint16
+}
+
+type Slab {
+    width uint8
+}
+
+union Shape {
+    ring Ring
+    slab Slab
+}
+
+type Holder {
+    shape Shape
+}
+`
+	reachedBase := build(t, typeHeld).ProtocolId
+	if !strings.Contains(ir.WireProjection(build(t, typeHeld)), "union Shape") {
+		t.Fatal("a union a `type` field names is absent from the projection — the closure lost edge 1")
+	}
 	moves := []struct {
 		name   string
 		source string
 	}{
-		{"a scalar arm added", strings.Replace(armSchema, "    count int32 | min = 0, max = 100\n",
-			"    count int32 | min = 0, max = 100\n    tally int32 | min = 0, max = 100\n", 1)},
-		{"an arm's declared maximum moved", strings.Replace(armSchema, "max = 100", "max = 200", 1)},
-		{"an arm's type moved under one width", strings.Replace(armSchema,
-			"    count int32 | min = 0, max = 100\n", "    count float32\n", 1)},
-		{"a payload-free arm added", strings.Replace(armSchema, "    ring  Ring\n", "    ring  Ring\n    idle\n", 1)},
+		{"an arm added", strings.Replace(typeHeld, "    slab Slab\n", "    slab Slab\n    slab_b Slab\n", 1)},
+		{"the arms reordered", strings.Replace(typeHeld, "    ring Ring\n    slab Slab", "    slab Slab\n    ring Ring", 1)},
+		{"an arm renamed", strings.Replace(typeHeld, "    ring Ring\n", "    hoop Ring\n", 1)},
+		{"a payload-free arm added", strings.Replace(typeHeld, "    ring Ring\n", "    ring Ring\n    idle\n", 1)},
 	}
 	for _, tc := range moves {
-		if got := build(t, tc.source).ProtocolId; got == base {
-			t.Errorf("%s did NOT move the protocol id (0x%016x) — two incompatible builds would claim compatibility", tc.name, base)
+		if got := build(t, tc.source).ProtocolId; got == reachedBase {
+			t.Errorf("%s did NOT move the protocol id (0x%016x) — the union is in the closure and its arms are wire facts",
+				tc.name, reachedBase)
 		}
 	}
-	// an arm's NAME is a wire fact of its own (#491): two arms of ONE payload
-	// type reorder invisibly without it, so a rename moves the id as an enum
-	// or flags variant's rename does
-	renamed := strings.Replace(armSchema, "    ring  Ring\n", "    hoop  Ring\n", 1)
-	if got := build(t, renamed).ProtocolId; got == base {
-		t.Errorf("an arm renamed did NOT move the protocol id (0x%016x) — an arm's name is projected beside its payload", base)
+}
+
+// THE NEGATIVE CONTROL IS ONE CASE PER EDGE KIND (SPEC §3.1), and that is what
+// the reachability obligation costs. A missed edge is the dangerous direction
+// — a declaration a packet byte reaches that the walk does not, which is two
+// incompatible builds shaking hands — so a single control over a single edge
+// proves nothing about the other seven.
+//
+// Each case holds ONE enum reachable only through one edge kind, and edits it
+// by REORDERING its variants: every folded number in the projection stays
+// exactly where it was, so the id moves only if the walk reached the enum and
+// put its ordered variant names in the text. Removing that edge from the walk
+// takes the enum out of the projection and the case goes red here.
+//
+// A reorder is a byte-moving edit for every one of them. Where the enum is a
+// field type or an array element, a value rides as its declaration ordinal, so
+// a reorder changes what every stored ordinal means. Where it is an extent —
+// `[E.Max]T`, `[E]T`, or a `const` standing in for either — the array is
+// positional and slot i holds the key i + 1 (docs/SPEC-TABLES.md §2.4), so a
+// reorder changes what every element is.
+//
+// EDGE 6 IS THE ONE CASE THIS LEG DOES NOT ISOLATE, and it is stated rather
+// than left for a reader to find. A union in a `type` body takes `type`
+// payloads only (docs/SPEC-TABLES.md §2.6), and EVERY `type` IS A ROOT, so a
+// projected union's arm payload is already in the closure before the arm is
+// walked: deleting the arm descent from the walk leaves case 6 green. The
+// descent is implemented because the rule is the rule, and the case is held
+// here because it is the path the page names; what makes it red today is edge
+// 1 reaching the union and edge 8 descending into the payload type.
+func TestReachabilityEdgeControls(t *testing.T) {
+	cases := []struct {
+		edge   int
+		what   string
+		source string
+	}{
+		{1, "an enum named only as a field type", `package probe
+
+enum Only { Alpha, Beta, Gamma }
+
+type Root {
+    e Only
+}
+`},
+		{2, "an enum named only as an array element", `package probe
+
+enum Only { Alpha, Beta, Gamma }
+
+type Root {
+    a [4]Only
+}
+`},
+		{3, "an enum named only by an [E.Max] bound", `package probe
+
+enum Only { Alpha, Beta, Gamma }
+
+type Root {
+    a [Only.Max]uint8
+}
+`},
+		{4, "an enum named only as an [E]T key", `package probe
+
+enum Only { Alpha, Beta, Gamma }
+
+type Root {
+    a [Only]uint8
+}
+`},
+		{5, "an enum named only through a const", `package probe
+
+enum Only { Alpha, Beta, Gamma }
+
+const Slots = Only.Max
+
+type Root {
+    a [Slots]uint8
+}
+`},
+		{6, "an enum named only inside a union arm's payload type", `package probe
+
+enum Only { Alpha, Beta, Gamma }
+
+type Arm {
+    e Only
+}
+
+union Held {
+    arm Arm
+}
+
+type Root {
+    held Held
+}
+`},
+		{7, "an enum named only inside an else body", `package probe
+
+enum Only { Alpha, Beta, Gamma }
+
+type Root {
+    live bool
+    if live {
+        n uint8
+    } else {
+        e Only
+    }
+}
+`},
+		{8, "an enum named only through a type two steps away", `package probe
+
+enum Only { Alpha, Beta, Gamma }
+
+type Deep {
+    e Only
+}
+
+type Middle {
+    d Deep
+}
+
+type Root {
+    m Middle
+}
+`},
+	}
+
+	for _, tc := range cases {
+		u := build(t, tc.source)
+		if !strings.Contains(ir.WireProjection(u), "enum Only ") {
+			t.Errorf("edge %d, %s: the enum is absent from the projection — the walk does not carry this edge, and a build that reorders Only shakes hands with one that did not",
+				tc.edge, tc.what)
+			continue
+		}
+		reordered := strings.Replace(tc.source, "{ Alpha, Beta, Gamma }", "{ Gamma, Beta, Alpha }", 1)
+		if reordered == tc.source {
+			t.Fatalf("edge %d: the edit patched nothing — the fixture drifted", tc.edge)
+		}
+		if got, base := build(t, reordered).ProtocolId, u.ProtocolId; got == base {
+			t.Errorf("edge %d, %s: reordering Only did NOT move the protocol id (0x%016x) — every ordinal changed meaning and two incompatible builds would claim compatibility",
+				tc.edge, tc.what, base)
+		}
+	}
+}
+
+// The other direction of the same rule, and the churn the scoping exists to
+// end: a declaration ONLY a table body reaches is out of the projection, so
+// the content enum a studio grows weekly buys no coordinated redeploy
+// (SPEC §3.2). `flags` is the ONE exception and is held here beside it.
+func TestUnreachedDeclarationsAreOutOfTheProjection(t *testing.T) {
+	const source = `package probe
+
+enum ItemKind { Sword, Shield }
+
+enum Carried { Alpha, Beta }
+
+flags Perks { Fast, Quiet }
+
+type Packet {
+    e Carried
+}
+
+table Bag {
+    kind  ItemKind
+    perks Perks
+}
+`
+	u := build(t, source)
+	proj := ir.WireProjection(u)
+	if strings.Contains(proj, "enum ItemKind") {
+		t.Error("an enum only a table body reaches is in the projection — every variant added to a content enum buys a coordinated redeploy for a byte no packet carries")
+	}
+	if !strings.Contains(proj, "enum Carried") {
+		t.Error("an enum a `type` reaches is absent from the projection — the closure lost edge 1")
+	}
+	if !strings.Contains(proj, "flags Perks") {
+		t.Fatal("a flags declaration no `type` reaches left the projection — the connect gate is the only runtime frame that refuses two peers holding different bit assignments (SPEC §3.1)")
+	}
+
+	// the edits that must NOT move the id, because no packet byte moves
+	for _, tc := range []struct {
+		name   string
+		source string
+	}{
+		{"a variant added to a table-only enum", strings.Replace(source, "{ Sword, Shield }", "{ Sword, Shield, Potion }", 1)},
+		{"a table-only enum reordered", strings.Replace(source, "{ Sword, Shield }", "{ Shield, Sword }", 1)},
+		{"a table-only enum renamed at a variant", strings.Replace(source, "{ Sword, Shield }", "{ Sabre, Shield }", 1)},
+	} {
+		if got := build(t, tc.source).ProtocolId; got != u.ProtocolId {
+			t.Errorf("%s moved the protocol id (0x%016x -> 0x%016x) — the table wire reads that vocabulary by name and reports every move in it (docs/SPEC-TABLES.md §4)",
+				tc.name, u.ProtocolId, got)
+		}
+	}
+	// and the one that must, because no read report can see a bit reassigned
+	for _, tc := range []struct {
+		name   string
+		source string
+	}{
+		{"a flags declaration reordered", strings.Replace(source, "{ Fast, Quiet }", "{ Quiet, Fast }", 1)},
+		{"a flags variant renamed", strings.Replace(source, "{ Fast, Quiet }", "{ Rapid, Quiet }", 1)},
+	} {
+		if got := build(t, tc.source).ProtocolId; got == u.ProtocolId {
+			t.Errorf("%s did NOT move the protocol id (0x%016x) — flags is the table wire's one positional vocabulary and the connect gate is the only frame that refuses it",
+				tc.name, u.ProtocolId)
+		}
+	}
+}
+
+// A REACHABILITY MOVE NEVER ARRIVES ALONE (SPEC §3.2): removing the last
+// type-side use of an enum takes its lines out of the projection, and the use
+// that moved is a `type` edit in the same commit, so it costs no id move that
+// was not owed already. Held as the pair it is.
+func TestReachabilityMoveRidesWithItsTypeEdit(t *testing.T) {
+	const both = `package probe
+
+enum Kind { Alpha, Beta }
+
+type Packet {
+    k    Kind
+    seq  uint32
+}
+
+table Bag {
+    kind Kind
+}
+`
+	dropped := strings.Replace(both, "    k    Kind\n", "", 1)
+	withUse, without := build(t, both), build(t, dropped)
+	if withUse.ProtocolId == without.ProtocolId {
+		t.Fatal("dropping the last type-side use of an enum moved no id — a field left the wire")
+	}
+	if !strings.Contains(ir.WireProjection(withUse), "enum Kind") {
+		t.Error("the enum a type field names is out of the projection")
+	}
+	if strings.Contains(ir.WireProjection(without), "enum Kind") {
+		t.Error("the enum survived in the projection with no type-side use left — the closure is not scoped")
 	}
 }

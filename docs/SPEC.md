@@ -296,14 +296,11 @@ alone, so a bump costs no per-release churn in the tree.
 move the id, and an edit that moves bytes must. The second is the one that
 must never regress.
 
-**Scoping the projection by reachability is a `ProjectionVersion` bump**,
-`2` to `3`. Every id in existence moves once, deliberately and visibly, and
-the release carrying it announces that first.
-
-**Compiler status: NOT SCOPED YET.** `ir.WireProjection` renders the unit and
-`ProjectionVersion` is `2`, so the reachability rule above is the
-specification the change is written from rather than a description of the
-tree. Owed as schema#524, with the negative control it names.
+**The reachability scoping is what `ProjectionVersion` `3` carries**, and it
+cost the bump's one deliberate, visible move of every id in existence. Nothing
+else moved with it: the closure preserves the contract exactly, so a unit whose
+declarations are all reached renders the same facts under `3` that it did under
+`2`, in the same order, under a new first line.
 
 ### 3.2 The unit
 

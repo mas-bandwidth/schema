@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0xd093e62e6f907c36
+// package benchtable — protocol id 0x88cf953e975ace60
 
 #pragma once
 
@@ -12,7 +12,7 @@ namespace benchtable {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0xd093e62e6f907c36ull;
+inline constexpr uint64_t ProtocolId = 0x88cf953e975ace60ull;
 
 // enum TableWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2)
 enum class TableWeapon : uint8_t {

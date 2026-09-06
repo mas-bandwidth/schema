@@ -1423,6 +1423,9 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 				out.ArrayBound = out.KeyEnumRef.Max
 				out.ArrayExpr = f.Array.Hi
 			default:
+				if !c.checkPositionalKeyedSpelling(f, inTable) {
+					return nil
+				}
 				hi, ok := c.evalInt(f.Array.Hi)
 				if !ok {
 					return nil
