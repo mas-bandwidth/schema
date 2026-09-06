@@ -3384,8 +3384,8 @@ tables-cpp-release:
 	$(MAKE) tables-wire-fuzz N=500000
 	$(MAKE) tables-wire-fuzz SEED=2 N=500000
 
-.PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
-tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
+.PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control
+tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control
 
 # the string read's `room( len )`: a length past the body is then read anyway,
 # so the sabotaged leg takes a string out of a neighbour's bytes and CLAMPS it
@@ -3601,20 +3601,31 @@ tables-message-form-emitter-negative-control: bin/schema test/tables/message_neg
 # because a writer writes only the ids its body used — and which the MESSAGE
 # form exposes at once, because a connection's table announces every table's
 # name id. The sabotage is that revert, and the run must go red ON THE VECTOR.
+#
+# THE SABOTAGE IS APPLIED TO THE MESSAGE READER, because the message form is
+# the only form whose wire can carry the record: the placeable set is built
+# twice, once in the file reader's decodenodes.go and once in messagedecode.go,
+# and only the second decides a pinned message vector. THE ASSERTION IS THE
+# VECTOR REPLAYED ALONE, not a corpus pass, because the pinned vectors ride
+# last: an enumerated mutant of an ordinary message seed reaches this same
+# check, so a corpus pass goes red before the vector is ever fed and names the
+# mutant instead of the property.
 NODE_TYPE_NC := build/wire-fuzz-nc-node-type
+NODE_TYPE_VECTOR := testdata/wire/tables/fuzz-vectors/message_node_type_unpointed.bin
 .PHONY: tables-wire-fuzz-node-type-negative-control
 tables-wire-fuzz-node-type-negative-control: build/conformance-harness build/wire-fuzz-cpp
 	@rm -rf $(NODE_TYPE_NC) && mkdir -p $(NODE_TYPE_NC)
-	@sed -e 's|for name := range placeable {|for name := range ir.TableClosure(m.Unit) { // NEGATIVE CONTROL: every closure table is placeable again|' \
-		internal/tablewire/decodenodes.go > $(NODE_TYPE_NC)/decodenodes.go.txt
-	@cmp -s internal/tablewire/decodenodes.go $(NODE_TYPE_NC)/decodenodes.go.txt && \
+	@sed -e 's|for name := range placeable {|for name := range ir.TableClosure(d.m.Unit) { // NEGATIVE CONTROL: every closure table is placeable again|' \
+		internal/tablewire/messagedecode.go > $(NODE_TYPE_NC)/messagedecode.go.txt
+	@cmp -s internal/tablewire/messagedecode.go $(NODE_TYPE_NC)/messagedecode.go.txt && \
 		{ echo "NEGATIVE CONTROL: the node-type sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(NODE_TYPE_NC)/decodenodes.go.txt"}}\n' \
+	@printf '{"Replace":{"%s/internal/tablewire/messagedecode.go":"%s/$(NODE_TYPE_NC)/messagedecode.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(NODE_TYPE_NC)/overlay.json
 	go build -overlay $(NODE_TYPE_NC)/overlay.json -o $(NODE_TYPE_NC)/harness ./test/conformance/harness
-	@if $(NODE_TYPE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n 0 \
+	@if $(NODE_TYPE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
+			--replay $(NODE_TYPE_VECTOR) --unit graphdemo --root Scene --message \
 			--failed $(NODE_TYPE_NC)/failed.bin > $(NODE_TYPE_NC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: every closure table is placeable again and the wire fuzzer stayed green"; \
+		echo "NEGATIVE CONTROL FAILED: every closure table is placeable again and the pinned vector stayed green"; \
 		cat $(NODE_TYPE_NC)/log; exit 1; \
 	fi
 	@grep -q "message_node_type_unpointed" $(NODE_TYPE_NC)/log || \
@@ -3624,34 +3635,14 @@ tables-wire-fuzz-node-type-negative-control: build/conformance-harness build/wir
 	@echo "negative control: placing a node no pointer names turns the pinned vector RED"
 
 # THE SAME RULE AT THE TWO RESERVED BLOB IDS (docs/SPEC-TABLES.md §2.5, §3.1,
-# §3.3), and the vector message_blob_node_unpointed is the red it closed. §3.3's
-# tail announces `bytes` and `string` whether or not the root names them, so a
-# mutated record can claim a blob under a root that has no blob edge at all. The
-# reference's <Root>NodeStorage answers -1 for one; the engine named both ids at
-# every root, placed a blob, and turned the pointer that reached it into a
-# kind_mismatch. The sabotage is that revert, and the run must go red ON THE
-# VECTOR.
-BLOB_NODE_NC := build/wire-fuzz-nc-blob-node
-.PHONY: tables-wire-fuzz-blob-node-negative-control
-tables-wire-fuzz-blob-node-negative-control: build/conformance-harness build/wire-fuzz-cpp
-	@rm -rf $(BLOB_NODE_NC) && mkdir -p $(BLOB_NODE_NC)
-	@sed -e 's|ir.PointerReachableBlobs(inst.Def)|true, true // NEGATIVE CONTROL: both reserved ids are nameable at every root|' \
-		internal/tablewire/decodenodes.go > $(BLOB_NODE_NC)/decodenodes.go.txt
-	@cmp -s internal/tablewire/decodenodes.go $(BLOB_NODE_NC)/decodenodes.go.txt && \
-		{ echo "NEGATIVE CONTROL: the blob-node sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(BLOB_NODE_NC)/decodenodes.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(BLOB_NODE_NC)/overlay.json
-	go build -overlay $(BLOB_NODE_NC)/overlay.json -o $(BLOB_NODE_NC)/harness ./test/conformance/harness
-	@if $(BLOB_NODE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n 0 \
-			--failed $(BLOB_NODE_NC)/failed.bin > $(BLOB_NODE_NC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: both reserved ids are nameable again and the wire fuzzer stayed green"; \
-		cat $(BLOB_NODE_NC)/log; exit 1; \
-	fi
-	@grep -q "message_blob_node_unpointed" $(BLOB_NODE_NC)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the pinned vector"; \
-		  cat $(BLOB_NODE_NC)/log; exit 1; }
-	@grep -m1 "FAILED" $(BLOB_NODE_NC)/log
-	@echo "negative control: naming a blob node no pointer reaches turns the pinned vector RED"
+# §3.3) is gated by ir.PointerReachableBlobs, in the reference emitter's
+# <Root>NodeStorage and in the oracle's node table, and it has NO NEGATIVE
+# CONTROL because the wire fuzzer cannot reach it. A blob record on the
+# bitpacked body carries a THIRTY-TWO BIT LENGTH that must fit the batch's
+# remaining bits: a mutated record does name a reserved blob id, and the reader
+# still never places a blob, because the length that follows is never one the
+# bits can cover. The rule the corpus does reach is the node-type control above,
+# at the ids that are not reserved.
 
 # The GENERATED half of the data: the JSON text of every instance and the read
 # report of every evolution case, both from the compiler's own engine.
