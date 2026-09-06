@@ -126,6 +126,25 @@ func TestStringClampsAtCodePointBoundary(t *testing.T) {
 	}
 }
 
+// §16.2: A CLAMP IS A PREFIX. Once one code point does not fit, the scan stops
+// placing — a later SHORTER code point must not slip into the room the long one
+// left, because that stores a string the input never spelled and the `clamped`
+// count cannot tell the two apart.
+func TestClampIsAPrefix(t *testing.T) {
+	// callsign is string(24): twenty ASCII bytes, then a three-byte code point
+	// that fits at 23, then one that does not, then a byte that would
+	text := strings.Repeat("a", 20) + "✓✓X"
+	_, inst, r := read(t, "GunnerSettings", `{ "callsign": "`+text+`" }`)
+	if r.Clamped != 1 {
+		t.Fatalf("expected one clamp, got %+v", r)
+	}
+	got := field(t, inst, "callsign").Cell.Str
+	want := []byte(strings.Repeat("a", 20) + "✓")
+	if !bytes.Equal(got, want) {
+		t.Fatalf("the clamp is not a prefix: got %q, want %q", got, want)
+	}
+}
+
 // §16.2: escapes, including a surrogate pair, decode to their UTF-8 bytes.
 func TestEscapesAndSurrogates(t *testing.T) {
 	_, inst, r := read(t, "GunnerSettings", `{ "callsign": "a\tbé😀" }`)

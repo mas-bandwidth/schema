@@ -342,7 +342,11 @@ func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
 				unit = encodeUTF8(0xfffd)
 			}
 		}
-		if capacity >= 0 && len(out)+len(unit) > capacity {
+		// A CLAMP IS A PREFIX. Once one code point does not fit, the scan stops
+		// placing: a later SHORTER code point sliding into the room the long one
+		// left would store a string the input never spelled, and one `clamped`
+		// count cannot tell the two apart.
+		if clamped || (capacity >= 0 && len(out)+len(unit) > capacity) {
 			clamped = true
 			continue
 		}

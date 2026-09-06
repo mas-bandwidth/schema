@@ -3958,6 +3958,21 @@ static void test_json_hostile_extents()
         CHECK( value.version_note_length == 16 );
         CHECK( report.clamped == 1 ); // the trailing X did not fit
     }
+    {
+        // A CLAMP IS A PREFIX (docs/SPEC-TABLES.md §16.2): once one code point
+        // does not fit, the scan stops placing. A later SHORTER code point must
+        // not slip into the room the long one left, because that would store a
+        // string the input never spelled — "123456789012\xe2\x9c\x93X" out of
+        // "123456789012\xe2\x9c\x93\xe2\x9c\x93X" — and the counter alone
+        // cannot tell the two apart.
+        tabledemo::RootConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"version_note\": \"123456789012\xe2\x9c\x93\xe2\x9c\x93X\" }";
+        CHECK( tabledemo::RootConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.version_note_length == 15 );
+        CHECK( strcmp( value.version_note, "123456789012\xe2\x9c\x93" ) == 0 );
+        CHECK( report.clamped == 1 );
+    }
 
     // more array elements than the reader's bound: the bounded prefix is kept
     // and the excess counts, the wire's rule

@@ -1435,6 +1435,22 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 		-Ibuild/json-dup-sabotage test/tables/json_keyed_dup_negative_main.cpp build/json-dup-sabotage/KeyedTable.cpp -o build/schema_test_json_keyed_dup_negative
 	./build/schema_test_json_keyed_dup_negative
 
+# The NEGATIVE CONTROL for the clamp's PREFIX rule (docs/SPEC-TABLES.md §16.2).
+# A clamped string keeps a PREFIX of the text, and a scan that resumes after one
+# code point fails to fit stores bytes the input never spelled in that order
+# while the `clamped` count stays right — invisible to any test that reads only
+# counters. This sabotage drops the stop and the fixture must go red.
+.PHONY: tables-json-clamp-prefix-negative-control
+tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_prefix_negative_main.cpp
+	@rm -rf build/json-clamp-sabotage && mkdir -p build/json-clamp-sabotage
+	./bin/schema generate --lang cpp --out build/json-clamp-sabotage tables/examples
+	@sed -i.bak 's|else if ( !clamped \&\& placed + unit_length <= capacity )|else if ( placed + unit_length <= capacity ) // SABOTAGED|' build/json-clamp-sabotage/TablesTable.cpp
+	@grep -q 'SABOTAGED' build/json-clamp-sabotage/TablesTable.cpp || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
+	@mkdir -p build
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
+		-Ibuild/json-clamp-sabotage test/tables/json_clamp_prefix_negative_main.cpp build/json-clamp-sabotage/TablesTable.cpp -o build/schema_test_json_clamp_prefix_negative
+	./build/schema_test_json_clamp_prefix_negative
+
 # THE NEGATIVE CONTROL FOR PER-CASE ABSENCE (test/conformance/README.md).
 #
 # An absence is a driver's own claim, so the mechanism could hide a real hole:
@@ -2531,6 +2547,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) conformance-negative-control-reference-surface
 	$(MAKE) conformance-negative-control-block-dump
 	$(MAKE) tables-json-keyed-dup-negative-control
+	$(MAKE) tables-json-clamp-prefix-negative-control
 	$(MAKE) tables-flat-wire
 	$(MAKE) tables-flat-wire-negative-control
 	$(MAKE) tables-was-negative-control
