@@ -9108,9 +9108,9 @@ table closure reaches carries `id = 0` on every variant row** — the
 registry's `ViewVariant.id` (§8.3) and a descriptor's `variant_id()`
 function (§8.1) alike — and **an enum-keyed array whose KEY enum no table
 closure reaches carries `key_id( key )` of `0` for every key**. `0` is the
-reserved id no declared name folds to (§5), and it already spells "no
-table-wire identity here" in the two places the columns state it: a flags
-bit's id, and the `None` key of a keyed array. A vocabulary a closure
+value no declared name folds to (§5), and it already spells "no table-wire
+identity here" in the two places the columns state it: a flags bit's id, and
+the `None` key of a keyed array. A vocabulary a closure
 reaches carries its checked ids exactly as it did before.
 
 **The compiler is unchanged, and is right to be.** Inside a closure it
@@ -9163,8 +9163,8 @@ struct ViewVariant          // one enum variant, one flags bit, one union arm
 {
     uint64_t value;         // an enum's value, a flags BIT INDEX, a union's tag
     const char * name;
-    uint64_t id;            // the table-wire id (§5); the RESERVED id for a flags
-                            // bit, and throughout a vocabulary no table closure
+    uint64_t id;            // the table-wire id (§5); 0 for a flags bit, and
+                            // throughout a vocabulary no table closure
                             // reaches (§8.2)
     const char * payload_name;      // a union arm's TYPE as declared — a record's
                                     // name, or a general arm's spelling
@@ -9237,9 +9237,12 @@ const UnitViewInfo * UnitView();
   entry's `type` is the descriptor §8.1 already specifies —
   the properties, their kinds, their bounds and their nested descriptors —
   so walking a declaration's properties is one dereference from the
-  registry.
+  registry. **A map's generated ENTRY TABLE is not a row of either set**: it
+  is claimed rather than declared (§2.8), and the registry lists what the
+  schema said. A tool reaches it the way everything else reaches it, through
+  the map field's own descriptor.
 - **An ENUM lists its NAMED values in order, beside its `max`.** Row 0 is
-  `None`, the reserved id (§5), then the variants in declared order with the
+  `None`, whose id is `0` (§5), then the variants in declared order with the
   wire id each rides under — `0` throughout where no table closure reaches
   the enum, because nothing checked those ids (§8.2). A value inside
   `[0, max]` that no row names is `| max = K` headroom (SPEC §4.2), and a
@@ -9257,8 +9260,8 @@ const UnitViewInfo * UnitView();
   arm is walkable to its bottom. **An arm that names no record carries a
   NULL `payload` and a `field` row instead**, the `TableFieldInfo` a field
   of that type would have, so a walker reads an arm's kind, width, bounds
-  and companions where it reads a field's and nothing about an arm is
-  spelled twice (§8.1). Tag 0 carries no payload and says so with every
+  and companions where it reads a field's, and an arm needs no vocabulary of
+  its own (§8.1). Tag 0 carries no payload and says so with every
   column NULL, and a PAYLOAD-FREE arm (§2.6) does the same, its name and
   its tag being all there is of it.
 - **A CONSTANT carries its name, its declared storage and its folded
