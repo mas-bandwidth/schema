@@ -1,5 +1,19 @@
-0x1f90e7cfb436a51b
+0xe8bbfd2a65953c70
 schema-build-version 3
-protocol 53835dbf9f05e4d9
+protocol 4b9b89c718af5d5e
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
+record Caption sizeof=108 alignof=4
+    field da31296c0c1b6029 kind=33 offset=0 size=20
+    field bf4ba5ad694f5907 kind=13 offset=20 size=16 type=Line
+    field 5ce3f9a9f1d5001c kind=13 offset=36 size=52 type=Line elem=16 array=bounded bound=3
+    field cd4de79bc6c93295 kind=15 offset=88 size=20 union=Body
+record Line sizeof=16 alignof=4
+    field fa04f4ef1995407e kind=33 offset=0 size=16
+record Stamp sizeof=20 alignof=4
+    field 39f7fcec8fcb623d kind=33 offset=0 size=16
+    field 823b8a195ce2133c kind=8 offset=16 size=4
+union Body
+    arm 1 wide kind=33 offset=4 size=16
+    arm 2 narrow kind=12 offset=4 size=12 bound=4
+    arm 3 count kind=4 offset=4 size=4

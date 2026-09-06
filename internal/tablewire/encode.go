@@ -212,6 +212,17 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		w.leb(uint64(len(fv.Cell.Str)))
 		w.raw(fv.Cell.Str)
 		return nil
+	case f.Type.Kind == ir.TWString:
+		// WIDE TEXT TAKES NO SPECIFIED DEFAULT (SPEC.md §4.12), so the empty
+		// value is what elides. `L` is a BYTE length like every `L` on this
+		// wire (§3), which is twice the code unit count.
+		if len(fv.Cell.Units) == 0 {
+			return nil
+		}
+		e.header(w, id, ir.TableKindWstring)
+		w.leb(uint64(len(fv.Cell.Units) * 2))
+		w.raw(wideBytes(fv.Cell.Units))
+		return nil
 
 	case f.Type.Kind == ir.TBytes:
 		if bytes.Equal(fv.Cell.Str, f.DefBytes) {
@@ -540,6 +551,10 @@ func encodeArm(e *encoder, arm ir.UnionVariant, cell *tabletext.Cell) ([]byte, e
 		w.leb(index)
 	case f.Type.Kind == ir.TString:
 		w.raw(fv.Cell.Str)
+	case f.Type.Kind == ir.TWString:
+		// AN ARM'S L IS THE WSTRING'S BYTE LENGTH (§3's arm payload table),
+		// so the units ride under it with no length of their own
+		w.raw(wideBytes(fv.Cell.Units))
 	case f.Type.Kind == ir.TBytes:
 		w.u8(uint8(ir.TableKindU8)) // bytes ride as an array of u8 (§2.5)
 		w.leb(uint64(len(fv.Cell.Str)))

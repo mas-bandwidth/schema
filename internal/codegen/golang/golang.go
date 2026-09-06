@@ -359,6 +359,14 @@ func (g *gen) emitDefaultInit(f *ir.Field) {
 		g.pf("\t%sCount = %d\n", name, n)
 	}
 	if f.HasDefault {
+		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+			g.pf("\t%s = [%s]byte{", name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)))
+			for _, b := range f.DefBytes {
+				g.pf("0x%02x, ", b)
+			}
+			g.pf("}\n\t%sLength = %d\n", name, len(f.DefBytes))
+			return
+		}
 		g.pf("\t%s = %s\n", name, g.defaultValue(f))
 		return
 	}
@@ -377,6 +385,9 @@ func (g *gen) emitDefaultInit(f *ir.Field) {
 }
 
 func (g *gen) defaultValue(f *ir.Field) string {
+	if _, flags := f.Type.Ref.(*ir.Flags); flags {
+		return f.DefInt.String()
+	}
 	switch {
 	case f.Type.Kind == ir.TBool:
 		return fmt.Sprintf("%v", f.DefBool)

@@ -186,6 +186,20 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 		w.align() // a string ALIGNS before its bytes, which buys a memcpy
 		w.bytes(fv.Cell.Str)
 		return nil
+	case f.Type.Kind == ir.TWString:
+		// WIDE TEXT on this form (docs/SPEC-TABLES.md §3.3): the length at
+		// bits_required( 0, max ), NO align, then SIXTEEN BITS A CODE UNIT.
+		// That is a DEPARTURE from SPEC.md §4.12's 32-bit group, and the
+		// reason is bandwidth: a bit stream has no word to fill.
+		if fv.Count == 0 {
+			return nil
+		}
+		e.ref(w, entry)
+		w.put(uint64(len(fv.Cell.Units)), ir.TableMessageBitsRequired(0, shape.Max))
+		for _, u := range fv.Cell.Units {
+			w.put(uint64(u), 16)
+		}
+		return nil
 
 	case f.Type.Kind == ir.TBytes:
 		if fv.Count == 0 {
@@ -436,6 +450,12 @@ func encodeBitArm(e *bitEncoder, w *bitWriter, arm ir.UnionVariant, cell *tablet
 		w.put(uint64(len(fv.Cell.Str)), ir.TableMessageBitsRequired(0, shape.Max))
 		w.align()
 		w.bytes(fv.Cell.Str)
+		return nil
+	case f.Type.Kind == ir.TWString:
+		w.put(uint64(len(fv.Cell.Units)), ir.TableMessageBitsRequired(0, shape.Max))
+		for _, u := range fv.Cell.Units {
+			w.put(uint64(u), 16) // no align, sixteen bits a unit (§3.3)
+		}
 		return nil
 	case f.Type.Kind == ir.TBytes:
 		w.put(uint64(len(fv.Cell.Str)), ir.TableMessageCountBits(shape))

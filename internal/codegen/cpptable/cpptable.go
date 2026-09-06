@@ -62,14 +62,16 @@ const (
 
 func tableScalarKind(f *ir.Field) int { return ir.TableWireScalarKind(f) }
 
-// the three kinds this form added (docs/SPEC-TABLES.md §3): an ENUM rides
+// the four kinds this form added (docs/SPEC-TABLES.md §3): an ENUM rides
 // under its own kind carrying the reference to its variant name's id, the
 // ESCAPE is how a later major adds a kind without the addition reading as
-// damage, and the PAYLOAD-FREE kind is what an arm that holds nothing rides
-// under, because an arm header carries a kind.
+// damage, the PAYLOAD-FREE kind is what an arm that holds nothing rides
+// under, because an arm header carries a kind, and WIDE TEXT is the table
+// half of `wstring(N)` — `L` bytes holding `L / 2` UTF-16 code units.
 const (
 	tkEnum      = ir.TableKindEnum
 	tkNoPayload = ir.TableKindNoPayload
+	tkWstring   = ir.TableKindWstring
 )
 
 // tableFieldWireId is a field's effective id on this wire: fnv1a64 of its
@@ -976,7 +978,7 @@ struct TableReader
                 uint64_t ignored = 0;
                 return getleb( ignored );
             }
-            case 12: case 13: case 14: case 16: case 31: case 32: // 31 is the ESCAPE, 32 the payload-free kind
+            case 12: case 13: case 14: case 16: case 31: case 32: case 33: // 31 is the ESCAPE, 32 the payload-free kind, 33 wide text
             {
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;

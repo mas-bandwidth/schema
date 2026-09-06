@@ -31,6 +31,7 @@
 
 #include "TablesTable.h"
 #include "WideTable.h"
+#include "CaptionTable.h" // the WIDE TEXT unit (examples-wide): kind 33
 #include "NestedTable.h"
 #include "KeyedTable.h"
 #include "PackTable.h"
@@ -282,6 +283,11 @@ static const Codec codecs[] = {
     CODEC( "vocabdemo", vocabdemo, Wide09 ),
     CODEC( "vocab9demo", vocab9demo, Wide00 ),
     CODEC( "vocab9demo", vocab9demo, Wide19 ),
+    // WIDE TEXT (docs/SPEC-TABLES.md §3, kind 33): its own unit, because eight
+    // targets refuse wide text on either wire (SPEC.md §4.12) and answer
+    // ABSENT for these rows
+    CODEC( "widedemo", wide, Caption ),
+    CODEC( "widedemo", wide, Stamp ),
 };
 
 // ---------------------------------------------------------------------------

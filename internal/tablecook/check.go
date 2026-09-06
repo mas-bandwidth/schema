@@ -212,7 +212,9 @@ func (s *scan) field(at int64, f *ir.Field) error {
 		return fmt.Errorf("a map slot, and `cook-check` carries no map-slot clause yet (docs/SPEC-TABLES.md §7.4): the C++ reference reads the cook (--lang cpp), and the tool's clause is schema#380's next PR")
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return s.ref(value.Offset, f)
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
+		// a wstring's companion is bounded against N in CODE UNITS, which is
+		// what N counts (SPEC.md §4.12) and what the storage holds
 		return s.companion(pieces[1].Offset, f.Type.Size, "used length")
 	case f.KeyEnum != "", f.Array == ir.ArrayFixed:
 		return s.slots(value.Offset, f, f.ArrayBound)

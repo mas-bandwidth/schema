@@ -1319,14 +1319,12 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 			k = ir.TWString
 		}
 		if k == ir.TWString {
-			// WIDE TEXT rides the PACKET wire only today. The table half is
-			// kind 33 (docs/SPEC-TABLES.md §3), specified ahead of its
-			// implementation, so a wstring inside a table closure is refused
-			// BY NAME rather than emitted as something else.
-			if inTable {
-				c.errf(f.Type.Pos, "field %s: wstring is not carried on the TABLE wire yet — wide text rides the packet wire today (SPEC §4.12); declare the field string(N) here, or move the declaring type to a `type` (docs/SPEC-TABLES.md §11, schema#522)", f.Name)
-				return nil
-			}
+			// `*wstring` is the unbounded spelling of wide text and it is
+			// specified ahead of its implementation (docs/SPEC-TABLES.md
+			// §2.5): the blob record is law and no backend emits one, so the
+			// spelling is refused BY NAME. The BOUNDED spelling rides both
+			// wires — the packet wire's groups (SPEC §4.12) and kind 33 on
+			// the table wire (docs/SPEC-TABLES.md §3).
 			if f.Type.Pointer {
 				c.errf(f.Type.Pos, "field %s: *wstring is specified ahead of its implementation and no backend emits it (docs/SPEC-TABLES.md §2.5); declare *string for an unbounded byte buffer, or wstring(N) in a `type` for inline wide text (SPEC §4.12, schema#522)", f.Name)
 				return nil
@@ -2213,78 +2211,8 @@ func walkArms(un *ir.Union, visit func(string), seen map[*ir.Union]bool) {
 	}
 }
 
-// closureEdge names the edge a closure member's field makes, as the author
-// wrote it. A generated map entry (docs/SPEC-TABLES.md §2.8) is a closure
-// member the author never spelled, so its value field is named as the map
-// field that generated it, reached through the map's value, climbing a map of
-// maps to the field the author wrote.
-func (c *checker) closureEdge(name string, st *ir.Struct, f *ir.Field) string {
-	if st.MapEntryOf == "" {
-		what := "type"
-		if st.IsTable {
-			what = "table"
-		}
-		return fmt.Sprintf("%s %s's field %s", what, name, f.Name)
-	}
-	owner, field, _ := strings.Cut(st.MapEntryOf, ".")
-	depth := 0
-	for entry := c.tables[owner]; entry != nil && entry.MapEntryOf != ""; entry = c.tables[owner] {
-		owner, field, _ = strings.Cut(entry.MapEntryOf, ".")
-		depth++
-	}
-	through := "its map value" + strings.Repeat("'s map value", depth)
-	return fmt.Sprintf("table %s's field %s, through %s,", owner, field, through)
-}
-
-// fieldPos is where a declared body spells a field, descending `if` blocks,
-// so a diagnostic about the field lands on its line rather than the
-// declaration's. The declaration's own position stands in when the body does
-// not spell the name.
-func (c *checker) fieldPos(name, field string) ast.Pos {
-	d, ok := c.astDecls[name]
-	if !ok {
-		return ast.Pos{}
-	}
-	var body *ast.Block
-	switch d := d.(type) {
-	case *ast.TypeDecl:
-		body = d.Body
-	case *ast.TableDecl:
-		body = d.Body
-	}
-	if pos, found := blockFieldPos(body, field); found {
-		return pos
-	}
-	return d.DeclPos()
-}
-
-func blockFieldPos(b *ast.Block, field string) (ast.Pos, bool) {
-	if b == nil {
-		return ast.Pos{}, false
-	}
-	for _, item := range b.Items {
-		switch item := item.(type) {
-		case *ast.Field:
-			if item.Name == field {
-				return item.Pos, true
-			}
-		case *ast.IfItem:
-			if pos, found := blockFieldPos(item.Then, field); found {
-				return pos, true
-			}
-			if pos, found := blockFieldPos(item.Else, field); found {
-				return pos, true
-			}
-		}
-	}
-	return ast.Pos{}, false
-}
-
 func (c *checker) checkTables() {
 	closure := map[string]bool{}
-	// the field that pulled each `type` into the closure, so a refusal that
-	// exists BECAUSE of closure membership names the edge that created it
-	reachedBy := map[string]string{}
 	var walk func(name string)
 	walk = func(name string) {
 		if closure[name] {
@@ -2299,20 +2227,11 @@ func (c *checker) checkTables() {
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
-			site := c.closureEdge(name, st, f)
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Struct:
-				if !closure[ref.Name] {
-					reachedBy[ref.Name] = site
-				}
 				walk(ref.Name)
 			case *ir.Union:
-				walkArms(ref, func(target string) {
-					if !closure[target] {
-						reachedBy[target] = fmt.Sprintf("%s, through an arm of %s,", site, ref.Name)
-					}
-					walk(target)
-				}, map[*ir.Union]bool{})
+				walkArms(ref, walk, map[*ir.Union]bool{})
 			}
 		}
 	}
@@ -2327,7 +2246,6 @@ func (c *checker) checkTables() {
 	}
 	c.tableClosure = closure
 	c.checkTableArmsReached(closure)
-	c.checkWideTextInClosure(closure, reachedBy)
 
 	names := make([]string, 0, len(closure))
 	for name := range closure {
@@ -2435,30 +2353,6 @@ func (c *checker) checkTables() {
 	c.checkOptionalVariableClosures(names)
 	c.checkJsonKeysInClosure()
 	c.checkWasInClosure()
-}
-
-// checkWideTextInClosure refuses a `wstring(N)` field of any `type` a table
-// reaches (docs/SPEC-TABLES.md §11, schema#522). Wide text rides the packet
-// wire only today: the table half is kind 33, specified ahead of its
-// implementation, and the table emitters have no arm for the kind. A table
-// body's own wstring field is refused where it resolves; a `type` body
-// resolves as packet wire, so its wide text is refused here, once the closure
-// is known, at the field's own line, with the same rule and the edge that put
-// the type in a closure as the author wrote it.
-func (c *checker) checkWideTextInClosure(closure map[string]bool, reachedBy map[string]string) {
-	for _, name := range sortedKeys(closure) {
-		st := c.closureMember(name)
-		if st == nil || st.IsTable {
-			continue
-		}
-		for _, f := range st.Fields {
-			if f.Type.Kind != ir.TWString {
-				continue
-			}
-			c.errf(c.fieldPos(name, f.Name), "type %s: field %s: wstring is not carried on the TABLE wire yet — wide text rides the packet wire today (SPEC §4.12), and %s reaches %s, putting it in a table closure; declare the field string(N), or hold %s outside the closure (docs/SPEC-TABLES.md §11, schema#522)",
-				name, f.Name, reachedBy[name], name, name)
-		}
-	}
 }
 
 // checkOptionalVariableClosures refuses an OPTIONAL whose value's closure is

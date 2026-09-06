@@ -1080,8 +1080,10 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
   retention and the fuzzer leg that needs it, the MESSAGE form's `LoadRetain`,
   and the conformance rows. The C++ reference and the two report counters are
   built.
-- #522: the `wstring` kind `33` on the id-table wire, `*wstring`, the cooked
-  storage, the text row and the table-form goldens (SPEC.md §4.12).
+- #522: `*wstring`, the unbounded twin of wide text — the blob record is
+  specified and no backend emits one (SPEC-TABLES.md §2.5). The BOUNDED
+  spelling's table half, kind `33`, has landed in the C++ reference and the
+  tool with the storage, the cook, the text row and the table-form goldens.
 - #523: the unbounded array, `[]T` and `[]*T`, its refusals and the
   `list_migrates` golden that pins "the same bytes" as `[..N]T`
   (SPEC-TABLES.md §2.9).

@@ -1,4 +1,4 @@
-// Wide.schema — the wstring(N) proving ground (SPEC §4.12, §7.3).
+// WideText.schema — the wstring(N) proving ground (SPEC §4.12, §7.3).
 //
 // Its own compilation unit rather than a field inside examples/, because
 // examples/ pins gate 1 for all nine targets and eight of them refuse wide
