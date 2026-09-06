@@ -576,10 +576,7 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		// `min` equals its `max` rides no bits, so an element costs AT LEAST
 		// one bit for this bound and a count the batch cannot cover is damage
 		// rather than two billion slots bought with six bytes (§3.3)
-		floor := run
-		if floor < 1 {
-			floor = 1
-		}
+		floor := max(run, 1)
 		if int64(n) > d.r.left()/floor {
 			d.report.Malformed = true
 			return false
