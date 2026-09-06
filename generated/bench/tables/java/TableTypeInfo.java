@@ -19,4 +19,10 @@ public final class TableTypeInfo {
     public int numFields;
     public TableFieldInfo[] fields;
     public Reset reset;
+
+    // the declaration's own doc and tags, on the same terms as a field's
+    // (docs/SPEC-TABLES.md §8.1)
+    public String doc;
+    public int numTags;
+    public String[] tags;
 }

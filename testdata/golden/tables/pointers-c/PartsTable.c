@@ -1707,19 +1707,19 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
 /* ---- json walk: end ---- */
 
 static const TableFieldInfo schema_graphdemo_stamp_fields_[] = {
-    { "tag", "tag", "string", 0xbc64, 12, 0, 0, 1, 0, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( ( (Stamp *) 0 )->tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "seq", "seq", "int32", 0xc29b, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( ( (Stamp *) 0 )->seq ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "tag", "tag", "string", 0xbc64, 12, 0, 0, 1, 0, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( ( (Stamp *) 0 )->tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "seq", "seq", "int32", 0xc29b, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( ( (Stamp *) 0 )->seq ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_graphdemo_stamp_info_ = { "Stamp", (uint32_t) sizeof( Stamp ), 2, schema_graphdemo_stamp_fields_, schema_graphdemo_stamp_reset_raw_, 0 };
+const TableTypeInfo schema_graphdemo_stamp_info_ = { "Stamp", (uint32_t) sizeof( Stamp ), 2, schema_graphdemo_stamp_fields_, schema_graphdemo_stamp_reset_raw_, 0, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_graphdemo_colour_fields_[] = {
-    { "r", "r", "uint8", 0xb019, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( ( (Colour *) 0 )->r ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "g", "g", "uint8", 0xc40a, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( ( (Colour *) 0 )->g ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "b", "b", "uint8", 0xcae9, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( ( (Colour *) 0 )->b ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "r", "r", "uint8", 0xb019, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( ( (Colour *) 0 )->r ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "g", "g", "uint8", 0xc40a, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( ( (Colour *) 0 )->g ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "b", "b", "uint8", 0xcae9, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( ( (Colour *) 0 )->b ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_graphdemo_colour_info_ = { "Colour", (uint32_t) sizeof( Colour ), 3, schema_graphdemo_colour_fields_, schema_graphdemo_colour_reset_raw_, 0 };
+const TableTypeInfo schema_graphdemo_colour_info_ = { "Colour", (uint32_t) sizeof( Colour ), 3, schema_graphdemo_colour_fields_, schema_graphdemo_colour_reset_raw_, 0, TableDocNone, 0, NULL };
 
 int schema_graphdemo_stamp_from_json_( Stamp * value, const char * text, int64_t bytes, TableReport * report )
 {

@@ -237,11 +237,15 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 
 // emitTagEnum emits a tag enum as a frozen plain object — the JS translation
 // of the family's integer-backed enums; values are Numbers.
-func (g *gen) emitTagEnum(name string, members []string, comment string) {
+// emitTagEnum emits a union's tag set. docs is each arm's doc comment (SPEC
+// §4.1), parallel to members: it reaches the tag's member as a line comment,
+// the one place the arm is a declaration of its own.
+func (g *gen) emitTagEnum(name string, members []string, docs []string, comment string) {
 	g.pf("// %s: %s\n", name, comment)
 	g.pf("export const %s = Object.freeze({\n", name)
 	g.pf("  None: 0,\n")
 	for i, m := range members {
+		g.pf("%s", ir.DocComment(docs[i], "  ", "//"))
 		g.pf("  %s: %d,\n", m, i+1)
 	}
 	g.pf("  Count: %d, // the declared variant count (SPEC §4.2)\n", len(members))
@@ -267,6 +271,7 @@ func (g *gen) emitTagEnum(name string, members []string, comment string) {
 // 2^53 - 1 safe-integer bound) are BigInt — the value-domain seam applied to
 // constants, since JavaScript has no 64-bit Number integers.
 func (g *gen) emitConst(d *ir.Const) {
+	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	if d.IsFloat {
 		if d.Storage == "float32" {
 			g.pf("export const %s = %s;%s\n\n", d.Name, formatFloat32(d.Float), g.foldComment(d.Expr))
@@ -308,12 +313,14 @@ func (g *gen) foldComment(e ast.Expr) string {
 }
 
 func (g *gen) emitEnum(d *ir.Enum) {
+	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("// %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
 	g.pf("// a frozen object of Number values — the JS translation of the family's\n")
 	g.pf("// integer-backed enums; | max = ... headroom values are plain Numbers\n")
 	g.pf("export const %s = Object.freeze({\n", d.Name)
 	g.pf("  None: 0,\n")
 	for i, v := range d.Variants {
+		g.pf("%s", ir.DocComment(d.VariantDocs[i], "  ", "//"))
 		g.pf("  %s: %d,\n", v, i+1)
 	}
 	g.pf("  Count: %d, // the declared variant count (SPEC §4.2)\n", len(d.Variants))
@@ -331,11 +338,13 @@ func (g *gen) emitEnum(d *ir.Enum) {
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {
+	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("// %s — one bit per variant, consumed as masks; flags-typed fields store\n", d.Name)
 	g.pf("// uint64 in every target, so BigInt here, wire %d bits (SPEC §4.2). Masks\n", d.WireBits)
 	g.pf("// are flat PascalCase — the Go target's spelling exactly, so the checker's\n")
 	g.pf("// existing claims cover them.\n")
 	for i, v := range d.Variants {
+		g.pf("%s", ir.DocComment(d.VariantDocs[i], "", "//"))
 		g.pf("export const %s%s = 1n << %dn;\n", d.Name, v, i)
 	}
 	g.pf("export const %sCount = %d; // the declared variant count (SPEC §4.2)\n", d.Name, len(d.Variants))
@@ -364,6 +373,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 }
 
 func (g *gen) emitClass(d *ir.Struct) {
+	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	if len(d.Tags) > 0 {
 		g.pf("// type %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", d.Name, strings.Join(d.Tags, ", "))
 	} else {
@@ -390,6 +400,7 @@ func (g *gen) emitClassFields(fields []*ir.Field) {
 			}
 			prevGuard = f.Guard
 		}
+		g.pf("%s", ir.DocComment(f.Doc, "    ", "//"))
 		g.emitStorageField(f)
 	}
 }
@@ -459,12 +470,15 @@ func isClassRef(ref ir.Decl) bool {
 // nothing allocates per value after construction.
 func (g *gen) emitUnion(d *ir.Union) {
 	members := make([]string, len(d.Variants))
+	docs := make([]string, len(d.Variants))
 	for i, v := range d.Variants {
 		members[i] = ir.GoExportName(v.Name)
+		docs[i] = v.Doc
 	}
-	g.emitTagEnum(d.Name+"Type", members,
+	g.emitTagEnum(d.Name+"Type", members, docs,
 		fmt.Sprintf("union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)", d.Name))
 
+	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("// %s — at most one of the arms; Type says which. Construction is the empty\n", d.Name)
 	g.pf("// union (None). A read zero-establishes exactly the selected arm before\n")
 	g.pf("// decoding it (SPEC §5); unselected arms keep what they last held — the\n")

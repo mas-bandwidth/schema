@@ -2542,6 +2542,13 @@ defmodule Benchtable.BenchTableTable do
   # They are module attributes, so this costs a literal read rather than a
   # parse, and they are immutable, so any process may read them.
 
+  # THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+  # block carries a doc column naming this one attribute, so absence costs the
+  # module no string data and a printer concatenates doc columns with no nil
+  # test. A module attribute is the unit-level shared constant an Elixir file
+  # has. It folds into every row at compile time and claims no module segment.
+  @table_doc_none ""
+
   @table_type_table_entity %{
     name: "TableEntity",
     new: {Benchtable.BenchTableTable, :defaults_table_entity},
@@ -2566,7 +2573,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 4095},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "pos_x",
@@ -2588,7 +2598,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {-16383, 16383},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "pos_y",
@@ -2610,7 +2623,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {-16383, 16383},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "pos_z",
@@ -2632,7 +2648,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {-16383, 16383},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "yaw",
@@ -2654,7 +2673,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 511},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "pitch",
@@ -2676,7 +2698,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 511},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "vel_x",
@@ -2698,7 +2723,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {-2048, 2047},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "vel_y",
@@ -2720,7 +2748,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {-2048, 2047},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "vel_z",
@@ -2742,7 +2773,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {-2048, 2047},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "health",
@@ -2764,7 +2798,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 1000},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "weapon",
@@ -2786,7 +2823,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 2,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "damage",
@@ -2808,7 +2848,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 8,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "moving",
@@ -2830,7 +2873,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 1,
-        elem_default: false
+        elem_default: false,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "firing",
@@ -2852,9 +2898,15 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 1,
-        elem_default: false
+        elem_default: false,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
-    ]
+    ],
+    doc: @table_doc_none,
+    num_tags: 0,
+    tags: nil
   }
   def table_type_table_entity, do: @table_type_table_entity
 
@@ -2882,7 +2934,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 255},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "delta",
@@ -2904,9 +2959,15 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {-512, 511},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
-    ]
+    ],
+    doc: @table_doc_none,
+    num_tags: 0,
+    tags: nil
   }
   def table_type_table_stat, do: @table_type_table_stat
 
@@ -2934,7 +2995,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 2,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "sequence",
@@ -2956,7 +3020,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 65535},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "ack_sequence",
@@ -2978,7 +3045,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 65535},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "ack_bits",
@@ -3000,7 +3070,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 4294967295},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "session_id",
@@ -3022,7 +3095,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 8,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "client_id",
@@ -3044,7 +3120,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "nonce",
@@ -3066,7 +3145,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {1, 9223372036854775807},
         storage_bytes: 8,
-        elem_default: 1
+        elem_default: 1,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "world_time",
@@ -3088,7 +3170,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {-1000000000000, 1000000000000},
         storage_bytes: 8,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "frame_tick",
@@ -3110,7 +3195,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 281474976710655},
         storage_bytes: 8,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "server_time",
@@ -3132,7 +3220,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0.0, 65535.0},
         storage_bytes: 4,
-        elem_default: 0.0
+        elem_default: 0.0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "entities",
@@ -3154,7 +3245,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 0,
-        elem_default: %Benchtable.TableEntity{}
+        elem_default: %Benchtable.TableEntity{},
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "stats",
@@ -3176,7 +3270,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 0,
-        elem_default: %Benchtable.TableStat{}
+        elem_default: %Benchtable.TableStat{},
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "game_event",
@@ -3198,7 +3295,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 0,
-        elem_default: %Benchtable.TableEvent{}
+        elem_default: %Benchtable.TableEvent{},
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "loadout",
@@ -3220,7 +3320,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 1,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "player_name",
@@ -3242,7 +3345,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 0,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "payload",
@@ -3264,7 +3370,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 0,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "aim_x",
@@ -3286,7 +3395,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {-1.0, 1.0},
         storage_bytes: 4,
-        elem_default: 0.0
+        elem_default: 0.0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "aim_y",
@@ -3308,7 +3420,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {-1.0, 1.0},
         storage_bytes: 4,
-        elem_default: 0.0
+        elem_default: 0.0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "aim_z",
@@ -3330,7 +3445,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {-1.0, 1.0},
         storage_bytes: 4,
-        elem_default: 0.0
+        elem_default: 0.0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "recoil",
@@ -3352,7 +3470,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 4,
-        elem_default: 0.0
+        elem_default: 0.0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "drift",
@@ -3374,7 +3495,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 8,
-        elem_default: 0.0
+        elem_default: 0.0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "wide_key",
@@ -3396,7 +3520,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 8,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "flux",
@@ -3418,7 +3545,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {-1000000000000000000, 1000000000000000000},
         storage_bytes: 8,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "ping",
@@ -3440,7 +3570,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0.0, 250.0},
         storage_bytes: 4,
-        elem_default: 0.0
+        elem_default: 0.0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "crc_hint",
@@ -3462,7 +3595,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 16777215},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "has_extra",
@@ -3484,7 +3620,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 1,
-        elem_default: false
+        elem_default: false,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "extra",
@@ -3506,7 +3645,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 255},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "idle_ticks",
@@ -3528,9 +3670,15 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 15},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
-    ]
+    ],
+    doc: @table_doc_none,
+    num_tags: 0,
+    tags: nil
   }
   def table_type_table_mixed, do: @table_type_table_mixed
 
@@ -3558,7 +3706,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 4095},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "damage",
@@ -3580,7 +3731,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 4095},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "hit_kind",
@@ -3602,7 +3756,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 7},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "crit",
@@ -3624,9 +3781,15 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: nil,
         storage_bytes: 1,
-        elem_default: false
+        elem_default: false,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
-    ]
+    ],
+    doc: @table_doc_none,
+    num_tags: 0,
+    tags: nil
   }
   def table_type_table_hit_event, do: @table_type_table_hit_event
 
@@ -3654,7 +3817,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 3},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "speaker",
@@ -3676,9 +3842,15 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 4095},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
-    ]
+    ],
+    doc: @table_doc_none,
+    num_tags: 0,
+    tags: nil
   }
   def table_type_table_chat_event, do: @table_type_table_chat_event
 
@@ -3706,7 +3878,10 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 1023},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
       %{
         name: "amount",
@@ -3728,9 +3903,15 @@ defmodule Benchtable.BenchTableTable do
         key_enum: nil,
         range: {0, 255},
         storage_bytes: 4,
-        elem_default: 0
+        elem_default: 0,
+        doc: @table_doc_none,
+        num_tags: 0,
+        tags: nil
       },
-    ]
+    ],
+    doc: @table_doc_none,
+    num_tags: 0,
+    tags: nil
   }
   def table_type_table_pickup_event, do: @table_type_table_pickup_event
 

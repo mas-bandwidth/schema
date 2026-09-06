@@ -1733,6 +1733,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).entityId & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).entityId = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[0] = f;
             f = new TableFieldInfo();
             f.name = "pos_x"; f.json = "pos_x"; f.typeName = "int32"; f.id = 0xaaa3; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -1741,6 +1742,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).posX; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).posX = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[1] = f;
             f = new TableFieldInfo();
             f.name = "pos_y"; f.json = "pos_y"; f.typeName = "int32"; f.id = 0xa5cc; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -1749,6 +1751,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).posY; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).posY = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[2] = f;
             f = new TableFieldInfo();
             f.name = "pos_z"; f.json = "pos_z"; f.typeName = "int32"; f.id = 0xa985; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -1757,6 +1760,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).posZ; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).posZ = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[3] = f;
             f = new TableFieldInfo();
             f.name = "yaw"; f.json = "yaw"; f.typeName = "bits(9)"; f.id = 0x80c1; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -1765,6 +1769,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).yaw & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).yaw = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[4] = f;
             f = new TableFieldInfo();
             f.name = "pitch"; f.json = "pitch"; f.typeName = "bits(9)"; f.id = 0xf783; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -1773,6 +1778,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).pitch & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).pitch = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[5] = f;
             f = new TableFieldInfo();
             f.name = "vel_x"; f.json = "vel_x"; f.typeName = "int32"; f.id = 0x03e2; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -1781,6 +1787,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).velX; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).velX = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[6] = f;
             f = new TableFieldInfo();
             f.name = "vel_y"; f.json = "vel_y"; f.typeName = "int32"; f.id = 0x0151; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -1789,6 +1796,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).velY; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).velY = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[7] = f;
             f = new TableFieldInfo();
             f.name = "vel_z"; f.json = "vel_z"; f.typeName = "int32"; f.id = 0x0e88; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -1797,6 +1805,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).velZ; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).velZ = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[8] = f;
             f = new TableFieldInfo();
             f.name = "health"; f.json = "health"; f.typeName = "int32"; f.id = 0x8617; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -1805,6 +1814,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> (long) ((BenchTableTable.TableEntity) o).health; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).health = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[9] = f;
             f = new TableFieldInfo();
             f.name = "weapon"; f.json = "weapon"; f.typeName = "TableWeapon"; f.id = 0x4f72; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 0;
@@ -1813,6 +1823,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).weapon & 0xffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).weapon = (byte) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[10] = f;
             f = new TableFieldInfo();
             f.name = "damage"; f.json = "damage"; f.typeName = "TableDamage"; f.id = 0x15a9; f.kind = 9; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 0;
@@ -1821,6 +1832,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).damage; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).damage = raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[11] = f;
             f = new TableFieldInfo();
             f.name = "moving"; f.json = "moving"; f.typeName = "bool"; f.id = 0xa4b2; f.kind = 1; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 1;
@@ -1829,6 +1841,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).moving ? 1L : 0L; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).moving = raw != 0;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[12] = f;
             f = new TableFieldInfo();
             f.name = "firing"; f.json = "firing"; f.typeName = "bool"; f.id = 0x2302; f.kind = 1; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 1;
@@ -1837,9 +1850,11 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableEntity) o).firing ? 1L : 0L; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableEntity) o).firing = raw != 0;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[13] = f;
             info.fields = fields;
             info.reset = (o) -> BenchTableTable.tableEntityReset((BenchTableTable.TableEntity) o);
+            info.doc = TableDocNone.value; info.numTags = 0; info.tags = null;
             return info;
         }
     }
@@ -1864,6 +1879,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableStat) o).statId & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableStat) o).statId = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[0] = f;
             f = new TableFieldInfo();
             f.name = "delta"; f.json = "delta"; f.typeName = "int32"; f.id = 0x1720; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -1872,9 +1888,11 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> (long) ((BenchTableTable.TableStat) o).delta; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableStat) o).delta = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[1] = f;
             info.fields = fields;
             info.reset = (o) -> BenchTableTable.tableStatReset((BenchTableTable.TableStat) o);
+            info.doc = TableDocNone.value; info.numTags = 0; info.tags = null;
             return info;
         }
     }
@@ -1899,6 +1917,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).protocolMagic & 0xffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).protocolMagic = (short) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[0] = f;
             f = new TableFieldInfo();
             f.name = "sequence"; f.json = "sequence"; f.typeName = "bits(16)"; f.id = 0xd32b; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -1907,6 +1926,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).sequence & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).sequence = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[1] = f;
             f = new TableFieldInfo();
             f.name = "ack_sequence"; f.json = "ack_sequence"; f.typeName = "int32"; f.id = 0x3363; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -1915,6 +1935,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> (long) ((BenchTableTable.TableMixed) o).ackSequence; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).ackSequence = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[2] = f;
             f = new TableFieldInfo();
             f.name = "ack_bits"; f.json = "ack_bits"; f.typeName = "bits(32)"; f.id = 0xebb9; f.kind = 8; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -1923,6 +1944,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).ackBits & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).ackBits = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[3] = f;
             f = new TableFieldInfo();
             f.name = "session_id"; f.json = "session_id"; f.typeName = "uint64"; f.id = 0x8790; f.kind = 9; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
@@ -1931,6 +1953,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).sessionId; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).sessionId = raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[4] = f;
             f = new TableFieldInfo();
             f.name = "client_id"; f.json = "client_id"; f.typeName = "uint32"; f.id = 0xd443; f.kind = 8; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -1939,6 +1962,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).clientId & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).clientId = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[5] = f;
             f = new TableFieldInfo();
             f.name = "nonce"; f.json = "nonce"; f.typeName = "uint64"; f.id = 0x80f0; f.kind = 9; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
@@ -1947,6 +1971,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).nonce; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).nonce = raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[6] = f;
             f = new TableFieldInfo();
             f.name = "world_time"; f.json = "world_time"; f.typeName = "int64"; f.id = 0x77f2; f.kind = 5; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
@@ -1955,6 +1980,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).worldTime; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).worldTime = raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[7] = f;
             f = new TableFieldInfo();
             f.name = "frame_tick"; f.json = "frame_tick"; f.typeName = "bits(48)"; f.id = 0xcbc2; f.kind = 9; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
@@ -1963,6 +1989,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).frameTick; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).frameTick = raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[8] = f;
             f = new TableFieldInfo();
             f.name = "server_time"; f.json = "server_time"; f.typeName = "float32"; f.id = 0x27f9; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -1971,6 +1998,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).serverTime) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).serverTime = Float.intBitsToFloat((int) raw);
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[9] = f;
             f = new TableFieldInfo();
             f.name = "entities"; f.json = "entities"; f.typeName = "TableEntity"; f.id = 0x25e3; f.kind = 13; f.isArray = true; f.counted = true; f.optional = false; f.arrayBound = 8; f.elemWidth = 0;
@@ -1979,6 +2007,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = () -> BenchTableTable.tableEntityTableType();
             f.getChild = (o, i) -> ((BenchTableTable.TableMixed) o).entities[i]; f.getCount = (o) -> ((BenchTableTable.TableMixed) o).entitiesCount; f.setCount = (o, n) -> ((BenchTableTable.TableMixed) o).entitiesCount = n;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[10] = f;
             f = new TableFieldInfo();
             f.name = "stats"; f.json = "stats"; f.typeName = "TableStat"; f.id = 0x76dd; f.kind = 13; f.isArray = true; f.counted = true; f.optional = false; f.arrayBound = 80; f.elemWidth = 0;
@@ -1987,6 +2016,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = () -> BenchTableTable.tableStatTableType();
             f.getChild = (o, i) -> ((BenchTableTable.TableMixed) o).stats[i]; f.getCount = (o) -> ((BenchTableTable.TableMixed) o).statsCount; f.setCount = (o, n) -> ((BenchTableTable.TableMixed) o).statsCount = n;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[11] = f;
             f = new TableFieldInfo();
             f.name = "game_event"; f.json = "game_event"; f.typeName = "TableEvent"; f.id = 0xa17e; f.kind = 15; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 0;
@@ -2013,6 +2043,7 @@ public final class BenchTableTable {
                 u.arms = as;
                 f.arms = u;
             }
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[12] = f;
             f = new TableFieldInfo();
             f.name = "loadout"; f.json = "loadout"; f.typeName = "uint8"; f.id = 0x9f78; f.kind = 6; f.isArray = true; f.counted = false; f.optional = false; f.arrayBound = 4; f.elemWidth = 1;
@@ -2021,6 +2052,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).loadout[i] & 0xffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).loadout[i] = (byte) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[13] = f;
             f = new TableFieldInfo();
             f.name = "player_name"; f.json = "player_name"; f.typeName = "string"; f.id = 0x2d3e; f.kind = 12; f.isArray = false; f.counted = true; f.optional = false; f.arrayBound = 15; f.elemWidth = 0;
@@ -2029,6 +2061,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getBuffer = (o) -> ((BenchTableTable.TableMixed) o).playerName; f.getCount = (o) -> ((BenchTableTable.TableMixed) o).playerNameLength; f.setCount = (o, n) -> ((BenchTableTable.TableMixed) o).playerNameLength = n;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[14] = f;
             f = new TableFieldInfo();
             f.name = "payload"; f.json = "payload"; f.typeName = "bytes"; f.id = 0x44aa; f.kind = 6; f.isArray = true; f.counted = true; f.optional = false; f.arrayBound = 16; f.elemWidth = 0;
@@ -2037,6 +2070,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getBuffer = (o) -> ((BenchTableTable.TableMixed) o).payload; f.getCount = (o) -> ((BenchTableTable.TableMixed) o).payloadLength; f.setCount = (o, n) -> ((BenchTableTable.TableMixed) o).payloadLength = n;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[15] = f;
             f = new TableFieldInfo();
             f.name = "aim_x"; f.json = "aim_x"; f.typeName = "float32"; f.id = 0x84e9; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -2045,6 +2079,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).aimX) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).aimX = Float.intBitsToFloat((int) raw);
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[16] = f;
             f = new TableFieldInfo();
             f.name = "aim_y"; f.json = "aim_y"; f.typeName = "float32"; f.id = 0x8d96; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -2053,6 +2088,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).aimY) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).aimY = Float.intBitsToFloat((int) raw);
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[17] = f;
             f = new TableFieldInfo();
             f.name = "aim_z"; f.json = "aim_z"; f.typeName = "float32"; f.id = 0x8e03; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -2061,6 +2097,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).aimZ) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).aimZ = Float.intBitsToFloat((int) raw);
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[18] = f;
             f = new TableFieldInfo();
             f.name = "recoil"; f.json = "recoil"; f.typeName = "float32"; f.id = 0x2d04; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -2069,6 +2106,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).recoil) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).recoil = Float.intBitsToFloat((int) raw);
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[19] = f;
             f = new TableFieldInfo();
             f.name = "drift"; f.json = "drift"; f.typeName = "float64"; f.id = 0xc023; f.kind = 11; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
@@ -2077,6 +2115,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> Double.doubleToRawLongBits(((BenchTableTable.TableMixed) o).drift); f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).drift = Double.longBitsToDouble(raw);
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[20] = f;
             f = new TableFieldInfo();
             f.name = "wide_key"; f.json = "wide_key"; f.typeName = "uint64"; f.id = 0x272f; f.kind = 9; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
@@ -2085,6 +2124,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).wideKey; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).wideKey = raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[21] = f;
             f = new TableFieldInfo();
             f.name = "flux"; f.json = "flux"; f.typeName = "int64"; f.id = 0x196a; f.kind = 5; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 8;
@@ -2093,6 +2133,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).flux; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).flux = raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[22] = f;
             f = new TableFieldInfo();
             f.name = "ping"; f.json = "ping"; f.typeName = "float32"; f.id = 0xe6d4; f.kind = 10; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -2101,6 +2142,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> Float.floatToRawIntBits(((BenchTableTable.TableMixed) o).ping) & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).ping = Float.intBitsToFloat((int) raw);
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[23] = f;
             f = new TableFieldInfo();
             f.name = "crc_hint"; f.json = "crc_hint"; f.typeName = "bits(24)"; f.id = 0xd3dc; f.kind = 8; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -2109,6 +2151,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).crcHint & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).crcHint = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[24] = f;
             f = new TableFieldInfo();
             f.name = "has_extra"; f.json = "has_extra"; f.typeName = "bool"; f.id = 0xb023; f.kind = 1; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 1;
@@ -2117,6 +2160,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTableTable.TableMixed) o).hasExtra ? 1L : 0L; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).hasExtra = raw != 0;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[25] = f;
             f = new TableFieldInfo();
             f.name = "extra"; f.json = "extra"; f.typeName = "int32"; f.id = 0xb579; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -2125,6 +2169,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> (long) ((BenchTableTable.TableMixed) o).extra; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).extra = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[26] = f;
             f = new TableFieldInfo();
             f.name = "idle_ticks"; f.json = "idle_ticks"; f.typeName = "int32"; f.id = 0x9555; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -2133,9 +2178,11 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> (long) ((BenchTableTable.TableMixed) o).idleTicks; f.setRaw = (o, i, raw) -> ((BenchTableTable.TableMixed) o).idleTicks = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[27] = f;
             info.fields = fields;
             info.reset = (o) -> BenchTableTable.tableMixedReset((BenchTableTable.TableMixed) o);
+            info.doc = TableDocNone.value; info.numTags = 0; info.tags = null;
             return info;
         }
     }
@@ -2160,6 +2207,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTable.TableHitEvent) o).targetId & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTable.TableHitEvent) o).targetId = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[0] = f;
             f = new TableFieldInfo();
             f.name = "damage"; f.json = "damage"; f.typeName = "int32"; f.id = 0x15a9; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -2168,6 +2216,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> (long) ((BenchTable.TableHitEvent) o).damage; f.setRaw = (o, i, raw) -> ((BenchTable.TableHitEvent) o).damage = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[1] = f;
             f = new TableFieldInfo();
             f.name = "hit_kind"; f.json = "hit_kind"; f.typeName = "int32"; f.id = 0xaf83; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -2176,6 +2225,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> (long) ((BenchTable.TableHitEvent) o).hitKind; f.setRaw = (o, i, raw) -> ((BenchTable.TableHitEvent) o).hitKind = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[2] = f;
             f = new TableFieldInfo();
             f.name = "crit"; f.json = "crit"; f.typeName = "bool"; f.id = 0x93d9; f.kind = 1; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 1;
@@ -2184,9 +2234,11 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTable.TableHitEvent) o).crit ? 1L : 0L; f.setRaw = (o, i, raw) -> ((BenchTable.TableHitEvent) o).crit = raw != 0;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[3] = f;
             info.fields = fields;
             info.reset = (o) -> BenchTableTable.tableHitEventReset((BenchTable.TableHitEvent) o);
+            info.doc = TableDocNone.value; info.numTags = 0; info.tags = null;
             return info;
         }
     }
@@ -2211,6 +2263,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> (long) ((BenchTable.TableChatEvent) o).channel; f.setRaw = (o, i, raw) -> ((BenchTable.TableChatEvent) o).channel = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[0] = f;
             f = new TableFieldInfo();
             f.name = "speaker"; f.json = "speaker"; f.typeName = "bits(12)"; f.id = 0xce0b; f.kind = 7; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -2219,9 +2272,11 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTable.TableChatEvent) o).speaker & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTable.TableChatEvent) o).speaker = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[1] = f;
             info.fields = fields;
             info.reset = (o) -> BenchTableTable.tableChatEventReset((BenchTable.TableChatEvent) o);
+            info.doc = TableDocNone.value; info.numTags = 0; info.tags = null;
             return info;
         }
     }
@@ -2246,6 +2301,7 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> ((BenchTable.TablePickupEvent) o).itemId & 0xffffffffL; f.setRaw = (o, i, raw) -> ((BenchTable.TablePickupEvent) o).itemId = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[0] = f;
             f = new TableFieldInfo();
             f.name = "amount"; f.json = "amount"; f.typeName = "int32"; f.id = 0x39cc; f.kind = 4; f.isArray = false; f.counted = false; f.optional = false; f.arrayBound = 0; f.elemWidth = 4;
@@ -2254,9 +2310,11 @@ public final class BenchTableTable {
             f.keyTypeName = null; f.keyName = null; f.keyId = null;
             f.tableRef = null;
             f.getRaw = (o, i) -> (long) ((BenchTable.TablePickupEvent) o).amount; f.setRaw = (o, i, raw) -> ((BenchTable.TablePickupEvent) o).amount = (int) raw;
+            f.doc = TableDocNone.value; f.numTags = 0; f.tags = null;
             fields[1] = f;
             info.fields = fields;
             info.reset = (o) -> BenchTableTable.tablePickupEventReset((BenchTable.TablePickupEvent) o);
+            info.doc = TableDocNone.value; info.numTags = 0; info.tags = null;
             return info;
         }
     }

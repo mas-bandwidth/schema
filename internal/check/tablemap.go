@@ -44,11 +44,13 @@ func (c *checker) resolveMapField(owner string, f *ast.Field, inTable bool) *ir.
 	}
 	for i := range f.Attrs {
 		a := &f.Attrs[i]
-		switch a.Key {
-		case "was", "json":
-			// a map is renamed under `was` as any field is, and takes a `json`
-			// key as any field does: both are about the field, not the
-			// construct (docs/SPEC-TABLES.md §2.8, §5, §16.4)
+		switch {
+		case a.Key == "was", a.Key == "json", a.Value == nil:
+			// a map is renamed under `was` as any field is, takes a `json`
+			// key as any field does, and carries a TAG as any field does: each
+			// is about the field, not the construct (docs/SPEC-TABLES.md §2.8,
+			// §5, §16.4, SPEC §4.2). A bare valued key is refused by name in
+			// resolveAttrs, where every field's section is read.
 		default:
 			c.errf(a.Pos, "field %s: %s does not apply to a map — a map has no value to bound and no default to name, and a bound on a KEY would clamp an identity, which merges two entries; drop the attribute (docs/SPEC-TABLES.md §2.8, §11)",
 				f.Name, a.Key)
@@ -82,7 +84,7 @@ func (c *checker) resolveMapField(owner string, f *ast.Field, inTable bool) *ir.
 	c.declFile[entryName] = c.declFile[owner]
 	c.mapEntries = append(c.mapEntries, entry)
 
-	out := &ir.Field{Name: f.Name, Type: ir.FieldType{Kind: ir.TMap}, MapEntry: entry}
+	out := &ir.Field{Name: f.Name, Doc: f.Doc, Type: ir.FieldType{Kind: ir.TMap}, MapEntry: entry}
 	c.resolveAttrs(f, out)
 	return out
 }

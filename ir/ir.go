@@ -81,7 +81,9 @@ type Const struct {
 	Explicit bool   // the declaration named its storage — typed in every target (SPEC §4.2)
 	Int      *big.Int
 	Float    float64
-	Expr     Expr // for symbolic rendering in generated code
+	Expr     Expr     // for symbolic rendering in generated code
+	Doc      string   // the `///` block above it, verbatim (SPEC §4.1), "" when none
+	Tags     []string // its tags, in declared order (SPEC §4.2); nil when none
 }
 
 // Enum is an `enum` declaration: None = 0 implicit, variants dense from 1
@@ -94,8 +96,16 @@ type Enum struct {
 	// variant's table-wire id derives from it instead of the name. See
 	// [Enum.VariantWireName].
 	Was         []string
-	Max         int64 // top wire value: variant count, or the | max = K widening
-	StorageBits int   // 8 / 16 / 32 / 64, the smallest unsigned fitting Max
+	Max         int64    // top wire value: variant count, or the | max = K widening
+	StorageBits int      // 8 / 16 / 32 / 64, the smallest unsigned fitting Max
+	Doc         string   // the declaration's `///` block (SPEC §4.1), "" when none
+	Tags        []string // the declaration's tags, in declared order (SPEC §4.2)
+	// VariantDocs and VariantTags are each variant's own annotation, parallel
+	// to Variants: the `///` block above the variant and the tags right of its
+	// pipe. Both are metadata a tool reads and never a fact a codec reads
+	// (docs/SPEC-TABLES.md §8.1, §8.3).
+	VariantDocs []string
+	VariantTags [][]string
 }
 
 // Flags is a `flags` declaration: one bit per variant, consumed as masks
@@ -104,6 +114,12 @@ type Flags struct {
 	Name     string
 	Variants []string // bit i is variant i
 	WireBits int      // variant count, or the | max = K widening
+	Doc      string   // the declaration's `///` block (SPEC §4.1), "" when none
+	Tags     []string // the declaration's tags, in declared order (SPEC §4.2)
+	// VariantDocs and VariantTags are each bit's own annotation, parallel to
+	// Variants (docs/SPEC-TABLES.md §8.3).
+	VariantDocs []string
+	VariantTags [][]string
 }
 
 // Union is a first-class one-of type (SPEC §4.8): the implicit None row at
@@ -115,6 +131,8 @@ type Union struct {
 	Variants    []UnionVariant // declared order — the tag order
 	Max         int64          // = len(Variants); the tag wire range is [0, Max]
 	StorageBits int            // 8 / 16 / 32 / 64, the smallest unsigned fitting Max
+	Doc         string         // the declaration's `///` block (SPEC §4.1), "" when none
+	Tags        []string       // the declaration's tags, in declared order (SPEC §4.2)
 }
 
 // UnionVariant is one arm of a [Union]. AN ARM IS A FIELD LINE (SPEC §4.8,
@@ -129,6 +147,11 @@ type UnionVariant struct {
 	Type    string  // the payload type's name; "" when the arm names no declaration
 	Ref     *Struct // the payload: a `type`, or inside a table closure a `table`; nil otherwise
 	F       *Field  // the arm as a field line
+	// Doc and Tags are the arm's own annotation (SPEC §4.1, §4.2). An arm
+	// with a payload carries the same two values on F, since an arm is a
+	// field line, and docs/SPEC-TABLES.md §8.7 checks that they agree.
+	Doc  string
+	Tags []string
 }
 
 // Body reports whether the arm's payload is a TABLE BODY on the wire — a
@@ -216,7 +239,8 @@ type Struct struct {
 	// so every stored record of the old name still reads as this table.
 	// Tables only; "" when unset. See [Struct.WireName].
 	WasName string
-	Tags    []string // inert in v1 (SPEC §4.2)
+	Doc     string   // the declaration's `///` block (SPEC §4.1), "" when none
+	Tags    []string // the declaration's tags, in declared order, inert (SPEC §4.2)
 	// C++ native type mapping (SPEC §4.2, Native type mapping): when set,
 	// generated C++ declares fields of this type as ::CppNative (a hand type
 	// deriving from the generated basis struct — same layout, plus behavior)
@@ -312,6 +336,13 @@ type Field struct {
 	// branch, otherwise the condition spelled as the reflection descriptors
 	// spell it — "at_rest", "!at_rest", "active && has_target".
 	Guard string
+
+	// Doc is the `///` block above the field, verbatim (SPEC §4.1), and
+	// Tags the valueless identifiers right of its pipe in declared order
+	// (SPEC §4.2). Both ride into the descriptors' doc and tags columns
+	// (docs/SPEC-TABLES.md §8.1) and into nothing a byte depends on.
+	Doc  string
+	Tags []string
 
 	// WasName is the `was = "old_name"` rename alias (docs/SPEC-TABLES.md): the
 	// field's TABLE-wire id derives from this name instead of Name, so wire

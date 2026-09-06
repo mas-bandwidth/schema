@@ -382,12 +382,25 @@ func (g *gen) emitFile() {
 // of the family's integer-backed enums: a module of 0-arity functions,
 // because storage must hold every wire-legal value and | max = ... headroom
 // values have no richer Elixir value to be.
+// emitModuleDoc writes a declaration's `///` block as the module's own
+// @moduledoc (SPEC §4.1). Elixir is the one target that carries the doc as
+// documentation rather than as a line comment, because a declaration lowers
+// to a module here and a module has an attribute to hang it on. A field and a
+// variant have none, so theirs reach the descriptor column alone.
+func (g *gen) emitModuleDoc(doc string) {
+	if doc == "" {
+		return
+	}
+	g.bpf("  @moduledoc %s\n", ir.QuoteDocElixir(doc))
+}
+
 func (g *gen) emitEnumModule(d *ir.Enum) {
 	g.bpf("# %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
 	g.bpf("# an integer-constant namespace — the Elixir translation of the family's\n")
 	g.bpf("# integer-backed enums: storage must hold every wire-legal value, and\n")
 	g.bpf("# | max = ... headroom values have no richer Elixir value to be\n")
 	g.bpf("defmodule %s do\n", g.mod(d.Name))
+	g.emitModuleDoc(d.Doc)
 	g.bpf("  def none, do: 0\n")
 	for i, v := range d.Variants {
 		g.bpf("  def %s, do: %d\n", elixirName(v), i+1)
@@ -427,6 +440,7 @@ func (g *gen) emitUnionModules(d *ir.Union) {
 		fields = append(fields, fmt.Sprintf("%s: %%%s{}", elixirName(v.Name), g.mod(v.Type)))
 	}
 	g.bpf("defmodule %s do\n", g.mod(d.Name))
+	g.emitModuleDoc(d.Doc)
 	g.emitDefstruct(fields)
 	g.bpf("end\n\n")
 }
@@ -442,6 +456,7 @@ func (g *gen) emitStructModule(d *ir.Struct) {
 		fields = append(fields, fmt.Sprintf("%s: %s", elixirName(f.Name), g.storageDefault(f)))
 	}
 	g.bpf("defmodule %s do\n", g.mod(d.Name))
+	g.emitModuleDoc(d.Doc)
 	if len(d.Fields) == 0 {
 		g.bpf("  # empty body — presence is the payload (SPEC §4.6)\n")
 		g.bpf("  defstruct []\n")

@@ -143,12 +143,16 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 	}
 }
 
-func (g *gen) emitTagEnum(name string, members []string, comment string) {
+// emitTagEnum emits a union's tag type. docs is each arm's doc comment
+// (SPEC §4.1), parallel to members: it reaches the tag's constant as a line
+// comment, the one place the arm is a declaration of its own.
+func (g *gen) emitTagEnum(name string, members []string, docs []string, comment string) {
 	g.pf("// %s: %s\n", name, comment)
 	g.pf("type %s %s\n\n", name, goUint(ir.StorageBitsFor(int64(len(members)))))
 	g.pf("const (\n")
 	g.pf("\t%sNone %s = 0\n", name, name)
 	for i, m := range members {
+		g.pf("%s", ir.DocComment(docs[i], "\t", "//"))
 		g.pf("\t%s%s %s = %d\n", name, m, name, i+1)
 	}
 	g.pf("\t%sCount %s = %d // the declared variant count (SPEC §4.2)\n", name, name, len(members))
@@ -182,6 +186,7 @@ func (g *gen) emitConst(d *ir.Const) {
 	if d.Explicit {
 		typ = " " + d.Storage
 	}
+	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	if d.IsFloat {
 		g.pf("const %s %s = %s%s\n\n", d.Name, d.Storage, formatFloat(d.Float), g.foldComment(d.Expr))
 		return
@@ -203,12 +208,15 @@ func (g *gen) foldComment(e ast.Expr) string {
 // variant. Nothing heap-allocates per value; the zero value IS None.
 func (g *gen) emitUnion(d *ir.Union) {
 	members := make([]string, len(d.Variants))
+	docs := make([]string, len(d.Variants))
 	for i, v := range d.Variants {
 		members[i] = ir.GoExportName(v.Name)
+		docs[i] = v.Doc
 	}
-	g.emitTagEnum(d.Name+"Type", members,
+	g.emitTagEnum(d.Name+"Type", members, docs,
 		fmt.Sprintf("union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)", d.Name))
 
+	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("// %s — at most one of the arms; Type says which. The zero value is the\n", d.Name)
 	g.pf("// empty union (None). A read zero-establishes exactly the selected arm before\n")
 	g.pf("// decoding it (SPEC §5); unselected arms keep what they last held — the\n")
@@ -225,11 +233,13 @@ func (g *gen) emitUnion(d *ir.Union) {
 }
 
 func (g *gen) emitEnum(d *ir.Enum) {
+	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("// %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2)\n", d.Name, d.Max)
 	g.pf("type %s %s\n\n", d.Name, goUint(d.StorageBits))
 	g.pf("const (\n")
 	g.pf("\t%sNone %s = 0\n", d.Name, d.Name)
 	for i, v := range d.Variants {
+		g.pf("%s", ir.DocComment(d.VariantDocs[i], "\t", "//"))
 		g.pf("\t%s%s %s = %d\n", d.Name, v, d.Name, i+1)
 	}
 	g.pf("\t%sCount %s = %d // the declared variant count (SPEC §4.2)\n", d.Name, d.Name, len(d.Variants))
@@ -249,11 +259,13 @@ func (g *gen) emitEnum(d *ir.Enum) {
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {
+	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("// %s — one bit per variant, consumed as masks; storage uint64 in every\n", d.Name)
 	g.pf("// target, wire %d bits (SPEC §4.2)\n", d.WireBits)
 	g.pf("type %s uint64\n\n", d.Name)
 	g.pf("const (\n")
 	for i, v := range d.Variants {
+		g.pf("%s", ir.DocComment(d.VariantDocs[i], "\t", "//"))
 		g.pf("\t%s%s %s = 1 << %d\n", d.Name, v, d.Name, i)
 	}
 	g.pf(")\n\n")
@@ -286,6 +298,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 }
 
 func (g *gen) emitStruct(d *ir.Struct) {
+	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	if len(d.Tags) > 0 {
 		g.pf("// type %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", d.Name, strings.Join(d.Tags, ", "))
 	} else {
@@ -427,6 +440,7 @@ func (g *gen) emitFields(fields []*ir.Field) {
 			}
 			prevGuard = f.Guard
 		}
+		g.pf("%s", ir.DocComment(f.Doc, "\t", "//"))
 		g.emitStorageField(f)
 	}
 }

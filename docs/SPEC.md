@@ -454,7 +454,7 @@ from this projection rather than carried in it.
   element, and why a C# reader gets the text as comments rather than as XML
   documentation. **Elixir carries the descriptor column alone for a field and
   for a variant** — a struct field and an enum variant have no attribute to
-  hang a doc on — and emits `@moduledoc` / `@typedoc` for a declaration.
+  hang a doc on — and emits `@moduledoc` for a declaration.
 - **A doc comment moves nothing.** It is excluded from the wire shape
   projection (§3.1) and from the cook projection (SPEC-TABLES.md §20.2), so
   it moves neither the protocol id nor the build version; it enters no
@@ -1028,22 +1028,6 @@ type Quat | quat4
 - The architecture: types on one side; a layer that defines the needed
   actions for those types on the other. v1 ships the types; each schema
   declares its own, and each application's actions bind to them by claiming.
-
-**Front-end status: TWO LINE KINDS CARRY A TAG TODAY.** The rule at every
-line kind is specified ahead of its implementation, on the terms
-SPEC-TABLES.md §3.3 and §6.6 take. What the tree carries is a tag on a
-`type` declaration, gathered into `ir.Struct.Tags` and emitted as the inert
-comment above, and on a `table` declaration, gathered the same way and
-emitted nowhere yet. A field's pipe refuses one under "unknown
-attribute ... the vocabulary is typed and closed per compiler version", and
-an arm with a payload is a field line and refuses it the same way. A `union`
-declaration draws "takes no qualification", and a `const` draws "a constant
-takes no qualification, and | is never an operator". An enum variant, a
-flags variant and a payload-free arm parse a qualification section for `was`
-(a flags variant refuses `was` by ruling) and accept a bare tag in silence,
-carrying it nowhere. Owed as schema#523 ruling 4, together
-with the descriptor columns it feeds (SPEC-TABLES.md §8.1), and this line is
-deleted by the implementation PR that lands the behavior.
 
 ### Native type mapping — `cpp_native` / `cpp_include`
 

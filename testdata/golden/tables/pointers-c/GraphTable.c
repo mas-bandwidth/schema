@@ -1707,55 +1707,55 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
 /* ---- json walk: end ---- */
 
 static const TableFieldInfo schema_graphdemo_meta_fields_[] = {
-    { "build", "build", "int32", 0x3138, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( Meta, build ), (uint32_t) sizeof( ( (Meta *) 0 )->build ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "tag", "tag", "string", 0xbc64, 12, 0, 0, 1, 0, 8, (uint32_t) offsetof( Meta, tag ), (uint32_t) sizeof( ( (Meta *) 0 )->tag ), (uint32_t) offsetof( Meta, tag_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "build", "build", "int32", 0x3138, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( Meta, build ), (uint32_t) sizeof( ( (Meta *) 0 )->build ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "tag", "tag", "string", 0xbc64, 12, 0, 0, 1, 0, 8, (uint32_t) offsetof( Meta, tag ), (uint32_t) sizeof( ( (Meta *) 0 )->tag ), (uint32_t) offsetof( Meta, tag_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_graphdemo_meta_info_ = { "Meta", (uint32_t) sizeof( Meta ), 2, schema_graphdemo_meta_fields_, schema_graphdemo_meta_reset_raw_, 0 };
+const TableTypeInfo schema_graphdemo_meta_info_ = { "Meta", (uint32_t) sizeof( Meta ), 2, schema_graphdemo_meta_fields_, schema_graphdemo_meta_reset_raw_, 0, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_graphdemo_settings_fields_[] = {
-    { "quality", "quality", "int32", 0xcaf3, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( Settings, quality ), (uint32_t) sizeof( ( (Settings *) 0 )->quality ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "label", "label", "string", 0xe16a, 12, 0, 0, 1, 0, 16, (uint32_t) offsetof( Settings, label ), (uint32_t) sizeof( ( (Settings *) 0 )->label ), (uint32_t) offsetof( Settings, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "quality", "quality", "int32", 0xcaf3, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( Settings, quality ), (uint32_t) sizeof( ( (Settings *) 0 )->quality ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "label", "label", "string", 0xe16a, 12, 0, 0, 1, 0, 16, (uint32_t) offsetof( Settings, label ), (uint32_t) sizeof( ( (Settings *) 0 )->label ), (uint32_t) offsetof( Settings, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_graphdemo_settings_info_ = { "Settings", (uint32_t) sizeof( Settings ), 2, schema_graphdemo_settings_fields_, schema_graphdemo_settings_reset_raw_, 0 };
+const TableTypeInfo schema_graphdemo_settings_info_ = { "Settings", (uint32_t) sizeof( Settings ), 2, schema_graphdemo_settings_fields_, schema_graphdemo_settings_reset_raw_, 0, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_graphdemo_list_node_fields_[] = {
-    { "value", "value", "int32", 0x9194, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( ListNode, value ), (uint32_t) sizeof( ( (ListNode *) 0 )->value ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "name", "name", "string", 0x30df, 12, 0, 0, 1, 0, 12, (uint32_t) offsetof( ListNode, name ), (uint32_t) sizeof( ( (ListNode *) 0 )->name ), (uint32_t) offsetof( ListNode, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "next", "next", "ListNode", 0xd15e, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( ListNode, next ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "value", "value", "int32", 0x9194, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( ListNode, value ), (uint32_t) sizeof( ( (ListNode *) 0 )->value ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "name", "name", "string", 0x30df, 12, 0, 0, 1, 0, 12, (uint32_t) offsetof( ListNode, name ), (uint32_t) sizeof( ( (ListNode *) 0 )->name ), (uint32_t) offsetof( ListNode, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "next", "next", "ListNode", 0xd15e, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( ListNode, next ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_graphdemo_list_node_info_ = { "ListNode", (uint32_t) sizeof( ListNode ), 3, schema_graphdemo_list_node_fields_, schema_graphdemo_list_node_reset_raw_, 1 };
+const TableTypeInfo schema_graphdemo_list_node_info_ = { "ListNode", (uint32_t) sizeof( ListNode ), 3, schema_graphdemo_list_node_fields_, schema_graphdemo_list_node_reset_raw_, 1, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_graphdemo_tree_node_fields_[] = {
-    { "label", "label", "string", 0xe16a, 12, 0, 0, 1, 0, 12, (uint32_t) offsetof( TreeNode, label ), (uint32_t) sizeof( ( (TreeNode *) 0 )->label ), (uint32_t) offsetof( TreeNode, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "left", "left", "TreeNode", 0xfe3a, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( TreeNode, left ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tree_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "right", "right", "TreeNode", 0x5506, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( TreeNode, right ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tree_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "label", "label", "string", 0xe16a, 12, 0, 0, 1, 0, 12, (uint32_t) offsetof( TreeNode, label ), (uint32_t) sizeof( ( (TreeNode *) 0 )->label ), (uint32_t) offsetof( TreeNode, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "left", "left", "TreeNode", 0xfe3a, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( TreeNode, left ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tree_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "right", "right", "TreeNode", 0x5506, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( TreeNode, right ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tree_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_graphdemo_tree_node_info_ = { "TreeNode", (uint32_t) sizeof( TreeNode ), 3, schema_graphdemo_tree_node_fields_, schema_graphdemo_tree_node_reset_raw_, 1 };
+const TableTypeInfo schema_graphdemo_tree_node_info_ = { "TreeNode", (uint32_t) sizeof( TreeNode ), 3, schema_graphdemo_tree_node_fields_, schema_graphdemo_tree_node_reset_raw_, 1, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_graphdemo_layer_fields_[] = {
-    { "depth", "depth", "int32", 0x609f, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( Layer, depth ), (uint32_t) sizeof( ( (Layer *) 0 )->depth ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 64.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "head", "head", "ListNode", 0x79aa, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Layer, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "depth", "depth", "int32", 0x609f, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( Layer, depth ), (uint32_t) sizeof( ( (Layer *) 0 )->depth ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 64.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "head", "head", "ListNode", 0x79aa, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Layer, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_graphdemo_layer_info_ = { "Layer", (uint32_t) sizeof( Layer ), 2, schema_graphdemo_layer_fields_, schema_graphdemo_layer_reset_raw_, 1 };
+const TableTypeInfo schema_graphdemo_layer_info_ = { "Layer", (uint32_t) sizeof( Layer ), 2, schema_graphdemo_layer_fields_, schema_graphdemo_layer_reset_raw_, 1, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_graphdemo_scene_fields_[] = {
-    { "name", "name", "string", 0x30df, 12, 0, 0, 1, 0, 24, (uint32_t) offsetof( Scene, name ), (uint32_t) sizeof( ( (Scene *) 0 )->name ), (uint32_t) offsetof( Scene, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "version", "version", "int32", 0xe8e6, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( Scene, version ), (uint32_t) sizeof( ( (Scene *) 0 )->version ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 99.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "head", "head", "ListNode", 0x79aa, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Scene, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "tree", "tree", "TreeNode", 0x595e, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Scene, tree ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tree_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "settings", "settings", "Settings", 0x130e, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Scene, settings ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_settings_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "alias", "alias", "ListNode", 0xfc71, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Scene, alias ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "ground", "ground", "Layer", 0x5bdf, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( Scene, ground ), (uint32_t) sizeof( ( (Scene *) 0 )->ground ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_layer_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "layers", "layers", "Layer", 0x1ee8, 13, 1, 0, 1, 0, 4, (uint32_t) offsetof( Scene, layers ), (uint32_t) sizeof( ( (Scene *) 0 )->layers[0] ), (uint32_t) offsetof( Scene, layers_count ), 0xffffffffu, &schema_graphdemo_layer_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "meta", "meta", "Meta", 0xcea6, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( Scene, meta ), (uint32_t) sizeof( ( (Scene *) 0 )->meta ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_meta_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "name", "name", "string", 0x30df, 12, 0, 0, 1, 0, 24, (uint32_t) offsetof( Scene, name ), (uint32_t) sizeof( ( (Scene *) 0 )->name ), (uint32_t) offsetof( Scene, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "version", "version", "int32", 0xe8e6, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( Scene, version ), (uint32_t) sizeof( ( (Scene *) 0 )->version ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 99.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "head", "head", "ListNode", 0x79aa, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Scene, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "tree", "tree", "TreeNode", 0x595e, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Scene, tree ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tree_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "settings", "settings", "Settings", 0x130e, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Scene, settings ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_settings_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "alias", "alias", "ListNode", 0xfc71, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Scene, alias ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "ground", "ground", "Layer", 0x5bdf, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( Scene, ground ), (uint32_t) sizeof( ( (Scene *) 0 )->ground ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_layer_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "layers", "layers", "Layer", 0x1ee8, 13, 1, 0, 1, 0, 4, (uint32_t) offsetof( Scene, layers ), (uint32_t) sizeof( ( (Scene *) 0 )->layers[0] ), (uint32_t) offsetof( Scene, layers_count ), 0xffffffffu, &schema_graphdemo_layer_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "meta", "meta", "Meta", 0xcea6, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( Scene, meta ), (uint32_t) sizeof( ( (Scene *) 0 )->meta ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_meta_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_graphdemo_scene_info_ = { "Scene", (uint32_t) sizeof( Scene ), 9, schema_graphdemo_scene_fields_, schema_graphdemo_scene_reset_raw_, 1 };
+const TableTypeInfo schema_graphdemo_scene_info_ = { "Scene", (uint32_t) sizeof( Scene ), 9, schema_graphdemo_scene_fields_, schema_graphdemo_scene_reset_raw_, 1, TableDocNone, 0, NULL };
 
 static const TableVariantInfo schema_graphdemo_depot_banks_keys_[] = {
     { "None", 0x0000 },
@@ -1763,24 +1763,24 @@ static const TableVariantInfo schema_graphdemo_depot_banks_keys_[] = {
     { "High", 0xb817 },
 };
 static const TableFieldInfo schema_graphdemo_depot_fields_[] = {
-    { "name", "name", "string", 0x30df, 12, 0, 0, 1, 0, 12, (uint32_t) offsetof( Depot, name ), (uint32_t) sizeof( ( (Depot *) 0 )->name ), (uint32_t) offsetof( Depot, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "banks", "banks", "Layer", 0x7f34, 13, 1, 0, 0, 0, (int32_t) TIER_MAX, (uint32_t) offsetof( Depot, banks ), (uint32_t) sizeof( ( (Depot *) 0 )->banks[0] ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_layer_info_, 0, 0.0, 0.0, -1, NULL, 0, "Tier", schema_graphdemo_depot_banks_keys_, 2, NULL, "" },
-    { "spare", "spare", "Meta", 0x3a4f, 13, 0, 0, 0, 1, 0, (uint32_t) offsetof( Depot, spare ), (uint32_t) sizeof( ( (Depot *) 0 )->spare ), 0xffffffffu, (uint32_t) offsetof( Depot, spare_present ), &schema_graphdemo_meta_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "head", "head", "ListNode", 0x79aa, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Depot, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "name", "name", "string", 0x30df, 12, 0, 0, 1, 0, 12, (uint32_t) offsetof( Depot, name ), (uint32_t) sizeof( ( (Depot *) 0 )->name ), (uint32_t) offsetof( Depot, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "banks", "banks", "Layer", 0x7f34, 13, 1, 0, 0, 0, (int32_t) TIER_MAX, (uint32_t) offsetof( Depot, banks ), (uint32_t) sizeof( ( (Depot *) 0 )->banks[0] ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_layer_info_, 0, 0.0, 0.0, -1, NULL, 0, "Tier", schema_graphdemo_depot_banks_keys_, 2, NULL, "", TableDocNone, 0, NULL },
+    { "spare", "spare", "Meta", 0x3a4f, 13, 0, 0, 0, 1, 0, (uint32_t) offsetof( Depot, spare ), (uint32_t) sizeof( ( (Depot *) 0 )->spare ), 0xffffffffu, (uint32_t) offsetof( Depot, spare_present ), &schema_graphdemo_meta_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "head", "head", "ListNode", 0x79aa, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Depot, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_graphdemo_depot_info_ = { "Depot", (uint32_t) sizeof( Depot ), 4, schema_graphdemo_depot_fields_, schema_graphdemo_depot_reset_raw_, 1 };
+const TableTypeInfo schema_graphdemo_depot_info_ = { "Depot", (uint32_t) sizeof( Depot ), 4, schema_graphdemo_depot_fields_, schema_graphdemo_depot_reset_raw_, 1, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_graphdemo_album_fields_[] = {
-    { "name", "name", "string", 0x30df, 12, 0, 0, 1, 0, 16, (uint32_t) offsetof( Album, name ), (uint32_t) sizeof( ( (Album *) 0 )->name ), (uint32_t) offsetof( Album, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "tint", "tint", "Colour", 0x82b9, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( Album, tint ), (uint32_t) sizeof( ( (Album *) 0 )->tint ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_colour_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "stamp", "stamp", "Stamp", 0x0dc6, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( Album, stamp ), (uint32_t) sizeof( ( (Album *) 0 )->stamp ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_stamp_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "marker", "marker", "Marker", 0x866f, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( Album, marker ), (uint32_t) sizeof( ( (Album *) 0 )->marker ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_marker_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "pin", "pin", "Marker", 0x69d5, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Album, pin ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_marker_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "head", "head", "ListNode", 0x79aa, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Album, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "name", "name", "string", 0x30df, 12, 0, 0, 1, 0, 16, (uint32_t) offsetof( Album, name ), (uint32_t) sizeof( ( (Album *) 0 )->name ), (uint32_t) offsetof( Album, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "tint", "tint", "Colour", 0x82b9, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( Album, tint ), (uint32_t) sizeof( ( (Album *) 0 )->tint ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_colour_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "stamp", "stamp", "Stamp", 0x0dc6, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( Album, stamp ), (uint32_t) sizeof( ( (Album *) 0 )->stamp ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_stamp_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "marker", "marker", "Marker", 0x866f, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( Album, marker ), (uint32_t) sizeof( ( (Album *) 0 )->marker ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_marker_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "pin", "pin", "Marker", 0x69d5, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Album, pin ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_marker_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "head", "head", "ListNode", 0x79aa, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Album, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_graphdemo_album_info_ = { "Album", (uint32_t) sizeof( Album ), 6, schema_graphdemo_album_fields_, schema_graphdemo_album_reset_raw_, 1 };
+const TableTypeInfo schema_graphdemo_album_info_ = { "Album", (uint32_t) sizeof( Album ), 6, schema_graphdemo_album_fields_, schema_graphdemo_album_reset_raw_, 1, TableDocNone, 0, NULL };
 
 int schema_graphdemo_meta_from_json_( Meta * value, const char * text, int64_t bytes, TableReport * report )
 {

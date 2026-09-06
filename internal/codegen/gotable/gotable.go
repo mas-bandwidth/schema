@@ -517,6 +517,15 @@ type TableReport struct {
 // this build's own rather than a guess about it. They are what lets one
 // generic walk drive the text form for every table.
 
+// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
+// block carries a doc column naming this one definition, so absence costs a
+// unit no string data and a printer concatenates doc columns with no nil test.
+// Go gives a string no address identity, so what the rule is READ OFF here is
+// the emitted text: the generated file defines the empty doc once and every
+// unannotated row names that definition, rather than each row carrying an
+// inline "" of its own.
+const TableDocNone = ""
+
 // TableFieldInfo is one field's descriptor.
 type TableFieldInfo struct {
 	Name     string // schema field name, e.g. "health"
@@ -574,6 +583,15 @@ type TableFieldInfo struct {
 	// refuses an initialization cycle across package-level variables, and a
 	// table may name one declared later.
 	Table func() *TableTypeInfo
+
+	// what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
+	// block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
+	// none, never nil. Its tags (SPEC §4.2) follow in declared order, and an
+	// untagged field is 0 beside a nil list. Static package data, allocating
+	// nothing.
+	Doc     string
+	NumTags int32
+	Tags    []string
 }
 
 // TableUnionArmInfo is one arm of a union field: where its payload sits inside
@@ -604,6 +622,12 @@ type TableTypeInfo struct {
 	// defaults an absent field takes, and it holds no type to spell — this is
 	// the one thing the descriptors could not express without it.
 	Reset func(storage unsafe.Pointer)
+
+	// the declaration's own doc and tags, on the same terms as a field's
+	// (docs/SPEC-TABLES.md §8.1, SPEC §4.1, §4.2)
+	Doc     string
+	NumTags int32
+	Tags    []string
 }
 
 // TableWriter writes the wire into the caller's slice. Nothing here allocates.

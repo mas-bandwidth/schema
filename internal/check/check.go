@@ -233,7 +233,8 @@ func (c *checker) resolveConst(name string) *ir.Const {
 		return nil
 	}
 	e.state = 1
-	out := &ir.Const{Name: name, Expr: e.decl.Expr}
+	out := &ir.Const{Name: name, Expr: e.decl.Expr, Doc: e.decl.Doc}
+	out.Tags, _ = c.qualification("const "+name, "a constant", e.decl.Attrs, nil)
 
 	isFloatType := e.decl.Type == "float32" || e.decl.Type == "float64"
 	kind := c.exprKind(e.decl.Expr)
@@ -543,15 +544,96 @@ func (c *checker) bigIntFloat(v *big.Int, pos ast.Pos) (float64, bool) {
 	return f, true
 }
 
-// valuedAttr lists the field attributes that MUST carry `= value`. Adding a
-// valued attribute means adding it here, or a bare spelling of it reaches
-// expression evaluation as a nil and panics.
-var valuedAttr = map[string]bool{
-	"min":        true,
-	"max":        true,
-	"resolution": true,
-	"was":        true,
-	"json":       true,
+// valuedKeys is the UNION of every valued key the language has, on every line
+// kind (SPEC §4.2). A bare spelling of any of them is refused by name at every
+// line kind rather than taken as a tag, so `| min` on a string(N) field, where
+// min was never legal, draws "requires a value" instead of becoming a tag: the
+// open namespace must not be able to swallow a typo in the closed one. Adding
+// a valued attribute means adding it here, or a bare spelling of it becomes a
+// tag.
+var valuedKeys = map[string]bool{
+	"min":         true,
+	"max":         true,
+	"resolution":  true,
+	"was":         true,
+	"json":        true,
+	"cpp_native":  true,
+	"cpp_include": true,
+}
+
+// fieldKeys is the valued vocabulary a FIELD line takes (SPEC §4.2). Which of
+// them a given field may carry is resolveAttrs's business.
+var fieldKeys = map[string]bool{"min": true, "max": true, "resolution": true, "was": true, "json": true}
+
+// qualification reads one line's | section (SPEC §4.2). The VALUELESS entries
+// are the line's TAGS, returned in declared order. The VALUED entries are
+// returned for the caller, whose own switch decides what each means. takes
+// names the valued keys this line PARSES and is what an unknown key's
+// diagnostic advertises, so a key the line reads only to refuse it by name is
+// passed in refuses instead and stays out of the advertised vocabulary.
+// kind names the line for a diagnostic ("a field", "a table declaration").
+// Refused here, once for every line kind: a bare spelling of any valued key
+// the language has, `doc` in either form (documentation is the /// comment
+// above the item, SPEC §4.11), `round` in either form (§4.11), a valued key
+// this line does not read at all, a repeated tag, and a repeated valued key.
+func (c *checker) qualification(where, kind string, attrs []ast.Attr, takes map[string]bool, refuses ...string) (tags []string, valued []*ast.Attr) {
+	reads := takes
+	if len(refuses) > 0 {
+		reads = map[string]bool{}
+		for k := range takes {
+			reads[k] = true
+		}
+		for _, k := range refuses {
+			reads[k] = true
+		}
+	}
+	seenTag := map[string]bool{}
+	seenKey := map[string]bool{}
+	for i := range attrs {
+		a := &attrs[i]
+		if a.Value == nil {
+			switch {
+			case a.Key == "doc":
+				c.errf(a.Pos, "%s: doc is not a tag. Documentation is the /// comment above the item, and one text has one spelling (SPEC §4.1, §4.11)", where)
+			case a.Key == "round":
+				c.errf(a.Pos, "%s: round is not part of the language. Rounding is the one fixed-point rule, half away from zero, everywhere (SPEC §4.3, §4.11)", where)
+			case valuedKeys[a.Key]:
+				c.errf(a.Pos, "%s: attribute %s requires a value, spelled %s = value. A bare identifier right of | is a tag, and %s is a valued key, so it is refused by name rather than taken as one (SPEC §4.2, §4.6)", where, a.Key, a.Key, a.Key)
+			case seenTag[a.Key]:
+				c.errf(a.Pos, "%s: tag %s repeated. A tag is written once on a line (SPEC §4.2)", where, a.Key)
+			default:
+				seenTag[a.Key] = true
+				tags = append(tags, a.Key)
+			}
+			continue
+		}
+		switch {
+		case a.Key == "doc":
+			c.errf(a.Pos, "%s: doc is not an attribute. Documentation is the /// comment above the item, and one text has one spelling (SPEC §4.1, §4.11)", where)
+		case a.Key == "round":
+			c.errf(a.Pos, "%s: round is not part of the language. Rounding is the one fixed-point rule, half away from zero, everywhere (SPEC §4.3, §4.11)", where)
+		case !reads[a.Key]:
+			c.errf(a.Pos, "%s: unknown attribute %q. It is not an attribute %s takes, the valued vocabulary is typed and closed per compiler version, %s, and a tag is a bare identifier (SPEC §4.2)", where, a.Key, kind, vocabulary(takes))
+		case seenKey[a.Key]:
+			c.errf(a.Pos, "%s: attribute %s repeated (SPEC §4.6)", where, a.Key)
+		default:
+			seenKey[a.Key] = true
+			valued = append(valued, a)
+		}
+	}
+	return tags, valued
+}
+
+// vocabulary spells a line kind's valued keys for a diagnostic.
+func vocabulary(takes map[string]bool) string {
+	if len(takes) == 0 {
+		return "and this line takes no valued key at all"
+	}
+	keys := sortedKeys(takes)
+	if len(keys) == 1 {
+		return "and here it is " + keys[0] + " alone"
+	}
+	return "and here it is " + strings.Join(keys[:len(keys)-1], ", ") + " and " + keys[len(keys)-1]
 }
 
 func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
@@ -672,7 +754,8 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 	defer delete(c.resolvingEnum, d.Name)
 
 	seen := map[string]bool{}
-	var variants, was []string
+	var variants, was, docs []string
+	var vtags [][]string
 	for _, v := range d.Variants {
 		// the three names below are reservedEnumVariant's set, and
 		// checkClaimedNames reads the same predicate: a variant that IS the
@@ -696,7 +779,10 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 		}
 		seen[v.Text] = true
 		variants = append(variants, v.Text)
-		was = append(was, c.variantWas("enum", d.Name, v))
+		docs = append(docs, v.Doc)
+		vw, vt := c.variantQualification("enum", d.Name, v, map[string]bool{"was": true})
+		was = append(was, vw)
+		vtags = append(vtags, vt)
 	}
 	// An enum with no variants is LEGAL: it holds only the implicit None = 0,
 	// so its wire range is the degenerate [0, 0] and it costs zero bits. That
@@ -709,15 +795,8 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 	// field typed by it round-trips as None without the schema having to
 	// invent a placeholder variant to satisfy the compiler.
 	max := int64(len(variants))
-	for _, a := range d.Attrs {
-		if a.Key != "max" {
-			c.errf(a.Pos, "unknown attribute %q on an enum — enums take | max = K only (SPEC §4.6)", a.Key)
-			continue
-		}
-		if a.Value == nil {
-			c.errf(a.Pos, "max takes a value")
-			continue
-		}
+	tags, valued := c.qualification("enum "+d.Name, "an enum declaration", d.Attrs, map[string]bool{"max": true})
+	for _, a := range valued {
 		v, ok := c.evalInt(a.Value)
 		if !ok {
 			// the bound never resolved (a cycle, an undefined name, a bad
@@ -741,7 +820,8 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 		}
 		max = v.Int64()
 	}
-	en := &ir.Enum{Name: d.Name, Variants: variants, Was: was, Max: max, StorageBits: ir.StorageBitsFor(max)}
+	en := &ir.Enum{Name: d.Name, Variants: variants, Was: was, Max: max, StorageBits: ir.StorageBitsFor(max),
+		Doc: d.Doc, Tags: tags, VariantDocs: docs, VariantTags: vtags}
 	c.enums[d.Name] = en
 	return en
 }
@@ -751,7 +831,8 @@ func (c *checker) resolveFlags(d *ast.FlagsDecl) *ir.Flags {
 		return fl
 	}
 	seen := map[string]bool{}
-	var variants []string
+	var variants, docs []string
+	var vtags [][]string
 	for _, v := range d.Variants {
 		if seen[v.Text] {
 			c.errf(v.Pos, "duplicate variant %s", v.Text)
@@ -759,17 +840,9 @@ func (c *checker) resolveFlags(d *ast.FlagsDecl) *ir.Flags {
 		}
 		seen[v.Text] = true
 		variants = append(variants, v.Text)
-		for _, a := range v.Attrs {
-			switch {
-			case a.Key == "was":
-				// a mask is POSITIONAL (docs/SPEC-TABLES.md §5): a flags
-				// variant's identity is its bit, no name rides, and a
-				// rename in place is the baseline's to judge (§18.2)
-				c.errf(a.Pos, "flags %s: variant %s takes no was — a mask is positional, a variant's identity is its bit and no name rides the wire, so a rename keeps every stored bit; the baseline judges a rename in place (docs/SPEC-TABLES.md §5, §18.2)", d.Name, v.Text)
-			case a.Value != nil:
-				c.errf(a.Pos, "flags %s: variant %s takes no valued key; a tag is a bare identifier (SPEC §4.2)", d.Name, v.Text)
-			}
-		}
+		docs = append(docs, v.Doc)
+		_, vt := c.variantQualification("flags", d.Name, v, nil)
+		vtags = append(vtags, vt)
 	}
 	if len(variants) == 0 {
 		c.errf(d.Pos, "flags %s has no variants", d.Name)
@@ -778,15 +851,8 @@ func (c *checker) resolveFlags(d *ast.FlagsDecl) *ir.Flags {
 		c.errf(d.Pos, "flags %s has %d variants — one bit per variant, up to 64 (SPEC §4.2)", d.Name, len(variants))
 	}
 	bits := len(variants)
-	for _, a := range d.Attrs {
-		if a.Key != "max" {
-			c.errf(a.Pos, "unknown attribute %q on flags — flags take | max = K only", a.Key)
-			continue
-		}
-		if a.Value == nil {
-			c.errf(a.Pos, "max takes a value")
-			continue
-		}
+	tags, valued := c.qualification("flags "+d.Name, "a flags declaration", d.Attrs, map[string]bool{"max": true})
+	for _, a := range valued {
 		v, ok := c.evalInt(a.Value)
 		if !ok {
 			continue
@@ -797,7 +863,8 @@ func (c *checker) resolveFlags(d *ast.FlagsDecl) *ir.Flags {
 		}
 		bits = int(v.Int64())
 	}
-	fl := &ir.Flags{Name: d.Name, Variants: variants, WireBits: bits}
+	fl := &ir.Flags{Name: d.Name, Variants: variants, WireBits: bits,
+		Doc: d.Doc, Tags: tags, VariantDocs: docs, VariantTags: vtags}
 	c.flagsD[d.Name] = fl
 	return fl
 }
@@ -810,8 +877,10 @@ func (c *checker) resolveBodies() {
 		for _, d := range f.AST.Decls {
 			switch d := d.(type) {
 			case *ast.TypeDecl:
-				st := &ir.Struct{Name: d.Name}
-				for _, a := range d.Attrs {
+				st := &ir.Struct{Name: d.Name, Doc: d.Doc}
+				var valued []*ast.Attr
+				st.Tags, valued = c.qualification("type "+d.Name, "a type declaration", d.Attrs, map[string]bool{"cpp_native": true, "cpp_include": true}, "was")
+				for _, a := range valued {
 					switch a.Key {
 					case "cpp_native":
 						// C++ native type mapping (SPEC §4.2): generated C++
@@ -838,12 +907,6 @@ func (c *checker) resolveBodies() {
 						// record and there is no identity for `was` to keep
 						// (docs/SPEC-TABLES.md §5)
 						c.errf(a.Pos, "type %s: was on a type declaration is refused — a type rides by value and has no node type id on the table wire, so a rename there orphans no stored record; was on a declaration is a table's (docs/SPEC-TABLES.md §5)", d.Name)
-					default:
-						if a.Value != nil {
-							c.errf(a.Pos, "a type tag is a bare identifier (SPEC §4.2 Type tags)")
-							continue
-						}
-						st.Tags = append(st.Tags, a.Key)
 					}
 				}
 				if (st.CppNative == "") != (st.CppInclude == "") {
@@ -854,32 +917,23 @@ func (c *checker) resolveBodies() {
 				// tables share the struct shape but live beside the packet
 				// decls, never among them (docs/SPEC-TABLES.md): the packet wire,
 				// the projection and the protocol id do not know they exist
-				st := &ir.Struct{Name: d.Name, IsTable: true}
-				for _, a := range d.Attrs {
-					switch a.Key {
-					case "was":
-						// the table's RENAME (docs/SPEC-TABLES.md §5): its node
-						// type id stays the hash of the OLD name, so every
-						// stored record of that name still reads as this table
-						lit, ok := a.Value.(*ast.StringLit)
-						switch {
-						case a.Value == nil:
-							c.errf(a.Pos, "attribute was requires a value, as was = ... (SPEC §4.6)")
-						case !ok:
-							c.errf(a.Pos, `was takes the table's old name as a quoted string, e.g. was = "Vessel" (docs/SPEC-TABLES.md §5)`)
-						case lit.Value == "":
-							c.errf(a.Pos, "was = \"\" names nothing — was records the table's old name after a rename (docs/SPEC-TABLES.md §5)")
-						case lit.Value == d.Name:
-							c.errf(a.Pos, "table %s: was = %q names the table's own current name — was records the OLD name after a rename; drop the attribute until one happens (docs/SPEC-TABLES.md §5)", d.Name, lit.Value)
-						default:
-							st.WasName = lit.Value
-						}
+				st := &ir.Struct{Name: d.Name, IsTable: true, Doc: d.Doc}
+				var tvalued []*ast.Attr
+				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true})
+				for _, a := range tvalued {
+					// the table's RENAME (docs/SPEC-TABLES.md §5): its node
+					// type id stays the hash of the OLD name, so every
+					// stored record of that name still reads as this table
+					lit, ok := a.Value.(*ast.StringLit)
+					switch {
+					case !ok:
+						c.errf(a.Pos, `was takes the table's old name as a quoted string, e.g. was = "Vessel" (docs/SPEC-TABLES.md §5)`)
+					case lit.Value == "":
+						c.errf(a.Pos, "was = \"\" names nothing — was records the table's old name after a rename (docs/SPEC-TABLES.md §5)")
+					case lit.Value == d.Name:
+						c.errf(a.Pos, "table %s: was = %q names the table's own current name — was records the OLD name after a rename; drop the attribute until one happens (docs/SPEC-TABLES.md §5)", d.Name, lit.Value)
 					default:
-						if a.Value != nil {
-							c.errf(a.Pos, "table %s: %s is not an attribute a table declaration takes — the valued vocabulary here is was alone, and a tag is a bare identifier (SPEC §4.2, docs/SPEC-TABLES.md §5)", d.Name, a.Key)
-							continue
-						}
-						st.Tags = append(st.Tags, a.Key)
+						st.WasName = lit.Value
 					}
 				}
 				c.tables[d.Name] = st
@@ -889,11 +943,14 @@ func (c *checker) resolveBodies() {
 				// storage come from the declared count alone — zero variants
 				// is legal, the empty-enum rule (SPEC §4.8): tag range [0, 0],
 				// zero bits.
-				c.unions[d.Name] = &ir.Union{
+				un := &ir.Union{
 					Name:        d.Name,
 					Max:         int64(len(d.Variants)),
 					StorageBits: ir.StorageBitsFor(int64(len(d.Variants))),
+					Doc:         d.Doc,
 				}
+				un.Tags, _ = c.qualification("union "+d.Name, "a union declaration", d.Attrs, nil)
+				c.unions[d.Name] = un
 			}
 		}
 	}
@@ -958,14 +1015,14 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 		// Ref names the DECLARATION an arm's payload is, when it is one: a
 		// `type` or, inside a table closure, a `table` (docs/SPEC-TABLES.md
 		// §2.6). Every other arm carries its field line and nothing else.
-		out := ir.UnionVariant{Name: v.Name, F: arm}
-		// THE ARM'S RENAME (docs/SPEC-TABLES.md §5): on an arm with a payload
-		// the field line carries it, and on a payload-free arm the name's own
-		// section does
+		out := ir.UnionVariant{Name: v.Name, F: arm, Doc: v.Doc}
+		// THE ARM'S RENAME (docs/SPEC-TABLES.md §5) and its TAGS (§8.1): on an
+		// arm with a payload the field line carries both, since an arm IS a
+		// field line, and on a payload-free arm the name's own section does
 		if arm != nil {
-			out.WasName = arm.WasName
+			out.WasName, out.Tags = arm.WasName, arm.Tags
 		} else {
-			out.WasName = c.variantWas("union", d.Name, ast.Name{Text: v.Name, Pos: v.Pos, Attrs: v.Attrs})
+			out.WasName, out.Tags = c.variantQualification("union", d.Name, ast.Name{Text: v.Name, Pos: v.Pos, Attrs: v.Attrs}, map[string]bool{"was": true})
 		}
 		if arm != nil && arm.Type.Kind == ir.TNamed {
 			if st, isStruct := arm.Type.Ref.(*ir.Struct); isStruct {
@@ -1170,7 +1227,7 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		// on its own path and comes back as an ir.TMap field.
 		return c.resolveMapField(owner, f, inTable)
 	}
-	out := &ir.Field{Name: f.Name}
+	out := &ir.Field{Name: f.Name, Doc: f.Doc}
 
 	// scalar type
 	switch f.Type.Kind {
@@ -1662,30 +1719,17 @@ func scalarName(k ir.FieldTypeKind) string {
 }
 
 func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
+	// the section's tags, and its valued entries with every refusal the
+	// vocabulary shares already drawn (a bare valued key, doc, round, an
+	// unknown or repeated key), so nothing below meets a nil value
+	tags, valued := c.qualification("field "+f.Name, "a field", f.Attrs, fieldKeys)
+	out.Tags = tags
 	byKey := map[string]*ast.Attr{}
-	for i := range f.Attrs {
-		a := &f.Attrs[i]
-		if _, dup := byKey[a.Key]; dup {
-			c.errf(a.Pos, "attribute %s repeated (SPEC §4.6)", a.Key)
-			continue
-		}
-		// A valued attribute written bare — ` | min, max` for
-		// ` | min = 0, max = 10` — used to reach evalInt with a nil
-		// expression and panic the compiler. Reject it here, once, for every
-		// valued attribute, rather than nil-checking at each use: a typo in a
-		// schema must produce a diagnostic, never a stack trace.
-		if a.Value == nil && valuedAttr[a.Key] {
-			c.errf(a.Pos, "attribute %s requires a value, as %s = ... (SPEC §4.6)", a.Key, a.Key)
-			continue
-		}
+	for _, a := range valued {
 		byKey[a.Key] = a
 	}
 
-	for i := range f.Attrs { // declaration order, so diagnostics are deterministic
-		a := &f.Attrs[i]
-		if byKey[a.Key] != a {
-			continue // a repeated key, already reported above
-		}
+	for _, a := range valued { // declaration order, so diagnostics are deterministic
 		switch a.Key {
 		case "min", "max", "resolution":
 			// validated below
@@ -1723,12 +1767,6 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 				continue
 			}
 			out.JsonKey = lit.Value
-		case "round":
-			// refused by name: rounding is not an attribute — it is the one
-			// fixed-point rule, half away from zero, everywhere (SPEC §4.3)
-			c.errf(a.Pos, "round is not part of the language — rounding is the one fixed-point rule: half away from zero, everywhere (SPEC §4.3)")
-		default:
-			c.errf(a.Pos, "unknown attribute %q — the vocabulary is typed and closed per compiler version (SPEC §4.2)", a.Key)
 		}
 	}
 
@@ -4006,34 +4044,41 @@ func (c *checker) resolveFlagsDefault(f *ast.Field, out *ir.Field, fl *ir.Flags,
 	out.DefInt = mask
 }
 
-// variantWas resolves one enum variant's qualification section (SPEC §4.2,
-// docs/SPEC-TABLES.md §5): `was = "OldName"` is the variant's rename, held
-// to the field rule (a quoted string, not empty, not its own name), a bare
-// identifier is a tag, and every other valued key is refused by name. It
-// returns the alias, "" when none is declared.
-func (c *checker) variantWas(what, decl string, v ast.Name) string {
+// variantQualification resolves one variant's or arm's qualification section
+// (SPEC §4.2, docs/SPEC-TABLES.md §5) through the shared routine: the
+// valueless entries are the item's TAGS, in declared order, and takes names
+// the valued keys this item kind reads. `was = "OldName"` is the item's
+// rename, held to the field rule (a quoted string, not empty, not its own
+// name). A FLAGS variant reads none, and its bit-positional refusal is drawn
+// here by name. It returns the alias, "" when none is declared, and the tags.
+func (c *checker) variantQualification(what, decl string, v ast.Name, takes map[string]bool) (string, []string) {
+	where := fmt.Sprintf("%s %s: variant %s", what, decl, v.Text)
+	tags, valued := c.qualification(where, "a variant", v.Attrs, takes, "was")
 	was := ""
-	for _, a := range v.Attrs {
+	for _, a := range valued {
+		if a.Key != "was" {
+			continue
+		}
+		if !takes["was"] {
+			// a mask is POSITIONAL (docs/SPEC-TABLES.md §5): a flags
+			// variant's identity is its bit, no name rides, and a rename in
+			// place is the baseline's to judge (§18.2)
+			c.errf(a.Pos, "%s %s: variant %s takes no was. A mask is positional, a variant's identity is its bit and no name rides the wire, so a rename keeps every stored bit. The baseline judges a rename in place (docs/SPEC-TABLES.md §5, §18.2)", what, decl, v.Text)
+			continue
+		}
+		lit, ok := a.Value.(*ast.StringLit)
 		switch {
-		case a.Key == "was":
-			lit, ok := a.Value.(*ast.StringLit)
-			switch {
-			case a.Value == nil:
-				c.errf(a.Pos, "attribute was requires a value, as was = ... (SPEC §4.6)")
-			case !ok:
-				c.errf(a.Pos, `was takes the variant's old name as a quoted string, e.g. was = "Argent" (docs/SPEC-TABLES.md §5)`)
-			case lit.Value == "":
-				c.errf(a.Pos, "was = \"\" names nothing — was records the variant's old name after a rename (docs/SPEC-TABLES.md §5)")
-			case lit.Value == v.Text:
-				c.errf(a.Pos, "%s %s: variant %s: was = %q names the variant's own current name — was records the OLD name after a rename; drop the attribute until one happens (docs/SPEC-TABLES.md §5)", what, decl, v.Text, lit.Value)
-			default:
-				was = lit.Value
-			}
-		case a.Value != nil:
-			c.errf(a.Pos, "%s %s: variant %s: %s is not an attribute a variant takes — the valued vocabulary here is was alone, and a tag is a bare identifier (SPEC §4.2, docs/SPEC-TABLES.md §5)", what, decl, v.Text, a.Key)
+		case !ok:
+			c.errf(a.Pos, `was takes the variant's old name as a quoted string, e.g. was = "Argent" (docs/SPEC-TABLES.md §5)`)
+		case lit.Value == "":
+			c.errf(a.Pos, "was = \"\" names nothing — was records the variant's old name after a rename (docs/SPEC-TABLES.md §5)")
+		case lit.Value == v.Text:
+			c.errf(a.Pos, "%s: was = %q names the variant's own current name. was records the OLD name after a rename. Drop the attribute until one happens (docs/SPEC-TABLES.md §5)", where, lit.Value)
+		default:
+			was = lit.Value
 		}
 	}
-	return was
+	return was, tags
 }
 
 // describeVariant names a variant or an arm for the id-collision diagnostic,

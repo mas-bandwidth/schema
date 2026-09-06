@@ -2692,6 +2692,9 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "pos_x",
@@ -2720,6 +2723,9 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "pos_y",
@@ -2748,6 +2754,9 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "pos_z",
@@ -2776,6 +2785,9 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "yaw",
@@ -2804,6 +2816,9 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "pitch",
@@ -2832,6 +2847,9 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "vel_x",
@@ -2860,6 +2878,9 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "vel_y",
@@ -2888,6 +2909,9 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "vel_z",
@@ -2916,6 +2940,9 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "health",
@@ -2944,6 +2971,9 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "weapon",
@@ -2972,6 +3002,9 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "damage",
@@ -3000,6 +3033,9 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "moving",
@@ -3028,6 +3064,9 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "firing",
@@ -3056,6 +3095,9 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
     ];
     static INFO: TableTypeInfo = TableTypeInfo {
@@ -3064,6 +3106,9 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
         num_fields: 14,
         fields: &FIELDS,
         reset: table_entity_table_reset_at,
+        doc: TABLE_DOC_NONE,
+        num_tags: 0,
+        tags: None,
     };
     &INFO
 }
@@ -3100,6 +3145,9 @@ pub fn table_stat_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "delta",
@@ -3128,6 +3176,9 @@ pub fn table_stat_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
     ];
     static INFO: TableTypeInfo = TableTypeInfo {
@@ -3136,6 +3187,9 @@ pub fn table_stat_table_type() -> &'static TableTypeInfo {
         num_fields: 2,
         fields: &FIELDS,
         reset: table_stat_table_reset_at,
+        doc: TABLE_DOC_NONE,
+        num_tags: 0,
+        tags: None,
     };
     &INFO
 }
@@ -3172,6 +3226,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "sequence",
@@ -3200,6 +3257,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "ack_sequence",
@@ -3228,6 +3288,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "ack_bits",
@@ -3256,6 +3319,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "session_id",
@@ -3284,6 +3350,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "client_id",
@@ -3312,6 +3381,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "nonce",
@@ -3340,6 +3412,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "world_time",
@@ -3368,6 +3443,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "frame_tick",
@@ -3396,6 +3474,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "server_time",
@@ -3424,6 +3505,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "entities",
@@ -3452,6 +3536,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "stats",
@@ -3480,6 +3567,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "game_event",
@@ -3519,6 +3609,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: Some(table_event_table_union),
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "loadout",
@@ -3547,6 +3640,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "player_name",
@@ -3575,6 +3671,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "payload",
@@ -3603,6 +3702,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "aim_x",
@@ -3631,6 +3733,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "aim_y",
@@ -3659,6 +3764,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "aim_z",
@@ -3687,6 +3795,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "recoil",
@@ -3715,6 +3826,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "drift",
@@ -3743,6 +3857,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "wide_key",
@@ -3771,6 +3888,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "flux",
@@ -3799,6 +3919,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "ping",
@@ -3827,6 +3950,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "crc_hint",
@@ -3855,6 +3981,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "has_extra",
@@ -3883,6 +4012,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "extra",
@@ -3911,6 +4043,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "has_extra",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "idle_ticks",
@@ -3939,6 +4074,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "!has_extra",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
     ];
     static INFO: TableTypeInfo = TableTypeInfo {
@@ -3947,6 +4085,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
         num_fields: 28,
         fields: &FIELDS,
         reset: table_mixed_table_reset_at,
+        doc: TABLE_DOC_NONE,
+        num_tags: 0,
+        tags: None,
     };
     &INFO
 }
@@ -3983,6 +4124,9 @@ pub fn table_hit_event_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "damage",
@@ -4011,6 +4155,9 @@ pub fn table_hit_event_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "hit_kind",
@@ -4039,6 +4186,9 @@ pub fn table_hit_event_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "crit",
@@ -4067,6 +4217,9 @@ pub fn table_hit_event_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
     ];
     static INFO: TableTypeInfo = TableTypeInfo {
@@ -4075,6 +4228,9 @@ pub fn table_hit_event_table_type() -> &'static TableTypeInfo {
         num_fields: 4,
         fields: &FIELDS,
         reset: table_hit_event_table_reset_at,
+        doc: TABLE_DOC_NONE,
+        num_tags: 0,
+        tags: None,
     };
     &INFO
 }
@@ -4111,6 +4267,9 @@ pub fn table_chat_event_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "speaker",
@@ -4139,6 +4298,9 @@ pub fn table_chat_event_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
     ];
     static INFO: TableTypeInfo = TableTypeInfo {
@@ -4147,6 +4309,9 @@ pub fn table_chat_event_table_type() -> &'static TableTypeInfo {
         num_fields: 2,
         fields: &FIELDS,
         reset: table_chat_event_table_reset_at,
+        doc: TABLE_DOC_NONE,
+        num_tags: 0,
+        tags: None,
     };
     &INFO
 }
@@ -4183,6 +4348,9 @@ pub fn table_pickup_event_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
         TableFieldInfo {
             name: "amount",
@@ -4211,6 +4379,9 @@ pub fn table_pickup_event_table_type() -> &'static TableTypeInfo {
             key_id: None,
             arms: None,
             guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
         },
     ];
     static INFO: TableTypeInfo = TableTypeInfo {
@@ -4219,6 +4390,9 @@ pub fn table_pickup_event_table_type() -> &'static TableTypeInfo {
         num_fields: 2,
         fields: &FIELDS,
         reset: table_pickup_event_table_reset_at,
+        doc: TABLE_DOC_NONE,
+        num_tags: 0,
+        tags: None,
     };
     &INFO
 }

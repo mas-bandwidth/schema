@@ -1707,11 +1707,11 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
 /* ---- json walk: end ---- */
 
 static const TableFieldInfo schema_tabledemo_archive_config_fields_[] = {
-    { "root", "root", "RootConfig", 0x2eb8, 13, 0, 0, 0, 0, (uint32_t) offsetof( ArchiveConfig, root ), (uint32_t) sizeof( ( (ArchiveConfig *) 0 )->root ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_root_config_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "count", "count", "int32", 0xe445, 4, 0, 0, 0, 0, (uint32_t) offsetof( ArchiveConfig, count ), (uint32_t) sizeof( ( (ArchiveConfig *) 0 )->count ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "root", "root", "RootConfig", 0x2eb8, 13, 0, 0, 0, 0, (uint32_t) offsetof( ArchiveConfig, root ), (uint32_t) sizeof( ( (ArchiveConfig *) 0 )->root ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_root_config_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "count", "count", "int32", 0xe445, 4, 0, 0, 0, 0, (uint32_t) offsetof( ArchiveConfig, count ), (uint32_t) sizeof( ( (ArchiveConfig *) 0 )->count ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
-const TableTypeInfo schema_tabledemo_archive_config_info_ = { "ArchiveConfig", (uint32_t) sizeof( ArchiveConfig ), 2, schema_tabledemo_archive_config_fields_, schema_tabledemo_archive_config_reset_raw_ };
+const TableTypeInfo schema_tabledemo_archive_config_info_ = { "ArchiveConfig", (uint32_t) sizeof( ArchiveConfig ), 2, schema_tabledemo_archive_config_fields_, schema_tabledemo_archive_config_reset_raw_, TableDocNone, 0, NULL };
 
 int schema_tabledemo_archive_config_from_json_( ArchiveConfig * value, const char * text, int64_t bytes, TableReport * report )
 {
