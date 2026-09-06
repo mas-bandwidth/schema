@@ -25,9 +25,15 @@ import (
 type Report struct {
 	Unknown      int
 	KindMismatch int
-	Clamped      int
-	Duplicate    int
-	Malformed    bool
+	// Widened counts a kind that GREW since the writer (docs/SPEC-TABLES.md
+	// §4): an integer kind read into a wider one of the same signedness, or
+	// f32 into f64, decoded exactly. It is the one counter that names no
+	// loss, and the wire's own event: a text carries no kind to widen from,
+	// so the text form leaves it at zero (§16.2).
+	Widened   int
+	Clamped   int
+	Duplicate int
+	Malformed bool
 	// Refused is the VERDICT, not one of §4's events (docs/SPEC-TABLES.md §3):
 	// a FORM BYTE this reader does not carry. It moves no counter and reports
 	// no damage, so without it a refusal and a clean read are the same answer.
@@ -39,6 +45,7 @@ type Report struct {
 func (r *Report) Add(o Report) {
 	r.Unknown += o.Unknown
 	r.KindMismatch += o.KindMismatch
+	r.Widened += o.Widened
 	r.Clamped += o.Clamped
 	r.Duplicate += o.Duplicate
 	r.Malformed = r.Malformed || o.Malformed
@@ -46,7 +53,7 @@ func (r *Report) Add(o Report) {
 
 // Silent reports whether nothing at all was counted.
 func (r Report) Silent() bool {
-	return r.Unknown == 0 && r.KindMismatch == 0 && r.Clamped == 0 && r.Duplicate == 0 && !r.Malformed
+	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && !r.Malformed
 }
 
 // Cell is one storage slot: a scalar in whichever representation its kind

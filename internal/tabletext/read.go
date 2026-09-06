@@ -3,10 +3,11 @@
 // C++ walk — unknown keys skipped and counted, duplicates last-wins and
 // counted, a wrong JSON type skipped rather than coerced, numbers clamped at
 // the declared bounds and then at the storage width, strings clamped at a code
-// point boundary, trailing commas accepted, comments refused.
+// point boundary, trailing commas and comments accepted on read and never written.
 package tabletext
 
 import (
+	"bytes"
 	"errors"
 	"math"
 	"math/big"
@@ -75,8 +76,28 @@ func (in *reader) space() {
 			in.pos++
 			continue
 		}
-		// comments are not JSON, and a walk that guessed at one would be
-		// reading a dialect nobody wrote down (docs/SPEC-TABLES.md §16.2)
+		// COMMENTS ARE ACCEPTED ON READ AND NEVER WRITTEN (docs/SPEC-TABLES.md
+		// §16.2): `//` runs to the end of the line or of the input, `/* */` to
+		// its closing delimiter, which does not nest, and an UNCLOSED `/*` is
+		// malformed on the terms an unclosed string is. Both are legal wherever
+		// whitespace is, and a lone slash is not JSON.
+		if c == '/' && in.pos+1 < len(in.text) && in.text[in.pos+1] == '/' {
+			in.pos += 2
+			for in.pos < len(in.text) && in.text[in.pos] != '\n' {
+				in.pos++
+			}
+			continue
+		}
+		if c == '/' && in.pos+1 < len(in.text) && in.text[in.pos+1] == '*' {
+			end := bytes.Index(in.text[in.pos+2:], []byte("*/"))
+			if end < 0 {
+				in.bad = true
+				in.pos = len(in.text)
+				return
+			}
+			in.pos += 2 + end + 2
+			continue
+		}
 		if c == '/' {
 			in.bad = true
 		}

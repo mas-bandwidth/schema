@@ -207,16 +207,40 @@ func TestJsonKeyIsHonoured(t *testing.T) {
 	}
 }
 
-// §16.2: trailing commas are accepted on read — the authoring files this form
-// exists for carry them — and comments are not JSON and are refused.
+// §16.2: trailing commas and comments are accepted on read — the authoring
+// files this form exists for carry them — and never written. `//` runs to the
+// end of the line or of the input, `/* */` to its closing delimiter, and an
+// unclosed `/*` is malformed on the terms an unclosed string is.
 func TestTrailingCommasAndComments(t *testing.T) {
 	_, _, r := read(t, "GlobalSettings", "{ \"tick_rate\": 90, }")
 	if !r.Silent() {
 		t.Fatalf("a trailing comma should be accepted, got %+v", r)
 	}
-	_, _, r = read(t, "GlobalSettings", "{ // a comment\n \"tick_rate\": 90 }")
-	if !r.Malformed {
-		t.Fatal("a comment should be refused")
+	accepted := []string{
+		"// before the first key\n{ \"tick_rate\": 90 }",
+		"{ \"tick_rate\": 90 // after the last value\n}",
+		"{ \"tick_rate\": /* between a key and its value */ 90, }",
+		"{ \"tick_rate\": 90, }\n// the last line, with no trailing newline",
+	}
+	for _, text := range accepted {
+		_, inst, r := read(t, "GlobalSettings", text)
+		if !r.Silent() {
+			t.Fatalf("a comment should be accepted in %q, got %+v", text, r)
+		}
+		if field(t, inst, "tick_rate").Cell.I != 90 {
+			t.Fatalf("the value beside a comment did not land in %q", text)
+		}
+	}
+	refused := []string{
+		"{ \"tick_rate\": 90 /* open",
+		"{ /*/ \"tick_rate\": 90 }",
+		"{ / \"tick_rate\": 90 }",
+	}
+	for _, text := range refused {
+		_, _, r := read(t, "GlobalSettings", text)
+		if !r.Malformed {
+			t.Fatalf("an unclosed or lone delimiter should be malformed in %q, got %+v", text, r)
+		}
 	}
 }
 

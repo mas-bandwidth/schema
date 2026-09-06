@@ -18,6 +18,11 @@ type TableReport struct {
 	// KindMismatch counts a value present with the wrong JSON type for its
 	// declared kind — skipped, never coerced.
 	KindMismatch int
+	// Widened counts a wire kind that GREW since the writer, decoded exactly
+	// (docs/SPEC-TABLES.md §4): an integer kind read into a wider one of the
+	// same signedness, or f32 into f64. The text form never raises it, because
+	// a JSON number carries no kind (§16.2).
+	Widened int
 	// Clamped counts a value cut down to what the declaration can hold: a
 	// number outside its range, a string past its capacity, an array past its
 	// bound.
@@ -36,13 +41,14 @@ type TableReport struct {
 
 // Silent reports whether nothing at all was counted.
 func (r TableReport) Silent() bool {
-	return r.Unknown == 0 && r.KindMismatch == 0 && r.Clamped == 0 && r.Duplicate == 0 && !r.Malformed
+	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && !r.Malformed
 }
 
 func publicReport(r tabletext.Report) TableReport {
 	return TableReport{
 		Unknown:      r.Unknown,
 		KindMismatch: r.KindMismatch,
+		Widened:      r.Widened,
 		Clamped:      r.Clamped,
 		Duplicate:    r.Duplicate,
 		Malformed:    r.Malformed,

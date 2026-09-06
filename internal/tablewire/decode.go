@@ -241,6 +241,11 @@ func (r *wireReader) skip(kind uint8) bool {
 		}
 		r.off += int(n)
 		return true
+	case ir.TableKindReservedFloat16:
+		// KIND 34 IS RESERVED FOR float16 AND IS NOT PART OF THIS MAJOR (§3):
+		// no writer emits it and no reader has a rule for it, so a reader
+		// meets it only as DAMAGE, exactly as it meets 35 or 200
+		return false
 	case ir.TableKindUnion:
 		// kind 15 reads the arm id reference and stops there if it is 0, else
 		// reads the kind byte, then L, and skips L bytes
@@ -353,6 +358,19 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 		}
 		fv := &inst.Fields[i]
 		if int(kind) != wireKind(fv.Def) {
+			if ir.TableKindWidens(int(kind), wireKind(fv.Def)) {
+				// WIDENED (§4): a kind that grew since the writer decodes
+				// exactly at its own width, the value lands, and one
+				// `widened` counts. The field rode, so an optional is PRESENT.
+				if !r.scalarAt(&fv.Cell, fv.Def, int(kind)) {
+					return false
+				}
+				r.report.Widened++
+				if fv.Def.Type.Optional {
+					fv.Present = true
+				}
+				continue
+			}
 			// AT A POSITION THE READER DOES NAME, a field that arrives under
 			// kind 31 or kind 32 where the declaration says otherwise takes
 			// this same rule and no other (§3)
@@ -401,9 +419,20 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 			r.report.Malformed = true
 			return false
 		}
+		if !textValid(r.buf[r.off : r.off+int(n)]) {
+			// ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
+			// default, one malformed counts, and the parent reads on past L
+			r.report.Malformed = true
+			fv.Cell = r.m.FieldDefaultCell(f)
+			fv.Count = len(fv.Cell.Str)
+			r.off += int(n)
+			return true
+		}
 		keep := int(n)
 		if bound := int(f.Type.Size); keep > bound {
-			keep = bound
+			// A CLAMP CUTS AT A CODE POINT BOUNDARY (§3): the last whole code
+			// point that fits within the bound
+			keep = textBoundary(r.buf[r.off:r.off+int(n)], bound)
 			r.report.Clamped++
 		}
 		fv.Cell.Str = append([]byte(nil), r.buf[r.off:r.off+keep]...)
@@ -436,7 +465,7 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		r.off += int(n)
 		return true
 	}
-	return r.scalar(&fv.Cell, f, true)
+	return r.scalarAt(&fv.Cell, f, ir.TableScalarKind(f))
 }
 
 // enumCell reads an enum value: kind 30's payload is the reference to the
@@ -503,6 +532,7 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 		sub := r.subTo(end)
 		var last tabletext.MapKey
 		landed := false
+		widened := false
 		for range count {
 			elemLen, good := sub.leb()
 			if !good || elemLen > uint64(len(sub.buf)) || !sub.has(int(elemLen)) {
@@ -513,7 +543,14 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 			sub.off += int(elemLen)
 			entry := r.m.NewMapEntry(f)
 			kindBad := false
-			key, keyOk := body.mapKey(f, entry, &kindBad)
+			entryWidened := false
+			key, keyOk := body.mapKey(f, entry, &kindBad, &entryWidened)
+			if entryWidened && !widened {
+				// the MAP counts one `widened`, at the first key the
+				// declaration widens (§2.8, §4)
+				widened = true
+				r.report.Widened++
+			}
 			if kindBad {
 				// A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets
 				// to EMPTY, ONE kind_mismatch counts for it, and the rest is
@@ -576,7 +613,7 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 // THE KEY KIND IS THE READER'S DECLARATION, never the first entry's: a key
 // under another kind desynchronizes the rest of the scan, and the honest
 // answer is the KIND rather than the framing damage that follows from it.
-func (r *wireReader) mapKey(f *ir.Field, entry *tabletext.Instance, kindBad *bool) (tabletext.MapKey, bool) {
+func (r *wireReader) mapKey(f *ir.Field, entry *tabletext.Instance, kindBad, widened *bool) (tabletext.MapKey, bool) {
 	keyField := ir.MapKeyField(f)
 	want := ir.TableWireScalarKind(keyField)
 	key := tabletext.MapKeyOf(f, entry)
@@ -595,11 +632,22 @@ func (r *wireReader) mapKey(f *ir.Field, entry *tabletext.Instance, kindBad *boo
 		}
 		kind := scan.u8()
 		if id == ir.MapKeyWireId {
-			if int(kind) != want {
-				*kindBad = true
-				return key, false
-			}
 			cell := &entry.Fields[0].Cell
+			if int(kind) != want {
+				if !ir.TableKindWidens(int(kind), want) {
+					*kindBad = true
+					return key, false
+				}
+				// A KEY KIND THE DECLARATION WIDENS IS NOT A DISAGREEMENT
+				// (§2.8, §4): the key decodes exactly at its own width, the
+				// entry lands, and the MAP counts one `widened`
+				*widened = true
+				if !scan.scalarAt(cell, keyField, int(kind)) {
+					return key, false
+				}
+				key = tabletext.MapKeyOf(f, entry)
+				continue
+			}
 			if !scan.scalarOrString(cell, keyField) {
 				return key, false
 			}
@@ -620,11 +668,14 @@ func (r *wireReader) scalarOrString(cell *tabletext.Cell, f *ir.Field) bool {
 		if !ok || n > uint64(len(r.buf)) || !r.has(int(n)) {
 			return false
 		}
+		if !textValid(r.buf[r.off : r.off+int(n)]) {
+			return false // a key a string value would refuse as malformed makes the MAP malformed (§2.8)
+		}
 		cell.Str = append([]byte(nil), r.buf[r.off:r.off+int(n)]...)
 		r.off += int(n)
 		return true
 	}
-	return r.scalar(cell, f, false)
+	return r.scalarAt(cell, f, ir.TableScalarKind(f))
 }
 
 func (r *wireReader) array(fv *tabletext.Field) bool {
@@ -684,13 +735,19 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			return true, false
 		}
 		if int(ek) != ir.TableWireElemKind(f) {
-			// the element kind is part of the array's identity (§3): counted,
-			// the field left at its declared default — for an OPTIONAL array
-			// that default is ABSENT, so Present is not set below. AN ELEMENT
-			// KIND OF 31 OR 32 TAKES THAT SAME RULE AND NO OTHER.
-			r.report.KindMismatch++
-			r.off = end
-			return true, false
+			if !ir.TableKindWidens(int(ek), ir.TableWireElemKind(f)) {
+				// the element kind is part of the array's identity (§3): counted,
+				// the field left at its declared default — for an OPTIONAL array
+				// that default is ABSENT, so Present is not set below. AN ELEMENT
+				// KIND OF 31 OR 32 TAKES THAT SAME RULE AND NO OTHER.
+				r.report.KindMismatch++
+				r.off = end
+				return true, false
+			}
+			// WIDENED at an element kind (§4): every element decodes at the
+			// wire kind's width, and ONE `widened` counts for the field
+			// however many elements it holds
+			r.report.Widened++
 		}
 		keep := int(count)
 		switch {
@@ -735,7 +792,7 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 				if f.Array == ir.ArrayList {
 					fv.Elems = append(fv.Elems, r.m.ElementZero(f))
 				}
-				if !sub.element(fv, i) {
+				if !sub.element(fv, i, int(ek)) {
 					break
 				}
 				decoded = i + 1
@@ -758,7 +815,7 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 	return true, true
 }
 
-func (r *wireReader) element(fv *tabletext.Field, i int) bool {
+func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 	f := fv.Def
 	if tabletext.UnionOf(f) != nil {
 		// an element of an ARRAY OF UNIONS is an ARM HEADER and carries its own
@@ -802,7 +859,9 @@ func (r *wireReader) element(fv *tabletext.Field, i int) bool {
 		r.off += int(n)
 		return true
 	}
-	return r.scalar(&fv.Elems[i], f, false)
+	// a scalar element decodes at the ELEMENT KIND the header carried, which
+	// is the declared kind or one it widens (§4)
+	return r.scalarAt(&fv.Elems[i], f, ek)
 }
 
 // keyed places an enum-keyed array's triples BY KEY REFERENCE, so a slot lands
@@ -836,9 +895,14 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 		return true
 	}
 	if int(elemKind) != ir.TableWireElemKind(f) {
-		r.report.KindMismatch++
-		r.off = end
-		return true
+		if !ir.TableKindWidens(int(elemKind), ir.TableWireElemKind(f)) {
+			r.report.KindMismatch++
+			r.off = end
+			return true
+		}
+		// WIDENED at a keyed body's element kind (§4): one count for the
+		// field, every slot decoded at the wire kind's width
+		r.report.Widened++
 	}
 	sub := r.subTo(end)
 	for range count {
@@ -878,7 +942,7 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 			fv.Elems[slot].Tab = r.m.New(tabletext.StructOf(f))
 			elem.bodyAt(fv.Elems[slot].Tab, true)
 		default:
-			elem.scalar(&fv.Elems[slot], f, false)
+			elem.scalarAt(&fv.Elems[slot], f, int(elemKind))
 		}
 		sub.off += int(elemLen)
 	}
@@ -939,12 +1003,29 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 		cell.Arm = nil
 		r.report.Unknown++
 	case int(kind) != armWireKind(un.Variants[tag-1]):
-		// A RETYPED ARM IS JUDGED BY THE FIELD RULES: an arm arriving under a
-		// kind the reader does not declare for it is a KIND MISMATCH — the arm
-		// skips by L, the union reads None, and the parent reads on (§3).
 		cell.U = 0
 		cell.Tab = nil
 		cell.Arm = nil
+		arm := un.Variants[tag-1]
+		if ir.TableKindWidens(int(kind), armWireKind(arm)) {
+			// WIDENED AT AN ARM (§4): the arm's kind byte is read and its
+			// payload DECODED at its own width rather than skipped. An `L`
+			// that is not that width is the arm's own framing damage (§3).
+			if length != ir.TableKindWidth(int(kind)) {
+				r.report.Malformed = true
+				break
+			}
+			fv := r.m.NewArm(arm)
+			if sub.scalarAt(&fv.Cell, arm.F, int(kind)) {
+				cell.U = uint64(tag)
+				cell.Arm = fv
+				r.report.Widened++
+			}
+			break
+		}
+		// A RETYPED ARM IS JUDGED BY THE FIELD RULES: an arm arriving under a
+		// kind the reader does not declare for it is a KIND MISMATCH — the arm
+		// skips by L, the union reads None, and the parent reads on (§3).
 		r.report.KindMismatch++
 	default:
 		arm := un.Variants[tag-1]
@@ -1009,9 +1090,15 @@ func (r *wireReader) arm(cell *tabletext.Cell, arm ir.UnionVariant, tag, n int) 
 		}
 		r.resolveCell(&fv.Cell, f, index)
 	case f.Type.Kind == ir.TString:
+		if !textValid(r.buf[r.off : r.off+n]) {
+			// ILL-FORMED TEXT at an arm: the union reads None, one malformed
+			// counts, and the parent reads on past L (§3)
+			r.report.Malformed = true
+			return false
+		}
 		keep := n
 		if bound := int(f.Type.Size); keep > bound {
-			keep = bound
+			keep = textBoundary(r.buf[r.off:r.off+n], bound)
 			r.report.Clamped++
 		}
 		fv.Cell.Str = append([]byte(nil), r.buf[r.off:r.off+keep]...)
@@ -1035,7 +1122,7 @@ func (r *wireReader) arm(cell *tabletext.Cell, arm ir.UnionVariant, tag, n int) 
 			return false
 		}
 	default:
-		ok = r.scalar(&fv.Cell, f, true)
+		ok = r.scalarAt(&fv.Cell, f, ir.TableScalarKind(f))
 	}
 	if !ok {
 		return false
@@ -1045,11 +1132,14 @@ func (r *wireReader) arm(cell *tabletext.Cell, arm ir.UnionVariant, tag, n int) 
 	return true
 }
 
-// scalar decodes one fixed-width value. atField says whether truncation is
-// outer framing damage (a scalar FIELD stops the decode) or an element's (the
-// prefix is kept and the loop breaks).
-func (r *wireReader) scalar(cell *tabletext.Cell, f *ir.Field, atField bool) bool {
-	kind := ir.TableScalarKind(f)
+// scalarAt decodes one fixed-width value that arrived under `kind`: the
+// field's own kind, or one the field's kind WIDENS (docs/SPEC-TABLES.md §4).
+// The payload is read at the WIRE kind's width and signedness, sign-extended
+// on the signed ladder and zero-extended on the unsigned one, and then takes
+// the field's own clamps exactly as a payload at the declared width does, so
+// the value is the writer's own and the reader's range still rules.
+func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool {
+	declared := ir.TableScalarKind(f)
 	width := ir.TableKindWidth(kind)
 	if !r.has(width) {
 		r.report.Malformed = true
@@ -1070,6 +1160,13 @@ func (r *wireReader) scalar(cell *tabletext.Cell, f *ir.Field, atField bool) boo
 			return true
 		}
 		v := float64(math.Float32frombits(bits))
+		if declared == ir.TableKindF64 {
+			// f32 WIDENED into f64 (§4): every float32 value is exactly
+			// representable, and a float64 field's declared range clamps
+			// nothing on this wire, exactly as a payload at eight bytes
+			cell.F = v
+			return true
+		}
 		if f.HasFloatRange {
 			if v < f.FMin {
 				v = f.FMin
@@ -1097,7 +1194,7 @@ func (r *wireReader) scalar(cell *tabletext.Cell, f *ir.Field, atField bool) boo
 		}
 		return true
 	}
-	signed := f.Type.Kind == ir.TInt && f.Type.Signed
+	signed := ir.TableKindSigned(kind)
 	var raw uint64
 	switch width {
 	case 1:
@@ -1114,6 +1211,24 @@ func (r *wireReader) scalar(cell *tabletext.Cell, f *ir.Field, atField bool) boo
 	if signed && width < 8 {
 		shift := uint(64 - width*8)
 		value = int64(raw<<shift) >> shift
+	}
+	if ir.TableKindWide(declared) {
+		// an integer kind WIDENED into a 128-bit declaration (§4): sixteen
+		// bytes extended from the value, then the declared range on the raw
+		// scale, exactly as a payload at sixteen bytes takes it
+		var wide [16]byte
+		binary.LittleEndian.PutUint64(wide[:8], uint64(value))
+		if signed && value < 0 {
+			for i := 8; i < 16; i++ {
+				wide[i] = 0xFF
+			}
+		}
+		clamped := false
+		cell.Wide, clamped = tabletext.WideClamp(tabletext.WideFromBytes(wide[:], declared), f)
+		if clamped {
+			r.report.Clamped++
+		}
+		return true
 	}
 	if f.HasIntRange {
 		lo, hi := bigInt64(f.IntMin), bigInt64(f.IntMax)
