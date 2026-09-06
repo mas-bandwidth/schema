@@ -1145,7 +1145,9 @@ static void test_message_form_announcement_check()
     const uint8_t version_field[10] = { 1, 9, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88 };
 
     struct Row { const char * name; int64_t bytes; };
-    // each row builds a body, expects a refusal, and pins the wire
+    // each row builds a body, expects DAMAGE and pins the wire: a failed
+    // strict check says the bytes are not an announcement rather than that
+    // this peer declined to announce (§3.3)
     // BUILD VERSION ABSENT: the vocabulary alone
     {
         int64_t at = 0;
@@ -1155,7 +1157,7 @@ static void test_message_form_announcement_check()
         VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.refused && report.reason == backenddemo::no_vocabulary && !vocabulary.announced );
+        CHECK( report.malformed && !report.refused && !vocabulary.announced );
         pin_table_golden( "announce_no_build_version", forged, bytes );
     }
     // BUILD VERSION TWICE
@@ -1169,7 +1171,7 @@ static void test_message_form_announcement_check()
         VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.refused && report.reason == backenddemo::no_vocabulary && !vocabulary.announced );
+        CHECK( report.malformed && !report.refused && !vocabulary.announced );
         pin_table_golden( "announce_build_version_twice", forged, bytes );
     }
     // BUILD VERSION UNDER A KIND OTHER THAN 9: kind 8, a u32
@@ -1183,7 +1185,7 @@ static void test_message_form_announcement_check()
         VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.refused && report.reason == backenddemo::no_vocabulary && !vocabulary.announced );
+        CHECK( report.malformed && !report.refused && !vocabulary.announced );
         pin_table_golden( "announce_build_version_kind", forged, bytes );
     }
     // BUILD VERSION AT A WIDTH THAT IS NOT EIGHT: kind 9 with four bytes left
@@ -1193,7 +1195,7 @@ static void test_message_form_announcement_check()
         VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.refused && !vocabulary.announced );
+        CHECK( report.malformed && !report.refused && !vocabulary.announced );
         pin_table_golden( "announce_build_version_width", forged, bytes );
     }
     // VOCABULARY ABSENT: the build version alone
@@ -1205,7 +1207,7 @@ static void test_message_form_announcement_check()
         VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.refused && report.reason == backenddemo::no_vocabulary && !vocabulary.announced );
+        CHECK( report.malformed && !report.refused && !vocabulary.announced );
         pin_table_golden( "announce_no_vocabulary", forged, bytes );
     }
     // VOCABULARY TWICE
@@ -1219,7 +1221,7 @@ static void test_message_form_announcement_check()
         VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.refused && report.reason == backenddemo::no_vocabulary && !vocabulary.announced );
+        CHECK( report.malformed && !report.refused && !vocabulary.announced );
         pin_table_golden( "announce_vocabulary_twice", forged, bytes );
     }
     // VOCABULARY UNDER A WRONG ELEMENT KIND: kind 14 over element kind 8
@@ -1233,7 +1235,7 @@ static void test_message_form_announcement_check()
         VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.refused && report.reason == backenddemo::no_vocabulary && !vocabulary.announced );
+        CHECK( report.malformed && !report.refused && !vocabulary.announced );
         pin_table_golden( "announce_vocabulary_element_kind", forged, bytes );
     }
     // AND THE TOLERANT ROW: an UNKNOWN field beside both sets the vocabulary
@@ -1672,6 +1674,10 @@ static void test_message_form_refused_first()
     backenddemo::TableReport first;
     CHECK( !backenddemo::AnnounceRead( vocabulary, announcement, announced, &first ) );
     CHECK( first.refused && first.reason == backenddemo::vocabulary_too_large && !vocabulary.announced );
+    // AND THE REFUSAL NAMES THE BUILD VERSION, because one WAS read before the
+    // entry bound refused: it is not the vocabulary, and a refused
+    // announcement still sets none (§3.3)
+    CHECK( vocabulary.build_version != 0 && vocabulary.count == 0 );
     // a well-formed announcement after it refuses as second_announcement and
     // sets nothing, EVEN WITH ROOM FOR EVERY ENTRY: the refusal is terminal
     vocabulary.max_entries = backenddemo::kTableMessageEntriesHere;
@@ -1870,6 +1876,38 @@ static void test_message_form_cold_read()
         basesdemo::TableReport edge_report;
         CHECK( basesdemo::AnnounceRead( edge, forged, bytes, &edge_report ) );
         CHECK( edge.announced && !edge_report.malformed );
+    }
+
+    // A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE: two entries that agree on
+    // the id, the kind and every fact of the shape are malformed.
+    {
+        int64_t first_end = 0;
+        basesdemo::TableMessageEntry first;
+        CHECK( basesdemo::TableMessageEntryRead( own_words, own_bytes, first_end, first ) );
+        static uint8_t doubled[16384];
+        memcpy( doubled, own_words, (size_t) own_bytes );
+        memcpy( doubled + own_bytes, own_words, (size_t) first_end );
+        static uint8_t forged[8192];
+        const int64_t bytes = forge_over_vocabulary( forged, sizeof( forged ), doubled, own_bytes + first_end, NULL, NULL, 0 );
+        CHECK( bytes > 0 );
+        VOCABULARY_AT( basesdemo, vocabulary, basesdemo::kTableMessageEntriesHere + 4 );
+        basesdemo::TableReport report;
+        CHECK( !basesdemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
+        CHECK( report.malformed && !vocabulary.announced );
+    }
+
+    // AN ELEMENT KIND OF 12 OR 33 IS REFUSED AT THE ANNOUNCEMENT, rather than
+    // at the skip that would meet it: no declaration this language accepts is
+    // an array of string(N) or of wstring(N), so it is one rule and not two.
+    {
+        const uint8_t of_strings[4] = { 0x00, 0x03, 0x0C, 0x08 }; // min 0, max 3, element kind 12 over string(8)
+        static uint8_t forged[8192];
+        const int64_t bytes = forge_over_vocabulary( forged, sizeof( forged ), own_words, own_bytes, is_few, of_strings, 4 );
+        CHECK( bytes > 0 );
+        VOCABULARY( basesdemo, vocabulary );
+        basesdemo::TableReport report;
+        CHECK( !basesdemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
+        CHECK( report.malformed && !vocabulary.announced );
     }
 
     // A QUANTIZED INDEX ABOVE `count` IS REJECTED, as the packet wire rejects

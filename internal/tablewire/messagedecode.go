@@ -1015,8 +1015,20 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 	case 0, ir.TableKindNoPayload:
 		return true
 	case ir.TableKindEnum:
-		_, ok := d.reference()
-		return ok
+		// A VARIANT REFERENCE IS RESOLVED EVEN ON THE SKIP PATH (§3.3): every
+		// reference above `E` is damage, and one naming an entry that carries
+		// a payload contradicts the position it was used in, whether or not
+		// this reader was going to keep the value.
+		ref, ok := d.reference()
+		if !ok {
+			d.report.Malformed = true
+			return false
+		}
+		if ref == 0 {
+			return true // None: the reference is the whole payload
+		}
+		_, named := d.name(ref)
+		return named
 	case ir.TableKindUnion:
 		ref, ok := d.reference()
 		if !ok {

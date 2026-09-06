@@ -3549,7 +3549,11 @@ MESSAGE_FORM_CONTROLS := \
 	message-narrow-before-clamp:internal/tablewire/messagedecode.go:TestTheSixFindings \
 	message-max-above-int32:ir/tablemessage.go:TestAHostileShape \
 	message-quantized-index-above-count:internal/tablewire/messagedecode.go:TestTheQuantizedIndexAcrossTheForms \
-	message-surplus-walked:internal/tablewire/messagedecode.go:TestAZeroWidthElementUnderAWideCount
+	message-surplus-walked:internal/tablewire/messagedecode.go:TestAZeroWidthElementUnderAWideCount \
+	message-strict-check-refuses:internal/tablewire/message.go:TestTheAnnouncementsTwoStrictChecksAndItsTolerance \
+	message-duplicate-entry-accepted:internal/tablewire/message.go:TestAHostileShape \
+	message-array-of-text-accepted:ir/tablemessage.go:TestAHostileShape \
+	message-skipped-variant-unresolved:internal/tablewire/messagedecode.go:TestAReferenceOfTheWrongSort
 
 .PHONY: tables-message-form-negative-control
 tables-message-form-negative-control: tables-message-form-emitter-negative-control tables-message-form-count-negative-control

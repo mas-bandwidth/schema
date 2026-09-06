@@ -943,7 +943,7 @@ func (g *tableGen) emitMessageExtentCases(st *ir.Struct) {
 				// the walk exists to find the bit the array ends at, and a
 				// zero-width element under a wide count would otherwise buy
 				// the framing pass two billion iterations
-				g.pf("            const int64_t run = TableMessageElementRunBits( vocabulary, index_bits, entry );\n")
+				g.pf("            const int64_t run = TableMessageElementRunBits( vocabulary, entry );\n")
 				g.pf("            if ( run >= 0 ) { if ( !TableMessageSkipRun( r, n, run ) ) { return false; } }\n")
 				g.pf("            else { for ( uint64_t i = 0; i < n; i++ ) { if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry ) ) { return false; } } }\n")
 			}

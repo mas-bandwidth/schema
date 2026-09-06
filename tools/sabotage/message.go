@@ -325,6 +325,34 @@ var messageColdReadSabotages = map[string][]edit{
 		new: "\twalk := n // SABOTAGED: the surplus is walked, element by element\n",
 	}},
 
+	// A FAILED STRICT CHECK IS DAMAGE: report the refusal a body from a peer
+	// that never announced gets, and the announcement's own damage is gone.
+	"message-strict-check-refuses": {{
+		old: "\tif !read {\n\t\treport.Malformed = true\n\t\treturn nil\n\t}\n",
+		new: "\tif !read { // SABOTAGED: a failed strict check is a refusal, not damage\n\t\treport.Refused = true\n\t\treturn &MessageRefusal{Reason: ReasonNoVocabulary}\n\t}\n",
+	}},
+
+	// A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE: drop the scan and a
+	// vocabulary carrying one entry twice is accepted.
+	"message-duplicate-entry-accepted": {{
+		old: "\t\tfor _, seen := range out {\n\t\t\tif seen.Id == e.Id && seen.Kind == e.Kind && seen.Key() == e.Key() {\n\t\t\t\treturn nil, false\n\t\t\t}\n\t\t}\n",
+		new: "\t\t// SABOTAGED: a triple may be placed twice\n",
+	}},
+
+	// AN ELEMENT KIND OF 12 OR 33 IS REFUSED AT THE ANNOUNCEMENT: accept it
+	// there and the refusal moves to a skip that meets it, or to nowhere.
+	"message-array-of-text-accepted": {{
+		old: "\t\tif s.Elem == TableKindString || s.Elem == TableKindWstring {\n\t\t\treturn s, 0, false\n\t\t}\n",
+		new: "\t\t// SABOTAGED: an array over element kind 12 or 33 is announced\n",
+	}},
+
+	// A VARIANT REFERENCE IS RESOLVED EVEN ON THE SKIP PATH: step over its
+	// bits instead and a reference above E rides through an unknown field.
+	"message-skipped-variant-unresolved": {{
+		old: "\t\tif ref == 0 {\n\t\t\treturn true // None: the reference is the whole payload\n\t\t}\n\t\t_, named := d.name(ref)\n\t\treturn named\n",
+		new: "\t\t_ = ref // SABOTAGED: a skipped variant reference is not resolved\n\t\treturn true\n",
+	}},
+
 	// THE BOUND APPLIES WHILE THE COUNT IS WIDE, in the C++ emitter's array
 	// read: narrow to int32 first and a count of 2^31 + 1 is negative, which
 	// passes the signed test against the bound and lands in caller storage.

@@ -399,6 +399,34 @@ func TestAReferenceOfTheWrongSort(t *testing.T) {
 			t.Errorf("%s: a field after the damage was read", row.name)
 		}
 	}
+	// AND THE SAME REFERENCE ON THE SKIP PATH. `currency` is a kind-30 entry
+	// LoginRequest does not declare, so a body naming it counts one `unknown`
+	// and steps over it by its shape. The VARIANT REFERENCE IS RESOLVED THERE
+	// TOO: every reference above `E` is damage, and one naming an entry that
+	// carries a payload contradicts the position it was used in, whether or
+	// not this reader was going to keep the value.
+	currency := slotOf(t, v, ir.TableWireId("currency"), ir.TableKindEnum)
+	for _, row := range []struct {
+		name    string
+		variant uint64
+	}{
+		{"a skipped enum's reference naming a field-name entry", playerID},
+		{"a skipped enum's reference above E", uint64(len(v.Entries())) + 1},
+	} {
+		skipped := &bitw{}
+		skipped.put(currency, v.RefBits())
+		skipped.put(row.variant, v.RefBits())
+		skipped.put(playerID, v.RefBits()) // a field AFTER the damage, which must not be read
+		skipped.put(9, 64)
+		skipped.put(0, v.RefBits())
+		inst, ok, report, derr := decodeOne(t, model, "LoginRequest", v, batchOf(skipped))
+		if derr != nil || ok || !report.Malformed || report.Refused {
+			t.Errorf("%s: ok=%v err=%v report=%+v", row.name, ok, derr, report)
+		}
+		if instU64(t, inst, "player_id") != 0 {
+			t.Errorf("%s: a field after the damage was read", row.name)
+		}
+	}
 	// A UNION ARM REFERENCE NAMING A KIND-0 ENTRY, over the messages unit
 	unit, err := u.get("messagedemo")
 	if err != nil {
@@ -698,6 +726,16 @@ func TestAHostileShape(t *testing.T) {
 			ir.TableVocabularyEntry{Id: ir.TableWireId("hostile"), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: ir.TableMessageListMax + 1, Elem: ir.TableKindU8, Inner: &ir.TableMessageShape{}}}))},
 		{"an array count floor above the widest count this form spells", ir.TableVocabularyBytes(append(append([]ir.TableVocabularyEntry(nil), base...),
 			ir.TableVocabularyEntry{Id: ir.TableWireId("hostile"), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: ir.TableMessageListMax + 1, Max: ir.TableMessageListMax + 2, Elem: ir.TableKindU8, Inner: &ir.TableMessageShape{}}}))},
+		// A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE, so two entries that
+		// agree on the id, the kind and every fact of the shape are malformed
+		{"two entries that agree on all three parts", ir.TableVocabularyBytes(append(append([]ir.TableVocabularyEntry(nil), base...), base[0]))},
+		// AND AN ELEMENT KIND OF 12 OR 33 IS REFUSED AT THE ANNOUNCEMENT: no
+		// declaration this language accepts is an array of `string(N)`, so it
+		// is one rule's business rather than a skip's
+		{"an array over element kind 12", ir.TableVocabularyBytes(append(append([]ir.TableVocabularyEntry(nil), base...),
+			ir.TableVocabularyEntry{Id: ir.TableWireId("hostile"), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: 3, Elem: ir.TableKindString, Inner: &ir.TableMessageShape{Max: 8}}}))},
+		{"a keyed entry over element kind 33", ir.TableVocabularyBytes(append(append([]ir.TableVocabularyEntry(nil), base...),
+			ir.TableVocabularyEntry{Id: ir.TableWireId("hostile"), Kind: ir.TableKindKeyed, Shape: ir.TableMessageShape{Max: 3, Elem: ir.TableKindWstring, Inner: &ir.TableMessageShape{Max: 8}}}))},
 		{"a shape running past the vocabulary's L", ir.TableVocabularyBytes(base)[:len(ir.TableVocabularyBytes(base))-3]},
 	}
 	for _, row := range rows {
@@ -730,9 +768,10 @@ func TestAHostileShape(t *testing.T) {
 // TestTheAnnouncementsTwoStrictChecksAndItsTolerance: rows for the build
 // version absent, present twice, under a kind other than 9 and at a width that
 // is not eight, and rows for the vocabulary absent, present twice and under a
-// wrong element kind, each a refusal. A row carrying an UNKNOWN field beside
-// both, which must set the vocabulary and count one `unknown`. Red if a
-// refusal sets a vocabulary, or if the tolerant row refuses.
+// wrong element kind, each MALFORMED because a failed strict check is damage.
+// A row carrying an UNKNOWN field beside both, which must set the vocabulary
+// and count one `unknown`. Red if a failed check sets a vocabulary, reports a
+// refusal rather than damage, or if the tolerant row refuses.
 func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 	_, _, backendVocabulary := backend(t)
 	version := backendVocabulary.BuildVersion()
@@ -762,8 +801,11 @@ func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 		if pinned := wireBytes(t, "testdata/wire/tables/"+row.golden+".bin"); string(pinned) != string(row.wire) {
 			t.Errorf("%s: the crafted wire differs from the pinned %s at byte %d", row.name, row.golden, firstDifference(pinned, row.wire))
 		}
+		// A FAILED STRICT CHECK IS DAMAGE, not a refusal: the two checks are
+		// the two facts an announcement's body must carry, so a body without
+		// them is not an announcement rather than a peer declining to announce
 		v, report, err := readAnnouncement(row.wire)
-		if err == nil || v.Announced() || report.Malformed {
+		if err != nil || v.Announced() || !report.Malformed || report.Refused {
 			t.Errorf("%s: err=%v announced=%v report=%+v", row.name, err, v.Announced(), report)
 		}
 	}

@@ -234,13 +234,23 @@ func (v *Vocabulary) announceRead(data []byte, report *tabletext.Report) error {
 		return nil
 	}
 	version, vocabulary, read, oversize := announcementFields(body, ids, v.byteBound(), report)
+	// THE BUILD VERSION IS KEPT THE MOMENT IT IS READ, refusal or not, so that
+	// a refusal on this connection NAMES IT (§3.3). It is not the vocabulary,
+	// and a refused announcement still sets none.
+	v.buildVersion = version
 	if oversize {
 		report.Refused = true
-		return &MessageRefusal{Reason: ReasonVocabularyTooLarge}
+		return &MessageRefusal{Reason: ReasonVocabularyTooLarge, BuildVersion: version}
 	}
+	// A FAILED STRICT CHECK IS DAMAGE, not a refusal (§3.3). The announcement
+	// is a table body and the two checks are the two facts that body must
+	// carry: a build version that is absent, doubled, under another kind or
+	// not eight bytes wide, and a vocabulary that is absent, doubled or not a
+	// run of bytes, each say the bytes are not an announcement rather than
+	// that this peer declined to announce.
 	if !read {
-		report.Refused = true
-		return &MessageRefusal{Reason: ReasonNoVocabulary}
+		report.Malformed = true
+		return nil
 	}
 	entries, good := decodeVocabulary(vocabulary)
 	if !good {
@@ -249,10 +259,9 @@ func (v *Vocabulary) announceRead(data []byte, report *tabletext.Report) error {
 	}
 	if len(entries) > v.bound() {
 		report.Refused = true
-		return &MessageRefusal{Reason: ReasonVocabularyTooLarge}
+		return &MessageRefusal{Reason: ReasonVocabularyTooLarge, BuildVersion: version}
 	}
 	v.entries = entries
-	v.buildVersion = version
 	v.announced = true
 	return nil
 }
@@ -352,6 +361,18 @@ func decodeVocabulary(in []byte) ([]ir.TableVocabularyEntry, bool) {
 			return nil, false
 		}
 		e.Shape = shape
+		// A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE, so two entries that
+		// agree on the id, the kind and every fact of the shape are malformed
+		// (§3.3): no writer this wire has produces one, and a reader that took
+		// it would carry two slots that name one thing. The scan is quadratic
+		// in the entry count, and the entry count is bounded above at 4096, so
+		// it is at most eight million compares on a path that runs ONCE a
+		// connection and never again.
+		for _, seen := range out {
+			if seen.Id == e.Id && seen.Kind == e.Kind && seen.Key() == e.Key() {
+				return nil, false
+			}
+		}
 		at += n
 		out = append(out, e)
 	}

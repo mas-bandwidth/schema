@@ -4345,7 +4345,13 @@ the trailer:
   field of its body is ordinary and tolerant, so an unknown one is skipped and
   counted and **the announcement can GAIN a field in a later minor without a
   lockstep redeploy**. That is the whole reason it is a table body rather than a
-  fixed header.
+  fixed header. **A FAILED STRICT CHECK IS MALFORMED, not a refusal**: the two
+  checks are the two facts an announcement's body must carry, so a body without
+  them says the bytes are not an announcement rather than that this peer
+  declined to announce, and `no_vocabulary` is left to what it names, a BODY
+  from a peer that never announced. **The build version is kept the moment it
+  is read**, refusal or not, so a refusal on that connection names it (above);
+  it is not the vocabulary, and a refused announcement still sets none.
 - **THE WHOLE ANNOUNCEMENT IS A COMPILE-TIME CONSTANT OF THE UNIT**, every byte
   of it settled by the compiler, so a backend emits `Announce` and
   `AnnounceMeasure` as a constant byte array and its length rather than as a
@@ -4495,7 +4501,13 @@ fixed order: the reserved node-table id, then the three blob type ids as
 sorted record order. **A TRIPLE already placed is never placed twice**, so a
 field name three records share at one kind and shape takes the slot its first
 appearance gave it, and the same name at a SECOND kind or shape takes a second
-slot. Two entries that agree on all three parts are malformed.
+slot. Two entries that agree on all three parts are malformed, and both engines
+enforce that at `AnnounceRead` rather than leaving it to a writer's good
+behavior. **An element kind of `12` or `33` in an announced array or keyed
+shape is malformed there too**, because no declaration this language accepts is
+an array of `string(N)` or of `wstring(N)`, so such a shape is refused once at
+the announcement rather than accepted there and refused again by the skip that
+would meet it.
 
 **THREE PROPERTIES FOLLOW from announcing the unit rather than the message.**
 
@@ -4638,7 +4650,11 @@ The five ways a batch is damaged, at bit granularity:
 - **A REFERENCE NAMING AN ENTRY OF THE WRONG SORT**, which is a variant
   reference on an entry that is not kind `0` and an arm reference on one that
   is (above). The entry resolved and it contradicts the position it was used
-  in, so the next bit's meaning is what is in doubt.
+  in, so the next bit's meaning is what is in doubt. **Both rules hold on the
+  SKIP path as well as on the decode path**: a variant reference above `E` or
+  on an entry of the wrong sort is damage whether or not this reader was going
+  to keep the value, because it is the next bit's meaning that is in doubt and
+  not the value's.
 - **A LENGTH, COUNT OR INDEX WHOSE PAYLOAD RUNS PAST THE BATCH.** A string
   length, an array count, a node index or an escape's `L` that would read beyond
   the batch's bits is damage at the field that carried it.
@@ -4853,6 +4869,31 @@ caller's storage and reports how many bodies it read, and neither allocates.
   vocabulary is set, and the check runs once at `AnnounceRead` and never again.
   A width a reader accepted is a width bounded by the kind it came under, so no
   field on any body can ask a reader to move more bits than a `u128` holds.
+  **"What the kind can hold" is TWO CEILINGS and both are named**: a `string`
+  and a `wstring` are bounded by the int32 storage cap the checker applies to
+  every `N` (SPEC §4.3, §6.1), and an array and a keyed entry, on `min` as well
+  as on `max`, by the 32-bit count an unbounded array announces (§2.9), which
+  is the widest count this form spells. A bound above either is a shape no
+  conforming declaration produces, and a reader that carried one would do its
+  length arithmetic in a range that overflows.
+- **A COUNT IS BOUNDED WHILE IT IS STILL WIDE.** Every length and count on this
+  wire is read as a 64-bit number and compared against the reader's own bound
+  as one, and only then narrowed to the `int32` its storage is (§6.1). A reader
+  that narrowed first would turn a count at or above 2^31 negative, and a
+  negative count passes a signed test against a bound untouched: it is the
+  count's own case of the rule the ranged value already states, that the bound
+  applies while the value is wide.
+- **NOTHING IN THIS FORM IS SUPERLINEAR IN A BATCH'S LENGTH, INCLUDING A
+  COUNT.** The clamp's walk of an over-long array is the one place this wire
+  pays for a clamp in work, and it is arithmetic wherever the element is
+  fixed-width (above), which is what makes that true: a ranged element whose
+  `min` equals its `max` rides NO BITS, so a count of 2^31 over one is six
+  bytes of wire, and a reader that looped over it would buy two billion
+  iterations with them. An element that RESOLVES something is walked, because a
+  resolve that contradicts its position is damage the reader must still find,
+  and every such element costs at least a reference, so the batch's own bits
+  bound the walk. An unbounded array's count is bounded the same way the node
+  count is, by the bits that back it at one bit an element.
 - **A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS ALLOCATED.** A
   file's table is bounded by the file's own length and a connection's vocabulary
   is bounded by nothing the wire carries, so **a receiver declares a maximum and
@@ -4900,21 +4941,30 @@ just need to get it less bytes than protobufs, and not be massively slower."*
 
 - **FEWER BYTES THAN proto3**, on the three measured messages and on the general
   shape.
-- **NOT MASSIVELY SLOWER than the byte body, AND THE FACTOR IS TWO.** "Not
+- **NOT MASSIVELY SLOWER than the FILE FORM, AND THE FACTOR IS TWO.** "Not
   massively slower" is A FACTOR OF TWO on the matching read path and on the
-  matching write path, measured against the BYTE BODY over the same values.
+  matching write path, measured against the FILE form's `Save` and `Load` over
+  the same values. **The arm is the file form on both paths**, because the byte
+  body this section replaced is no longer in the tree to measure against: it
+  landed in #549, was never released, and the codec change that lands this
+  section removed it. The file form is §3's byte-framed body over the same
+  values, and it is not the same program: its save INTERNS the ids it uses at
+  run time and its load PARSES a trailer, neither of which a message does.
   Inside two, the form is accepted and the bandwidth is what it bought. **Above
   two on either path, THE BITPACKED BODY REOPENS**, which is a real outcome and
-  not a formality: the byte body is a wire that works, and a form that costs
+  not a formality: the file form is a wire that works, and a form that costs
   more than double the CPU to save a third of the bytes is a trade the owner has
   not made.
 - **MEASURED AT A NAMED SITTING, AND RECORDED HERE.** The sitting: an M-series
   MacBook Air, macOS 25.6, Apple clang at `-O2 -DNDEBUG -ffp-contract=off`,
   2026-09-05, one-minute load average 2.5, seven rounds of 100,000 iterations
   best of rounds and the best of five processes, both arms in one process over
-  the same values. The arm is the FILE form's `Save` and `Load` over those
-  values, which is §3's byte-framed body, differing only in that a file
-  carries its own id table.
+  the same values. **THE ARM IS THE FILE FORM'S `Save` AND `Load` OVER THOSE
+  VALUES, ON BOTH PATHS**: `Save` against `SaveMessages` and `Load` against
+  `LoadMessages`. It is §3's byte-framed body, and what a file does beside it
+  is the id table: the save INTERNS the ids the body uses as it writes them,
+  and the load PARSES the trailer before it reads a field. The factors below
+  are read against that arm and no other.
 
   | instance | write factor | read factor |
   |---|---:|---:|
@@ -4924,13 +4974,14 @@ just need to get it less bytes than protobufs, and not be massively slower."*
   | the three, one batch | 0.71x | 1.56x |
 
   **BOTH PATHS ARE INSIDE THE FACTOR ON EVERY ROW**, and the write path is
-  UNDER the byte body because a bitpacked field spends one shift where a
-  byte-framed one spends a LEB128 reference, a kind byte and a length. What
-  holds the read path there is the two properties this section states as
-  rules: the receiver resolves the announcement ONCE, so a field costs one
-  array index (the storage shape, above), and the bit stream moves a WORD at a
-  time, so a sixty-four bit field costs one unaligned load rather than sixty-
-  four shifts or eight.
+  UNDER the arm. The arm is the file form, whose save interns the ids it uses
+  at run time, so a write factor below one is a fact about those two programs
+  and is not read here as a claim about bit framing against byte framing. What
+  holds the read path inside the factor is the two properties this section
+  states as rules: the receiver resolves the announcement ONCE, so a field
+  costs one array index (the storage shape, above), and the bit stream moves a
+  WORD at a time, so a sixty-four bit field costs one unaligned load rather
+  than sixty-four shifts or eight.
 
 **THIS RULE IS NOT #546's, and the difference matters.** #546 binds
 DIAGNOSTICS to zero measured cost on the read and write path, because a
@@ -5248,6 +5299,10 @@ entries announces about 5 KB once.
 - **A reference of the wrong sort.** An enum reference naming a field-name entry,
   and a union arm reference naming a kind-`0` entry. Each malformed, terminal for
   the batch. Red if a leg counts `unknown`, or reads a field after either.
+  Beside them the same two on the SKIP path: a body naming an enum entry the
+  root does not declare, so the field is unknown and stepped over, whose
+  variant reference names a field-name entry in one row and is above `E` in the
+  other. Red if a leg steps over the reference without resolving it.
 - **A ranged offset above the sender's `max`.** A `score` ranged `[0, 100000]`
   whose seventeen bits spell 130000. Red if a leg calls it damage rather than
   reconstructing it and clamping to its own bound with one `clamped`.
@@ -5271,9 +5326,20 @@ entries announces about 5 KB once.
 - **A hostile shape.** An announcement carrying `bits` above 128, an array whose
   `min` exceeds its `max`, an element kind outside the closed set, a quantized
   `f32` triple whose `min` is not below its `max` and one whose `delta / res`
-  is not finite in float32, and a shape
+  is not finite in float32, a `string` bound above the int32 storage cap, an
+  array `min` and an array `max` above the 32-bit count an unbounded array
+  announces, two entries that agree on all three parts, an array over element
+  kind `12` and a keyed entry over element kind `33`, and a shape
   running past the vocabulary field's `L`. Each a refusal by name, and red if a
-  leg allocates or reads a body after one.
+  leg allocates or reads a body after one. Beside them each ceiling's own
+  value, which must be ACCEPTED: an unbounded array announces the array one.
+- **A zero-width element under a wide count.** An array announced over
+  `[2, 2^32 - 1]` whose element is a ranged `uint32` with `min` equal to `max`,
+  so an element rides no bits at all, under a count of `2^31 + 1`, which is six
+  bytes of wire. The reader's own `[2..5]` keeps five, counts ONE `clamped`,
+  lands a count of five, and finds the bit the array ends at by arithmetic. Red
+  if a leg walks the surplus, narrows the count before it bounds it and so
+  lands a negative count, or does not finish.
 - **Per-direction independence.** A vector pair written by two peers whose units
   announce different vocabularies, each decoding the other's bodies against the
   vocabulary that peer announced. Red if a leg resolves against its own.
@@ -5292,9 +5358,13 @@ entries announces about 5 KB once.
 - **The announcement's two strict checks, and its tolerance.** Rows for the build
   version absent, present twice, under a kind other than `9` and at a width that
   is not eight, and rows for the vocabulary absent, present twice and under a
-  wrong element kind, each a refusal. A row carrying an UNKNOWN field beside both,
-  which must set the vocabulary and count one `unknown`. Red if a refusal sets a
-  vocabulary, or if the tolerant row refuses.
+  wrong element kind, each MALFORMED, because a failed strict check says the
+  bytes are not an announcement rather than that this peer declined to
+  announce. A row carrying an UNKNOWN field beside both,
+  which must set the vocabulary and count one `unknown`. Red if a failed check
+  sets a vocabulary, reports a refusal rather than damage, or if the tolerant
+  row refuses. Beside them a refused announcement whose build version WAS read,
+  which must name it.
 - **The two bounds.** An announcement one entry above the entry bound, and one a
   byte above the byte bound with a legal entry count. Red if a leg touches an
   entry before refusing either.

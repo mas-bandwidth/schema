@@ -264,6 +264,14 @@ func DecodeShape(in []byte, kind uint8) (TableMessageShape, int, bool) {
 		if !TableMessageKnownKind(s.Elem) {
 			return s, 0, false // an element kind outside the closed set
 		}
+		// AND AN ELEMENT KIND OF 12 OR 33 IS REFUSED HERE, at the
+		// announcement, rather than at the skip that would meet it (§3.3): no
+		// declaration this language accepts is an array of `string(N)` or of
+		// `wstring(N)`, so a shape announcing one is one rule's business and
+		// not two.
+		if s.Elem == TableKindString || s.Elem == TableKindWstring {
+			return s, 0, false
+		}
 		inner, n, ok := DecodeShape(in[at:], s.Elem)
 		if !ok {
 			return s, 0, false
