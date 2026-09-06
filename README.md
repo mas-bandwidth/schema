@@ -113,6 +113,7 @@ sandboxed build and an editor integration all work.
 
 | Document | What's in it |
 |---|---|
+| **[ROADMAP.md](ROADMAP.md)** | Where schema stands, feature by feature and language by language, what we are building next, and how to support the work. |
 | **[TUTORIAL.md](docs/TUTORIAL.md)** | Fourteen parts, from an empty directory to a program that uses every feature. Start here. |
 | **[USAGE.md](docs/USAGE.md)** | Every language feature, with the code it generates. |
 | **[SPEC.md](docs/SPEC.md)** | The normative reference for the type wire: grammar, wire law, every edge case. |
