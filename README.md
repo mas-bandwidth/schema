@@ -13,11 +13,11 @@ without ever having to hand-code definitions in each language ever again.
 
 **Schema** defines your data types across all languages used when developing a game:
 
-* Packets between a client and a server, where every bit counts.
-* Messages sent between the server and backend that needs versioning.
-* Save game files that need to load in all future builds.
-* Render data written in C++ writes and read in C# sixty times a second.
-* Assets cooked to an efficient runtime binary format by tools.
+* Packets sent between a client and a server where every bit counts.
+* Messages sent between the server and backend that need versioning.
+* Save game files that must still load in a future game build.
+* Render data written by C++ and read in C# sixty times per-second.
+* Game assets cooked to an efficient runtime binary format.
 
 One system does it all, so you never end up with schema for the packets and something else for everything else.
 
