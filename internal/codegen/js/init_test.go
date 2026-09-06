@@ -77,7 +77,7 @@ type Packet { choice Choice }
 		}
 	}
 	importsInit := false
-	for _, line := range strings.Split(runtime, "\n") {
+	for line := range strings.SplitSeq(runtime, "\n") {
 		if strings.HasPrefix(line, "import {") && strings.Contains(line, `from "./Values.js"`) && strings.Contains(line, "InitElement") {
 			importsInit = true
 		}
