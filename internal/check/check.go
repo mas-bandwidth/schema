@@ -1015,8 +1015,21 @@ func (c *checker) resolveArm(union string, v ast.UnionVariant) *ir.Field {
 	case f.KeyEnum != "":
 		c.errf(v.Arm.Pos, "%s: an enum-keyed array is not an arm — a keyed body elides slots by name, and its None slot wants its rule stated before it is wire; declare [..N]T or [N]T (docs/SPEC-TABLES.md §2.6, §3.2, §15)", where)
 		return nil
+	case f.Array != ir.ArrayNone && !f.Type.Pointer && armNamesTable(f):
+		// `[..N]T` and `[N]T` over a table T: the walks descend a table arm
+		// as ONE body, the extent asks Body(), which an array arm is not,
+		// and the tool's edge walk skips the shape, so it is refused until
+		// it is ruled (schema#579)
+		c.errf(v.Arm.Pos, "%s: an array of tables is not an arm — a union arm is one table, not an array of tables (docs/SPEC-TABLES.md §2.6); declare a table holding the array and make that table the arm (§15)", where)
+		return nil
 	}
 	return f
+}
+
+// armNamesTable reports an arm whose element type is a declared `table`.
+func armNamesTable(f *ir.Field) bool {
+	st, ok := f.Type.Ref.(*ir.Struct)
+	return ok && st.IsTable
 }
 
 type scopeFrame struct {

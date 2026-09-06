@@ -6047,7 +6047,8 @@ template <typename Ctx> inline bool RowCookNode( const Ctx & ctx, const TableCoo
 {
     if ( !RowCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return RowCookExtent( ctx, region, at + 24, extent_at, at, value, order );
+    if ( !RowCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
+    return extent_at == RowExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // WideRowEntriesEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -6063,7 +6064,8 @@ template <typename Ctx> inline bool WideRowCookNode( const Ctx & ctx, const Tabl
 {
     if ( !WideRowCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return WideRowCookExtent( ctx, region, at + 24, extent_at, at, value, order );
+    if ( !WideRowCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
+    return extent_at == WideRowExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // RowCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one

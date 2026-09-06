@@ -93,6 +93,16 @@ func listElementStruct(f *ir.Field) *ir.Struct {
 	return ref
 }
 
+// listElementUnion is the element's union when the element is one, else nil:
+// a `[]U` whose elements' set arms are the edges (docs/SPEC-TABLES.md §2.6).
+func listElementUnion(f *ir.Field) *ir.Union {
+	if listElementIsPointer(f) || f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	un, _ := f.Type.Ref.(*ir.Union)
+	return un
+}
+
 // listElementWireKind is the element kind the list's kind 14 body carries:
 // kind 17 for a pointer element, the element's own kind otherwise (§2.9, §3).
 func listElementWireKind(f *ir.Field) int {
@@ -749,9 +759,10 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 
 // emitListEdge opens one list's cursor under the walk's subjects and visits
 // each element through the emitter's own pointer or descend visitor: the
-// element IS the pointer slot on a []*T, and a variable table to descend on a
-// []T. The pack's twin is the array <T>ExtentPack already placed in the node's
-// extent, reached from the write subject's slot.
+// element IS the pointer slot on a []*T, a variable table to descend on a
+// []T, and on a []U its set arm is the edge, the same switch one union value
+// takes anywhere else (§2.6). The pack's twin is the array <T>ExtentPack
+// already placed in the node's extent, reached from the write subject's slot.
 func (g *tableGen) emitListEdge(f *ir.Field, v edgeVisitor, onBad string) {
 	elem := g.listElementType(f)
 	cursor := "cursor_" + f.Name
@@ -772,9 +783,12 @@ func (g *tableGen) emitListEdge(f *ir.Field, v edgeVisitor, onBad string) {
 	}
 	saved := g.indent
 	g.indent = saved + "        "
-	if listElementIsPointer(f) {
+	switch {
+	case listElementIsPointer(f):
 		v.pointer(f, expr)
-	} else {
+	case listElementUnion(f) != nil:
+		g.emitUnionArmWalk(listElementUnion(f), expr, v, f.Name, "    ")
+	default:
 		v.descend(f.Type.Name, expr, "    ")
 	}
 	g.indent = saved

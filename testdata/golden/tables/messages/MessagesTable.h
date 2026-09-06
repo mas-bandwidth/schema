@@ -2562,7 +2562,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                                 break;
                             }
                             value.origin.type = OriginType::Note;
-                            memset( &value.origin.note, 0, sizeof( value.origin.note ) ); // selection establishes the arm (§2.6)
+                            memset( (void *) &value.origin.note, 0, sizeof( value.origin.note ) ); // selection establishes the arm (§2.6)
                             {
                                 uint32_t arm_len = uint32_t( sub.size );
                                 uint32_t arm_keep = arm_len;
@@ -2672,7 +2672,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                                     {
                                         if ( elem_arm_kind != 12 ) { value.origins[(int32_t) i].type = OriginType::None; r.report->kind_mismatch++; break; }
                                         value.origins[(int32_t) i].type = OriginType::Note;
-                                        memset( &value.origins[(int32_t) i].note, 0, sizeof( value.origins[(int32_t) i].note ) ); // selection establishes the arm (§2.6)
+                                        memset( (void *) &value.origins[(int32_t) i].note, 0, sizeof( value.origins[(int32_t) i].note ) ); // selection establishes the arm (§2.6)
                                         {
                                             uint32_t arm_lena = uint32_t( elem_arm.size );
                                             uint32_t arm_keepa = arm_lena;
@@ -3383,7 +3383,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                                 break;
                             }
                             value.body.type = EditBodyType::Marks;
-                            memset( &value.body.marks, 0, sizeof( value.body.marks ) ); // selection establishes the arm (§2.6)
+                            memset( (void *) &value.body.marks, 0, sizeof( value.body.marks ) ); // selection establishes the arm (§2.6)
                             if ( !sub.has( 2 ) ) { break; }
                             {
                                 uint8_t arm_elem_kind = sub.get8();
@@ -3418,7 +3418,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                                 break;
                             }
                             value.body.type = EditBodyType::Blob;
-                            memset( &value.body.blob, 0, sizeof( value.body.blob ) ); // selection establishes the arm (§2.6)
+                            memset( (void *) &value.body.blob, 0, sizeof( value.body.blob ) ); // selection establishes the arm (§2.6)
                             if ( !sub.has( 2 ) ) { break; }
                             {
                                 uint8_t arm_elem_kind = sub.get8();
@@ -4636,7 +4636,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                     {
                                         if ( elem_arm_kind != 14 ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->kind_mismatch++; break; }
                                         value.pending[(int32_t) i].type = EditBodyType::Marks;
-                                        memset( &value.pending[(int32_t) i].marks, 0, sizeof( value.pending[(int32_t) i].marks ) ); // selection establishes the arm (§2.6)
+                                        memset( (void *) &value.pending[(int32_t) i].marks, 0, sizeof( value.pending[(int32_t) i].marks ) ); // selection establishes the arm (§2.6)
                                         if ( !elem_arm.has( 2 ) ) { break; }
                                         {
                                             uint8_t arm_elem_kinda = elem_arm.get8();
@@ -4664,7 +4664,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                     {
                                         if ( elem_arm_kind != 14 ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->kind_mismatch++; break; }
                                         value.pending[(int32_t) i].type = EditBodyType::Blob;
-                                        memset( &value.pending[(int32_t) i].blob, 0, sizeof( value.pending[(int32_t) i].blob ) ); // selection establishes the arm (§2.6)
+                                        memset( (void *) &value.pending[(int32_t) i].blob, 0, sizeof( value.pending[(int32_t) i].blob ) ); // selection establishes the arm (§2.6)
                                         if ( !elem_arm.has( 2 ) ) { break; }
                                         {
                                             uint8_t arm_elem_kinda = elem_arm.get8();
@@ -6020,7 +6020,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                 break;
                             }
                             value.body.type = ToolBodyType::Spans;
-                            memset( &value.body.spans, 0, sizeof( value.body.spans ) ); // selection establishes the arm (§2.6)
+                            memset( (void *) &value.body.spans, 0, sizeof( value.body.spans ) ); // selection establishes the arm (§2.6)
                             if ( !sub.has( 2 ) ) { break; }
                             {
                                 uint8_t arm_elem_kind = sub.get8();
@@ -6098,7 +6098,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                         {
                                             if ( arm_inner_kind != 12 ) { value.body.origin.type = OriginType::None; r.report->kind_mismatch++; break; }
                                             value.body.origin.type = OriginType::Note;
-                                            memset( &value.body.origin.note, 0, sizeof( value.body.origin.note ) ); // selection establishes the arm (§2.6)
+                                            memset( (void *) &value.body.origin.note, 0, sizeof( value.body.origin.note ) ); // selection establishes the arm (§2.6)
                                             {
                                                 uint32_t arm_lena = uint32_t( arm_inner.size );
                                                 uint32_t arm_keepa = arm_lena;
@@ -6244,7 +6244,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                     {
                                         if ( elem_arm_kind != 14 ) { value.history[(int32_t) i].type = ToolBodyType::None; r.report->kind_mismatch++; break; }
                                         value.history[(int32_t) i].type = ToolBodyType::Spans;
-                                        memset( &value.history[(int32_t) i].spans, 0, sizeof( value.history[(int32_t) i].spans ) ); // selection establishes the arm (§2.6)
+                                        memset( (void *) &value.history[(int32_t) i].spans, 0, sizeof( value.history[(int32_t) i].spans ) ); // selection establishes the arm (§2.6)
                                         if ( !elem_arm.has( 2 ) ) { break; }
                                         {
                                             uint8_t arm_elem_kinda = elem_arm.get8();
@@ -6315,7 +6315,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                     {
                                                         if ( arm_inner_kinda != 12 ) { value.history[(int32_t) i].origin.type = OriginType::None; r.report->kind_mismatch++; break; }
                                                         value.history[(int32_t) i].origin.type = OriginType::Note;
-                                                        memset( &value.history[(int32_t) i].origin.note, 0, sizeof( value.history[(int32_t) i].origin.note ) ); // selection establishes the arm (§2.6)
+                                                        memset( (void *) &value.history[(int32_t) i].origin.note, 0, sizeof( value.history[(int32_t) i].origin.note ) ); // selection establishes the arm (§2.6)
                                                         {
                                                             uint32_t arm_lenaa = uint32_t( arm_innera.size );
                                                             uint32_t arm_keepaa = arm_lenaa;

@@ -3187,10 +3187,10 @@ inline bool ChunkNumber( const Ctx & ctx, TableNumbering & numbering, const Chun
             }
         }
     }
-    for ( int32_t i = 0; i < value.links_count && i < 2; i++ ) // links: [..2]*Chunk
+    for ( int32_t k = 0; k < value.links_count && k < 2; k++ ) // links: [..2]*Chunk
     {
     {
-        const Chunk * pointee = ChunkAt( ctx, value.links[i] ); // links
+        const Chunk * pointee = ChunkAt( ctx, value.links[k] ); // links
         if ( pointee != NULL )
         {
             bool taken = false;
@@ -3249,10 +3249,10 @@ inline int64_t ChunkPackMeasure( const Ctx & ctx, TablePackMap & seen, const Chu
             }
         }
     }
-    for ( int32_t i = 0; i < value.links_count && i < 2; i++ ) // links: [..2]*Chunk
+    for ( int32_t k = 0; k < value.links_count && k < 2; k++ ) // links: [..2]*Chunk
     {
     {
-        const Chunk * pointee = ChunkAt( ctx, value.links[i] ); // links
+        const Chunk * pointee = ChunkAt( ctx, value.links[k] ); // links
         if ( pointee != NULL )
         {
             bool taken = false;
@@ -3315,11 +3315,11 @@ inline bool ChunkPack( const Ctx & ctx, TablePackMap & seen, const Chunk & src, 
             }
         }
     }
-    for ( int32_t i = 0; i < src.links_count && i < 2; i++ ) // links: [..2]*Chunk
+    for ( int32_t k = 0; k < src.links_count && k < 2; k++ ) // links: [..2]*Chunk
     {
     {
-        dst.links[i].value = 0; // links
-        const Chunk * pointee = ChunkAt( ctx, src.links[i] );
+        dst.links[k].value = 0; // links
+        const Chunk * pointee = ChunkAt( ctx, src.links[k] );
         if ( pointee != NULL )
         {
             int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
@@ -3330,14 +3330,14 @@ inline bool ChunkPack( const Ctx & ctx, TablePackMap & seen, const Chunk & src, 
             if ( !taken )
             {
                 if ( entry->open != 0 ) { return false; } // a data cycle
-                dst.links[i].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.links[i] ); // the one body it already has
+                dst.links[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.links[k] ); // the one body it already has
             }
             else
             {
                 if ( at + (int64_t) sizeof( Chunk ) > capacity ) { return false; }
                 used = at + TableAlignUp64( (int64_t) sizeof( Chunk ) );
                 Chunk * child = new ( base + at ) Chunk; // lifetime only: the Pack below memcpy's the whole node over it
-                dst.links[i].value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.links[i] );
+                dst.links[k].value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.links[k] );
                 if ( !ChunkPack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }
                 TablePackMapClose( seen, (const void *) pointee, slot );
             }
@@ -3394,10 +3394,10 @@ inline bool FeedNumber( const Ctx & ctx, TableNumbering & numbering, const Feed 
         }
         default: break;
     }
-    for ( int32_t i = 0; i < value.parts_count && i < 4; i++ ) // parts: [..4]*Chunk
+    for ( int32_t k = 0; k < value.parts_count && k < 4; k++ ) // parts: [..4]*Chunk
     {
     {
-        const Chunk * pointee = ChunkAt( ctx, value.parts[i] ); // parts
+        const Chunk * pointee = ChunkAt( ctx, value.parts[k] ); // parts
         if ( pointee != NULL )
         {
             bool taken = false;
@@ -3424,10 +3424,10 @@ inline bool FeedNumber( const Ctx & ctx, TableNumbering & numbering, const Feed 
         }
     }
     }
-    for ( int32_t i = 0; i < 2; i++ ) // pair: [2]*Chunk
+    for ( int32_t k = 0; k < 2; k++ ) // pair: [2]*Chunk
     {
     {
-        const Chunk * pointee = ChunkAt( ctx, value.pair[i] ); // pair
+        const Chunk * pointee = ChunkAt( ctx, value.pair[k] ); // pair
         if ( pointee != NULL )
         {
             bool taken = false;
@@ -3501,10 +3501,10 @@ inline int64_t FeedPackMeasure( const Ctx & ctx, TablePackMap & seen, const Feed
         }
         default: break;
     }
-    for ( int32_t i = 0; i < value.parts_count && i < 4; i++ ) // parts: [..4]*Chunk
+    for ( int32_t k = 0; k < value.parts_count && k < 4; k++ ) // parts: [..4]*Chunk
     {
     {
-        const Chunk * pointee = ChunkAt( ctx, value.parts[i] ); // parts
+        const Chunk * pointee = ChunkAt( ctx, value.parts[k] ); // parts
         if ( pointee != NULL )
         {
             bool taken = false;
@@ -3525,10 +3525,10 @@ inline int64_t FeedPackMeasure( const Ctx & ctx, TablePackMap & seen, const Feed
         }
     }
     }
-    for ( int32_t i = 0; i < 2; i++ ) // pair: [2]*Chunk
+    for ( int32_t k = 0; k < 2; k++ ) // pair: [2]*Chunk
     {
     {
-        const Chunk * pointee = ChunkAt( ctx, value.pair[i] ); // pair
+        const Chunk * pointee = ChunkAt( ctx, value.pair[k] ); // pair
         if ( pointee != NULL )
         {
             bool taken = false;
@@ -3604,11 +3604,11 @@ inline bool FeedPack( const Ctx & ctx, TablePackMap & seen, const Feed & src, Fe
         }
         default: break;
     }
-    for ( int32_t i = 0; i < src.parts_count && i < 4; i++ ) // parts: [..4]*Chunk
+    for ( int32_t k = 0; k < src.parts_count && k < 4; k++ ) // parts: [..4]*Chunk
     {
     {
-        dst.parts[i].value = 0; // parts
-        const Chunk * pointee = ChunkAt( ctx, src.parts[i] );
+        dst.parts[k].value = 0; // parts
+        const Chunk * pointee = ChunkAt( ctx, src.parts[k] );
         if ( pointee != NULL )
         {
             int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
@@ -3619,25 +3619,25 @@ inline bool FeedPack( const Ctx & ctx, TablePackMap & seen, const Feed & src, Fe
             if ( !taken )
             {
                 if ( entry->open != 0 ) { return false; } // a data cycle
-                dst.parts[i].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.parts[i] ); // the one body it already has
+                dst.parts[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.parts[k] ); // the one body it already has
             }
             else
             {
                 if ( at + (int64_t) sizeof( Chunk ) > capacity ) { return false; }
                 used = at + TableAlignUp64( (int64_t) sizeof( Chunk ) );
                 Chunk * child = new ( base + at ) Chunk; // lifetime only: the Pack below memcpy's the whole node over it
-                dst.parts[i].value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.parts[i] );
+                dst.parts[k].value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.parts[k] );
                 if ( !ChunkPack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }
                 TablePackMapClose( seen, (const void *) pointee, slot );
             }
         }
     }
     }
-    for ( int32_t i = 0; i < 2; i++ ) // pair: [2]*Chunk
+    for ( int32_t k = 0; k < 2; k++ ) // pair: [2]*Chunk
     {
     {
-        dst.pair[i].value = 0; // pair
-        const Chunk * pointee = ChunkAt( ctx, src.pair[i] );
+        dst.pair[k].value = 0; // pair
+        const Chunk * pointee = ChunkAt( ctx, src.pair[k] );
         if ( pointee != NULL )
         {
             int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
@@ -3648,14 +3648,14 @@ inline bool FeedPack( const Ctx & ctx, TablePackMap & seen, const Feed & src, Fe
             if ( !taken )
             {
                 if ( entry->open != 0 ) { return false; } // a data cycle
-                dst.pair[i].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.pair[i] ); // the one body it already has
+                dst.pair[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.pair[k] ); // the one body it already has
             }
             else
             {
                 if ( at + (int64_t) sizeof( Chunk ) > capacity ) { return false; }
                 used = at + TableAlignUp64( (int64_t) sizeof( Chunk ) );
                 Chunk * child = new ( base + at ) Chunk; // lifetime only: the Pack below memcpy's the whole node over it
-                dst.pair[i].value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.pair[i] );
+                dst.pair[k].value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.pair[k] );
                 if ( !ChunkPack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }
                 TablePackMapClose( seen, (const void *) pointee, slot );
             }

@@ -1,0 +1,39 @@
+package armdemo
+
+// A BY-VALUE TABLE ARM THAT HOLDS A LIST (docs/SPEC-TABLES.md §2.6, §2.9): the
+// arm is in the holder's own extent, placed by the selected tag, so the walk
+// that reserves it, the walk that copies it, the framing scan that sums it and
+// the cook that lays it are one walk reaching the arm where the field sits. A
+// container after the arm makes a skipped arm visible as a moved offset.
+
+table Leaf { items []int32 }
+
+union Carry
+{
+    leaf  Leaf
+    plain int32
+}
+
+table Holder
+{
+    carry Carry
+    tail  []int32
+}
+
+// the same arm, one element of a BOUNDED ARRAY of unions: the framing scan
+// dispatches from the field's actual shape, an array of arm headers and not
+// one arm header
+table Hand
+{
+    entries [..2]Carry
+    after   int32
+}
+
+// the same arm, one element of a LIST of unions: the elements' arms are
+// visited after the whole element array, element by element in index order,
+// on every walk and in the framing scan
+table Chain
+{
+    links []Carry
+    after int32
+}

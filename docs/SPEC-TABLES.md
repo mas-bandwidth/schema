@@ -1337,20 +1337,28 @@ already spends what it would buy**, and each is refused by name (§11):
   `[E]*T` and `[E]Body` do (§15);
 - **an `if` guard** — a guard is a body construct, and a union body has no
   fields to guard;
-- **a MAP (§2.8) and an UNBOUNDED ARRAY, `[]T` or `[]*T` (§2.9)**, on one
-  ground, because an arm's storage is OVERLAID and neither construct's elements
-  are in the arm at all. Both are a reference and a count in the record, with
-  the entries or elements laid in the HOLDER'S NODE EXTENT by a placement walk
+- **an ARRAY OF TABLES, `[..N]T` or `[N]T` over a `table` T** — a union arm
+  is one table, not an array of tables: every walk descends a table arm as
+  ONE body (§3.1), so the shape is refused by name; declare a table holding
+  the array and make that table the arm. Whether to admit the shape is
+  schema#579;
+- **a MAP (§2.8) and an UNBOUNDED ARRAY, `[]T` or `[]*T` (§2.9)**, as a
+  SURFACE RULE. Both are a reference and a count in the record, with the
+  entries or elements laid in the HOLDER'S NODE EXTENT by a placement walk
   that visits every map and every list the record reaches BY VALUE, pre-order,
-  in declaration order (§2.8, §2.9). An arm is reached by value only when its
-  TAG SAYS SO, so an arm's array would make the extent's contents, and every
-  offset after it, depend on a discriminant. That is a layout no cook can be
-  byte-stable under and no `cook-check` clause can bound, since §7.4 checks
-  containment and no-overlap against arrays the declaration says are there.
-  **AN ARM HOLDING EITHER IS A TABLE ARM'S JOB**: name a `table` that declares
-  the map or the list, which costs the arm's own `L` and terminator and puts
-  the construct where the placement walk already reaches it, in a node whose
-  extent does not depend on anybody's tag.
+  in declaration order (§2.8, §2.9). A union's set arm is one of those
+  by-value edges, reached when its TAG SAYS SO: a table arm that declares a
+  map or a list already has its arrays placed in the holder's extent by the
+  selected tag, by the one walk that numbers, packs, cooks and measures the
+  record (§3.1), and the cook holds the extent it wrote to the extent it
+  measured before a header is written (§7.6). So a container directly in an
+  arm would add no dependence on a tag that a table arm's containers do not
+  already have. What the restriction keeps is ONE GRAMMAR for where a
+  container lives, a field of a record, which is the name every walk and the
+  text form (§16) reach it by. **AN ARM HOLDING EITHER IS A TABLE ARM'S JOB**:
+  name a `table` that declares the map or the list, which costs the arm's own
+  `L` and terminator and puts the construct where the placement walk already
+  reaches it.
 
 **Selection is presence, so a set arm ALWAYS rides, whatever it holds**
 (§3). A union FIELD holding `None` elides; a union holding a selected arm
@@ -10968,6 +10976,13 @@ inspects everything in the schema built:
   body elides slots by name (§3.2), so its empty end wants stating in arm
   position exactly as `[E]*T` and `[E]Body` want it in field position, and
   the three land together or not at all.
+- **AN ARRAY OF TABLES AS AN ARM — `[..N]T` or `[N]T` over a `table` T
+  inside a union** (§2.6). Refused: every walk descends a table arm as ONE
+  body (§3.1), the node extent asks that body for its own, and the tool's
+  edge walk has no element to step. The shape a schema writes today is a
+  table holding the array, made the arm. What admitting it would take is an
+  element step in each of the five walks and a framing that says where one
+  element's body ends, and that is schema#579.
 - **GENERAL ARMS ON THE PACKET WIRE** (SPEC §4.8, §2.6): the encoding is
   stated where the packet union is, and what waits is the nine backends'
   packet codecs. Until they land, a union whose arms do not all name

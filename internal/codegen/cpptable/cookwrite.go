@@ -521,8 +521,8 @@ func (g *tableGen) emitCookWriteRoot(st *ir.Struct) {
 func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	n := st.Name
 	ml := ir.RecordLayout(g.unit, st)
-	reachable := g.pointerReachable(st)
-	blobs := g.reachableBlobs(st)
+	reachable := ir.PointerReachable(st)
+	blobs := reachableBlobs(st)
 
 	g.pf("// %sCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one\n", n)
 	g.pf("// numbering — the root at zero, then every node in index order at\n")
@@ -548,6 +548,11 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	} else {
 		if g.anyExtent {
 			g.pf("    (void) root;\n")
+			if !g.rootHasExtent(st) {
+				// no node this root can name has an extent either, so the
+				// layout reads nothing through the context
+				g.pf("    (void) ctx;\n")
+			}
 		}
 		g.pf("    int64_t offset = %d; // the root, at zero\n", ml.Size)
 	}
