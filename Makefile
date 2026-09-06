@@ -2021,23 +2021,6 @@ build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp tes
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
-# THE MESSAGE FORM'S COST ROWS (docs/SPEC-TABLES.md §3.3), measured on this
-# machine: the bytes each form spends over the three backend messages and the
-# batch, and the read and write factor the bitpacked body takes against the
-# byte-framed body over the same values. It is a MEASUREMENT and not a gate, so
-# it is not in `test`: a ratio moves with the machine and a number that moves
-# with the machine is not something CI can hold. `make tables-message-cost`
-# runs it, and the PR body quotes the sitting it came from.
-build/schema_message_cost: build/tables-generated/.stamp test/tables/message_cost_main.cpp
-	@mkdir -p build
-	$(CXX) $(TABLES_CXXFLAGS) -O2 -DNDEBUG -Ibuild/tables-generated/backend -Itest/tables -I$(SERIALIZE) \
-		test/tables/message_cost_main.cpp build/tables-generated/backend/BackendTable.cpp -o $@
-
-.PHONY: tables-message-cost
-tables-message-cost: build/schema_message_cost
-	@uptime
-	./build/schema_message_cost
-
 # The SANITIZED twin (issue #277). The tables leg is where the pointer
 # machinery lives — an arena whose Lock() frees it one way, a packed region
 # read through self-relative deltas, a cooked file Open validates by walking
