@@ -593,7 +593,7 @@ func (g *gen) emitStorageField(f *ir.Field) []string {
 		}
 		if f.Array == ir.ArrayCounted {
 			// a [A..B] count is born at A, the one wire-legal count a fresh
-			// value can carry (SPEC §4.6); a [..N] count takes the field's zero
+			// value can carry (SPEC §4.6). A [..N] count takes the field's zero
 			if n := f.BornCount(); n > 0 {
 				g.bpf("        public int %sCount = %d;\n", name, n)
 			} else {

@@ -3,19 +3,23 @@
 //
 // SPEC §4.6 refuses a scalar or element range that excludes zero, because zero
 // initialization is the rule and such a field would be born outside its own
-// range. A `[A..B]` count bound with A above zero fell between the rules: the
-// count was born at 0, outside its own wire range, and the writer's range
-// check was an assert in five of the nine targets — gone under -DNDEBUG,
-// without -ea, without --enable-asserts and in the production JavaScript
-// writer — so a release build packed a wrapped count and reported success on
-// bytes no reader accepts (#521 G-05, #447 F-09).
+// range. A [A..B] count bound with A above zero is the stated exception. It is
+// legal, and the count is born at A rather than at 0, because the bound names
+// the one wire-legal count a fresh value can carry and an array takes no
+// specified default to name another.
+//
+// The write refuses a count outside the bound in every build. The count guards
+// the element loop and the pack subtracts the low bound, so a count below A
+// wraps and an unchecked write would report success on bytes no reader
+// accepts. It is the one write-side contract that is never a debug-only
+// assert.
 //
 // Two claims are pinned here, one per test, so a regression in either is named
 // on its own:
 //
-//  1. the constructed form is born at the declared minimum, in all nine;
+//  1. the constructed form is born at the declared minimum, in all nine
 //  2. the write path refuses a count outside the bound in EVERY build mode, in
-//     all nine — never through an assert the build can remove.
+//     all nine, never through an assert the build can remove
 package compiler
 
 import (
@@ -33,8 +37,8 @@ type T
 }
 `
 
-// countName is the count's spelling in each target's storage — the identifier
-// every claim below is made about.
+// countName is the count's spelling in each target's storage. It is the
+// identifier every claim below is made about.
 var countName = map[string]string{
 	"c":      "window_count",
 	"cpp":    "window_count",
@@ -64,10 +68,9 @@ var bornAtMinimum = map[string]string{
 }
 
 // refusesEveryBuild is the write path's unconditional range refusal in each
-// target's own spelling. Go, Rust, C# and Elixir already refused through
-// their error-returning (Elixir: always-on raising) runtimes; C, C++, Dart,
-// Java and JavaScript held the count with an assert or a checked-build
-// predicate and now refuse outright.
+// target's own spelling. Every target refuses through its own convention, an
+// error-returning runtime in Go, Rust and C#, an always-on raise in Elixir,
+// and a plain failure return in C, C++, Dart, Java and JavaScript.
 var refusesEveryBuild = map[string][]string{
 	"c": {"if ( value->window_count < 2 || value->window_count > 8 )", "return 0;"},
 	"cpp": {
@@ -90,7 +93,7 @@ var assertToken = map[string][]string{
 	"cpp":    {"serialize_assert"},
 	"cs":     {"Debug.Assert"},
 	"dart":   {"assert("},
-	"elixir": nil, // the BEAM has no compile-out assert; the raise is always on
+	"elixir": nil, // the BEAM has no compile-out assert, so the raise is always on
 	"go":     nil, // the runtime returns an error, in every build
 	"java":   {"assert "},
 	"js":     {"assert("},
@@ -120,30 +123,30 @@ func TestCountedArrayIsBornAtItsDeclaredMinimum(t *testing.T) {
 	for _, target := range New().Targets() {
 		want, known := bornAtMinimum[target]
 		if !known {
-			t.Errorf("target %q has no birth claim here — a new backend landed and this gate was not told", target)
+			t.Errorf("target %q has no birth claim here. A new backend landed and this gate was not told", target)
 			continue
 		}
 		if text := generatedText(t, countedAboveZero, target); !strings.Contains(text, want) {
-			t.Errorf("%s: a [2..8] count is not born at 2 — %q is absent from the constructed form", target, want)
+			t.Errorf("%s: a [2..8] count is not born at 2, %q is absent from the constructed form", target, want)
 		}
 	}
 }
 
 // CLAIM 2. The write path refuses a count outside its bound in every build
 // mode. The count guards the element loop and the pack subtracts the low
-// bound, so a count below the minimum wraps: a build that drops the check
-// writes bytes no reader accepts and reports success.
+// bound, so a count below the minimum wraps, and a build that drops the check
+// would write bytes no reader accepts and report success.
 func TestCountOutsideItsWireRangeIsRefusedInEveryBuild(t *testing.T) {
 	for _, target := range New().Targets() {
 		wants, known := refusesEveryBuild[target]
 		if !known {
-			t.Errorf("target %q has no refusal claim here — a new backend landed and this gate was not told", target)
+			t.Errorf("target %q has no refusal claim here. A new backend landed and this gate was not told", target)
 			continue
 		}
 		text := generatedText(t, countedAboveZero, target)
 		for _, want := range wants {
 			if !strings.Contains(text, want) {
-				t.Errorf("%s: the count's range refusal is absent — %q not emitted", target, want)
+				t.Errorf("%s: the count's range refusal is absent, %q not emitted", target, want)
 			}
 		}
 		// and it is not an assert: no line naming the count may carry the

@@ -334,7 +334,7 @@ type Field struct {
 	Name string
 	// Guard is the field's branch context, kept as a comment: "" outside a
 	// branch, otherwise the condition spelled as the reflection descriptors
-	// spell it — "at_rest", "!at_rest", "active && has_target".
+	// spell it: "at_rest", "!at_rest", "active && has_target".
 	Guard string
 
 	// Doc is the `///` block above the field, verbatim (SPEC §4.1), and

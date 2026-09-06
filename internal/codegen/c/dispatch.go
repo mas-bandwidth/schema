@@ -75,7 +75,7 @@ func (g *gen) emitConstructor(st *ir.Struct) {
 func (g *gen) emitDefaultInit(f *ir.Field) {
 	if n := f.BornCount(); n > 0 {
 		// a [A..B] count is born at A, the one wire-legal count a fresh value
-		// can carry (SPEC §4.6); the elements below follow their own rule
+		// can carry (SPEC §4.6). The elements below follow their own rule
 		g.pf("    value.%s_count = %d;\n", f.Name, n)
 	}
 	if f.Type.Kind == ir.TNamed {

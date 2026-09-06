@@ -1037,7 +1037,7 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 
 	// Count is reserved exactly where the member exists. A PACKET union's tag
 	// enum carries Count beside Max in all nine targets, so an arm exporting
-	// Count would define the member twice; a TABLE-CLOSURE union's tag shape
+	// Count would define the member twice. A TABLE-CLOSURE union's tag shape
 	// is emitted beside the tables and carries Max alone, so the name is free
 	// there. The kind is known only once every arm is resolved, which is why
 	// this sits after the loop rather than beside None, Max and Type.

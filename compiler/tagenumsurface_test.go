@@ -1,18 +1,16 @@
 // A UNION'S TAG ENUM (SPEC §4.8) carries a declared enum's whole name
 // surface, in all nine targets.
 //
-// A generated <Union>Type looks and acts like a declared enum — implicit None,
-// dense variants, an exported extent, unsigned storage — so a reader logging
-// which message arrived writes the enum's own name call against it. It carried
-// no Count in any target (#489 gave declared enums one and did not reach tag
-// enums) and a debug-name function in exactly one, C's
-// enum_name_weapon_fire_type (#447 F-15, #521 G-08).
+// A generated <Union>Type looks and acts like a declared enum. Implicit None,
+// dense variants, an exported Count and Max, unsigned storage. A reader
+// logging which message arrived writes the enum's own name call against it and
+// finds it there.
 //
-// Both are DIAGNOSTIC surface: a constant and a function nothing on the read
-// or write path calls. The gate below is a nine-way generate-and-check, and
-// each target's spelling is its own — EnumName overloading in C++, a suffixed
-// EnumName<Tag> where the language has no overloads, snake_case in C, Rust and
-// Elixir.
+// Both the count and the name function are DIAGNOSTIC surface, a constant and
+// a function nothing on the read or write path calls. The gate below is a
+// nine-way generate-and-check, and each target's spelling is its own. EnumName
+// overloading in C++, a suffixed EnumName<Tag> where the language has no
+// overloads, snake_case in C, Rust and Elixir.
 package compiler
 
 import (
@@ -23,9 +21,9 @@ import (
 // tagEnumUnit declares a union beside a plain enum, so a claim about the tag
 // enum's surface is made against a target that is emitting the declared enum's
 // surface in the same file. The enum has THREE variants and the union has two,
-// so every count and extent below names the tag enum and not its neighbour —
-// without that, a target that dropped the tag enum's Count would still pass on
-// the declared enum's.
+// so every count and extent below names the tag enum and not its neighbor.
+// Without that, a target dropping the tag enum's Count would still pass on the
+// declared enum's.
 const tagEnumUnit = `package tag
 
 enum ShipType { Fighter, Bomber, Scout }
@@ -52,76 +50,83 @@ type FireCommand
 }
 `
 
-// tagEnumSurface is what WeaponFireType exports in each target: the declared
-// variant count beside the exported extent, and the debug-name function in
-// that target's spelling.
-var tagEnumSurface = map[string][]string{
+// tagEnumClaim is what WeaponFireType exports in one target: the declared
+// variant count, the exported extent beside it, and the OPENING LINE of the
+// debug-name function. That third field is the anchor the body claim below
+// slices from, so the nine spellings live here once and both gates read them.
+type tagEnumClaim struct {
+	count    string
+	max      string
+	nameFunc string
+}
+
+var tagEnumSurface = map[string]tagEnumClaim{
 	"c": {
-		"#define WEAPON_FIRE_TYPE_COUNT 2",
-		"#define WEAPON_FIRE_TYPE_MAX 2",
-		"const char * enum_name_weapon_fire_type( WeaponFireType value )",
+		count:    "#define WEAPON_FIRE_TYPE_COUNT 2",
+		max:      "#define WEAPON_FIRE_TYPE_MAX 2",
+		nameFunc: "const char * enum_name_weapon_fire_type( WeaponFireType value )",
 	},
 	"cpp": {
-		"    Count = 2, // the declared variant count (SPEC §4.2)",
-		"    Max = 2, // the exported extent (SPEC §4.2)",
-		"inline const char * EnumName( WeaponFireType value )",
+		count:    "    Count = 2, // the declared variant count (SPEC §4.2)",
+		max:      "    Max = 2, // the exported extent (SPEC §4.2)",
+		nameFunc: "inline const char * EnumName( WeaponFireType value )",
 	},
 	"cs": {
-		"    Count = 2, // the declared variant count (SPEC §4.2)",
-		"    Max = 2, // the exported extent (SPEC §4.2)",
-		"public static string EnumNameWeaponFireType(ulong value)",
+		count:    "    Count = 2, // the declared variant count (SPEC §4.2)",
+		max:      "    Max = 2, // the exported extent (SPEC §4.2)",
+		nameFunc: "public static string EnumNameWeaponFireType(ulong value)",
 	},
 	"dart": {
-		"  static const int count = 2; // the declared variant count (SPEC §4.2)",
-		"  static const int max = 2; // the exported extent (SPEC §4.2)",
-		"String enumNameWeaponFireType(int value) {",
+		count:    "  static const int count = 2; // the declared variant count (SPEC §4.2)",
+		max:      "  static const int max = 2; // the exported extent (SPEC §4.2)",
+		nameFunc: "String enumNameWeaponFireType(int value) {",
 	},
 	"elixir": {
-		"  def count, do: 2",
-		"  def max, do: 2",
-		"  def enum_name_weapon_fire_type(value) do",
+		count:    "  def count, do: 2",
+		max:      "  def max, do: 2",
+		nameFunc: "  def enum_name_weapon_fire_type(value) do",
 	},
 	"go": {
-		"WeaponFireTypeCount   WeaponFireType = 2 // the declared variant count (SPEC §4.2)",
-		"WeaponFireTypeMax     WeaponFireType = 2 // the exported extent (SPEC §4.2)",
-		"func EnumNameWeaponFireType(value uint64) string {",
+		count:    "WeaponFireTypeCount   WeaponFireType = 2 // the declared variant count (SPEC §4.2)",
+		max:      "WeaponFireTypeMax     WeaponFireType = 2 // the exported extent (SPEC §4.2)",
+		nameFunc: "func EnumNameWeaponFireType(value uint64) string {",
 	},
 	"java": {
-		"        public static final byte count = 2;",
-		"        public static final byte max = 2;",
-		"    public static String enumNameWeaponFireType(long value) {",
+		count:    "        public static final byte count = 2;",
+		max:      "        public static final byte max = 2;",
+		nameFunc: "    public static String enumNameWeaponFireType(long value) {",
 	},
 	"js": {
-		"  Count: 2, // the declared variant count (SPEC §4.2)",
-		"  Max: 2, // the exported extent (SPEC §4.2)",
-		"export function EnumNameWeaponFireType(value) {",
+		count:    "  Count: 2, // the declared variant count (SPEC §4.2)",
+		max:      "  Max: 2, // the exported extent (SPEC §4.2)",
+		nameFunc: "export function EnumNameWeaponFireType(value) {",
 	},
 	"rust": {
-		"    pub const COUNT: WeaponFireType = WeaponFireType(2); // the declared variant count (SPEC §4.2)",
-		"    pub const MAX: WeaponFireType = WeaponFireType(2); // the exported extent (SPEC §4.2)",
-		"pub fn enum_name_weapon_fire_type(value: WeaponFireType) -> &'static str {",
+		count:    "    pub const COUNT: WeaponFireType = WeaponFireType(2); // the declared variant count (SPEC §4.2)",
+		max:      "    pub const MAX: WeaponFireType = WeaponFireType(2); // the exported extent (SPEC §4.2)",
+		nameFunc: "pub fn enum_name_weapon_fire_type(value: WeaponFireType) -> &'static str {",
 	},
 }
 
 func TestUnionTagEnumExportsCountAndItsDebugName(t *testing.T) {
 	for _, target := range New().Targets() {
-		wants, known := tagEnumSurface[target]
+		claim, known := tagEnumSurface[target]
 		if !known {
-			t.Errorf("target %q has no tag-enum claim here — a new backend landed and this gate was not told", target)
+			t.Errorf("target %q has no tag-enum claim here. A new backend landed and this gate was not told", target)
 			continue
 		}
 		text := generatedText(t, tagEnumUnit, target)
-		for _, want := range wants {
+		for _, want := range []string{claim.count, claim.max, claim.nameFunc} {
 			if !strings.Contains(text, want) {
-				t.Errorf("%s: the tag enum's surface is short — %q not emitted", target, want)
+				t.Errorf("%s: the tag enum's surface is short, %q not emitted", target, want)
 			}
 		}
 	}
 }
 
 // COUNT IS RESERVED EXACTLY WHERE THE MEMBER EXISTS. A packet union's tag
-// enum carries Count now, so an arm exporting Count would define the member
-// twice — a redefinition in C++ and C#. A TABLE-CLOSURE union's tag shape is
+// enum carries Count, so an arm exporting Count would define the member
+// twice, a redefinition in C++ and C#. A TABLE-CLOSURE union's tag shape is
 // emitted beside the tables and carries Max alone, so the name is still free
 // there, and the corpus's own tables/messages/Messages.schema uses it.
 const countArmPacketUnion = `package tagcount
@@ -164,7 +169,7 @@ table T
 func TestAPacketUnionArmNamedCountIsRefusedByName(t *testing.T) {
 	errs := checkErrors(t, countArmPacketUnion)
 	if len(errs) == 0 {
-		t.Fatal("an arm whose exported spelling is Count passed check — its tag enum defines Count twice")
+		t.Fatal("an arm whose exported spelling is Count passed check, and its tag enum defines Count twice")
 	}
 	var joined []string
 	for _, e := range errs {
@@ -189,15 +194,37 @@ func TestATableClosureUnionArmNamedCountIsAccepted(t *testing.T) {
 
 // The name function names every value a reader can meet, the out-of-set ones
 // included: None at 0, each variant in declared order, and "???" past them.
+//
+// THE CLAIM IS ANCHORED TO THE FUNCTION'S BODY. All four strings appear
+// elsewhere in the same output. Laser and Missile name the arm types, None is
+// the tag enum's own member, and "???" is the declared enum's name function
+// default, so a whole-output claim stays green with the tag enum's name
+// function deleted. The body runs from the function's opening line to its
+// out-of-set arm, "???" being the last name every target returns, and the
+// opening line's absence is itself the refusal.
 func TestTagEnumDebugNameCoversNoneVariantsAndOutOfSet(t *testing.T) {
 	for _, target := range New().Targets() {
+		claim, known := tagEnumSurface[target]
+		if !known {
+			t.Errorf("target %q has no tag-enum claim here. A new backend landed and this gate was not told", target)
+			continue
+		}
 		text := generatedText(t, tagEnumUnit, target)
-		// the tag names sit between the function's opening line and the
-		// declared enum's own name function, so a whole-output claim is
-		// enough: an absent name is absent everywhere.
-		for _, want := range []string{"Laser", "Missile", "None", "???"} {
-			if !strings.Contains(text, want) {
-				t.Errorf("%s: the tag enum's name function does not name %q", target, want)
+		open := strings.Index(text, claim.nameFunc)
+		if open < 0 {
+			t.Errorf("%s: the tag enum has no name function, %q not emitted", target, claim.nameFunc)
+			continue
+		}
+		rest := text[open:]
+		end := strings.Index(rest, "???")
+		if end < 0 {
+			t.Errorf("%s: the tag enum's name function has no out-of-set arm, \"???\" is absent from its body", target)
+			continue
+		}
+		body := rest[:end]
+		for _, want := range []string{"None", "Laser", "Missile"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s: the tag enum's name function does not name %q in its body:\n%s", target, want, body)
 			}
 		}
 	}

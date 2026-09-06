@@ -551,7 +551,7 @@ func (g *gen) storageDefault(f *ir.Field) string {
 	case ir.ArrayCounted:
 		// a [A..B] count is born at A, the one wire-legal count a fresh
 		// value can carry (SPEC §4.6), so the list is born holding A
-		// elements in their construction form; a [..N] list is born empty
+		// elements in their construction form. A [..N] list is born empty
 		if n := f.BornCount(); n > 0 {
 			return fmt.Sprintf("List.duplicate(%s, %s)", g.scalarDefault(f), intLit64(n))
 		}

@@ -3,13 +3,12 @@
 // walker parses at runtime.
 //
 // Generated storage marks each branch field with the guard that puts it on the
-// wire. The comment used to spell it "if on_radar", nesting with " / " and
-// negating with a trailing " else", so the else side of a branch read "if
-// on_radar else" — which is not a sentence, and says the opposite of what a
-// beginner parses on first read (#447 F-12). The reflection descriptors always
-// carried the right spelling, built by each table backend's guardWalk:
-// "at_rest", "!at_rest", "active && has_target". The comment now spells it the
-// same way, so a reader who compares the two sees one language.
+// wire. The comment spells that guard the way the reflection descriptors spell
+// it, the way each table backend's guardWalk builds it: "at_rest", "!at_rest",
+// "active && has_target". Nesting joins with " && " and the else side negates
+// the condition, so both sides of a branch read as the boolean expression a
+// reader can evaluate. A reader who compares a storage comment against a
+// descriptor sees one language.
 package compiler
 
 import (
@@ -47,8 +46,8 @@ type A
 }
 `
 
-// guardComment is the comment lead each target writes for a guarded field —
-// the text the guard is pasted in front of.
+// guardComment is the comment lead each target writes for a guarded field.
+// It is the text the guard is pasted in front of.
 var guardComment = map[string]string{
 	"c":      "", // C emits no branch storage comment
 	"cpp":    " — wire branch",
@@ -73,7 +72,7 @@ func TestGuardCommentsSpellTheConditionTheWayDescriptorsDo(t *testing.T) {
 	for _, target := range New().Targets() {
 		lead, known := guardComment[target]
 		if !known {
-			t.Errorf("target %q has no guard-comment claim here — a new backend landed and this gate was not told", target)
+			t.Errorf("target %q has no guard-comment claim here. A new backend landed and this gate was not told", target)
 			continue
 		}
 		text := generatedText(t, guardedUnit, target)
