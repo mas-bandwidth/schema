@@ -1333,6 +1333,11 @@ func (g *tableGen) emitRootNodeBody(st *ir.Struct, reachable []*ir.Struct, blobs
 	if !anyVar {
 		g.pf("    (void) nodes; // every node this root can name is a FIXED table\n")
 	}
+	if g.retain && len(reachable) == 0 {
+		// a root whose numbering can name no TABLE record: a blob's bytes carry
+		// no body, so there is nothing under this node for a path to reach
+		g.pf("    (void) retain; (void) node;\n")
+	}
 	g.pf("    switch ( type_id )\n    {\n")
 	for _, t := range reachable {
 		call := fmt.Sprintf("%sLoadBody( r, nodes, *(%s *) at )", t.Name, t.Name)
