@@ -1997,9 +1997,10 @@ func (g *tableGen) unionArmsLambda(un *ir.Union, hoisted bool) string {
 		}
 	}
 	if general {
-		// the rows are emitted through the ONE field-row emitter and captured,
-		// so an arm's descriptor can never drift from a field's
 		saved := g.body.String()
+		// AN ARM'S TAG LIST IS A DECLARATION, so it is emitted BEFORE the row
+		// array and not inside its braced initializer. It is captured
+		// separately for that reason alone.
 		g.body.Reset()
 		for _, v := range un.Variants {
 			if v.Body() || v.Void() {
@@ -2007,6 +2008,10 @@ func (g *tableGen) unionArmsLambda(un *ir.Union, hoisted bool) string {
 			}
 			g.emitTagsStatic(fieldSpelling{owner: un.Name}.tagsName(v.F), v.F.Tags, "static const", "")
 		}
+		tags := oneLine(g.body.String())
+		// the rows are emitted through the ONE field-row emitter and captured,
+		// so an arm's descriptor can never drift from a field's
+		g.body.Reset()
 		for _, v := range un.Variants {
 			if v.Body() || v.Void() {
 				continue
@@ -2016,6 +2021,9 @@ func (g *tableGen) unionArmsLambda(un *ir.Union, hoisted bool) string {
 		rows := oneLine(g.body.String())
 		g.body.Reset()
 		g.body.WriteString(saved)
+		if tags != "" {
+			fmt.Fprintf(&b, " %s", tags)
+		}
 		// the array is named for its UNION: a NESTED-union arm's own rows are
 		// emitted inside this initializer, where this name is already in scope,
 		// so one name for both would shadow (-Wshadow is an error here)

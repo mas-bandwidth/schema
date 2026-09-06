@@ -9465,7 +9465,13 @@ what keeps the comparison a comparison rather than a formatting argument.
 **THE TWO PLACES ONE DECLARATION'S ANNOTATION IS SPELLED TWICE ARE BOTH
 CHECKED HERE, and they are the only two** (§8.1). The general ARM pair: an
 arm whose `field` descriptor and whose `ViewVariant` row disagree about
-either column is a red line. The TYPE pair: every `ViewType`'s `doc` and
+either column is a red line. **The `armdemo` unit's `plain` arm is that
+pair's exhibit**, the one general arm in the corpus carrying a doc comment
+and a tag, so the comparison is between two non-empty spellings rather than
+two empty ones. It is worth having because a general arm's `field`
+descriptor is spelled twice in the C++ reference, once as a lambda-local
+static in the table header and once in the view translation unit, and until
+the exhibit existed neither copy had ever carried an annotation at all. The TYPE pair: every `ViewType`'s `doc` and
 `tags` must equal the `doc` and `tags` on the `TableTypeInfo` its `type`
 points at, string for string and entry for entry. "They agree by
 construction" is a claim a test makes, not one this page makes.
