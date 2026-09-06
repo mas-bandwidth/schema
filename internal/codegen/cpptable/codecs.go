@@ -180,7 +180,7 @@ func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
 			}
 			return f.Type.Name + "::None"
 		case *ir.Flags:
-			return "0"
+			return flagsDefaultExpr(f)
 		}
 	}
 	return "0"
@@ -261,9 +261,15 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		typ = "alignas( 16 ) " + typ
 	}
 	switch {
+	case f.Type.Kind == ir.TString && hasByteDefault(f):
+		g.pf("    char %s[%d + 1] = %s; // string(%d): max length, used length beside it; the declared default\n", f.Name, f.Type.Size, cStringLit(f.DefBytes), f.Type.Size)
+		g.pf("    int32_t %s_length = %d;\n", f.Name, len(f.DefBytes))
 	case f.Type.Kind == ir.TString:
 		g.pf("    char %s[%d + 1] = {}; // string(%d): max length, used length beside it\n", f.Name, f.Type.Size, f.Type.Size)
 		g.pf("    int32_t %s_length = 0;\n", f.Name)
+	case f.Type.Kind == ir.TBytes && hasByteDefault(f):
+		g.pf("    uint8_t %s[%d] = %s; // bytes(%d): fixed buffer, used length beside it; the declared default\n", f.Name, f.Type.Size, byteListLit(f.DefBytes), f.Type.Size)
+		g.pf("    int32_t %s_length = %d;\n", f.Name, len(f.DefBytes))
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    uint8_t %s[%d] = {}; // bytes(%d): fixed buffer, used length beside it\n", f.Name, f.Type.Size, f.Type.Size)
 		g.pf("    int32_t %s_length = 0;\n", f.Name)
@@ -384,6 +390,15 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 	}
 	typ, selfInit := g.cppFieldType(f.Type)
 	switch {
+	case f.Type.Kind == ir.TString && hasByteDefault(f):
+		g.pf("    memset( value.%s, 0, sizeof( value.%s ) );\n", f.Name, f.Name)
+		g.pf("    memcpy( value.%s, %s, %d ); // the declared default\n", f.Name, cStringLit(f.DefBytes), len(f.DefBytes))
+		g.pf("    value.%s_length = %d;\n", f.Name, len(f.DefBytes))
+	case f.Type.Kind == ir.TBytes && hasByteDefault(f):
+		g.emitBytesDefaultLocal(f)
+		g.pf("    memset( value.%s, 0, sizeof( value.%s ) );\n", f.Name, f.Name)
+		g.pf("    memcpy( value.%s, %s_default, %d ); // the declared default\n", f.Name, f.Name, len(f.DefBytes))
+		g.pf("    value.%s_length = %d;\n", f.Name, len(f.DefBytes))
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.pf("    memset( value.%s, 0, sizeof( value.%s ) );\n", f.Name, f.Name)
 		g.pf("    value.%s_length = 0;\n", f.Name)
@@ -549,8 +564,8 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	g.pf("inline bool TableEnumRef( TableIds & ids, %s value, uint64_t & ref )\n{\n", e.Name)
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %s::None: ref = 0; return true;\n", e.Name)
-	for _, v := range e.Variants {
-		g.pf("        case %s::%s: ref = %s; return true;\n", e.Name, v, g.wireRef(ir.TableWireId(v)))
+	for i, v := range e.Variants {
+		g.pf("        case %s::%s: ref = %s; return true;\n", e.Name, v, g.wireRef(ir.TableWireId(e.VariantWireName(i))))
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
@@ -565,15 +580,15 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	g.pf("inline bool TableEnumId( %s value, uint64_t & id )\n{\n", e.Name)
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %s::None: id = 0; return true;\n", e.Name)
-	for _, v := range e.Variants {
-		g.pf("        case %s::%s: id = 0x%016xull; return true;\n", e.Name, v, ir.TableWireId(v))
+	for i, v := range e.Variants {
+		g.pf("        case %s::%s: id = 0x%016xull; return true;\n", e.Name, v, ir.TableWireId(e.VariantWireName(i)))
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
 	g.pf("inline bool TableEnumValue( uint64_t id, %s & out )\n{\n", e.Name)
 	g.pf("    switch ( id )\n    {\n")
-	for _, v := range e.Variants {
-		g.pf("        case 0x%016xull: out = %s::%s; return true;\n", ir.TableWireId(v), e.Name, v)
+	for i, v := range e.Variants {
+		g.pf("        case 0x%016xull: out = %s::%s; return true;\n", ir.TableWireId(e.VariantWireName(i)), e.Name, v)
 	}
 	g.pf("        default: return false; // an id this build cannot name\n")
 	g.pf("    }\n}\n")
@@ -854,10 +869,11 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        }\n    }\n")
 	case f.Type.Kind == ir.TString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
-		g.pf("    if ( value.%s_length > 0 ) { bytes += %s + %s; } // %s\n", f.Name, g.hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
+		g.pf("    if ( %s ) { bytes += %s + %s; } // %s\n", g.lengthRidesTest(f), g.hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
-		g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
+		g.emitBytesDefaultLocal(f)
+		g.pf("    if ( %s )\n    {\n", g.lengthRidesTest(f))
 		g.pf("        const int64_t body_%s = 1 + TableLebBytes( (uint64_t) value.%s_length ) + value.%s_length;\n", f.Name, f.Name, f.Name)
 		g.pf("        bytes += %s + %s; // %s\n", g.hdrBytes(id), framed("body_"+f.Name), f.Name)
 		g.pf("    }\n")
@@ -942,7 +958,7 @@ func (g *tableGen) emitUnionPayloadMeasure(f *ir.Field, expr, into, ind, sfx str
 		g.noteRef(v.Type)
 		g.pf("%s    case %sType::%s:\n%s    {\n", ind, un.Name, ir.GoExportName(v.Name), ind)
 		g.pf("%s        int64_t %s = 0;\n", ind, body)
-		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.Name)))
+		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.WireName())))
 		g.emitArmMeasure(v, expr, body, ind+"        ", "return -1;", sfx)
 		g.pf("%s        %s += TableLebBytes( arm_ref%s ) + 1 + %s;\n", ind, into, sfx, framed(body))
 		g.pf("%s        break;\n%s    }\n", ind, ind)
@@ -1262,13 +1278,14 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        }\n    }\n")
 	case f.Type.Kind == ir.TString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
-		g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
+		g.pf("    if ( %s )\n    {\n", g.lengthRidesTest(f))
 		g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", g.wireRef(id), tkString, f.Name)
 		g.pf("        w.putleb( (uint64_t) value.%s_length );\n", f.Name)
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
-		g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
+		g.emitBytesDefaultLocal(f)
+		g.pf("    if ( %s )\n    {\n", g.lengthRidesTest(f))
 		g.pf("        const int64_t body_%s = 1 + TableLebBytes( (uint64_t) value.%s_length ) + value.%s_length;\n", f.Name, f.Name, f.Name)
 		g.pf("        w.putleb( %s ); w.put8( %d ); // %s\n", g.wireRef(id), tkArray, f.Name)
 		g.pf("        w.putleb( (uint64_t) body_%s );\n", f.Name)
@@ -1358,7 +1375,7 @@ func (g *tableGen) emitUnionPayloadSave(f *ir.Field, expr, ind, onBad, sfx strin
 	for _, v := range un.Variants {
 		g.noteRef(v.Type)
 		g.pf("%s    case %sType::%s:\n%s    {\n", ind, un.Name, ir.GoExportName(v.Name), ind)
-		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.Name)))
+		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.WireName())))
 		g.pf("%s        int64_t %s = 0;\n", ind, body)
 		g.emitArmMeasure(v, expr, body, ind+"        ", onBad, sfx)
 		g.pf("%s        w.putleb( arm_ref%s ); w.put8( %d ); w.putleb( (uint64_t) %s ); // %s\n", ind, sfx, armWireKind(v), body, v.Name)
@@ -1571,7 +1588,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 // of the reference it frames, and anything else is that arm's own framing
 // damage (§3).
 func (g *tableGen) emitNodeIndexLoad(f *ir.Field, dst, ind, rdr, onBad, sfx string, exact bool) {
-	target := fmt.Sprintf("0x%016xull", ir.TableWireId(f.Type.Name))
+	target := fmt.Sprintf("0x%016xull", ir.TableWireId(ir.PointeeWireName(f)))
 	comment := "*" + f.Type.Name
 	if f.Type.Blob() {
 		target = blobTypeIdConst(f)
@@ -1733,7 +1750,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );\n", ind, ind)
 		g.pf("%s    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n%s    {\n", ind, ind)
 		for _, v := range un.Variants {
-			g.pf("%s        case 0x%016xull: // %s\n%s        {\n", ind, ir.TableWireId(v.Name), v.Name, ind)
+			g.pf("%s        case 0x%016xull: // %s\n%s        {\n", ind, ir.TableWireId(v.WireName()), v.Name, ind)
 			g.pf("%s            if ( arm_kind != %d )\n%s            {\n", ind, armWireKind(v), ind)
 			g.pf("%s                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the\n", ind)
 			g.pf("%s                // arm skips by L, the union reads None, and the parent reads on\n", ind)
@@ -1809,7 +1826,7 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 		g.pf("%s        TableReader elem_arm%s( %s.buffer + %s.offset, (int64_t) %s, r.report, r.ids );\n", ind, sfx, rdr, rdr, length)
 		g.pf("%s        switch ( %s ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n%s        {\n", ind, id, ind)
 		for _, v := range un.Variants {
-			g.pf("%s            case 0x%016xull: // %s\n%s            {\n", ind, ir.TableWireId(v.Name), v.Name, ind)
+			g.pf("%s            case 0x%016xull: // %s\n%s            {\n", ind, ir.TableWireId(v.WireName()), v.Name, ind)
 			g.pf("%s                if ( %s != %d ) { %s.type = %sType::None; r.report->kind_mismatch++; break; }\n", ind, armKind, armWireKind(v), dst, un.Name)
 			g.pf("%s                %s.type = %sType::%s;\n", ind, dst, un.Name, ir.GoExportName(v.Name))
 			g.emitArmLoad(v, dst, ind+"                ", "elem_arm"+sfx, dst+".type", un.Name+"Type::None", sfx+"a")
@@ -2314,7 +2331,7 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 				return fmt.Sprintf("\"%s\"", v.Name)
 			}, "\"???\"", "\"None\"")
 			variantId = unionArmLambda(ref, "uint64_t", func(v ir.UnionVariant) string {
-				return fmt.Sprintf("0x%016xull", ir.TableWireId(v.Name))
+				return fmt.Sprintf("0x%016xull", ir.TableWireId(v.WireName()))
 			}, "0", "0")
 			arms = g.unionArmsLambda(ref, hoisted)
 			for _, v := range ref.Variants {
@@ -2373,4 +2390,91 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, fracBits, wide, enumMax, enumName, variantId,
 		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)))
+}
+
+// ---- string, bytes and flags defaults (SPEC §4.2) ----
+//
+// A string(N) or bytes(N) field may declare the bytes a fresh value holds,
+// and a flags field the mask. The storage initializer, Reset and the writer's
+// elision compare all read the same bytes, so a field holding its default is
+// elided exactly as a scalar at its default is, and an absent field reads as
+// it (docs/SPEC-TABLES.md §4). A field with no default keeps the empty and
+// zero forms it always had, emitted by the same lines as before.
+
+// cStringLit renders bytes as a C++ string literal: printable ASCII as
+// itself, a quote and a backslash escaped, and every other byte as a
+// three-digit octal escape, which no following digit can extend.
+func cStringLit(b []byte) string {
+	var sb strings.Builder
+	sb.WriteByte('"')
+	for _, c := range b {
+		switch {
+		case c == '"':
+			sb.WriteString(`\"`)
+		case c == '\\':
+			sb.WriteString(`\\`)
+		case c >= 0x20 && c < 0x7f:
+			sb.WriteByte(c)
+		default:
+			fmt.Fprintf(&sb, "\\%03o", c)
+		}
+	}
+	sb.WriteByte('"')
+	return sb.String()
+}
+
+// byteListLit renders bytes as a braced list of hex octets, the initializer
+// a uint8_t array takes.
+func byteListLit(b []byte) string {
+	parts := make([]string, len(b))
+	for i, c := range b {
+		parts[i] = fmt.Sprintf("0x%02x", c)
+	}
+	return "{ " + strings.Join(parts, ", ") + " }"
+}
+
+// flagsDefaultExpr renders a flags default as the declaration's own masks
+// ored together, `( Perks_Shielded | Perks_Turbo )`, and `0` for the empty
+// set.
+func flagsDefaultExpr(f *ir.Field) string {
+	fl, ok := f.Type.Ref.(*ir.Flags)
+	if !ok || !f.HasDefault || f.DefInt == nil || f.DefInt.Sign() == 0 {
+		return "0"
+	}
+	var names []string
+	for i, v := range fl.Variants {
+		if f.DefInt.Bit(i) == 1 {
+			names = append(names, fl.Name+"_"+v)
+		}
+	}
+	return "( " + strings.Join(names, " | ") + " )"
+}
+
+// lengthRidesTest is the condition under which whether a string or bytes
+// field RIDES: with no default, a non-empty value; with one, a value that is
+// not the default, length and bytes both.
+// hasByteDefault reports a string or bytes default with at least one byte: an
+// empty default is the zero form, and the zero form's lines already say it.
+func hasByteDefault(f *ir.Field) bool {
+	return f.HasDefault && len(f.DefBytes) > 0
+}
+
+func (g *tableGen) lengthRidesTest(f *ir.Field) string {
+	if !hasByteDefault(f) {
+		return fmt.Sprintf("value.%s_length > 0", f.Name)
+	}
+	lit := cStringLit(f.DefBytes)
+	if f.Type.Kind == ir.TBytes {
+		lit = fmt.Sprintf("%s_default", f.Name)
+	}
+	return fmt.Sprintf("!( value.%s_length == %d && memcmp( value.%s, %s, %d ) == 0 )", f.Name, len(f.DefBytes), f.Name, lit, len(f.DefBytes))
+}
+
+// emitBytesDefaultLocal declares the local a bytes default is compared
+// against, ahead of the test that reads it. A string compares against its
+// literal directly.
+func (g *tableGen) emitBytesDefaultLocal(f *ir.Field) {
+	if hasByteDefault(f) && f.Type.Kind == ir.TBytes {
+		g.pf("    static const uint8_t %s_default[%d] = %s;\n", f.Name, len(f.DefBytes), byteListLit(f.DefBytes))
+	}
 }

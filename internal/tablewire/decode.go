@@ -923,7 +923,7 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 	sub := r.sub(length)
 	tag := 0
 	for i, v := range un.Variants {
-		if ir.TableWireId(v.Name) == armID {
+		if ir.TableWireId(v.WireName()) == armID {
 			tag = i + 1
 			break
 		}
@@ -1155,8 +1155,8 @@ func (r *wireReader) scalar(cell *tabletext.Cell, f *ir.Field, atField bool) boo
 // enumValueForId is the declaration-side value an id names, -1 when no variant
 // does.
 func enumValueForId(e *ir.Enum, id uint64) int64 {
-	for i, v := range e.Variants {
-		if ir.TableWireId(v) == id {
+	for i := range e.Variants {
+		if ir.TableWireId(e.VariantWireName(i)) == id {
 			return int64(i + 1)
 		}
 	}

@@ -154,9 +154,9 @@ func main() {
 	// ---- the attribution: one entry per node, in index order ----
 	entry := make([]byte, 16)
 	ord.PutUint64(entry[0:], 0)
-	ord.PutUint64(entry[8:], ir.TableTypeId(root.Name))
+	ord.PutUint64(entry[8:], ir.TableTypeId(root.WireName()))
 	must(w.Write(entry))
-	chainTypeId := ir.TableTypeId(chain.Name)
+	chainTypeId := ir.TableTypeId(chain.WireName())
 	for i := range nodes {
 		ord.PutUint64(entry[0:], uint64(chainBase+i*chainLayout.Size))
 		ord.PutUint64(entry[8:], chainTypeId)

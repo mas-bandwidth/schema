@@ -1,0 +1,45 @@
+package armdemo
+
+// A LIST OF UNIONS WHOSE ARM IS A POINTER (docs/SPEC-TABLES.md §2.6, §2.9,
+// §3.1): an element's set arm is the pointer edge itself, visited where the
+// element sits, so two elements naming one node number it once and a node
+// reached from no other field is still this root's to number, place and cook.
+
+table Node { v int32 }
+
+union Slot
+{
+    node  *Node
+    plain int32
+}
+
+table Ring
+{
+    items []Slot
+    after int32
+}
+
+// A LIST OF UNIONS WHOSE ARM IS AN ARRAY OF POINTERS, and a BOUNDED ARRAY of
+// the same unions (docs/SPEC-TABLES.md §2.6, §3.1): the arm's slot loop runs
+// inside the element loop, so the two indexes are two spellings, and slot k
+// of element i names element i's node and not element k's. Each element's
+// slots hold distinct nodes, so a slot read off the wrong element is a node
+// never numbered.
+
+union Slots
+{
+    many  [..2]*Node
+    plain int32
+}
+
+table Rack
+{
+    items []Slots
+    after int32
+}
+
+table Tray
+{
+    entries [..2]Slots
+    after   int32
+}

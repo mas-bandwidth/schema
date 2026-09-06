@@ -80,7 +80,7 @@ func (n *Node) TypeId() uint64 {
 		}
 		return ir.BytesTypeId
 	}
-	return ir.TableTypeId(n.Def.Name)
+	return ir.TableTypeId(n.Def.WireName())
 }
 
 // Key is the node's identity: the instance or the blob.

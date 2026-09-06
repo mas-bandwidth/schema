@@ -489,6 +489,12 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	typ, isStructType := g.cppFieldType(f.Type)
 
 	switch {
+	case f.Type.Kind == ir.TString && len(f.DefBytes) > 0:
+		// the declared default is the fresh value (SPEC §4.2): storage
+		// initialization and nothing on the packet wire
+		g.pf("    char %s[%s + 1] = %s; // string(%s): max length, used length beside it (SPEC §4.7); the declared default\n",
+			f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), cStringLit(f.DefBytes), ir.RenderExpr(f.Type.SizeExpr))
+		g.pf("    int32_t %s_length = %d;\n", f.Name, len(f.DefBytes))
 	case f.Type.Kind == ir.TString:
 		g.pf("    char %s[%s + 1] = {}; // string(%s): max length, used length beside it (SPEC §4.7)\n",
 			f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
@@ -499,6 +505,10 @@ func (g *gen) emitStorageField(f *ir.Field) {
 		g.pf("    char16_t %s[%s + 1] = {}; // wstring(%s): max length in UTF-16 code units, used length beside it (SPEC §4.12)\n",
 			f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    int32_t %s_length = 0;\n", f.Name)
+	case f.Type.Kind == ir.TBytes && len(f.DefBytes) > 0:
+		g.pf("    uint8_t %s[%s] = %s; // bytes(%s): fixed buffer, used length beside it (SPEC §4.7); the declared default\n",
+			f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), byteListLit(f.DefBytes), ir.RenderExpr(f.Type.SizeExpr))
+		g.pf("    int32_t %s_length = %d;\n", f.Name, len(f.DefBytes))
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    uint8_t %s[%s] = {}; // bytes(%s): fixed buffer, used length beside it (SPEC §4.7)\n",
 			f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
@@ -523,6 +533,8 @@ func (g *gen) initializer(f *ir.Field, typ string, isStructType bool) string {
 			return fmt.Sprintf(" = %v", f.DefBool)
 		case f.DefVariant != "":
 			return fmt.Sprintf(" = %s::%s", f.Type.Name, f.DefVariant)
+		case f.Type.Kind == ir.TNamed:
+			return " = " + flagsDefaultExpr(f) // a flags mask is the one named type with a value default
 		case f.Type.Kind == ir.TFloat32:
 			return " = " + formatFloat(f.DefFloat, true)
 		case f.Type.Kind == ir.TFloat64:
@@ -867,4 +879,53 @@ func formatFloat(v float64, single bool) string {
 
 func formatFloatShort(v float64) string {
 	return strconv.FormatFloat(v, 'g', -1, 64)
+}
+
+// cStringLit renders a string default as a C++ string literal: printable
+// ASCII as itself, a quote and a backslash escaped, and every other byte as a
+// three-digit octal escape, which no following digit can extend (SPEC §4.2).
+func cStringLit(b []byte) string {
+	var sb strings.Builder
+	sb.WriteByte('"')
+	for _, c := range b {
+		switch {
+		case c == '"':
+			sb.WriteString(`\"`)
+		case c == '\\':
+			sb.WriteString(`\\`)
+		case c >= 0x20 && c < 0x7f:
+			sb.WriteByte(c)
+		default:
+			fmt.Fprintf(&sb, "\\%03o", c)
+		}
+	}
+	sb.WriteByte('"')
+	return sb.String()
+}
+
+// byteListLit renders a bytes default as a braced list of hex octets, the
+// initializer a uint8_t array takes (SPEC §4.2).
+func byteListLit(b []byte) string {
+	parts := make([]string, len(b))
+	for i, c := range b {
+		parts[i] = fmt.Sprintf("0x%02x", c)
+	}
+	return "{ " + strings.Join(parts, ", ") + " }"
+}
+
+// flagsDefaultExpr renders a flags default as the declaration's own masks
+// ored together, `( Caps_Jump | Caps_Crouch )`, and `0` for the empty set
+// (SPEC §4.2).
+func flagsDefaultExpr(f *ir.Field) string {
+	fl, ok := f.Type.Ref.(*ir.Flags)
+	if !ok || !f.HasDefault || f.DefInt == nil || f.DefInt.Sign() == 0 {
+		return "0"
+	}
+	var names []string
+	for i, v := range fl.Variants {
+		if f.DefInt.Bit(i) == 1 {
+			names = append(names, fl.Name+"_"+v)
+		}
+	}
+	return "( " + strings.Join(names, " | ") + " )"
 }

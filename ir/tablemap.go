@@ -134,8 +134,13 @@ func MapEntryProjectionName(u *Unit, st *Struct) string {
 // name and print it, so a `was` rename — which moves the generated name and
 // no byte — moves neither the order nor a line.
 func ProjectionMemberName(u *Unit, name string) string {
-	if st := memberStruct(u, name); st != nil && st.MapEntryOf != "" {
-		return MapEntryProjectionName(u, st)
+	if st := memberStruct(u, name); st != nil {
+		if st.MapEntryOf != "" {
+			return MapEntryProjectionName(u, st)
+		}
+		// a table renamed under `was` keeps its line and its place: the name
+		// here is the WIRE name, so the rename moves nothing (§20.4)
+		return st.WireName()
 	}
 	return name
 }

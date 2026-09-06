@@ -5224,6 +5224,13 @@ inline bool LogEntryExtentAt( const Ctx & ctx, const LogEntry & value, int64_t &
     return true;
 }
 
+template <typename Ctx>
+inline int64_t LogEntryExtent( const Ctx & ctx, const LogEntry & value )
+{
+    (void) ctx; (void) value; // no list or map below this record
+    return 0;
+}
+
 // LogEntryExtentPack: carve LogEntry's arrays out of the node's extent and copy the
 // entries in ASCENDING key order and the elements in INDEX order, PRE-ORDER,
 // advancing the same running offset LogEntryExtentAt advances (§2.8, §2.9).
@@ -7861,7 +7868,8 @@ template <typename Ctx> inline bool SaveCookNode( const Ctx & ctx, const TableCo
 {
     if ( !SaveCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return SaveCookExtent( ctx, region, at + 48, extent_at, at, value, order );
+    if ( !SaveCookExtent( ctx, region, at + 48, extent_at, at, value, order ) ) { return false; }
+    return extent_at == SaveExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // PointCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -7877,7 +7885,8 @@ template <typename Ctx> inline bool MixedCookNode( const Ctx & ctx, const TableC
 {
     if ( !MixedCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return MixedCookExtent( ctx, region, at + 64, extent_at, at, value, order );
+    if ( !MixedCookExtent( ctx, region, at + 64, extent_at, at, value, order ) ) { return false; }
+    return extent_at == MixedExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // PlacementCookMeasure: the whole cooked file's bytes — the header, the data part

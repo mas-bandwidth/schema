@@ -134,6 +134,7 @@ func (p *parser) skipDecl() {
 			if depth > 0 {
 				depth--
 			}
+
 		case scanner.Newline:
 			if depth == 0 {
 				p.advance()
@@ -230,7 +231,8 @@ func (p *parser) parseDecl(doc string, docPos ast.Pos, hasDoc bool) {
 		// `table` declares a data type on the evolution-tolerant TABLE wire
 		// (docs/SPEC-TABLES.md): field identity by name hash, unknown fields
 		// skipped, absent fields defaulted. The body grammar is the type
-		// body's; the qualification carries tags (SPEC §4.2). The BLOCK FORM
+		// body's; the qualification carries tags and the `was` rename
+		// (docs/SPEC-TABLES.md §5). The BLOCK FORM
 		// (docs/SPEC-TABLES.md §19) declares nothing at all: every fixed table has
 		// one, emitted on the side, so there is no marker to parse.
 		p.advance()
@@ -334,6 +336,10 @@ func (p *parser) parseVariantList(what string) []ast.Name {
 		}
 		n := ast.Name{Text: t.Text, Pos: t.Pos, Doc: doc}
 		if p.kind() == scanner.Pipe {
+			// A QUALIFIED VARIANT (SPEC §4.2): the section runs to the end of
+			// the line, so the variant ends its line and the newline is its
+			// separator. A trailing comma inside the section is the section's
+			// own, and the list goes on below it.
 			n.Attrs = p.parsePipeAttrs()
 			if p.kind() == scanner.RBrace && p.tok().Pos.Line == t.Pos.Line {
 				p.errf(p.tok().Pos, "a qualified variant ends its own line: write the list one variant per line, with the closing brace on a line of its own (SPEC §4.1)")
@@ -592,9 +598,15 @@ func (p *parser) parseFieldLine(t scanner.Token) ast.Item {
 		if p.kind() == scanner.Assign {
 			// optional specified default: `invulnerable bool = true | local`
 			// — the default DEFINES the fresh value, so it precedes the
-			// qualification (SPEC §4.2)
+			// qualification (SPEC §4.2). A brace list is a FLAGS default,
+			// `caps Caps = { Jump, Crouch }`: the variant names whose bits
+			// the fresh mask holds.
 			p.advance()
-			f.Default = p.parseExpr()
+			if p.kind() == scanner.LBrace {
+				f.Default = p.parseSetLit()
+			} else {
+				f.Default = p.parseExpr()
+			}
 		}
 		if p.kind() == scanner.LBrack {
 			// the RETIRED trailing attribute block (SPEC §4.2) — refuse with
@@ -998,4 +1010,23 @@ func (p *parser) parsePrimary() ast.Expr {
 		p.errf(t.Pos, "expected an expression, found %q", describe(t))
 		return &ast.IntLit{Pos: t.Pos, Value: big.NewInt(0), Text: "0"}
 	}
+}
+
+// parseSetLit reads a FLAGS default, `{ Jump, Crouch }`, from the opening
+// brace (SPEC §4.2): variant names separated by commas, a trailing comma
+// allowed as in a variant list, and the closing brace on the same line. An
+// empty list `{}` is the zero mask, exactly as `= 0` is on an integer.
+func (p *parser) parseSetLit() *ast.SetLit {
+	open := p.expect(scanner.LBrace, "{")
+	lit := &ast.SetLit{Pos: open.Pos}
+	for p.kind() == scanner.Ident {
+		t := p.advance()
+		lit.Names = append(lit.Names, ast.Name{Text: t.Text, Pos: t.Pos})
+		if p.kind() != scanner.Comma {
+			break
+		}
+		p.advance()
+	}
+	p.expect(scanner.RBrace, "}")
+	return lit
 }

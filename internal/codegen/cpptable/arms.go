@@ -360,7 +360,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s        TableReader %s( %s.buffer + %s.offset, (int64_t) %s, r.report, r.ids );\n", ind, inner, rdr, rdr, length)
 		g.pf("%s        switch ( %s ) // the arm's NAME hash (§5)\n%s        {\n", ind, id, ind)
 		for _, in := range un.Variants {
-			g.pf("%s            case 0x%016xull: // %s\n%s            {\n", ind, ir.TableWireId(in.Name), in.Name, ind)
+			g.pf("%s            case 0x%016xull: // %s\n%s            {\n", ind, ir.TableWireId(in.WireName()), in.Name, ind)
 			g.pf("%s                if ( %s != %d ) { %s.type = %sType::None; r.report->kind_mismatch++; break; }\n", ind, innerKind, armWireKind(in), value, un.Name)
 			g.pf("%s                %s.type = %sType::%s;\n", ind, value, un.Name, ir.GoExportName(in.Name))
 			g.emitArmLoad(in, value, ind+"                ", inner, value+".type", un.Name+"Type::None", sfx+"a")
@@ -383,9 +383,16 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 // same bytes in a text, a cook image and a block row as they are in the
 // engine's own model. Only the arms whose payload can leave a tail take it;
 // a fixed-width arm writes its storage whole.
+//
+// It is a memset and not `= {}` because the PADDING is part of the storage a
+// cook image and a block row carry, and value-initialization leaves padding
+// alone. The address is cast to `void *` so a pointer arm's slots take it too:
+// `TableRef` has a default member initializer, which makes it non-trivial to
+// DEFAULT-CONSTRUCT while leaving it trivially copyable, and gcc's
+// -Wclass-memaccess reads only the first of those.
 func (g *tableGen) establishArm(v ir.UnionVariant, base, ind string) {
 	// the WHOLE of the arm's storage: the unnamed struct where the arm carries
 	// a companion, the member itself where it does not
 	storage := base + "." + v.Name
-	g.pf("%smemset( &%s, 0, sizeof( %s ) ); // selection establishes the arm (§2.6)\n", ind, storage, storage)
+	g.pf("%smemset( (void *) &%s, 0, sizeof( %s ) ); // selection establishes the arm (§2.6)\n", ind, storage, storage)
 }

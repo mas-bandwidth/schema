@@ -1,0 +1,31 @@
+package armdemo
+
+// A UNION ARM THAT IS ANOTHER UNION whose arm holds a list (docs/SPEC-TABLES.md
+// §2.6, §2.9): the question "does this arm reach a container" is asked one
+// level in, exactly as the pointer walk asks it, so the leaf's list is placed,
+// copied, summed and cooked through two tags.
+
+union Inner
+{
+    leaf  Leaf
+    plain int32
+}
+
+union Outer
+{
+    inner Inner
+    plain int32
+}
+
+// the checker admits a table arm only in a union some table's field names, so
+// Inner is held here as well as through Outer's arm
+table Twig
+{
+    inner Inner
+}
+
+table Nest
+{
+    outer Outer
+    tail  []int32
+}

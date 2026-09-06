@@ -3957,6 +3957,13 @@ inline bool PhotoExtentAt( const Ctx & ctx, const Photo & value, int64_t & at )
     return true;
 }
 
+template <typename Ctx>
+inline int64_t PhotoExtent( const Ctx & ctx, const Photo & value )
+{
+    (void) ctx; (void) value; // no list or map below this record
+    return 0;
+}
+
 // PhotoExtentPack: carve Photo's arrays out of the node's extent and copy the
 // entries in ASCENDING key order and the elements in INDEX order, PRE-ORDER,
 // advancing the same running offset PhotoExtentAt advances (§2.8, §2.9).
@@ -5221,7 +5228,8 @@ template <typename Ctx> inline bool AlbumCookNode( const Ctx & ctx, const TableC
 {
     if ( !AlbumCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return AlbumCookExtent( ctx, region, at + 24, extent_at, at, value, order );
+    if ( !AlbumCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
+    return extent_at == AlbumExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // PhotoCookMeasure: the whole cooked file's bytes — the header, the data part

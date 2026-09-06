@@ -56,6 +56,10 @@
 #include "Scalars2Table.h"
 #include "BackendTable.h"
 #include "VocabTable.h"
+#include "W1Table.h"
+#include "W2Table.h"
+#include "R1Table.h"
+#include "R2Table.h"
 
 struct Reply
 {
@@ -278,6 +282,8 @@ static const Codec codecs[] = {
     FIXED( "tbla2", tbla2, Root ),
     FIXED( "scalars", scalardemo, SimState ),
     FIXED( "tblscalars2", scalardemo2, SimState ),
+    FIXED( "tblr1", tblr1, Cfg ),
+    FIXED( "tblr2", tblr2, Cfg ),
     // the MESSAGE FORM's units in the FILE form (docs/SPEC-TABLES.md §3.3):
     // their file-form vectors are ordinary instances and are fuzzed as any
     // instance is, and the message form's own entries are below
@@ -289,6 +295,8 @@ static const Codec codecs[] = {
     VARIABLE( "graphdemo", graphdemo, Scene ),
     VARIABLE( "tblp2", tblp2, Chain ),
     VARIABLE( "streamdemo", streamdemo, Feed ),
+    VARIABLE( "tblw1", tblw1, Fleet ),
+    VARIABLE( "tblw2", tblw2, Fleet ),
     // and the same roots under the MESSAGE form (docs/SPEC-TABLES.md §3.3),
     // one entry per message the corpus pins
     MESSAGE( "backenddemo", backenddemo, LoginRequest ),

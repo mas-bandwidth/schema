@@ -202,8 +202,8 @@ func TableWireIdCapacity(u *Unit) int {
 			ids[MapValueWireId] = true
 		}
 		if f.KeyEnumRef != nil {
-			for _, v := range f.KeyEnumRef.Variants {
-				ids[TableWireId(v)] = true
+			for i := range f.KeyEnumRef.Variants {
+				ids[TableWireId(f.KeyEnumRef.VariantWireName(i))] = true
 			}
 		}
 		if f.Type.Kind != TNamed {
@@ -211,8 +211,8 @@ func TableWireIdCapacity(u *Unit) int {
 		}
 		switch ref := f.Type.Ref.(type) {
 		case *Enum:
-			for _, v := range ref.Variants {
-				ids[TableWireId(v)] = true
+			for i := range ref.Variants {
+				ids[TableWireId(ref.VariantWireName(i))] = true
 			}
 		case *Union:
 			noteUnion(ref)
@@ -225,14 +225,13 @@ func TableWireIdCapacity(u *Unit) int {
 		}
 		seen[un] = true
 		for _, v := range un.Variants {
-			ids[TableWireId(v.Name)] = true
+			ids[TableWireId(v.WireName())] = true
 			if v.F != nil {
 				noteField(v.F)
 			}
 		}
 	}
 	for name := range TableClosure(u) {
-		ids[TableWireId(name)] = true
 		st := u.Tables[name]
 		if st == nil {
 			st = u.Structs[name]
@@ -240,6 +239,7 @@ func TableWireIdCapacity(u *Unit) int {
 		if st == nil {
 			continue
 		}
+		ids[TableWireId(st.WireName())] = true
 		for _, f := range st.Fields {
 			noteField(f)
 		}
@@ -331,8 +331,8 @@ func TableVocabulary(u *Unit) []uint64 {
 	}
 	collectArmRefs(enums, flags, unions)
 	for _, name := range sortedKeysOf(enums) {
-		for _, v := range enums[name].Variants {
-			place(TableWireId(v))
+		for i := range enums[name].Variants {
+			place(TableWireId(enums[name].VariantWireName(i)))
 		}
 	}
 	// A `flags` DECLARATION NAMES NOTHING ON THIS WIRE: a mask rides raw, so
@@ -341,7 +341,7 @@ func TableVocabulary(u *Unit) []uint64 {
 	// the enums and the unions.
 	for _, name := range sortedKeysOf(unions) {
 		for _, v := range unions[name].Variants {
-			place(TableWireId(v.Name))
+			place(TableWireId(v.WireName()))
 		}
 	}
 
@@ -361,7 +361,7 @@ func TableVocabulary(u *Unit) []uint64 {
 		if u.Tables[name] == nil {
 			continue // a `type` in the closure is nested by value and never pointed at
 		}
-		place(TableWireId(name))
+		place(TableWireId(u.Tables[name].WireName()))
 	}
 	return ids
 }

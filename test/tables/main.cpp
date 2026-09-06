@@ -41,6 +41,10 @@
 #include "K1Table.h"
 #include "K2Table.h"
 #include "G1Table.h"
+#include "W1Table.h"
+#include "W2Table.h"
+#include "R1Table.h"
+#include "R2Table.h"
 #include "ScalarsTable.h"
 #include "wirebuilder.h"
 
@@ -8631,6 +8635,227 @@ static void test_blob_golden_reload()
 
 #include "message_form.h"
 
+// ---- the `was` rows: value defaults on the table wire, and a table renamed under was ----
+//
+// docs/SPEC-TABLES.md §5, SPEC §4.2. A string(N), bytes(N) or flags field at its
+// declared default ELIDES, exactly as a scalar at its default does, and an
+// absent one reads as that default. A table renamed under `was` keeps the node
+// type id every stored record carries, so W1's bytes and W2's are one wire.
+
+template <typename Fleet, typename Vessel>
+static void fill_was_fleet( Fleet * root, Vessel * flagship, Vessel * escort )
+{
+    set_string( root->title, root->title_length, "armada" );
+    set_string( flagship->name, flagship->name_length, "Aurora" );
+    flagship->tag[0] = 'z'; flagship->tag[1] = 'z'; flagship->tag[2] = 'q'; flagship->tag_length = 3;
+    flagship->caps = tblw1::Caps_Crouch;
+    set_string( flagship->badge.label, flagship->badge.label_length, "vip" );
+    flagship->hull = 250;
+    // the escort holds every default: its record rides (a set pointer always
+    // does) with an EMPTY body, and its name, tag and caps all elide
+    (void) escort;
+    root->escorts_count = 2;
+}
+
+template <typename NS>
+static int64_t save_was_fleet( uint8_t * buffer, int64_t capacity, bool defaults_only )
+{
+    typename NS::FleetBuilder builder;
+    typename NS::Fleet * root = builder.GetRoot();
+    if ( !defaults_only )
+    {
+        auto flagship = builder.template Alloc<typename NS::Vessel>();
+        auto escort = builder.template Alloc<typename NS::Vessel>();
+        fill_was_fleet<typename NS::Fleet, typename NS::Vessel>( root, &*flagship, &*escort );
+        root->flagship = flagship;
+        root->escorts[0] = escort;
+        root->escorts[1] = flagship; // one node, two slots
+    }
+    CHECK( builder.Lock() );
+    return NS::FleetSave( builder, buffer, capacity );
+}
+
+// tblw2 spells the pointee Ship, so each unit names its own element type
+struct was_w1 { using Fleet = tblw1::Fleet; using Vessel = tblw1::Vessel; using FleetBuilder = tblw1::FleetBuilder;
+    static int64_t FleetSave( const tblw1::FleetBuilder & b, uint8_t * buf, int64_t n ) { return tblw1::FleetSave( b, buf, n ); } };
+struct was_w2 { using Fleet = tblw2::Fleet; using Vessel = tblw2::Ship; using FleetBuilder = tblw2::FleetBuilder;
+    static int64_t FleetSave( const tblw2::FleetBuilder & b, uint8_t * buf, int64_t n ) { return tblw2::FleetSave( b, buf, n ); } };
+
+static void test_was_rows()
+{
+    static uint8_t w1[4096], w2[4096], w1_default[4096];
+    const int64_t n1 = save_was_fleet<was_w1>( w1, sizeof( w1 ), false );
+    const int64_t n2 = save_was_fleet<was_w2>( w2, sizeof( w2 ), false );
+    const int64_t nd = save_was_fleet<was_w1>( w1_default, sizeof( w1_default ), true );
+    CHECK( n1 > 0 && n2 > 0 && nd > 0 );
+
+    // A `was` MOVES NOTHING (docs/SPEC-TABLES.md §5): the renamed unit writes
+    // the old unit's bytes, type id included
+    CHECK( n1 == n2 && memcmp( w1, w2, (size_t) n1 ) == 0 );
+    pin_table_golden( "w1_fleet", w1, n1 );
+    pin_table_golden( "w2_fleet", w2, n2 );
+
+    // EVERYTHING AT ITS DEFAULT ELIDES, the string, bytes and flags defaults
+    // included: a fleet holding nothing but defaults is the empty wire
+    CHECK( nd == empty_wire_bytes );
+    pin_table_golden( "w1_fleet_default", w1_default, nd );
+
+    // and an ABSENT field reads as its declared default, not as empty or zero
+    {
+        const int64_t need = tblw1::FleetLoadMeasure( w1_default, nd );
+        uint8_t * region = (uint8_t *) malloc( (size_t) need );
+        tblw1::TableReport report;
+        const tblw1::Fleet * root = tblw1::FleetLoad( region, need, w1_default, nd, &report );
+        CHECK( root != NULL && !report.malformed && report.unknown == 0 );
+        CHECK( strcmp( root->title, "fleet" ) == 0 && root->title_length == 5 );
+        CHECK( tblw1::VesselAt( root->flagship ) == NULL && root->escorts_count == 0 );
+        CHECK( strcmp( root->home.name, "untitled" ) == 0 && root->home.name_length == 8 );
+        CHECK( root->home.tag_length == 2 && root->home.tag[0] == 'a' && root->home.tag[1] == 'b' );
+        CHECK( root->home.caps == ( tblw1::Caps_Jump | tblw1::Caps_Fly ) );
+        CHECK( strcmp( root->home.badge.label, "new" ) == 0 && root->home.hull == 100 );
+        free( region );
+    }
+
+    // EMPTY IS NOT THE DEFAULT ANY MORE: a string cleared to "" rides, because
+    // absence would read back as "untitled"
+    {
+        tblw1::Vessel v;
+        static uint8_t buf[512];
+        const int64_t at_default = tblw1::VesselSave( v, buf, sizeof( buf ) );
+        CHECK( at_default == empty_wire_bytes );
+        v.name_length = 0; v.name[0] = 0;
+        v.tag_length = 0;
+        v.caps = 0;
+        const int64_t cleared = tblw1::VesselSave( v, buf, sizeof( buf ) );
+        CHECK( cleared > at_default );
+        tblw1::Vessel back;
+        tblw1::TableReport report;
+        CHECK( tblw1::VesselLoad( back, buf, cleared, &report ) && report.unknown == 0 );
+        CHECK( back.name_length == 0 && back.tag_length == 0 && back.caps == 0 );
+    }
+
+    // THE CROSS READ, both directions, in silence: W1's fleet under W2's Ship
+    // and W2's fleet under W1's Vessel, every node named, every value landed
+    {
+        const int64_t need = tblw2::FleetLoadMeasure( w1, n1 );
+        uint8_t * region = (uint8_t *) malloc( (size_t) need );
+        tblw2::TableReport report;
+        const tblw2::Fleet * root = tblw2::FleetLoad( region, need, w1, n1, &report );
+        CHECK( root != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+        const tblw2::Ship * flagship = tblw2::ShipAt( root->flagship );
+        CHECK( flagship != NULL && strcmp( flagship->name, "Aurora" ) == 0 && flagship->hull == 250 );
+        CHECK( flagship->caps == tblw2::Caps_Crouch && flagship->tag_length == 3 && flagship->tag[2] == 'q' );
+        CHECK( strcmp( flagship->badge.label, "vip" ) == 0 );
+        CHECK( root->escorts_count == 2 && tblw2::ShipAt( root->escorts[1] ) == flagship );
+        const tblw2::Ship * escort = tblw2::ShipAt( root->escorts[0] );
+        CHECK( escort != NULL && strcmp( escort->name, "untitled" ) == 0 && escort->caps == ( tblw2::Caps_Jump | tblw2::Caps_Fly ) );
+        static uint8_t again[4096];
+        const int64_t re = tblw2::FleetSave( root, again, sizeof( again ) );
+        CHECK( re == n1 && memcmp( again, w1, (size_t) n1 ) == 0 );
+        free( region );
+    }
+    {
+        const int64_t need = tblw1::FleetLoadMeasure( w2, n2 );
+        uint8_t * region = (uint8_t *) malloc( (size_t) need );
+        tblw1::TableReport report;
+        const tblw1::Fleet * root = tblw1::FleetLoad( region, need, w2, n2, &report );
+        CHECK( root != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+        CHECK( tblw1::VesselAt( root->flagship ) != NULL && strcmp( tblw1::VesselAt( root->flagship )->name, "Aurora" ) == 0 );
+        free( region );
+    }
+}
+
+// ---- the `was` rows, second half: a variant, an arm and a type's field renamed under was ----
+//
+// docs/SPEC-TABLES.md §5. An enum value, a union arm and a field of a type a
+// table reaches by value ride under the hash of their name, so a rename would
+// orphan every stored value, body and field. R2 renames Silver, ward, ping and
+// Buff.multiplier under `was`, and R1's bytes and R2's are one wire.
+
+template <typename NS>
+static int64_t save_wasrows_cfg( uint8_t * buffer, int64_t capacity, bool ping )
+{
+    typename NS::Cfg cfg;
+    cfg.grade = NS::silver;
+    if ( ping )
+    {
+        cfg.effect.type = NS::ping;
+    }
+    else
+    {
+        cfg.effect.type = NS::ward;
+        NS::ward_charge( cfg ) = 2.5f;
+    }
+    NS::buff_multiplier( cfg ) = 1.5f;
+    cfg.grades[0] = NS::silver;
+    cfg.grades[1] = NS::gold;
+    cfg.grades_count = 2;
+    cfg.tally[NS::silver] = 7;
+    return NS::CfgSave( cfg, buffer, capacity );
+}
+
+// each unit spells the renamed names its own way, and the ids are one
+struct wasrows_r1 { using Cfg = tblr1::Cfg;
+    static constexpr tblr1::Grade silver = tblr1::Grade::Silver, gold = tblr1::Grade::Gold;
+    static constexpr tblr1::EffectType ward = tblr1::EffectType::Ward, ping = tblr1::EffectType::Ping;
+    static float & ward_charge( Cfg & c ) { return c.effect.ward.charge; }
+    static float & buff_multiplier( Cfg & c ) { return c.buff.multiplier; }
+    static int64_t CfgSave( const Cfg & c, uint8_t * buf, int64_t n ) { return tblr1::CfgSave( c, buf, n ); } };
+struct wasrows_r2 { using Cfg = tblr2::Cfg;
+    static constexpr tblr2::Grade silver = tblr2::Grade::Argent, gold = tblr2::Grade::Gold;
+    static constexpr tblr2::EffectType ward = tblr2::EffectType::Shield, ping = tblr2::EffectType::Pong;
+    static float & ward_charge( Cfg & c ) { return c.effect.shield.charge; }
+    static float & buff_multiplier( Cfg & c ) { return c.buff.mult; }
+    static int64_t CfgSave( const Cfg & c, uint8_t * buf, int64_t n ) { return tblr2::CfgSave( c, buf, n ); } };
+
+static void test_wasrows_vocabulary()
+{
+    static uint8_t r1[1024], r2[1024], r1_ping[1024];
+    const int64_t n1 = save_wasrows_cfg<wasrows_r1>( r1, sizeof( r1 ), false );
+    const int64_t n2 = save_wasrows_cfg<wasrows_r2>( r2, sizeof( r2 ), false );
+    const int64_t np = save_wasrows_cfg<wasrows_r1>( r1_ping, sizeof( r1_ping ), true );
+    CHECK( n1 > 0 && n2 > 0 && np > 0 );
+
+    // A `was` MOVES NOTHING (docs/SPEC-TABLES.md §5): the renamed unit writes
+    // the old unit's bytes, the variant id, the arm id, the keyed slot's id
+    // and the nested field's id included
+    CHECK( n1 == n2 && memcmp( r1, r2, (size_t) n1 ) == 0 );
+    pin_table_golden( "r1_cfg", r1, n1 );
+    pin_table_golden( "r2_cfg", r2, n2 );
+    pin_table_golden( "r1_ping", r1_ping, np );
+
+    // THE CROSS READ, both directions, in silence: every renamed name lands
+    {
+        tblr2::Cfg out;
+        tblr2::TableReport report;
+        CHECK( tblr2::CfgLoad( out, r1, n1, &report ) );
+        CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.malformed == 0 );
+        CHECK( out.grade == tblr2::Grade::Argent );
+        CHECK( out.effect.type == tblr2::EffectType::Shield && out.effect.shield.charge == 2.5f );
+        CHECK( out.buff.mult == 1.5f );
+        CHECK( out.grades_count == 2 && out.grades[0] == tblr2::Grade::Argent && out.grades[1] == tblr2::Grade::Gold );
+        CHECK( out.tally[tblr2::Grade::Argent] == 7 && out.tally[tblr2::Grade::Gold] == 0 );
+        static uint8_t again[1024];
+        const int64_t re = tblr2::CfgSave( out, again, sizeof( again ) );
+        CHECK( re == n1 && memcmp( again, r1, (size_t) n1 ) == 0 );
+    }
+    {
+        tblr1::Cfg out;
+        tblr1::TableReport report;
+        CHECK( tblr1::CfgLoad( out, r2, n2, &report ) );
+        CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.malformed == 0 );
+        CHECK( out.grade == tblr1::Grade::Silver && out.effect.type == tblr1::EffectType::Ward );
+        CHECK( out.effect.ward.charge == 2.5f && out.buff.multiplier == 1.5f && out.tally[tblr1::Grade::Silver] == 7 );
+    }
+    // the PAYLOAD-FREE arm renamed: ping's id is what pong reads
+    {
+        tblr2::Cfg out;
+        tblr2::TableReport report;
+        CHECK( tblr2::CfgLoad( out, r1_ping, np, &report ) );
+        CHECK( report.unknown == 0 && out.effect.type == tblr2::EffectType::Pong );
+    }
+}
+
 int main()
 {
     test_golden_wire();
@@ -8686,6 +8911,8 @@ int main()
     test_pointer_evolution_new_reader_old_data();
     test_pointer_null_and_empty();
     test_pointer_reflection();
+    test_was_rows();
+    test_wasrows_vocabulary();
 
     test_lock_deterministic_on_dirty_heap();
     test_depth_agrees_through_by_value_nesting();

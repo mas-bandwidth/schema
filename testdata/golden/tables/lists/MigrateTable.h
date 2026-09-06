@@ -5236,7 +5236,8 @@ template <typename Ctx> inline bool UnboundedCookNode( const Ctx & ctx, const Ta
 {
     if ( !UnboundedCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    return UnboundedCookExtent( ctx, region, at + 24, extent_at, at, value, order );
+    if ( !UnboundedCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
+    return extent_at == UnboundedExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // UnitCookMeasure: the whole cooked file's bytes — the header, the data part

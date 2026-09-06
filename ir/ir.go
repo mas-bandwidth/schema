@@ -6,6 +6,7 @@ package ir
 
 import (
 	"math/big"
+	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
 )
@@ -88,10 +89,15 @@ type Const struct {
 // Enum is an `enum` declaration: None = 0 implicit, variants dense from 1
 // (SPEC §4.2).
 type Enum struct {
-	Name        string
-	Variants    []string // implicit None = 0 is not listed; variants pack from 1
+	Name     string
+	Variants []string // implicit None = 0 is not listed; variants pack from 1
+	// Was is each variant's `was = "OldName"` rename alias, parallel to
+	// Variants and "" where none is declared (docs/SPEC-TABLES.md §5): the
+	// variant's table-wire id derives from it instead of the name. See
+	// [Enum.VariantWireName].
+	Was         []string
 	Max         int64    // top wire value: variant count, or the | max = K widening
-	StorageBits int      // 8 / 16 / 32 / 64 — smallest unsigned fitting Max
+	StorageBits int      // 8 / 16 / 32 / 64, the smallest unsigned fitting Max
 	Doc         string   // the declaration's `///` block (SPEC §4.1); "" when none
 	Tags        []string // the declaration's tags, in declared order (SPEC §4.2)
 	// VariantDocs and VariantTags are each variant's own annotation, parallel
@@ -124,7 +130,7 @@ type Union struct {
 	Name        string
 	Variants    []UnionVariant // declared order — the tag order
 	Max         int64          // = len(Variants); the tag wire range is [0, Max]
-	StorageBits int            // 8 / 16 / 32 / 64 — smallest unsigned fitting Max
+	StorageBits int            // 8 / 16 / 32 / 64, the smallest unsigned fitting Max
 	Doc         string         // the declaration's `///` block (SPEC §4.1); "" when none
 	Tags        []string       // the declaration's tags, in declared order (SPEC §4.2)
 }
@@ -133,10 +139,14 @@ type Union struct {
 // docs/SPEC-TABLES.md §2.6): F carries the whole of it — the resolved type,
 // the array shape, the bounds — and is never nil on a checked union.
 type UnionVariant struct {
-	Name string  // declared, field-style lower_snake
-	Type string  // the payload type's name; "" when the arm names no declaration
-	Ref  *Struct // the payload: a `type`, or inside a table closure a `table`; nil otherwise
-	F    *Field  // the arm as a field line
+	Name string // declared, field-style lower_snake
+	// WasName is the arm's `was = "old_name"` rename alias, "" when none is
+	// declared (docs/SPEC-TABLES.md §5): the arm's table-wire id derives from
+	// it instead of Name. On an arm with a payload it is F.WasName too.
+	WasName string
+	Type    string  // the payload type's name; "" when the arm names no declaration
+	Ref     *Struct // the payload: a `type`, or inside a table closure a `table`; nil otherwise
+	F       *Field  // the arm as a field line
 	// Doc and Tags are the arm's own annotation (SPEC §4.1, §4.2). An arm
 	// with a payload carries the same two values on F, since an arm is a
 	// field line, and docs/SPEC-TABLES.md §8.7 checks that they agree.
@@ -224,8 +234,13 @@ type Struct struct {
 	// spelled in a schema: the name is CLAIMED on the declaring table, so a
 	// unit that declares one beside the map is refused.
 	MapEntryOf string
-	Doc        string   // the declaration's `///` block (SPEC §4.1); "" when none
-	Tags       []string // the declaration's tags, in declared order — inert (SPEC §4.2)
+	// WasName is a TABLE's `was = "OldName"` rename alias (docs/SPEC-TABLES.md
+	// §5): the table's node type id derives from this name instead of Name,
+	// so every stored record of the old name still reads as this table.
+	// Tables only; "" when unset. See [Struct.WireName].
+	WasName string
+	Doc     string   // the declaration's `///` block (SPEC §4.1); "" when none
+	Tags    []string // the declaration's tags, in declared order — inert (SPEC §4.2)
 	// C++ native type mapping (SPEC §4.2, Native type mapping): when set,
 	// generated C++ declares fields of this type as ::CppNative (a hand type
 	// deriving from the generated basis struct — same layout, plus behavior)
@@ -237,6 +252,17 @@ type Struct struct {
 	CppInclude string
 	Fields     []*Field // flattened; branch fields carry Guard — storage emission
 	Items      []Item   // the wire tree: fields and branches in wire order — function emission
+}
+
+// WireName is the name a table's NODE TYPE ID is the hash of
+// (docs/SPEC-TABLES.md §3.1, §5): the `was` alias after a rename, so identity
+// survives it, and the declared name otherwise. Every id derivation over a
+// table reads this and never Name.
+func (st *Struct) WireName() string {
+	if st.WasName != "" {
+		return st.WasName
+	}
+	return st.Name
 }
 
 // Item is one wire-ordered element of a struct body: a field, an if branch
@@ -360,9 +386,10 @@ type Field struct {
 	// specified default overrides it)
 	HasDefault bool
 	DefBool    bool
-	DefInt     *big.Int
+	DefInt     *big.Int // integers, bits, a fixed field's RAW value, and a FLAGS field's mask
 	DefFloat   float64
 	DefVariant string // enum-typed field: the defaulted variant name
+	DefBytes   []byte // string(N) / bytes(N): the fresh value's bytes, at most N of them (SPEC §4.2)
 	DefExpr    Expr   // for symbolic rendering
 
 	// resolved wire refinements
@@ -518,4 +545,119 @@ func StorageBitsFor(max int64) int {
 	default:
 		return 64
 	}
+}
+
+// ValueDefaultFields names every field of the unit that carries a string,
+// bytes or flags default (SPEC §4.2), as `Decl.field`, sorted: the packet
+// types, the tables, and the generated map entries alike. It is what a target
+// without the form refuses by name.
+func ValueDefaultFields(u *Unit) []string {
+	var out []string
+	note := func(owner string, fields []*Field) {
+		for _, f := range fields {
+			if !f.HasDefault {
+				continue
+			}
+			_, flags := f.Type.Ref.(*Flags)
+			if f.Type.Kind == TString || f.Type.Kind == TBytes || flags {
+				out = append(out, owner+"."+f.Name)
+			}
+		}
+	}
+	for name, st := range u.Structs {
+		note(name, st.Fields)
+	}
+	for name, st := range u.Tables {
+		note(name, st.Fields)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// PointeeWireName is the name a field's REFERENT rides under on the table
+// wire: a table's [Struct.WireName], which is its `was` alias after a rename,
+// and the declared type name for every field whose referent is not a
+// declared struct, a byte buffer's reserved word included.
+func PointeeWireName(f *Field) string {
+	if st, ok := f.Type.Ref.(*Struct); ok && st != nil {
+		return st.WireName()
+	}
+	return f.Type.Name
+}
+
+// VariantWireName is the name variant i's table-wire id is the hash of
+// (docs/SPEC-TABLES.md §5): its `was` alias after a rename, and its declared
+// name otherwise.
+func (e *Enum) VariantWireName(i int) string {
+	if i < len(e.Was) && e.Was[i] != "" {
+		return e.Was[i]
+	}
+	return e.Variants[i]
+}
+
+// VariantWireNameOf is [Enum.VariantWireName] by declared name, and the name
+// itself when the enum declares no such variant.
+func (e *Enum) VariantWireNameOf(name string) string {
+	for i, v := range e.Variants {
+		if v == name {
+			return e.VariantWireName(i)
+		}
+	}
+	return name
+}
+
+// WireName is the name the arm's table-wire id is the hash of
+// (docs/SPEC-TABLES.md §5): its `was` alias after a rename, and its declared
+// name otherwise.
+func (v UnionVariant) WireName() string {
+	if v.WasName != "" {
+		return v.WasName
+	}
+	return v.Name
+}
+
+// TableFieldWireName is the name a field's table-wire id is the hash of
+// (docs/SPEC-TABLES.md §5): the `was` alias after a rename, else the name.
+func TableFieldWireName(f *Field) string {
+	if f.WasName != "" {
+		return f.WasName
+	}
+	return f.Name
+}
+
+// WasRows names every `was` a unit declares on an enum variant, a union arm,
+// or a field of a `type` (docs/SPEC-TABLES.md §5), as `Decl.name`, sorted. A
+// table's own fields and a table declaration are not listed: those two rows
+// every target carries. It is what a target without the form refuses by name.
+func WasRows(u *Unit) []string {
+	var out []string
+	for name, e := range u.Enums {
+		for i, w := range e.Was {
+			if w != "" {
+				out = append(out, name+"."+e.Variants[i])
+			}
+		}
+	}
+	note := func(name string, un *Union) {
+		for _, v := range un.Variants {
+			if v.WasName != "" {
+				out = append(out, name+"."+v.Name)
+			}
+		}
+	}
+	for name, un := range u.Unions {
+		note(name, un)
+	}
+	for name, un := range u.TableUnions {
+		note(name, un)
+	}
+	for name, st := range u.Structs {
+		for _, f := range st.Fields {
+			if f.WasName != "" {
+				out = append(out, name+"."+f.Name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }

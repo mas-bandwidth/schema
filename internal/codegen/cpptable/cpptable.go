@@ -548,7 +548,7 @@ struct TableWideRange
 // unit no string data and a printer concatenates doc columns with no null
 // test. One definition for the whole unit: every absent doc compares equal by
 // address.
-inline constexpr char TableDocNone[1] = "";
+inline const char TableDocNone[1] = "";
 
 ` + pointerForward + `struct TableFieldInfo
 {
