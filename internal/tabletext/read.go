@@ -342,7 +342,11 @@ func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
 				unit = encodeUTF8(0xfffd)
 			}
 		}
-		if capacity >= 0 && len(out)+len(unit) > capacity {
+		// A CLAMP IS A PREFIX. Once one code point does not fit, the scan stops
+		// placing: a later SHORTER code point sliding into the room the long one
+		// left would store a string the input never spelled, and one `clamped`
+		// count cannot tell the two apart.
+		if clamped || (capacity >= 0 && len(out)+len(unit) > capacity) {
 			clamped = true
 			continue
 		}
@@ -1229,88 +1233,33 @@ func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool)
 // (docs/SPEC-TABLES.md §16.2).
 func (in *reader) placeInteger(cell *Cell, f *ir.Field, token string, integral bool, kind int) bool {
 	signed := kind >= ir.TableKindI8 && kind <= ir.TableKindI64
-	var value int64
-	var saturated bool
-	if integral {
-		value, saturated = tokenInteger(token, signed)
-	} else {
-		d, err := strconv.ParseFloat(token, 64)
-		if err != nil && !errors.Is(err, strconv.ErrRange) {
-			in.bad = true
-			return false
-		}
-		if math.IsInf(d, 0) || math.IsNaN(d) {
-			in.report.KindMismatch++
-			return true
-		}
-		switch {
-		case signed && d >= 9223372036854775808.0:
-			value, saturated = math.MaxInt64, true
-		case signed && d < -9223372036854775808.0:
-			value, saturated = math.MinInt64, true
-		case signed:
-			if d != float64(int64(d)) {
-				in.report.KindMismatch++
-				return true
-			}
-			value = int64(d)
-		case d < 0.0:
-			// a negative for an unsigned field clamps to zero, as the exact
-			// digit path already does
-			if d != float64(int64(d)) {
-				in.report.KindMismatch++
-				return true
-			}
-			value, saturated = 0, true
-		case d >= 18446744073709551616.0:
-			value, saturated = -1, true // UINT64_MAX in the int64 both sides carry it in
-		default:
-			if d != float64(uint64(d)) {
-				in.report.KindMismatch++
-				return true
-			}
-			value = int64(uint64(d))
-		}
+	number := interpretInteger(token, integral)
+	if !number.finite || number.fractional {
+		in.report.KindMismatch++
+		return true
 	}
-	if saturated {
-		in.report.Clamped++
+	if number.saturated {
+		in.report.Clamped++ // past what sixty-four bits hold
 	}
+	// THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
+	// so a text and a wire loaded from the same data land the same instance.
+	bounded := number
 	lo, hi, implied := ImpliedRange(f)
 	if f.HasIntRange {
 		lo, hi, implied = bigToFloat(f.IntMin), bigToFloat(f.IntMax), true
 	}
 	if implied {
-		if float64(value) < lo {
-			value = int64(lo)
+		if scale := number.scale(); scale < lo {
+			bounded = integerOf(lo)
 			in.report.Clamped++
-		} else if float64(value) > hi {
-			value = int64(hi)
+		} else if scale > hi {
+			bounded = integerOf(hi)
 			in.report.Clamped++
 		}
 	}
-	// the field's own storage width is the last bound: a value past it clamps
-	// rather than wrapping, which is what the wire does too
-	if w := StorageBytes(f); w > 0 && w < 8 {
-		if signed {
-			high := int64(1)<<(w*8-1) - 1
-			low := -high - 1
-			if value > high {
-				value = high
-				in.report.Clamped++
-			} else if value < low {
-				value = low
-				in.report.Clamped++
-			}
-		} else {
-			high := uint64(1)<<(w*8) - 1
-			if value < 0 {
-				value = 0
-				in.report.Clamped++
-			} else if uint64(value) > high {
-				value = int64(high)
-				in.report.Clamped++
-			}
-		}
+	value, moved := integerInDomain(bounded, signed, StorageBytes(f))
+	if moved {
+		in.report.Clamped++
 	}
 	cell.I = value
 	cell.U = uint64(value)
@@ -1480,49 +1429,147 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 // tokenInteger converts a token digit by digit so no width and no locale can
 // move it. Saturation is reported as a clamp, the wire's rule for a value
 // outside what the reader can hold (§4).
-func tokenInteger(token string, signed bool) (int64, bool) {
-	i := 0
-	negative := false
-	if i < len(token) && (token[i] == '-' || token[i] == '+') {
-		negative = token[i] == '-'
-		i++
-	}
-	var magnitude uint64
-	over := false
-	for ; i < len(token); i++ {
-		digit := uint64(token[i] - '0')
-		if magnitude > (math.MaxUint64-digit)/10 {
-			over = true
-			break
+// ---- ONE CHECKED NUMERIC INTERPRETATION (docs/SPEC-TABLES.md §16.2) ----
+//
+// JSON HAS ONE NUMBER TYPE, so every integer target reads a token the same way
+// and the VALUE decides rather than the spelling: 2, 2.0 and 1e3 are the
+// integers 2, 2 and 1000. What comes out of a token is a SIGN, a MAGNITUDE and
+// a STATUS, and nothing on the way is cast through a type that cannot hold what
+// it is handed. A uint64 magnitude past MaxInt64 is a magnitude and never a
+// negative, and a float64 is consulted only for a spelling the digit path
+// cannot read exactly.
+//
+// TWO POLICIES SIT ON TOP OF THE ONE VALUE and neither reinterprets the token:
+// an ordinary FIELD clamps to its domain and counts, and a MAP KEY rejects the
+// whole entry, because a key is an identity and a clamped one is two entries
+// merged. That difference is the only difference between them.
+type jsonInteger struct {
+	magnitude  uint64 // |value|, exact for every integral token 64 bits hold
+	negative   bool
+	fractional bool // a genuinely fractional VALUE: the wrong shape for an integer
+	saturated  bool // a magnitude past what 64 bits hold, held at that edge
+	finite     bool // false: no integer target holds it at all
+}
+
+// interpretInteger reads the token digit by digit so no width and no locale can
+// move it, and goes through a float64 only where the spelling carries a fraction
+// or an exponent.
+func interpretInteger(token string, integral bool) jsonInteger {
+	out := jsonInteger{finite: true}
+	if integral {
+		i := 0
+		if i < len(token) && token[i] == '-' { // walkNumber refuses a leading plus
+			out.negative = true
+			i++
 		}
-		magnitude = magnitude*10 + digit
-	}
-	if !signed {
-		// -0 IS zero, and clamping it would report an event that did not
-		// happen; only a real negative magnitude is out of range here
-		if negative {
-			return 0, magnitude != 0
+		for ; i < len(token); i++ {
+			digit := uint64(token[i] - '0')
+			if out.magnitude > (math.MaxUint64-digit)/10 {
+				out.magnitude = math.MaxUint64
+				out.saturated = true
+				break
+			}
+			out.magnitude = out.magnitude*10 + digit
 		}
-		if over {
-			// the C++ token parser saturates an unsigned field at UINT64_MAX,
-			// which is -1 in the int64 the two of them carry it in
-			return -1, true
+		if out.magnitude == 0 {
+			out.negative = false // -0 IS zero
 		}
-		return int64(magnitude), false
+		return out
 	}
-	if negative {
-		if over || magnitude > 1<<63 {
-			return math.MinInt64, true
+	d, err := strconv.ParseFloat(token, 64)
+	if (err != nil && !errors.Is(err, strconv.ErrRange)) || math.IsInf(d, 0) || math.IsNaN(d) {
+		out.finite = false
+		return out
+	}
+	out.negative = math.Signbit(d)
+	whole := math.Abs(d)
+	// THE DOMAIN IS ESTABLISHED BEFORE THE CAST: a magnitude past what
+	// sixty-four bits hold is answered here, so no value ever reaches a
+	// conversion that is undefined for it
+	if whole >= 18446744073709551616.0 {
+		out.magnitude = math.MaxUint64
+		out.saturated = true
+		return out
+	}
+	truncated := uint64(whole)
+	if float64(truncated) != whole {
+		out.fractional = true
+		return out
+	}
+	out.magnitude = truncated
+	if out.magnitude == 0 {
+		out.negative = false
+	}
+	return out
+}
+
+// integerOf is a declared range bound as the same value. A bound is inside the
+// field's own domain by construction, so nothing here saturates.
+func integerOf(bound float64) jsonInteger {
+	out := jsonInteger{finite: true, negative: bound < 0}
+	whole := math.Abs(bound)
+	if whole >= 18446744073709551616.0 {
+		out.magnitude = math.MaxUint64
+	} else {
+		out.magnitude = uint64(whole)
+	}
+	if out.magnitude == 0 {
+		out.negative = false
+	}
+	return out
+}
+
+// scale is the value on its OWN number line, for comparing against a declared
+// bound: correctly signed past MaxInt64, where the storage's bit pattern is not
+// a number to compare.
+func (n jsonInteger) scale() float64 {
+	if n.negative {
+		return -float64(n.magnitude)
+	}
+	return float64(n.magnitude)
+}
+
+// integerInDomain is THE TARGET DOMAIN, established before the value reaches
+// storage: `bytes` of storage, signed or not. It answers what the target holds
+// and whether the domain MOVED it. An unsigned magnitude above MaxInt64 rides
+// out as its bit pattern, which is the storage's own image of it and not a
+// negative number.
+func integerInDomain(n jsonInteger, signed bool, bytes int) (int64, bool) {
+	magnitude := n.magnitude
+	moved := false
+	if signed {
+		high := uint64(math.MaxInt64)
+		if bytes < 8 {
+			high = uint64(1)<<(uint(bytes)*8-1) - 1
 		}
-		if magnitude == 1<<63 {
-			return math.MinInt64, false
+		if n.negative {
+			low := high + 1 // the floor's magnitude
+			if magnitude > low {
+				magnitude = low
+				moved = true
+			}
+			return int64(^magnitude + 1), moved // two's complement, MinInt64 included
 		}
-		return -int64(magnitude), false
+		if magnitude > high {
+			magnitude = high
+			moved = true
+		}
+		return int64(magnitude), moved
 	}
-	if over || magnitude > math.MaxInt64 {
-		return math.MaxInt64, true
+	// A NEGATIVE TOKEN IN AN UNSIGNED FIELD CLAMPS TO ZERO, and -0 is zero,
+	// which is why the sign is dropped at a zero magnitude above
+	if n.negative {
+		return 0, true
 	}
-	return int64(magnitude), false
+	high := uint64(math.MaxUint64)
+	if bytes < 8 {
+		high = uint64(1)<<(uint(bytes)*8) - 1
+	}
+	if magnitude > high {
+		magnitude = high
+		moved = true
+	}
+	return int64(magnitude), moved
 }
 
 // bigToFloat renders an IR range bound as the double the descriptors carry, so
@@ -1646,7 +1693,7 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		key, _, ok := in.scanString(maxJsonKey)
+		key, over, ok := in.scanString(maxJsonKey)
 		if !ok {
 			return false
 		}
@@ -1656,10 +1703,38 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 		}
 		in.pos++
 		entry := in.m.New(f.MapEntry)
-		placed := in.placeMapKey(entry, keyField, key)
+		placed := mapKeyPlaced
+		if !over {
+			placed = in.placeMapKey(entry, keyField, key)
+		}
+		if placed == mapKeyMalformed {
+			// A MALFORMED KEY STOPS THE READ where §16.1's rule stops it, with
+			// the instance holding what was placed before the stop.
+			in.report.Malformed = true
+			in.bad = true
+			return false
+		}
 		switch {
-		case !placed:
-			in.report.KindMismatch++ // a key that is not the kind's spelling
+		// A KEY THIS SCAN COULD NOT HOLD WHOLE IS NOT A SHORTER KEY (§2.8):
+		// truncating one there inserts an identity the text never spelled and
+		// merges two keys that share its prefix, so the entry drops instead. A
+		// string key counts `clamped`, the event a key past its bound already
+		// raises. An integer key counts `kind_mismatch`: the bytes kept are a
+		// PREFIX, and a prefix is a different token, so no value is read from
+		// them. The length alone does not settle it, because a token that long
+		// can still spell a number an integer kind holds.
+		case over && MapKeyIsString(f):
+			in.report.Clamped++
+			if !in.skipValue(depth) {
+				return false
+			}
+		case over:
+			in.report.KindMismatch++
+			if !in.skipValue(depth) {
+				return false
+			}
+		case placed == mapKeyMismatch:
+			in.report.KindMismatch++ // a value the key kind does not hold
 			if !in.skipValue(depth) {
 				return false
 			}
@@ -1705,35 +1780,45 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 	return true
 }
 
+// mapKeyStatus is a key's disposition: placed, dropped for the KIND, or a token
+// the number rule calls malformed, which stops the read (docs/SPEC-TABLES.md
+// §2.8, §16.1).
+type mapKeyStatus int
+
+const (
+	mapKeyPlaced mapKeyStatus = iota
+	mapKeyMismatch
+	mapKeyMalformed
+)
+
 // placeMapKey writes the object's key into the entry's `key` field: the bytes
-// for a `string(N)`, and the digits parsed for an integer key. False is a key
-// that is not the declared kind's spelling.
-func (in *reader) placeMapKey(entry *Instance, keyField *ir.Field, key []byte) bool {
+// for a `string(N)`, and for an integer key the ONE interpretation every integer
+// target takes, so "2.0" and "1e3" are the integers 2 and 1000 and "-0" is zero.
+// The KEY's policy over that value is REJECTION and not clamping: a fractional
+// value, or one outside the key kind's range, drops the whole entry, because a
+// key is an identity and a clamped one is two entries merged.
+func (in *reader) placeMapKey(entry *Instance, keyField *ir.Field, key []byte) mapKeyStatus {
 	cell := &entry.Fields[0].Cell
 	if keyField.Type.Kind == ir.TString {
 		cell.Str = key
 		entry.Fields[0].Count = len(key)
-		return true
+		return mapKeyPlaced
 	}
-	text := string(key)
-	if text == "" {
-		return false
+	probe := reader{text: key, report: &Report{}}
+	integral, ok := probe.walkNumber()
+	if !ok || probe.pos != len(key) {
+		return mapKeyMalformed // not a JSON number at all, or not only one
+	}
+	number := interpretInteger(string(key), integral)
+	if !number.finite || number.fractional || number.saturated {
+		return mapKeyMismatch
 	}
 	signed := keyField.Type.Kind == ir.TInt && keyField.Type.Signed
-	if signed {
-		v, err := strconv.ParseInt(text, 10, 64)
-		if err != nil {
-			return false
-		}
-		cell.I = v
-		cell.U = uint64(v)
-		return true
+	value, moved := integerInDomain(number, signed, StorageBytes(keyField))
+	if moved {
+		return mapKeyMismatch // outside the key kind's range
 	}
-	v, err := strconv.ParseUint(text, 10, 64)
-	if err != nil {
-		return false
-	}
-	cell.U = v
-	cell.I = int64(v)
-	return true
+	cell.I = value
+	cell.U = uint64(value)
+	return mapKeyPlaced
 }

@@ -3913,6 +3913,33 @@ static void test_json_hostile_overflow()
         CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.epoch == 18446744073709551615ull && report.clamped == 1 );
     }
+    // A MAGNITUDE IN THE HIGH HALF IS A MAGNITUDE, not a negative (§16.2). It
+    // is the field's own DOMAIN that bounds it, established before the value
+    // reaches storage, so a narrower unsigned field clamps at its CEILING.
+    // Reading the interpreter's own signed lane instead lands zero, the floor,
+    // for a value larger than any this field can hold.
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"badge\": 18446744073709551615, \"experience\": 18446744073709551615 }";
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.badge == 255 );
+        CHECK( value.experience == 4294967295u );
+        CHECK( report.clamped == 2 && report.kind_mismatch == 0 );
+    }
+    // A NEGATIVE TOKEN IN AN UNSIGNED FIELD CLAMPS TO ZERO whatever its
+    // spelling (§16.2): -1e30 is a magnitude past every width and a sign, and
+    // both halves are known before anything is cast. Reading it through a
+    // signed lane makes it the wrong SHAPE for the kind instead, which is the
+    // answer the page gives a fraction and not a negative.
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"experience\": -1e30 }";
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.experience == 0 );
+        CHECK( report.clamped != 0 && report.kind_mismatch == 0 );
+    }
 
     // a DECLARED range clamps before the storage width does
     {
@@ -3957,6 +3984,21 @@ static void test_json_hostile_extents()
         CHECK( tabledemo::RootConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.version_note_length == 16 );
         CHECK( report.clamped == 1 ); // the trailing X did not fit
+    }
+    {
+        // A CLAMP IS A PREFIX (docs/SPEC-TABLES.md §16.2): once one code point
+        // does not fit, the scan stops placing. A later SHORTER code point must
+        // not slip into the room the long one left, because that would store a
+        // string the input never spelled, "123456789012\xe2\x9c\x93X" out of
+        // "123456789012\xe2\x9c\x93\xe2\x9c\x93X", and the counter alone
+        // cannot tell the two apart.
+        tabledemo::RootConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"version_note\": \"123456789012\xe2\x9c\x93\xe2\x9c\x93X\" }";
+        CHECK( tabledemo::RootConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.version_note_length == 15 );
+        CHECK( strcmp( value.version_note, "123456789012\xe2\x9c\x93" ) == 0 );
+        CHECK( report.clamped == 1 );
     }
 
     // more array elements than the reader's bound: the bounded prefix is kept
