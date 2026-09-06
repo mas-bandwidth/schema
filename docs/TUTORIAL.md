@@ -4966,11 +4966,13 @@ Four errors for one missing `(N)`, because the parser keeps trying. Read the
 first. For a buffer whose size is a runtime fact, point at it: `*bytes` and
 `*string` are the Part 7 spellings, in the second unit.
 
-### One thing the specification describes and no backend emits
+### The unit registry, and where it is not yet
 
 SPEC-TABLES §8.3 describes a **unit registry**, `UnitView()`, one entry point
 listing every declaration in the build. The per-table and per-type descriptors
-Part 13 walked are in every target. The unit-wide root is in none:
+Part 13 walked are in every target. The unit-wide root is in C++, for a unit
+that declares a table — this one does, so the pair is right there in the
+listing:
 
 ```
 $ schema generate --lang cpp --out gen --verbose .
@@ -4993,11 +4995,16 @@ wrote gen/RenderTable.h
 wrote gen/RenderWire.h
 wrote gen/Scene.h
 ...
-$ grep -rn UnitView gen/
-$
+wrote gen/StarlightView.cpp
+wrote gen/StarlightView.h
 ```
 
-Build your tool on the per-type descriptors and hold the type list yourself.
+One pair for the whole unit, named for the package. Nothing includes it and
+nothing asks for it: compile `StarlightView.cpp` in a tool and it walks the
+build; leave it out of the game and the binary carries none of it.
+
+The other eight targets have no view file yet. A C++ unit that declares no
+table has neither a registry nor per-type descriptors yet.
 
 ### Where to go next
 

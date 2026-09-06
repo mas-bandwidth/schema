@@ -35,6 +35,10 @@ func TestTableRefusals(t *testing.T) {
 		name string
 		want string
 		src  string
+		// file names the schema file the source is parsed as, for the one
+		// refusal that is about a FILE NAME rather than a declaration
+		// (docs/SPEC-TABLES.md §8.5). Empty means T.schema.
+		file string
 	}{
 		{name: "a type field cannot reference a table", want: "is a table, not a wire type",
 			src: "package t\ntable Tab { x int32 }\ntype P { tab Tab }\n"},
@@ -393,10 +397,23 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { measure int32 }\n"},
 		{name: "a type a table reaches, with a field spelled as a Dart table verb", want: "collides with the generated Dart table verb `toJson`",
 			src: "package t\ntype P { to_json int32 }\ntable Tab { p P }\n"},
+
+		// THE UNIT REGISTRY (docs/SPEC-TABLES.md §8.3, §8.5, §11), three
+		// refusals the view brought and nothing held
+		{name: "a declaration colliding with a unit-scope registry name", want: "generated unit registry",
+			src: "package t\ntype ViewVariant { x int32 }\n"},
+		{name: "a declaration colliding with an out-of-closure type's view descriptor", want: "generated view descriptor",
+			src: "package t\ntable Tab { x int32 }\ntype Orphan { y int32 }\ntype OrphanTableFields { z int32 }\n"},
+		{name: "a schema file named for the unit's view file", want: "the same name as the unit's view file",
+			file: "TView.schema", src: "package t\ntable Tab { x int32 }\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := runUnit(t, map[string]string{"T.schema": tc.src})
+			file := tc.file
+			if file == "" {
+				file = "T.schema"
+			}
+			errs := runUnit(t, map[string]string{file: tc.src})
 			if len(errs) == 0 {
 				t.Fatalf("expected a diagnostic containing %q, got none", tc.want)
 			}

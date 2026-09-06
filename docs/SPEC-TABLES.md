@@ -8822,16 +8822,16 @@ doc comment is not a value. **The pack tree does not see them either**
 tree is ever spelled by a doc or a tag. Documenting and tagging a shipped
 schema is a free edit, and that is the property the open namespace rests on.
 
-**REGISTRY STATUS: the DECLARATION and FIELD columns are emitted, the
-REGISTRY rows are not.** All nine targets carry `doc`, `num_tags` and `tags`
-on `TableFieldInfo` and on `TableTypeInfo`, filled from the `///` block
-(SPEC.md §4.1) and the tags (SPEC.md §4.2) the compiler reads at every
-line kind. What no target emits is the registry itself (§8.3), so an enum
-VARIANT's, a flags BIT's and a record-naming ARM's annotation ride the IR
-and the generated comments and reach no descriptor column. The placement
-rule above names those three, and they land with `UnitView()`. Owed as
-schema#523 ruling 4's registry half, and this line is deleted by the
-implementation PR that lands it.
+**PORT STATUS: every target carries the DECLARATION and FIELD columns; the
+C++ reference carries the REGISTRY rows beside them.** All nine targets carry
+`doc`, `num_tags` and `tags` on `TableFieldInfo` and on `TableTypeInfo`,
+filled from the `///` block (SPEC.md §4.1) and the tags (SPEC.md §4.2) the
+compiler reads at every line kind. An enum VARIANT's, a flags BIT's and a
+record-naming ARM's annotation ride the registry rows the placement rule above
+names, so reaching them means compiling `<Package>View.*` — which the C++
+backend emits and the eight ports do not yet (§8.3). Their users reach a
+variant's, a bit's and a record-naming arm's annotation through the generated
+comments until the view lands in their backend.
 
 **A field carries WHERE IT LIVES, and the spelling is the language's.** C++
 carries an offset and a width, because its storage is one flat struct; a
@@ -8962,15 +8962,16 @@ by **the highest declared BIT INDEX** — not a count, so a walker loops
 union's arms. It carries no per-variant wire id, because a mask's variants
 ride by position and have none (§4); a null id function beside a non-null
 name function is what identifies a flags field, and a `ViewVariant` row for a
-bit carries the reserved id of §3.1 in its `id` column (below).
+bit carries `0` in its `id` column (below).
 
-**AN ID COLUMN SAYS "NO TABLE-WIRE IDENTITY" WITH THE RESERVED ID OF §3.1**,
-one value everywhere a descriptor has no id to give, because at sixty-four
-bits a hash of `0` is an ordinary id a real name can produce (§5) and a
-descriptor that spelled absence as `0` would collide with it. So
-**`key_id( 0 )` is the reserved id**, with `key_name( 0 )` reading `"None"`
-beside it, because the columns are functions of the KEY and `None` is a key
-the enum has. No storage index maps to it (§2.4), so nothing a walker
+**AN ID COLUMN SAYS "NO TABLE-WIRE IDENTITY" WITH `0`**, one value
+everywhere a descriptor has no id to give. `0` is the value no declared name
+folds to, and the wire already reads it that way: `None` rides as the zero
+REFERENCE and names no variant (§3, §3.2), so a tool testing an id against
+`0` tests the same thing on a descriptor column as it does on the wire. So
+**`key_id( 0 )` is `0`**, with `key_name( 0 )` reading `"None"` beside it,
+because the columns are functions of the KEY and `None` is a key the enum
+has. No storage index maps to it (§2.4), so nothing a walker
 enumerates reaches it; the row exists so that a tool holding a key from
 somewhere else, a wire body, a text key or a user's input, can ask about
 `None` and be answered rather than be left to a rule about slot indices.
@@ -9107,9 +9108,9 @@ table closure reaches carries `id = 0` on every variant row** — the
 registry's `ViewVariant.id` (§8.3) and a descriptor's `variant_id()`
 function (§8.1) alike — and **an enum-keyed array whose KEY enum no table
 closure reaches carries `key_id( key )` of `0` for every key**. `0` is the
-reserved id no declared name folds to (§5), and it already spells "no
-table-wire identity here" in the two places the columns state it: a flags
-bit's id, and the `None` key of a keyed array. A vocabulary a closure
+value no declared name folds to (§5), and it already spells "no table-wire
+identity here" in the two places the columns state it: a flags bit's id, and
+the `None` key of a keyed array. A vocabulary a closure
 reaches carries its checked ids exactly as it did before.
 
 **The compiler is unchanged, and is right to be.** Inside a closure it
@@ -9136,13 +9137,12 @@ function per unit, name-first in the unit's own namespace beside
 `ProtocolId` (SPEC §6.1), answering with the set of everything the build
 declared:
 
-**BACKEND STATUS: OWED, not emitted.** `UnitView()` is specified ahead of its
-implementation: no backend emits it in any of the nine targets. It is the
-remaining half of #523 item 4, whose §8.1 descriptor columns have landed, and
-it carries the `doc` and `tags` of an enum variant, a flags bit and a
-record-naming arm, which are the three rows the placement rule of §8.1 puts
-here and nowhere else. The implementation PR that lands it deletes this
-paragraph.
+**PORT STATUS: the C++ reference emits it; the eight ports do not yet.** The
+C++ backend emits the pair for every unit that declares a table, with the
+corpus gate of §8.7 holding its listing to the compiler's own. A TABLE-FREE
+unit's view waits on the type view in the packet backend, which is where the
+descriptors of a unit with no table closure would have to come from; that and
+the eight ports are named follow-ons (§15).
 
 ```cpp
 struct ViewConstant
@@ -9163,9 +9163,9 @@ struct ViewVariant          // one enum variant, one flags bit, one union arm
 {
     uint64_t value;         // an enum's value, a flags BIT INDEX, a union's tag
     const char * name;
-    uint64_t id;            // the table-wire id (§5); the RESERVED id of §3.1
-                            // for a flags bit, and throughout a vocabulary no
-                            // table closure reaches (§8.2)
+    uint64_t id;            // the table-wire id (§5). It is 0 for a flags bit,
+                            // and throughout a vocabulary no table closure
+                            // reaches (§8.2)
     const char * payload_name;      // a union arm's TYPE as declared — a record's
                                     // name, or a general arm's spelling
                                     // ("int32", "string(64)", "*Chunk"); NULL on
@@ -9237,9 +9237,12 @@ const UnitViewInfo * UnitView();
   entry's `type` is the descriptor §8.1 already specifies —
   the properties, their kinds, their bounds and their nested descriptors —
   so walking a declaration's properties is one dereference from the
-  registry.
+  registry. **A map's generated ENTRY TABLE is not a row of either set**: it
+  is claimed rather than declared (§2.8), and the registry lists what the
+  schema said. A tool reaches it the way everything else reaches it, through
+  the map field's own descriptor.
 - **An ENUM lists its NAMED values in order, beside its `max`.** Row 0 is
-  `None`, the reserved id (§5), then the variants in declared order with the
+  `None`, whose id is `0` (§5), then the variants in declared order with the
   wire id each rides under — `0` throughout where no table closure reaches
   the enum, because nothing checked those ids (§8.2). A value inside
   `[0, max]` that no row names is `| max = K` headroom (SPEC §4.2), and a
@@ -9257,8 +9260,8 @@ const UnitViewInfo * UnitView();
   arm is walkable to its bottom. **An arm that names no record carries a
   NULL `payload` and a `field` row instead**, the `TableFieldInfo` a field
   of that type would have, so a walker reads an arm's kind, width, bounds
-  and companions where it reads a field's and nothing about an arm is
-  spelled twice (§8.1). Tag 0 carries no payload and says so with every
+  and companions where it reads a field's, and an arm needs no vocabulary of
+  its own (§8.1). Tag 0 carries no payload and says so with every
   column NULL, and a PAYLOAD-FREE arm (§2.6) does the same, its name and
   its tag being all there is of it.
 - **A CONSTANT carries its name, its declared storage and its folded
@@ -9294,10 +9297,13 @@ const UnitViewInfo * UnitView();
   would be the one artifact in the tree that did. Name order is stable under
   both, it is still one byte comparison for §8.7, and grouping a listing by
   file stays one pass over the `file` column.
-- **It is constant data.** In C++ the whole registry is constant-initialised
-  and `UnitView()` returns its address: a lookup, never a parse, and no
-  mutable state on the surface — the property §8.1 already holds for
-  descriptors, carried up to the unit. In C# the registry is a static
+- **It is IMMUTABLE data, initialized on first use.** In C++ the whole
+  registry is a function-local static and `UnitView()` returns its address:
+  the first call initializes it behind the guard the language emits for one,
+  every call after is a lookup, never a parse, and no mutable state is on the
+  surface. That is the property §8.1 already holds for descriptors, which take
+  the same form, carried up to the unit. The `type` column of a `ViewType`
+  reaches its descriptor through `<Name>TableType()` for the same reason. In C# the registry is a static
   instance on `Schema`, and a `ViewType`'s descriptor is reached through a
   factory rather than held as a value, because C# gives no initialization
   order across a partial class's files and a registry names every
@@ -9438,10 +9444,13 @@ command.
 **A GENERAL ARM's two descriptor columns are in that listing** (§8.1). For
 each arm that names no record the program prints `field` non-NULL beside a
 NULL `payload`, the arm's kind, width and bounds off that descriptor, and
-the value read at the arm's offset from the base of the union's storage. It
-goes red for one reason: an arm whose `field` is NULL, or whose offset does
-not reach the value the compiler's own listing carries, prints a line the
-pin does not have.
+**the OVERLAY: the distance from that arm's offset to the union's payload
+base**, which is `0` on every general arm because every arm overlays. The
+overlay is the observable, and it is one because the two offsets it
+subtracts are spelled in different translation units. The arm row's own
+offset comes from the view file and the payload base from the arms table in
+the table header, so they can disagree, and a moved offset prints a line the
+pin does not have. So does an arm whose `field` is NULL.
 
 **DOC AND TAGS ARE IN THAT LISTING, on every row that has them** (§8.1,
 §8.3). The program prints each declaration's `doc` and its tags in declared
@@ -9459,7 +9468,13 @@ what keeps the comparison a comparison rather than a formatting argument.
 **THE TWO PLACES ONE DECLARATION'S ANNOTATION IS SPELLED TWICE ARE BOTH
 CHECKED HERE, and they are the only two** (§8.1). The general ARM pair: an
 arm whose `field` descriptor and whose `ViewVariant` row disagree about
-either column is a red line. The TYPE pair: every `ViewType`'s `doc` and
+either column is a red line. **The `armdemo` unit's `plain` arm is that
+pair's exhibit**, the one general arm in the corpus carrying a doc comment
+and a tag, so the comparison is between two non-empty spellings rather than
+two empty ones. It is worth having because a general arm's `field`
+descriptor is spelled twice in the C++ reference, once as a lambda-local
+static in the table header and once in the view translation unit, and until
+the exhibit existed neither copy had ever carried an annotation at all. The TYPE pair: every `ViewType`'s `doc` and
 `tags` must equal the `doc` and `tags` on the `TableTypeInfo` its `type`
 points at, string for string and entry for entry. "They agree by
 construction" is a claim a test makes, not one this page makes.
@@ -10027,25 +10042,28 @@ in build version (§20.5).
   the block type and claims nothing at file scope for them.
 
   **THE DESCRIPTOR SURFACE'S CLAIMS ARE TO BE UNCONDITIONAL — every
-  declaration, every unit, tables or not — AND ARE NOT IN FORCE YET.** Every
-  unit is to emit a view file and that file defines the descriptor surface
-  (§8.2), so a name a table-free unit may declare today would collide with
-  its own generated code the day its view is emitted — a legal schema whose
-  generated code does not compile, which is the one defect this whole list
-  exists to prevent. **What ships today claims these names only in a unit
-  that declares a table**: a table-free unit still accepts `type TableReport`
-  and `const TABLE_COOK_MAGIC`, and it must stop doing so BEFORE the first
-  view file is emitted, not after. This paragraph is the obligation, and the
-  gap between it and the checker is stated here rather than left for a port
-  to find. Two sets follow, and both are FRONT-END LAW rather than one
-  target's inventory:
+  declaration, every unit, tables or not — AND ARE IN FORCE ONLY WHERE A VIEW
+  FILE IS EMITTED.** Every unit is to emit a view file and that file defines
+  the descriptor surface (§8.2), so a name a table-free unit may declare today
+  would collide with its own generated code the day its view is emitted — a
+  legal schema whose generated code does not compile, which is the one defect
+  this whole list exists to prevent. **What ships today claims these names
+  only in a unit that declares a table**, which is exactly the set of units
+  the view is emitted for: a table-free unit still accepts `type TableReport`
+  and `const TABLE_COOK_MAGIC`, and it must stop doing so BEFORE its own view
+  file is emitted, not after — which is the follow-on §15 carries beside the
+  emitter that would emit it. This paragraph is the obligation, and the gap
+  between it and the checker is stated here rather than left for a port to
+  find. Two sets follow, and both are FRONT-END LAW rather than one target's
+  inventory:
 
   - **The three per-declaration spellings the descriptors emit** —
     `<Name>TableFields`, `<Name>TableInfo` and `<Name>TableType` — claimed
-    for every declaration in every unit. All three are in the suffix list
-    above and are claimed today only for closure members; the descriptor emission
-    spells all three per declaration, so widening one of them would leave
-    two open.
+    for every declaration in every unit, with `<Name>Reset` beside them, since
+    a viewed type carries its own prefill (§8.2). All four are claimed today
+    for every declaration in a unit that DECLARES A TABLE, which is where the
+    view file is emitted; a table-free unit still accepts them, and must stop
+    on the day its own view is emitted.
   - **The unit-level TABLE-RUNTIME names**, claimed in every unit rather
     than only in a unit that declares a table: the descriptor primitives
     `TableTypeInfo` and `TableFieldInfo` at their head, with
@@ -11051,14 +11069,22 @@ inspects everything in the schema built:
 
 ## 15. Named follow-ons
 
-- **THE UNIT REGISTRY, and the annotation rows only it carries** (§8.3, §8.7).
-  `UnitView()` is specified and no target emits it, so an enum VARIANT's, a
-  flags BIT's and a record-naming ARM's `doc` and `tags` reach the IR and the
-  generated comments and no descriptor column. Landing it lands
-  `ViewConstant`, `ViewVariant`, `ViewVocabulary` and `ViewType` with their
-  three annotation members, the corpus listing gate that byte-compares a
-  generated program's listing against the compiler's own, and the two
-  same-declaration pairs §8.7 checks there.
+- **THE UNIT REGISTRY IN THE EIGHT PORTS** (§8.3, §8.7). The C++ reference
+  emits `UnitView()` and the eight ports do not, so in those eight an enum
+  VARIANT's, a flags BIT's and a record-naming ARM's `doc` and `tags` reach
+  the IR and the generated comments and no descriptor column. What a port
+  lands is `ViewConstant`, `ViewVariant`, `ViewVocabulary` and `ViewType` with
+  their three annotation members, and its own program byte-compared against
+  the same pin — the corpus listing gate and the two same-declaration pairs
+  are written once, against the IR, and every backend answers to them.
+- **THE VIEW OF A TABLE-FREE UNIT** (§8.2, §8.5). The C++ view is emitted by
+  the TABLE backend, so a unit that declares no table gets none — and a
+  packet-only unit's `type` declarations therefore carry no descriptor at all
+  today. Landing it is the type view in the packet backend: the descriptor
+  primitives behind the table headers' own include guard, a descriptor per
+  declared `type`, and the registry over them. It is the same emitter pointed
+  at a unit with no closure, and it belongs with the emitters rather than
+  with this page.
 - **THE GENERATED TAG-LIST NAMES ARE NOT CLAIMED** (§11). A tagged field emits
   a per-row constant named from the declaration and the member, and
   `internal/check`'s generated-verb set does not carry it, so a unit
@@ -11296,8 +11322,8 @@ inspects everything in the schema built:
   compare. It is the same harness pointed at two more directories, and it
   belongs with the emitters rather than with this page, because a snapshot
   taken before the code that could move it is a snapshot of nothing.
-- **The view in a ported backend** — C++ and C# take it together (§8); every
-  other backend emits no view file until it emits the same registry against the
+- **The view in a ported backend** — C++ carries it (§8); every other backend,
+  C# included, emits no view file until it emits the same registry against the
   same pin (§8.7). Nothing is refused meanwhile, because nothing in a schema
   asks for one (§8.4): a backend without the emitter is a backend whose
   users have no registry, and the status paragraph says so.
