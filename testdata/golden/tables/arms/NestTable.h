@@ -4455,6 +4455,29 @@ inline bool TwigLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             {
                                 if ( arm.kind != 4 || arm.elem_kind != 0 )
                                 {
+                                    if ( TableKindWidens( arm.kind, 4 ) )
+                                    {
+                                        value.inner.type = InnerType::Plain;
+                                        memset( (void *) &value.inner.plain, 0, sizeof( value.inner.plain ) ); // selection establishes the arm (§2.6)
+                                        {
+                                            const int64_t width_2 = arm.value_bits;
+                                            uint64_t raw_2 = 0;
+                                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
+                                            int64_t decoded_wide_2 = (int64_t) raw_2;
+                                            if ( arm.packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
+                                            else if ( width_2 > 0 && width_2 < 64 )
+                                            {
+                                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
+                                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
+                                            }
+                                            if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->clamped++; }
+                                            if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->clamped++; }
+                                            int32_t decoded_v_2 = (int32_t) decoded_wide_2;
+                                            value.inner.plain = decoded_v_2;
+                                        }
+                                        report->widened++;
+                                        break;
+                                    }
                                     value.inner.type = InnerType::None; report->kind_mismatch++;
                                     if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
                                     break;
@@ -5189,6 +5212,29 @@ inline bool NestLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                             {
                                                 if ( arm_2.kind != 4 || arm_2.elem_kind != 0 )
                                                 {
+                                                    if ( TableKindWidens( arm_2.kind, 4 ) )
+                                                    {
+                                                        value.outer.inner.type = InnerType::Plain;
+                                                        memset( (void *) &value.outer.inner.plain, 0, sizeof( value.outer.inner.plain ) ); // selection establishes the arm (§2.6)
+                                                        {
+                                                            const int64_t width_3 = arm_2.value_bits;
+                                                            uint64_t raw_3 = 0;
+                                                            if ( width_3 < 0 || !r.get( raw_3, width_3 ) ) { report->malformed = true; return false; }
+                                                            int64_t decoded_wide_3 = (int64_t) raw_3;
+                                                            if ( arm_2.packing == 1 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
+                                                            else if ( width_3 > 0 && width_3 < 64 )
+                                                            {
+                                                                const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
+                                                                if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
+                                                            }
+                                                            if ( decoded_wide_3 < -2147483648ll ) { decoded_wide_3 = -2147483648ll; report->clamped++; }
+                                                            if ( decoded_wide_3 > 2147483647ll ) { decoded_wide_3 = 2147483647ll; report->clamped++; }
+                                                            int32_t decoded_v_3 = (int32_t) decoded_wide_3;
+                                                            value.outer.inner.plain = decoded_v_3;
+                                                        }
+                                                        report->widened++;
+                                                        break;
+                                                    }
                                                     value.outer.inner.type = InnerType::None; report->kind_mismatch++;
                                                     if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
                                                     break;
@@ -5225,6 +5271,29 @@ inline bool NestLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             {
                                 if ( arm.kind != 4 || arm.elem_kind != 0 )
                                 {
+                                    if ( TableKindWidens( arm.kind, 4 ) )
+                                    {
+                                        value.outer.type = OuterType::Plain;
+                                        memset( (void *) &value.outer.plain, 0, sizeof( value.outer.plain ) ); // selection establishes the arm (§2.6)
+                                        {
+                                            const int64_t width_2 = arm.value_bits;
+                                            uint64_t raw_2 = 0;
+                                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
+                                            int64_t decoded_wide_2 = (int64_t) raw_2;
+                                            if ( arm.packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
+                                            else if ( width_2 > 0 && width_2 < 64 )
+                                            {
+                                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
+                                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
+                                            }
+                                            if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->clamped++; }
+                                            if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->clamped++; }
+                                            int32_t decoded_v_2 = (int32_t) decoded_wide_2;
+                                            value.outer.plain = decoded_v_2;
+                                        }
+                                        report->widened++;
+                                        break;
+                                    }
                                     value.outer.type = OuterType::None; report->kind_mismatch++;
                                     if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
                                     break;

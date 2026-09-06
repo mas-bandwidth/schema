@@ -4951,6 +4951,27 @@ inline bool UnitLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 4 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 4 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            else if ( width > 0 && width < 64 )
+                            {
+                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                            }
+                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
+                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
+                            int32_t decoded_v = (int32_t) decoded_wide;
+                            value.v = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -5409,6 +5430,27 @@ inline bool BoundedLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 4 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 4 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            else if ( width > 0 && width < 64 )
+                            {
+                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                            }
+                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
+                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
+                            int32_t decoded_v = (int32_t) decoded_wide;
+                            value.tag = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -5861,6 +5903,27 @@ inline bool UnboundedLoadMessageBody( TableBitReader & r, const TableVocabulary 
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 4 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 4 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            else if ( width > 0 && width < 64 )
+                            {
+                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                            }
+                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
+                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
+                            int32_t decoded_v = (int32_t) decoded_wide;
+                            value.tag = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;

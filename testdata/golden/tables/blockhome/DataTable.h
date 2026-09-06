@@ -2414,6 +2414,26 @@ inline bool ArmorPlateLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 11 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 11 ) )
+                    {
+                        {
+                            if ( entry.packing == 2 )
+                            {
+                                uint64_t index = 0;
+                                if ( !r.get( index, entry.value_bits ) ) { report->malformed = true; return false; }
+                                if ( index > (uint64_t) entry.qcount ) { report->malformed = true; return false; } // above the step count
+                                value.thickness = (double) TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount );
+                            }
+                            else
+                            {
+                                uint64_t raw = 0;
+                                if ( !r.get( raw, 32 ) ) { report->malformed = true; return false; }
+                                value.thickness = TableWidenF32( (uint32_t) raw );
+                            }
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -2428,6 +2448,21 @@ inline bool ArmorPlateLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 8 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 8 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                            uint32_t decoded_v = (uint32_t) decoded_wide;
+                            value.material = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -3290,6 +3325,21 @@ inline bool FiringGroupLoadMessageBody( TableBitReader & r, const TableVocabular
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 8 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 8 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                            uint32_t decoded_v = (uint32_t) decoded_wide;
+                            value.barrel = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -3980,6 +4030,21 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 8 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 8 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                            uint32_t decoded_v = (uint32_t) decoded_wide;
+                            value.gunner_id = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;

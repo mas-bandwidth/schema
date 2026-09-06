@@ -4379,13 +4379,14 @@ struct FleetShipsEntryMessageKeyRead
     int64_t end;        // the bit after the entry's own zero reference
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline FleetShipsEntryMessageKeyRead FleetShipsEntryMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )
 {
-    FleetShipsEntryMessageKeyRead out = { NULL, 0, 0, false, false, false, false };
+    FleetShipsEntryMessageKeyRead out = { NULL, 0, 0, false, false, false, false, false };
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -4427,13 +4428,14 @@ struct FleetByIdEntryMessageKeyRead
     int64_t end;        // the bit after the entry's own zero reference
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline FleetByIdEntryMessageKeyRead FleetByIdEntryMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )
 {
-    FleetByIdEntryMessageKeyRead out = { 0, 0, false, false, false, false };
+    FleetByIdEntryMessageKeyRead out = { 0, 0, false, false, false, false, false };
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -4444,9 +4446,10 @@ inline FleetByIdEntryMessageKeyRead FleetByIdEntryMessageReadKey( TableBitReader
         if ( TableMessageReserved( entry.id ) ) { out.malformed = true; return out; }
         if ( entry.id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
         {
-            const bool kind_bad = entry.kind != 8; // THE KEY KIND IS THE READER'S DECLARATION
+            const bool kind_bad = entry.kind != 8 && !TableKindWidens( entry.kind, 8 ); // THE KEY KIND IS THE READER'S DECLARATION
             out.kind_bad = kind_bad;
             out.found = !kind_bad;
+            out.widened = entry.kind != 8;
             if ( kind_bad )
             {
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { out.malformed = true; return out; }
@@ -4476,13 +4479,14 @@ struct FleetLoadoutsEntryValueEntryMessageKeyRead
     int64_t end;        // the bit after the entry's own zero reference
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline FleetLoadoutsEntryValueEntryMessageKeyRead FleetLoadoutsEntryValueEntryMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )
 {
-    FleetLoadoutsEntryValueEntryMessageKeyRead out = { 0, 0, false, false, false, false };
+    FleetLoadoutsEntryValueEntryMessageKeyRead out = { 0, 0, false, false, false, false, false };
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -4526,13 +4530,14 @@ struct FleetLoadoutsEntryMessageKeyRead
     int64_t end;        // the bit after the entry's own zero reference
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline FleetLoadoutsEntryMessageKeyRead FleetLoadoutsEntryMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )
 {
-    FleetLoadoutsEntryMessageKeyRead out = { NULL, 0, 0, false, false, false, false };
+    FleetLoadoutsEntryMessageKeyRead out = { NULL, 0, 0, false, false, false, false, false };
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -4574,13 +4579,14 @@ struct FleetTiersEntryMessageKeyRead
     int64_t end;        // the bit after the entry's own zero reference
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline FleetTiersEntryMessageKeyRead FleetTiersEntryMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )
 {
-    FleetTiersEntryMessageKeyRead out = { 0, 0, false, false, false, false };
+    FleetTiersEntryMessageKeyRead out = { 0, 0, false, false, false, false, false };
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -4591,9 +4597,10 @@ inline FleetTiersEntryMessageKeyRead FleetTiersEntryMessageReadKey( TableBitRead
         if ( TableMessageReserved( entry.id ) ) { out.malformed = true; return out; }
         if ( entry.id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
         {
-            const bool kind_bad = entry.kind != 3; // THE KEY KIND IS THE READER'S DECLARATION
+            const bool kind_bad = entry.kind != 3 && !TableKindWidens( entry.kind, 3 ); // THE KEY KIND IS THE READER'S DECLARATION
             out.kind_bad = kind_bad;
             out.found = !kind_bad;
+            out.widened = entry.kind != 3;
             if ( kind_bad )
             {
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { out.malformed = true; return out; }
@@ -5405,6 +5412,27 @@ inline bool ShipConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 4 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 4 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            else if ( width > 0 && width < 64 )
+                            {
+                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                            }
+                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
+                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
+                            int32_t decoded_v = (int32_t) decoded_wide;
+                            value.health = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -5715,6 +5743,27 @@ inline bool ItemLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 4 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 4 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            else if ( width > 0 && width < 64 )
+                            {
+                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                            }
+                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
+                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
+                            int32_t decoded_v = (int32_t) decoded_wide;
+                            value.count = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -6285,6 +6334,21 @@ inline bool FleetByIdEntryLoadMessageBody( TableBitReader & r, const TableVocabu
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 8 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 8 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                            uint32_t decoded_v = (uint32_t) decoded_wide;
+                            value.key = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -6946,10 +7010,13 @@ inline bool FleetLoadoutsEntryLoadMessageBody( TableBitReader & r, const TableVo
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint8_t last_key = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         const FleetLoadoutsEntryValueEntryMessageKeyRead read = FleetLoadoutsEntryValueEntryMessageReadKey( r, vocabulary, index_bits );
                         if ( read.malformed ) { report->malformed = true; return false; }
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; report->widened++; }
                         if ( read.kind_bad )
                         {
                             // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
@@ -7193,6 +7260,27 @@ inline bool FleetTiersEntryLoadMessageBody( TableBitReader & r, const TableVocab
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 3 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 3 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            else if ( width > 0 && width < 64 )
+                            {
+                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                            }
+                            if ( decoded_wide < -32768ll ) { decoded_wide = -32768ll; report->clamped++; }
+                            if ( decoded_wide > 32767ll ) { decoded_wide = 32767ll; report->clamped++; }
+                            int16_t decoded_v = (int16_t) decoded_wide;
+                            value.key = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -8135,10 +8223,13 @@ inline bool FleetLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         const FleetShipsEntryMessageKeyRead read = FleetShipsEntryMessageReadKey( r, vocabulary, index_bits );
                         if ( read.malformed ) { report->malformed = true; return false; }
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; report->widened++; }
                         if ( read.kind_bad )
                         {
                             // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
@@ -8194,10 +8285,13 @@ inline bool FleetLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint32_t last_key = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         const FleetByIdEntryMessageKeyRead read = FleetByIdEntryMessageReadKey( r, vocabulary, index_bits );
                         if ( read.malformed ) { report->malformed = true; return false; }
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; report->widened++; }
                         if ( read.kind_bad )
                         {
                             // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
@@ -8271,10 +8365,13 @@ inline bool FleetLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         const FleetLoadoutsEntryMessageKeyRead read = FleetLoadoutsEntryMessageReadKey( r, vocabulary, index_bits );
                         if ( read.malformed ) { report->malformed = true; return false; }
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; report->widened++; }
                         if ( read.kind_bad )
                         {
                             // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
@@ -8330,10 +8427,13 @@ inline bool FleetLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     int16_t last_key = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         const FleetTiersEntryMessageKeyRead read = FleetTiersEntryMessageReadKey( r, vocabulary, index_bits );
                         if ( read.malformed ) { report->malformed = true; return false; }
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; report->widened++; }
                         if ( read.kind_bad )
                         {
                             // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to

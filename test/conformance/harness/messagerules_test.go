@@ -1329,3 +1329,101 @@ func TestTheSixFindings(t *testing.T) {
 	// TestTheQuantizedIndexAcrossTheForms, each on the pinned vector both
 	// engines write.
 }
+
+// TestAWidenedKindOnAMessage is §4's WIDENING ROW on the message form, which
+// §3.3 holds to the file's word for word: an integer kind read into a wider
+// one of the same signedness, and `f32` into `f64`, decodes EXACTLY at the
+// SENDER's announced width, the value lands, and one `widened` counts. The row
+// runs at the four sites the file form counts it: a field, a union arm, a
+// positional array's element and a map's key.
+//
+// Red where a reader treats the announced kind as a mismatch and skips the
+// field: the value comes back at its default and `kind_mismatch` moves in
+// `widened`'s place.
+func TestAWidenedKindOnAMessage(t *testing.T) {
+	narrow := tempUnit(t, `package widendemo
+
+union Pick
+{
+    amount int16
+}
+
+table Row
+{
+    score  int16 = 0
+    ratio  float32 = 0
+    marks  [4]int16
+    pick   Pick
+    tally  map[int16]int32
+}
+`)
+	wide := tempUnit(t, `package widendemo
+
+union Pick
+{
+    amount int32
+}
+
+table Row
+{
+    score  int32 = 0
+    ratio  float64 = 0
+    marks  [4]int32
+    pick   Pick
+    tally  map[int32]int32
+}
+`)
+	nm, wm := tabletext.NewModel(narrow), tabletext.NewModel(wide)
+	nv := vocabularyOf(t, narrow)
+
+	inst := nm.New(nm.Lookup("Row"))
+	setI64(t, inst, "score", 1000)
+	fieldOf(t, inst, "ratio").Cell.F = 0.5
+	marks := fieldOf(t, inst, "marks")
+	marks.Elems[0].I, marks.Elems[0].U = 7, 7
+	// the ARM, SELECTED and carrying a value
+	pick := fieldOf(t, inst, "pick")
+	pick.Cell.U = 1
+	arm := nm.NewArm(nm.Lookup("Row").Fields[3].Type.Ref.(*ir.Union).Variants[0])
+	arm.Cell.I, arm.Cell.U = 33, 33
+	pick.Cell.Arm = arm
+	// ONE map entry, whose KEY is the kind that widens
+	tally := fieldOf(t, inst, "tally")
+	entry := nm.NewMapEntry(tally.Def)
+	setI64(t, entry, "key", 12)
+	setI64(t, entry, "value", 99)
+	tally.Entries = append(tally.Entries, tabletext.Cell{Tab: entry})
+	tally.Count = 1
+
+	message, err := tablewire.EncodeMessage(nm, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, ok, report, derr := decodeOne(t, wm, "Row", nv, message)
+	if derr != nil || !ok || report.Malformed {
+		t.Fatalf("the wide peer reading the narrow one: ok=%v err=%v report=%+v", ok, derr, report)
+	}
+	if report.KindMismatch != 0 {
+		t.Errorf("a kind the declaration WIDENS is not a mismatch (§3.3, §4): kind_mismatch=%d", report.KindMismatch)
+	}
+	// ONE for the field, one for the f32 rung, one for the ARRAY however many
+	// elements it holds, one for the ARM, and ONE for the MAP at its key
+	if report.Widened != 5 {
+		t.Errorf("the five widened sites count one each (§3.3, §4): widened=%d", report.Widened)
+	}
+	if got := fieldOf(t, back, "score").Cell.I; got != 1000 {
+		t.Errorf("the widened field's value is the writer's own, exactly: score=%d, not 1000", got)
+	}
+	if got := fieldOf(t, back, "ratio").Cell.F; got != 0.5 {
+		t.Errorf("f32 into f64 is exact: ratio=%v, not 0.5", got)
+	}
+	if got := fieldOf(t, back, "marks").Elems[0].I; got != 7 {
+		t.Errorf("the widened element's value is the writer's own: marks[0]=%d, not 7", got)
+	}
+	if got := fieldOf(t, back, "pick"); got.Cell.U != 1 || got.Cell.Arm == nil || got.Cell.Arm.Cell.I != 33 {
+		t.Errorf("the widened arm is SELECTED and carries its value: %+v", got.Cell)
+	}
+	if got := fieldOf(t, back, "tally"); len(got.Entries) != 1 || fieldOf(t, got.Entries[0].Tab, "value").Cell.I != 99 {
+		t.Errorf("the map with a widened key loads WHOLE (§2.8): %d entries", len(got.Entries))
+	}
+}

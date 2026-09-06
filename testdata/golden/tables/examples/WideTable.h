@@ -2823,6 +2823,45 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 14 || entry.elem_kind != 7 )
                 {
+                    if ( entry.kind == 14 && TableKindWidens( entry.elem_kind, 7 ) )
+                    {
+                        {
+                            uint64_t n = (uint64_t) entry.min;
+                            const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
+                            if ( count_bits > 0 )
+                            {
+                                uint64_t raw = 0;
+                                if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                                n = raw + (uint64_t) entry.min;
+                            }
+                            if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                            int32_t kept = 0;
+                            if ( n > (uint64_t) 70000 ) { kept = 70000; report->clamped++; } else { kept = (int32_t) n; }
+                            const int64_t surplus_bits = entry.elem_value_bits;
+                            uint64_t walk = n;
+                            if ( surplus_bits >= 0 && walk > (uint64_t) 70000 ) { walk = (uint64_t) 70000; } // the surplus is arithmetic
+                            for ( uint64_t i = 0; i < walk; i++ )
+                            {
+                                const bool in_bounds = (int32_t) i < kept;
+                                uint16_t scratch = 0;
+                                {
+                                    const int64_t width_2 = entry.elem_value_bits;
+                                    uint64_t raw_2 = 0;
+                                    if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
+                                    int64_t decoded_wide_2 = (int64_t) raw_2;
+                                    if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
+                                    if ( (uint64_t) decoded_wide_2 > 65535ull ) { decoded_wide_2 = (int64_t) 65535ull; report->clamped++; }
+                                    uint16_t decoded_v_2 = (uint16_t) decoded_wide_2;
+                                    scratch = decoded_v_2;
+                                }
+                                if ( in_bounds ) { value.samples[i] = scratch; }
+                            }
+                            if ( walk < n && !TableMessageSkipRun( r, n - walk, surplus_bits ) ) { report->malformed = true; return false; }
+                            value.samples_count = kept;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;

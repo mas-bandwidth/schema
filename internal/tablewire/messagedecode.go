@@ -14,6 +14,7 @@
 package tablewire
 
 import (
+	"encoding/binary"
 	"math"
 	"math/big"
 
@@ -130,6 +131,11 @@ type bitDecoder struct {
 	// REFERENCE and every NODE INDEX the read meets, which is what the wire
 	// fuzzer's reference pass mutates (§3.3, §4.2)
 	spots *[]BitSpot
+	// mapKey, when set, is the flag ONE map raises where its KEY kind is one
+	// this reader's declaration widens: the map counts ONE `widened` however
+	// many entries carry it (§2.8, §4). It is consumed by the entry body it
+	// was set for, so a nested body never sees it.
+	mapKey *bool
 }
 
 // BitSpot is one number's place in a batch's bit stream: a reference at
@@ -382,8 +388,28 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 	return true
 }
 
+// messageWidens is §4's WIDENING RULE read off the ANNOUNCEMENT rather than
+// off a kind byte (docs/SPEC-TABLES.md §3.3, §4): an announced kind below this
+// reader's on the same ladder, at a field, an arm or a map key; or, where both
+// sides announce an array, an announced ELEMENT kind below this reader's. The
+// shapes are the sender's either way, so the payload is already read at the
+// width the announcement states.
+func messageWidens(theirs, mine ir.TableVocabularyEntry) bool {
+	if theirs.Shape.Elem == mine.Shape.Elem {
+		return ir.TableKindWidens(int(theirs.Kind), int(mine.Kind))
+	}
+	if theirs.Kind == mine.Kind && int(mine.Kind) == ir.TableKindArray {
+		return ir.TableKindWidens(int(theirs.Shape.Elem), int(mine.Shape.Elem))
+	}
+	return false
+}
+
 // body decodes one table body: fields until the ZERO REFERENCE that ends it.
 func (d *bitDecoder) body(inst *tabletext.Instance) bool {
+	// the MAP's key flag belongs to THIS body's own fields (§2.8): a nested
+	// body below it is an ordinary body and counts its own events
+	mapKey := d.mapKey
+	d.mapKey = nil
 	index := map[uint64]int{}
 	for i := range inst.Fields {
 		index[ir.TableFieldWireId(inst.Fields[i].Def)] = i
@@ -423,6 +449,25 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 		fv := &inst.Fields[i]
 		mine := ir.TableFieldEntry(fv.Def)
 		if entry.Kind != mine.Kind || entry.Shape.Elem != mine.Shape.Elem {
+			if messageWidens(entry, mine) {
+				// WIDENED (§4), and §3.3 holds that row to the file form's
+				// word: a kind below this reader's on the same ladder decodes
+				// EXACTLY at the SENDER's announced width, the value lands,
+				// and one `widened` counts. The field rode, so an optional is
+				// PRESENT.
+				if !d.field(fv, entry) {
+					return false
+				}
+				if mapKey != nil && entry.Id == ir.MapKeyWireId {
+					*mapKey = true // the MAP counts ONE, at the key (§2.8, §4)
+				} else {
+					d.report.Widened++
+				}
+				if fv.Def.Type.Optional && fv.Def.Array == ir.ArrayNone {
+					fv.Present = true
+				}
+				continue
+			}
 			// THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
 			// A RANGE that moved is NOT one: the shapes differ and the entry
 			// carries the sender's, which is exactly what makes a body from
@@ -709,9 +754,16 @@ func (d *bitDecoder) mapField(fv *tabletext.Field, entry ir.TableVocabularyEntry
 	}
 	fv.Entries = nil
 	var last *tabletext.Instance
+	// A KEY KIND THIS DECLARATION WIDENS IS NOT A DISAGREEMENT (§2.8, §4):
+	// the entries land and the MAP counts ONE `widened`, however many keys
+	// carry it, exactly as the `kind_mismatch` it replaces counted once.
+	keyWidened := false
 	for i := uint64(0); i < n; i++ {
 		decoded := d.m.NewMapEntry(f)
-		if !d.body(decoded) {
+		d.mapKey = &keyWidened
+		ok := d.body(decoded)
+		d.mapKey = nil
+		if !ok {
 			return false
 		}
 		key := tabletext.MapKeyOf(f, decoded)
@@ -737,6 +789,9 @@ func (d *bitDecoder) mapField(fv *tabletext.Field, entry ir.TableVocabularyEntry
 		}
 		fv.Entries = append(fv.Entries, tabletext.Cell{Tab: decoded})
 		last = decoded
+	}
+	if keyWidened {
+		d.report.Widened++
 	}
 	fv.Count = len(fv.Entries)
 	return true
@@ -776,9 +831,14 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 	arm := un.Variants[tag-1]
 	mine := ir.TableArmEntry(arm)
 	if entry.Kind != mine.Kind || entry.Shape.Elem != mine.Shape.Elem {
-		cell.U = 0
-		d.report.KindMismatch++
-		return d.skip(entry)
+		if !messageWidens(entry, mine) {
+			cell.U = 0
+			d.report.KindMismatch++
+			return d.skip(entry)
+		}
+		// WIDENED AT AN ARM (§3.3, §4): the arm is SELECTED and its payload
+		// decodes at the width the announcement states, rather than skipped
+		d.report.Widened++
 	}
 	cell.U = uint64(tag)
 	switch {
@@ -917,6 +977,24 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 	default:
 		value = int64(raw)
 	}
+	if ir.TableKindWide(ir.TableScalarKind(f)) {
+		// an integer kind WIDENED into a 128-bit declaration (§4): sixteen
+		// bytes extended from the reconstructed value, then the declared range
+		// on the raw scale, exactly as a payload at 128 bits takes it
+		var wide [16]byte
+		binary.LittleEndian.PutUint64(wide[:8], uint64(value))
+		if signed && value < 0 {
+			for i := 8; i < 16; i++ {
+				wide[i] = 0xFF
+			}
+		}
+		clamped := false
+		cell.Wide, clamped = tabletext.WideClamp(tabletext.WideFromBytes(wide[:], ir.TableScalarKind(f)), f)
+		if clamped {
+			d.report.Clamped++
+		}
+		return true
+	}
 	if f.HasIntRange {
 		lo, hi := bigInt64(f.IntMin), bigInt64(f.IntMax)
 		if signed {
@@ -978,6 +1056,10 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 		// THE PACKET WIRE'S RULE, IN FLOAT32 (SPEC.md §4.3, §3.3): the float an
 		// index names is the float a packet's reader names for it
 		v := float64(ir.TableMessageDequantize(shape, uint32(index)))
+		if ir.TableScalarKind(f) == ir.TableKindF64 {
+			cell.F = v // widened into f64 (§4): exact, and no clamp fires
+			return true
+		}
 		cell.F = float64(float32(d.clampFloat(v, f)))
 		return true
 	}
@@ -993,7 +1075,15 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 		cell.F = widenF32NaN(bits)
 		return true
 	}
-	cell.F = float64(float32(d.clampFloat(float64(math.Float32frombits(bits)), f)))
+	v := float64(math.Float32frombits(bits))
+	if ir.TableScalarKind(f) == ir.TableKindF64 {
+		// f32 WIDENED into f64 (§4): every float32 value is exactly
+		// representable, and a float64 field's declared range clamps nothing
+		// on this wire, exactly as a payload at sixty-four bits
+		cell.F = v
+		return true
+	}
+	cell.F = float64(float32(d.clampFloat(v, f)))
 	return true
 }
 

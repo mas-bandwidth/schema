@@ -817,14 +817,22 @@ func (g *tableGen) emitMessageMapKeyReader(me *ir.Struct) {
 	g.pf("    int64_t end;        // the bit after the entry's own zero reference\n")
 	g.pf("    bool found;         // the body carried the key's id\n")
 	g.pf("    bool kind_bad;      // it carried it under another kind: the MAP's event\n")
+	g.pf("    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one\n")
 	g.pf("    bool over;          // longer than this reader's bound: the ENTRY is dropped\n")
 	g.pf("    bool malformed;     // the entry's framing gave out\n")
 	g.pf("};\n\n")
 	g.pf("inline %sMessageKeyRead %sMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )\n{\n", n, n)
 	if stringKey {
-		g.pf("    %sMessageKeyRead out = { NULL, 0, 0, false, false, false, false };\n", n)
+		g.pf("    %sMessageKeyRead out = { NULL, 0, 0, false, false, false, false, false };\n", n)
 	} else {
-		g.pf("    %sMessageKeyRead out = { 0, 0, false, false, false, false };\n", n)
+		g.pf("    %sMessageKeyRead out = { 0, 0, false, false, false, false, false };\n", n)
+	}
+	// the WIDENING RULE at a map's KEY (§2.8, §4): where the declared key kind
+	// has kinds below it on its ladder, a key under one of them is not a
+	// disagreement — it rides at the announced width the read already uses
+	keyWiden := ""
+	if !stringKey && widenable(kind) {
+		keyWiden = fmt.Sprintf(" && !TableKindWidens( entry.kind, %d )", kind)
 	}
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint64_t ref = 0;\n")
@@ -834,9 +842,15 @@ func (g *tableGen) emitMessageMapKeyReader(me *ir.Struct) {
 	g.pf("        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );\n")
 	g.pf("        if ( TableMessageReserved( entry.id ) ) { out.malformed = true; return out; }\n")
 	g.pf("        if ( entry.id == 0x%016xull ) // `key`, the ordinary hash of an ordinary name\n        {\n", ir.MapKeyWireId)
-	g.pf("            const bool kind_bad = entry.kind != %d; // THE KEY KIND IS THE READER'S DECLARATION\n", kind)
+	g.pf("            const bool kind_bad = entry.kind != %d%s; // THE KEY KIND IS THE READER'S DECLARATION\n", kind, keyWiden)
 	g.pf("            out.kind_bad = kind_bad;\n")
 	g.pf("            out.found = !kind_bad;\n")
+	if keyWiden != "" {
+		// A KEY KIND THE DECLARATION WIDENS IS NOT A DISAGREEMENT (§2.8,
+		// §4): the key decodes exactly at the ANNOUNCED width, which is what
+		// the read below already reads at, and the MAP counts ONE `widened`.
+		g.pf("            out.widened = entry.kind != %d;\n", kind)
+	}
 	g.pf("            if ( kind_bad )\n            {\n")
 	g.pf("                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { out.malformed = true; return out; }\n")
 	g.pf("                continue;\n            }\n")

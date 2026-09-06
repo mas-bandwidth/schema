@@ -3876,6 +3876,27 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 18 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 18 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || width > 64 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( entry.packing != 1 && width > 0 && width < 64 )
+                            {
+                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { raw = raw | ~( ( uint64_t(1) << width ) - 1 ); }
+                            }
+                            serialize::uint128_t raw_v = ( serialize::uint128_t( (int64_t) raw < 0 ? ~uint64_t(0) : uint64_t(0) ) << 64 ) | serialize::uint128_t( raw );
+                            if ( entry.packing == 1 ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
+                            serialize::int128_t decoded_v = serialize::int128_t( raw_v );
+                            if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); report->clamped++; }
+                            else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); report->clamped++; }
+                            value.flux = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -3900,6 +3921,27 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 18 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 18 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || width > 64 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( entry.packing != 1 && width > 0 && width < 64 )
+                            {
+                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { raw = raw | ~( ( uint64_t(1) << width ) - 1 ); }
+                            }
+                            serialize::uint128_t raw_v = ( serialize::uint128_t( (int64_t) raw < 0 ? ~uint64_t(0) : uint64_t(0) ) << 64 ) | serialize::uint128_t( raw );
+                            if ( entry.packing == 1 ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
+                            serialize::int128_t decoded_v = serialize::int128_t( raw_v );
+                            if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ); report->clamped++; }
+                            else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ); report->clamped++; }
+                            value.energy = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -3924,6 +3966,20 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 19 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 19 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || width > 64 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            serialize::uint128_t raw_v = serialize::uint128_t( raw );
+                            if ( entry.packing == 1 ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
+                            serialize::uint128_t decoded_v = serialize::uint128_t( raw_v );
+                            value.entity_id = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
@@ -4121,6 +4177,44 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 14 || entry.elem_kind != 19 )
                 {
+                    if ( entry.kind == 14 && TableKindWidens( entry.elem_kind, 19 ) )
+                    {
+                        {
+                            uint64_t n = (uint64_t) entry.min;
+                            const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
+                            if ( count_bits > 0 )
+                            {
+                                uint64_t raw = 0;
+                                if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                                n = raw + (uint64_t) entry.min;
+                            }
+                            if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                            int32_t kept = 0;
+                            if ( n > (uint64_t) 2 ) { kept = 2; report->clamped++; } else { kept = (int32_t) n; }
+                            const int64_t surplus_bits = entry.elem_value_bits;
+                            uint64_t walk = n;
+                            if ( surplus_bits >= 0 && walk > (uint64_t) 2 ) { walk = (uint64_t) 2; } // the surplus is arithmetic
+                            for ( uint64_t i = 0; i < walk; i++ )
+                            {
+                                const bool in_bounds = (int32_t) i < kept;
+                                serialize::uint128_t scratch = 0;
+                                {
+                                    const int64_t width_2 = entry.elem_value_bits;
+                                    uint64_t raw_2 = 0;
+                                    if ( width_2 < 0 || width_2 > 64 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
+                                    serialize::uint128_t raw_v_2 = serialize::uint128_t( raw_2 );
+                                    if ( entry.elem_packing == 1 ) { raw_v_2 = raw_v_2 + ( ( serialize::uint128_t( (uint64_t) entry.elem_base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.elem_base_lo ) ); }
+                                    serialize::uint128_t decoded_v_2 = serialize::uint128_t( raw_v_2 );
+                                    scratch = decoded_v_2;
+                                }
+                                if ( in_bounds ) { value.seeds[i] = scratch; }
+                            }
+                            if ( walk < n && !TableMessageSkipRun( r, n - walk, surplus_bits ) ) { report->malformed = true; return false; }
+                            value.seeds_count = kept;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;

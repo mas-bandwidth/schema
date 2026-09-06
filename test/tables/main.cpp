@@ -9081,6 +9081,7 @@ int main()
     test_message_form_wide_vocabulary();
     test_message_form_pointered();
     test_message_form_two_peers();
+    test_message_form_widened();
     test_message_form_refusals();
     test_message_form_five_answers();
     test_message_form_damage_terminal();

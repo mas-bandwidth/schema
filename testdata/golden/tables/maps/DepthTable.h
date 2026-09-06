@@ -4372,13 +4372,14 @@ struct SquadRosterEntryMessageKeyRead
     int64_t end;        // the bit after the entry's own zero reference
     bool found;         // the body carried the key's id
     bool kind_bad;      // it carried it under another kind: the MAP's event
+    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
     bool over;          // longer than this reader's bound: the ENTRY is dropped
     bool malformed;     // the entry's framing gave out
 };
 
 inline SquadRosterEntryMessageKeyRead SquadRosterEntryMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )
 {
-    SquadRosterEntryMessageKeyRead out = { 0, 0, false, false, false, false };
+    SquadRosterEntryMessageKeyRead out = { 0, 0, false, false, false, false, false };
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -5074,10 +5075,13 @@ inline bool SquadLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint8_t last_key = 0;
                     bool landed = false;
+                    bool map_widened = false;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         const SquadRosterEntryMessageKeyRead read = SquadRosterEntryMessageReadKey( r, vocabulary, index_bits );
                         if ( read.malformed ) { report->malformed = true; return false; }
+                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
+                        if ( read.widened && !map_widened ) { map_widened = true; report->widened++; }
                         if ( read.kind_bad )
                         {
                             // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
@@ -5982,6 +5986,29 @@ inline bool DepthLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                             {
                                 if ( arm.kind != 4 || arm.elem_kind != 0 )
                                 {
+                                    if ( TableKindWidens( arm.kind, 4 ) )
+                                    {
+                                        value.arm.type = ForceType::Plain;
+                                        memset( (void *) &value.arm.plain, 0, sizeof( value.arm.plain ) ); // selection establishes the arm (§2.6)
+                                        {
+                                            const int64_t width_2 = arm.value_bits;
+                                            uint64_t raw_2 = 0;
+                                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
+                                            int64_t decoded_wide_2 = (int64_t) raw_2;
+                                            if ( arm.packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
+                                            else if ( width_2 > 0 && width_2 < 64 )
+                                            {
+                                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
+                                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
+                                            }
+                                            if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->clamped++; }
+                                            if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->clamped++; }
+                                            int32_t decoded_v_2 = (int32_t) decoded_wide_2;
+                                            value.arm.plain = decoded_v_2;
+                                        }
+                                        report->widened++;
+                                        break;
+                                    }
                                     value.arm.type = ForceType::None; report->kind_mismatch++;
                                     if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
                                     break;
@@ -6021,6 +6048,27 @@ inline bool DepthLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 4 || entry.elem_kind != 0 )
                 {
+                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 4 ) )
+                    {
+                        {
+                            const int64_t width = entry.value_bits;
+                            uint64_t raw = 0;
+                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            int64_t decoded_wide = (int64_t) raw;
+                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            else if ( width > 0 && width < 64 )
+                            {
+                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                            }
+                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
+                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
+                            int32_t decoded_v = (int32_t) decoded_wide;
+                            value.after = decoded_v;
+                        }
+                        report->widened++;
+                        break;
+                    }
                     report->kind_mismatch++;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
