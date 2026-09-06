@@ -3199,6 +3199,19 @@ inline int32_t TableKeyLength( const char * key, int32_t bound )
     return bound + 1; // longer than the bound: the caller refuses it
 }
 
+// A KEY IS DATA AND A LENGTH, and the length is CARRIED, never recomputed
+// (§2.8, §3). A string(N) key holds any byte a wire or a text can spell,
+// U+0000 included, so a lookup that measures to the first NUL answers that "a"
+// and "a", 0, "b" are the same key: the first entry is found, RESET, and
+// relabeled with the second key, which deletes an entry the report never
+// mentions. Every internal lookup and every insertion takes this pair, and the
+// public const char * surface builds one and is a wrapper over it.
+struct TableMapKeyRef
+{
+    const char * data;
+    int32_t length;
+};
+
 // ---- the storage: SIXTEEN BYTES in the holder's record (§2.8, §7.2) ----
 //
 // An int64 self-relative reference to the entry array and an int32 count, then
@@ -3760,6 +3773,12 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
 // entry at one key, handed back at its defaults. It is the builder's Insert
 // with the ENTRY returned rather than its value, because the walk writes the
 // value through a field row and not through a typed pointer.
+//
+// THE ONE INSERTION PRIMITIVE. Lookup, reset, allocation and the KEY COPY are
+// all here, so no caller mutates an entry this did not create and no caller
+// relabels one it found. A key is copied only when an entry is created, which
+// is what makes a duplicate key leave the identity it matched untouched. NULL
+// is one thing and one thing only: the arena refused.
 template <typename Entry, typename Key>
 inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key key )
 {
@@ -3773,7 +3792,9 @@ inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key k
     TableMapHead * head = TableMapReach( worker, map );
     if ( head == NULL ) { return NULL; }
     Entry * entry = TableMapAppend( worker, head, map );
-    if ( entry != NULL ) { TableReset( *entry ); }
+    if ( entry == NULL ) { return NULL; }
+    TableReset( *entry );
+    TableEntrySetKey( *entry, key );
     return entry;
 }
 

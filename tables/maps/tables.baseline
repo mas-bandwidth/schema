@@ -28,6 +28,11 @@ table Depth
     field arm id=0xe756c0190570ccb5 kind=15 union=Force
     field after id=0xbf82010f6f71eae9 kind=4
 
+table EdgeRow
+    field names id=0xafb728fff268814f kind=14 elem=13 array=map keykind=12 keybound=300
+    field ids id=0x2b7dea192bb7be29 kind=14 elem=13 array=map keykind=9
+    field after id=0xbf82010f6f71eae9 kind=4
+
 table Fleet
     field ships id=0x294a5c4913e1ad44 kind=14 elem=13 array=map keykind=12 keybound=32
     field by_id id=0x7b024c46e98d3404 kind=14 elem=13 array=map keykind=8
@@ -61,6 +66,14 @@ table b413964e3571a316.c5b2a72c0845a253
     field key id=0x3dc94a19365b10ec kind=8
     field value id=0x7ce4fd9430e80cea kind=13 type=Item
 
+table e8130af045a036f8.2b7dea192bb7be29
+    field key id=0x3dc94a19365b10ec kind=9
+    field value id=0x7ce4fd9430e80cea kind=13 type=Item
+
+table e8130af045a036f8.afb728fff268814f
+    field key id=0x3dc94a19365b10ec kind=12 size=300
+    field value id=0x7ce4fd9430e80cea kind=13 type=Item
+
 table ec07a2f760550a91.1c84390d304f4f42
     field key id=0x3dc94a19365b10ec kind=6
     field value id=0x7ce4fd9430e80cea kind=13 type=Item
@@ -82,3 +95,6 @@ union Force
 
 ### 2026-09-04 — the id-table wire: sixty-four-bit identity, the enum kind, and rendering version 7 (docs/SPEC-TABLES.md §3, §5, §18.1)
 - baseline REGENERATED over an unreadable one (baseline version 6, this compiler writes 7); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
+
+### 2026-09-06 (UTC) — EdgeRow: a map key bound above the text walker's key buffer, and a uint64 key (#566)
+- no compatibility-affecting edits; the wire absorbs the rest

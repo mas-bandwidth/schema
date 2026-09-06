@@ -369,7 +369,7 @@ inline int64_t TableLebBytes( uint64_t v )
 // nothing rides.
 struct TableIds
 {
-    static const int32_t kCapacity = 39;
+    static const int32_t kCapacity = 44;
     static const int32_t kBuckets = 128;
 
     uint64_t ids[ kCapacity ];
@@ -808,13 +808,13 @@ static const int64_t kTableMessageRefBitsHere = 6;
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
-static const int64_t kTableMessageEntriesHere = 39;
+static const int64_t kTableMessageEntriesHere = 44;
 
 // The reserved NODE-TABLE id's own slot in this unit's vocabulary (§3.3). A
 // pointered body names the node table through it, and the node table is the
 // ROOT body's FIRST field because a pointer index's width is settled by the
 // node count it carries.
-static const uint64_t kTableNodeTableFieldSlot = 29;
+static const uint64_t kTableNodeTableFieldSlot = 33;
 
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
 // layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
@@ -1336,7 +1336,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
     return -1;
 }
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 39 entries and 459 bytes. It is an
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 44 entries and 521 bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
 // over element kind 6, and a trailer of those two reserved ids.
@@ -1354,10 +1354,10 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
-static const int64_t kTableAnnounceBytes = 459;
+static const int64_t kTableAnnounceBytes = 521;
 static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x28, 0x1c, 0x62, 0x11, 0x11, 0xb1, 0x55, 0x71, 0x02,
-    0x0e, 0xa3, 0x03, 0x06, 0xa0, 0x03, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
+    0x01, 0x01, 0x09, 0x1e, 0x55, 0x86, 0xc4, 0xa8, 0x8a, 0xd5, 0x26, 0x02,
+    0x0e, 0xe1, 0x03, 0x06, 0xde, 0x03, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
     0xc9, 0x3d, 0x0c, 0x20, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
     0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0x10, 0xea,
     0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x00, 0xff, 0xff, 0xff,
@@ -1368,33 +1368,38 @@ static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
     0x08, 0x1a, 0x0d, 0x02, 0xfc, 0xa1, 0xce, 0xa2, 0x59, 0x64, 0x1f, 0x0e,
     0x00, 0x03, 0x0d, 0x5d, 0xf1, 0x50, 0x95, 0xf2, 0x1f, 0x55, 0x70, 0x10,
     0x02, 0x0d, 0xb5, 0xcc, 0x70, 0x05, 0x19, 0xc0, 0x56, 0xe7, 0x0f, 0xe9,
-    0xea, 0x71, 0x6f, 0x0f, 0x01, 0x82, 0xbf, 0x04, 0x00, 0x44, 0xad, 0xe1,
-    0x13, 0x49, 0x5c, 0x4a, 0x29, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
-    0x0d, 0x04, 0x34, 0x8d, 0xe9, 0x46, 0x4c, 0x02, 0x7b, 0x0e, 0x00, 0xff,
-    0xff, 0xff, 0xff, 0x0f, 0x0d, 0x5d, 0x81, 0xb3, 0xa4, 0xc4, 0xa0, 0xdf,
-    0x63, 0x11, 0x70, 0xf0, 0xf5, 0xf0, 0xb3, 0xa1, 0x4f, 0x29, 0x0e, 0x00,
-    0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xce, 0xe3, 0xda, 0x5f, 0x6c, 0xdc,
-    0xd8, 0x6d, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x74, 0xa2,
-    0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x00, 0x53, 0xa2, 0x45, 0x08,
-    0x2c, 0xa7, 0xb2, 0xc5, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d,
-    0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0x08, 0x86, 0x1b,
-    0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x40, 0xcf, 0xa9, 0x8b, 0x28,
-    0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x00, 0x42, 0x4f, 0x4f, 0x30, 0x0d, 0x39,
-    0x84, 0x1c, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x8b, 0xe1,
-    0x45, 0xc2, 0xcb, 0x04, 0xda, 0x4f, 0x00, 0x87, 0x94, 0xb6, 0x96, 0xa7,
-    0x62, 0xb5, 0xa0, 0x00, 0x31, 0x63, 0x3e, 0xd6, 0x95, 0xbb, 0xc2, 0xd5,
-    0x0d, 0x07, 0xb2, 0x52, 0x16, 0x4e, 0x19, 0x4d, 0xfd, 0x04, 0x00, 0xff,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xe4, 0x4f, 0x1c, 0x4f,
-    0x47, 0xc0, 0x2e, 0x2f, 0x00, 0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b,
-    0x70, 0x00, 0xc7, 0xd4, 0x7b, 0x26, 0xb0, 0x9d, 0x29, 0x5f, 0x00, 0x4a,
-    0x0d, 0xe3, 0x6f, 0xdc, 0xd0, 0x31, 0x32, 0x00, 0xaf, 0x79, 0xa2, 0xfb,
-    0x0a, 0xe0, 0x53, 0x0a, 0x00, 0x06, 0x68, 0x47, 0x98, 0xd1, 0xa1, 0xcf,
-    0x52, 0x00, 0xfb, 0x06, 0xc9, 0xfe, 0x19, 0xe1, 0x13, 0xa0, 0x00, 0x0d,
-    0x4f, 0xb1, 0xd1, 0xd2, 0x52, 0x82, 0x75, 0x00, 0x91, 0x0a, 0x55, 0x60,
-    0xf7, 0xa2, 0x07, 0xec, 0x00, 0x16, 0xa3, 0x71, 0x35, 0x4e, 0x96, 0x13,
-    0xb4, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00,
+    0xea, 0x71, 0x6f, 0x0f, 0x01, 0x82, 0xbf, 0x04, 0x00, 0x4f, 0x81, 0x68,
+    0xf2, 0xff, 0x28, 0xb7, 0xaf, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
+    0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0xac, 0x02,
+    0x29, 0xbe, 0xb7, 0x2b, 0x19, 0xea, 0x7d, 0x2b, 0x0e, 0x00, 0xff, 0xff,
+    0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d,
+    0x09, 0x00, 0x44, 0xad, 0xe1, 0x13, 0x49, 0x5c, 0x4a, 0x29, 0x0e, 0x00,
+    0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x04, 0x34, 0x8d, 0xe9, 0x46, 0x4c,
+    0x02, 0x7b, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x5d, 0x81,
+    0xb3, 0xa4, 0xc4, 0xa0, 0xdf, 0x63, 0x11, 0x70, 0xf0, 0xf5, 0xf0, 0xb3,
+    0xa1, 0x4f, 0x29, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xce,
+    0xe3, 0xda, 0x5f, 0x6c, 0xdc, 0xd8, 0x6d, 0x0e, 0x00, 0xff, 0xff, 0xff,
+    0xff, 0x0f, 0x0d, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04,
+    0x00, 0x53, 0xa2, 0x45, 0x08, 0x2c, 0xa7, 0xb2, 0xc5, 0x0e, 0x00, 0xff,
+    0xff, 0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9,
+    0x3d, 0x0c, 0x08, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c,
+    0x40, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x00, 0x42,
+    0x4f, 0x4f, 0x30, 0x0d, 0x39, 0x84, 0x1c, 0x0e, 0x00, 0xff, 0xff, 0xff,
+    0xff, 0x0f, 0x0d, 0x8b, 0xe1, 0x45, 0xc2, 0xcb, 0x04, 0xda, 0x4f, 0x00,
+    0x87, 0x94, 0xb6, 0x96, 0xa7, 0x62, 0xb5, 0xa0, 0x00, 0x31, 0x63, 0x3e,
+    0xd6, 0x95, 0xbb, 0xc2, 0xd5, 0x0d, 0x07, 0xb2, 0x52, 0x16, 0x4e, 0x19,
+    0x4d, 0xfd, 0x04, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0x00, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f, 0x00, 0x58, 0xfc,
+    0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xc7, 0xd4, 0x7b, 0x26, 0xb0,
+    0x9d, 0x29, 0x5f, 0x00, 0x4a, 0x0d, 0xe3, 0x6f, 0xdc, 0xd0, 0x31, 0x32,
+    0x00, 0xf8, 0x36, 0xa0, 0x45, 0xf0, 0x0a, 0x13, 0xe8, 0x00, 0xaf, 0x79,
+    0xa2, 0xfb, 0x0a, 0xe0, 0x53, 0x0a, 0x00, 0x06, 0x68, 0x47, 0x98, 0xd1,
+    0xa1, 0xcf, 0x52, 0x00, 0xfb, 0x06, 0xc9, 0xfe, 0x19, 0xe1, 0x13, 0xa0,
+    0x00, 0x0d, 0x4f, 0xb1, 0xd1, 0xd2, 0x52, 0x82, 0x75, 0x00, 0x91, 0x0a,
+    0x55, 0x60, 0xf7, 0xa2, 0x07, 0xec, 0x00, 0x16, 0xa3, 0x71, 0x35, 0x4e,
+    0x96, 0x13, 0xb4, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
 // TableVocabulary is ONE DIRECTION's announced vocabulary (§3.3): the entries
@@ -3279,6 +3284,19 @@ inline int32_t TableKeyLength( const char * key, int32_t bound )
     return bound + 1; // longer than the bound: the caller refuses it
 }
 
+// A KEY IS DATA AND A LENGTH, and the length is CARRIED, never recomputed
+// (§2.8, §3). A string(N) key holds any byte a wire or a text can spell,
+// U+0000 included, so a lookup that measures to the first NUL answers that "a"
+// and "a", 0, "b" are the same key: the first entry is found, RESET, and
+// relabeled with the second key, which deletes an entry the report never
+// mentions. Every internal lookup and every insertion takes this pair, and the
+// public const char * surface builds one and is a wrapper over it.
+struct TableMapKeyRef
+{
+    const char * data;
+    int32_t length;
+};
+
 // ---- the storage: SIXTEEN BYTES in the holder's record (§2.8, §7.2) ----
 //
 // An int64 self-relative reference to the entry array and an int32 count, then
@@ -3840,6 +3858,12 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
 // entry at one key, handed back at its defaults. It is the builder's Insert
 // with the ENTRY returned rather than its value, because the walk writes the
 // value through a field row and not through a typed pointer.
+//
+// THE ONE INSERTION PRIMITIVE. Lookup, reset, allocation and the KEY COPY are
+// all here, so no caller mutates an entry this did not create and no caller
+// relabels one it found. A key is copied only when an entry is created, which
+// is what makes a duplicate key leave the identity it matched untouched. NULL
+// is one thing and one thing only: the arena refused.
 template <typename Entry, typename Key>
 inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key key )
 {
@@ -3853,7 +3877,9 @@ inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key k
     TableMapHead * head = TableMapReach( worker, map );
     if ( head == NULL ) { return NULL; }
     Entry * entry = TableMapAppend( worker, head, map );
-    if ( entry != NULL ) { TableReset( *entry ); }
+    if ( entry == NULL ) { return NULL; }
+    TableReset( *entry );
+    TableEntrySetKey( *entry, key );
     return entry;
 }
 
@@ -3915,7 +3941,7 @@ namespace mapdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x7155b11111621c28ull;
+static const uint64_t BuildVersion = 0x26d58aa8c486551eull;
 
 } // namespace mapdemo
 
@@ -4821,16 +4847,23 @@ inline int TableEntryOrder( const FleetShipsEntry & a, const FleetShipsEntry & b
 {
     return TableKeyOrder( a.key, a.key_length, b.key, b.key_length );
 }
+// THE ORDER TAKES DATA AND A LENGTH (§2.8): a key holds any byte, U+0000
+// included, so nothing here measures to the first NUL. The const char *
+// overload beside it is the wrapper the public surface spells.
+inline int TableEntryOrder( const FleetShipsEntry & entry, TableMapKeyRef key )
+{
+    return TableKeyOrder( entry.key, entry.key_length, key.data, key.length );
+}
 inline int TableEntryOrder( const FleetShipsEntry & entry, const char * key )
 {
-    return TableKeyOrder( entry.key, entry.key_length, key, TableKeyLength( key, kFleetShipsEntryKeyBound ) );
+    return TableEntryOrder( entry, TableMapKeyRef{ key, TableKeyLength( key, kFleetShipsEntryKeyBound ) } );
 }
 inline const char * TableEntryKey( const FleetShipsEntry & entry ) { return entry.key; } // NUL-terminated, the storage's own bytes
-inline void TableEntrySetKey( FleetShipsEntry & entry, const char * key, int32_t length )
+inline void TableEntrySetKey( FleetShipsEntry & entry, TableMapKeyRef key )
 {
-    memcpy( (void *) entry.key, (const void *) key, (size_t) length );
-    entry.key[length] = 0;
-    entry.key_length = length;
+    memcpy( (void *) entry.key, (const void *) key.data, (size_t) key.length );
+    entry.key[key.length] = 0; // NUL-terminated BESIDE its length, for a C call site
+    entry.key_length = key.length;
 }
 inline const ShipConfig * TableEntryFound( const FleetShipsEntry * entry ) { return entry != NULL ? &entry->value : NULL; }
 inline ShipConfig * TableEntryValue( FleetShipsEntry * entry ) { return &entry->value; }
@@ -4981,16 +5014,23 @@ inline int TableEntryOrder( const FleetLoadoutsEntry & a, const FleetLoadoutsEnt
 {
     return TableKeyOrder( a.key, a.key_length, b.key, b.key_length );
 }
+// THE ORDER TAKES DATA AND A LENGTH (§2.8): a key holds any byte, U+0000
+// included, so nothing here measures to the first NUL. The const char *
+// overload beside it is the wrapper the public surface spells.
+inline int TableEntryOrder( const FleetLoadoutsEntry & entry, TableMapKeyRef key )
+{
+    return TableKeyOrder( entry.key, entry.key_length, key.data, key.length );
+}
 inline int TableEntryOrder( const FleetLoadoutsEntry & entry, const char * key )
 {
-    return TableKeyOrder( entry.key, entry.key_length, key, TableKeyLength( key, kFleetLoadoutsEntryKeyBound ) );
+    return TableEntryOrder( entry, TableMapKeyRef{ key, TableKeyLength( key, kFleetLoadoutsEntryKeyBound ) } );
 }
 inline const char * TableEntryKey( const FleetLoadoutsEntry & entry ) { return entry.key; } // NUL-terminated, the storage's own bytes
-inline void TableEntrySetKey( FleetLoadoutsEntry & entry, const char * key, int32_t length )
+inline void TableEntrySetKey( FleetLoadoutsEntry & entry, TableMapKeyRef key )
 {
-    memcpy( (void *) entry.key, (const void *) key, (size_t) length );
-    entry.key[length] = 0;
-    entry.key_length = length;
+    memcpy( (void *) entry.key, (const void *) key.data, (size_t) key.length );
+    entry.key[key.length] = 0; // NUL-terminated BESIDE its length, for a C call site
+    entry.key_length = key.length;
 }
 inline const TableMap<FleetLoadoutsEntryValueEntry> * TableEntryFound( const FleetLoadoutsEntry * entry ) { return entry != NULL ? &entry->value : NULL; }
 inline TableMap<FleetLoadoutsEntryValueEntry> * TableEntryValue( FleetLoadoutsEntry * entry ) { return &entry->value; }
@@ -5343,14 +5383,14 @@ inline bool ShipConfigSaveMessageBody( TableBitWriter & w, const ShipConfig & va
     if ( value.name_length < 0 || value.name_length > 64 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.put( 22, kTableMessageRefBitsHere );
+        w.put( 26, kTableMessageRefBitsHere );
         w.put( (uint64_t) value.name_length, 7 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.name, value.name_length );
     }
     if ( value.health != 0 )
     {
-        w.put( 23, kTableMessageRefBitsHere );
+        w.put( 27, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.health ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -5708,7 +5748,7 @@ inline bool ItemSaveMessageBody( TableBitWriter & w, const Item & value )
 {
     if ( value.count != 0 )
     {
-        w.put( 19, kTableMessageRefBitsHere );
+        w.put( 23, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.count ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -8049,7 +8089,7 @@ inline bool FleetSaveMessageBody( const Ctx & ctx, const TableNumbering & number
         if ( !order_ships.ok ) { return false; } // the sort could not run
         if ( order_ships.count > 0 )
         {
-            w.put( 14, kTableMessageRefBitsHere );
+            w.put( 18, kTableMessageRefBitsHere );
             w.put( (uint64_t) order_ships.count, 32 ); // the count the data decides
             for ( int32_t i = 0; i < order_ships.count; i++ )
             {
@@ -8063,7 +8103,7 @@ inline bool FleetSaveMessageBody( const Ctx & ctx, const TableNumbering & number
         if ( !order_by_id.ok ) { return false; } // the sort could not run
         if ( order_by_id.count > 0 )
         {
-            w.put( 15, kTableMessageRefBitsHere );
+            w.put( 19, kTableMessageRefBitsHere );
             w.put( (uint64_t) order_by_id.count, 32 ); // the count the data decides
             for ( int32_t i = 0; i < order_by_id.count; i++ )
             {
@@ -8078,7 +8118,7 @@ inline bool FleetSaveMessageBody( const Ctx & ctx, const TableNumbering & number
         {
             uint64_t index_flagship = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_flagship, index_flagship ) ) { return false; }
-            w.put( 16, kTableMessageRefBitsHere );
+            w.put( 20, kTableMessageRefBitsHere );
             w.put( index_flagship, index_bits );
         }
     }
@@ -8087,7 +8127,7 @@ inline bool FleetSaveMessageBody( const Ctx & ctx, const TableNumbering & number
         if ( !order_loadouts.ok ) { return false; } // the sort could not run
         if ( order_loadouts.count > 0 )
         {
-            w.put( 17, kTableMessageRefBitsHere );
+            w.put( 21, kTableMessageRefBitsHere );
             w.put( (uint64_t) order_loadouts.count, 32 ); // the count the data decides
             for ( int32_t i = 0; i < order_loadouts.count; i++ )
             {
@@ -8101,7 +8141,7 @@ inline bool FleetSaveMessageBody( const Ctx & ctx, const TableNumbering & number
         if ( !order_tiers.ok ) { return false; } // the sort could not run
         if ( order_tiers.count > 0 )
         {
-            w.put( 18, kTableMessageRefBitsHere );
+            w.put( 22, kTableMessageRefBitsHere );
             w.put( (uint64_t) order_tiers.count, 32 ); // the count the data decides
             for ( int32_t i = 0; i < order_tiers.count; i++ )
             {
@@ -8831,22 +8871,14 @@ inline bool FleetExtentPack( const Ctx & ctx, const Fleet & src, Fleet & dst, ui
 // writes Find first. NULL is NOT INSERTED: a key longer than the bound,
 // because a truncated key would be a merged entry, and an arena that
 // cannot carve another segment, alike.
+//
+// It is a WRAPPER: TableMapPlace owns the lookup, the reset, the
+// allocation and the key copy, and this half is the bound and the
+// const char * key's length. Nothing here mutates an entry (§2.8).
 inline Item * FleetLoadoutsEntryValueInsert( TableWorker & worker, TableMap<FleetLoadoutsEntryValueEntry> & map, uint8_t key )
 {
-    if ( worker.arena == NULL ) { return NULL; }
-    FleetLoadoutsEntryValueEntry * found = TableMapScan( *worker.arena, map, key ); // one LINEAR SCAN of the live entries
-    if ( found != NULL )
-    {
-        TableResetMapValue( *found ); // a duplicate REPLACES: the value goes back to its defaults
-        return TableEntryValue( found );
-    }
-    TableMapHead * head = TableMapReach( worker, map );
-    if ( head == NULL ) { return NULL; }
-    FleetLoadoutsEntryValueEntry * entry = TableMapAppend( worker, head, map ); // APPENDS; nothing ever moves (§6.4)
-    if ( entry == NULL ) { return NULL; }
-    TableReset( *entry );
-    TableEntrySetKey( *entry, key );
-    return TableEntryValue( entry );
+    FleetLoadoutsEntryValueEntry * entry = TableMapPlace( worker, map, key );
+    return entry != NULL ? TableEntryValue( entry ) : NULL;
 }
 
 // FIND on the builder: the same linear scan, O( n ) key compares over the
@@ -8930,24 +8962,17 @@ inline const Item * FleetLoadoutsEntryValueIndexFind( const TableMapIndex & inde
 // writes Find first. NULL is NOT INSERTED: a key longer than the bound,
 // because a truncated key would be a merged entry, and an arena that
 // cannot carve another segment, alike.
+//
+// It is a WRAPPER: TableMapPlace owns the lookup, the reset, the
+// allocation and the key copy, and this half is the bound and the
+// const char * key's length. Nothing here mutates an entry (§2.8).
 inline ShipConfig * FleetShipsInsert( TableWorker & worker, TableMap<FleetShipsEntry> & map, const char * key )
 {
-    const int32_t length = TableKeyLength( key, kFleetShipsEntryKeyBound );
-    if ( key == NULL || length > kFleetShipsEntryKeyBound ) { return NULL; } // KEYS NEVER CLAMP
-    if ( worker.arena == NULL ) { return NULL; }
-    FleetShipsEntry * found = TableMapScan( *worker.arena, map, key ); // one LINEAR SCAN of the live entries
-    if ( found != NULL )
-    {
-        TableResetMapValue( *found ); // a duplicate REPLACES: the value goes back to its defaults
-        return TableEntryValue( found );
-    }
-    TableMapHead * head = TableMapReach( worker, map );
-    if ( head == NULL ) { return NULL; }
-    FleetShipsEntry * entry = TableMapAppend( worker, head, map ); // APPENDS; nothing ever moves (§6.4)
-    if ( entry == NULL ) { return NULL; }
-    TableReset( *entry );
-    TableEntrySetKey( *entry, key, length );
-    return TableEntryValue( entry );
+    if ( key == NULL ) { return NULL; }
+    const TableMapKeyRef bytes = { key, TableKeyLength( key, kFleetShipsEntryKeyBound ) };
+    if ( bytes.length > kFleetShipsEntryKeyBound ) { return NULL; } // KEYS NEVER CLAMP
+    FleetShipsEntry * entry = TableMapPlace( worker, map, bytes );
+    return entry != NULL ? TableEntryValue( entry ) : NULL;
 }
 
 // FIND on the builder: the same linear scan, O( n ) key compares over the
@@ -9031,22 +9056,14 @@ inline const ShipConfig * FleetShipsIndexFind( const TableMapIndex & index, cons
 // writes Find first. NULL is NOT INSERTED: a key longer than the bound,
 // because a truncated key would be a merged entry, and an arena that
 // cannot carve another segment, alike.
+//
+// It is a WRAPPER: TableMapPlace owns the lookup, the reset, the
+// allocation and the key copy, and this half is the bound and the
+// const char * key's length. Nothing here mutates an entry (§2.8).
 inline TableRef * FleetByIdInsert( TableWorker & worker, TableMap<FleetByIdEntry> & map, uint32_t key )
 {
-    if ( worker.arena == NULL ) { return NULL; }
-    FleetByIdEntry * found = TableMapScan( *worker.arena, map, key ); // one LINEAR SCAN of the live entries
-    if ( found != NULL )
-    {
-        TableResetMapValue( *found ); // a duplicate REPLACES: the value goes back to its defaults
-        return TableEntryValue( found );
-    }
-    TableMapHead * head = TableMapReach( worker, map );
-    if ( head == NULL ) { return NULL; }
-    FleetByIdEntry * entry = TableMapAppend( worker, head, map ); // APPENDS; nothing ever moves (§6.4)
-    if ( entry == NULL ) { return NULL; }
-    TableReset( *entry );
-    TableEntrySetKey( *entry, key );
-    return TableEntryValue( entry );
+    FleetByIdEntry * entry = TableMapPlace( worker, map, key );
+    return entry != NULL ? TableEntryValue( entry ) : NULL;
 }
 
 // FIND on the builder: the same linear scan, O( n ) key compares over the
@@ -9130,24 +9147,17 @@ inline const ShipConfig * FleetByIdIndexFind( const TableMapIndex & index, const
 // writes Find first. NULL is NOT INSERTED: a key longer than the bound,
 // because a truncated key would be a merged entry, and an arena that
 // cannot carve another segment, alike.
+//
+// It is a WRAPPER: TableMapPlace owns the lookup, the reset, the
+// allocation and the key copy, and this half is the bound and the
+// const char * key's length. Nothing here mutates an entry (§2.8).
 inline TableMap<FleetLoadoutsEntryValueEntry> * FleetLoadoutsInsert( TableWorker & worker, TableMap<FleetLoadoutsEntry> & map, const char * key )
 {
-    const int32_t length = TableKeyLength( key, kFleetLoadoutsEntryKeyBound );
-    if ( key == NULL || length > kFleetLoadoutsEntryKeyBound ) { return NULL; } // KEYS NEVER CLAMP
-    if ( worker.arena == NULL ) { return NULL; }
-    FleetLoadoutsEntry * found = TableMapScan( *worker.arena, map, key ); // one LINEAR SCAN of the live entries
-    if ( found != NULL )
-    {
-        TableResetMapValue( *found ); // a duplicate REPLACES: the value goes back to its defaults
-        return TableEntryValue( found );
-    }
-    TableMapHead * head = TableMapReach( worker, map );
-    if ( head == NULL ) { return NULL; }
-    FleetLoadoutsEntry * entry = TableMapAppend( worker, head, map ); // APPENDS; nothing ever moves (§6.4)
-    if ( entry == NULL ) { return NULL; }
-    TableReset( *entry );
-    TableEntrySetKey( *entry, key, length );
-    return TableEntryValue( entry );
+    if ( key == NULL ) { return NULL; }
+    const TableMapKeyRef bytes = { key, TableKeyLength( key, kFleetLoadoutsEntryKeyBound ) };
+    if ( bytes.length > kFleetLoadoutsEntryKeyBound ) { return NULL; } // KEYS NEVER CLAMP
+    FleetLoadoutsEntry * entry = TableMapPlace( worker, map, bytes );
+    return entry != NULL ? TableEntryValue( entry ) : NULL;
 }
 
 // FIND on the builder: the same linear scan, O( n ) key compares over the
@@ -9231,22 +9241,14 @@ inline const TableMap<FleetLoadoutsEntryValueEntry> * FleetLoadoutsIndexFind( co
 // writes Find first. NULL is NOT INSERTED: a key longer than the bound,
 // because a truncated key would be a merged entry, and an arena that
 // cannot carve another segment, alike.
+//
+// It is a WRAPPER: TableMapPlace owns the lookup, the reset, the
+// allocation and the key copy, and this half is the bound and the
+// const char * key's length. Nothing here mutates an entry (§2.8).
 inline Item * FleetTiersInsert( TableWorker & worker, TableMap<FleetTiersEntry> & map, int16_t key )
 {
-    if ( worker.arena == NULL ) { return NULL; }
-    FleetTiersEntry * found = TableMapScan( *worker.arena, map, key ); // one LINEAR SCAN of the live entries
-    if ( found != NULL )
-    {
-        TableResetMapValue( *found ); // a duplicate REPLACES: the value goes back to its defaults
-        return TableEntryValue( found );
-    }
-    TableMapHead * head = TableMapReach( worker, map );
-    if ( head == NULL ) { return NULL; }
-    FleetTiersEntry * entry = TableMapAppend( worker, head, map ); // APPENDS; nothing ever moves (§6.4)
-    if ( entry == NULL ) { return NULL; }
-    TableReset( *entry );
-    TableEntrySetKey( *entry, key );
-    return TableEntryValue( entry );
+    FleetTiersEntry * entry = TableMapPlace( worker, map, key );
+    return entry != NULL ? TableEntryValue( entry ) : NULL;
 }
 
 // FIND on the builder: the same linear scan, O( n ) key compares over the
@@ -9400,7 +9402,7 @@ inline bool FleetByIdEntryNumber( const Ctx & ctx, TableNumbering & numbering, c
                 TableNodeEntry node;
                 node.node = (const void *) pointee;
                 node.type_id = 0x758252d2d1b14f0dull; // fnv1a64( "ShipConfig" )
-                node.type_slot = 37; // its slot in the unit's vocabulary (§3.3)
+                node.type_slot = 42; // its slot in the unit's vocabulary (§3.3)
                 node.measure = &TableNodeMeasureThunk<Ctx, ShipConfig>;
                 node.save = &TableNodeSaveThunk<Ctx, ShipConfig>;
                 node.message_measure = &TableNodeMessageMeasureThunk<Ctx, ShipConfig>;
@@ -9588,7 +9590,7 @@ inline bool FleetNumber( const Ctx & ctx, TableNumbering & numbering, const Flee
                 TableNodeEntry node;
                 node.node = (const void *) pointee;
                 node.type_id = 0x758252d2d1b14f0dull; // fnv1a64( "ShipConfig" )
-                node.type_slot = 37; // its slot in the unit's vocabulary (§3.3)
+                node.type_slot = 42; // its slot in the unit's vocabulary (§3.3)
                 node.measure = &TableNodeMeasureThunk<Ctx, ShipConfig>;
                 node.save = &TableNodeSaveThunk<Ctx, ShipConfig>;
                 node.message_measure = &TableNodeMessageMeasureThunk<Ctx, ShipConfig>;
@@ -11421,7 +11423,7 @@ inline const TableTypeInfo * FleetLoadoutsEntryValueEntryTableType() { return &F
 
 inline const TableFieldInfo FleetLoadoutsEntryTableFields[] = {
     { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( FleetLoadoutsEntry, key ), (uint32_t) sizeof( FleetLoadoutsEntry::key ), (uint32_t) offsetof( FleetLoadoutsEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "value", "value", "map[uint8]Item", 0x7ce4fd9430e80ceaull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( FleetLoadoutsEntry, value ), (uint32_t) sizeof( FleetLoadoutsEntryValueEntry ), (uint32_t) offsetof( FleetLoadoutsEntry, value.count ), 0xffffffffu, &FleetLoadoutsEntryValueEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { FleetLoadoutsEntryValueEntry * placed = TableMapPlace( worker, *(TableMap<FleetLoadoutsEntryValueEntry> *) slot, (uint8_t) key_value ); if ( placed != NULL ) { TableEntrySetKey( *placed, (uint8_t) key_value ); } return (void *) placed; }, "", TableDocNone, 0, NULL },
+    { "value", "value", "map[uint8]Item", 0x7ce4fd9430e80ceaull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( FleetLoadoutsEntry, value ), (uint32_t) sizeof( FleetLoadoutsEntryValueEntry ), (uint32_t) offsetof( FleetLoadoutsEntry, value.count ), 0xffffffffu, &FleetLoadoutsEntryValueEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<FleetLoadoutsEntryValueEntry> *) slot, (uint8_t) key_value ); }, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo FleetLoadoutsEntryTableInfo = { "FleetLoadoutsEntry", (uint32_t) sizeof( FleetLoadoutsEntry ), 2, FleetLoadoutsEntryTableFields, +[]( void * p ) { FleetLoadoutsEntryReset( *(FleetLoadoutsEntry *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * FleetLoadoutsEntryTableType() { return &FleetLoadoutsEntryTableInfo; }
@@ -11434,11 +11436,11 @@ inline const TableTypeInfo FleetTiersEntryTableInfo = { "FleetTiersEntry", (uint
 inline const TableTypeInfo * FleetTiersEntryTableType() { return &FleetTiersEntryTableInfo; }
 
 inline const TableFieldInfo FleetTableFields[] = {
-    { "ships", "ships", "map[string(32)]ShipConfig", 0x294a5c4913e1ad44ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, ships ), (uint32_t) sizeof( FleetShipsEntry ), (uint32_t) offsetof( Fleet, ships.count ), 0xffffffffu, &FleetShipsEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL || key_length > kFleetShipsEntryKeyBound ) { return NULL; } FleetShipsEntry * placed = TableMapPlace( worker, *(TableMap<FleetShipsEntry> *) slot, key ); if ( placed != NULL ) { TableEntrySetKey( *placed, key, key_length ); } return (void *) placed; }, "", TableDocNone, 0, NULL },
-    { "by_id", "by_id", "map[uint32]*ShipConfig", 0x7b024c46e98d3404ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, by_id ), (uint32_t) sizeof( FleetByIdEntry ), (uint32_t) offsetof( Fleet, by_id.count ), 0xffffffffu, &FleetByIdEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { FleetByIdEntry * placed = TableMapPlace( worker, *(TableMap<FleetByIdEntry> *) slot, (uint32_t) key_value ); if ( placed != NULL ) { TableEntrySetKey( *placed, (uint32_t) key_value ); } return (void *) placed; }, "", TableDocNone, 0, NULL },
+    { "ships", "ships", "map[string(32)]ShipConfig", 0x294a5c4913e1ad44ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, ships ), (uint32_t) sizeof( FleetShipsEntry ), (uint32_t) offsetof( Fleet, ships.count ), 0xffffffffu, &FleetShipsEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<FleetShipsEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL },
+    { "by_id", "by_id", "map[uint32]*ShipConfig", 0x7b024c46e98d3404ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, by_id ), (uint32_t) sizeof( FleetByIdEntry ), (uint32_t) offsetof( Fleet, by_id.count ), 0xffffffffu, &FleetByIdEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<FleetByIdEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL },
     { "flagship", "flagship", "ShipConfig", 0x63dfa0c4a4b3815dull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ShipConfigAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ShipConfigEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Fleet, flagship ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ShipConfigTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "loadouts", "loadouts", "map[string(16)]map[uint8]Item", 0x294fa1b3f0f5f070ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, loadouts ), (uint32_t) sizeof( FleetLoadoutsEntry ), (uint32_t) offsetof( Fleet, loadouts.count ), 0xffffffffu, &FleetLoadoutsEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL || key_length > kFleetLoadoutsEntryKeyBound ) { return NULL; } FleetLoadoutsEntry * placed = TableMapPlace( worker, *(TableMap<FleetLoadoutsEntry> *) slot, key ); if ( placed != NULL ) { TableEntrySetKey( *placed, key, key_length ); } return (void *) placed; }, "", TableDocNone, 0, NULL },
-    { "tiers", "tiers", "map[int16]Item", 0x6dd8dc6c5fdae3ceull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, tiers ), (uint32_t) sizeof( FleetTiersEntry ), (uint32_t) offsetof( Fleet, tiers.count ), 0xffffffffu, &FleetTiersEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { FleetTiersEntry * placed = TableMapPlace( worker, *(TableMap<FleetTiersEntry> *) slot, (int16_t) key_value ); if ( placed != NULL ) { TableEntrySetKey( *placed, (int16_t) key_value ); } return (void *) placed; }, "", TableDocNone, 0, NULL },
+    { "loadouts", "loadouts", "map[string(16)]map[uint8]Item", 0x294fa1b3f0f5f070ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, loadouts ), (uint32_t) sizeof( FleetLoadoutsEntry ), (uint32_t) offsetof( Fleet, loadouts.count ), 0xffffffffu, &FleetLoadoutsEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<FleetLoadoutsEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL },
+    { "tiers", "tiers", "map[int16]Item", 0x6dd8dc6c5fdae3ceull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Fleet, tiers ), (uint32_t) sizeof( FleetTiersEntry ), (uint32_t) offsetof( Fleet, tiers.count ), 0xffffffffu, &FleetTiersEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<FleetTiersEntry> *) slot, (int16_t) key_value ); }, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo FleetTableInfo = { "Fleet", (uint32_t) sizeof( Fleet ), 5, FleetTableFields, +[]( void * p ) { FleetReset( *(Fleet *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * FleetTableType() { return &FleetTableInfo; }
