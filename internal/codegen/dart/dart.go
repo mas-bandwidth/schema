@@ -663,7 +663,9 @@ func (g *gen) emitStorageField(f *ir.Field) {
 			g.bpf("  final %s %s = %s(%s);\n", typedListFor(f.Type), name, typedListFor(f.Type), bound)
 		}
 		if f.Array == ir.ArrayCounted {
-			g.bpf("  int %sCount = 0;\n", name)
+			// a [A..B] count is born at A, the one wire-legal count a fresh
+			// value can carry (SPEC §4.6); a [..N] count is born empty
+			g.bpf("  int %sCount = %d;\n", name, f.BornCount())
 		}
 	default:
 		g.emitFieldComment(f)

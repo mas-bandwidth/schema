@@ -567,7 +567,13 @@ func (g *gen) emitStorageField(f *ir.Field) []string {
 			g.bpf("        public final %s[] %s = new %s[%s];\n", scalarJavaType(f.Type), name, scalarJavaType(f.Type), bound)
 		}
 		if f.Array == ir.ArrayCounted {
-			g.bpf("        public int %sCount;\n", name)
+			// a [A..B] count is born at A, the one wire-legal count a fresh
+			// value can carry (SPEC §4.6); a [..N] count takes the field's zero
+			if n := f.BornCount(); n > 0 {
+				g.bpf("        public int %sCount = %d;\n", name, n)
+			} else {
+				g.bpf("        public int %sCount;\n", name)
+			}
 		}
 		return ctor
 	default:

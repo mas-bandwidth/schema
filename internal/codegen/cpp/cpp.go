@@ -504,7 +504,7 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	case f.Array == ir.ArrayCounted:
 		g.pf("    %s %s[%s] = {}; // used count beside it; wire count in [%d, %s]\n",
 			typ, f.Name, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound)), f.ArrayMin, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound)))
-		g.pf("    int32_t %s_count = 0;\n", f.Name)
+		g.pf("    int32_t %s_count = %d;\n", f.Name, f.BornCount())
 	default:
 		g.pf("    %s %s%s;%s\n", typ, f.Name, g.initializer(f, typ, isStructType), g.fieldComment(f))
 	}

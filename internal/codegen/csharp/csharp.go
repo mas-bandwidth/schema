@@ -414,7 +414,7 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	case f.Array == ir.ArrayCounted:
 		g.tf("    public %s[] %s = new %s[%s]; // used count beside it; wire count in [%d, %s]\n",
 			typ, name, typ, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "", true), f.ArrayMin, ir.RenderExpr(f.ArrayExpr))
-		g.tf("    public int %s;\n", g.m(name+"Count"))
+		g.tf("    public int %s%s;\n", g.m(name+"Count"), bornCountInit(f))
 	default:
 		init := ""
 		if f.HasDefault {
@@ -426,6 +426,16 @@ func (g *gen) emitStorageField(f *ir.Field) {
 		}
 		g.tf("    public %s %s%s;%s\n", typ, name, init, g.fieldComment(f))
 	}
+}
+
+// bornCountInit is a counted array's count initializer: a [A..B] count is
+// born at A, the one wire-legal count a fresh value can carry (SPEC §4.6),
+// and a [..N] count takes the field's zero.
+func bornCountInit(f *ir.Field) string {
+	if n := f.BornCount(); n > 0 {
+		return fmt.Sprintf(" = %d", n)
+	}
+	return ""
 }
 
 func (g *gen) fieldComment(f *ir.Field) string {

@@ -28,7 +28,8 @@ func (g *gen) emitMaxBits(st *ir.Struct) {
 // ---- specified defaults ----
 
 // structHasDefaults reports whether a type (or a type it composes) carries a
-// specified default, which is what makes a new_X() constructor worth emitting.
+// specified default or a [A..B] count born above zero, which is what makes a
+// new_X() constructor worth emitting.
 func structHasDefaults(st *ir.Struct) bool {
 	seen := map[string]bool{}
 	var walk func(*ir.Struct) bool
@@ -38,7 +39,7 @@ func structHasDefaults(st *ir.Struct) bool {
 		}
 		seen[s.Name] = true
 		for _, f := range s.Fields {
-			if f.HasDefault {
+			if f.HasDefault || f.BornCount() > 0 {
 				return true
 			}
 			if f.Type.Kind == ir.TNamed {
@@ -72,6 +73,11 @@ func (g *gen) emitConstructor(st *ir.Struct) {
 }
 
 func (g *gen) emitDefaultInit(f *ir.Field) {
+	if n := f.BornCount(); n > 0 {
+		// a [A..B] count is born at A, the one wire-legal count a fresh value
+		// can carry (SPEC §4.6); the elements below follow their own rule
+		g.pf("    value.%s_count = %d;\n", f.Name, n)
+	}
 	if f.Type.Kind == ir.TNamed {
 		if inner, ok := f.Type.Ref.(*ir.Struct); ok && structHasDefaults(inner) {
 			if f.Array != ir.ArrayNone {

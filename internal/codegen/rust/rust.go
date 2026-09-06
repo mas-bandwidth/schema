@@ -509,7 +509,7 @@ func (g *gen) hasDefaults(d *ir.Struct) bool {
 		}
 		seen[st.Name] = true
 		for _, f := range st.Fields {
-			if f.HasDefault {
+			if f.HasDefault || f.BornCount() > 0 {
 				return true
 			}
 			if f.Type.Kind == ir.TNamed {
@@ -525,6 +525,11 @@ func (g *gen) hasDefaults(d *ir.Struct) bool {
 
 func (g *gen) emitDefaultInit(f *ir.Field) {
 	name := "value." + f.Name
+	if n := f.BornCount(); n > 0 {
+		// a [A..B] count is born at A, the one wire-legal count a fresh value
+		// can carry (SPEC §4.6); the elements below follow their own rule
+		g.pf("        %s_count = %d;\n", name, n)
+	}
 	if f.HasDefault {
 		g.pf("        %s = %s;\n", name, g.defaultValue(f))
 		return

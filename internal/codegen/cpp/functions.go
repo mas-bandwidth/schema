@@ -349,6 +349,28 @@ func (g *gen) emitWriteRangedFold32(expr, lo, hi string, bits int64, loZero bool
 	}
 }
 
+// emitWriteCount writes a counted array's count. Unlike a scalar's range,
+// which is a §5 writer contract held by an assert, a count outside [lo, hi]
+// is REFUSED in every build: the count guards the element loop, and a fresh
+// value of a [A..B] array whose caller never set the count would otherwise
+// pack a wrapped count under -DNDEBUG and report success on bytes no reader
+// accepts (SPEC §4.6).
+func (g *gen) emitWriteCount(expr, lo, hi string, bits int64, loZero bool, ind string) {
+	g.pf("%sif ( int32_t( %s ) < int32_t( %s ) || int32_t( %s ) > int32_t( %s ) )\n%s{\n", ind, expr, lo, expr, hi, ind)
+	g.pf("%s    return false; // a count outside its wire range is refused in every build (SPEC §4.6)\n%s}\n", ind, ind)
+	if bits == 0 {
+		// a degenerate range costs ZERO BITS: the value is known from the
+		// range alone, and write_bits( .., 0 ) would reach SerializeBits,
+		// whose bit count must be at least 1
+		return
+	}
+	if loZero {
+		g.pf("%swrite_bits( stream, uint32_t( %s ), %d );\n", ind, expr, bits)
+	} else {
+		g.pf("%swrite_bits( stream, uint32_t( %s ) - uint32_t( %s ), %d );\n", ind, expr, lo, bits)
+	}
+}
+
 // emitWriteRangedFold64 is the int64 family twin (SerializeInteger64's
 // encoding: low dword first, then the high remainder — the write_bits macro's
 // own >32 split, byte-identical).
@@ -379,7 +401,7 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 			return
 		}
 		if f.Array == ir.ArrayCounted {
-			g.emitWriteRangedFold32(name+"_count", fmt.Sprintf("%d", f.ArrayMin), bound,
+			g.emitWriteCount(name+"_count", fmt.Sprintf("%d", f.ArrayMin), bound,
 				bitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)), f.ArrayMin == 0, ind)
 			g.pf("%sfor ( int32_t i = 0; i < %s_count; i++ )\n%s{\n", ind, name, ind)
 		} else {

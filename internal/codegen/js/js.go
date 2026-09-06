@@ -410,7 +410,9 @@ func (g *gen) emitStorageField(f *ir.Field) {
 			g.pf("    this.%s = new Array(%s).fill(%s);%s\n", name, bound, g.zeroValue(f.Type), g.fieldComment(f))
 		}
 		if f.Array == ir.ArrayCounted {
-			g.pf("    this.%sCount = 0;\n", name)
+			// a [A..B] count is born at A, the one wire-legal count a fresh
+			// value can carry (SPEC §4.6); a [..N] count is born empty
+			g.pf("    this.%sCount = %d;\n", name, f.BornCount())
 		}
 	default:
 		init := ""

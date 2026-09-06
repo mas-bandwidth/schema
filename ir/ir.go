@@ -379,6 +379,19 @@ type Field struct {
 	Steps int64 // ceil((FMax-FMin)/Resolution)
 }
 
+// BornCount is the count a fresh value of a counted array carries: the
+// declared minimum, because a range that starts above zero has no wire-legal
+// count at zero and an array takes no specified default to name another one
+// (SPEC §4.6). It is the one birth value an array declares, so every target's
+// constructed form carries it the way it carries a specified default, and a
+// [..N] array is born empty as before. Zero on every other field.
+func (f *Field) BornCount() int64 {
+	if f.Array == ArrayCounted {
+		return f.ArrayMin
+	}
+	return 0
+}
+
 type FieldTypeKind int
 
 const (
