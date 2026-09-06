@@ -574,10 +574,49 @@ static const uint64_t kTableMessageVocabularyFieldId = 0xFFFFFFFFFFFFFFFDull;
 // vocabulary is. A READER spends the width the SENDER's vocabulary settles.
 static const int64_t kTableMessageRefBitsHere = 8;
 
+// THIS UNIT'S OWN ENTRY COUNT, which is the CAPACITY a receiver declares for
+// its resolved vocabulary when it talks only to peers of this schema (§3.3).
+// The vocabulary is a pure function of the build version, so a peer at this
+// build announces exactly this many entries; a receiver that means to meet
+// OTHER builds declares more, and an announcement above whatever it declared
+// is refused as vocabulary_too_large.
+static const int64_t kTableMessageEntriesHere = 152;
+
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
 // layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
 // so a value written here and a value written by a generated packet writer are
 // the same bits in the same places.
+
+// EIGHT BYTES OF THE STREAM AS ONE WORD, and the word is LITTLE-END-FIRST
+// whatever order this host is in, because the stream's own definition puts
+// bit i in byte i/8: byte 0 of the run holds the word's low eight bits. That
+// is what lets one value of any width move in one unaligned load or store
+// instead of one touch a byte, and the BITS ON THE WIRE do not move.
+inline uint64_t table_message_byteswap64( uint64_t v )
+{
+    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull )
+         | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull )
+         | ( v << 56 );
+}
+
+inline uint64_t table_message_load64( const uint8_t * p )
+{
+    uint64_t v = 0;
+    memcpy( &v, p, 8 );
+#if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    v = table_message_byteswap64( v );
+#endif
+    return v;
+}
+
+inline void table_message_store64( uint8_t * p, uint64_t v )
+{
+#if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    v = table_message_byteswap64( v );
+#endif
+    memcpy( p, &v, 8 );
+}
+
 struct TableBitWriter
 {
     uint8_t * buffer;
@@ -588,30 +627,35 @@ struct TableBitWriter
     TableBitWriter() : buffer( NULL ), capacity( 0 ), bits( 0 ), overflow( false ) {}
     TableBitWriter( uint8_t * to_buffer, int64_t to_capacity ) : buffer( to_buffer ), capacity( to_capacity ), bits( 0 ), overflow( false ) {}
 
-    // ONE BYTE OF THE BUFFER AT A TIME, never one bit: the bits of one value
-    // that fall in a byte are masked and shifted into place together, so a
-    // sixty-four bit field costs nine touches rather than sixty-four and
-    // spends no division at all. The BITS ON THE WIRE are the same bits in
-    // the same places — bit i in byte i/8 at position i%8, low bit first —
-    // which is what the pinned goldens hold.
+    // ONE WORD AT A TIME, never one bit and never one byte of arithmetic: the
+    // value is shifted into place in a REGISTER once, and the bytes it
+    // occupies are stored from that register with no read back. A sixty-four
+    // bit field costs one shift rather than nine masked read-modify-writes.
+    // The word is assembled little-end-first, so the BITS ON THE WIRE are the
+    // same bits in the same places — bit i in byte i/8 at position i%8, low
+    // bit first — which is what the pinned goldens hold. IT WRITES EXACTLY
+    // THE BYTES THE VALUE OCCUPIES and never one past them, so a caller's
+    // buffer beyond the batch is its own.
     void put( uint64_t value, int64_t n )
     {
         if ( n <= 0 ) { return; }
         if ( ( bits + n + 7 ) / 8 > capacity ) { overflow = true; bits += n; return; }
         if ( n < 64 ) { value &= ( uint64_t( 1 ) << n ) - 1; } // a caller's high bits never leak
-        int64_t at = bits;
-        int64_t left = n;
-        while ( left > 0 )
+        const int64_t index = bits >> 3;
+        const int64_t bit = bits & 7;
+        // the byte the write STARTS in keeps the bits already written to it,
+        // and every byte after it is this value's own
+        const uint64_t head = bit != 0 ? ( uint64_t( buffer[index] ) & ( ( uint64_t( 1 ) << bit ) - 1 ) ) : 0;
+        const uint64_t word = head | ( value << bit );
+        const int64_t need = ( bit + n + 7 ) >> 3; // 1 to 9 bytes
+        if ( need >= 8 )
         {
-            const int64_t index = at >> 3;
-            const int64_t bit = at & 7;
-            const int64_t room = 8 - bit;
-            const int64_t take = room < left ? room : left;
-            if ( bit == 0 ) { buffer[index] = 0; }
-            buffer[index] = uint8_t( buffer[index] | uint8_t( ( value & ( ( uint64_t( 1 ) << take ) - 1 ) ) << bit ) );
-            value >>= take;
-            at += take;
-            left -= take;
+            table_message_store64( buffer + index, word );
+            if ( need > 8 ) { buffer[index + 8] = uint8_t( value >> ( 64 - bit ) ); }
+        }
+        else
+        {
+            for ( int64_t i = 0; i < need; i++ ) { buffer[index + i] = uint8_t( word >> ( 8 * i ) ); }
         }
         bits += n;
     }
@@ -656,18 +700,35 @@ struct TableBitReader
     // the primitive is sixty-four bits, and a width above it is refused
     // here as well as at the announcement: no field on any body can ask this
     // reader to move more bits than it holds
+    // ONE WORD OF THE BUFFER AT A TIME, the mirror of the writer's put: the
+    // eight bytes the value starts in load as one little-end-first word and a
+    // ninth byte carries the spill a value that straddles the word needs.
+    // Within nine bytes of the stream's end there is no room for a word load
+    // and the bytes come one at a time, by the same arithmetic.
     bool get( uint64_t & value, int64_t n )
     {
         if ( n > 64 || !has( n ) ) { return false; }
         value = 0;
+        if ( n == 0 ) { return true; }
+        const int64_t index = offset >> 3;
+        const int64_t bit = offset & 7;
+        const int64_t bytes = ( bits + 7 ) >> 3;
+        if ( index + 9 <= bytes )
+        {
+            uint64_t v = table_message_load64( buffer + index ) >> bit;
+            if ( bit != 0 && bit + n > 64 ) { v |= uint64_t( buffer[index + 8] ) << ( 64 - bit ); }
+            value = n == 64 ? v : ( v & ( ( uint64_t( 1 ) << n ) - 1 ) );
+            offset += n;
+            return true;
+        }
         int64_t got = 0;
         while ( got < n )
         {
-            const int64_t index = offset >> 3;
-            const int64_t bit = offset & 7;
-            const int64_t room = 8 - bit;
+            const int64_t byte = offset >> 3;
+            const int64_t off = offset & 7;
+            const int64_t room = 8 - off;
             const int64_t take = ( n - got ) < room ? ( n - got ) : room;
-            const uint64_t chunk = ( uint64_t( buffer[index] ) >> bit ) & ( ( uint64_t( 1 ) << take ) - 1 );
+            const uint64_t chunk = ( uint64_t( buffer[byte] ) >> off ) & ( ( uint64_t( 1 ) << take ) - 1 );
             value |= chunk << got;
             offset += take;
             got += take;
@@ -727,33 +788,39 @@ inline int64_t TableBitsRequired( int64_t min, int64_t max )
 // The ELEMENT's own facts ride beside the field's because an array's element
 // is the one nesting this wire has: an array of arrays is not a table-wire
 // construct, so one level is every level.
+//
+// IT IS THE RESOLVED ENTRY AND THE CALLER SIZES AN ARRAY OF THEM, so it
+// carries what a DECODE takes and nothing a decode does not: qmin, qdelta and
+// qcount are what SPEC.md §4.3's rule leaves behind, and the qmax and qres
+// that rule CONSUMES are locals of the parse. The widths are int16 because a
+// width is bounded by the kind it came under and no kind holds more than 128
+// bits.
 struct TableMessageEntry
 {
     uint64_t id = 0;
-    uint8_t kind = 0;
-    uint8_t packing = 0;
-    uint8_t elem_kind = 0;
-    uint8_t elem_packing = 0;
-    int64_t value_bits = 0; // a ranged or quantized width
     int64_t min = 0;        // an array's minimum count
     int64_t max = 0;        // an array's maximum count, a string's capacity, a keyed array's slots
     int64_t base_lo = 0;    // the ranged base, low half: a signed kind's sign-extends, an unsigned kind's is whole
     int64_t base_hi = 0;    // its high half, for a 128-bit kind
-    // the QUANTIZED triple, and what SPEC.md §4.3's rule derives from it once
-    float qmin = 0.0f;
-    float qmax = 0.0f;
-    float qres = 0.0f;
-    float qdelta = 0.0f;
-    uint32_t qcount = 0;
-    int64_t elem_value_bits = 0;
     int64_t elem_max = 0;
     int64_t elem_base_lo = 0;
     int64_t elem_base_hi = 0;
+    // what SPEC.md §4.3's derivation leaves: the base, the step and the count
+    float qmin = 0.0f;
+    float qdelta = 0.0f;
+    uint32_t qcount = 0;
     float elem_qmin = 0.0f;
-    float elem_qmax = 0.0f;
-    float elem_qres = 0.0f;
     float elem_qdelta = 0.0f;
     uint32_t elem_qcount = 0;
+    // THE PAYLOAD'S WIDTH, RESOLVED: what the kind, the packing and the
+    // announced bits together say, computed once at AnnounceRead, and -1
+    // where the payload is not a fixed-width value at all
+    int16_t value_bits = -1;
+    int16_t elem_value_bits = -1;
+    uint8_t kind = 0;
+    uint8_t packing = 0;
+    uint8_t elem_kind = 0;
+    uint8_t elem_packing = 0;
 };
 
 // TableMessageKindBits is the widest RANGED value a kind can carry, its own
@@ -859,6 +926,7 @@ struct TableMessageShapeFacts
 };
 
 inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & at, uint8_t kind, TableMessageShapeFacts f );
+inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t value_bits );
 
 // TableMessageEntryRead parses ONE entry, and answers false for a HOSTILE
 // SHAPE: bits above the kind's own domain, an array whose min exceeds its
@@ -872,18 +940,44 @@ inline bool TableMessageEntryRead( const uint8_t * in, int64_t size, int64_t & a
     entry.kind = in[ at + 8 ];
     at += 9;
     if ( !TableMessageKnownKind( entry.kind ) ) { return false; }
-    TableMessageShapeFacts own = { entry.packing, entry.value_bits, entry.base_lo, entry.base_hi,
-                                   entry.qmin, entry.qmax, entry.qres, entry.qdelta, entry.qcount,
-                                   entry.min, entry.max, entry.elem_kind };
+    // The parse lands in LOCALS and the entry keeps what a decode reads: the
+    // quantized max and res are the derivation's inputs and never a field's.
+    uint8_t packing = 0, elem_kind = 0;
+    int64_t bits = 0, base_lo = 0, base_hi = 0, min = 0, max = 0;
+    float qmin = 0.0f, qmax = 0.0f, qres = 0.0f, qdelta = 0.0f;
+    uint32_t qcount = 0;
+    TableMessageShapeFacts own = { packing, bits, base_lo, base_hi,
+                                   qmin, qmax, qres, qdelta, qcount,
+                                   min, max, elem_kind };
     if ( !TableMessageShapeRead( in, size, at, entry.kind, own ) ) { return false; }
+    entry.packing = packing;
+    entry.value_bits = (int16_t) TableMessageValueBits( entry.kind, packing, bits );
+    entry.base_lo = base_lo;
+    entry.base_hi = base_hi;
+    entry.qmin = qmin;
+    entry.qdelta = qdelta;
+    entry.qcount = qcount;
+    entry.min = min;
+    entry.max = max;
+    entry.elem_kind = elem_kind;
     if ( entry.kind == 14 || entry.kind == 16 )
     {
-        int64_t elem_min = 0;
-        uint8_t inner_kind = 0;
-        TableMessageShapeFacts elem = { entry.elem_packing, entry.elem_value_bits, entry.elem_base_lo, entry.elem_base_hi,
-                                        entry.elem_qmin, entry.elem_qmax, entry.elem_qres, entry.elem_qdelta, entry.elem_qcount,
-                                        elem_min, entry.elem_max, inner_kind };
+        uint8_t elem_packing = 0, inner_kind = 0;
+        int64_t elem_bits = 0, elem_base_lo = 0, elem_base_hi = 0, elem_min = 0, elem_max = 0;
+        float elem_qmin = 0.0f, elem_qmax = 0.0f, elem_qres = 0.0f, elem_qdelta = 0.0f;
+        uint32_t elem_qcount = 0;
+        TableMessageShapeFacts elem = { elem_packing, elem_bits, elem_base_lo, elem_base_hi,
+                                        elem_qmin, elem_qmax, elem_qres, elem_qdelta, elem_qcount,
+                                        elem_min, elem_max, inner_kind };
         if ( !TableMessageShapeRead( in, size, at, entry.elem_kind, elem ) ) { return false; }
+        entry.elem_packing = elem_packing;
+        entry.elem_value_bits = (int16_t) TableMessageValueBits( entry.elem_kind, elem_packing, elem_bits );
+        entry.elem_base_lo = elem_base_lo;
+        entry.elem_base_hi = elem_base_hi;
+        entry.elem_qmin = elem_qmin;
+        entry.elem_qdelta = elem_qdelta;
+        entry.elem_qcount = elem_qcount;
+        entry.elem_max = elem_max;
     }
     return true;
 }
@@ -1147,27 +1241,38 @@ static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
 };
 
 // TableVocabulary is ONE DIRECTION's announced vocabulary (§3.3): the entries
-// an announcement carried, whole, under one numbering.
+// an announcement carried, RESOLVED ONCE, under one numbering.
 //
-// It BORROWS the announcement's bytes rather than copying them, so the
-// announcement has to outlive it. What it holds of its own is the OFFSET of
-// each entry inside those bytes, which is what turns a slot into an index
-// rather than a search. A peer holds TWO of these for a connection, the one it
-// writes with and the one it reads with, and neither is the other's. A restart
-// opens a fresh connection with an empty vocabulary and nothing is cached
-// across connections.
+// THE RECEIVER RESOLVES ONCE (§3.3), so this holds the entries themselves and
+// not the announcement's bytes: every entry is parsed at AnnounceRead, and
+// every body after it dispatches through ONE ARRAY INDEX with nothing to
+// re-read and nothing to decide. The announcement is free the moment
+// AnnounceRead returns.
+//
+// THE STORAGE IS THE CALLER'S and this library never allocates. The caller
+// declares an array of entries wherever it wants it — static, on a heap, in
+// an arena, beside its connection — and hands it here with its CAPACITY. The
+// announcement holds for the life of the connection (§3.3), so the array does
+// too, and a peer holds TWO for a connection, the one it writes with and the
+// one it reads with. A restart opens a fresh connection with an empty
+// vocabulary and nothing is cached across connections.
+//
+// kTableMessageEntriesHere is the capacity a receiver that talks only to peers
+// of THIS schema declares, and a receiver meeting other builds declares more.
 struct TableVocabulary
 {
-    // THE CONFORMING DEFAULT BOUNDS (§3.3), and there are two because an entry
-    // is not a fixed width: a receiver refuses an announcement above either by
-    // name, and the byte bound is read off the vocabulary field's own length
-    // before an entry is touched.
-    static const int64_t kDefaultMaxEntries = 4096;
+    // THE CONFORMING DEFAULT BYTE BOUND (§3.3). The ENTRY bound has no default
+    // because it IS the caller's capacity: an announcement naming more entries
+    // than the caller made room for is refused as vocabulary_too_large before
+    // an entry is touched, and the byte bound is read off the vocabulary
+    // field's own length before that.
     static const int64_t kDefaultMaxBytes = 64 * 1024;
 
-    const uint8_t * vocabulary = NULL; // the announcement's own bytes, borrowed
-    int64_t vocabulary_bytes = 0;
-    int32_t offsets[ kDefaultMaxEntries ] = {};
+    TableVocabulary( TableMessageEntry * storage, int64_t capacity )
+        : entries( storage ), max_entries( capacity ) {}
+
+    TableMessageEntry * entries; // THE CALLER'S, capacity max_entries
+    int64_t max_entries;
     int64_t count = 0;
     int64_t ref_bits = 0;
     uint64_t build_version = 0;
@@ -1176,19 +1281,14 @@ struct TableVocabulary
     // refused, for any reason, carries no vocabulary for its life, and every
     // announcement after it is refused as second_announcement
     bool refused = false;
-    int64_t max_entries = kDefaultMaxEntries;
     int64_t max_bytes = kDefaultMaxBytes;
 };
 
-// TableVocabularyEntryAt is the entry a reference names, counted from 1. The
-// offset is an index and the shape is re-read from the announcement's own
-// bytes, which is a handful of byte reads and no allocation.
-inline TableMessageEntry TableVocabularyEntryAt( const TableVocabulary & vocabulary, uint64_t slot )
+// TableVocabularyEntryAt is the entry a reference names, counted from 1: ONE
+// ARRAY INDEX into the caller's resolved storage, no parse and no branch.
+inline const TableMessageEntry & TableVocabularyEntryAt( const TableVocabulary & vocabulary, uint64_t slot )
 {
-    TableMessageEntry entry;
-    int64_t at = vocabulary.offsets[ slot - 1 ];
-    TableMessageEntryRead( vocabulary.vocabulary, vocabulary.vocabulary_bytes, at, entry );
-    return entry;
+    return vocabulary.entries[ slot - 1 ];
 }
 
 // AnnounceRead reads an announcement into one direction's vocabulary (§3.3).
@@ -1286,13 +1386,15 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     }
     if ( seen_version != 1 || seen_vocabulary != 1 ) { to->refused = true; to->reason = no_vocabulary; return false; }
 
-    // THE ENTRIES, parsed once: every width is checked here and never again
+    // THE ENTRIES, RESOLVED ONCE into the caller's storage (§3.3): every width
+    // is checked here and never again, and no body after this parses a byte of
+    // an announcement. An entry count above the caller's CAPACITY is refused
+    // by name before the entry is touched.
     int64_t at = 0, count = 0, node_table_slots = 0;
     while ( at < words_bytes )
     {
         if ( count >= vocabulary.max_entries ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
-        const int64_t begin = at;
-        TableMessageEntry parsed;
+        TableMessageEntry & parsed = vocabulary.entries[ count ];
         if ( !TableMessageEntryRead( words, words_bytes, at, parsed ) ) { to->malformed = true; return false; }
         // THE RESERVED IDS WHERE THEY DO NOT BELONG (§3.3): the announcement's
         // own two never take a slot, and the node-table id takes exactly one,
@@ -1300,10 +1402,8 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         // id is malformed whole and sets nothing
         if ( parsed.id == kTableBuildVersionFieldId || parsed.id == kTableMessageVocabularyFieldId ) { to->malformed = true; return false; }
         if ( parsed.id == kTableNodeTableFieldId ) { if ( node_table_slots++ > 0 ) { to->malformed = true; return false; } }
-        vocabulary.offsets[ count++ ] = (int32_t) begin;
+        count++;
     }
-    vocabulary.vocabulary = words;
-    vocabulary.vocabulary_bytes = words_bytes;
     vocabulary.count = count;
     vocabulary.ref_bits = TableBitsRequired( 0, count );
     vocabulary.build_version = version;
@@ -1316,7 +1416,11 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
 // OUTRANKS the wrong-sort rule below.
 inline bool TableMessageReserved( uint64_t id )
 {
-    return id == kTableBuildVersionFieldId || id == kTableMessageVocabularyFieldId || id == kTableNodeTableFieldId;
+    // THE THREE ARE THE TOP THREE VALUES a uint64 holds, so the test is ONE
+    // comparison: 0xFFFFFFFFFFFFFFFD, FE and FF and nothing else is at or
+    // above the vocabulary's own id, and a declaration hashing to any of them
+    // is refused by name (§11)
+    return id >= kTableMessageVocabularyFieldId;
 }
 
 // TableMessageNameEntry resolves a reference used as a VALUE — an enum's
@@ -1367,7 +1471,7 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
         }
         default:
         {
-            const int64_t elem = TableMessageValueBits( entry.elem_kind, entry.elem_packing, entry.elem_value_bits );
+            const int64_t elem = entry.elem_value_bits;
             return elem >= 0 && r.skip( elem );
         }
     }
@@ -1431,7 +1535,7 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             return true;
         }
     }
-    const int64_t width = TableMessageValueBits( entry.kind, entry.packing, entry.value_bits );
+    const int64_t width = entry.value_bits;
     return width >= 0 && r.skip( width );
 }
 
@@ -2417,7 +2521,7 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
         if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
-        const TableMessageEntry entry = TableVocabularyEntryAt( vocabulary, ref );
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
@@ -2976,7 +3080,7 @@ inline bool ShipEntryLoadMessageBody( TableBitReader & r, const TableVocabulary 
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
         if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
-        const TableMessageEntry entry = TableVocabularyEntryAt( vocabulary, ref );
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
@@ -3097,7 +3201,7 @@ inline bool ShipEntryLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         const bool in_bounds = (int32_t) i < kept;
                         int32_t scratch = 0;
                         {
-                            const int64_t width_2 = TableMessageValueBits( 4, entry.elem_packing, entry.elem_value_bits );
+                            const int64_t width_2 = entry.elem_value_bits;
                             uint64_t raw_2 = 0;
                             if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
                             int64_t decoded_wide_2 = (int64_t) raw_2;
@@ -3590,7 +3694,7 @@ inline bool GlobalSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
         if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
-        const TableMessageEntry entry = TableVocabularyEntryAt( vocabulary, ref );
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
@@ -3610,7 +3714,7 @@ inline bool GlobalSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                     break;
                 }
                 {
-                    const int64_t width = TableMessageValueBits( 8, entry.packing, entry.value_bits );
+                    const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
                     if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
@@ -4486,7 +4590,7 @@ inline bool PackConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
         if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
-        const TableMessageEntry entry = TableVocabularyEntryAt( vocabulary, ref );
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
@@ -4506,7 +4610,7 @@ inline bool PackConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                     break;
                 }
                 {
-                    const int64_t width = TableMessageValueBits( 8, entry.packing, entry.value_bits );
+                    const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
                     if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
@@ -4590,7 +4694,7 @@ inline bool PackConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                         const bool in_bounds = slot >= 0 && slot < 3;
                         int32_t scratch = 0;
                         {
-                            const int64_t width_2 = TableMessageValueBits( 4, entry.elem_packing, entry.elem_value_bits );
+                            const int64_t width_2 = entry.elem_value_bits;
                             uint64_t raw_2 = 0;
                             if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
                             int64_t decoded_wide_2 = (int64_t) raw_2;

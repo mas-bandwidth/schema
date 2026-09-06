@@ -4297,6 +4297,16 @@ count and index is a fixed number of bits, so §3's canonicality rules for
 LEB128 have nothing to be applied to here. One value has one spelling because
 the width leaves it no other.
 
+**THE STREAM'S BIT ORDER IS THE PACKET WIRE'S**: bit `i` of the stream is bit
+`i % 8` of byte `i / 8`, low bit first, so a value written here and a value
+written by a generated packet writer are the same bits in the same places
+(SPEC.md §4.3). **THAT ORDER IS ALSO WHAT LETS A CODEC MOVE A VALUE OF ANY
+WIDTH IN ONE UNALIGNED WORD**, read or written little-end-first whatever order
+the host is in, rather than one touch a bit or a byte, and the cost rule below
+is measured on a codec that does. Nine bytes of room is what a word needs, so
+a value inside nine bytes of a buffer's end moves a byte at a time by the same
+arithmetic and lands the same bits.
+
 ---
 
 #### The announcement
@@ -4499,6 +4509,45 @@ slot. Two entries that agree on all three parts are malformed.
 - **THE RECEIVER RESOLVES ONCE.** It reads the announcement, resolves every
   entry against its own descriptors, and every body after it dispatches through
   one array index.
+
+**THE RESOLVED VOCABULARY'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND
+THE CODEC NEVER ALLOCATES.** "Resolves once" is a statement about MEMORY as
+well as about work, and this is where that memory lives.
+
+- **THE CALLER DECLARES AN ARRAY OF RESOLVED ENTRIES and hands it to
+  `AnnounceRead` with its CAPACITY.** Where the array sits is the caller's
+  own business — static, on a heap, in an arena, inside the object that holds
+  the connection — and the library allocates nothing on the announce path, the
+  read path or the write path, which is this library's rule everywhere else
+  and has no exception here.
+- **IT LIVES WITH THE CONNECTION, NOT WITH A CALL.** The announcement is
+  delivered once and holds for the connection's life (the scope, above), so
+  the resolved vocabulary does too: it is filled once when the announcement is
+  accepted and passed by pointer to every `LoadMessages`, `MeasureMessages`
+  and `LoadMeasure` after it. A resolved vocabulary declared inside a read
+  call would be a table rebuilt per batch, which is the property's opposite.
+- **THE ENTRY BOUND IS THAT CAPACITY, and an announcement above it is refused
+  by name as `vocabulary_too_large` before an entry is touched.** The bound is
+  a number the CALLER states rather than a number the wire could name: sizing
+  for the largest vocabulary the wire can spell would be sizing for a peer
+  that does not exist. **A GENERATED CONSTANT GIVES THE UNIT'S OWN ENTRY
+  COUNT**, which is the exact capacity a receiver that talks only to peers of
+  its own schema declares, because the vocabulary is a pure function of the
+  build version (above); a receiver that means to meet other builds declares
+  more, and either way the refusal is what answers a peer it did not size for.
+  **4096 REMAINS THE CONFORMING DEFAULT** where a receiver's storage is grown
+  rather than declared, which is what a language with a growable array does,
+  and the byte bound's 64 KiB does not move (SECURITY, below).
+- **A RESOLVED ENTRY IS WHAT A DECODE READS AND NOTHING MORE**: the id, the
+  kind, the packing, the payload's width already resolved out of the kind and
+  the announced bits, the range base, the array's own bounds, and the
+  quantized facts SPEC.md §4.3's rule leaves behind rather than the two it
+  consumes. It is **96 bytes** in the C++ reference, so the `backenddemo`
+  unit's 33 entries are **3,168 bytes** and the 4096-entry default is 393 KiB
+  for a receiver that asks for it.
+- **PER FIELD ON THE READ PATH THAT IS ONE ARRAY INDEX**: no parse, no LEB128,
+  and no branch on the announcement's format. A reference resolves to an entry
+  by subscript and the decode reads the widths off it.
 
 **THE TAIL IS UNCONDITIONAL, AND THAT IS A CHOICE.** A unit with no pointer
 announces it anyway, because the alternative reshuffles slots for an ordinary
@@ -4747,9 +4796,10 @@ so the claim is deliberately not made in this page's own change, on §6.6's
 precedent.
 
 - **`TableVocabulary`** in the unit-scope registry beside `TableReport` and
-  `TableRetain`, holding one direction's announced entries. It BORROWS the
-  announcement's bytes rather than copying them, so the announcement has to
-  outlive it.
+  `TableRetain`, holding one direction's RESOLVED entries. It indexes the
+  caller's own storage rather than the announcement's bytes (the storage
+  shape, above), so the announcement is free the moment `AnnounceRead`
+  returns.
 - **`Announce`, `AnnounceMeasure` and `AnnounceRead`** in the unit scope beside
   `UnitView`. The announcement is a COMPILE-TIME CONSTANT of the unit, so a
   backend emits the first two as a constant byte array and its length rather
@@ -4807,12 +4857,13 @@ caller's storage and reports how many bodies it read, and neither allocates.
   file's table is bounded by the file's own length and a connection's vocabulary
   is bounded by nothing the wire carries, so **a receiver declares a maximum and
   refuses an announcement above it by name**. The bound is TWO numbers, because
-  an entry is no longer a fixed width: **the conforming defaults are 4096
-  ENTRIES and 64 KiB of VOCABULARY BYTES**, and the byte bound is checked from
-  the field's own `L` before an entry is touched. 4096 entries is eight times
-  the 500-entry unit that is already a large one. A receiver holds ONE
-  vocabulary a direction for the life of the connection, so its memory is that
-  bound and nothing else.
+  an entry is no longer a fixed width: **the ENTRY bound is the capacity of the
+  resolved vocabulary the receiver declared** (the storage shape, above), with
+  **4096 the conforming default where storage is grown rather than declared**,
+  and **the BYTE bound is 64 KiB**, checked from the field's own `L` before an
+  entry is touched. 4096 entries is eight times the 500-entry unit that is
+  already a large one. A receiver holds ONE vocabulary a direction for the life
+  of the connection, so its memory is that bound and nothing else.
 - **THERE IS NO ANNOUNCEMENT STORM, because there is no second announcement.**
   One announcement a direction is the whole of the resolve work a connection can
   ask for, and a peer that sends a second is refused by name, the application
@@ -4857,10 +4908,29 @@ just need to get it less bytes than protobufs, and not be massively slower."*
   not a formality: the byte body is a wire that works, and a form that costs
   more than double the CPU to save a third of the bytes is a trade the owner has
   not made.
-- **MEASURED LATER, AT A NAMED SITTING, AND RECORDED HERE.** The measurement is
-  owed before the form is claimed done and is not owed before the page lands.
-  What it owes is the two ratios, the machine, the build and the date, written
-  onto this page beside the factor they are held to.
+- **MEASURED AT A NAMED SITTING, AND RECORDED HERE.** The sitting: an M-series
+  MacBook Air, macOS 25.6, Apple clang at `-O2 -DNDEBUG -ffp-contract=off`,
+  2026-09-05, one-minute load average 2.5, seven rounds of 100,000 iterations
+  best of rounds and the best of five processes, both arms in one process over
+  the same values. The arm is the FILE form's `Save` and `Load` over those
+  values, which is §3's byte-framed body, differing only in that a file
+  carries its own id table.
+
+  | instance | write factor | read factor |
+  |---|---:|---:|
+  | `LoginRequest`, full | 0.75x | 1.77x |
+  | `MatchResult`, full | 0.90x | 1.64x |
+  | `StorePurchase`, full | 0.86x | 1.64x |
+  | the three, one batch | 0.71x | 1.56x |
+
+  **BOTH PATHS ARE INSIDE THE FACTOR ON EVERY ROW**, and the write path is
+  UNDER the byte body because a bitpacked field spends one shift where a
+  byte-framed one spends a LEB128 reference, a kind byte and a length. What
+  holds the read path there is the two properties this section states as
+  rules: the receiver resolves the announcement ONCE, so a field costs one
+  array index (the storage shape, above), and the bit stream moves a WORD at a
+  time, so a sixty-four bit field costs one unaligned load rather than sixty-
+  four shifts or eight.
 
 **THIS RULE IS NOT #546's, and the difference matters.** #546 binds
 DIAGNOSTICS to zero measured cost on the read and write path, because a

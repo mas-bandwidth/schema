@@ -1103,7 +1103,9 @@ static void test_depth()
 
 static void test_message_form()
 {
-    TableVocabulary vocabulary;
+    // THE RESOLVED VOCABULARY'S STORAGE IS THE CALLER'S (§3.3)
+    static TableMessageEntry entries[ kTableMessageEntriesHere ];
+    TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
     static uint8_t announcement[16384];
     const int64_t announced = Announce( announcement, sizeof( announcement ) );
     CHECK( announced == AnnounceMeasure() );

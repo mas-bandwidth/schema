@@ -46,7 +46,8 @@ int main( int argc, char ** argv )
         printf( "message slot control: the announcement did not write\n" );
         return 2;
     }
-    backenddemo::TableVocabulary vocabulary;
+    std::vector<backenddemo::TableMessageEntry> entries( (size_t) backenddemo::kTableMessageEntriesHere );
+    backenddemo::TableVocabulary vocabulary( entries.data(), backenddemo::kTableMessageEntriesHere );
     if ( !backenddemo::AnnounceRead( vocabulary, announcement.data(), (int64_t) announcement.size(), NULL ) )
     {
         printf( "message slot control: this unit's own announcement was refused\n" );

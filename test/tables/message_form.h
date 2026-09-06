@@ -18,6 +18,50 @@
 #include "BasesTable.h"
 #include "serialize.h"
 
+// ---- the caller's resolved vocabulary (docs/SPEC-TABLES.md §3.3) ----------
+//
+// THE STORAGE IS THE CALLER'S, so every vocabulary here is an ARRAY OF
+// ENTRIES beside the vocabulary that indexes it. VOCABULARY takes the unit's
+// own entry count, which is what a receiver talking to peers of its own
+// schema declares; VOCABULARY_AT takes another capacity, which is what a
+// receiver meeting a LARGER unit declares and what the entry bound's refusal
+// is measured with; VOCABULARY_ROOM declares a capacity BELOW the storage it
+// holds, which is what a refusal that is later lifted needs.
+
+#define VOCABULARY_ROOM( ns, name, room, capacity ) \
+    static ns::TableMessageEntry name##_entries[ room ]; \
+    ns::TableVocabulary name( name##_entries, capacity )
+
+#define VOCABULARY_AT( ns, name, capacity ) VOCABULARY_ROOM( ns, name, capacity, capacity )
+
+#define VOCABULARY( ns, name ) VOCABULARY_AT( ns, name, ns::kTableMessageEntriesHere )
+
+// announcement_vocabulary is the VOCABULARY FIELD's own bytes inside an
+// announcement, which is where a test that forges one starts. The
+// announcement is a form 1 file whose body is the build version at reference
+// 1 under kind 9 and the vocabulary at reference 2 under kind 14 over element
+// kind 6, so the bytes sit behind two LEB128 lengths at a settled offset.
+static int64_t announcement_leb( const uint8_t * a, int64_t & at )
+{
+    uint64_t v = 0;
+    for ( int64_t shift = 0; ; shift += 7 )
+    {
+        const uint8_t by = a[ at++ ];
+        v |= uint64_t( by & 0x7F ) << shift;
+        if ( ( by & 0x80 ) == 0 ) { break; }
+    }
+    return (int64_t) v;
+}
+
+static const uint8_t * announcement_vocabulary( const uint8_t * a, int64_t & bytes )
+{
+    int64_t at = 1 + 1 + 1 + 8 + 1 + 1; // the form byte; reference 1, kind 9, eight bytes; reference 2, kind 14
+    announcement_leb( a, at );          // the array field's own L
+    at += 1;                            // element kind 6
+    bytes = announcement_leb( a, at );
+    return a + at;
+}
+
 // ---- the six values, field for field (docs/SPEC-TABLES.md §3.3) ------------
 //
 // The three FULL vectors carry the measurement's own values, and their byte
@@ -61,7 +105,7 @@ static void build_backend_store( backenddemo::StorePurchase & value )
 
 static backenddemo::TableVocabulary backend_connection()
 {
-    backenddemo::TableVocabulary vocabulary;
+    VOCABULARY( backenddemo, vocabulary );
     static uint8_t announcement[4096];
     const int64_t bytes = backenddemo::Announce( announcement, sizeof( announcement ) );
     CHECK( bytes == backenddemo::AnnounceMeasure() );
@@ -119,7 +163,7 @@ static void test_message_form_goldens()
         pin_table_golden( "backend_conn", announcement, bytes );
         // and a buffer one byte short is refused rather than half-written
         CHECK( backenddemo::Announce( announcement, bytes - 1 ) == -1 );
-        backenddemo::TableVocabulary vocabulary;
+        VOCABULARY( backenddemo, vocabulary );
         CHECK( backenddemo::AnnounceRead( vocabulary, announcement, bytes, NULL ) );
         CHECK( vocabulary.count == 33 );
         CHECK( vocabulary.ref_bits == 6 ); // bits_required( 0, 33 )
@@ -427,7 +471,7 @@ static void test_message_form_wide_vocabulary()
 {
     // vocabdemo: 130 field names, the tail, and ten table ids: 144 entries, 8 bits
     {
-        vocabdemo::TableVocabulary vocabulary;
+        VOCABULARY( vocabdemo, vocabulary );
         static uint8_t announcement[16384];
         const int64_t announced = vocabdemo::Announce( announcement, sizeof( announcement ) );
         CHECK( announced == vocabdemo::AnnounceMeasure() );
@@ -485,7 +529,7 @@ static void test_message_form_wide_vocabulary()
     }
     // vocab9demo: 260 field names, the tail, and twenty table ids: 284 entries, 9 bits
     {
-        vocab9demo::TableVocabulary vocabulary;
+        VOCABULARY( vocab9demo, vocabulary );
         static uint8_t announcement[16384];
         const int64_t announced = vocab9demo::Announce( announcement, sizeof( announcement ) );
         CHECK( announced == vocab9demo::AnnounceMeasure() );
@@ -532,7 +576,7 @@ static void test_message_form_wide_vocabulary()
 
 static void test_message_form_pointered()
 {
-    graphdemo::TableVocabulary vocabulary;
+    VOCABULARY( graphdemo, vocabulary );
     static uint8_t announcement[8192];
     const int64_t announced = graphdemo::Announce( announcement, sizeof( announcement ) );
     CHECK( graphdemo::AnnounceRead( vocabulary, announcement, announced, NULL ) );
@@ -648,7 +692,7 @@ static void test_message_form_two_peers()
 {
     // peer A speaks backenddemo, peer B speaks vocabdemo
     const backenddemo::TableVocabulary from_a = backend_connection();
-    vocabdemo::TableVocabulary from_b;
+    VOCABULARY( vocabdemo, from_b );
     static uint8_t b_announcement[8192];
     const int64_t b_announced = vocabdemo::Announce( b_announcement, sizeof( b_announcement ) );
     CHECK( vocabdemo::AnnounceRead( from_b, b_announcement, b_announced, NULL ) );
@@ -705,7 +749,7 @@ static void test_message_form_refusals()
         static uint8_t message[256];
         backenddemo::TableReport report;
         const int64_t bytes = backenddemo::LoginRequestSaveMessages( &value, 1, message, sizeof( message ), &report );
-        backenddemo::TableVocabulary empty;
+        VOCABULARY( backenddemo, empty );
         backenddemo::LoginRequest out;
         backenddemo::LoginRequestReset( out );
         int64_t count = 1;
@@ -751,7 +795,7 @@ static void test_message_form_refusals()
     // replace the vocabulary, it does not amend it, and it changes nothing;
     // closing the connection is the application's act.
     {
-        backenddemo::TableVocabulary vocabulary;
+        VOCABULARY( backenddemo, vocabulary );
         CHECK( backenddemo::AnnounceRead( vocabulary, announcement, announced, NULL ) );
         const int64_t was = vocabulary.count;
         const uint64_t was_version = vocabulary.build_version;
@@ -771,37 +815,38 @@ static void test_message_form_refusals()
     }
 
     // A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS ALLOCATED, and
-    // the bound is TWO numbers: the entry count, and the vocabulary's bytes
+    // the bound is TWO numbers: the ENTRY COUNT, which is the CAPACITY the
+    // caller declared for its resolved storage, and the vocabulary's bytes
     // read off the field's own L before an entry is touched.
     {
-        backenddemo::TableVocabulary vocabulary;
-        vocabulary.max_entries = 32; // one below what this unit announces
+        VOCABULARY_AT( backenddemo, vocabulary, 32 ); // one below what this unit announces
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, announcement, announced, &report ) );
         CHECK( report.refused && report.reason == backenddemo::vocabulary_too_large );
         CHECK( !report.malformed && !vocabulary.announced );
-        CHECK( vocabulary.vocabulary == NULL && vocabulary.count == 0 );
-        // and exactly at the bound it is read
-        backenddemo::TableVocabulary exact;
-        exact.max_entries = 33;
+        CHECK( vocabulary.count == 0 );
+        // and exactly at the bound it is read, which is the unit's own count
+        VOCABULARY_AT( backenddemo, exact, 33 );
+        CHECK( backenddemo::kTableMessageEntriesHere == 33 );
         CHECK( backenddemo::AnnounceRead( exact, announcement, announced, NULL ) );
         // the BYTE bound: the unit's vocabulary is 318 bytes of entries
-        backenddemo::TableVocabulary bytes_bound;
+        VOCABULARY( backenddemo, bytes_bound );
         bytes_bound.max_bytes = 317;
         backenddemo::TableReport bytes_report;
         CHECK( !backenddemo::AnnounceRead( bytes_bound, announcement, announced, &bytes_report ) );
         CHECK( bytes_report.refused && bytes_report.reason == backenddemo::vocabulary_too_large && !bytes_bound.announced );
-        backenddemo::TableVocabulary bytes_exact;
+        VOCABULARY( backenddemo, bytes_exact );
         bytes_exact.max_bytes = 318;
         CHECK( backenddemo::AnnounceRead( bytes_exact, announcement, announced, NULL ) );
-        CHECK( bytes_exact.vocabulary_bytes == 318 );
+        int64_t field_bytes = 0;
+        announcement_vocabulary( announcement, field_bytes );
+        CHECK( field_bytes == 318 );
     }
 
     // A REFUSED ANNOUNCEMENT SETS NO VOCABULARY, so every message on that
     // connection is refused for want of one until the connection ends.
     {
-        backenddemo::TableVocabulary vocabulary;
-        vocabulary.max_entries = 4;
+        VOCABULARY_AT( backenddemo, vocabulary, 4 );
         CHECK( !backenddemo::AnnounceRead( vocabulary, announcement, announced, NULL ) );
         static backenddemo::LoginRequest value;
         build_backend_login( value );
@@ -994,7 +1039,7 @@ static void test_message_form_pad()
 
 static void test_message_form_mask_width()
 {
-    tabledemo::TableVocabulary vocabulary;
+    VOCABULARY( tabledemo, vocabulary );
     static uint8_t announcement[8192];
     const int64_t announced = tabledemo::Announce( announcement, sizeof( announcement ) );
     CHECK( tabledemo::AnnounceRead( vocabulary, announcement, announced, NULL ) );
@@ -1071,11 +1116,10 @@ static int64_t forge_announcement( uint8_t * out, int64_t capacity, const uint8_
 static int64_t backend_vocabulary_field( uint8_t * out, int64_t capacity )
 {
     static uint8_t announcement[4096];
-    const int64_t announced = backenddemo::Announce( announcement, sizeof( announcement ) );
-    backenddemo::TableVocabulary vocabulary;
-    CHECK( backenddemo::AnnounceRead( vocabulary, announcement, announced, NULL ) );
+    backenddemo::Announce( announcement, sizeof( announcement ) );
     // reference 2, kind 14, L, element kind 6, the byte count, the bytes
-    const int64_t n = vocabulary.vocabulary_bytes;
+    int64_t n = 0;
+    const uint8_t * words = announcement_vocabulary( announcement, n );
     int64_t at = 0;
     out[at++] = 2;
     out[at++] = 14;
@@ -1087,7 +1131,7 @@ static int64_t backend_vocabulary_field( uint8_t * out, int64_t capacity )
     out[at++] = (uint8_t) ( 0x80 | ( n & 0x7F ) );
     out[at++] = (uint8_t) ( n >> 7 );
     CHECK( at + n <= capacity );
-    memcpy( out + at, vocabulary.vocabulary, (size_t) n );
+    memcpy( out + at, words, (size_t) n );
     return at + n;
 }
 
@@ -1108,7 +1152,7 @@ static void test_message_form_announcement_check()
         memcpy( body + at, vocabulary_field, (size_t) field_bytes ); at += field_bytes;
         body[at++] = 0;
         const int64_t bytes = forge_announcement( forged, sizeof( forged ), body, at, ids, 2 );
-        backenddemo::TableVocabulary vocabulary;
+        VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
         CHECK( report.refused && report.reason == backenddemo::no_vocabulary && !vocabulary.announced );
@@ -1122,7 +1166,7 @@ static void test_message_form_announcement_check()
         memcpy( body + at, vocabulary_field, (size_t) field_bytes ); at += field_bytes;
         body[at++] = 0;
         const int64_t bytes = forge_announcement( forged, sizeof( forged ), body, at, ids, 2 );
-        backenddemo::TableVocabulary vocabulary;
+        VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
         CHECK( report.refused && report.reason == backenddemo::no_vocabulary && !vocabulary.announced );
@@ -1136,7 +1180,7 @@ static void test_message_form_announcement_check()
         memcpy( body + at, vocabulary_field, (size_t) field_bytes ); at += field_bytes;
         body[at++] = 0;
         const int64_t bytes = forge_announcement( forged, sizeof( forged ), body, at, ids, 2 );
-        backenddemo::TableVocabulary vocabulary;
+        VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
         CHECK( report.refused && report.reason == backenddemo::no_vocabulary && !vocabulary.announced );
@@ -1146,7 +1190,7 @@ static void test_message_form_announcement_check()
     {
         const uint8_t narrow[6] = { 1, 9, 1, 0, 0, 0 };
         const int64_t bytes = forge_announcement( forged, sizeof( forged ), narrow, 6, ids, 2 );
-        backenddemo::TableVocabulary vocabulary;
+        VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
         CHECK( report.refused && !vocabulary.announced );
@@ -1158,7 +1202,7 @@ static void test_message_form_announcement_check()
         memcpy( body + at, version_field, 10 ); at += 10;
         body[at++] = 0;
         const int64_t bytes = forge_announcement( forged, sizeof( forged ), body, at, ids, 2 );
-        backenddemo::TableVocabulary vocabulary;
+        VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
         CHECK( report.refused && report.reason == backenddemo::no_vocabulary && !vocabulary.announced );
@@ -1172,7 +1216,7 @@ static void test_message_form_announcement_check()
         memcpy( body + at, vocabulary_field, (size_t) field_bytes ); at += field_bytes;
         body[at++] = 0;
         const int64_t bytes = forge_announcement( forged, sizeof( forged ), body, at, ids, 2 );
-        backenddemo::TableVocabulary vocabulary;
+        VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
         CHECK( report.refused && report.reason == backenddemo::no_vocabulary && !vocabulary.announced );
@@ -1186,7 +1230,7 @@ static void test_message_form_announcement_check()
         memcpy( body + at, wrong, 8 ); at += 8;
         body[at++] = 0;
         const int64_t bytes = forge_announcement( forged, sizeof( forged ), body, at, ids, 2 );
-        backenddemo::TableVocabulary vocabulary;
+        VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
         CHECK( report.refused && report.reason == backenddemo::no_vocabulary && !vocabulary.announced );
@@ -1203,7 +1247,7 @@ static void test_message_form_announcement_check()
         memcpy( body + at, vocabulary_field, (size_t) field_bytes ); at += field_bytes;
         body[at++] = 0;
         const int64_t bytes = forge_announcement( forged, sizeof( forged ), body, at, ids, 3 );
-        backenddemo::TableVocabulary vocabulary;
+        VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
         CHECK( vocabulary.announced );
@@ -1315,7 +1359,10 @@ static void test_message_form_reserved_ids()
             body[at++] = 0; // kind 0
             body[at++] = 0; // the terminator
             const int64_t bytes = forge_announcement( forged, sizeof( forged ), body, at, ids, 2 );
-            backenddemo::TableVocabulary vocabulary;
+            // the forged announcement carries ONE MORE entry than this unit,
+            // so the receiver declares room for it and the malformed rule is
+            // what refuses rather than the capacity
+            VOCABULARY_AT( backenddemo, vocabulary, backenddemo::kTableMessageEntriesHere + 1 );
             backenddemo::TableReport report;
             CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
             CHECK( report.malformed && !report.refused && !vocabulary.announced );
@@ -1515,7 +1562,7 @@ static void test_message_form_bases()
     static uint8_t announcement[8192];
     const int64_t announced = basesdemo::Announce( announcement, sizeof( announcement ) );
     CHECK( announced == basesdemo::AnnounceMeasure() );
-    basesdemo::TableVocabulary vocabulary;
+    VOCABULARY( basesdemo, vocabulary );
     CHECK( basesdemo::AnnounceRead( vocabulary, announcement, announced, NULL ) );
     pin_table_golden( "bases_conn", announcement, announced );
 
@@ -1524,10 +1571,12 @@ static void test_message_form_bases()
     const uint8_t top[12] = { 1, 1, 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01 };  // uint64 over [2^64 - 2, 2^64 - 1]
     const uint8_t small[3] = { 1, 4, 9 };                                                            // int32 over [-5, 10]: the zigzag 9
     const uint8_t seven[3] = { 1, 0, 7 };                                                            // uint8 over [7, 7]: no bit on the wire
-    CHECK( bytes_contain( vocabulary.vocabulary, vocabulary.vocabulary_bytes, high, 12 ) );
-    CHECK( bytes_contain( vocabulary.vocabulary, vocabulary.vocabulary_bytes, top, 12 ) );
-    CHECK( bytes_contain( vocabulary.vocabulary, vocabulary.vocabulary_bytes, small, 3 ) );
-    CHECK( bytes_contain( vocabulary.vocabulary, vocabulary.vocabulary_bytes, seven, 3 ) );
+    int64_t words_bytes = 0;
+    const uint8_t * words = announcement_vocabulary( announcement, words_bytes );
+    CHECK( bytes_contain( words, words_bytes, high, 12 ) );
+    CHECK( bytes_contain( words, words_bytes, top, 12 ) );
+    CHECK( bytes_contain( words, words_bytes, small, 3 ) );
+    CHECK( bytes_contain( words, words_bytes, seven, 3 ) );
     // and the announcement spends no byte saying which encoding it used: an
     // entry is the id, the kind, the packing, the bits and the base
     int found_high = 0, found_small = 0;
@@ -1570,7 +1619,7 @@ static void test_message_form_quantized()
 
     static uint8_t announcement[8192];
     const int64_t announced = basesdemo::Announce( announcement, sizeof( announcement ) );
-    basesdemo::TableVocabulary vocabulary;
+    VOCABULARY( basesdemo, vocabulary );
     CHECK( basesdemo::AnnounceRead( vocabulary, announcement, announced, NULL ) );
     int64_t q_slot = 0;
     for ( int64_t slot = 1; slot <= vocabulary.count; slot++ ) { if ( is_q( basesdemo::TableVocabularyEntryAt( vocabulary, slot ) ) ) { q_slot = slot; } }
@@ -1619,13 +1668,13 @@ static void test_message_form_refused_first()
 {
     static uint8_t announcement[4096];
     const int64_t announced = backenddemo::Announce( announcement, sizeof( announcement ) );
-    backenddemo::TableVocabulary vocabulary;
-    vocabulary.max_entries = 4;
+    VOCABULARY_ROOM( backenddemo, vocabulary, backenddemo::kTableMessageEntriesHere, 4 );
     backenddemo::TableReport first;
     CHECK( !backenddemo::AnnounceRead( vocabulary, announcement, announced, &first ) );
     CHECK( first.refused && first.reason == backenddemo::vocabulary_too_large && !vocabulary.announced );
-    // a well-formed announcement after it refuses as second_announcement and sets nothing
-    vocabulary.max_entries = backenddemo::TableVocabulary::kDefaultMaxEntries;
+    // a well-formed announcement after it refuses as second_announcement and
+    // sets nothing, EVEN WITH ROOM FOR EVERY ENTRY: the refusal is terminal
+    vocabulary.max_entries = backenddemo::kTableMessageEntriesHere;
     backenddemo::TableReport second;
     CHECK( !backenddemo::AnnounceRead( vocabulary, announcement, announced, &second ) );
     CHECK( second.refused && second.reason == backenddemo::second_announcement && !second.malformed );
@@ -1651,8 +1700,10 @@ static void test_message_form_findings()
 {
     static uint8_t announcement[8192];
     const int64_t announced = basesdemo::Announce( announcement, sizeof( announcement ) );
-    basesdemo::TableVocabulary own;
+    VOCABULARY( basesdemo, own );
     CHECK( basesdemo::AnnounceRead( own, announcement, announced, NULL ) );
+    int64_t own_bytes = 0;
+    const uint8_t * own_words = announcement_vocabulary( announcement, own_bytes );
 
     // M1: A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION. The
     // sender announces `few` over [0, 8] and sends six; the reader's [2..5]
@@ -1661,10 +1712,10 @@ static void test_message_form_findings()
     {
         const uint8_t wide_few[4] = { 0, 8, 8, 0 }; // min 0, max 8, element kind 8 raw
         static uint8_t forged[8192];
-        const int64_t bytes = forge_over_vocabulary( forged, sizeof( forged ), own.vocabulary, own.vocabulary_bytes, is_few, wide_few, 4 );
+        const int64_t bytes = forge_over_vocabulary( forged, sizeof( forged ), own_words, own_bytes, is_few, wide_few, 4 );
         CHECK( bytes > 0 );
         pin_table_golden( "bases_few_wide_conn", forged, bytes );
-        basesdemo::TableVocabulary vocabulary;
+        VOCABULARY( basesdemo, vocabulary );
         CHECK( basesdemo::AnnounceRead( vocabulary, forged, bytes, NULL ) );
         int64_t few_slot = 0;
         for ( int64_t slot = 1; slot <= vocabulary.count; slot++ ) { const basesdemo::TableMessageEntry e = basesdemo::TableVocabularyEntryAt( vocabulary, slot ); if ( e.kind == 14 && e.elem_kind == 8 && e.max == 8 ) { few_slot = slot; } }
@@ -1698,7 +1749,7 @@ static void test_message_form_findings()
         state.entity_id = serialize::uint128_t( 77 );
         static uint8_t announce[8192];
         const int64_t announced_scalars = scalardemo::Announce( announce, sizeof( announce ) );
-        scalardemo::TableVocabulary vocabulary;
+        VOCABULARY( scalardemo, vocabulary );
         CHECK( scalardemo::AnnounceRead( vocabulary, announce, announced_scalars, NULL ) );
         static uint8_t message[512];
         scalardemo::TableReport report;
@@ -1717,15 +1768,15 @@ static void test_message_form_findings()
     {
         const uint8_t sixty_five[3] = { 1, 65, 0 };
         static uint8_t forged[8192];
-        int64_t bytes = forge_over_vocabulary( forged, sizeof( forged ), own.vocabulary, own.vocabulary_bytes, is_high_u64, sixty_five, 3 );
+        int64_t bytes = forge_over_vocabulary( forged, sizeof( forged ), own_words, own_bytes, is_high_u64, sixty_five, 3 );
         CHECK( bytes > 0 );
-        basesdemo::TableVocabulary vocabulary;
+        VOCABULARY( basesdemo, vocabulary );
         basesdemo::TableReport report;
         CHECK( !basesdemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
         CHECK( report.malformed && !vocabulary.announced );
         const uint8_t nine[4] = { 1, 9, 0xC8, 0x01 }; // bits 9, base 200 as a two-byte LEB128
-        bytes = forge_over_vocabulary( forged, sizeof( forged ), own.vocabulary, own.vocabulary_bytes, is_narrow, nine, 4 );
-        basesdemo::TableVocabulary narrow_vocabulary;
+        bytes = forge_over_vocabulary( forged, sizeof( forged ), own_words, own_bytes, is_narrow, nine, 4 );
+        VOCABULARY( basesdemo, narrow_vocabulary );
         basesdemo::TableReport narrow_report;
         CHECK( !basesdemo::AnnounceRead( narrow_vocabulary, forged, bytes, &narrow_report ) );
         CHECK( narrow_report.malformed && !narrow_vocabulary.announced );
@@ -1768,9 +1819,9 @@ static void test_message_form_findings()
         for ( int i = 0; i < 3; i++ )
         {
             static uint8_t forged[8192];
-            const int64_t bytes = forge_over_vocabulary( forged, sizeof( forged ), own.vocabulary, own.vocabulary_bytes, is_q, rows[i], 13 );
+            const int64_t bytes = forge_over_vocabulary( forged, sizeof( forged ), own_words, own_bytes, is_q, rows[i], 13 );
             CHECK( bytes > 0 );
-            basesdemo::TableVocabulary vocabulary;
+            VOCABULARY( basesdemo, vocabulary );
             basesdemo::TableReport report;
             CHECK( !basesdemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
             CHECK( report.malformed && !vocabulary.announced );

@@ -41,7 +41,7 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }\n")
 	g.pf("        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE\n")
 	g.pf("        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }\n")
-	g.pf("        const TableMessageEntry entry = TableVocabularyEntryAt( vocabulary, ref );\n")
+	g.pf("        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );\n")
 	g.pf("        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS\n")
 	g.pf("        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first\n")
 	g.pf("        // field and is read before this walk begins, so meeting one here is\n")
@@ -434,7 +434,10 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 	if element {
 		packing, bits, base, baseHi, qmin, qdelta, qcount = from+".elem_packing", from+".elem_value_bits", from+".elem_base_lo", from+".elem_base_hi", from+".elem_qmin", from+".elem_qdelta", from+".elem_qcount"
 	}
-	width := fmt.Sprintf("TableMessageValueBits( %d, %s, %s )", kind, packing, bits)
+	// THE WIDTH IS RESOLVED, not derived here: the entry carries what the
+	// kind, the packing and the announced bits together settled, computed
+	// once at AnnounceRead (docs/SPEC-TABLES.md §3.3)
+	width := bits
 	switch kind {
 	case tkBool:
 		g.pf("%s{ uint64_t raw%s = 0; if ( !r.get( raw%s, 1 ) ) { report->malformed = true; return false; } %s = raw%s != 0; }\n", ind, sfx, sfx, lvalue, sfx)

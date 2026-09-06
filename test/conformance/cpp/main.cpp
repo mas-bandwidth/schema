@@ -385,7 +385,8 @@ struct MsgCodec
         unit_key, #type,                                                                        \
         []( const uint8_t * a, int64_t an, const uint8_t * b, int64_t n,                        \
             std::vector<uint8_t> & out, Report * r ) {                                          \
-            ns::TableVocabulary vocabulary;                                                     \
+            std::vector<ns::TableMessageEntry> entries( (size_t) ns::kTableMessageEntriesHere ); \
+            ns::TableVocabulary vocabulary( entries.data(), ns::kTableMessageEntriesHere );     \
             ns::TableReport inner;                                                              \
             if ( !ns::AnnounceRead( vocabulary, a, an, &inner ) ) { copy_report( inner, r ); return false; } \
             ns::type value;                                                                     \
@@ -405,7 +406,8 @@ struct MsgCodec
         unit_key, #type,                                                                        \
         []( const uint8_t * a, int64_t an, const uint8_t * b, int64_t n,                        \
             std::vector<uint8_t> & out, Report * r ) {                                          \
-            ns::TableVocabulary vocabulary;                                                     \
+            std::vector<ns::TableMessageEntry> entries( (size_t) ns::kTableMessageEntriesHere ); \
+            ns::TableVocabulary vocabulary( entries.data(), ns::kTableMessageEntriesHere );     \
             ns::TableReport inner;                                                              \
             if ( !ns::AnnounceRead( vocabulary, a, an, &inner ) ) { copy_report( inner, r ); return false; } \
             int64_t need = ns::type##LoadMeasure( vocabulary, b, n );                            \
