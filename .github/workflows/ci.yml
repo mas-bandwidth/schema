@@ -718,3 +718,40 @@ jobs:
             exit 1
           fi
           echo "no locked paths touched — clean"
+
+  # THE PERF PIN LOCK (issue #546, bench/PERF-PINS), on the model bench/LOCK's
+  # standing gate uses since the freeze lifted on 2026-09-05.
+  #
+  # bench/PERF-PINS holds the numbers `make perf-gate` compares a read and a
+  # write against, so the pins are the gate's whole authority, and typing over
+  # them is the one way this gate could rot silently.
+  #
+  # The refusal is NOT "the pins may only move alone". The lifted lock's
+  # replacement rule is that a pull request moving the packet emitters re-pins
+  # the reproduction rows IN THE SAME PR and states the sitting that produced
+  # them, and a rule against a combined diff would forbid that. What is refused
+  # is a re-pin with no sitting behind it: numbers moved while sitting.date,
+  # sitting.uptime and sitting.commit still describe the measurement they
+  # replaced, or a sitting.commit this branch does not contain.
+  #
+  # Two structural things are checked on every pull request whether or not the
+  # pins moved: the file parses and states its sitting, and it carries a pin
+  # for every row the gate guards. When the pins did move, the job also prints
+  # each row's move as a percentage, so the size of a re-pin is visible in the
+  # log rather than buried in two columns of digits.
+  #
+  # It costs no measurement and needs no quiet box, which is why it belongs on
+  # the pull-request gate while the timed half belongs in certify.yml.
+  perf-pin-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: refuse an unstated re-pin
+        run: go run ./bench/tools/perfgate pinlock -base "origin/${{ github.base_ref || 'main' }}"

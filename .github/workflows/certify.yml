@@ -400,6 +400,61 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.leg == 'go'
         run: make tables-block-gate2-smoke
 
+  # THE PERF GATE (issue #546, bench/PERF-PINS). The owner's law: a diagnostic
+  # surface is admitted at zero MEASURED cost on the read path and the write
+  # path of both wires, or it is declined. A certification leg and not a
+  # pull-request one, for the obvious reason: it compiles two benches and times
+  # them, which is minutes, and a timed measurement wants a quiet box.
+  #
+  # WHAT RUNS HERE, AND WHAT DELIBERATELY DOES NOT. The absolute pins are facts
+  # about ONE machine, and this is a shared runner nobody here owns, so the
+  # gate is NOT asked to compare a rate against them: `check -advisory` proves
+  # the structural half only, that bench/PERF-PINS parses, states its sitting,
+  # and carries a pin for every row the gate guards, and then says out loud
+  # that it is off the pinned box. The enforcing verdict is `make perf-gate` on
+  # the box the pins name.
+  #
+  # WHAT IS PROVEN HERE IS THE INSTRUMENT ITSELF. `make perf-gate-control`
+  # plants one added branch per field on the read path, in a scratch copy of
+  # the generated headers under build/, measures a clean sitting and a planted
+  # sitting back to back, and REQUIRES the gate to go red on round_trip. That
+  # verdict is a ratio inside one sitting, so it holds on this hardware exactly
+  # as it holds on the pinned box. It is also the only thing that answers the
+  # standing question about any noise band, which is whether the band is wide
+  # enough to hide the cost it exists to catch. A gate nobody has watched go
+  # red is a gate nobody has tested, and this is where it gets watched.
+  #
+  # Nothing here touches generated/ or internal/codegen/, so the C/C++ lock
+  # (bench/LOCK) is never approached: the plant lands in build/.
+  perf-gate:
+    name: perf gate (the zero-cost-diagnostic law)
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Only the classic serialize runtime: the C++ packet leg names it, the
+      # C++ table leg names no runtime at all, and no other leg runs.
+      - name: Check out the serialize runtime (pinned release)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The pin file is the gate's whole authority, so the first thing checked
+      # is the file, not a number: it parses, it states its sitting, and it
+      # pins every row the gate guards.
+      - name: perf gate, the pin file and the off-box refusal
+        run: go run ./bench/tools/perfgate check -advisory
+
+      # The negative control. Red on round_trip is a PASS for this step.
+      - name: perf gate, the planted-cost negative control
+        run: make perf-gate-control
+
   # A new CVE lands with no commit, so govulncheck is the one gate whose
   # verdict changes on its own — the nightly is the trigger that catches it.
   # The same job rides every pull request in ci.yml, deliberately: neither

@@ -68,6 +68,44 @@ Relative numbers move with compiler and microarchitecture. Treat the table as a 
 snapshot, not a verdict. Full tables, the pre-campaign baseline of the same day, and
 per-gap analysis: [bench/results/](../bench/results/).
 
+## A diagnostic costs nothing on the read or write path
+
+The owner's rule, 2026-09-05 (issue #546): **"i'm all for greater diagnostics, but if
+it costs speed on read or write, it's not worth it"**, and, on widening and the refusal
+reasons, **"if this costs *any* time, then we should not do this"** at runtime, when the
+packet or the table is being read. Every reporting surface in this project, the read
+report and its counters, the refusal reasons, retain-unknown's counters, the descriptor
+columns, and anything added later that reports, is admitted at zero MEASURED cost on the
+read path and the write path of both wires, or it is declined and its page says so.
+
+The word doing the work is MEASURED, so the law ships as an instrument rather than an
+intention. `make perf-gate` runs the C++ reference over the bench corpus on both wires,
+the packet wire's `bench_mixed` and the table wire's `bench_table`, and compares four
+rows against [bench/PERF-PINS](../bench/PERF-PINS), which records the sitting that cut
+them: the box, the date, the commit, the compiler and the load the machine was carrying.
+A row slower than its pin by more than the stated band is a refusal. Neither runner times
+a read on its own, deliberately, because the decode's output is the re-encode's input and
+that is what gives the read side its sink discipline in every language
+([BENCH-STANDARD §2.7](../bench/BENCH-STANDARD.md)), so the read row is `round_trip` and
+the pair is read together: a cost on the read path raises `round_trip` and leaves `write`
+flat. A red verdict says which path got slower, not merely that something did.
+
+Two refusals keep the gate from going quietly green. Off the box the pins name it renders
+no verdict at all, because a rate in messages per second is a fact about one machine. And
+a sitting whose in-run spread is over the cap renders no verdict either, since a gate that
+passes on a noisy box is a gate that passes on noise. What runs anywhere, including on
+certification hardware nobody here owns, is `make perf-gate-control`: it plants one added
+branch per field on the read path in a scratch copy of the generated headers, measures a
+clean sitting and a planted one back to back, and requires the plant to separate
+`round_trip` from `write` by more than the band on both wires. The separation, rather than
+a bare `round_trip` drop, is the verdict on purpose. It cancels whatever the box did to
+both rows between the two sittings, which is what lets the control run on a shared runner,
+and it is the exact claim the law makes: the cost landed on the read path, and nothing was
+planted on the write path, so `write` is the control's own control. That control is also
+the answer to the obvious question about any band, which is whether it is wide enough to
+hide the very thing it guards against. A gate nobody has watched go red is a gate nobody
+has tested.
+
 ---
 
 Measurement code and the full tables live in [bench/](../bench/).

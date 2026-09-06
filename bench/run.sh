@@ -72,6 +72,10 @@
 #   BENCH_OPT_LEVEL  C/C++ optimization level for the standard leg (default
 #                 O3; §3.3 publishes O2 and O3). Recorded in the flags line
 #                 AND stamped into the runners' opt column via -DBENCH_OPT.
+#   BENCH_CXXFLAGS_PREFIX
+#                 flags prepended to the C++ bench compiles, empty in every
+#                 published pass. One caller: the perf gate's negative control
+#                 (bench/tools/perfgate, issue #546). See the definition below.
 #   BENCH_CPU     core to pin to where taskset exists (default 0)
 #   BENCH_NOISE   noise label recorded in the results preamble, e.g.
 #                 "NOISY: game server owns isolated cores, bench on shared core 0"
@@ -240,6 +244,17 @@ esac
 RELEASE_FLAGS="-$OPT_LEVEL -DNDEBUG -DSERIALIZE_RELEASE -DBENCH_OPT=\"$OPT_LEVEL\" $COMMON_FLAGS"
 DEBUG_FLAGS="-O0 -g -DSERIALIZE_DEBUG $COMMON_FLAGS"
 
+# BENCH_CXXFLAGS_PREFIX: flags PREPENDED to the C++ bench compiles, and empty in
+# every published pass. One caller exists, the perf gate's negative control
+# (bench/tools/perfgate, issue #546), which points the include path at a
+# scratch copy of the generated headers carrying a planted read cost so the
+# gate can be watched going red. PREPENDED rather than appended because the
+# control's whole job is to win the include search over -Igenerated/bench/cpp.
+# Recorded rather than hidden: `perfgate pin` REFUSES to cut a pin while this
+# is set, since a number measured under flags the shipped build does not carry
+# is a number for a build nobody runs.
+BENCH_CXXFLAGS_PREFIX="${BENCH_CXXFLAGS_PREFIX:-}"
+
 # C: the repo's own C flags (the Makefile's C test leg) at the same Release
 # optimization as the C++ leg. NO -flto, deliberately — every other leg is
 # measured in its language's default release configuration (cargo release is
@@ -392,7 +407,7 @@ if [ -z "$ONLY" ] || [ "$ONLY" = cpp ]; then
         echo "== cpp: reusing build/bench/schema_bench_cpp ==" >&2
     else
         echo "== cpp: build (Release) ==" >&2
-        $CXX_BIN $RELEASE_FLAGS bench/cpp/bench_main.cpp -o build/bench/schema_bench_cpp
+        $CXX_BIN $BENCH_CXXFLAGS_PREFIX $RELEASE_FLAGS bench/cpp/bench_main.cpp -o build/bench/schema_bench_cpp
     fi
 
     echo "== cpp: run (Release) ==" >&2
@@ -400,7 +415,7 @@ if [ -z "$ONLY" ] || [ "$ONLY" = cpp ]; then
 
     if [ "$DEBUG" = 1 ]; then
         echo "== cpp: build (Debug) ==" >&2
-        $CXX_BIN $DEBUG_FLAGS bench/cpp/bench_main.cpp -o build/bench/schema_bench_cpp_debug
+        $CXX_BIN $BENCH_CXXFLAGS_PREFIX $DEBUG_FLAGS bench/cpp/bench_main.cpp -o build/bench/schema_bench_cpp_debug
         echo "" >> "$OUT"
         emit_preamble Debug
         echo "== cpp: run (Debug) ==" >&2
