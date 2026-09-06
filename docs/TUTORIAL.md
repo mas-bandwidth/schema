@@ -3971,7 +3971,7 @@ of Part 9 or from a wire file, one command either way:
 $ schema cook --root GameConfig --in tree --out Game.cook --verbose .
 report: silent — the data matched the schema exactly
 report: silent — the data matched the schema exactly
-cooked Game.cook: 464 bytes, build version 0x4186cdc67f83f559, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
+cooked Game.cook: 464 bytes, build version 0x8a4897ed86a715f6, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
 ```
 
 And the game opens it. `cook.cpp`, entire:
@@ -4083,7 +4083,7 @@ $ echo $?
 $ schema id .
 0x60d7cbad6bb296f2
 $ schema build-version .
-0x7d56db7dd7e25376
+0x8272fb7f3068abdf
 $ ./cook Game.cook
 not this build's cook
 ```
@@ -4100,7 +4100,7 @@ A big-endian cook refuses on a little-endian build the same way:
 
 ```
 $ schema cook --root GameConfig --in tree --out GameBig.cook --byte-order big --verbose .
-cooked GameBig.cook: 464 bytes, build version 0x4186cdc67f83f559, big-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
+cooked GameBig.cook: 464 bytes, build version 0x8a4897ed86a715f6, big-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
 $ ./cook GameBig.cook
 not this build's cook
 ```
@@ -4116,7 +4116,7 @@ offline, once, on purpose:
 
 ```
 $ schema cook-check --root GameConfig --verbose Game.cook .
-ok: build version 0x4186cdc67f83f559, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes, 0 reference slots
+ok: build version 0x8a4897ed86a715f6, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes, 0 reference slots
 ```
 
 `cook-check` verifies every reference and count against the attribution, a
@@ -4169,7 +4169,7 @@ header and block prologue.
 The store contract is one line: your pipeline stores assets under the triple
 **(asset hash, build version, byte order)**. The asset hash is the hash of the
 wire file you cooked from. The build version is target neutral, which the
-big-endian cook above shows by stamping the same `0x4186cdc67f83f559`, and
+big-endian cook above shows by stamping the same `0x8a4897ed86a715f6`, and
 `byteorder little` appearing in the facts is a generation input that never
 varies. Byte order is the third coordinate, carried in the header and refused
 by `Open` on a mismatch. Your game asks for exactly that triple, anything that
@@ -4316,7 +4316,7 @@ int main()
 $ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o produce produce.cpp gen/RenderBlock.cpp gen/RenderTable.cpp
 $ ./produce
 block: 56064 bytes of 196672 max (frame 1207, 3000 ships)
-build version 0x1b087f2fcefc4628
+build version 0x5042e348da4b84ea
 wrote frame.block
 refused: array ships count 5000 max 4096
 ```
@@ -4389,10 +4389,10 @@ $ schema generate --lang c --out genc .
 $ cc -std=c99 -Wall -Wextra -Werror -I genc -o consume consume.c genc/RenderBlock.c genc/RenderTable.c
 $ ./consume
 c read: frame=1207 ships=3000 ships[2999]=(2999, -2999)
-c build version 0x1b087f2fcefc4628
+c build version 0x5042e348da4b84ea
 ```
 
-The two builds carry the same build version, `0x1b087f2fcefc4628` in the C++
+The two builds carry the same build version, `0x5042e348da4b84ea` in the C++
 header and the C source alike. `BlockOpen` checks the prologue, which is the
 magic, the byte order, the **build version**, the base's 64-byte alignment,
 every count against its declared maximum, and every extent, and then you index.
@@ -4559,7 +4559,7 @@ re-cook before crossing:
 
 ```
 $ schema cook --root GameConfig --in tree --out Game.cook --verbose .
-cooked Game.cook: 464 bytes, build version 0x1b087f2fcefc4628, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
+cooked Game.cook: 464 bytes, build version 0x5042e348da4b84ea, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
 ```
 
 `opencook.c`, entire:
