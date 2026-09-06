@@ -168,7 +168,10 @@ build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POI
 # THE SCAN IS BY SYMBOL, not by line, and `TableNode` is matched with its whole
 # spelling so a node symbol nobody has written yet is still refused. Exactly one
 # of those spellings is ALLOWED in a pointer-free unit and it is named below.
-TABLES_ZERO_COST_SYMBOLS := TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|TablePack|[A-Za-z_]*TableNode[A-Za-z_]*|is_pointer|Builder|PackMeasure|LoadMeasure|TableBlob|TableBytesView|TableStringView|AllocBytes|AllocString|BytesEmplace|StringEmplace|TableMap|TableMapHead|TableMapSegment|TableMapOrder|TableMapCursor|TableEntryKey|TableKeyOrder|TableResetMapValue|TableEntrySetKey|kTableMapSegment|TableList|TableListHead|TableListSegment|TableListCursor|TableListElements|TableListPlace|kTableListSegment|TableExtentCarve|TableExtentUnreachedEmpty|TableWireExtent|TableRefuseReason|count_over_length|count_over_extent_cap
+# TableRefuseReason is NOT in the list: it is the FORM's vocabulary and not the
+# map's or the list's, since every unit's cook Open names its refusal in it
+# (docs/SPEC-TABLES.md §7, §11), so every unit carries it.
+TABLES_ZERO_COST_SYMBOLS := TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|TablePack|[A-Za-z_]*TableNode[A-Za-z_]*|is_pointer|Builder|PackMeasure|LoadMeasure|TableBlob|TableBytesView|TableStringView|AllocBytes|AllocString|BytesEmplace|StringEmplace|TableMap|TableMapHead|TableMapSegment|TableMapOrder|TableMapCursor|TableEntryKey|TableKeyOrder|TableResetMapValue|TableEntrySetKey|kTableMapSegment|TableList|TableListHead|TableListSegment|TableListCursor|TableListElements|TableListPlace|kTableListSegment|TableExtentCarve|TableExtentUnreachedEmpty|TableWireExtent
 
 # THE ONE NODE SPELLING A POINTER-FREE UNIT CARRIES, and it is the FORM's and
 # not the pointer machinery's (docs/SPEC-TABLES.md §3, §3.1): the reserved

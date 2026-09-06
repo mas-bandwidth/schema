@@ -393,7 +393,12 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 	// from the array columns like every other array's, with array_bound = 0
 	// the one tell that the offset names a reference and not the first element.
 	placeMember := ""
-	refuseReason := ""
+	// WHY A FILE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5, §7, §11,
+	// §19.2): ONE enum for a cook's Open, a block's BlockOpen and LoadMeasure's
+	// -1, in every unit, because a caller asking why it cannot have this file
+	// is asking one question whichever call refused it. Written on the
+	// refusal path only.
+	refuseReason := tableRefuseReasonEnum
 	if anyExtent {
 		placeMember = "\n    // an OUT-OF-LINE array (docs/SPEC-TABLES.md §8.1): place one element and\n" +
 			"    // hand it back at its defaults. A MAP places BY KEY, a string key comes\n" +
@@ -402,19 +407,6 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 			"    // another segment. A LIST ignores the key and APPENDS, NULL at the arena\n" +
 			"    // or the int32 cap. NULL on every field that is neither.\n" +
 			"    void * ( * place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );"
-		refuseReason = `
-
-// WHY A MEASURE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5): a -1 from
-// LoadMeasure carries one of these as an out-parameter. A REFUSAL moves no
-// counter: nothing was decoded, so there is nothing to report, and the reason
-// is where the answer lives. The two values here are the ones a map's and an
-// unbounded array's framing can raise. The rest of §6.5's vocabulary, the
-// accelerators' refusals, is owed with them (schema#523).
-enum TableRefuseReason
-{
-    count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
-    count_over_extent_cap  // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
-};`
 	}
 	pointerFieldMember, pointerTypeMember, pointerForward := "", "", ""
 	if anyVariable {
@@ -481,6 +473,12 @@ struct TableReport
 {
     int32_t unknown = 0;       // unknown field ids skipped (newer data)
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
+    // a kind that GREW since the writer (docs/SPEC-TABLES.md §4): an integer
+    // kind read into a wider one of the same signedness, or f32 into f64,
+    // decoded EXACTLY. One count per field or per map. It is the one counter
+    // that names no loss: the bytes were not the shape this reader declares,
+    // and the number survived.
+    int32_t widened = 0;
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
     // a key the TEXT form saw twice: last wins, and the repeat is counted
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
@@ -883,11 +881,17 @@ struct TableReader
                 if ( !getleb( n ) ) return false;
                 return room( n ) ? ( offset += (int64_t) n, true ) : false;
             }
+            // KIND 34 IS RESERVED FOR float16 AND IS NOT PART OF THIS MAJOR (§3):
+            // no writer emits it and no reader has a rule for it, so a reader
+            // meets it only as DAMAGE, exactly as it meets 35 or 200. A bare 34
+            // is a writer that ignored the escape kind 31.
+            case 34: return false;
         }
         return false;
     }
 };
 
+` + tableWidenRuntime + tableTextRuntime + `
 // The RESERVED node-table id, the one id the language holds back
 // (docs/SPEC-TABLES.md §3.1, §5). It rides in every unit, pointered or not,
 // because every body has to know that a NESTED body claiming one is damaged.

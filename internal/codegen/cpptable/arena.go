@@ -729,6 +729,13 @@ static const uint64_t kTableNodeIndexRoot = 1;         // the body that hosts th
 // resolving through it yields NULL and can never fabricate the root.
 static const uint64_t kTableNodeAbsent = 0xFFFFFFFFFFFFFFFFull;
 
+// What a node's storage answers when the FRAMING ITSELF is refused rather than
+// merely unnameable: a count its L cannot carry, one above the int32 cap, or a
+// blob past the size cap (docs/SPEC-TABLES.md §3.1, §6.5). An unnameable type
+// id commands no storage and keeps its index. This one makes the whole measure
+// answer -1 with its reason.
+static const int64_t kTableNodeRefused = -2;
+
 // ---- the numbering, on the SAVE side ----
 //
 // One entry per reachable node in FIRST-VISIT order, so entry k is node index

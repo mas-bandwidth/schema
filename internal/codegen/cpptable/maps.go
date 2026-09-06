@@ -960,14 +960,15 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 	}
 	g.pf("    bool found;         // the body carried the key's id\n")
 	g.pf("    bool kind_bad;      // it carried it under another kind: the MAP's event\n")
+	g.pf("    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one\n")
 	g.pf("    bool over;          // longer than this reader's bound: the ENTRY is dropped\n")
 	g.pf("    bool malformed;     // the entry's framing gave out\n")
 	g.pf("};\n\n")
 	g.pf("inline %sKeyRead %sReadKey( const uint8_t * body, int64_t length, const TableIdTable * ids )\n{\n", n, n)
 	if mapKeyIsString(f) {
-		g.pf("    %sKeyRead out = { NULL, 0, false, false, false, false };\n", n)
+		g.pf("    %sKeyRead out = { NULL, 0, false, false, false, false, false };\n", n)
 	} else {
-		g.pf("    %sKeyRead out = { 0, false, false, false, false };\n", n)
+		g.pf("    %sKeyRead out = { 0, false, false, false, false, false };\n", n)
 	}
 	g.pf("    TableReport scratch; // the scan's own framing damage is the MAP's, raised by the caller\n")
 	g.pf("    TableReader r( body, length, &scratch, ids );\n")
@@ -980,12 +981,33 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 	g.pf("        if ( !r.has( 1 ) ) { out.malformed = true; return out; }\n")
 	g.pf("        uint8_t field_kind = r.get8();\n")
 	g.pf("        if ( field_id == 0x%016xull ) // `key`, the ordinary hash of an ordinary name\n        {\n", ir.MapKeyWireId)
+	if !mapKeyIsString(f) && widenable(kind) {
+		// A KEY KIND THE DECLARATION WIDENS IS NOT A DISAGREEMENT (§2.8,
+		// §4): the key decodes exactly at its own width and the entry lands.
+		// The branch sits inside the mismatch branch, off the matching path.
+		typ, _ := g.cppFieldType(key.Type)
+		g.pf("            if ( field_kind != %d && TableKindWidens( field_kind, %d ) )\n            {\n", kind, kind)
+		g.pf("                out.widened = true;\n")
+		g.pf("                out.found = true;\n")
+		if ir.TableKindSigned(kind) {
+			g.pf("                int64_t widened_v = 0;\n")
+			g.pf("                if ( !TableReadSignedAt( r, field_kind, widened_v ) ) { out.malformed = true; return out; }\n")
+		} else {
+			g.pf("                uint64_t widened_v = 0;\n")
+			g.pf("                if ( !TableReadUnsignedAt( r, field_kind, widened_v ) ) { out.malformed = true; return out; }\n")
+		}
+		g.pf("                out.key = (%s) widened_v;\n", typ)
+		g.pf("                continue; // the LAST occurrence is the one §3 keeps\n")
+		g.pf("            }\n")
+	}
 	g.pf("            out.kind_bad = field_kind != %d; // THE KEY KIND IS THE READER'S DECLARATION\n", kind)
 	g.pf("            out.found = !out.kind_bad;\n")
 	g.pf("            if ( !out.kind_bad )\n            {\n")
 	if mapKeyIsString(f) {
 		g.pf("                uint64_t key_len = 0;\n")
 		g.pf("                if ( !r.getleb( key_len ) || !r.room( key_len ) ) { out.malformed = true; return out; }\n")
+		g.pf("                // a key a string value would refuse as malformed makes the MAP malformed (§2.8, §3)\n")
+		g.pf("                if ( !TableUtf8Valid( r.buffer + r.offset, (int64_t) key_len ) ) { out.malformed = true; return out; }\n")
 		g.pf("                out.key = (const char *) ( r.buffer + r.offset );\n")
 		g.pf("                out.length = (int32_t) key_len;\n")
 		g.pf("                out.over = key_len > %d; // KEYS NEVER CLAMP: the entry is dropped whole\n", key.Type.Size)
@@ -1034,12 +1056,15 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 		g.pf("%s    %s last_key = 0;\n", ind, typ)
 	}
 	g.pf("%s    bool landed = false;\n", ind)
+	g.pf("%s    bool map_widened = false;\n", ind)
 	g.pf("%s    for ( uint64_t i = 0; i < count; i++ )\n%s    {\n", ind, ind)
 	g.pf("%s        uint64_t elem_len = 0;\n", ind)
 	g.pf("%s        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->malformed = true; break; }\n", ind)
 	g.pf("%s        const uint8_t * elem_body = sub.buffer + sub.offset;\n", ind)
 	g.pf("%s        sub.offset += (int64_t) elem_len;\n", ind)
 	g.pf("%s        %sKeyRead read = %sReadKey( elem_body, (int64_t) elem_len, r.ids );\n", ind, n, n)
+	g.pf("%s        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)\n", ind)
+	g.pf("%s        if ( read.widened && !map_widened ) { map_widened = true; r.report->widened++; }\n", ind)
 	g.pf("%s        // THE KEY KIND IS CHECKED FIRST: a key read under another kind\n", ind)
 	g.pf("%s        // desynchronizes the rest of the scan, and the honest answer to a\n", ind)
 	g.pf("%s        // body whose key is not this reader's kind is the KIND, not the\n", ind)

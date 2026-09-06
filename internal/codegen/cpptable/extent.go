@@ -28,12 +28,6 @@ namespace ` + pkg + ` {
 
 // ---- the NODE EXTENT: where a map's entries and a list's elements live (§2.8, §2.9) ----
 
-// What a node's storage answers when the FRAMING ITSELF is refused rather than
-// merely unnameable: a count its L cannot carry, or one above the int32 cap
-// (docs/SPEC-TABLES.md §6.5). An unnameable type id commands no storage and
-// keeps its index. This one makes the whole measure answer -1 with its reason.
-static const int64_t kTableNodeRefused = -2;
-
 // TableExtentCarve is a node's extent cursor, PRE-ORDER: a container's whole
 // array first, then, element by element in the container's own order, the
 // arrays of any list or map an element holds by value. The cursor is the node
@@ -781,11 +775,14 @@ func (g *tableGen) nodeStorageBody(anyExtent bool) string {
 	return ""
 }
 
+// THE REASON IS EVERY VARIABLE ROOT'S (docs/SPEC-TABLES.md §6.5): a blob past
+// the size cap refuses whether or not the unit declares an extent, so the
+// out-parameter is unconditional and only the body and the ids are gated.
 func (g *tableGen) nodeStorageTail(anyExtent bool) string {
 	if anyExtent {
 		return ", const TableIdTable * ids, TableRefuseReason & reason"
 	}
-	return ""
+	return ", TableRefuseReason & reason"
 }
 
 func (g *tableGen) nodeStorageArg(root *ir.Struct) string {
@@ -799,7 +796,7 @@ func (g *tableGen) nodeStorageArgTail(root *ir.Struct) string {
 	if g.rootHasExtent(root) {
 		return ", &ids_table, reason"
 	}
-	return ""
+	return ", reason"
 }
 
 func (g *tableGen) nodeStorageReader(root *ir.Struct) string {
@@ -813,7 +810,7 @@ func (g *tableGen) nodeStorageReaderTail(root *ir.Struct) string {
 	if g.rootHasExtent(root) {
 		return ", r.ids, reason"
 	}
-	return ""
+	return ", reason"
 }
 
 // rootHasExtent reports whether any record one root's numbering can name holds

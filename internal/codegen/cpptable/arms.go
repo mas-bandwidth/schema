@@ -282,7 +282,9 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		length, keep := "arm_len"+sfx, "arm_keep"+sfx
 		g.pf("%s{\n%s    uint32_t %s = uint32_t( %s.size );\n", ind, ind, length, rdr)
 		g.pf("%s    uint32_t %s = %s;\n", ind, keep, length)
-		g.pf("%s    if ( %s > %d ) { %s = %d; r.report->clamped++; }\n", ind, keep, f.Type.Size, keep, f.Type.Size)
+		g.pf("%s    // ILL-FORMED TEXT at an arm (§3): the union reads None, one malformed counts\n", ind)
+		g.pf("%s    if ( !TableUtf8Valid( %s.buffer + %s.offset, %s.size ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, rdr, rdr, tag, none)
+		g.pf("%s    if ( %s > %d ) { %s = (uint32_t) TableUtf8Clamp( %s.buffer + %s.offset, %s.size, %d ); r.report->clamped++; } // at a code point boundary\n", ind, keep, f.Type.Size, keep, rdr, rdr, rdr, f.Type.Size)
 		g.pf("%s    memcpy( %s, %s.buffer + %s.offset, %s );\n", ind, value, rdr, rdr, keep)
 		g.pf("%s    %s[%s] = 0;\n", ind, value, keep)
 		g.pf("%s    %s = (int32_t) %s;\n", ind, count, keep)
@@ -307,7 +309,24 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s{\n%s    uint8_t %s = %s.get8();\n", ind, ind, ek, rdr)
 		g.pf("%s    uint64_t %s = 0;\n", ind, n)
 		g.pf("%s    if ( !%s.getleb( %s ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, n, tag, none)
-		g.pf("%s    if ( %s != %d ) { %s = %s; r.report->kind_mismatch++; break; }\n", ind, ek, elemKind, tag, none)
+		if widenableElement(f) {
+			// THE WIDENING BRANCH at an array arm's element kind (§4), inside
+			// the mismatch branch: the arm is already selected, so the
+			// elements decode at the wire kind's width and the arm is done
+			g.pf("%s    if ( %s != %d )\n%s    {\n", ind, ek, elemKind, ind)
+			g.pf("%s        if ( !TableKindWidens( %s, %d ) ) { %s = %s; r.report->kind_mismatch++; break; }\n", ind, ek, elemKind, tag, none)
+			g.pf("%s        uint64_t widened_keep%s = %s;\n", ind, sfx, n)
+			g.pf("%s        if ( widened_keep%s > %d ) { widened_keep%s = %d; r.report->clamped++; }\n", ind, sfx, bound, sfx, bound)
+			g.pf("%s        TableReader widened_sub%s( %s.buffer + %s.offset, %s.size - %s.offset, r.report, r.ids );\n", ind, sfx, rdr, rdr, rdr, rdr)
+			countLvalue := ""
+			if counted {
+				countLvalue = count
+			}
+			g.emitWidenedElements(f, elemKind, ek, value+"[%s]", countLvalue, "widened_keep"+sfx, ind+"        ", "widened_sub"+sfx)
+			g.pf("%s        break;\n%s    }\n", ind, ind)
+		} else {
+			g.pf("%s    if ( %s != %d ) { %s = %s; r.report->kind_mismatch++; break; }\n", ind, ek, elemKind, tag, none)
+		}
 		g.pf("%s    uint64_t %s = %s;\n", ind, keep, n)
 		g.pf("%s    if ( %s > %d ) { %s = %d; r.report->clamped++; }\n", ind, keep, bound, keep, bound)
 		if f.Type.Kind == ir.TBytes {
@@ -361,7 +380,10 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s        switch ( %s ) // the arm's NAME hash (§5)\n%s        {\n", ind, id, ind)
 		for _, in := range un.Variants {
 			g.pf("%s            case 0x%016xull: // %s\n%s            {\n", ind, ir.TableWireId(in.Name), in.Name, ind)
-			g.pf("%s                if ( %s != %d ) { %s.type = %sType::None; r.report->kind_mismatch++; break; }\n", ind, innerKind, armWireKind(in), value, un.Name)
+			g.pf("%s                if ( %s != %d )\n%s                {\n", ind, innerKind, armWireKind(in), ind)
+			g.emitArmWiden(in, value, innerKind, inner, value+".type",
+				un.Name+"Type::"+ir.GoExportName(in.Name), un.Name+"Type::None", ind+"                    ")
+			g.pf("%s                    %s.type = %sType::None; r.report->kind_mismatch++; break;\n%s                }\n", ind, value, un.Name, ind)
 			g.pf("%s                %s.type = %sType::%s;\n", ind, value, un.Name, ir.GoExportName(in.Name))
 			g.emitArmLoad(in, value, ind+"                ", inner, value+".type", un.Name+"Type::None", sfx+"a")
 			g.pf("%s                break;\n%s            }\n", ind, ind)
