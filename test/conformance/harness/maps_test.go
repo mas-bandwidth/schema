@@ -128,3 +128,47 @@ func TestAMapKeyIsNeverTruncatedIntoAnother(t *testing.T) {
 		t.Error("the parent did not read on past the map")
 	}
 }
+
+// AN INTEGER MAP KEY IS READ BY §16.2's INTEGER RULE AND BY NOTHING ELSE
+// (docs/SPEC-TABLES.md §2.8), so "2.0" and "1e3" are the integers 2 and 1000 in
+// a key exactly as in a field, at every integer key kind. The KEY's own policy
+// over that value is REJECTION: a value outside the key kind's range drops the
+// whole entry as kind_mismatch, and a key is never clamped.
+func TestAnIntegerMapKeyTakesTheIntegerRule(t *testing.T) {
+	m := mapsModel(t)
+	for _, tc := range []struct {
+		root, field, text string
+		count             int
+		mismatch          int
+		keys              []uint64
+	}{
+		{"WideRow", "entries", `{"entries":{"2.0":{"count":1},"1e3":{"count":2},"99999999999":{"count":3}}}`,
+			2, 1, []uint64{2, 1000}},
+		{"EdgeRow", "ids", `{"ids":{"2.0":{"count":1},"1e19":{"count":2},"18446744073709551615":{"count":3},` +
+			`"-1":{"count":4},"1e30":{"count":5}}}`,
+			3, 2, []uint64{2, 10000000000000000000, 18446744073709551615}},
+	} {
+		t.Run(tc.root, func(t *testing.T) {
+			inst := m.New(m.Lookup(tc.root))
+			var r tabletext.Report
+			if !m.Read(inst, []byte(tc.text), &r) || r.Malformed {
+				t.Fatalf("the text is well formed: %+v", r)
+			}
+			if r.KindMismatch != tc.mismatch || r.Clamped != 0 {
+				t.Fatalf("expected %d kind_mismatch and no clamp, got %+v", tc.mismatch, r)
+			}
+			fv, ok := inst.FieldByKey(tc.field)
+			if !ok {
+				t.Fatalf("no %s field", tc.field)
+			}
+			if len(fv.Entries) != tc.count {
+				t.Fatalf("expected %d entries, got %d", tc.count, len(fv.Entries))
+			}
+			for i, want := range tc.keys {
+				if got := fv.Entries[i].Tab.Fields[0].Cell.U; got != want {
+					t.Errorf("entry %d: key %d, want %d", i, got, want)
+				}
+			}
+		})
+	}
+}

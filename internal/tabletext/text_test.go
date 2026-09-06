@@ -963,3 +963,36 @@ func TestSharedNodeWithNothingToWriteIsRefused(t *testing.T) {
 		t.Fatalf("a default-valued shared node still defines with its fields:\n%s", text)
 	}
 }
+
+// §16.2: A MAGNITUDE IN THE HIGH HALF IS A MAGNITUDE, not a negative. It is the
+// field's own DOMAIN that bounds it, established before the value reaches
+// storage, so a narrower unsigned field clamps at its CEILING — reading the
+// interpreter's own signed lane instead lands zero, the floor, for a value
+// larger than any this field can hold.
+func TestUnsignedHighHalfClampsAtTheCeiling(t *testing.T) {
+	_, inst, r := read(t, "ProfileConfig", `{ "badge": 18446744073709551615, "experience": 18446744073709551615 }`)
+	if r.Clamped != 2 || r.KindMismatch != 0 || r.Malformed {
+		t.Fatalf("two clamps and nothing else, got %+v", r)
+	}
+	if got := field(t, inst, "badge").Cell.U; got != 255 {
+		t.Errorf("badge is uint8: expected its ceiling 255, got %d", got)
+	}
+	if got := field(t, inst, "experience").Cell.U; got != 4294967295 {
+		t.Errorf("experience is uint32: expected its ceiling 4294967295, got %d", got)
+	}
+}
+
+// §16.2: A NEGATIVE TOKEN IN AN UNSIGNED FIELD CLAMPS TO ZERO whatever its
+// spelling. -1e30 is a magnitude past every width and a sign, and both halves
+// are known before anything is cast — reading it through a signed lane makes it
+// the wrong SHAPE for the kind instead, which is the answer the page gives a
+// fraction and not a negative.
+func TestNegativeExponentInAnUnsignedFieldClampsToZero(t *testing.T) {
+	_, inst, r := read(t, "ProfileConfig", `{ "experience": -1e30 }`)
+	if r.KindMismatch != 0 || r.Clamped == 0 || r.Malformed {
+		t.Fatalf("a negative in an unsigned field is a clamp, not a mismatch: %+v", r)
+	}
+	if got := field(t, inst, "experience").Cell.U; got != 0 {
+		t.Errorf("expected zero, got %d", got)
+	}
+}

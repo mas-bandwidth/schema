@@ -2822,6 +2822,14 @@ tables-maps-key-length-negative-control: bin/schema build/tables-generated/.stam
 tables-maps-key-identity-negative-control: bin/schema build/tables-generated/.stamp
 	$(call map_negative_control,keyidentity,'s@else if ( key_over || token_length > key->array_bound )@else if ( token_length > key->array_bound )@',internal/codegen/cpptable/json.go,truncating a key into the walker buffer left the map gate GREEN)
 
+# THE TARGET DOMAIN IS ESTABLISHED BEFORE THE CAST (§16.2). The uint64 key rows
+# meet it: read through the interpreter's own signed lane, a magnitude in the
+# high half looks like a negative, so 1e19 and 18446744073709551615 both land as
+# the key zero and collide, where the kind holds each of them exactly.
+.PHONY: tables-maps-key-domain-negative-control
+tables-maps-key-domain-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,keydomain,'s@const uint64_t high = bytes >= 8 ? UINT64_MAX@if ( (int64_t) magnitude < 0 ) { return 0; } const uint64_t high = bytes >= 8 ? UINT64_MAX@',internal/codegen/cpptable/json.go,reading an unsigned magnitude through a signed lane left the map gate GREEN)
+
 # AN ALLOCATION FAILURE IS NOT AN OVERSIZED KEY (§2.8, §16.1). The refusal row
 # meets it: labelling the arena's refusal `clamped` skips the entry, reads on
 # and calls the whole text clean, which is the one outcome the neighbouring
@@ -2843,6 +2851,7 @@ tables-maps-negative-controls: tables-maps-sort-negative-control \
 	tables-maps-text-order-negative-control \
 	tables-maps-key-length-negative-control \
 	tables-maps-key-identity-negative-control \
+	tables-maps-key-domain-negative-control \
 	tables-maps-place-failure-negative-control \
 	tables-maps-unreached-negative-control
 

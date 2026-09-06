@@ -1299,44 +1299,123 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
     return strtod( work, NULL );
 }
 
-// the token's exact integer, parsed digit by digit so no width and no
-// locale can move it. Saturation is reported as a clamp, the wire's rule for
-// a value outside what the reader can hold (§4).
-inline int64_t TableJsonTokenInteger( const char * token, int32_t length, bool is_signed, bool * saturated )
+// ---- ONE CHECKED NUMERIC INTERPRETATION (docs/SPEC-TABLES.md §16.2) ----
+//
+// JSON HAS ONE NUMBER TYPE, so every integer target reads a token the same way
+// and the VALUE decides rather than the spelling: 2, 2.0 and 1e3 are the
+// integers 2, 2 and 1000. What comes out of a token is a SIGN, a MAGNITUDE and
+// a STATUS, and nothing on the way is cast through a type that cannot hold what
+// it is handed — a uint64 magnitude past INT64_MAX is a magnitude and never a
+// negative, and a double is consulted only for a spelling the digit path cannot
+// read exactly.
+//
+// TWO POLICIES SIT ON TOP OF THE ONE VALUE and neither reinterprets the token:
+// an ordinary FIELD clamps to its domain and counts, and a MAP KEY rejects the
+// whole entry, because a key is an identity and a clamped one is two entries
+// merged. That difference is the only difference between them.
+struct TableJsonInteger
 {
-    int32_t i = 0;
-    bool negative = false;
-    if ( i < length && ( token[i] == '-' || token[i] == '+' ) )
+    uint64_t magnitude; // |value|, exact for every integral token 64 bits hold
+    bool negative;
+    bool fractional;    // a genuinely fractional VALUE: the wrong shape for an integer
+    bool saturated;     // a magnitude past what 64 bits hold, held at that edge
+    bool finite;        // false: no integer target holds it at all
+};
+
+// the token, parsed digit by digit so no width and no locale can move it, and
+// through the runtime's converter only where the spelling carries a fraction or
+// an exponent
+inline TableJsonInteger TableJsonInterpret( const char * token, int32_t length, bool integral )
+{
+    TableJsonInteger out;
+    out.magnitude = 0;
+    out.negative = false;
+    out.fractional = false;
+    out.saturated = false;
+    out.finite = true;
+    if ( integral )
     {
-        negative = token[i] == '-';
-        i++;
+        int32_t i = 0;
+        if ( i < length && ( token[i] == '-' || token[i] == '+' ) )
+        {
+            out.negative = token[i] == '-';
+            i++;
+        }
+        for ( ; i < length; i++ )
+        {
+            const uint64_t digit = (uint64_t) ( token[i] - '0' );
+            if ( out.magnitude > ( UINT64_MAX - digit ) / 10 )
+            {
+                out.magnitude = UINT64_MAX;
+                out.saturated = true;
+                break;
+            }
+            out.magnitude = out.magnitude * 10 + digit;
+        }
+        if ( out.magnitude == 0 ) { out.negative = false; } // -0 IS zero
+        return out;
     }
-    uint64_t magnitude = 0;
-    bool over = false;
-    for ( ; i < length; i++ )
+    const double d = TableJsonTokenDouble( token, length, false );
+    if ( !TableJsonFinite( d ) ) { out.finite = false; return out; }
+    out.negative = d < 0;
+    const double whole = out.negative ? -d : d;
+    // THE DOMAIN IS ESTABLISHED BEFORE THE CAST: a magnitude past what sixty-four
+    // bits hold is answered here, so no value ever reaches a conversion that is
+    // undefined for it
+    if ( whole >= 18446744073709551616.0 )
     {
-        uint64_t digit = (uint64_t) ( token[i] - '0' );
-        if ( magnitude > ( UINT64_MAX - digit ) / 10 ) { over = true; break; }
-        magnitude = magnitude * 10 + digit;
+        out.magnitude = UINT64_MAX;
+        out.saturated = true;
+        return out;
     }
-    if ( !is_signed )
+    const uint64_t truncated = (uint64_t) whole;
+    if ( (double) truncated != whole ) { out.fractional = true; return out; }
+    out.magnitude = truncated;
+    if ( out.magnitude == 0 ) { out.negative = false; }
+    return out;
+}
+
+// a declared range bound as the same value. A bound is inside the field's own
+// domain by construction, so nothing here saturates.
+inline TableJsonInteger TableJsonIntegerOf( double bound )
+{
+    TableJsonInteger out;
+    out.magnitude = 0;
+    out.negative = bound < 0;
+    out.fractional = false;
+    out.saturated = false;
+    out.finite = true;
+    const double whole = out.negative ? -bound : bound;
+    out.magnitude = whole >= 18446744073709551616.0 ? UINT64_MAX : (uint64_t) whole;
+    if ( out.magnitude == 0 ) { out.negative = false; }
+    return out;
+}
+
+// THE TARGET DOMAIN, established before the value reaches storage: the bytes of
+// storage, signed or not. Answers what the target holds and whether the domain
+// MOVED it. An unsigned magnitude above INT64_MAX rides out as its bit pattern,
+// which is the storage's own image of it and not a negative number.
+inline int64_t TableJsonIntegerInDomain( const TableJsonInteger & number, bool is_signed, int32_t bytes, bool & moved )
+{
+    moved = false;
+    uint64_t magnitude = number.magnitude;
+    if ( is_signed )
     {
-        // -0 IS zero, and clamping it would report an event that did not
-        // happen; only a real negative magnitude is out of range here
-        if ( negative ) { *saturated = magnitude != 0; return 0; }
-        if ( over ) { *saturated = true; return (int64_t) UINT64_MAX; }
-        *saturated = false;
+        const uint64_t high = bytes >= 8 ? (uint64_t) INT64_MAX : ( ( uint64_t( 1 ) << ( bytes * 8 - 1 ) ) - 1 );
+        if ( number.negative )
+        {
+            const uint64_t low = high + 1; // the floor's magnitude
+            if ( magnitude > low ) { magnitude = low; moved = true; }
+            return (int64_t) ( ~magnitude + 1 ); // two's complement, INT64_MIN included
+        }
+        if ( magnitude > high ) { magnitude = high; moved = true; }
         return (int64_t) magnitude;
     }
-    if ( negative )
-    {
-        if ( over || magnitude > ( uint64_t( 1 ) << 63 ) ) { *saturated = true; return INT64_MIN; }
-        *saturated = false;
-        if ( magnitude == ( uint64_t( 1 ) << 63 ) ) { return INT64_MIN; }
-        return -(int64_t) magnitude;
-    }
-    if ( over || magnitude > (uint64_t) INT64_MAX ) { *saturated = true; return INT64_MAX; }
-    *saturated = false;
+    // A NEGATIVE TOKEN IN AN UNSIGNED FIELD CLAMPS TO ZERO, and -0 is zero,
+    // which is why the sign is dropped at a zero magnitude above
+    if ( number.negative ) { moved = true; return 0; }
+    const uint64_t high = bytes >= 8 ? UINT64_MAX : ( ( uint64_t( 1 ) << ( bytes * 8 ) ) - 1 );
+    if ( magnitude > high ) { magnitude = high; moved = true; }
     return (int64_t) magnitude;
 }
 
@@ -1795,76 +1874,33 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         }
         return true;
     }
-    // JSON HAS ONE NUMBER TYPE. 2.0 IS the integer 2 and 1e3 IS 1000, and a
-    // library that round-trips numbers through a double emits them that way —
-    // this walker's own float writer emits 1e+21. So an integer field takes
-    // any number whose VALUE is integral, however it was spelled; only a
-    // genuinely fractional value is the wrong shape for it.
-    bool is_signed = f->kind >= 2 && f->kind <= 5;
-    bool saturated = false;
-    int64_t value = 0;
-    if ( integral )
+    // AN ORDINARY FIELD'S POLICY over the one interpreted value: it CLAMPS to
+    // its domain and counts. JSON has one number type, so 2.0 IS the integer 2
+    // and 1e3 IS 1000 — a library that round-trips numbers through a double
+    // emits them that way, this walker's own float writer emits 1e+21 — and
+    // only a genuinely fractional value is the wrong shape for the kind.
+    const bool is_signed = f->kind >= 2 && f->kind <= 5;
+    const TableJsonInteger number = TableJsonInterpret( token, length, integral );
+    if ( !number.finite || number.fractional )
     {
-        value = TableJsonTokenInteger( token, length, is_signed, &saturated );
+        in.report->kind_mismatch++;
+        return true;
     }
-    else
-    {
-        double d = TableJsonTokenDouble( token, length, false );
-        if ( !TableJsonFinite( d ) )
-        {
-            in.report->kind_mismatch++;
-            return true;
-        }
-        if ( is_signed )
-        {
-            if ( d >= 9223372036854775808.0 ) { value = INT64_MAX; saturated = true; }
-            else if ( d < -9223372036854775808.0 ) { value = INT64_MIN; saturated = true; }
-            else if ( d != (double) (int64_t) d ) { in.report->kind_mismatch++; return true; }
-            else { value = (int64_t) d; }
-        }
-        else
-        {
-            if ( d < 0.0 )
-            {
-                // a negative for an unsigned field clamps to zero, as the
-                // exact digit path already does
-                if ( d != (double) (int64_t) d ) { in.report->kind_mismatch++; return true; }
-                value = 0;
-                saturated = true;
-            }
-            else if ( d >= 18446744073709551616.0 ) { value = (int64_t) UINT64_MAX; saturated = true; }
-            else if ( d != (double) (uint64_t) d ) { in.report->kind_mismatch++; return true; }
-            else { value = (int64_t) (uint64_t) d; }
-        }
-    }
-    if ( saturated ) { in.report->clamped++; }
+    if ( number.saturated ) { in.report->clamped++; } // past what sixty-four bits hold
+    // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH — the wire's order (§4),
+    // so a text and a wire loaded from the same data land the same instance.
+    // The comparison is on the value's OWN scale, correctly signed past
+    // INT64_MAX, where the storage's bit pattern is not a number to compare.
+    TableJsonInteger bounded = number;
     if ( f->has_range )
     {
-        if ( (double) value < f->range_min ) { value = (int64_t) f->range_min; in.report->clamped++; }
-        else if ( (double) value > f->range_max ) { value = (int64_t) f->range_max; in.report->clamped++; }
+        const double scale = number.negative ? -(double) number.magnitude : (double) number.magnitude;
+        if ( scale < f->range_min ) { bounded = TableJsonIntegerOf( f->range_min ); in.report->clamped++; }
+        else if ( scale > f->range_max ) { bounded = TableJsonIntegerOf( f->range_max ); in.report->clamped++; }
     }
-    // the field's own storage width is the last bound: a value past it
-    // clamps rather than wrapping, which is what the wire does too
-    if ( f->elem_size < 8 )
-    {
-        if ( is_signed )
-        {
-            int64_t high = ( int64_t( 1 ) << ( f->elem_size * 8 - 1 ) ) - 1;
-            int64_t low = -high - 1;
-            if ( value > high ) { value = high; in.report->clamped++; }
-            else if ( value < low ) { value = low; in.report->clamped++; }
-        }
-        else
-        {
-            uint64_t high = ( uint64_t( 1 ) << ( f->elem_size * 8 ) ) - 1;
-            if ( value < 0 ) { value = 0; in.report->clamped++; }
-            else if ( (uint64_t) value > high ) { value = (int64_t) high; in.report->clamped++; }
-        }
-    }
-    // at eight bytes the storage IS the parser's width, and an unsigned value
-    // past INT64_MAX rides here as a negative int64 by design — the token
-    // parser already turned a NEGATIVE token for an unsigned field into a
-    // clamped zero, so there is nothing left to bound.
+    bool moved = false;
+    const int64_t value = TableJsonIntegerInDomain( bounded, is_signed, (int32_t) f->elem_size, moved );
+    if ( moved ) { in.report->clamped++; }
     TableJsonSetRaw( storage, f->elem_size, (uint64_t) value );
     return true;
 }

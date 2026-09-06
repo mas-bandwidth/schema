@@ -1054,6 +1054,23 @@ static void test_text()
         }
         CHECK_EQ( eb.GetRoot()->after, 5 ); // and the parent read on
     }
+    {
+        // A uint64 KEY is read by §16.2's integer rule and by nothing else, and
+        // its domain is established BEFORE any cast: 2.0 is 2 and 1e19 is a
+        // magnitude the kind holds, while -1 and 1e30 are outside it and drop
+        // their entries as kind_mismatch. A key is never clamped.
+        const char * t = "{\"ids\":{\"2.0\":{\"count\":1},\"1e19\":{\"count\":2},"
+                         "\"18446744073709551615\":{\"count\":3},\"-1\":{\"count\":4},\"1e30\":{\"count\":5}}}";
+        EdgeRowBuilder eb;
+        TableReport r;
+        CHECK( EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK_EQ( eb.GetRoot()->ids.count, 3 );
+        CHECK_EQ( r.kind_mismatch, 2 );
+        CHECK_EQ( r.clamped, 0 );
+        CHECK( EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, (uint64_t) 2 ) != NULL );
+        CHECK( EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 10000000000000000000ull ) != NULL );
+        CHECK( EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 18446744073709551615ull ) != NULL );
+    }
     test_text_allocation_refusals();
 }
 
