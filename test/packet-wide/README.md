@@ -53,3 +53,14 @@ compiled pairing-removal tier must fail mutation agreement. Both targets ride
 reader, Uint16List storage, exact bit limits and composition contracts. The
 analyzer and formatter refuse drift. Its compiled pairing-removal control
 must fail mutation agreement. Both targets ride `test-dart`.
+
+`make packet-wide-elixir` carries a binary of little-endian 16-bit code units.
+It rejects odd byte counts and oversized/null writes, validates exact bit
+limits and checks immutable composition and branch zeroing. Its pairing
+control compiles without warnings and must fail mutation agreement. Both
+targets ride `test-elixir`.
+
+`make packet-wide-nine` runs every port and pairing control against C++.
+`make packet-wire-nine` joins that row with all nine packet-defaults and
+UTF-8 checks and their eight-port negative controls. The isolated packet
+fixture keeps its own protocol identity; the table baseline remains separate.

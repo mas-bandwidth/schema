@@ -1873,16 +1873,13 @@ prefix's bits and it sizes the storage. A `wstring` field takes no
 attributes and no `= default` (§4.2), and `wstring(N)` with N below 2 is a
 compile error, the same floor `string(N)` carries (§4.6).
 
-**Backend status.** C++ carries wide text on both wires. C, Rust, Go, C#,
-Java, JavaScript and Dart also carry the packet storage, groups and read
-refusals below; Elixir refuses packet wide text until its codec lands. All eight ports refuse
-wide text reachable from a table, whose kind `33` remains C++ only
-(SPEC-TABLES.md §3). The storage and boundary table below states the common
-contract, including what the remaining ports owe. `*wstring`, the unbounded
-twin, is specified ahead of its
-implementation and no backend emits the blob record (SPEC-TABLES.md §2.5).
-Owed as schema#188, narrowed by each target that lands the codec, and this
-line is deleted by the last of them.
+**Backend status.** All nine packet targets carry the storage, groups and
+read refusals below: C++, C, Rust, Go, C#, Java, JavaScript, Dart and Elixir.
+C++ also carries table kind `33`. The other eight targets refuse wide text
+reachable from a table by name (SPEC-TABLES.md §3); an unrelated table in the
+same unit does not prevent a packet type from carrying wide text. `*wstring`,
+the unbounded twin, is specified ahead of implementation and no backend emits
+the blob record (SPEC-TABLES.md §2.5).
 
 **Why the language carries a wide type at all:** on a host whose native text
 is already UTF-16, the wire and the string hold the same units, so text
@@ -2090,10 +2087,13 @@ golden source and golden-id pins for a wstring-bearing unit (gates 1, 2
 and 7) live in `examples-wide/WideText.schema`.** The packet test stages that
 unchanged file separately from the directory's table declaration and baseline.
 C++ and each packet port pin the same packet source and protocol id, replay
-the shared text corpus, and compare generated writes and reads. Unported
-packet targets still refuse that file by name; all eight ports refuse the
-directory's table-wide unit. The packet declaration joins `examples/` when
-the ninth target lands, while the table proving ground stays separate.
+the shared text corpus, and compare generated writes and reads. All nine
+packet targets now carry that isolated unit; the other eight targets still
+refuse the directory's table-wide unit. The packet fixture remains an
+independent unit so its protocol identity and the established `examples/`
+identity stay stable. `make packet-wire-nine` runs the defaults, UTF-8 and
+wide-string checks with all eight ports' negative controls; `make test` also
+runs them within the full language legs.
 
 ## 5. Trust model — inherited
 

@@ -1,9 +1,8 @@
 // WideText.schema — the wstring(N) proving ground (SPEC §4.12, §7.3).
 //
-// Its own compilation unit rather than a field inside examples/, because
-// examples/ pins gate 1 for all nine targets and eight of them refuse wide
-// text today (SPEC §4.12, the backend status there). The declaration joins
-// examples/ with the ninth backend.
+// The isolated packet unit is carried by all nine targets. The tests stage
+// it away from this directory's table declaration and baseline, preserving
+// its own protocol identity and the existing examples/ protocol identity.
 //
 // Every type here holds ONE text field and nothing else, so the type's whole
 // wire IS that field's wire and serialize's shared corpus reproduces here

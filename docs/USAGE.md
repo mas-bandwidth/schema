@@ -556,12 +556,12 @@ which is the same wire with no encoding rule (SPEC.md §4.7).
 
 ### wstring(N)
 
-*On BOTH wires in C++, with the wide corpus under `examples-wide/` as its
-goldens: the packet wire here, and kind `33` on the table wire
-(SPEC-TABLES.md §3), so a table, or any type a table reaches, carries it. The
-other eight targets refuse the spelling by name until their ports land
-([#590](https://github.com/mas-bandwidth/schema/issues/590)). SPEC.md §4.12 is
-the wire.*
+*On the packet wire in all nine targets: C++, C, Rust, Go, C#, Java,
+JavaScript, Dart and Elixir. C++ also carries table kind `33`; the other eight
+targets refuse table-reachable wide text by name. The packet corpus and
+source/id pins use the isolated `examples-wide/WideText.schema` unit.
+SPEC.md §4.12 defines the packet wire; SPEC-TABLES.md §3 defines the table
+wire.*
 
 ```
 title wstring(64)
