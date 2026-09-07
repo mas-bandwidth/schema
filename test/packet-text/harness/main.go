@@ -129,7 +129,7 @@ func main() {
 			var payload strings.Builder
 			for j, unit := range units {
 				fmt.Fprintf(&payload, "%04x", unit)
-				for k := 0; k < 16; k++ {
+				for k := range 16 {
 					if unit&(1<<k) != 0 {
 						offset := 3 + 32*j + k
 						wire[offset/8] |= 1 << (offset % 8)
