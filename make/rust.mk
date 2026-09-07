@@ -398,3 +398,34 @@ packet-defaults-rust-negative-control: packet-defaults-rust
 	@echo 'packet defaults Rust negative control: missing constructor bytes fail the runtime check'
 
 test-rust: packet-defaults-rust packet-defaults-rust-negative-control
+# Wide packet code units, with independent bounds, tail and composition probes.
+build/packet-wide/rust/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema test/packet-wide/rust/src/main.rs make/rust.mk
+	./bin/schema generate --lang rust --out build/packet-wide/rust/src build/packet-wide/source/WideText.schema
+	./bin/schema generate --lang rust --out build/packet-wide/rust/shapes/src test/packet-wide/Shapes.schema
+	cp test/packet-wide/rust/src/main.rs build/packet-wide/rust/src/main.rs
+	@printf '[package]\nname = "wide"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nwideprobe = { path = "shapes" }\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > build/packet-wide/rust/Cargo.toml
+	@printf '[package]\nname = "wideprobe"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > build/packet-wide/rust/shapes/Cargo.toml
+	@touch $@
+
+.PHONY: packet-wide-rust packet-wide-rust-negative-control
+packet-wide-rust: build/packet-wide/rust/.stamp build/packet-wide/cpp/driver build/packet-text/harness
+	PATH="$(RUSTUP_BIN):$$PATH" cargo test --quiet --manifest-path build/packet-wide/rust/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path build/packet-wide/rust/Cargo.toml
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/rust/target/debug/wide
+	PATH="$(RUSTUP_BIN):$$PATH" cargo test --quiet --release --manifest-path build/packet-wide/rust/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --manifest-path build/packet-wide/rust/Cargo.toml
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/rust/target/release/wide
+
+packet-wide-rust-negative-control: packet-wide-rust
+	@mkdir -p build/packet-wide/rust-negative
+	go run ./tools/sabotage -name packet-wide-rust-pairing -out build/packet-wide/rust-negative/wstring.gotext internal/codegen/rust/wstring.go
+	@printf '{"Replace":{"%s/internal/codegen/rust/wstring.go":"%s/build/packet-wide/rust-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/rust-negative/overlay.json
+	go run -overlay=build/packet-wide/rust-negative/overlay.json ./cmd/schema generate --lang rust --out build/packet-wide/rust-negative/src build/packet-wide/source/WideText.schema
+	cp test/packet-wide/rust/src/main.rs build/packet-wide/rust-negative/src/main.rs
+	@sed 's|path = "shapes"|path = "../rust/shapes"|' build/packet-wide/rust/Cargo.toml > build/packet-wide/rust-negative/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --manifest-path build/packet-wide/rust-negative/Cargo.toml
+	@if ./build/packet-text/harness -wide -mutations-only -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/rust-negative/target/release/wide > build/packet-wide/rust-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Rust wide pairing removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/rust-negative/log || { cat build/packet-wide/rust-negative/log; exit 1; }
+	@echo 'packet wide Rust negative control: removed pairing fails bit-flip agreement'
+
+test-rust: packet-wide-rust packet-wide-rust-negative-control

@@ -333,7 +333,7 @@ func (g *gen) emitZeroItems(items []ir.Item, ind string) {
 func (g *gen) emitZeroField(f *ir.Field, ind string) {
 	name := "value." + f.Name
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 		g.pf("%s%s = [0; %s];\n%s%s_length = 0;\n", ind, name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "usize"), ind, name)
 	case f.Array != ir.ArrayNone:
 		g.pf("%s%s = [%s; %s];\n", ind, name, g.zeroScalar(f), g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "usize"))
@@ -569,6 +569,8 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 
 func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
+	case ir.TWString:
+		g.emitWriteWString(f, name, ind)
 	case ir.TFixed:
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: ZERO bits — the generated raw-domain refusal
@@ -801,6 +803,8 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 
 func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
+	case ir.TWString:
+		g.emitReadWString(f, name, ind)
 	case ir.TFixed:
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: zero bits — the value is the range, raw

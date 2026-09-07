@@ -16,10 +16,7 @@ type rustTarget struct{}
 func (rustTarget) Names() []string { return []string{"rust"} }
 
 func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	// WIDE TEXT FIRST, ahead of every form refusal: it is a STORAGE
-	// construct (SPEC §4.12), so a target that has not laid out the
-	// member cannot emit the field under any form, and naming that is
-	// more use to a port author than naming a form the field sits in.
+	// Packet wide text is carried; table kind 33 remains a named refusal.
 	if err := refuseWideText(u, "rust"); err != nil {
 		return nil, err
 	}
@@ -66,6 +63,7 @@ func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 }
 
 func init() {
+	registerWideTextCarrier("rust")
 	registerPacketValueDefaultCarrier("rust")
 	registerBuiltin(rustTarget{}, true, false, false, false)
 }
