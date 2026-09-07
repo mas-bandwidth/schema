@@ -20,3 +20,10 @@ union tags. `packet-wide-c-negative-control` removes the pairing check,
 compiles in release and requires mutation agreement to fail its exact marker.
 Both targets ride `test-c`. Table-reachable wide text remains refused by name,
 including direct scalar union arms, and unrelated tables remain allowed.
+
+`make packet-wide-rust` runs the same oracle in debug and release. Its native
+contracts cover writer bounds/null refusals, reader pairing, untouched tails,
+unaligned conditionals and zeroing, fixed/counted arrays, born counts and
+repeated union tags. `packet-wide-rust-negative-control` removes pairing and
+requires the compiled release reader to fail mutation agreement. Both ride
+`test-rust`; storage remains a fixed `[u16; N]` with a used length.
