@@ -82,13 +82,13 @@ func mapKeyOrderType(f *ir.Field) string {
 	return "uint64_t"
 }
 
-// mapValueIsPointer reports a `map[K]*T` — the value is ONE pointer SLOT, so
+// mapValueIsPointer reports a `map[K]*T`, whose value is ONE pointer SLOT, so
 // the const form's Find answers the resolved `const T *` (docs/SPEC-TABLES.md
 // §2.8). AN ARRAY OF POINTERS IS NOT THIS CASE. `[N]*T`, `[..N]*T` and `[]*T`
 // store a `TableRef` PER ELEMENT (§2.1, §4.2), so each takes the arm its array
 // form takes and carries `TableRef` as the element; a predicate that read
 // `Type.Pointer` alone sent all three here and spelled `<T>At` on an array.
-// `[E]*T` is refused by name (§11) and reaches no arm at all.
+// `[E]*T` is refused by name (§2.4, §15) and reaches no arm at all.
 func mapValueIsPointer(f *ir.Field) bool {
 	value := ir.MapValueField(f)
 	return value.Type.Pointer && value.Array == ir.ArrayNone && value.KeyEnum == ""
