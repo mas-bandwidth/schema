@@ -176,11 +176,11 @@ func TestElixirRuntimeNamesAreClaimed(t *testing.T) {
 	}
 }
 
-// TestElixirRuntimeNameCollisionRepro is the REPRO the scan above exists for,
-// and its NEGATIVE CONTROL is the second half: a declaration named for a
-// generated module is refused by the checker, and the same declaration in a
-// TABLE-FREE unit is accepted — which is what says the claim is scoped to
-// units that declare a table rather than taken from every schema.
+// TestElixirRuntimeNameCollisionRepro is the REPRO the scan above exists for:
+// a declaration named for a generated module is refused by the checker, in a
+// unit that declares a table and in one that does not (schema#363). The claim
+// is on the name alone, because the view file defines these modules in a unit
+// that declares no table (docs/SPEC-TABLES.md:560, §11).
 func TestElixirRuntimeNameCollisionRepro(t *testing.T) {
 	for _, name := range []string{"TableRuntime", "BlockRuntime", "CookRuntime", "BuildVersion"} {
 		t.Run(name, func(t *testing.T) {
@@ -190,11 +190,11 @@ func TestElixirRuntimeNameCollisionRepro(t *testing.T) {
 				t.Fatalf("a declaration named %s was accepted — the Elixir table backend defines "+
 					"the module probe.%s, so the unit cannot compile", name, name)
 			}
-			// the NEGATIVE CONTROL: the same name in a table-free unit is the
-			// author's, and taking it there would be a claim nothing needs
+			// and the same name in a table-free unit, refused on the name
+			// alone rather than on the presence of a table
 			free := "package probe\n\nenum " + name + " { A, B }\n\ntype Holder\n{\n    g " + name + "\n}\n"
-			if errs := checkErrors(t, free); len(errs) > 0 {
-				t.Errorf("a TABLE-FREE unit must keep the name %s: %v", name, errs)
+			if errs := checkErrors(t, free); len(errs) == 0 {
+				t.Errorf("a TABLE-FREE unit declaring %s was accepted: the claim is on the name alone", name)
 			}
 		})
 	}

@@ -580,6 +580,24 @@ func TestDiagnostics(t *testing.T) {
 		{name: "a table spelling the Go cook's descriptor graph",
 			src:  "package probe\n\ntable tableCookRecords\n{\n    n int32\n}\n",
 			want: "tableCookRecords"},
+		// ---- and the same claim in a TABLE-FREE unit (schema#363) ----
+		// docs/SPEC-TABLES.md:560 states the claim over every unit rather
+		// than over a unit that declares a table, because the view file
+		// defines the runtime's names in units that declare none. A name a
+		// unit may legally declare today must not become a collision the day
+		// its view is emitted, so the gate fires on the name alone.
+		{name: "a const spelling the cooked header's magic, in a table-free unit",
+			src:  "package probe\n\nconst TABLE_COOK_MAGIC = 7\n",
+			want: "TABLE_COOK_MAGIC"},
+		{name: "a type spelling the read report, in a table-free unit",
+			src:  "package probe\n\ntype TableReport { n int32 }\n",
+			want: "TableReport"},
+		{name: "the Go text walk's depth cap in a table-free unit",
+			src:  "package probe\n\nconst tableJsonMaxDepth = 5\n",
+			want: "unexported names at package scope"},
+		{name: "the C runtime's snake_case in a table-free unit",
+			src:  "package probe\n\ntype tableCookRecords { n int32 }\n",
+			want: "tableCookRecords"},
 
 		// ---- the C target's PREPROCESSOR namespace (SPEC §6.1's C column) ----
 		//
@@ -629,8 +647,12 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		src  string
 		srcs map[string]string
 	}{
-		{name: "the Go runtime's lowercase names in a TABLE-FREE unit (the negative control)",
-			src: "package t\nconst tableJsonMaxDepth = 5\ntype tableJsonIn { n int32 }\ntype tableCookRecords { n int32 }\n"},
+		// A NAME THE RUNTIME DOES NOT CLAIM stays legal in a table-free unit
+		// and beside a table alike: the claim is the registry's list and
+		// nothing wider, so a name that merely starts with the same word is
+		// untouched (docs/SPEC-TABLES.md §11).
+		{name: "near-miss spellings of the table runtime's names",
+			src: "package t\nconst tableJsonMaxDepths = 5\ntype tableJsonInput { n int32 }\ntype TableReports { n int32 }\n"},
 		{name: "nested if with cond in the same branch",
 			src: "package t\ntype T {\n    a bool\n    if a {\n        b bool\n        if b { x uint8 }\n    }\n}\n"},
 		// The self-negation refusal (schema#268) is about ONE name taken both

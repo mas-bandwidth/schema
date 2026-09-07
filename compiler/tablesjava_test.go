@@ -251,10 +251,12 @@ func TestJavaRuntimeNamesAreRefusedByTheChecker(t *testing.T) {
 		if len(errs) == 0 {
 			t.Errorf("a declaration named %s was accepted in a unit with a table", name)
 		}
-		// and the NEGATIVE CONTROL of the claim: a table-free unit keeps the name
+		// and in a TABLE-FREE unit too (schema#363): the claim is on the name
+		// alone, because the view file defines it in a unit that declares no
+		// table (docs/SPEC-TABLES.md:560, §11)
 		free := "package probe\n\nenum " + name + " { A, B }\n\ntype Holder\n{\n    g " + name + "\n}\n"
-		if errs := checkErrors(t, free); len(errs) > 0 {
-			t.Errorf("a TABLE-FREE unit must keep the name %s: %v", name, errs)
+		if errs := checkErrors(t, free); len(errs) == 0 {
+			t.Errorf("a TABLE-FREE unit declaring %s was accepted: the claim is on the name alone", name)
 		}
 	}
 }

@@ -441,19 +441,32 @@ func TestDartVerbClaimNeedsATable(t *testing.T) {
 	buildUnit(t, "package t\ntype P { measure int32\n  save int32\n  to_json int32 }\n")
 }
 
-// TestTypeFreeOfTableSymbols: a table-free unit keeps its whole namespace —
-// the TableReport claim exists only when a table is declared.
-func TestTypeFreeOfTableSymbols(t *testing.T) {
-	if errs := runUnit(t, map[string]string{"T.schema": "package t\ntype TableReport { y int32 }\n"}); len(errs) > 0 {
-		t.Fatalf("a table-free unit must not claim the table runtime names: %v", errs)
+// TestTableSymbolsAreClaimedInATableFreeUnit (schema#363): the table runtime's
+// names are claimed in EVERY unit, not only in one that declares a table
+// (docs/SPEC-TABLES.md:560, §11). The view file defines them in units that
+// declare none, so a name a unit may legally declare today must not become a
+// collision the day its view is emitted or the day it grows its first table.
+func TestTableSymbolsAreClaimedInATableFreeUnit(t *testing.T) {
+	errs := runUnit(t, map[string]string{"T.schema": "package t\ntype TableReport { y int32 }\n"})
+	if len(errs) == 0 {
+		t.Fatal("a table-free unit declaring TableReport was accepted: the claim is on the name alone")
 	}
-	// and the RUST CONSTANT SPACE is scoped the same way: a table-free unit
-	// keeps every spelling that would lower onto a runtime constant
-	for _, name := range []string{"table_cook_magic", "TABLE_JSON_MAX_DEPTH", "build_version", "tab_block_max_bytes"} {
+	if !strings.Contains(errs[0].Error(), "TABLE-wire runtime") {
+		t.Errorf("TableReport is refused, but not as a runtime-name collision: %v", errs[0])
+	}
+	// and the RUST CONSTANT SPACE is claimed on the same terms: every
+	// spelling that lowers onto a runtime constant, table or no table
+	for _, name := range []string{"table_cook_magic", "TABLE_JSON_MAX_DEPTH", "build_version"} {
 		src := "package t\nconst " + name + " = 1\ntype P { x int32 }\n"
-		if errs := runUnit(t, map[string]string{"T.schema": src}); len(errs) > 0 {
-			t.Errorf("a table-free unit must keep %s: %v", name, errs)
+		if errs := runUnit(t, map[string]string{"T.schema": src}); len(errs) == 0 {
+			t.Errorf("a table-free unit declaring %s was accepted", name)
 		}
+	}
+	// and a name that lowers onto NO runtime constant stays the author's, in
+	// a table-free unit and beside a table alike: the claim is the registry's
+	// list and nothing wider
+	if errs := runUnit(t, map[string]string{"T.schema": "package t\nconst tab_block_max_bytes = 1\ntype P { x int32 }\n"}); len(errs) > 0 {
+		t.Errorf("a name the runtime does not spell must stay legal: %v", errs)
 	}
 }
 

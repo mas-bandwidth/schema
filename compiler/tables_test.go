@@ -678,8 +678,8 @@ func TestTableRuntimeNamesAreClaimed(t *testing.T) {
 		}
 	}
 
-	// and the claim itself: every registered name is refused when a unit
-	// declares a table, and kept when it does not
+	// and the claim itself: every registered name is refused in a unit that
+	// declares a table AND in one that does not (schema#363)
 	for _, name := range tablenames.Claimed() {
 		t.Run(name, func(t *testing.T) {
 			refused := "package probe\n\nenum " + name + " { A, B }\n\ntable Holder\n{\n    g " + name + "\n}\n"
@@ -698,11 +698,12 @@ func TestTableRuntimeNamesAreClaimed(t *testing.T) {
 			if !named {
 				t.Fatalf("%s is refused, but not as a runtime-name collision: %v", name, errs)
 			}
-			// scoped to units that declare a table: a table-free unit keeps
-			// its whole namespace
+			// and in a TABLE-FREE unit, on the name alone: the view file
+			// defines the runtime's names in a unit that declares no table
+			// (docs/SPEC-TABLES.md:560, §11)
 			free := "package probe\n\nenum " + name + " { A, B }\n\ntype Holder\n{\n    g " + name + "\n}\n"
-			if errs := checkErrors(t, free); len(errs) > 0 {
-				t.Errorf("a TABLE-FREE unit must keep the name %s: %v", name, errs)
+			if errs := checkErrors(t, free); len(errs) == 0 {
+				t.Errorf("a TABLE-FREE unit declaring %s was accepted: the claim is on the name alone", name)
 			}
 		})
 	}
