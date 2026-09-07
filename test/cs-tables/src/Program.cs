@@ -1704,6 +1704,7 @@ static partial class Program
         TestCollections();
         TestSurfaces();
         TestRegions();
+        TestNativeMessages();
         TestCollectionMessages();
         TestGoldenWireWrite();
         TestGoldenWireRead();

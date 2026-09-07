@@ -49,44 +49,51 @@ const tableMessageMeasureSource = `
         }
         return MessageSkip(ref r, d, kind, shape);
     }
-    public static long MessageLoadMeasure(TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary)
+    // Frame one body without constructing its values. The root follows the
+    // node records on the wire but precedes them in the region.
+    static bool MessageFrame(ref BitReader r,ref MessageRead d,TableTypeInfo type,out long records,out long root,out int count,out long rootExtent,out long data,out bool complete)
     {
-        if (vocabulary == null || !vocabulary.Announced || bytes.Length < 2 || bytes[0] != 2) { return -1; }
-        int bodies = bytes[1] + 1; BitReader r = new BitReader(bytes); r.At = 16;
-        long data = 0, attribution = 0;
-        var d = new MessageRead { Vocabulary = vocabulary };
-        for (int b = 0; b < bodies; b++)
+        records=root=0; count=0; rootExtent=data=0; complete=false;
+        long before=r.At;
+        if(!MessageReference(ref r,d,out ulong reference,out TableMessageEntry entry)) { return false; }
+        if(reference!=0 && entry.Id==ulong.MaxValue)
+        { if(!r.Get(32,out UInt128 raw) || raw>int.MaxValue) { return false; } count=(int)raw; }
+        else { r.At=before; }
+        d.IndexBits=BitCount((ulong)count+1); records=r.At;
+        for(int i=0;i<count;i++)
         {
-            long before = r.At;
-            if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return -1; }
-            ulong records = 0;
-            if (reference != 0 && entry.Id == ulong.MaxValue)
-            { if (!r.Get(32, out UInt128 raw)) { return -1; } records = (ulong)raw; }
-            else { r.At = before; }
-            d.IndexBits = BitCount(records + 1);
-            for (ulong i = 0; i < records; i++)
+            if(!MessageName(ref r,d,out _,out TableMessageEntry named)) { return false; }
+            if(named.Id==BytesTypeId || named.Id==StringTypeId)
             {
-                if (!MessageName(ref r, d, out _, out TableMessageEntry named)) { return -1; }
-                if (named.Id == BytesTypeId || named.Id == StringTypeId)
-                {
-                    if (!r.Get(32, out UInt128 length) || !r.Align() || !r.Skip((long)length * 8)) { return -1; }
-                    if (named.Id == BytesTypeId && type.BytesEdge || named.Id == StringTypeId && type.StringEdge)
-                    { data += Align(8 + (long)length + (named.Id == StringTypeId ? 1 : 0), type.RegionAlign); }
-                }
-                else
-                {
-                    TableTypeInfo node = type.PointerType(named.Id);
-                    long extent = 0;
-                    if (!MessageExtentBody(ref r, d, node, ref extent)) { return -1; }
-                    if (node != null) { data += Align(Align(node.StorageSize, type.RegionAlign) + extent, type.RegionAlign); }
-                }
+                if(!r.Get(32,out UInt128 length) || !r.Align() || !r.Skip((long)length*8)) { return false; }
+                if(named.Id==BytesTypeId && type.BytesEdge || named.Id==StringTypeId && type.StringEdge)
+                { data+=Align(8+(long)length+(named.Id==StringTypeId?1:0),type.RegionAlign); }
             }
-            long rootExtent = 0;
-            bool complete = MessageExtentBody(ref r, d, type, ref rootExtent);
-            data += Align(Align(type.StorageSize, type.RegionAlign) + rootExtent, type.RegionAlign);
-            attribution += ((long)records + 1) * 16;
-            if (!complete) { break; }
+            else
+            {
+                TableTypeInfo node=type.PointerType(named.Id); long extent=0;
+                if(!MessageExtentBody(ref r,d,node,ref extent)) { return false; }
+                if(node!=null) { data+=Align(Align(node.StorageSize,type.RegionAlign)+extent,type.RegionAlign); }
+            }
         }
-        return data + attribution;
+        root=r.At; complete=MessageExtentBody(ref r,d,type,ref rootExtent);
+        data+=Align(Align(type.StorageSize,type.RegionAlign)+rootExtent,type.RegionAlign);
+        return true;
+    }
+    public static long MessageLoadMeasure(TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary)
+    { return MessageLoadMeasureParts(type,bytes,vocabulary,out _,out _); }
+    public static long MessageLoadMeasureParts(TableTypeInfo type,ReadOnlySpan<byte> bytes,TableVocabulary vocabulary,out long data,out long attribution)
+    {
+        data=attribution=0;
+        if(vocabulary==null || !vocabulary.Announced || bytes.Length<2 || bytes[0]!=2) { return -1; }
+        int bodies=bytes[1]+1; BitReader r=new BitReader(bytes); r.At=16;
+        var d=new MessageRead { Vocabulary=vocabulary };
+        for(int b=0;b<bodies;b++)
+        {
+            if(!MessageFrame(ref r,ref d,type,out _,out _,out int count,out _,out long size,out bool complete)) { return -1; }
+            data+=size; attribution+=(count+1L)*16;
+            if(!complete) { break; }
+        }
+        return data+attribution;
     }
 `

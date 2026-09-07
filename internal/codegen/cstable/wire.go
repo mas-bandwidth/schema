@@ -554,7 +554,7 @@ public static partial class TableWire
             if (framed && !r.Slice(out sub)) { return Damage(report); }
             object child = f.GetChild(value, index);
             ReadBody(ref sub, child, f.Table, report, true);
-            if (!f.IsArray && sub.Offset != sub.Buffer.Length) { f.Table.Reset(child); Damage(report); }
+            if (sub.Offset != sub.Buffer.Length) { f.Table.Reset(child); Damage(report); }
             if (!framed) { r.Offset = r.Buffer.Length; }
             return true;
         }
@@ -669,7 +669,7 @@ public static partial class TableWire
             keep = f.ArrayBound; report.Clamped++;
             while (keep > 0 && (text[keep] & 0xc0) == 0x80) { keep--; }
         }
-        text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep);
+        if(value!=null) { text.Slice(0,keep).CopyTo(f.GetBuffer(value)); f.SetCount(value,keep); }
         return true;
     }
     static bool ReadChars(ReadOnlySpan<byte> text, object value, TableFieldInfo f, TableReport report)
@@ -724,7 +724,7 @@ public static partial class TableWire
         {
             if (!r.Slice(out Reader text)) { return Damage(report); }
             if (!(kind == 33 ? ReadChars(text.Buffer, value, f, report) : ReadText(text.Buffer, value, f, report)))
-            { if (kind == 33) { Array.Clear(f.GetChars(value)); } else { Array.Clear(f.GetBuffer(value)); } f.SetCount(value, 0); }
+            { f.ResetField(value); }
             return true;
         }
         if (kind == 14 || kind == 16)

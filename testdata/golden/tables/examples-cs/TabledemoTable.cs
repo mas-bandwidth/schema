@@ -3000,7 +3000,7 @@ namespace Tabledemo
                 for (;;)
                 {
                     if (!body.Ref(out ulong reference, out ulong id)) { return false; }
-                    if (reference == 0) { return true; }
+                    if (reference == 0) { return body.Offset == body.Buffer.Length; }
                     if (!body.Has(1)) { return false; }
                     byte kind = body.Byte();
                     if (id != k.Id) { if (!body.Skip(kind)) { return false; } continue; }
@@ -3056,10 +3056,10 @@ namespace Tabledemo
             static bool MessageNumber(byte kind) { return kind >= 2 && kind <= 9 || kind >= 18 && kind <= 29; }
             static bool Signed(byte kind) { return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24; }
             static int ValueBits(byte kind, TableMessageShape s)
-            { return kind == 1 ? 1 : kind == 10 && s.Packing == 2 || MessageNumber(kind) && s.Packing == 1 ? s.Bits : Width(kind) * 8; }
+            { return kind == 0 || kind == 32 ? 0 : kind == 1 ? 1 : kind == 10 && s.Packing == 2 || MessageNumber(kind) && s.Packing == 1 ? s.Bits : Width(kind) == 0 ? -1 : Width(kind) * 8; }
             static Verdict Refuse(TableReport report, string reason)
             { report.Refused = true; report.Reason = reason; return Finish(report, Verdict.Refused); }
-            static bool Shape(ref Reader r, byte kind, out TableMessageShape shape)
+            static bool Shape(ref Reader r, byte kind, out TableMessageShape shape, bool element = false)
             {
                 shape = new TableMessageShape();
                 if (MessageNumber(kind) || kind == 10)
@@ -3098,7 +3098,10 @@ namespace Tabledemo
                     if (kind == 14 && (!r.Var(out shape.Min) || shape.Min > uint.MaxValue)) { return false; }
                     if (!r.Var(out shape.Max) || shape.Max > uint.MaxValue || shape.Max < shape.Min || !r.Has(1)) { return false; }
                     shape.Elem = r.Byte();
-                    if (!MessageKind(shape.Elem) || shape.Elem == 12 || shape.Elem == 33 || !Shape(ref r, shape.Elem, out shape.Inner)) { return false; }
+                    if (!MessageKind(shape.Elem) || shape.Elem == 12 || shape.Elem == 33) { return false; }
+                    // An entry carries its own shape and one element shape. The C++
+                    // announcement reader does not recursively parse nested arrays.
+                    if (!element && !Shape(ref r, shape.Elem, out shape.Inner, true)) { return false; }
                 }
                 return true;
             }
@@ -3346,7 +3349,9 @@ namespace Tabledemo
                         for (ulong i = 0; i < n; i++)
                         {
                             if (kind == 16 && !r.Get(d.Vocabulary.RefBits, out _)) { return false; }
-                            if (!MessageSkip(ref r, d, shape.Elem, shape.Inner)) { return false; }
+                            if (shape.Elem == 13 || shape.Elem == 15 || shape.Elem == 17 || shape.Elem == 30)
+                            { if (!MessageSkip(ref r, d, shape.Elem, shape.Inner)) { return false; } }
+                            else { int bits=ValueBits(shape.Elem,shape.Inner); if(bits<0 || !r.Skip(bits)) { return false; } }
                         }
                         return true;
                     default: return MessageKind(kind) && r.Skip(ValueBits(kind, shape));
@@ -3416,7 +3421,7 @@ namespace Tabledemo
             }
             static bool MessageReadBody(ref BitReader r, MessageRead d, object value, TableTypeInfo type)
             {
-                type.Reset(value);
+                if(value!=null) { type.Reset(value); }
                 for (;;)
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
@@ -3430,7 +3435,7 @@ namespace Tabledemo
                     { d.Report.KindMismatch++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } continue; }
                     if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape)) { return false; }
                     if (widened && !field.MapKey) { d.Report.Widened++; }
-                    if (field.Optional) { field.SetPresent(value, true); }
+                    if (field.Optional && value!=null) { field.SetPresent(value, true); }
                 }
             }
             static bool MessageReadField(ref BitReader r, MessageRead d, object value, TableFieldInfo f, byte kind, TableMessageShape shape)
@@ -3443,8 +3448,7 @@ namespace Tabledemo
                     if (n > (ulong)((r.End - r.At) / 8)) { return false; }
                     int kept = (int)Math.Min(n, (ulong)f.ArrayBound);
                     if (n > (ulong)f.ArrayBound) { d.Report.Clamped++; }
-                    r.Bytes.Slice((int)(r.At / 8), kept).CopyTo(f.GetBuffer(value)); r.At += (long)n * 8;
-                    f.SetCount(value, kept); return true;
+                    if(value!=null) { r.Bytes.Slice((int)(r.At / 8), kept).CopyTo(f.GetBuffer(value)); f.SetCount(value,kept); } r.At += (long)n * 8; return true;
                 }
                 if (kind == 12 || kind == 33)
                 {
@@ -3466,9 +3470,10 @@ namespace Tabledemo
                     }
                     int keep = Math.Min((int)length, f.ArrayBound);
                     if (length > (uint)f.ArrayBound) { d.Report.Clamped++; }
-                    for (int i = 0; i < keep; i++) { r.Get(16, out UInt128 raw); f.GetChars(value)[i] = (char)(uint)raw; }
-                    if (keep > 0 && keep < (int)length && char.IsHighSurrogate(f.GetChars(value)[keep - 1])) { keep--; }
-                    f.SetCount(value, keep); r = check; return true;
+                    char last=default;
+                    for (int i = 0; i < keep; i++) { r.Get(16, out UInt128 raw); last=(char)(uint)raw; if(value!=null) { f.GetChars(value)[i]=last; } }
+                    if (keep > 0 && keep < (int)length && char.IsHighSurrogate(last)) { keep--; }
+                    if(value!=null) { f.SetCount(value,keep); } r = check; return true;
                 }
                 if (f.IsArray)
                 {
@@ -3492,20 +3497,21 @@ namespace Tabledemo
                     ulong walk = run >= 0 ? (ulong)kept : n;
                     for (ulong i = 0; i < walk; i++)
                     {
-                        if (f.Dynamic) { f.EnsureCount(value, (int)i + 1); }
+                        if (f.Dynamic && value!=null) { f.EnsureCount(value, (int)i + 1); }
                         if (!MessageReadElement(ref r, d, value, f, (int)i, shape.Elem, shape.Inner, i < (ulong)kept)) { return false; }
                     }
                     if (walk < n && !r.Skip((long)(n - walk) * run)) { return false; }
-                    if (f.Counted) { f.SetCount(value, kept); }
-                    if (f.Optional) { f.SetPresent(value, true); }
+                    if (f.Counted && value!=null) { f.SetCount(value, kept); }
+                    if (f.Optional && value!=null) { f.SetPresent(value, true); }
                     return true;
                 }
                 return MessageReadElement(ref r, d, value, f, 0, kind, shape, true);
             }
             static bool MessageReadElement(ref BitReader r, MessageRead d, object value, TableFieldInfo f, int index, byte kind, TableMessageShape shape, bool keep)
             {
+                keep = keep && value!=null;
                 if (kind == 13)
-                { return MessageReadBody(ref r, d, keep ? f.GetChild(value, index) : f.Table.Create(), f.Table); }
+                { return MessageReadBody(ref r, d, keep ? f.GetChild(value, index) : null, f.Table); }
                 if (kind == 17)
                 {
                     if (d.IndexBits == 0 || !r.Get(d.IndexBits, out UInt128 raw)) { return false; }
@@ -3522,21 +3528,21 @@ namespace Tabledemo
                 }
                 if (kind == 15)
                 {
-                    object union = keep ? f.GetChild(value, index) : f.Arms.Create();
+                    object union = keep ? f.GetChild(value, index) : null;
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
-                    if (reference == 0) { f.Arms.SetTag(union, 0); return true; }
+                    if (reference == 0) { if(union!=null) { f.Arms.SetTag(union,0); } return true; }
                     if (entry.Kind == 0 || Reserved(entry.Id)) { return false; }
                     int tag = FindVariant(f, entry.Id, false);
                     if (tag == 0)
-                    { f.Arms.SetTag(union, 0); d.Report.Unknown++; return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
+                    { if(union!=null) { f.Arms.SetTag(union,0); } d.Report.Unknown++; return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
                     TableFieldInfo arm = f.Arms.Arms[tag].Field;
                     bool widened = false;
                     if (arm == null ? entry.Kind != 32 : !MessageCompatible(entry, arm, out widened))
-                    { f.Arms.SetTag(union, 0); d.Report.KindMismatch++; return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
+                    { if(union!=null) { f.Arms.SetTag(union,0); } d.Report.KindMismatch++; return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
                     if (widened) { d.Report.Widened++; }
-                    f.Arms.SetTag(union, (ulong)tag);
+                    if(union!=null) { f.Arms.SetTag(union,(ulong)tag); }
                     if (arm == null) { return true; }
-                    ResetArm(union, arm);
+                    if(union!=null) { ResetArm(union,arm); }
                     return MessageReadField(ref r, d, union, arm, entry.Kind, entry.Shape);
                 }
                 int width = ValueBits(kind, shape);
@@ -3625,7 +3631,7 @@ namespace Tabledemo
             static bool MessageReadMap(ref BitReader r, MessageRead d, object value, TableFieldInfo f, TableMessageShape shape)
             {
                 if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || raw + shape.Min > int.MaxValue) { return false; }
-                ulong count = (ulong)raw + shape.Min; f.ResetField(value);
+                ulong count = (ulong)raw + shape.Min; if(value!=null) { f.ResetField(value); }
                 int landed = 0; bool widened = false; MapKey last = default; TableFieldInfo keyField = f.Table.Fields[0];
                 for (ulong i = 0; i < count; i++)
                 {
@@ -3634,7 +3640,7 @@ namespace Tabledemo
                     if (entryWidened && !widened) { widened = true; d.Report.Widened++; }
                     if (mismatch)
                     {
-                        d.Report.KindMismatch++; f.ResetField(value); r = scan;
+                        d.Report.KindMismatch++; if(value!=null) { f.ResetField(value); } r = scan;
                         for (ulong j=i+1;j<count;j++) { if (!MessageSkipBody(ref r,d)) { return false; } }
                         return true;
                     }
@@ -3643,8 +3649,8 @@ namespace Tabledemo
                     if (order > 0) { return false; }
                     int slot = order == 0 ? landed-1 : landed;
                     if (order == 0) { d.Report.Duplicate++; } else { landed++; }
-                    f.EnsureCount(value,landed); f.SetCount(value,landed);
-                    object entry = f.Table.Create(); f.SetChild(value,slot,entry);
+                    object entry=null;
+                    if(value!=null) { f.EnsureCount(value,landed); f.SetCount(value,landed); entry=f.Table.Create(); f.SetChild(value,slot,entry); }
                     if (!MessageReadBody(ref r,d,entry,f.Table) || r.At != scan.At) { return false; }
                     last = key;
                 }
@@ -3725,45 +3731,52 @@ namespace Tabledemo
                 }
                 return MessageSkip(ref r, d, kind, shape);
             }
-            public static long MessageLoadMeasure(TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary)
+            // Frame one body without constructing its values. The root follows the
+            // node records on the wire but precedes them in the region.
+            static bool MessageFrame(ref BitReader r,ref MessageRead d,TableTypeInfo type,out long records,out long root,out int count,out long rootExtent,out long data,out bool complete)
             {
-                if (vocabulary == null || !vocabulary.Announced || bytes.Length < 2 || bytes[0] != 2) { return -1; }
-                int bodies = bytes[1] + 1; BitReader r = new BitReader(bytes); r.At = 16;
-                long data = 0, attribution = 0;
-                var d = new MessageRead { Vocabulary = vocabulary };
-                for (int b = 0; b < bodies; b++)
+                records=root=0; count=0; rootExtent=data=0; complete=false;
+                long before=r.At;
+                if(!MessageReference(ref r,d,out ulong reference,out TableMessageEntry entry)) { return false; }
+                if(reference!=0 && entry.Id==ulong.MaxValue)
+                { if(!r.Get(32,out UInt128 raw) || raw>int.MaxValue) { return false; } count=(int)raw; }
+                else { r.At=before; }
+                d.IndexBits=BitCount((ulong)count+1); records=r.At;
+                for(int i=0;i<count;i++)
                 {
-                    long before = r.At;
-                    if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return -1; }
-                    ulong records = 0;
-                    if (reference != 0 && entry.Id == ulong.MaxValue)
-                    { if (!r.Get(32, out UInt128 raw)) { return -1; } records = (ulong)raw; }
-                    else { r.At = before; }
-                    d.IndexBits = BitCount(records + 1);
-                    for (ulong i = 0; i < records; i++)
+                    if(!MessageName(ref r,d,out _,out TableMessageEntry named)) { return false; }
+                    if(named.Id==BytesTypeId || named.Id==StringTypeId)
                     {
-                        if (!MessageName(ref r, d, out _, out TableMessageEntry named)) { return -1; }
-                        if (named.Id == BytesTypeId || named.Id == StringTypeId)
-                        {
-                            if (!r.Get(32, out UInt128 length) || !r.Align() || !r.Skip((long)length * 8)) { return -1; }
-                            if (named.Id == BytesTypeId && type.BytesEdge || named.Id == StringTypeId && type.StringEdge)
-                            { data += Align(8 + (long)length + (named.Id == StringTypeId ? 1 : 0), type.RegionAlign); }
-                        }
-                        else
-                        {
-                            TableTypeInfo node = type.PointerType(named.Id);
-                            long extent = 0;
-                            if (!MessageExtentBody(ref r, d, node, ref extent)) { return -1; }
-                            if (node != null) { data += Align(Align(node.StorageSize, type.RegionAlign) + extent, type.RegionAlign); }
-                        }
+                        if(!r.Get(32,out UInt128 length) || !r.Align() || !r.Skip((long)length*8)) { return false; }
+                        if(named.Id==BytesTypeId && type.BytesEdge || named.Id==StringTypeId && type.StringEdge)
+                        { data+=Align(8+(long)length+(named.Id==StringTypeId?1:0),type.RegionAlign); }
                     }
-                    long rootExtent = 0;
-                    bool complete = MessageExtentBody(ref r, d, type, ref rootExtent);
-                    data += Align(Align(type.StorageSize, type.RegionAlign) + rootExtent, type.RegionAlign);
-                    attribution += ((long)records + 1) * 16;
-                    if (!complete) { break; }
+                    else
+                    {
+                        TableTypeInfo node=type.PointerType(named.Id); long extent=0;
+                        if(!MessageExtentBody(ref r,d,node,ref extent)) { return false; }
+                        if(node!=null) { data+=Align(Align(node.StorageSize,type.RegionAlign)+extent,type.RegionAlign); }
+                    }
                 }
-                return data + attribution;
+                root=r.At; complete=MessageExtentBody(ref r,d,type,ref rootExtent);
+                data+=Align(Align(type.StorageSize,type.RegionAlign)+rootExtent,type.RegionAlign);
+                return true;
+            }
+            public static long MessageLoadMeasure(TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary)
+            { return MessageLoadMeasureParts(type,bytes,vocabulary,out _,out _); }
+            public static long MessageLoadMeasureParts(TableTypeInfo type,ReadOnlySpan<byte> bytes,TableVocabulary vocabulary,out long data,out long attribution)
+            {
+                data=attribution=0;
+                if(vocabulary==null || !vocabulary.Announced || bytes.Length<2 || bytes[0]!=2) { return -1; }
+                int bodies=bytes[1]+1; BitReader r=new BitReader(bytes); r.At=16;
+                var d=new MessageRead { Vocabulary=vocabulary };
+                for(int b=0;b<bodies;b++)
+                {
+                    if(!MessageFrame(ref r,ref d,type,out _,out _,out int count,out _,out long size,out bool complete)) { return -1; }
+                    data+=size; attribution+=(count+1L)*16;
+                    if(!complete) { break; }
+                }
+                return data+attribution;
             }
 
             static bool NativeExtent(TableTypeInfo type)
@@ -4284,7 +4297,7 @@ namespace Tabledemo
                     if (framed && !r.Slice(out sub)) { return Damage(report); }
                     object child = f.GetChild(value, index);
                     ReadBody(ref sub, child, f.Table, report, true);
-                    if (!f.IsArray && sub.Offset != sub.Buffer.Length) { f.Table.Reset(child); Damage(report); }
+                    if (sub.Offset != sub.Buffer.Length) { f.Table.Reset(child); Damage(report); }
                     if (!framed) { r.Offset = r.Buffer.Length; }
                     return true;
                 }
@@ -4399,7 +4412,7 @@ namespace Tabledemo
                     keep = f.ArrayBound; report.Clamped++;
                     while (keep > 0 && (text[keep] & 0xc0) == 0x80) { keep--; }
                 }
-                text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep);
+                if(value!=null) { text.Slice(0,keep).CopyTo(f.GetBuffer(value)); f.SetCount(value,keep); }
                 return true;
             }
             static bool ReadChars(ReadOnlySpan<byte> text, object value, TableFieldInfo f, TableReport report)
@@ -4454,7 +4467,7 @@ namespace Tabledemo
                 {
                     if (!r.Slice(out Reader text)) { return Damage(report); }
                     if (!(kind == 33 ? ReadChars(text.Buffer, value, f, report) : ReadText(text.Buffer, value, f, report)))
-                    { if (kind == 33) { Array.Clear(f.GetChars(value)); } else { Array.Clear(f.GetBuffer(value)); } f.SetCount(value, 0); }
+                    { f.ResetField(value); }
                     return true;
                 }
                 if (kind == 14 || kind == 16)

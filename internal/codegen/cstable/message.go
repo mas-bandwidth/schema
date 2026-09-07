@@ -81,10 +81,10 @@ const tableMessageSource = `
     static bool MessageNumber(byte kind) { return kind >= 2 && kind <= 9 || kind >= 18 && kind <= 29; }
     static bool Signed(byte kind) { return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24; }
     static int ValueBits(byte kind, TableMessageShape s)
-    { return kind == 1 ? 1 : kind == 10 && s.Packing == 2 || MessageNumber(kind) && s.Packing == 1 ? s.Bits : Width(kind) * 8; }
+    { return kind == 0 || kind == 32 ? 0 : kind == 1 ? 1 : kind == 10 && s.Packing == 2 || MessageNumber(kind) && s.Packing == 1 ? s.Bits : Width(kind) == 0 ? -1 : Width(kind) * 8; }
     static Verdict Refuse(TableReport report, string reason)
     { report.Refused = true; report.Reason = reason; return Finish(report, Verdict.Refused); }
-    static bool Shape(ref Reader r, byte kind, out TableMessageShape shape)
+    static bool Shape(ref Reader r, byte kind, out TableMessageShape shape, bool element = false)
     {
         shape = new TableMessageShape();
         if (MessageNumber(kind) || kind == 10)
@@ -123,7 +123,10 @@ const tableMessageSource = `
             if (kind == 14 && (!r.Var(out shape.Min) || shape.Min > uint.MaxValue)) { return false; }
             if (!r.Var(out shape.Max) || shape.Max > uint.MaxValue || shape.Max < shape.Min || !r.Has(1)) { return false; }
             shape.Elem = r.Byte();
-            if (!MessageKind(shape.Elem) || shape.Elem == 12 || shape.Elem == 33 || !Shape(ref r, shape.Elem, out shape.Inner)) { return false; }
+            if (!MessageKind(shape.Elem) || shape.Elem == 12 || shape.Elem == 33) { return false; }
+            // An entry carries its own shape and one element shape. The C++
+            // announcement reader does not recursively parse nested arrays.
+            if (!element && !Shape(ref r, shape.Elem, out shape.Inner, true)) { return false; }
         }
         return true;
     }

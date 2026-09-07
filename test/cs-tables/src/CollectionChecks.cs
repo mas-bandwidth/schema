@@ -25,8 +25,8 @@ static partial class Program
         var damagedDefault = new Tblw1.Fleet();
         var damage = new Tblw1.TableReport();
         byte[] invalidTitle = Fixture(new byte[] { 1, 12, 1, 0xff, 0 }, "title");
-        Check(Tblw1.Schema.FleetLoad(damagedDefault, invalidTitle, damage) && damage.Malformed && damagedDefault.TitleLength == 0,
-            "an invalid text field clears its storage even when its declared default is nonempty");
+        Check(Tblw1.Schema.FleetLoad(damagedDefault, invalidTitle, damage) && damage.Malformed && damagedDefault.TitleLength == 5 && System.Text.Encoding.UTF8.GetString(damagedDefault.Title,0,5) == "fleet",
+            "an invalid text field restores its declared nonempty default");
         Collection<Listdemo.Save, Listdemo.TableReport>("list_tables", () => new Listdemo.TableReport(), r => !r.Malformed && !r.Refused && r.Unknown == 0 && r.KindMismatch == 0 && r.Clamped == 0 && r.Widened == 0 && r.Duplicate == 0,
             Listdemo.Schema.SaveLoad, Listdemo.Schema.SaveMeasure, Listdemo.Schema.SaveSave,
             Listdemo.Schema.SaveFromJson, Listdemo.Schema.SaveToJsonMeasure, Listdemo.Schema.SaveToJson);

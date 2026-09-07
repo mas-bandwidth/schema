@@ -90,6 +90,17 @@ static partial class Program
         Check(MeasureCalls(() => { Graphdemo.Schema.SceneLoadMeasure(graphWire); }) == 0,"variable file LoadMeasure allocates zero");
         Check(MeasureCalls(() => { Graphdemo.Schema.SceneLoadMeasure(graphVocabulary,graphMessage); }) == 0,"variable message LoadMeasure allocates zero");
 
+        var keyed=new Tabledemo.KeyedConfig(); keyed.Teams[(int)Tabledemo.Team.Red].SpawnCount=9;
+        var keyedBatch=new[] {keyed}; byte[] keyedMessage=new byte[Tabledemo.Schema.KeyedConfigMeasureMessages(keyedBatch)];
+        Tabledemo.Schema.KeyedConfigSaveMessages(keyedBatch,keyedMessage);
+        var keyedVocabulary=new Tabledemo.TableVocabulary(); var keyedReport=new Tabledemo.TableReport();
+        Tabledemo.Schema.AnnounceRead(keyedVocabulary,Tabledemo.Schema.Announce(),keyedReport);
+        foreach(var entry in keyedVocabulary.Entries) { if(entry.Kind==0 && entry.Id==FieldId("Red")) { entry.Id=FieldId("UnknownTeam"); } }
+        var keyedTarget=new[] {new Tabledemo.KeyedConfig()};
+        Tabledemo.Schema.KeyedConfigLoadMessages(keyedTarget,keyedMessage,keyedVocabulary,keyedReport,out _);
+        Check(!keyedReport.Malformed && keyedReport.Unknown==1 && keyedTarget[0].Teams[(int)Tabledemo.Team.Red].SpawnCount==4,"unknown keyed table body is discarded with its report");
+        Check(MeasureCalls(()=> { Tabledemo.Schema.KeyedConfigLoadMessages(keyedTarget,keyedMessage,keyedVocabulary,keyedReport,out _); })==0,"discarding a fixed keyed table body allocates zero");
+
         var values = new Messagedemo.Cursor[256]; var loaded = new Messagedemo.Cursor[256];
         for(int i=0;i<256;i++) { values[i] = new Messagedemo.Cursor { Line=(uint)i,Column=(uint)(255-i) }; loaded[i] = new Messagedemo.Cursor(); }
         var vocabulary = new Messagedemo.TableVocabulary(); var report = new Messagedemo.TableReport();

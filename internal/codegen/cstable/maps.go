@@ -23,7 +23,7 @@ const tableMapWireSource = `
         for (;;)
         {
             if (!body.Ref(out ulong reference, out ulong id)) { return false; }
-            if (reference == 0) { return true; }
+            if (reference == 0) { return body.Offset == body.Buffer.Length; }
             if (!body.Has(1)) { return false; }
             byte kind = body.Byte();
             if (id != k.Id) { if (!body.Skip(kind)) { return false; } continue; }
