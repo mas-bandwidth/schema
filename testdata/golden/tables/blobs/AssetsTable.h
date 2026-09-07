@@ -5201,8 +5201,8 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -5736,8 +5736,8 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -8493,8 +8493,8 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -8938,8 +8938,8 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;

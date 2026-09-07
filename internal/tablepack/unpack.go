@@ -176,7 +176,7 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 		for _, f := range st.Fields {
 			key := ir.TableFieldJsonKey(f)
 			if !treeComponent(key) {
-				return fmt.Errorf("field %s: JSON key %q is not one portable path component; use --one-file to preserve this key in JSON", f.Name, key)
+				return fmt.Errorf("field %s: JSON key %q is not one safe local path component; use --one-file to preserve this key in JSON", f.Name, key)
 			}
 		}
 	}
@@ -326,7 +326,7 @@ func DescribeAnnouncement(m *tabletext.Model, announcement []byte) (string, tabl
 }
 
 // JSON keys may name arbitrary text. Only the expanded filesystem form needs
-// a portable component; the one-file form keeps the original JSON vocabulary.
+// a safe local component; the one-file form keeps the original JSON vocabulary.
 func treeComponent(key string) bool {
 	return key != "" && key != "." && key != ".." && filepath.IsLocal(key) &&
 		!strings.ContainsAny(key, "/\\:") && strings.IndexFunc(key, unicode.IsControl) < 0 &&

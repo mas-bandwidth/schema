@@ -5215,8 +5215,8 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.tag, 0, sizeof( value.tag ) );
-    value.tag_length = 0;
+                    memset( value.tag, 0, sizeof( value.tag ) );
+                    value.tag_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -6018,8 +6018,8 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBodyRetain( TableReader & r, Stamp & value,
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.tag, 0, sizeof( value.tag ) );
-    value.tag_length = 0;
+                    memset( value.tag, 0, sizeof( value.tag ) );
+                    value.tag_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;

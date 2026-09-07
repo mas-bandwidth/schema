@@ -5271,8 +5271,8 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.player_name, 0, sizeof( value.player_name ) );
-    value.player_name_length = 0;
+                    memset( value.player_name, 0, sizeof( value.player_name ) );
+                    value.player_name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;

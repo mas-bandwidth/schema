@@ -2696,8 +2696,8 @@ TABLEDEMO_TABLE_INLINE bool PatrolLoadBody( TableReader & r, Patrol & value )
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.note, 0, sizeof( value.note ) );
-    value.note_length = 0;
+                    memset( value.note, 0, sizeof( value.note ) );
+                    value.note_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;

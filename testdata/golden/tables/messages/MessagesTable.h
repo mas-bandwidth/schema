@@ -2789,8 +2789,8 @@ MESSAGEDEMO_TABLE_INLINE bool UserLoadBody( TableReader & r, User & value )
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -3113,8 +3113,8 @@ MESSAGEDEMO_TABLE_INLINE bool ScriptLoadBody( TableReader & r, Script & value )
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.path, 0, sizeof( value.path ) );
-    value.path_length = 0;
+                    memset( value.path, 0, sizeof( value.path ) );
+                    value.path_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -4261,8 +4261,8 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.text, 0, sizeof( value.text ) );
-    value.text_length = 0;
+                    memset( value.text, 0, sizeof( value.text ) );
+                    value.text_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -6773,8 +6773,8 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBody( TableReader & r, OpenDocumen
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.path, 0, sizeof( value.path ) );
-    value.path_length = 0;
+                    memset( value.path, 0, sizeof( value.path ) );
+                    value.path_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -7211,8 +7211,8 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentLoadBody( TableReader & r, SaveDocumen
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.path, 0, sizeof( value.path ) );
-    value.path_length = 0;
+                    memset( value.path, 0, sizeof( value.path ) );
+                    value.path_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -7926,8 +7926,8 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.reason, 0, sizeof( value.reason ) );
-    value.reason_length = 0;
+                    memset( value.reason, 0, sizeof( value.reason ) );
+                    value.reason_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;

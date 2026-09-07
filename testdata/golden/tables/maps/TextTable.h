@@ -7084,8 +7084,8 @@ MAPDEMO_TABLE_INLINE bool TextNamesEntryLoadBody( TableReader & r, TextNamesEntr
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.key, 0, sizeof( value.key ) );
-    value.key_length = 0;
+                    memset( value.key, 0, sizeof( value.key ) );
+                    value.key_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -7113,8 +7113,8 @@ MAPDEMO_TABLE_INLINE bool TextNamesEntryLoadBody( TableReader & r, TextNamesEntr
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.value, 0, sizeof( value.value ) );
-    value.value_length = 0;
+                    memset( value.value, 0, sizeof( value.value ) );
+                    value.value_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -10211,8 +10211,8 @@ MAPDEMO_TABLE_INLINE bool TextNamesEntryLoadBodyRetain( TableReader & r, TextNam
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.key, 0, sizeof( value.key ) );
-    value.key_length = 0;
+                    memset( value.key, 0, sizeof( value.key ) );
+                    value.key_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -10240,8 +10240,8 @@ MAPDEMO_TABLE_INLINE bool TextNamesEntryLoadBodyRetain( TableReader & r, TextNam
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.value, 0, sizeof( value.value ) );
-    value.value_length = 0;
+                    memset( value.value, 0, sizeof( value.value ) );
+                    value.value_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;

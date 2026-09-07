@@ -12734,9 +12734,11 @@ The tree MIRRORS the root table's shape, and nothing else:
   a blob held in the tree as a file of its own, named by a relative path, is
   the include named in §15.
 
-The expanded output requires every field key to be one portable path
+The expanded output requires every field key to be one safe local path
 component: no `.` or `..`, separators, drive colon, control characters, or
-trailing dot or space. A key that cannot name such a component remains valid
+trailing dot or space. Platform-specific filename rules also apply; this does
+not promise that a tree written on one OS can be used on every other OS.
+A key that cannot name such a component remains valid
 in JSON; use `unpack --one-file` for it. Filesystem writes and pruning are
 confined to the selected output directory, including through existing symlinks.
 

@@ -5211,8 +5211,8 @@ STREAMDEMO_TABLE_INLINE bool HeaderLoadBody( TableReader & r, Header & value )
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -9083,8 +9083,8 @@ STREAMDEMO_TABLE_INLINE bool HeaderLoadBodyRetain( TableReader & r, Header & val
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;

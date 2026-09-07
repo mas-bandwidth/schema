@@ -1825,7 +1825,10 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s// ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared\n%s// default, one malformed counts, and the parent reads on past L\n", ind, ind)
 		g.pf("%sif ( !TableUtf8Valid( r.buffer + r.offset, len ) )\n%s{\n", ind, ind)
 		g.pf("%s    r.report->malformed = true;\n", ind)
+		savedIndent := g.indent
+		g.indent += ind
 		g.emitTableResetField(f)
+		g.indent = savedIndent
 		g.pf("%s    r.offset += (int64_t) len; break;\n%s}\n", ind, ind)
 		g.pf("%suint64_t keep = len;\n", ind)
 		g.pf("%sif ( keep > %d ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, %d ); r.report->clamped++; } // at a code point boundary (§3)\n", ind, f.Type.Size, f.Type.Size)

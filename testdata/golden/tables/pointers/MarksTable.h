@@ -5657,8 +5657,8 @@ inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker 
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.label, 0, sizeof( value.label ) );
-    value.label_length = 0;
+                    memset( value.label, 0, sizeof( value.label ) );
+                    value.label_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -7106,8 +7106,8 @@ inline bool MarkerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, M
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.label, 0, sizeof( value.label ) );
-    value.label_length = 0;
+                    memset( value.label, 0, sizeof( value.label ) );
+                    value.label_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;

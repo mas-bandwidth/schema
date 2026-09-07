@@ -4750,8 +4750,8 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigLoadBody( TableReader & r, ProfileConfi
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -6011,8 +6011,8 @@ TABLEDEMO_TABLE_INLINE bool RootConfigLoadBody( TableReader & r, RootConfig & va
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.version_note, 0, sizeof( value.version_note ) );
-    value.version_note_length = 0;
+                    memset( value.version_note, 0, sizeof( value.version_note ) );
+                    value.version_note_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;

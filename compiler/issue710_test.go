@@ -112,6 +112,8 @@ func TestIssue710TableRecovery(t *testing.T) {
  table Element { value int32 = 7 }
  table Rows { items [..2]Element; after int32 }
  table Mapping { items map[uint32]Element; after int32 }
+ enum Key { First, Second }
+ table Keyed { items [Key]Element; after int32 }
  `
 	// The grammar terminates fields by newlines rather than semicolons.
 	u := unitFromSource(t, strings.ReplaceAll(src, "; ", "\n"))
@@ -131,6 +133,9 @@ func TestIssue710TableRecovery(t *testing.T) {
 			return v.Fields[0].Count == 1 && v.Fields[0].Elems[0].Tab.Fields[0].Cell.I == 7
 		}, `Rows v; TableReport r; if (!RowsLoad(v, wire, sizeof(wire), &r) || !r.malformed || v.after!=42 || v.items_count!=1 || v.items[0].value!=7) return 2;`},
 		{"map", "Mapping", issue710Wire(append([]byte{1, 14, 11, 13, 1, 8, 3, byte(ir.TableKindU32), 1, 0, 0, 0, 0, 0}, after...), fieldID("Mapping", 0), fieldID("Mapping", 1), ir.MapKeyWireId), func(v *tabletext.Instance) bool { return len(v.Fields[0].Entries) == 0 }, `MappingBuilder b; TableReport r; const bool ok=MappingLoadBuilder(b,wire,sizeof(wire),&r); const Mapping * v=b.GetRoot(); const bool pass=ok && r.malformed && v && v->after==42 && v->items.count==0; if(!pass) return 3;`},
+		{"keyed", "Keyed", issue710Wire(append([]byte{1, byte(ir.TableKindKeyed), 21, 13, 2, 4, 8, 3, byte(ir.TableKindI32), 99, 0, 0, 0, 0, 0, 5, 7, 3, byte(ir.TableKindI32), 55, 0, 0, 0, 0}, after...), fieldID("Keyed", 0), fieldID("Keyed", 1), fieldID("Element", 0), ir.TableWireId(u.Enums["Key"].VariantWireName(0)), ir.TableWireId(u.Enums["Key"].VariantWireName(1))), func(v *tabletext.Instance) bool {
+			return v.Fields[0].Elems[0].Tab.Fields[0].Cell.I == 7 && v.Fields[0].Elems[1].Tab.Fields[0].Cell.I == 55
+		}, `Keyed v; TableReport r; if (!KeyedLoad(v, wire, sizeof(wire), &r) || !r.malformed || v.after!=42 || v.items.slots[0].value!=7 || v.items.slots[1].value!=55) return 4;`},
 	}
 	c := New()
 	files, err := c.Generate(u, "cpp", Options{})
@@ -174,14 +179,13 @@ func issue710CompileRun(t *testing.T, dir, compiler, ext, source string) {
 	if err := os.WriteFile(path, []byte(source), 0644); err != nil {
 		t.Fatal(err)
 	}
-	args := []string{"-O1", "-g", "-Wall", "-Wextra", "-Werror"}
+	// Signed-overflow regressions need UBSan on every run: plain optimized
+	// code can return the expected answer after undefined arithmetic.
+	args := []string{"-O1", "-g", "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined", "-fno-sanitize-recover=all"}
 	if ext == ".cpp" {
 		args = append(args, "-std=c++17")
 	} else {
 		args = append(args, "-std=c99")
-	}
-	if os.Getenv("SCHEMA_TEST_SANITIZE") == "1" {
-		args = append(args, "-fsanitize=address,undefined", "-fno-sanitize-recover=all")
 	}
 	args = append(args, path, "-o", bin)
 	if out, err := exec.Command(compiler, args...).CombinedOutput(); err != nil {
@@ -266,9 +270,9 @@ int main(void) {
     p[n-1]=0;
     if(!schema_interior_null%s(p,n)) return 12;
     p[n-1]='a';
-    p[n-2]=0xf0;
+    p[n-1]=0xf0;
     if(schema_utf8_valid%s(p,n)) return 13;
-    p[n-2]='a';
+    p[n-1]='a';
     p[n-4]=0xf0;p[n-3]=0x90;p[n-2]=0x80;p[n-1]=0x80;
     if(!schema_utf8_valid%s(p,n)) return 14;
     free(p);
@@ -281,13 +285,15 @@ int main(void) {
 }
 
 func TestIssue710ListRefusal(t *testing.T) {
-	u := unitFromSource(t, "package p\ntable Lists { items []int32\n after int32 }\ntable Nested { child Lists\n after int32 }\n")
+	u := unitFromSource(t, "package p\ntable Lists { items []int32\n after int32 }\ntable Nested { child Lists\n after int32 }\nenum Key { First }\ntable KeyedLists { items [Key]Lists\n after int32 }\n")
 	m := tabletext.NewModel(u)
-	ids := []uint64{ir.TableWireId("items"), ir.TableWireId("after"), ir.TableWireId("child")}
+	ids := []uint64{ir.TableWireId("items"), ir.TableWireId("after"), ir.TableWireId("child"), ir.TableWireId(u.Enums["Key"].VariantWireName(0))}
 	// count 2^31, followed by a sibling that must never decode.
 	body := []byte{1, 14, 6, byte(ir.TableKindI32), 0x80, 0x80, 0x80, 0x80, 8, 2, byte(ir.TableKindI32), 42, 0, 0, 0}
 	nested := append([]byte{3, 13, byte(len(body) + 1)}, body...)
 	nested = append(nested, 0, 2, byte(ir.TableKindI32), 42, 0, 0, 0)
+	keyed := append([]byte{1, byte(ir.TableKindKeyed), byte(len(body) + 5), 13, 1, 4, byte(len(body) + 1)}, body...)
+	keyed = append(keyed, 0, 2, byte(ir.TableKindI32), 42, 0, 0, 0)
 	dir := t.TempDir()
 	files, err := New().Generate(u, "cpp", Options{})
 	if err != nil {
@@ -303,7 +309,7 @@ func TestIssue710ListRefusal(t *testing.T) {
 	for _, tc := range []struct {
 		root string
 		body []byte
-	}{{"Lists", body}, {"Nested", nested}} {
+	}{{"Lists", body}, {"Nested", nested}, {"KeyedLists", keyed}} {
 		wire := issue710Wire(tc.body, ids...)
 		v := m.New(u.Tables[tc.root])
 		var r tabletext.Report

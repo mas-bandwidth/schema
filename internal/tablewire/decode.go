@@ -150,7 +150,9 @@ func bodyExtent(body []byte, ids []uint64) (end int, terminated bool) {
 }
 
 type wireReader struct {
-	countRefusal *bool // shared by every nested file reader; not a malformed event
+	// Installed by decodeVariable and shared by its nested readers. Only
+	// value-only and framing/key scanners omit it; none can decode a list.
+	countRefusal *bool // a storage refusal, not a malformed event
 
 	buf    []byte
 	off    int
@@ -870,6 +872,10 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			if count > uint64(math.MaxInt32) {
 				if r.countRefusal != nil {
 					*r.countRefusal = true
+				} else {
+					// A reader without variable-root state cannot decode
+					// lists. Do not silently accept a misrouted internal read.
+					r.report.Malformed = true
 				}
 				r.off = end
 				return false, false
@@ -1076,6 +1082,13 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 				r.m.Refill(fv.Elems[slot].Tab)
 			}
 			elem.bodyAt(fv.Elems[slot].Tab, true)
+			if r.countRefused() {
+				return false
+			}
+			if elem.off != int(elemLen) {
+				r.report.Malformed = true
+				r.m.Refill(fv.Elems[slot].Tab)
+			}
 		default:
 			elem.scalarAt(&fv.Elems[slot], f, int(elemKind))
 		}

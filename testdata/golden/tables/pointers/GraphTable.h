@@ -5691,8 +5691,8 @@ GRAPHDEMO_TABLE_INLINE bool MetaLoadBody( TableReader & r, Meta & value )
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.tag, 0, sizeof( value.tag ) );
-    value.tag_length = 0;
+                    memset( value.tag, 0, sizeof( value.tag ) );
+                    value.tag_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -6105,8 +6105,8 @@ GRAPHDEMO_TABLE_INLINE bool SettingsLoadBody( TableReader & r, Settings & value 
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.label, 0, sizeof( value.label ) );
-    value.label_length = 0;
+                    memset( value.label, 0, sizeof( value.label ) );
+                    value.label_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -6529,8 +6529,8 @@ inline bool ListNodeLoadBody( TableReader & r, const TableNodeMap & nodes, ListN
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -6889,8 +6889,8 @@ inline bool TreeNodeLoadBody( TableReader & r, const TableNodeMap & nodes, TreeN
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.label, 0, sizeof( value.label ) );
-    value.label_length = 0;
+                    memset( value.label, 0, sizeof( value.label ) );
+                    value.label_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -7672,8 +7672,8 @@ inline bool SceneLoadBody( TableReader & r, const TableNodeMap & nodes, Scene & 
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -8511,8 +8511,8 @@ inline bool DepotLoadBody( TableReader & r, const TableNodeMap & nodes, Depot & 
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -8569,6 +8569,7 @@ inline bool DepotLoadBody( TableReader & r, const TableNodeMap & nodes, Depot & 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             LayerLoadBody( elem, nodes, value.banks.slots[int32_t( slot ) - 1] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; LayerReset( value.banks.slots[int32_t( slot ) - 1] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                     }
@@ -9068,8 +9069,8 @@ inline bool AlbumLoadBody( TableReader & r, const TableNodeMap & nodes, Album & 
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -15726,8 +15727,8 @@ GRAPHDEMO_TABLE_INLINE bool MetaLoadBodyRetain( TableReader & r, Meta & value, T
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.tag, 0, sizeof( value.tag ) );
-    value.tag_length = 0;
+                    memset( value.tag, 0, sizeof( value.tag ) );
+                    value.tag_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -15971,8 +15972,8 @@ GRAPHDEMO_TABLE_INLINE bool SettingsLoadBodyRetain( TableReader & r, Settings & 
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.label, 0, sizeof( value.label ) );
-    value.label_length = 0;
+                    memset( value.label, 0, sizeof( value.label ) );
+                    value.label_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -16245,8 +16246,8 @@ inline bool ListNodeLoadBodyRetain( TableReader & r, const TableNodeMap & nodes,
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -16555,8 +16556,8 @@ inline bool TreeNodeLoadBodyRetain( TableReader & r, const TableNodeMap & nodes,
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.label, 0, sizeof( value.label ) );
-    value.label_length = 0;
+                    memset( value.label, 0, sizeof( value.label ) );
+                    value.label_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -17244,8 +17245,8 @@ inline bool SceneLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sc
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -17922,8 +17923,8 @@ inline bool DepotLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -17980,6 +17981,7 @@ inline bool DepotLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             LayerLoadBodyRetain( elem, nodes, value.banks.slots[int32_t( slot ) - 1], retain, TableRetainStepInto( path, 1, (uint32_t) ( int32_t( slot ) - 1 ) ) );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; LayerReset( value.banks.slots[int32_t( slot ) - 1] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                     }
@@ -18369,8 +18371,8 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;

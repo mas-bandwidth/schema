@@ -7545,8 +7545,8 @@ MAPDEMO_TABLE_INLINE bool ShipConfigLoadBody( TableReader & r, ShipConfig & valu
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -8281,8 +8281,8 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntryLoadBody( TableReader & r, FleetShipsEn
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.key, 0, sizeof( value.key ) );
-    value.key_length = 0;
+                    memset( value.key, 0, sizeof( value.key ) );
+                    value.key_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -9072,8 +9072,8 @@ inline bool FleetLoadoutsEntryLoadBody( TableReader & r, const TableNodeMap & no
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.key, 0, sizeof( value.key ) );
-    value.key_length = 0;
+                    memset( value.key, 0, sizeof( value.key ) );
+                    value.key_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -13083,8 +13083,8 @@ MAPDEMO_TABLE_INLINE bool ShipConfigLoadBodyRetain( TableReader & r, ShipConfig 
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.name, 0, sizeof( value.name ) );
-    value.name_length = 0;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -13516,8 +13516,8 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntryLoadBodyRetain( TableReader & r, FleetS
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.key, 0, sizeof( value.key ) );
-    value.key_length = 0;
+                    memset( value.key, 0, sizeof( value.key ) );
+                    value.key_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -14215,8 +14215,8 @@ inline bool FleetLoadoutsEntryLoadBodyRetain( TableReader & r, const TableNodeMa
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.key, 0, sizeof( value.key ) );
-    value.key_length = 0;
+                    memset( value.key, 0, sizeof( value.key ) );
+                    value.key_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;

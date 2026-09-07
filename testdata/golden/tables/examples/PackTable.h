@@ -2786,8 +2786,8 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.callsign, 0, sizeof( value.callsign ) );
-    value.callsign_length = 0;
+                    memset( value.callsign, 0, sizeof( value.callsign ) );
+                    value.callsign_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -3218,8 +3218,8 @@ TABLEDEMO_TABLE_INLINE bool ShipEntryLoadBody( TableReader & r, ShipEntry & valu
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.display_name, 0, sizeof( value.display_name ) );
-    value.display_name_length = 0;
+                    memset( value.display_name, 0, sizeof( value.display_name ) );
+                    value.display_name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -3985,8 +3985,8 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsLoadBody( TableReader & r, GlobalSetti
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.build_note, 0, sizeof( value.build_note ) );
-    value.build_note_length = 0;
+                    memset( value.build_note, 0, sizeof( value.build_note ) );
+                    value.build_note_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -4756,6 +4756,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             ShipEntryLoadBody( elem, value.ships.slots[int32_t( slot ) - 1] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; ShipEntryReset( value.ships.slots[int32_t( slot ) - 1] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                     }

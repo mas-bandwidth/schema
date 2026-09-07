@@ -6783,8 +6783,8 @@ inline bool DocsPagesEntryLoadBody( TableReader & r, const TableNodeMap & nodes,
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.key, 0, sizeof( value.key ) );
-    value.key_length = 0;
+                    memset( value.key, 0, sizeof( value.key ) );
+                    value.key_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
@@ -8851,8 +8851,8 @@ inline bool DocsPagesEntryLoadBodyRetain( TableReader & r, const TableNodeMap & 
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
-    memset( value.key, 0, sizeof( value.key ) );
-    value.key_length = 0;
+                    memset( value.key, 0, sizeof( value.key ) );
+                    value.key_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;

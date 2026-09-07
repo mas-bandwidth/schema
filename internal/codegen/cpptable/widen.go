@@ -276,6 +276,7 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 		g.inStep("int32_t( slot ) - 1", func() {
 			g.pf("%s            %s;\n", ind, g.loadCall(f, f.Type.Name, "elem", slot))
 			g.emitLoadRefusal(f.Type.Name, ind+"            ")
+			g.pf("%s            if ( elem.offset != elem.size ) { r.report->malformed = true; %sReset( %s ); }\n", ind, f.Type.Name, slot)
 		})
 	case kind == tkEnum:
 		g.emitEnumRefLoad(f, slot, ind+"            ", "elem", onTrunc)

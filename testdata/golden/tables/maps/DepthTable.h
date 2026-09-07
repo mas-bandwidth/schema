@@ -7762,6 +7762,7 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             SquadLoadBody( elem, nodes, value.keyed.slots[int32_t( slot ) - 1] );
                             if ( nodes.refused ) { return false; }
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; SquadReset( value.keyed.slots[int32_t( slot ) - 1] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                     }
@@ -11573,6 +11574,7 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             SquadLoadBodyRetain( elem, nodes, value.keyed.slots[int32_t( slot ) - 1], retain, TableRetainStepInto( path, 2, (uint32_t) ( int32_t( slot ) - 1 ) ) );
                             if ( nodes.refused ) { return false; }
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; SquadReset( value.keyed.slots[int32_t( slot ) - 1] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                     }
