@@ -79,3 +79,7 @@ erl_crash.dump
 # binary here rather than in build/ — the Makefile always names `-o` and never
 # wants this file. It reached main once already (#345).
 /harness
+
+# Table JSON Base64 test driver
+/test/table-base64/cs/bin/
+/test/table-base64/cs/obj/
