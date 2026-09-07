@@ -3070,7 +3070,7 @@ tables-maps-clamp-negative-control: bin/schema build/tables-generated/.stamp
 # first and a count past it never reaches the L check.
 .PHONY: tables-maps-fit-negative-control
 tables-maps-fit-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,fit,'s@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { reason = count_over_length; return false; }@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) \&\& false ) { reason = count_over_length; return false; }@',internal/codegen/cpptable/maps.go,an N the map L cannot carry left the map gate GREEN)
+	$(call map_negative_control,fit,'s@if ( n > (uint64_t) ( rest / kTableMapEntryCeiling ) ) { reason = count_over_length; return false; }@if ( n > (uint64_t) ( rest / kTableMapEntryCeiling ) \&\& false ) { reason = count_over_length; return false; }@',internal/codegen/cpptable/maps.go,an N the map L cannot carry left the map gate GREEN)
 
 # N = 0x80000000, PAST THE INT32 CAP. The measure-refusals row meets it: the
 # cap is tested before the L, so the reason is count_over_extent_cap, and a
