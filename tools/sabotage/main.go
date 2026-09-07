@@ -26,6 +26,16 @@ type edit struct{ old, new string }
 // sabotages maps a control's name to what it breaks. Each entry names the
 // rule it removes, so a reader of a red control knows what was taken away.
 var sabotages = map[string][]edit{
+	// Packet defaults: remove only the constructor byte copy.
+	"packet-defaults-c-constructor-bytes": {{
+		old: "\t\t\tg.pf(\" };\\n        memcpy( value.%s, bytes, sizeof( bytes ) );\\n    }\\n\", f.Name)",
+		new: "\t\t\tg.pf(\" };\\n        (void) bytes; /* SABOTAGED: value.%s bytes are not initialized */\\n    }\\n\", f.Name)",
+	}},
+	"packet-defaults-go-constructor-bytes": {{
+		old: "\t\t\tg.pf(\"\\t%s = [%s]byte{\", name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)))",
+		new: "\t\t\tg.pf(\"\\t// SABOTAGED: %s = [%s]byte{\", name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)))",
+	}},
+
 	// docs/SPEC-TABLES.md §3: a kind 33 payload carrying an UNPAIRED SURROGATE
 	// is DAMAGE, not data. Take the pairing rule out of the table runtime's
 	// content check and the gate's surrogate rows stop being refused. The zero

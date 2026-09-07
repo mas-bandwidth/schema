@@ -43,7 +43,7 @@ func TestPacketValueDefaultsCarriers(t *testing.T) {
 	for _, target := range c.Targets() {
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
-			if target == "cpp" || target == "go" {
+			if target == "cpp" || target == "go" || target == "c" {
 				if err != nil {
 					t.Fatalf("packet defaults refused: %v", err)
 				}
@@ -61,14 +61,16 @@ func TestPacketValueDefaultsCarriers(t *testing.T) {
 	}
 }
 
-func TestGoPacketValueDefaultsBesideUnrelatedTable(t *testing.T) {
+func TestPacketValueDefaultsBesideUnrelatedTable(t *testing.T) {
 	u := unitFromSource(t, packetValueDefaultsUnit+"\ntable Counter { number int32 }\n")
-	if _, err := New().Generate(u, "go", Options{}); err != nil {
-		t.Fatalf("an unrelated table must not turn packet defaults into table defaults: %v", err)
+	for _, target := range []string{"c", "go"} {
+		if _, err := New().Generate(u, target, Options{}); err != nil {
+			t.Fatalf("%s: an unrelated table must not turn packet defaults into table defaults: %v", target, err)
+		}
 	}
 }
 
-func TestGoValueDefaultsRefuseTableClosure(t *testing.T) {
+func TestPacketValueDefaultsRefuseTableClosure(t *testing.T) {
 	const fields = `
     label string(8) = "new"
     tag bytes(4) = "ab"
@@ -99,19 +101,21 @@ type Loose
 			src := "package vdef\nflags Caps { Jump, Crouch }\n" +
 				tc.decl + " Badge {\n" + fields + "}\n" + tc.edge + packet
 			u := unitFromSource(t, src)
-			_, err := New().Generate(u, "go", Options{})
-			if err == nil {
-				t.Fatal("table-closure defaults accepted without table reset and elision support")
-			}
-			// A later refusal of maps or table unions is not enough: the
-			// defaults must be found through those edges before codec generation.
-			for _, want := range []string{"table-wire defaults", "Badge.label", "Badge.tag", "Badge.caps", "--lang cpp"} {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("refusal does not name %q: %v", want, err)
+			for _, target := range []string{"c", "go"} {
+				_, err := New().Generate(u, target, Options{})
+				if err == nil {
+					t.Fatal("table-closure defaults accepted without table reset and elision support")
 				}
-			}
-			if strings.Contains(err.Error(), "Loose.label") || strings.Contains(err.Error(), "--lang go") {
-				t.Errorf("table refusal includes a supported packet field or names Go as a table carrier: %v", err)
+				// A later refusal of maps or table unions is not enough: the
+				// defaults must be found through those edges before codec generation.
+				for _, want := range []string{"table-wire defaults", "Badge.label", "Badge.tag", "Badge.caps", "--lang cpp"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("refusal does not name %q: %v", want, err)
+					}
+				}
+				if strings.Contains(err.Error(), "Loose.label") || !strings.Contains(err.Error(), "generate with --lang cpp, or drop the default") {
+					t.Errorf("table refusal includes a supported packet field or names %s as a table carrier: %v", target, err)
+				}
 			}
 		})
 	}

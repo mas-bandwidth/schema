@@ -1,4 +1,4 @@
-// Verify constructor storage and the seven C++ packet goldens. Reads also
+// Verify constructor storage and the eight C++ packet goldens. Reads also
 // exercise reused storage: field prefixes overlay, absent branches clear,
 // and every union selection constructs its payload with declared defaults.
 package main
@@ -156,6 +156,12 @@ func run(directory string) {
 	}
 
 	golden(directory, "sample-defaults", sample, d.Sample{}, expected, d.WriteSample, d.ReadSample)
+	zeroCount := d.NewZeroCount()
+	check(zeroCount.ItemsCount == 0 && zeroCount.Items == [2]d.Sample{expected, expected}, "zero-count backing defaults")
+	zeroCountInitial := d.ZeroCount{Items: [2]d.Sample{dirtySample(), shortSample()}, ItemsCount: 2}
+	zeroCountWant := zeroCountInitial
+	zeroCountWant.ItemsCount = 0
+	golden(directory, "zero-count", zeroCount, zeroCountInitial, zeroCountWant, d.WriteZeroCount, d.ReadZeroCount)
 
 	batch := d.NewBatch()
 	check(batch.Head == expected, "nested constructor defaults")
@@ -272,5 +278,5 @@ func main() {
 	if failed {
 		os.Exit(1)
 	}
-	fmt.Println("packet defaults Go: constructors, seven C++ goldens and reused storage OK")
+	fmt.Println("packet defaults Go: constructors, eight C++ goldens and reused storage OK")
 }

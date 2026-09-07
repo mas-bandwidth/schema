@@ -20,6 +20,11 @@ type Batch
     counted [1..3]Sample
 }
 
+type ZeroCount
+{
+    items [..2]Sample
+}
+
 type Conditional
 {
     enabled bool
@@ -55,4 +60,12 @@ type WideMask
 {
     high WideCaps
     all WideCaps
+}
+
+flags SplitCaps | max = 33 { First }
+type SplitMask
+{
+    lead bits(3)
+    mask SplitCaps
+    tail bits(2)
 }

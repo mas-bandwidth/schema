@@ -1,5 +1,5 @@
 // A string, bytes or flags default (SPEC §4.2) has separate packet and table
-// carriers. C++ carries both; Go carries packet-only defaults.
+// carriers. C++ carries both; C and Go carry packet-only defaults.
 package compiler
 
 import (
