@@ -405,7 +405,9 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 			continue
 		}
 		if skipped[d.lang] {
-			fmt.Fprintf(w, "conformance SKIPS the %s leg: --skip names it (SCHEMA_SKIP_LEGS)\n", d.lang)
+			// on the same rule as the matrix below: a stdout that cannot be
+			// written to is not a verdict this gate can improve on
+			_, _ = io.WriteString(w, "conformance SKIPS the "+d.lang+" leg: --skip names it (SCHEMA_SKIP_LEGS)\n")
 			continue
 		}
 		langs = append(langs, d.lang)
