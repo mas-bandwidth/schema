@@ -57,5 +57,6 @@ func (javaTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 }
 
 func init() {
+	registerPacketValueDefaultCarrier("java")
 	registerBuiltin(javaTarget{}, true, false, false, false)
 }

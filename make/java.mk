@@ -15,6 +15,35 @@
 JAVA  ?= $(CURDIR)/dist/jdk-21.0.12.1/Contents/Home/bin/java
 JAVAC ?= $(CURDIR)/dist/jdk-21.0.12.1/Contents/Home/bin/javac
 
+build/packet-defaults/java/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/java.mk
+	./bin/schema generate --lang java --out build/packet-defaults/java/defaults test/packet-defaults/Defaults.schema
+	./bin/schema generate --lang java --out build/packet-defaults/java/plain test/packet-defaults/Plain.schema
+	@touch $@
+
+.PHONY: packet-defaults-java packet-defaults-java-negative-control
+packet-defaults-java: build/packet-defaults/java/.stamp packet-defaults-cpp
+	@mkdir -p build/packet-defaults/java/classes
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-defaults/java/classes build/packet-defaults/java/defaults/*.java build/packet-defaults/java/plain/*.java test/packet-defaults/java/Main.java
+	$(JAVA) -ea -cp build/packet-defaults/java/classes Main testdata/wire/packet-defaults
+	$(JAVA) -cp build/packet-defaults/java/classes Main testdata/wire/packet-defaults
+
+packet-defaults-java-negative-control: packet-defaults-java
+	@mkdir -p build/packet-defaults/java-negative/classes
+	go run ./tools/sabotage -name packet-defaults-java-constructor-bytes \
+		-out build/packet-defaults/java-negative/java.gotext internal/codegen/java/java.go
+	@printf '{"Replace":{"%s/internal/codegen/java/java.go":"%s/build/packet-defaults/java-negative/java.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/java-negative/overlay.json
+	go build -overlay=build/packet-defaults/java-negative/overlay.json -o build/packet-defaults/java-negative/schema ./cmd/schema
+	./build/packet-defaults/java-negative/schema generate --lang java --out build/packet-defaults/java-negative/generated test/packet-defaults/Defaults.schema
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-defaults/java-negative/classes build/packet-defaults/java-negative/generated/*.java build/packet-defaults/java/plain/*.java test/packet-defaults/java/Main.java
+	@if $(JAVA) -cp build/packet-defaults/java-negative/classes Main testdata/wire/packet-defaults > build/packet-defaults/java-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in Java'; exit 1; fi
+	@grep -Fq 'packet-default constructor bytes' build/packet-defaults/java-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Java failed for another reason'; cat build/packet-defaults/java-negative/log; exit 1; }
+	@echo 'packet defaults Java negative control: missing constructor bytes fail the runtime check'
+
+test-java: packet-defaults-java packet-defaults-java-negative-control
+
 # the Java target: generated classes only, no wiring file at all — generated
 # Java is self-contained (the bitpacker is inlined per issue #156), so there
 # is no runtime checkout and no build file; the test legs compile the

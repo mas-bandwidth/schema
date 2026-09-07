@@ -564,10 +564,12 @@ func (g *gen) emitStorageField(f *ir.Field) []string {
 		g.bpf("        // string(%s): max length, used length beside it (SPEC §4.7)\n", ir.RenderExpr(f.Type.SizeExpr))
 		g.bpf("        public final byte[] %s = new byte[%s];\n", name, g.renderArraySize(f.Type.SizeExpr, big.NewInt(f.Type.Size)))
 		g.bpf("        public int %sLength;\n", name)
+		return byteDefaultLines(f, name, "            ")
 	case f.Type.Kind == ir.TBytes:
 		g.bpf("        // bytes(%s): fixed buffer, used length beside it (SPEC §4.7)\n", ir.RenderExpr(f.Type.SizeExpr))
 		g.bpf("        public final byte[] %s = new byte[%s];\n", name, g.renderArraySize(f.Type.SizeExpr, big.NewInt(f.Type.Size)))
 		g.bpf("        public int %sLength;\n", name)
+		return byteDefaultLines(f, name, "            ")
 	case f.Array != ir.ArrayNone:
 		g.emitFieldComment(f)
 		bound := g.renderArraySize(f.ArrayExpr, big.NewInt(f.ArrayBound))
@@ -611,6 +613,19 @@ func (g *gen) emitStorageField(f *ir.Field) []string {
 		}
 	}
 	return nil
+}
+
+// Construction and Init write the same literal bytes into existing zeroed
+// storage. Casts keep bytes above 127 bit-exact in Java's signed byte type.
+func byteDefaultLines(f *ir.Field, name, ind string) []string {
+	if !f.HasDefault {
+		return nil
+	}
+	var lines []string
+	for i, b := range f.DefBytes {
+		lines = append(lines, fmt.Sprintf("%s%s[%d] = (byte) 0x%02x;\n", ind, name, i, b))
+	}
+	return append(lines, fmt.Sprintf("%s%sLength = %d;\n", ind, name, len(f.DefBytes)))
 }
 
 // emitFieldComment writes a field's annotation comment on its own line.
@@ -668,6 +683,9 @@ func (g *gen) scalarStorage(f *ir.Field) (typ, init string) {
 			}
 			return typ, ""
 		case *ir.Flags:
+			if f.HasDefault {
+				return "long", narrowLit("long", f.DefInt)
+			}
 			return "long", ""
 		case *ir.Struct, *ir.Union:
 			q := g.qualifyType(t.Name)
