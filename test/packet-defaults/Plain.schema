@@ -69,3 +69,10 @@ type SplitMask
     mask SplitCaps
     tail bits(2)
 }
+
+// The flat JavaScript API exposes codecs for types; this keeps a union at
+// bit zero so its wrapped form shares the standalone union's wire pins.
+type ChoiceEnvelope
+{
+    choice Choice
+}
