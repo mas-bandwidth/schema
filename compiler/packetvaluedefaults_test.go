@@ -43,7 +43,7 @@ func TestPacketValueDefaultsCarriers(t *testing.T) {
 	for _, target := range c.Targets() {
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
-			if target == "cpp" || target == "go" || target == "c" || target == "rust" || target == "cs" || target == "java" {
+			if target == "cpp" || target == "go" || target == "c" || target == "rust" || target == "cs" || target == "java" || target == "js" {
 				if err != nil {
 					t.Fatalf("packet defaults refused: %v", err)
 				}
@@ -63,7 +63,7 @@ func TestPacketValueDefaultsCarriers(t *testing.T) {
 
 func TestPacketValueDefaultsBesideUnrelatedTable(t *testing.T) {
 	u := unitFromSource(t, packetValueDefaultsUnit+"\ntable Counter { number int32 }\n")
-	for _, target := range []string{"c", "go", "rust", "cs", "java"} {
+	for _, target := range []string{"c", "go", "rust", "cs", "java", "js"} {
 		if _, err := New().Generate(u, target, Options{}); err != nil {
 			t.Fatalf("%s: an unrelated table must not turn packet defaults into table defaults: %v", target, err)
 		}
@@ -101,7 +101,7 @@ type Loose
 			src := "package vdef\nflags Caps { Jump, Crouch }\n" +
 				tc.decl + " Badge {\n" + fields + "}\n" + tc.edge + packet
 			u := unitFromSource(t, src)
-			for _, target := range []string{"c", "go", "rust", "cs", "java"} {
+			for _, target := range []string{"c", "go", "rust", "cs", "java", "js"} {
 				_, err := New().Generate(u, target, Options{})
 				if err == nil {
 					t.Fatal("table-closure defaults accepted without table reset and elision support")

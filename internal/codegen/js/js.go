@@ -417,10 +417,12 @@ func (g *gen) emitStorageField(f *ir.Field) {
 		g.pf("    this.%s = new Uint8Array(%s); // string(%s): max length, used length beside it (SPEC §4.7)\n",
 			name, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    this.%sLength = 0;\n", name)
+		g.emitByteDefault(f, "this."+name, "    ")
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    this.%s = new Uint8Array(%s); // bytes(%s): fixed buffer, used length beside it (SPEC §4.7)\n",
 			name, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    this.%sLength = 0;\n", name)
+		g.emitByteDefault(f, "this."+name, "    ")
 	case f.Array != ir.ArrayNone:
 		bound := g.renderNum(f.ArrayExpr, big.NewInt(f.ArrayBound))
 		switch {
@@ -458,6 +460,18 @@ func (g *gen) emitStorageField(f *ir.Field) {
 		}
 		g.pf("    this.%s = %s;%s\n", name, init, g.fieldComment(f))
 	}
+}
+
+// Construction and both reader tiers restore literal bytes in existing zeroed
+// buffers. Individual assignments avoid temporary arrays during selection.
+func (g *gen) emitByteDefault(f *ir.Field, name, ind string) {
+	if !f.HasDefault {
+		return
+	}
+	for i, b := range f.DefBytes {
+		g.pf("%s%s[%d] = 0x%02x;\n", ind, name, i, b)
+	}
+	g.pf("%s%sLength = %d;\n", ind, name, len(f.DefBytes))
 }
 
 // isClassRef reports a named reference whose JS storage is a pre-allocated
