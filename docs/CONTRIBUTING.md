@@ -94,10 +94,11 @@ translation unit at a time, on a pinned `windows-2025` image, with a negative
 control that must go red on a GNU extension. Visual C++ is a hard requirement
 here, so what the compiler emits is compiled with cl before a change lands.
 
-One gate is **not** in the pull request leg, and runs on push to main,
-nightly, and on `gh workflow run ci.yml --ref <branch>`: the
-**inline-budget gates**, which fire on compiler-version changes by design and
-cost most of the wall clock.
+One gate is **not** in the pull request leg: the **inline-budget gates**,
+which fire on compiler-version changes by design and cost most of the wall
+clock. They live in `certify.yml`, which runs nightly and on
+`gh workflow run certify.yml --ref <branch>`, never on push (the owner's
+per-commit rule: a job that runs on every commit finishes in two minutes).
 
 So a change to the C++ emitters wants a dispatch run on its branch before
 merging, not just a green pull request.
