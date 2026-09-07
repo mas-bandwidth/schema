@@ -628,6 +628,24 @@ func TestDiagnostics(t *testing.T) {
 			srcs: map[string]string{"T.schema": "package t\ntype SCHEMA_T_T_H { x uint8 }\n"}},
 		{name: "a declaration carrying the reserved lowercase prefix", want: "reserves for the names the",
 			src: "package t\ntype schema_thing { x uint8 }\n"},
+
+		// ---- a unit base name that spells a C standard header (#521 G-20) ----
+		// The C++ and C emitters both name a unit's header `<Base>.h`, so
+		// Math.schema emits Math.h. On a case-insensitive filesystem, and in
+		// the #include search on any filesystem where the generated directory
+		// is on the path, that file answers `#include <math.h>`: clang warns
+		// non-portable-include-path and every libm declaration disappears.
+		{name: "a unit base name spelling a C standard header", want: "C standard header",
+			srcs: map[string]string{"Math.schema": "package geom\ntype P { x float32 }\n"}},
+		{name: "the same name in another case", want: "C standard header",
+			srcs: map[string]string{"STDIO.schema": "package geom\ntype P { x float32 }\n"}},
+		{name: "a unit base name spelling string.h", want: "C standard header",
+			srcs: map[string]string{"String.schema": "package geom\ntype P { x float32 }\n"}},
+		{name: "a second file of the unit spelling one", want: "C standard header",
+			srcs: map[string]string{
+				"Types.schema": "package geom\ntype P { x float32 }\n",
+				"Time.schema":  "package geom\ntype Q { y float32 }\n",
+			}},
 	}
 
 	for _, tc := range cases {
@@ -677,6 +695,16 @@ func TestGoodCornersStillCompile(t *testing.T) {
 			srcs: map[string]string{
 				"A.schema": "package t\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\ntype Near { p V }\n",
 				"B.schema": "package t\ntype Far { q V }\n",
+			}},
+		// A BASE NAME THAT ONLY LOOKS LIKE A C HEADER (#521 G-20). The list is
+		// the C standard's own and is compared whole: a name that merely
+		// contains one, or that spells a C++ header (which carries no `.h`,
+		// so `Cmath.h` answers no `#include <cmath>`), is untouched.
+		{name: "base names beside the C standard header list",
+			srcs: map[string]string{
+				"Maths.schema": "package geom\ntype P { x float32 }\n",
+				"Cmath.schema": "package geom\ntype Q { y float32 }\n",
+				"Timer.schema": "package geom\ntype R { z float32 }\n",
 			}},
 		{name: "nested if with cond in the same branch",
 			src: "package t\ntype T {\n    a bool\n    if a {\n        b bool\n        if b { x uint8 }\n    }\n}\n"},

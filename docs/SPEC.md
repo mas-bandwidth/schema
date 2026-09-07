@@ -1428,6 +1428,15 @@ All compile errors with positions:
   case-sensitive match (C++ namespaces are case-sensitive), so `exits`,
   `exit2` and `Exit` stay legal. (3) The name `main`, which makes the
   generated Go a program package that cannot be imported.
+- **File-name safety:** a schema file's basename names its generated header
+  (`Math.schema` emits `Math.h` in C++ and in C), so a basename spelling a C
+  standard header is a compile error naming the file, matched
+  case-insensitively against the standard's own closed list: with the
+  generated directory on the include path, `Math.h` answers
+  `#include <math.h>` and the whole libm surface disappears with nothing in
+  the build naming the schema. The C++ headers' bare spellings are out of
+  scope, because every generated name carries an extension and `<cmath>` has
+  none.
 
 ### 4.7 Strings and byte blocks — byte strings, one shape
 

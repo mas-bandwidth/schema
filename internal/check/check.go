@@ -166,6 +166,56 @@ func (c *checker) collectPackage() {
 		}
 	}
 	c.checkViewFileName()
+	c.checkCHeaderFileName()
+}
+
+// checkCHeaderFileName refuses a unit base name that spells a C standard
+// header (#521 G-20). The C++ and C emitters both name a unit's packet header
+// `<Base>.h`, so `Math.schema` emits `Math.h`, and that file answers
+// `#include <math.h>`: on a case-insensitive filesystem always, and on any
+// filesystem for the exact spelling, whenever the generated directory is on
+// the include path (a `-I` the build has to pass for the generated code to
+// compile at all). Measured with clang 21 over a generated `Math.h`:
+//
+//	shadow.c:1:10: warning: non-portable path to file '<Math.h>'; specified
+//	path differs in case from file name on disk
+//	shadow.c:2:26: error: call to undeclared library function 'sqrt'
+//
+// The whole libm surface disappears, and the diagnostic the consumer gets
+// never names the schema. The set is the C standard's own and finite, matched
+// case-insensitively over `<base>.h` and whole: a name that merely contains
+// one keeps it.
+//
+// The C++ standard headers' bare spellings (`cmath`, `vector`) are NOT in
+// scope, because no emitter writes an extensionless file: every generated
+// name carries `.h`, `.cpp` or another target's extension, so `Cmath.schema`
+// emits `Cmath.h` and answers no `#include <cmath>`. The other generated C++
+// and C names all take a suffix before the extension (`<Base>Wire.h`,
+// `<Base>Table.h`, `<Base>Block.h`), which no C header spelling reaches.
+func (c *checker) checkCHeaderFileName() {
+	for _, f := range c.files {
+		if !cStandardHeaders[strings.ToLower(f.Base)+".h"] {
+			continue
+		}
+		c.errf(f.AST.PkgPos, "schema file %s generates %s.h, which spells the C standard header <%s.h> and shadows it in the #include search (case-insensitively, so the collision does not need the exact spelling); rename the file (SPEC §4.6)",
+			f.Name, f.Base, strings.ToLower(f.Base))
+	}
+}
+
+// cStandardHeaders is the C standard library's header set, C11 plus C99's
+// `stdnoreturn.h` and `iso646.h`, as a generated `<Base>.h` could spell it.
+// It is a closed list rather than a pattern: the standard names them all and
+// adds one a decade, and a pattern here would take names from every schema
+// for free.
+var cStandardHeaders = map[string]bool{
+	"assert.h": true, "complex.h": true, "ctype.h": true, "errno.h": true,
+	"fenv.h": true, "float.h": true, "inttypes.h": true, "iso646.h": true,
+	"limits.h": true, "locale.h": true, "math.h": true, "setjmp.h": true,
+	"signal.h": true, "stdalign.h": true, "stdarg.h": true, "stdatomic.h": true,
+	"stdbool.h": true, "stddef.h": true, "stdint.h": true, "stdio.h": true,
+	"stdlib.h": true, "stdnoreturn.h": true, "string.h": true, "tgmath.h": true,
+	"threads.h": true, "time.h": true, "uchar.h": true, "wchar.h": true,
+	"wctype.h": true,
 }
 
 // checkViewFileName refuses a schema file whose generated name would be the
