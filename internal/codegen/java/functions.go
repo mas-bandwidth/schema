@@ -1691,6 +1691,11 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, viaCalls, defau
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%sjava.util.Arrays.fill(%s, (byte) 0);\n", ind, name)
 		g.pf("%s%sLength = 0;\n", ind, name)
+		if defaults {
+			for _, line := range byteDefaultLines(f, name, ind) {
+				g.pf("%s", line)
+			}
+		}
 	case f.Array != ir.ArrayNone:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
