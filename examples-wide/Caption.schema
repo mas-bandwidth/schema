@@ -3,8 +3,8 @@
 // Its own file beside WideText.schema, in the same package, because the two
 // halves of the row are two wires: WideText.schema is the packet wire's
 // proving ground (SPEC.md §4.12) and this is the id-table wire's. The unit
-// stays out of examples/ for the reason that one does — examples/ pins gate 1
-// for all nine targets and eight of them refuse wide text on either wire.
+// stays separate because table kind 33 remains C++ only. All nine targets
+// carry the isolated packet unit; the other eight refuse this table unit.
 //
 // Every KIND 33 SITE the wire has is declared once here, and nowhere else in
 // the file, so a gate that names a site names one declaration: a TABLE's own
