@@ -66,5 +66,6 @@ func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 }
 
 func init() {
+	registerPacketValueDefaultCarrier("rust")
 	registerBuiltin(rustTarget{}, true, false, false, false)
 }

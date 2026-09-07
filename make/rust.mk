@@ -331,3 +331,43 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 TEST_LEGS         += test-rust
 CONFORMANCE_LEGS  += build/conformance-rust
 BENCH_TABLES_LEGS += generated/bench/tables/rust/.stamp
+
+# Packet defaults share the C++ oracle. Both build modes consume its byte and
+# bit pins, and the control removes only constructor byte copies.
+build/packet-defaults/rust/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/rust.mk
+	@mkdir -p build/packet-defaults/rust
+	@for unit in defaults plain; do \
+		if [ "$$unit" = defaults ]; then source=Defaults; else source=Plain; fi; \
+		./bin/schema generate --lang rust --out build/packet-defaults/rust/$$unit/src test/packet-defaults/$$source.schema || exit 1; \
+		printf '[package]\nname = "packet%s"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' $$unit > build/packet-defaults/rust/$$unit/Cargo.toml; \
+	done
+	@touch $@
+
+.PHONY: packet-defaults-rust packet-defaults-rust-negative-control
+packet-defaults-rust: build/packet-defaults/rust/.stamp packet-defaults-cpp
+	cd test/packet-defaults/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- ../../../testdata/wire/packet-defaults
+	cd test/packet-defaults/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release -- ../../../testdata/wire/packet-defaults
+
+packet-defaults-rust-negative-control: packet-defaults-rust
+	@mkdir -p build/packet-defaults/rust-negative
+	go run ./tools/sabotage -name packet-defaults-rust-constructor-bytes \
+		-out build/packet-defaults/rust-negative/rust.gotext internal/codegen/rust/rust.go
+	@printf '{"Replace":{"%s/internal/codegen/rust/rust.go":"%s/build/packet-defaults/rust-negative/rust.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/rust-negative/overlay.json
+	go build -overlay=build/packet-defaults/rust-negative/overlay.json -o build/packet-defaults/rust-negative/schema ./cmd/schema
+	./build/packet-defaults/rust-negative/schema generate --lang rust --out build/packet-defaults/rust-negative/generated/src test/packet-defaults/Defaults.schema
+	@printf '[package]\nname = "packetdefaults"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > build/packet-defaults/rust-negative/generated/Cargo.toml
+	@mkdir -p build/packet-defaults/rust-negative/checker/src
+	cp test/packet-defaults/rust/src/main.rs build/packet-defaults/rust-negative/checker/src/main.rs
+	@sed -e 's|../../../build/packet-defaults/rust/defaults|../generated|' \
+		-e 's|../../../build/packet-defaults/rust/plain|$(CURDIR)/build/packet-defaults/rust/plain|' \
+		-e 's|../../../../serialize.rs|$(CURDIR)/$(SERIALIZE_RS)|' \
+		test/packet-defaults/rust/Cargo.toml > build/packet-defaults/rust-negative/checker/Cargo.toml
+	cd build/packet-defaults/rust-negative/checker && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
+	@if ./build/packet-defaults/rust-negative/checker/target/debug/packet-defaults-test testdata/wire/packet-defaults > build/packet-defaults/rust-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in Rust'; exit 1; fi
+	@grep -Fq 'packet-default constructor bytes' build/packet-defaults/rust-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Rust failed for another reason'; cat build/packet-defaults/rust-negative/log; exit 1; }
+	@echo 'packet defaults Rust negative control: missing constructor bytes fail the runtime check'
+
+test-rust: packet-defaults-rust packet-defaults-rust-negative-control
