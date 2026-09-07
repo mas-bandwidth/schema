@@ -75,6 +75,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_vec3( serialize_write_strea
 /* Reads Vec3. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_vec3( serialize_read_stream_t * stream, Vec3 * value )
 {
+    /* fixed 192-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 192 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     if ( !serialize_read_double( stream, &value->x ) )
     {
         return 0;
@@ -115,6 +121,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quat( serialize_write_strea
 /* Reads Quat. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_quat( serialize_read_stream_t * stream, Quat * value )
 {
+    /* fixed 256-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 256 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     if ( !serialize_read_double( stream, &value->x ) )
     {
         return 0;
@@ -152,6 +164,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_handle( serialize_write_str
 /* Reads Handle. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_handle( serialize_read_stream_t * stream, Handle * value )
 {
+    /* fixed 22-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 22 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint64_t offset_value = 0;
         serialize_uint32_t raw = 0;
@@ -201,6 +219,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_position( seriali
 /* Reads QuantizedPosition. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_quantized_position( serialize_read_stream_t * stream, QuantizedPosition * value )
 {
+    /* fixed 75-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 75 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint64_t offset_value = 0;
         serialize_uint32_t raw = 0;
@@ -270,6 +294,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_velocity( seriali
 /* Reads QuantizedVelocity. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_quantized_velocity( serialize_read_stream_t * stream, QuantizedVelocity * value )
 {
+    /* fixed 69-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 69 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint64_t offset_value = 0;
         serialize_uint32_t raw = 0;
@@ -344,6 +374,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_rotation( seriali
 /* Reads QuantizedRotation. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_quantized_rotation( serialize_read_stream_t * stream, QuantizedRotation * value )
 {
+    /* fixed 48-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 48 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint64_t offset_value = 0;
         serialize_uint32_t raw = 0;
@@ -527,6 +563,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_input( serialize_write_stre
 /* Reads Input. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_input( serialize_read_stream_t * stream, Input * value )
 {
+    /* fixed 168-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 168 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     if ( !serialize_read_float( stream, &value->stick_x ) )
     {
         return 0;
@@ -819,6 +861,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_expression_probe( serialize
 /* Reads ExpressionProbe. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_expression_probe( serialize_read_stream_t * stream, ExpressionProbe * value )
 {
+    /* fixed 16-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 16 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint64_t offset_value = 0;
         serialize_uint32_t raw = 0;
@@ -903,6 +951,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_extreme_probe( serialize_wr
 /* Reads ExtremeProbe. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_extreme_probe( serialize_read_stream_t * stream, ExtremeProbe * value )
 {
+    /* fixed 320-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 320 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint64_t offset_value = 0;
         serialize_uint32_t lo = 0;
@@ -1020,6 +1074,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_extreme_row( serialize_writ
 /* Reads ExtremeRow. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_extreme_row( serialize_read_stream_t * stream, ExtremeRow * value )
 {
+    /* fixed 256-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 256 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint64_t offset_value = 0;
         serialize_uint32_t lo = 0;

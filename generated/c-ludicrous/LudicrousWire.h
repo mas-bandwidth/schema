@@ -102,6 +102,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_probe( serialize_writ
 /* Reads FixedProbe. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_probe( serialize_read_stream_t * stream, FixedProbe * value )
 {
+    /* fixed 156-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 156 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_int32_t fixed_value;
         fixed_value = 0;
@@ -211,6 +217,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_unsigned_probe( serialize_w
 /* Reads UnsignedProbe. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_unsigned_probe( serialize_read_stream_t * stream, UnsignedProbe * value )
 {
+    /* fixed 196-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 196 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_int64_t fixed_value = 0;
         if ( !serialize_read_fixed64( stream, &fixed_value, 16, 16, 0, 360 ) )
@@ -298,6 +310,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_probe( serialize_write
 /* Reads WideProbe. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_probe( serialize_read_stream_t * stream, WideProbe * value )
 {
+    /* fixed 403-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 403 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     if ( !serialize_read_uint128( stream, &value->entity_id ) )
     {
         return 0;
@@ -437,6 +455,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_degenerate_probe( serialize
 /* Reads DegenerateProbe. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_degenerate_probe( serialize_read_stream_t * stream, DegenerateProbe * value )
 {
+    /* fixed 8-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 8 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     value->locked_fixed = (int32_t) -196608LL;
     value->locked_int = (int32_t) (7);
     value->locked_wide = serialize_int128_from_int64( -12345678901234 );
@@ -481,6 +505,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_vec( serialize_write_
 /* Reads FixedVec. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_vec( serialize_read_stream_t * stream, FixedVec * value )
 {
+    /* fixed 102-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 102 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_int64_t fixed_value;
         fixed_value = 0;
@@ -548,6 +578,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_quat( serialize_write
 /* Reads FixedQuat. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_quat( serialize_read_stream_t * stream, FixedQuat * value )
 {
+    /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 128 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_int32_t fixed_value;
         fixed_value = 0;

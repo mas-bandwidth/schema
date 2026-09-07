@@ -288,6 +288,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_bits( serialize_write
 /* Reads ProbeBits. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_bits( serialize_read_stream_t * stream, ProbeBits * value )
 {
+    /* fixed 202-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 202 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 9 ) )
@@ -527,6 +533,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_ring( serialize_write
 /* Reads ProbeRing. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_ring( serialize_read_stream_t * stream, ProbeRing * value )
 {
+    /* fixed 16-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 16 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 16 ) )
@@ -556,6 +568,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_slab( serialize_write
 /* Reads ProbeSlab. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_slab( serialize_read_stream_t * stream, ProbeSlab * value )
 {
+    /* fixed 15-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 15 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint64_t offset_value = 0;
         serialize_uint32_t raw = 0;
@@ -715,6 +733,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_config( serialize_wri
 /* Reads ProbeConfig. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_config( serialize_read_stream_t * stream, ProbeConfig * value )
 {
+    /* fixed 36-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 36 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 32 ) )
@@ -822,6 +846,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test( serialize_write_strea
 /* Reads Test. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test( serialize_read_stream_t * stream, Test * value )
 {
+    /* fixed 46-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 46 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 16 ) )
@@ -1345,6 +1375,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_compressed_probe( serialize
 /* Reads CompressedProbe. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_compressed_probe( serialize_read_stream_t * stream, CompressedProbe * value )
 {
+    /* fixed 24-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 24 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     if ( !serialize_read_compressed_float_precomputed( stream, &value->boundary, 1000u, 10, 10.0f, 0.0f ) )
     {
         return 0;

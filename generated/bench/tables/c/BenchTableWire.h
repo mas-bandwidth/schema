@@ -79,6 +79,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_table_hit_event( serialize_
 /* Reads TableHitEvent. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_hit_event( serialize_read_stream_t * stream, TableHitEvent * value )
 {
+    /* fixed 28-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 28 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 12 ) )
@@ -140,6 +146,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_table_chat_event( serialize
 /* Reads TableChatEvent. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_chat_event( serialize_read_stream_t * stream, TableChatEvent * value )
 {
+    /* fixed 14-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 14 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint64_t offset_value = 0;
         serialize_uint32_t raw = 0;
@@ -183,6 +195,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_table_pickup_event( seriali
 /* Reads TablePickupEvent. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_pickup_event( serialize_read_stream_t * stream, TablePickupEvent * value )
 {
+    /* fixed 18-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 18 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 10 ) )

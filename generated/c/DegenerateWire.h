@@ -68,6 +68,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_vec2( serialize_write_strea
 /* Reads Vec2. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_vec2( serialize_read_stream_t * stream, Vec2 * value )
 {
+    /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 128 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     if ( !serialize_read_double( stream, &value->x ) )
     {
         return 0;
@@ -98,6 +104,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_f64( serialize_write_s
 /* Reads SpanF64. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_f64( serialize_read_stream_t * stream, SpanF64 * value )
 {
+    /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 128 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         int32_t i;
         for ( i = 0; i < 2; i++ )
@@ -130,6 +142,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_u64( serialize_write_s
 /* Reads SpanU64. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_u64( serialize_read_stream_t * stream, SpanU64 * value )
 {
+    /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 128 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         int32_t i;
         for ( i = 0; i < 2; i++ )
@@ -166,6 +184,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_i64( serialize_write_s
 /* Reads SpanI64. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_i64( serialize_read_stream_t * stream, SpanI64 * value )
 {
+    /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 128 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         int32_t i;
         for ( i = 0; i < 2; i++ )
@@ -202,6 +226,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_one( serialize_write_s
 /* Reads SpanOne. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_one( serialize_read_stream_t * stream, SpanOne * value )
 {
+    /* fixed 64-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 64 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         int32_t i;
         for ( i = 0; i < 1; i++ )
@@ -238,6 +268,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_chunk( serialize_write
 /* Reads SpanChunk. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_chunk( serialize_read_stream_t * stream, SpanChunk * value )
 {
+    /* fixed 64-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 64 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         int32_t i;
         for ( i = 0; i < 4; i++ )
@@ -278,6 +314,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_tail( serialize_write_
 /* Reads SpanTail. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_tail( serialize_read_stream_t * stream, SpanTail * value )
 {
+    /* fixed 160-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 160 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         int32_t i;
         for ( i = 0; i < 2; i++ )
@@ -328,6 +370,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_twice( serialize_write
 /* Reads SpanTwice. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_twice( serialize_read_stream_t * stream, SpanTwice * value )
 {
+    /* fixed 256-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 256 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         int32_t i;
         for ( i = 0; i < 2; i++ )
@@ -372,6 +420,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_trio( serialize_write_strea
 /* Reads Trio. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_trio( serialize_read_stream_t * stream, Trio * value )
 {
+    /* fixed 64-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 64 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 20 ) )
@@ -412,6 +466,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_trio_sole( serialize_write_
 /* Reads TrioSole. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_trio_sole( serialize_read_stream_t * stream, TrioSole * value )
 {
+    /* fixed 64-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 64 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     if ( !read_trio( stream, &value->inner ) )
     {
         return 0;
@@ -436,6 +496,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_trio_first( serialize_write
 /* Reads TrioFirst. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_trio_first( serialize_read_stream_t * stream, TrioFirst * value )
 {
+    /* fixed 80-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 80 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     if ( !read_trio( stream, &value->inner ) )
     {
         return 0;
@@ -523,6 +589,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_trio_straddle( serialize_wr
 /* Reads TrioStraddle. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_trio_straddle( serialize_read_stream_t * stream, TrioStraddle * value )
 {
+    /* fixed 408-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 408 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t lo = 0;
         serialize_uint32_t hi = 0;

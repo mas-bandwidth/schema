@@ -519,6 +519,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_f13( serialize_write_stream
 /* Reads F13. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_f13( serialize_read_stream_t * stream, F13 * value )
 {
+    /* fixed 91-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 91 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         int32_t i;
         for ( i = 0; i < 7; i++ )
@@ -559,6 +565,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_tri3( serialize_write_strea
 /* Reads Tri3. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_tri3( serialize_read_stream_t * stream, Tri3 * value )
 {
+    /* fixed 3-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 3 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 1 ) )
@@ -636,6 +648,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_eleven( serialize_write_str
 /* Reads Eleven. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_eleven( serialize_read_stream_t * stream, Eleven * value )
 {
+    /* fixed 11-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 11 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 3 ) )
@@ -674,6 +692,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arr_eleven( serialize_write
 /* Reads ArrEleven. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arr_eleven( serialize_read_stream_t * stream, ArrEleven * value )
 {
+    /* fixed 99-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 99 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         int32_t i;
         for ( i = 0; i < 9; i++ )
@@ -972,6 +996,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_sole( serialize_write_strea
 /* Reads Sole. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_sole( serialize_read_stream_t * stream, Sole * value )
 {
+    /* fixed 13-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 13 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 13 ) )
