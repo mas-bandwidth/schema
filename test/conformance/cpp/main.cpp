@@ -50,7 +50,7 @@
 #include "VocabTable.h"
 #include "Vocab9Table.h"
 // the RETAIN-UNKNOWN reader (docs/SPEC-TABLES.md §6.6): the older build, which
-// cannot name what RT2 and RT3 wrote. Only the READER is here — the two newer
+// cannot name what RT2 and RT3 wrote. Only the READER is here, the two newer
 // builds are writers of the pinned vectors and this driver never runs one.
 #include "RT1Table.h"
 // the POINTERED unit (docs/SPEC-TABLES.md §6.2): a region and a root pointer,
@@ -452,9 +452,9 @@ static const MsgCodec msg_codecs[] = {
 //
 // A retain row is a REGION ROUND TRIP and only that: LoadRetain into a region,
 // then MeasureRetain and SaveRetain out of that same region. The row's two
-// capacities are RULES rather than numbers — `short` is one byte under what
+// capacities are RULES rather than numbers, `short` is one byte under what
 // this port's own full load used, because a record's byte cost is the port's
-// own — so the codec below runs the load twice where the row asks for it.
+// own, so the codec below runs the load twice where the row asks for it.
 //
 // THE MESSAGE ROW IS THE SAME PAIR WITH A FORM-2 LOAD (§3.3): the batch takes
 // one region and one retention buffer a body, the announcement carries the id

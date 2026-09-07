@@ -1032,9 +1032,9 @@ static void message_form()
     CHECK( !report.malformed );
     CHECK( allocations == before ); // RETENTION ALLOCATES NOTHING (§6.6)
 
-    // THE FIRST BODY carries eight retained fields — `extra`, `future` at four
+    // THE FIRST BODY carries eight retained fields, `extra`, `future` at four
     // more depths, the map entry's, the list element's, and `parcel`, the whole
-    // table the resolving walk reads — and six unknowns of the excluded
+    // table the resolving walk reads, and six unknowns of the excluded
     // classes: the enum variant `tier` names, the union arm `pick` names, the
     // keyed slot RT2's third variant writes, a field of kind 17, an array whose
     // element kind is 17, and a table whose payload meets a 17 three bodies

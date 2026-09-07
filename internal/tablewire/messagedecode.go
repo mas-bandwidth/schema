@@ -156,8 +156,8 @@ type bitDecoder struct {
 
 // dropped runs one element's read with RETENTION OFF (docs/SPEC-TABLES.md
 // §6.6). A bit stream has to be walked past, so an element the reader is
-// dropping — an unknown keyed slot's, a keyed key past this build's slots, an
-// array element past this build's bound — is DECODED into a sink where a file's
+// dropping, an unknown keyed slot's, a keyed key past this build's slots, an
+// array element past this build's bound, is DECODED into a sink where a file's
 // reader steps over it by its length. Nothing in that body is a field of this
 // region: the slot or the element is what was excluded, and everything under it
 // went with it under that one `retain_lost`.

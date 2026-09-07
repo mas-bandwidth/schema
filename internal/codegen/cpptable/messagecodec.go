@@ -73,8 +73,8 @@ func (g *tableGen) msgLoadCall(f *ir.Field, name, reader, expr string) string {
 }
 
 // retainStore is the caller's buffer as a NESTED READ takes it. A bit stream
-// has to be walked past, so an element this build is DROPPING — one past its
-// own array bound, one under a keyed key it cannot name — is decoded into a
+// has to be walked past, so an element this build is DROPPING, one past its
+// own array bound, one under a keyed key it cannot name, is decoded into a
 // scratch where a file's reader steps over it by its length. Nothing in that
 // body is a field of this region, so the store it captures into is none
 // (docs/SPEC-TABLES.md §6.6).

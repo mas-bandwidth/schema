@@ -156,6 +156,8 @@ One process per surface, so a runtime starts once rather than once per case.
 | `wire` | `instance` | Load the wire file, Save, the bytes | the wire golden |
 | `message` | `message` | AnnounceRead the connection's announcement, LoadMessages the message-form batch against it, SaveMessages, the bytes | the message-form golden |
 | `report` | `report` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n` | `reports.txt` |
+| `retain` | `retain`, `retain-message` | LoadRetain the wire at the row's two capacities, MeasureRetain, SaveRetain, the counters as `<retained>,<retain_lost>,<unknown> <save lost>\n` | the counters in the manifest |
+| `retain-save` | the rows that name a save | the same round trip, the SAVED BYTES, one body after another | the pinned saves, back to back |
 | `json-read` | `instance` | FromJson `json/<name>.json`, Save, the bytes | the wire golden |
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
 | `json-hostile` | `json-hostile` | FromJson `<tree>/<root>.json`, the report as `u,k,w,c,d,m,verdict\n`, or `refused\n` | the verdict in the manifest |
@@ -186,6 +188,25 @@ of one. The C++ reference answers the surface and the eight ports print ABSENT,
 which is the wire form's own absence one grain up: a port carries the FILE form
 alone, and its `LoadMessages`, `MeasureMessages` and `SaveMessages` are the
 follow-on PORTING.md M20 already registers.
+
+**THE TWO RETAIN SURFACES ARE ONE ROUND TRIP AND TWO SHAPES**
+(docs/SPEC-TABLES.md §6.6): `retain` prints the COUNTERS and `retain-save`
+writes the BYTES, split for the reason the block surfaces are: a counter cannot
+see a record that moved out of a body, and a byte string cannot say which of the
+two stores was short. Both run the same pair, so a leg that answers one answers
+the other.
+
+**A ROW'S TWO CAPACITIES ARE RULES A DRIVER APPLIES, and one of them is the
+whole reason they are not numbers.** A retained record's byte cost is the port's
+own, so `short` means ONE BYTE SHORT OF THE LAST RECORD: the driver loads once
+at a roomy capacity, reads what its own buffer used, and loads again one byte
+under that. The ID LIST's capacity is a COUNT and travels as one. **The C++
+reference answers both surfaces and the eight ports print ABSENT**, which is the
+same absence the `message` and `wire` surfaces already carry one grain up: a
+port carries no retention at all, so `LoadRetain`, `MeasureRetain` and
+`SaveRetain` are a missing FEATURE and not a failing test, and §6.6's own
+backend status says so. A `retain-message` row needs the form-2 read beside
+them, which no port has either.
 
 **`cook-write` IS THE ONE SURFACE WHERE A LANGUAGE WRITES AN ACCELERATOR RATHER
 THAN READING ONE, and the expectation is the TOOL's file.** Every other cook

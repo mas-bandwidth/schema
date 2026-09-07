@@ -3378,8 +3378,8 @@ tables-retain-message-form-negative-control: build/tables-generated/.stamp
 # bits it delimited, which is the whole of the form-2 capture. Take the second
 # half away and the skip is all that is left: the read is unchanged to the byte,
 # the six counters stand, and nothing about the batch says a field was lost.
-# What goes red is the pinned batch's own row of the retain gate — `retained` at
-# zero where the page says ten — which is what makes that row an instrument
+# What goes red is the pinned batch's own row of the retain gate, `retained` at
+# zero where the page says ten, which is what makes that row an instrument
 # rather than a restatement of what the emitter happens to do.
 #
 # The sabotage is one line of the emitter, through `go build -overlay`, so no

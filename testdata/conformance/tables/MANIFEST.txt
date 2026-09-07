@@ -15,6 +15,17 @@
 #            testdata/conformance/tables/json/<name>.json (§16). The same
 #            instance both ways.
 #
+#   retain   <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <saves>
+#   retain-message <case> <connection> <unit> <root> <wire> <capacity> <ids> ...
+#            one RETAIN-UNKNOWN round trip (§6.6): the wire, the two capacities
+#            the caller declares, the counters the LOAD owes and the one the
+#            SAVE adds, and the file the pair writes back. The byte capacity is
+#            a RULE where a number would not travel, a record's byte cost is
+#            the port's own, so `full` and `short` say what a leg DOES rather
+#            than how many bytes it declares, and the id list, being a COUNT,
+#            travels as one. The message row is the form-2 read, whose save is
+#            the FILE form (§3.3). FORMAT.md states both shapes.
+#
 #   report   <case> <unit> <root> <wire file>
 #            bytes read by a type that did not write them — the evolution class
 #            (§4). The counters are the whole expectation, and they live in

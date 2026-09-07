@@ -38,6 +38,8 @@ unit         <key> <schema path>...
 instance     <name> <unit> <root> <wire file> [no-text]
 connection   <key> <unit> <build version> <announcement wire file>
 message      <name> <connection> <root> <file-form wire> <message-form wire>
+retain          <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <saves>
+retain-message  <case> <connection> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <saves>
 report       <case> <unit> <root> <wire file>
 json-hostile <case> <unit> <root> <tree> <verdict>
 cook         <case> <unit> <root> <dump file>
@@ -75,6 +77,35 @@ refusal      <forgery> <reason>
   every reference is replaced by the id it names and every length recomputed,
   and their reference bytes are expected to differ, because a file's slots are
   its own first-use order and a connection's are the unit's projection order.
+- **`retain` and `retain-message`** are RETAIN-UNKNOWN's rows
+  (docs/SPEC-TABLES.md §6.6): a wire loaded with retention on, the counters that
+  load owes, and the file the pair writes back. `<unit>` is the READER's, which
+  is the build that cannot name what the wire's writer wrote, and `<root>` is
+  the table it loads into.
+
+  **THE TWO CAPACITIES ARE STATED AS RULES AND NOT AS NUMBERS where a number
+  would not travel.** A retained record's byte cost is the PORT's own, the
+  page fixes what a record must carry and leaves the layout to the
+  implementation, so `<capacity>` is `full`, a buffer the whole load fits in,
+  or `short`, ONE BYTE SHORT OF THE LAST RECORD: a leg loads once at a roomy
+  capacity, reads what it used, and loads again one byte under that. Two
+  layouts then drop the same record rather than different ones. `<ids>` is the
+  other store, and it IS comparable, because the id list's capacity is a COUNT:
+  `full`, or the entries the caller's list holds.
+
+  `<counters>` is the LOAD's own three, `<retained>,<retain_lost>,<unknown>`,
+  and `<save lost>` is the `retain_lost` the SAVE adds, read after it: the
+  report accumulates across the pair and the sum is what the safety check
+  wants. `<saves>` is the pinned save, or `-` where the row's whole expectation
+  is its counters; a row that saves more than one file lists them
+  comma-separated, in body order.
+
+  **`retain-message` IS THE FORM-2 ROW** (§3.3): the wire is a BATCH, the
+  `<connection>` names the announcement its references resolve against, and the
+  SAVES are the FILE form, one a body, which is the one direction retention
+  crosses the forms, because `SaveRetain` writing form 2 refuses by name. A
+  batch takes one region and one retention buffer a body, so the saves are as
+  many files as the batch has bodies.
 - **`report`** is bytes read by a type that did not write them — the evolution
   class. The counters and the verdict live in `reports.txt`, keyed by `<case>`.
 - **`json-hostile`** is one tree per rule the text form states (§16.2, §16.3,

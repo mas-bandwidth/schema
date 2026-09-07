@@ -4251,9 +4251,9 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
 // message body produces is the FILE FORM'S OWN, to the byte: a retained record
 // carries the field's bytes with every reference resolved so that re-emitting
 // it into any id table is correct, and the table it is re-emitted into is a
-// file's. The capture below is therefore a TRANSCODE as well as a resolve — a
+// file's. The capture below is therefore a TRANSCODE as well as a resolve, a
 // bitpacked value is read at the width its announced shape states and written
-// at the width the file form spells — and from there it is the same record,
+// at the width the file form spells, and from there it is the same record,
 // laid down in the same slots and read back by the same emit walk.
 //
 // THE SKIP RUNS FIRST AND THE CAPTURE SECOND, over the same bits. The plain
@@ -4492,8 +4492,8 @@ inline int64_t TableMessageRetainBody( TableMessageRetainIn & s, int32_t depth )
 }
 
 // one array's or one keyed body's content: the element kind, the count, and the
-// elements. A KEYED SLOT IS A TRIPLE — the key reference, the element's own
-// length, and the element — and its keys resolve at EVERY element kind.
+// elements. A KEYED SLOT IS A TRIPLE, the key reference, the element's own
+// length, and the element, and its keys resolve at EVERY element kind.
 inline int64_t TableMessageRetainElements( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
 {
     if ( entry.elem_kind == 17 )

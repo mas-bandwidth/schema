@@ -271,15 +271,15 @@ type Message struct {
 //
 // THE TWO CAPACITIES ARE STATED AS RULES AND NOT AS NUMBERS where a number
 // would not travel. A record's BYTE cost is the port's own, so `Short` says ONE
-// BYTE SHORT OF THE LAST RECORD — a leg loads once at a capacity the whole load
-// fits in, reads what it used, and loads again one byte under that — and two
+// BYTE SHORT OF THE LAST RECORD, a leg loads once at a capacity the whole load
+// fits in, reads what it used, and loads again one byte under that, and two
 // layouts then drop the same record rather than different ones. The ID LIST's
 // capacity is a COUNT and travels as one, so `Ids` is either full or the
 // entries the caller's list holds.
 //
 // A MESSAGE row is the form-2 one (§3.3): the wire is a BATCH, `Connection`
 // names the announcement its references resolve against, and the SAVES are the
-// FILE form, one a body, back to back in body order — which is the one
+// FILE form, one a body, back to back in body order, which is the one
 // direction retention crosses the forms, because a form-2 SaveRetain refuses by
 // name.
 type RetainCase struct {

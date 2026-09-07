@@ -17,9 +17,9 @@
 // copies the emit side, and nothing below is a second record layout.
 //
 // THE SKIP RUNS FIRST AND THE CAPTURE SECOND, over the same bits. The plain
-// read's own verdict on an unknown entry is the skip's — a variant reference
+// read's own verdict on an unknown entry is the skip's. A variant reference
 // that names an entry carrying a payload is damage whether or not this build
-// retains — and running the skip first is what keeps that verdict exactly what
+// retains, and running the skip first is what keeps that verdict exactly what
 // it was with retention off. The capture then re-reads the bits the skip
 // delimited, and a capture that lands anywhere but the skip's own end drops the
 // record: two engines that disagree about a payload's width would otherwise
@@ -114,8 +114,8 @@ func (rs *resolver) msgId(d *bitDecoder, ref uint64) uint64 {
 	return entry.Id
 }
 
-// msgPayload is the resolving walk over ONE announced payload — a field's, an
-// array element's, a union arm's — written out in the FILE form's own spelling.
+// msgPayload is the resolving walk over ONE announced payload, a field's, an
+// array element's, a union arm's, written out in the FILE form's own spelling.
 //
 // WHICH KINDS THE WALK TOUCHES is §6.6's list unchanged: kind 13, a body's
 // fields; kind 15, an arm id and then the arm's payload under this same rule;
@@ -285,8 +285,8 @@ func (rs *resolver) msgText(d *bitDecoder, entry ir.TableVocabularyEntry) {
 }
 
 // msgElements is one array's or one keyed body's content: the element kind, the
-// count, and the elements. A KEYED SLOT IS A TRIPLE — the key reference, the
-// element's own length, and the element — and its keys resolve at every element
+// count, and the elements. A KEYED SLOT IS A TRIPLE, the key reference, the
+// element's own length, and the element, and its keys resolve at every element
 // kind (§3.2, §6.6).
 func (rs *resolver) msgElements(d *bitDecoder, entry ir.TableVocabularyEntry, depth int) {
 	shape := entry.Shape

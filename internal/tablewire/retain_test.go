@@ -734,8 +734,8 @@ func TestRetainMessageForm(t *testing.T) {
 	// read's own: a bit stream has to be walked past, so the DISCARDED SLOT's
 	// element body is decoded into a sink where a file's reader steps over it
 	// by its length, and the field inside it that this build cannot name counts
-	// there. Retention keeps nothing under it — the slot is what was excluded
-	// and everything below it went with that one `retain_lost` — so the two
+	// there. Retention keeps nothing under it, the slot is what was excluded
+	// and everything below it went with that one `retain_lost`, so the two
 	// retention counters are the numbers the file form gives.
 	if report.Retained != 10 || report.RetainLost != 6 || report.Unknown != 17 {
 		t.Fatalf("retained=%d retain_lost=%d unknown=%d, want 10 / 6 / 17",

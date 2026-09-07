@@ -17,8 +17,8 @@ import (
 // on the same rows.
 //
 // It is the manifest's own expectation that is checked here and not a second
-// one. A row whose counters drift shows up in two places at once — here and in
-// the matrix — which is what makes the manifest data rather than a restatement
+// one. A row whose counters drift shows up in two places at once, here and in
+// the matrix, which is what makes the manifest data rather than a restatement
 // of what one engine happens to do.
 func TestTheOracleAnswersEveryRetainRow(t *testing.T) {
 	m, _, u := corpus(t)
