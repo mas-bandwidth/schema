@@ -17,7 +17,7 @@ import (
 func TestWireLargeVocabularyAndZeroId(t *testing.T) {
 	var schema strings.Builder
 	schema.WriteString("package probe\ntable Child {\n")
-	for i := 0; i < 140; i++ {
+	for i := range 140 {
 		fmt.Fprintf(&schema, "f%03d uint64\n", i)
 	}
 	schema.WriteString("}\ntable Root { children [2]Child }\n")
