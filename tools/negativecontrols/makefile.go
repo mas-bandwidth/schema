@@ -36,7 +36,7 @@ func makefileSet(root string) ([]string, error) {
 	}
 	files := []string{top}
 	seen := map[string]bool{top: true}
-	for _, line := range strings.Split(string(body), "\n") {
+	for line := range strings.SplitSeq(string(body), "\n") {
 		trimmed := strings.TrimSpace(line)
 		rest, ok := strings.CutPrefix(trimmed, "include ")
 		if !ok {
@@ -50,7 +50,7 @@ func makefileSet(root string) ([]string, error) {
 		if inner, ok := strings.CutPrefix(strings.TrimSpace(rest), "$(wildcard"); ok {
 			rest = strings.TrimSuffix(strings.TrimSpace(inner), ")")
 		}
-		for _, field := range strings.Fields(rest) {
+		for field := range strings.FieldsSeq(rest) {
 			pattern := strings.TrimSpace(field)
 			if pattern == "" || strings.Contains(pattern, "$") {
 				return nil, fmt.Errorf("include line %q carries a variable this reader does not expand", trimmed)
@@ -117,7 +117,7 @@ func targetsIn(body string) []string {
 	var pending string
 	continuing := false
 	inDefine := false
-	for _, raw := range strings.Split(body, "\n") {
+	for raw := range strings.SplitSeq(body, "\n") {
 		if continuing {
 			pending += " " + strings.TrimSpace(strings.TrimSuffix(raw, "\\"))
 			if strings.HasSuffix(raw, "\\") {
@@ -144,8 +144,8 @@ func targetsIn(body string) []string {
 		if strings.HasPrefix(raw, "\t") || trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		if strings.HasSuffix(raw, "\\") {
-			pending = strings.TrimSpace(strings.TrimSuffix(raw, "\\"))
+		if cut, ok := strings.CutSuffix(raw, "\\"); ok {
+			pending = strings.TrimSpace(cut)
 			continuing = true
 			continue
 		}

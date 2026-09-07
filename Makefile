@@ -1447,8 +1447,16 @@ tables-block-pitch-negative-control: build/tables-generated-cs/.stamp
 # The sabotaged compiler reaches the build through `go build -overlay`, so no
 # tracked file is ever written to — the same mechanism the big-endian negative
 # control uses, and for the same reason.
+#
+# THE C# STAMP IS A PREREQUISITE, as it is on the padding and pitch controls
+# beside it. The C# half below overrides BlockGeneratedDir alone, so the
+# project's BlockHomeGeneratedDir keeps its default and the blockhome sources
+# have to be on disk; without them the build fails on an undefined namespace
+# and the control refuses, correctly, that C# went red but not on the layout
+# check. Inside `make test` an earlier leg had already generated them, which is
+# why the omission stayed invisible until every control ran on its own.
 .PHONY: tables-block-layout-model-negative-control
-tables-block-layout-model-negative-control: bin/schema
+tables-block-layout-model-negative-control: bin/schema build/tables-generated-cs/.stamp
 	@mkdir -p build
 	@sed 's|ml.Fields = append(ml.Fields, FieldLayout{Field: f, Offset: start, Size: offset - start, Align: fieldAlign})|ml.Fields = append(ml.Fields, FieldLayout{Field: f, Offset: start + 8, Size: offset - start, Align: fieldAlign}) // SABOTAGED: one field, moved|' \
 		ir/blocklayout.go > build/blocklayout-moved.gotext
