@@ -3600,7 +3600,7 @@ tables-arms-negative-controls: tables-arms-list-edge-negative-control \
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
-update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/schema_test_wide_table build/conformance-harness
+update-goldens: build/schema_test_retain build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/schema_test_wide_table build/conformance-harness
 	@mkdir -p testdata/golden testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
@@ -3610,6 +3610,7 @@ update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_lists
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_arms
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_wide_table
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_retain
 	@for d in examples pointers block blockhome messages stream blobs scalars maps lists arms wide; do \
 		mkdir -p testdata/golden/tables/$$d; \
 		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
