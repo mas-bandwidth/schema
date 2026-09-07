@@ -24,9 +24,6 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 		// Composed from primitives, NOT serialize_write_string: schema frames
 		// the length over [0, N] where the runtime's string call frames it over
 		// [0, N-1]. One bit of difference, and every following field shifts.
-		// Well-formed UTF-8 by contract, writer-trusted: debug-only assert,
-		// no read-path validation (SPEC §4.7).
-		g.pf("%sserialize_assert( schema_utf8_valid_( (const serialize_uint8_t *) value->%s, value->%s_length ) );\n", ind, f.Name, f.Name)
 		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, (const serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
 	case f.Type.Kind == ir.TBytes:
@@ -249,6 +246,8 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 	case f.Type.Kind == ir.TString:
 		g.call(ind, fmt.Sprintf("serialize_read_int( stream, &value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_read_bytes( stream, (serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
+		g.pf("%sif ( !schema_utf8_valid_( (const serialize_uint8_t *) value->%s, value->%s_length ) )\n%s{\n", ind, f.Name, f.Name, ind)
+		g.pf("%s    return 0; /* malformed UTF-8 is content the read refuses (SPEC §4.7) */\n%s}\n", ind, ind)
 		// the interior-null rule is generated-code validation (SPEC §4.7);
 		// the word-wise scan lives in schema_interior_null_ (nullscan.go)
 		g.pf("%sif ( schema_interior_null_( (const serialize_uint8_t *) value->%s, value->%s_length ) )\n%s{\n", ind, f.Name, f.Name, ind)

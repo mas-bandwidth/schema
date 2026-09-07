@@ -53,9 +53,8 @@ extern "C" {
 
 #ifndef SCHEMA_UTF8_VALID_DEFINED
 #define SCHEMA_UTF8_VALID_DEFINED
-/* string(N) payloads are well-formed UTF-8 BY CONTRACT (SPEC §4.7): the
-   write path debug-asserts with this validator and the release path costs
-   nothing. Rejects truncated sequences, bare continuations, overlongs,
+/* string(N) refuses malformed UTF-8 on read in every build mode (SPEC §4.7).
+   Rejects truncated sequences, bare continuations, overlongs,
    surrogates and code points past U+10FFFF. */
 static SCHEMA_UNUSED int schema_utf8_valid_( const serialize_uint8_t * bytes, int32_t length )
 {
@@ -862,7 +861,6 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_strs( serialize_write_strea
     {
         return 0;
     }
-    serialize_assert( schema_utf8_valid_( (const serialize_uint8_t *) value->s, value->s_length ) );
     if ( !serialize_write_int( stream, value->s_length, 0, 8 ) )
     {
         return 0;
@@ -904,6 +902,10 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_strs( serialize_read_stream_t
     if ( !serialize_read_bytes( stream, (serialize_uint8_t *) value->s, (int) value->s_length ) )
     {
         return 0;
+    }
+    if ( !schema_utf8_valid_( (const serialize_uint8_t *) value->s, value->s_length ) )
+    {
+        return 0; /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
     }
     if ( schema_interior_null_( (const serialize_uint8_t *) value->s, value->s_length ) )
     {

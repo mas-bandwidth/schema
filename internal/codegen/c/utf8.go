@@ -3,8 +3,7 @@ package c
 import "github.com/mas-bandwidth/schema/v2/ir"
 
 // fileHasStrings reports whether any declaration in the file carries a
-// string(N) field — the trigger for emitting the UTF-8 validator the
-// write-side debug assert calls (SPEC §4.7).
+// string(N) field, which requires the read-side UTF-8 validator (SPEC §4.7).
 func fileHasStrings(f *ir.File) bool {
 	for _, d := range f.Decls {
 		var fields []*ir.Field
@@ -20,19 +19,15 @@ func fileHasStrings(f *ir.File) bool {
 	return false
 }
 
-// emitUtf8Validator emits the well-formedness check behind the write-side
-// debug assert: string(N) payloads are well-formed UTF-8 BY CONTRACT,
-// writer-trusted (SPEC §4.7) — no release-path cost, no
-// read-path validation. serialize_assert compiles out under NDEBUG, exactly
-// like every other C write-side assert. Guarded against redefinition because
+// emitUtf8Validator emits the read-side well-formedness check, unconditional
+// in every build mode (SPEC §4.7). Guarded against redefinition because
 // several wire headers can land in one translation unit; the trailing
 // underscore keeps the name out of the claimed-name registry's way (no
 // schema declaration can generate it).
 func (g *gen) emitUtf8Validator() {
 	g.pf("#ifndef SCHEMA_UTF8_VALID_DEFINED\n#define SCHEMA_UTF8_VALID_DEFINED\n")
-	g.pf("/* string(N) payloads are well-formed UTF-8 BY CONTRACT (SPEC §4.7): the\n")
-	g.pf("   write path debug-asserts with this validator and the release path costs\n")
-	g.pf("   nothing. Rejects truncated sequences, bare continuations, overlongs,\n")
+	g.pf("/* string(N) refuses malformed UTF-8 on read in every build mode (SPEC §4.7).\n")
+	g.pf("   Rejects truncated sequences, bare continuations, overlongs,\n")
 	g.pf("   surrogates and code points past U+10FFFF. */\n")
 	g.pf("static SCHEMA_UNUSED int schema_utf8_valid_( const serialize_uint8_t * bytes, int32_t length )\n{\n")
 	g.pf("    int32_t i = 0;\n")
