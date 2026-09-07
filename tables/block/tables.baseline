@@ -1,0 +1,165 @@
+schema-tables-baseline 7
+package blockdemo
+
+table PaddedFrame
+    field marker id=0xeddcb72b15486e77 kind=6
+    field stamp id=0xee7ba9ad45c64144 kind=9
+    field rows id=0xa3a7061ff10a8138 kind=14 elem=13 type=PaddedRow array=bounded bound=64
+    field blob id=0xc573b39bc29148ca kind=14 elem=6 size=12
+
+table PaddedRow
+    field tag id=0x56d7ab194448a4f3 kind=6
+    field value id=0x7ce4fd9430e80cea kind=11
+    field flag id=0xd5f2d079088c0b17 kind=1
+    field id id=0x08b72e07b55c3ac0 kind=8
+    field label id=0x39f7fcec8fcb623d kind=12 size=15
+    field slots id=0xe68c2e6bb1ee5646 kind=14 elem=7 array=fixed bound=4
+    field teams id=0xbaaeb048a5a8fa6d kind=16 elem=6 array=keyed bound=4 key=Team
+    field counter id=0x77976c7416517c63 kind=4 optional=true
+
+table RenderCamera
+    field position id=0x4cbf3a26fca1d74a kind=13 type=RenderVector3
+    field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
+    field camera_id id=0x9f61700f084ab92e kind=8
+    field camera_type id=0x336d3dc7fffd0c9b kind=8
+    field target_object_id id=0x6a0c6a156952b9c2 kind=8
+    field fov id=0xdcb27c18fed9e15c kind=10
+
+table RenderCosmeticProp
+    field position id=0x4cbf3a26fca1d74a kind=13 type=RenderVector3
+    field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
+    field scale id=0x6aacb9fbb71a1d91 kind=11
+    field flags id=0x17a3a1a985f75aec kind=9
+    field cosmetic_prop_id id=0xb66e4449e56b2e26 kind=8
+    field prop_sequence id=0x4d7bf73bcbddc228 kind=6
+    field prop_type id=0xe5626f155e4c5dad kind=7 enum=PropType
+    field team id=0xfa23d9ef19afc32c kind=7 enum=Team
+
+table RenderDynamicProp
+    field position id=0x4cbf3a26fca1d74a kind=13 type=RenderVector3
+    field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
+    field flags id=0x17a3a1a985f75aec kind=9
+    field object_id id=0x0bdab42c07f19812 kind=8
+    field object_sequence id=0x5de0015285763c46 kind=6
+    field prop_type id=0xe5626f155e4c5dad kind=7 enum=PropType
+    field team id=0xfa23d9ef19afc32c kind=7 enum=Team
+
+table RenderExplosion
+    field position id=0x4cbf3a26fca1d74a kind=13 type=RenderVector3
+    field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
+    field t id=0xaf63e94c860202a3 kind=11
+    field explosion_id id=0xfd7f3fa0b16ed778 kind=8
+    field parent_object_id id=0x0bee7b3cb4046c93 kind=8
+    field explosion_type id=0xdc89eb9cd3393be5 kind=7 enum=ExplosionType
+    field team id=0xfa23d9ef19afc32c kind=7 enum=Team
+
+table RenderFrame
+    field version id=0xbb62c62c9808ea37 kind=9
+    field cameras id=0x0f9222d2ba7aa2a7 kind=14 elem=13 type=RenderCamera array=bounded bound=1
+    field ships id=0x294a5c4913e1ad44 kind=14 elem=13 type=RenderShip array=bounded bound=4096
+    field turrets id=0x84f8260bc283608c kind=14 elem=13 type=RenderTurret array=bounded bound=1024
+    field missiles id=0x1c3027194b1ba4d0 kind=14 elem=13 type=RenderMissile array=bounded bound=4096
+    field dynamic_props id=0x43125398a9903d27 kind=14 elem=13 type=RenderDynamicProp array=bounded bound=4096
+    field static_props id=0xc1f8d7edff7fcfd2 kind=14 elem=13 type=RenderStaticProp array=bounded bound=20000
+    field cosmetic_props id=0x33408e39f5f480ff kind=14 elem=13 type=RenderCosmeticProp array=bounded bound=8192
+    field lasers id=0xd982b77b3e92d16d kind=14 elem=13 type=RenderLaser array=bounded bound=32000
+    field explosions id=0x876a8c1a85806a69 kind=14 elem=13 type=RenderExplosion array=bounded bound=32000
+
+table RenderLaser
+    field start id=0xee5d97ad45ad251f kind=13 type=RenderVector3
+    field finish id=0x6917a5bab91540f2 kind=13 type=RenderVector3
+    field t id=0xaf63e94c860202a3 kind=11
+    field laser_id id=0xcd29c05f390294ec kind=8
+    field laser_type id=0x96b593c242133841 kind=7 enum=LaserType
+    field team id=0xfa23d9ef19afc32c kind=7 enum=Team
+
+table RenderMissile
+    field position id=0x4cbf3a26fca1d74a kind=13 type=RenderVector3
+    field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
+    field flags id=0x17a3a1a985f75aec kind=9
+    field object_id id=0x0bdab42c07f19812 kind=8
+    field object_sequence id=0x5de0015285763c46 kind=6
+    field missile_type id=0x151b2a0e2c07b4bc kind=7 enum=MissileType
+    field team id=0xfa23d9ef19afc32c kind=7 enum=Team
+
+table RenderQuaternion
+    field x id=0xaf63f54c86021707 kind=11
+    field y id=0xaf63f44c86021554 kind=11
+    field z id=0xaf63f74c86021a6d kind=11
+    field w id=0xaf63ea4c86020456 kind=11 default=1.0
+
+table RenderShip
+    field position id=0x4cbf3a26fca1d74a kind=13 type=RenderVector3
+    field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
+    field flags id=0x17a3a1a985f75aec kind=9 flags=ShipFlags
+    field object_id id=0x0bdab42c07f19812 kind=8
+    field target_object_id id=0x6a0c6a156952b9c2 kind=8
+    field thrust id=0xcfd587cb3100cd73 kind=10
+    field object_sequence id=0x5de0015285763c46 kind=6
+    field ship_type id=0x1f7d2e86a2e77268 kind=7 enum=ShipType
+    field team id=0xfa23d9ef19afc32c kind=7 enum=Team
+    field has_target_lock id=0x1554fa45a1220171 kind=1
+    field predicted_explode id=0x4d5be97ba1b9cb81 kind=1
+
+table RenderStaticProp
+    field position id=0x4cbf3a26fca1d74a kind=13 type=RenderVector3
+    field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
+    field scale id=0x6aacb9fbb71a1d91 kind=11
+    field flags id=0x17a3a1a985f75aec kind=9
+    field static_prop_id id=0xd23da7ab574b95c3 kind=8
+    field prop_type id=0xe5626f155e4c5dad kind=7 enum=PropType
+    field team id=0xfa23d9ef19afc32c kind=7 enum=Team
+
+table RenderTurret
+    field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
+    field flags id=0x17a3a1a985f75aec kind=9
+    field object_id id=0x0bdab42c07f19812 kind=8
+    field parent_object_id id=0x0bee7b3cb4046c93 kind=8
+    field turret_index id=0x88a11a6aed541f54 kind=8
+    field target_object_id id=0x6a0c6a156952b9c2 kind=8
+    field object_sequence id=0x5de0015285763c46 kind=6
+    field team id=0xfa23d9ef19afc32c kind=7 enum=Team
+    field has_target_lock id=0x1554fa45a1220171 kind=1
+
+table RenderVector3
+    field x id=0xaf63f54c86021707 kind=11
+    field y id=0xaf63f44c86021554 kind=11
+    field z id=0xaf63f74c86021a6d kind=11
+
+enum ExplosionType
+    variant Small id=0x3d2cc8d952adebec
+    variant Large id=0xc8736ef79380e634
+
+enum LaserType
+    variant Pulse id=0x94e8a172d8f4805e
+    variant Beam id=0xa0745aa7967eeffa
+
+enum MissileType
+    variant Seeker id=0xf5d0a4d25a76afca
+    variant Dumb id=0x478d7972f6d9075d
+
+enum PropType
+    variant Rock id=0xcaa6172bef74e234
+    variant Station id=0x4f98acac2852d653
+    variant Beacon id=0x7f3a7e4744ea3019
+
+enum ShipType
+    variant Fighter id=0xd011f7c3c15285c2
+    variant Bomber id=0xa8216aa1c554cb8a
+    variant Freighter id=0x6c2321a3d00e23db
+
+enum Team
+    variant Red id=0x9ff1de19feac1b7c
+    variant Blue id=0xecf3d3a7c1693e2d
+    variant Green id=0xcf00d78fd5953f1c
+    variant Gold id=0xc416c97e0d3218b3
+
+flags ShipFlags
+    variant FiringLaser bit=0
+    variant Boosting bit=1
+    variant Braking bit=2
+    variant Aiming bit=3
+
+## history
+### 2026-09-07 (UTC) — first baseline
+- baseline created over 14 tables — data written BEFORE this point is not covered by it

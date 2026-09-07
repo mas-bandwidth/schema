@@ -204,6 +204,66 @@ jobs:
       - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
         run: make tables-block-zero-cost
 
+  # THE PINS ARE CURRENT (issue #461). The job above asks this question of
+  # generated/ and asks it of nothing under testdata/, so a pin regenerated
+  # against an older main auto-merges clean and every job stays green against a
+  # pin nobody wrote. That is not hypothetical: this job's first run found six,
+  # testdata/golden/tables/maps/*Table.h, pinned on a branch cut before the
+  # retain-unknown walk landed and merged after it.
+  #
+  # THE SHAPE IS THE GENERATED JOB'S, one door over. Every re-pinning rule takes
+  # bin/schema, the C++ reference and the conformance harness, so this job
+  # rewrites the whole of testdata/ IN PLACE and staleness is precisely a dirty
+  # tree afterwards: a tracked pin that changed, or a newly written pin nobody
+  # committed, which a diff-only check would miss.
+  #
+  # THE TARGETS ARE THE TREE'S OWN NAMES, `conformance-pin` and
+  # `update-goldens`, so a rule that starts writing a new pin is covered the
+  # moment it joins one of them, with no edit to this file. Locally the same
+  # check is those two targets and the same `git diff`.
+  #
+  # ONE SIBLING, ../serialize, because the legs that write the wire pins are the
+  # C++ reference's and every other language's half of `update-goldens` is
+  # `bin/schema generate` and a copy. Its pin is the shared SERIALIZE_TAG above.
+  #
+  # MEASURED at 1m44s on the run that introduced it (34113070433), against
+  # 4m27s for big-endian in the same run: this job is inside the two-minute
+  # rule and it is not the binding constraint. Its own budget is the C++
+  # reference binaries `update-goldens` builds plus that target's closing
+  # `go test ./...`, which is the duplicate of go-test's and the first place
+  # to look if this job ever wants the time back.
+  pins:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out the C++ serialize runtime (pinned release)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: rewrite every pin under testdata/ from the reference
+        run: make -j"$(nproc)" conformance-pin update-goldens
+
+      - name: the pins are current
+        run: |
+          git diff --exit-code -- testdata/ || {
+            echo "::error::a pin under testdata/ is stale: the current compiler and the C++ reference write different bytes. Run 'make conformance-pin update-goldens' and commit what changes."
+            exit 1
+          }
+          untracked=$(git status --porcelain testdata/)
+          if [ -n "$untracked" ]; then
+            echo "$untracked"
+            echo "::error::the re-pin wrote files that are not committed under testdata/. Add them."
+            exit 1
+          fi
+
   # THE CONFORMANCE MATRIX (test/conformance/README.md), one job per registered
   # driver. The same corpus as data, one driver per language, and the matrix
   # that says which surfaces a backend has: cross-language bit identity is the

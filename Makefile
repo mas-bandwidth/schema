@@ -248,8 +248,8 @@ build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SC
 # closure must pay NOTHING for the pointer machinery — no builder, no arena, no
 # handles, no lifecycle surface, no extra descriptor columns. The pointer-free
 # corpus's generated headers must not contain one symbol of it. (The stronger
-# one-time proof — byte-identical emission against the pre-pointer baseline —
-# is recorded in the round log; this is the standing gate.)
+# one-time proof, byte-identical emission against the pre-pointer baseline,
+# lives in git history and in no page of this tree; this is the standing gate.)
 #
 # THE MAP MACHINERY TAKES THE SAME GATE (docs/SPEC-TABLES.md §2.2, §2.8): "not
 # one symbol of the map machinery in a map-free unit's generated headers, held

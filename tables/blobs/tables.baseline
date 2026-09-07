@@ -1,0 +1,20 @@
+schema-tables-baseline 7
+package blobdemo
+
+table Asset
+    field name id=0xc4bcadba8e631b86 kind=12 size=32
+    field kind id=0xef9c96d721673243 kind=8
+    field data id=0x855b556730a34a05 kind=17 type=bytes
+    field caption id=0x5daa28eb864c02a5 kind=17 type=string
+    field next id=0xe5316cbaa025f028 kind=17 type=Asset
+
+table Catalog
+    field name id=0xc4bcadba8e631b86 kind=12 size=32
+    field head id=0x0a8f12cc5f9a0c03 kind=17 type=Asset
+    field thumb id=0x613b19720ff4b203 kind=17 type=bytes
+    field note id=0x3bf8fbbad1587cdd kind=17 type=string
+    field alias id=0x509220bb65a646b7 kind=17 type=bytes
+
+## history
+### 2026-09-07 (UTC) — first baseline
+- baseline created over 2 tables — data written BEFORE this point is not covered by it

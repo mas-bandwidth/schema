@@ -166,6 +166,14 @@ language schema generates for carries the table wire, and what a fixed-class
 port refuses is a pointer in the closure, by name, with this document cited
 (§11) — never the `table` declaration itself.
 
+**THE FORM THE EIGHT PORTS CARRY IS THE ONE THAT PRECEDED §3.** §3's id-table
+form is the C++ reference and the compiler's own engine (`internal/tablewire`),
+held together by the conformance lock; C, C#, Dart, Go, Rust, Java, JavaScript
+and Elixir write the earlier form, and the id table, the enum kind and the
+escape kind reach none of them yet. Each port's move to §3 is a row of its own
+(schema#511 to schema#518), and ROADMAP.md's first table-wire line says which
+form a cell means.
+
 **ELIXIR IS THE READING TIER, and the tier is a property of the LANGUAGE rather
 than of the port.** A BEAM term has no layout a producer could write, so this
 backend never produces a block or a cook: it OPENS one another build wrote and
@@ -6574,12 +6582,16 @@ assembly, so the runtime is emitted into ONE file per unit (§19.2) and a
 second copy is a duplicate-definition error already. There is no include order
 to resolve.
 
-**Backend status: OWED, not emitted.** No guarded block carries an identity
-today and no generated file asserts one, so the silent case above is live in
-every one of the C++ table emitter's guarded blocks. Tracked as schema#301,
-with the negative control it must carry: perturb one header's copy of a block
-and show the translation unit red, naming that header — the same control that
-measured the silence, run in the other direction.
+**Backend status: OWED, not emitted, and no open issue carries it.** No guarded
+block holds an identity today and no generated file asserts one, so the silent
+case above is live in every one of the C++ table emitter's guarded blocks. The
+identity is taken over the block's own text and never over a compiler version:
+generated output records no compiler version, deliberately (docs/VERSIONING.md),
+because a version stamp puts a diff in every generated file of every downstream
+tree on every release and says nothing about whether a wire moved. The negative
+control the backend half carries is a perturbed copy of one header's block,
+which must turn the translation unit red and name that header, and it is the
+control that measured the silence run in the other direction.
 
 ### 6.2 Variable-length: a lifecycle
 
@@ -7064,15 +7076,16 @@ and it is the same buffer across all three by construction.
   end is the sum of what the load could not keep and what the save could not
   place. That is the number the safety check wants, and it is why the check is
   read after the save.
-- **`TableRetain` and the three verbs are OWED to §11's claimed set**, and the
-  claim is deliberately not made in this page's own change: a claim the page
-  states and the checker does not make is a name a user may still take (§11).
-  What lands with the feature is `TableRetain` in the unit-scope registry
-  beside `TableReport`, the three suffixes `LoadRetain`, `MeasureRetain` and
-  `SaveRetain` in `tableGeneratedVerbs`, and **Dart's three member spellings**
-  `loadRetain`, `measureRetain` and `saveRetain`, which take that backend's
-  nine claimed field-name verbs to twelve (§11), plus `TableRetain` in the
-  Dart library-scope registry, which lands with THAT PORT rather than with the
+- **`TableRetain` and the three verbs are IN §11's claimed set**, because a
+  claim the page states and the checker does not make is a name a user may
+  still take (§11), so the claims land with the feature rather than with a
+  port. `TableRetain` sits in the unit-scope registry beside `TableReport`
+  (`internal/tablenames`), the three suffixes `LoadRetain`, `MeasureRetain`
+  and `SaveRetain` sit in `tableGeneratedVerbs` beside the body functions that
+  carry them, and **Dart's three member spellings** `loadRetain`,
+  `measureRetain` and `saveRetain` take that backend's claimed field-name
+  verbs from nine to twelve (§11). `TableRetain` in the Dart LIBRARY-SCOPE
+  registry is the one piece that lands with THAT PORT rather than with the
   feature: the registry says what a backend DEFINES, and a gate holds it to
   that, so a name Dart does not define yet cannot be registered there without
   taking the gate away.
@@ -11642,7 +11655,8 @@ inspects everything in the schema built:
   the construct — the parser's `map[K]V`, the checker's refusals, the generated
   entry table with its record and its two constant ids — and every backend
   refuses a unit that declares one, by name (§11), until its codec lands. The
-  C++ reference and the tool are first: the builder surface (insert, erase,
+  C++ reference is first and carries the whole construct: the builder surface
+  (insert, erase,
   find, iterate), the sort in the four walks, the region load's ascending check
   with its `duplicate` and `malformed` events, the const `Find`, the text
   form's object and `schema cook-check`'s map-slot clause with its order check

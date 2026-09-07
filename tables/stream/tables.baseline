@@ -1,0 +1,26 @@
+schema-tables-baseline 7
+package streamdemo
+
+table Chunk
+    field data id=0x855b556730a34a05 kind=14 elem=6 size=8
+    field next id=0xe5316cbaa025f028 kind=17 type=Chunk
+    field links id=0x5cc201a9f1b8274e kind=14 elem=17 type=Chunk array=bounded bound=2
+
+table Feed
+    field id id=0x08b72e07b55c3ac0 kind=8
+    field frame id=0xd8d4335628b35226 kind=15 union=Frame
+    field parts id=0x0c519da7a1f958c5 kind=14 elem=17 type=Chunk array=bounded bound=4
+    field pair id=0x0369250deb889a31 kind=14 elem=17 type=Chunk array=fixed bound=2
+
+table Header
+    field name id=0xc4bcadba8e631b86 kind=12 size=16
+
+union Frame
+    arm header id=0x3a506cb501761960 payload=Header
+    arm chunk id=0x0f838176873c8e22 payload=Chunk
+    arm link id=0xbf4b9bad694f4809 kind=17 type=Chunk
+    arm tag id=0x56d7ab194448a4f3 kind=8
+
+## history
+### 2026-09-07 (UTC) — first baseline
+- baseline created over 3 tables — data written BEFORE this point is not covered by it
