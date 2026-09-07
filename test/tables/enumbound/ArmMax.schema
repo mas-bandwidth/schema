@@ -1,0 +1,19 @@
+package ebarmmax
+
+// THE UNION ARM'S SHAPE (docs/SPEC-TABLES.md §2.4, §11): a table body carries
+// the union, so the arm's array carries the table body's own hazard and takes
+// the table body's own refusal, with the arm named and the table that reaches
+// the union named beside it.
+
+enum ShipType { Fighter, Bomber, Scout }
+
+union Payload
+{
+    ships [ShipType.Max]int32
+    plain int32
+}
+
+table Fleet
+{
+    payload Payload
+}

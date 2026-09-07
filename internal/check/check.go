@@ -1464,9 +1464,14 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 				out.ArrayBound = out.KeyEnumRef.Max
 				out.ArrayExpr = f.Array.Hi
 			default:
-				if !c.checkPositionalKeyedSpelling(f, inTable) {
-					return nil
-				}
+				// A POSITIONAL BOUND THAT FOLDS FROM AN ENUM is refused in a
+				// table body and a union arm on the bound's PROVENANCE
+				// (docs/SPEC-TABLES.md §2.4, §11), and that reads a closure
+				// rather than a field, so it runs in
+				// checkPositionalEnumBoundInClosure once the closure is known.
+				// The bound still evaluates here: the refusal reports on the
+				// resolved field, and a bound that cannot be evaluated is a
+				// different diagnostic that belongs at the field.
 				hi, ok := c.evalInt(f.Array.Hi)
 				if !ok {
 					return nil
@@ -2246,6 +2251,7 @@ func (c *checker) checkTables() {
 	}
 	c.tableClosure = closure
 	c.checkTableArmsReached(closure)
+	c.checkPositionalEnumBoundInClosure()
 
 	names := make([]string, 0, len(closure))
 	for name := range closure {

@@ -1,0 +1,26 @@
+package ebcontrolplain
+
+// THE POSITIVE CONTROL, A BOUND THAT FOLDS FROM NO ENUM (docs/SPEC-TABLES.md
+// §2.4): a literal bound and a constant bound stand in a table body and in a
+// union arm the table body carries. The rule reads the bound's PROVENANCE, so
+// a positional array is refused for reaching an enum and never for being
+// positional. A control that goes red says the walk stopped reading provenance
+// and started refusing fixed arrays.
+
+enum ShipType { Fighter, Bomber, Scout }
+
+const SlotCount = 4 * 2
+
+union Payload
+{
+    ships [SlotCount]int32
+    plain int32
+}
+
+table Fleet
+{
+    literal [8]int32
+    named   [SlotCount]int32
+    keyed   [ShipType]int32
+    payload Payload
+}

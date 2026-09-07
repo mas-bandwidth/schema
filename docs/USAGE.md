@@ -1941,10 +1941,10 @@ Only the table wire keys the slots.
 **And a positional array whose bound comes from an enum is REFUSED in a table
 body and a union arm, by name**, with `[E]T` named as the fix. The refusal
 follows where the bound comes from and not how it is spelled, so `[E.Max]T`,
-`[E.Count]T` and `[N]T` under a `const N = E.Max` all take it. *The compiler
-refuses `[E.Max]T` today and still reads the other two as plain bounds, so
-`[E.Count]T` and the constant fold still
-compile ([#540](https://github.com/mas-bandwidth/schema/issues/540)).*
+`[E.Count]T` and `[N]T` under a `const N = E.Max` all take it, at any depth of
+constant arithmetic. The diagnostic names the constant where the bound reaches
+the enum through one, and an arm's names the arm and the table that reaches
+the union.
 An ordinal-indexed array is a positional
 vocabulary, and a table has exactly one of those — `flags` — so the refusal is
 what keeps the closed class closed: you cannot reopen it by spelling the bound

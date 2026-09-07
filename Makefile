@@ -2133,6 +2133,79 @@ check-zero-range-negative-control: bin/schema test/zero_range_negative_main.cpp
 		test/zero_range_negative_main.cpp -o build/schema_test_zero_range_negative
 	./build/schema_test_zero_range_negative
 
+# THE ENUM-BOUND GATE and its NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.4,
+# §11, schema#605). A POSITIONAL ARRAY WHOSE BOUND FOLDS FROM AN ENUM is
+# refused in a table body and a union arm, on the bound's PROVENANCE rather
+# than its spelling: `[E.Max]T`, `[E.Count]T` and `[N]T` under a `const N`
+# that folds from either are one bound however it is spelled.
+#
+# The gate runs the compiler over test/tables/enumbound, one unit a shape, and
+# reads three answers back. Every refused shape must be refused and its
+# diagnostic must name the field or the arm, the enum, the constant where the
+# bound reaches the enum through one, and `[E]T` as the fix. The THREE
+# POSITIVE CONTROLS must compile: the packet wire, whose `[E.Max]T` is a plain
+# array the connect gate covers; a bound that folds from no enum, which is
+# refused for reaching an enum and never for being positional; and the
+# `type`-held case, which is schema#606's ruling and not this refusal's.
+#
+# The NEGATIVE CONTROL is §2.4's own: it REMOVES THE CONSTANT FOLD FROM THE
+# BOUND CHECK through `go build -overlay` (no tracked file is written), and
+# every row whose bound reaches its enum through a constant must then compile
+# clean. It is targeted rather than blanket, so the two DIRECT spellings must
+# stay refused under the same sabotage: a control that turned the whole rule
+# off would go red for a reason that says nothing about the fold.
+.PHONY: check-enum-bound-negative-control
+check-enum-bound-negative-control: bin/schema
+	@mkdir -p build/enum-bound
+	@set -e; for u in BodyMax:ShipType.Max BodyCount:ShipType.Count \
+		BodyConstMax:SlotCount BodyConstCount:SlotCount BodyFolded:SlotCount; do \
+		unit=$${u%%:*}; bound=$${u#*:}; \
+		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
+			echo "GATE FAILED: $$unit.schema compiled in a table body"; exit 1; \
+		fi; \
+		grep -q "\[$$bound\]int32 is refused in a table body" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema was refused, but not as a table body's own bound"; cat build/enum-bound/$$unit.log; exit 1; }; \
+		grep -q "spell it \[ShipType\]int32" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema names no fix"; cat build/enum-bound/$$unit.log; exit 1; }; \
+	done
+	@set -e; for u in ArmMax:ShipType.Max ArmCount:ShipType.Count \
+		ArmConstMax:SlotCount ArmConstCount:SlotCount ArmFolded:SlotCount; do \
+		unit=$${u%%:*}; bound=$${u#*:}; \
+		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
+			echo "GATE FAILED: $$unit.schema compiled in a union arm"; exit 1; \
+		fi; \
+		grep -q "union Payload: arm ships: \[$$bound\]int32 is refused in a union arm" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema was refused, but not at the arm"; cat build/enum-bound/$$unit.log; exit 1; }; \
+		grep -q "table Fleet's field payload reaches Payload" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema names no table reaching the union"; cat build/enum-bound/$$unit.log; exit 1; }; \
+	done
+	@set -e; for unit in BodyConstMax BodyConstCount BodyFolded ArmConstMax ArmConstCount ArmFolded; do \
+		grep -q "the bound SlotCount folds from ShipType\." build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema names no constant, and the constant is all a reader can see"; cat build/enum-bound/$$unit.log; exit 1; }; \
+	done
+	@set -e; for unit in ControlPacket ControlPlain ControlTypeHeld; do \
+		./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1 || \
+			{ echo "POSITIVE CONTROL FAILED: $$unit.schema did not compile"; cat build/enum-bound/$$unit.log; exit 1; }; \
+	done
+	@echo "gate: ten shapes refused on the bound's provenance, three controls compile"
+	@sed 's|if entry == nil \|\| entry.decl == nil \|\| visiting\[e.Name\] {|if true { // SABOTAGED: the constant fold removed from the bound check|' \
+		internal/check/tablekeyed.go > build/tablekeyed-no-fold.gotext
+	@grep -q SABOTAGED build/tablekeyed-no-fold.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/check/tablekeyed.go":"%s/build/tablekeyed-no-fold.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/enum-bound-no-fold-overlay.json
+	@go build -overlay=build/enum-bound-no-fold-overlay.json -o build/schema-no-enum-bound-fold ./cmd/schema
+	@set -e; for unit in BodyConstMax BodyConstCount BodyFolded ArmConstMax ArmConstCount ArmFolded; do \
+		./build/schema-no-enum-bound-fold check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit-nofold.log 2>&1 || \
+			{ echo "NEGATIVE CONTROL FAILED: $$unit.schema was still refused without the constant fold, so the fold is not what refuses it"; cat build/enum-bound/$$unit-nofold.log; exit 1; }; \
+	done
+	@set -e; for unit in BodyMax BodyCount ArmMax ArmCount; do \
+		if ./build/schema-no-enum-bound-fold check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit-nofold.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: $$unit.schema compiled too, so the sabotage removed the whole rule and not the fold"; exit 1; \
+		fi; \
+	done
+	@echo "negative control: without the constant fold, six folded rows compile clean and the four direct spellings stay refused"
+
 # THE VARIANT-ORDER NEGATIVE CONTROL (SPEC §3.1, issue #462). An enum value
 # rides as its declaration ordinal and a flags variant as its bit position, so
 # the projection carries both declarations' variant names in declaration order:
@@ -2822,6 +2895,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) wide-table-odd-length-negative-control
 	$(MAKE) wide-table-byte-length-negative-control
 	$(MAKE) check-zero-range-negative-control
+	$(MAKE) check-enum-bound-negative-control
 	$(MAKE) projection-variant-order-negative-control
 	$(MAKE) projection-wire-law-negative-control
 	$(MAKE) projection-union-arm-order-negative-control

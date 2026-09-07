@@ -1,0 +1,13 @@
+package ebbodyconstcount
+
+// `[N]T` UNDER `const N = E.Count` IN A TABLE BODY (docs/SPEC-TABLES.md §2.4,
+// §11): the other selector, reached the same way.
+
+enum ShipType { Fighter, Bomber, Scout }
+
+const SlotCount = ShipType.Count
+
+table Fleet
+{
+    ships [SlotCount]int32
+}

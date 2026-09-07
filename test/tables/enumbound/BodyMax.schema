@@ -1,0 +1,12 @@
+package ebbodymax
+
+// `[E.Max]T` IN A TABLE BODY (docs/SPEC-TABLES.md §2.4, §11): the bound names
+// the enum directly, which is the one spelling the checker already refuses.
+// The unit stands beside the four below so the whole shape list is one corpus.
+
+enum ShipType { Fighter, Bomber, Scout }
+
+table Fleet
+{
+    ships [ShipType.Max]int32
+}

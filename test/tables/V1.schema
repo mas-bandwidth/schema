@@ -8,9 +8,18 @@
 package tblv1
 
 // a bounded array's BOUND is not wire identity: V2 shrinks MaxSlots from 6
-// to 3, and tally is sized off Grade.Max + 1, which grows when Grade does.
-// Both directions still load (docs/SPEC-TABLES.md §4).
+// to 3, and TallySlots grows from 3 to 4. Both directions still load
+// (docs/SPEC-TABLES.md §4).
 const MaxSlots = 6
+
+// tally and ledger below are POSITIONAL arrays in a table body, so their
+// bounds fold from no enum: a bound that folds from one is refused there on
+// the bound's PROVENANCE (docs/SPEC-TABLES.md §2.4, §11), whatever arithmetic
+// stands between the two. The extents are what the generations exercise, so
+// they are spelled as the plain numbers they are.
+const TallySlots = 3
+
+const LedgerSlots = 3
 
 enum Mode { Alpha, Beta }
 
@@ -56,22 +65,22 @@ table Cell
 
 table Cfg
 {
-    a      int32 = 5            | min = 0, max = 1000
+    a      int32 = 5          | min = 0, max = 1000
     b      float32 = 1.5
     mode   Mode = Beta
     name   string(32)
     inner  Inner
-    items  [..8]int32           | min = 0, max = 255
+    items  [..8]int32         | min = 0, max = 255
     grade  Grade
     grades [..4]Grade
     podium [3]Grade
     slots  [..MaxSlots]int32
-    tally  [Grade.Max + 1]int32
+    tally  [TallySlots]int32
     effect Effect
     bank   [Slot]Cell
     tokens [Slot]int32
     ranks  [Slot]Grade
-    ledger [Grade.Max + 1]int32
+    ledger [LedgerSlots]int32
     extra  ?Inner
     tier   ?int32
     mark   ?Grade
