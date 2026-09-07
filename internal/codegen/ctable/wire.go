@@ -283,11 +283,12 @@ func (g *tableGen) wireFrame(call, ind string) {
 
 func (g *tableGen) wirePayload(f *ir.Field, expr, ind string) {
 	kind := ir.TableWireScalarKind(f)
-	if kind == tkTable {
+	switch kind {
+	case tkTable:
 		g.wireFrame(fmt.Sprintf("%s( w, &%s )", g.api(f.Type.Name, "save_body"), expr), ind)
-	} else if kind == tkUnion {
+	case tkUnion:
 		g.pf("%sif ( !%s( w, &%s ) ) { return 0; }\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "save"), expr)
-	} else {
+	default:
 		g.wireScalarWrite(f, expr, ind)
 	}
 }

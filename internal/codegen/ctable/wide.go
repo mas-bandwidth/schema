@@ -96,12 +96,13 @@ func (g *tableGen) wireWideRead(f *ir.Field, source int, dst, rdr, ind, onBad st
 	typ := g.cFieldType(f.Type)
 	g.pf("%sif ( !table_reader_has( &%s, %d ) ) { %s }\n", ind, rdr, width, onBad)
 	g.pf("%s%s decoded_wide;\n", ind, typ)
-	if width == 16 {
+	switch {
+	case width == 16:
 		g.pf("%sdecoded_wide.lo = table_reader_get64( &%s ); decoded_wide.hi = table_reader_get64( &%s );\n", ind, rdr, rdr)
-	} else if ir.TableKindSigned(source) {
+	case ir.TableKindSigned(source):
 		g.pf("%sint64_t narrow = (int%d_t) %s( &%s );\n", ind, width*8, tableGet(width), rdr)
 		g.pf("%sdecoded_wide.lo = (uint64_t) narrow; decoded_wide.hi = narrow < 0 ? UINT64_MAX : 0;\n", ind)
-	} else {
+	default:
 		g.pf("%sdecoded_wide.lo = %s( &%s ); decoded_wide.hi = 0;\n", ind, tableGet(width), rdr)
 	}
 	if lo, hi, ok := ir.TableRawRange(f); ok {

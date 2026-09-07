@@ -37,11 +37,12 @@ func (g *tableGen) wireScalarRead(f *ir.Field, dst, rdr, wireKind, ind, onBad st
 		g.pf("%s    case %d:\n%s    {\n", ind, source, ind)
 		// onBad can contain break, which must leave the caller's element loop,
 		// not this dispatch switch. A per-field label supplies that boundary.
-		if tableKindWidth(kind) == 16 {
+		switch {
+		case tableKindWidth(kind) == 16:
 			g.wireWideRead(f, source, dst, rdr, ind+"        ", onBad)
-		} else if source == kind {
+		case source == kind:
 			g.emitTableReadScalarFrom(f, source, dst, ind+"        ", rdr, onBad)
-		} else {
+		default:
 			g.wireWidenedScalar(f, source, dst, rdr, ind+"        ", onBad)
 		}
 		g.pf("%s        break;\n%s    }\n", ind, ind)
