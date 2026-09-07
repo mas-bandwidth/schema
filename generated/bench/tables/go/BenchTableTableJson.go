@@ -23,7 +23,6 @@ package benchtable
 import (
 	"math"
 	"strconv"
-	"strings"
 	"unicode/utf8"
 	"unsafe"
 )

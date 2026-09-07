@@ -1305,7 +1305,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyExtent, ir.TableWireIdCapacity(u), u))
 		if anyVariable {
 			h.WriteString("\n")
-			h.WriteString(tableArenaRuntime(u.Package, anyExtent))
+			h.WriteString(tableArenaRuntime(u, anyExtent))
 			// the node table on the MESSAGE wire (docs/SPEC-TABLES.md §3.3),
 			// spelled in terms of the numbering the arena runtime declares
 			h.WriteString("\n")

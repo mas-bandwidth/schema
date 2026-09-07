@@ -47,7 +47,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	b.WriteString("// never coerced. The canonical text ends with exactly ONE newline, which the\n")
 	b.WriteString("// writer emits and the reader accepts with or without (§16.1).\n\n")
 	fmt.Fprintf(&b, "package %s\n\n", u.Package)
-	b.WriteString("import (\n\t\"math\"\n\t\"strconv\"\n\t\"strings\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n)\n\n")
+	b.WriteString("import (\n\t\"math\"\n\t\"strconv\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n)\n\n")
 	b.WriteString(strings.Replace(tableJsonWalkSource, "// ---- json walk: end ----",
 		tableJsonWideSource+tableJsonWStringSource+tableJsonGraphSource+"// ---- json walk: end ----", 1))
 

@@ -6640,6 +6640,10 @@ const Scene * scene = builder.AsConst();       // CONST: one packed region
   representation `Lock` does, so a locked structure and a loaded one are
   read through one view API.
 
+The arena and region use one alignment for the unit: eight bytes, or sixteen
+when any record in the table closure requires sixteen-byte alignment, including
+a 128-bit integer or fixed-point field. Every node starts at that alignment.
+
 Reading a pointer is `NodeAt( node->next )` — one add (§6.3), NULL when
 the reference is null.
 

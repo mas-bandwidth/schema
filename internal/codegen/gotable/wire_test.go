@@ -125,3 +125,26 @@ func TestFormVerdicts(t *testing.T) {
  }
 }
 `
+
+// Hardware float conversion quiets signaling NaNs. The table wire instead
+// preserves the sign, quiet bit and payload when widening a kind-10 value.
+func TestWireSignalingNaNWideningAndLEBOverflow(t *testing.T) {
+	runGenerated(t, `package probe
+table Root { value float64 }
+`, `package probe
+import("testing";"math";"hash/fnv")
+func TestSignalingNaN(t *testing.T) {
+ h:=fnv.New64a();h.Write([]byte("value"))
+ for _,bits:=range []uint32{0x7f800001,0xff812345,0x7fc12345,0x7f800000,0xff800000} {
+  var ids TableIds;buffer:=make([]byte,128);w:=TableWriter{Buffer:buffer,Ids:&ids};w.Put8(1);w.Id(h.Sum64());w.Put8(10);w.Put32(bits);w.Put8(0);w.Trailer()
+  var value Root;var report TableReport
+  if !RootLoad(&value,buffer[:w.Offset],&report)||report.Widened!=1||report.Malformed {t.Fatalf("load %#x: %+v",bits,report)}
+  want:=uint64(bits>>31)<<63|0x7ff0000000000000|uint64(bits&0x7fffff)<<29
+  if got:=math.Float64bits(value.Value);got!=want {t.Fatalf("widen %#x: %#x want %#x",bits,got,want)}
+ }
+}
+func TestLEBTenthByteOverflow(t *testing.T) {
+ for last:=byte(2);last<128;last++ {data:=[10]byte{0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,last};r:=TableReader{Buffer:data[:]};if _,ok:=r.Leb();ok||r.Offset!=0{t.Fatalf("accepted overflow tenth byte %#x",last)}}
+}
+`)
+}
