@@ -1,0 +1,14 @@
+package mapdemo
+
+// A map whose VALUE is a BYTE BUFFER (docs/SPEC-TABLES.md §2.5, §2.8): "A VALUE
+// is anything a table field can hold ... `*bytes` ... (§2.5)". A buffer is a
+// NODE, so the value is an ordinary pointer field of the generated entry and
+// its storage is that field's own row, the eight-byte reference (§4.2). The
+// handle is that SLOT. `*wstring` is refused under a map key by name and has no
+// table here (§2.8, §11).
+
+table Chunks
+{
+    blobs map[int32]*bytes // *bytes: an opaque buffer, under a signed key
+    after int32
+}

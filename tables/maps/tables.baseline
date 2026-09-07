@@ -1,6 +1,14 @@
 schema-tables-baseline 7
 package mapdemo
 
+table 033de3f1246bba76.755332609c470fbd
+    field key id=0x3dc94a19365b10ec kind=6
+    field value id=0x7ce4fd9430e80cea kind=14 elem=13 type=Item array=unbounded
+
+table 036ffe7360826852.ab01daa76a48769f
+    field key id=0x3dc94a19365b10ec kind=12 size=8
+    field value id=0x7ce4fd9430e80cea kind=17 type=string
+
 table 0a53e00afba279af.294a5c4913e1ad44
     field key id=0x3dc94a19365b10ec kind=12 size=32
     field value id=0x7ce4fd9430e80cea kind=13 type=ShipConfig
@@ -21,11 +29,31 @@ table 0a53e00afba279af.7b024c46e98d3404
     field key id=0x3dc94a19365b10ec kind=8
     field value id=0x7ce4fd9430e80cea kind=17 type=ShipConfig
 
+table 1f781dc01a2b5152.a3a7061ff10a8138
+    field key id=0x3dc94a19365b10ec kind=12 size=8
+    field value id=0x7ce4fd9430e80cea kind=14 elem=4 array=fixed bound=3
+
+table 816c207ba6213983.14e2eaab9cde925b
+    field key id=0x3dc94a19365b10ec kind=4
+    field value id=0x7ce4fd9430e80cea kind=17 type=bytes
+
+table Cells
+    field rows id=0xa3a7061ff10a8138 kind=14 elem=13 array=map keykind=12 keybound=8
+    field after id=0xbf82010f6f71eae9 kind=4
+
+table Chunks
+    field blobs id=0x14e2eaab9cde925b kind=14 elem=13 array=map keykind=4
+    field after id=0xbf82010f6f71eae9 kind=4
+
 table Depth
     field one id=0x1a08aa1921ca5caf kind=13 type=Squad
     field many id=0x1f6459a2cea1fc02 kind=14 elem=13 type=Squad array=bounded bound=3
     field keyed id=0x70551ff29550f15d kind=16 elem=13 type=Squad array=keyed bound=2 key=Slot
     field arm id=0xe756c0190570ccb5 kind=15 union=Force
+    field after id=0xbf82010f6f71eae9 kind=4
+
+table Docs
+    field pages id=0xab01daa76a48769f kind=14 elem=13 array=map keykind=12 keybound=8
     field after id=0xbf82010f6f71eae9 kind=4
 
 table EdgeRow
@@ -47,9 +75,21 @@ table Row
     field entries id=0xc5b2a72c0845a253 kind=14 elem=13 array=map keykind=12 keybound=8
     field after id=0xbf82010f6f71eae9 kind=4
 
+table Runs
+    field spans id=0x437dfc8ab2566816 kind=14 elem=13 array=map keykind=7
+    field after id=0xbf82010f6f71eae9 kind=4
+
 table ShipConfig
     field name id=0xc4bcadba8e631b86 kind=12 size=64
     field health id=0x7f69d4b5288ba9cf kind=4
+
+table Slots
+    field seats id=0x7f6548303072b061 kind=14 elem=13 array=map keykind=4
+    field after id=0xbf82010f6f71eae9 kind=4
+
+table Spans
+    field tracks id=0x755332609c470fbd kind=14 elem=13 array=map keykind=6
+    field after id=0xbf82010f6f71eae9 kind=4
 
 table Squad
     field roster id=0x1c84390d304f4f42 kind=14 elem=13 array=map keykind=6
@@ -74,9 +114,17 @@ table e8130af045a036f8.afb728fff268814f
     field key id=0x3dc94a19365b10ec kind=12 size=300
     field value id=0x7ce4fd9430e80cea kind=13 type=Item
 
+table ea7bdd2b70c8c2bb.437dfc8ab2566816
+    field key id=0x3dc94a19365b10ec kind=7
+    field value id=0x7ce4fd9430e80cea kind=14 elem=13 type=Item array=bounded bound=4
+
 table ec07a2f760550a91.1c84390d304f4f42
     field key id=0x3dc94a19365b10ec kind=6
     field value id=0x7ce4fd9430e80cea kind=13 type=Item
+
+table f96b15cd3921d4a6.7f6548303072b061
+    field key id=0x3dc94a19365b10ec kind=4
+    field value id=0x7ce4fd9430e80cea kind=16 elem=4 array=keyed bound=2 key=Slot
 
 enum Slot
     variant Alpha id=0x4fda04cbc245e18b
@@ -97,4 +145,7 @@ union Force
 - baseline REGENERATED over an unreadable one (baseline version 6, this compiler writes 7); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
 
 ### 2026-09-06 (UTC) — EdgeRow: a map key bound above the text walker's key buffer, and a uint64 key (#566)
+- no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-09-07 (UTC) — Cells, Runs, Slots, Spans, Docs and Chunks: one map per value kind that carries an extent or names a buffer node (#628)
 - no compatibility-affecting edits; the wire absorbs the rest
