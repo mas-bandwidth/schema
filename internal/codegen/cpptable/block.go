@@ -154,6 +154,48 @@ struct TableBlockSpan
     T & operator[]( int32_t i ) const { return rows[i]; }
 };
 
+// THE READ SIDE's own two views, and they are the same two with const on every
+// pointer they hand out (docs/SPEC-TABLES.md §19.2). A block is memory another
+// build wrote: a consumer opening bytes it received reads them and writes
+// nothing, and a read-only mapping cannot be opened through a view that hands
+// back a mutable row at all. The producer's pair above is untouched: Begin,
+// the fill accessors and the typed base a worker indexes stay exactly what
+// they were, and this pair is what the const overload of BlockOpen fills, so
+// the split is the one C# already has (ref readonly, ReadOnlySpan).
+template <typename T>
+struct TableBlockConstRows
+{
+    const uint8_t * base = NULL;
+    int32_t count = 0;
+    int32_t stride = 0;
+
+    struct iterator
+    {
+        const uint8_t * p;
+        int32_t stride;
+        const T & operator*() const { return *(const T *) p; }
+        iterator & operator++() { p += stride; return *this; }
+        bool operator!=( const iterator & other ) const { return p != other.p; }
+    };
+
+    iterator begin() const { return iterator{ base, stride }; }
+    iterator end() const { return iterator{ base + (ptrdiff_t) count * stride, stride }; }
+    int32_t size() const { return count; }
+    operator const T *() const { return (const T *) base; }
+};
+
+template <typename T>
+struct TableBlockConstSpan
+{
+    const T * rows = NULL;
+    int32_t count = 0;
+
+    const T * begin() const { return rows; }
+    const T * end() const { return rows + count; }
+    int32_t size() const { return count; }
+    const T & operator[]( int32_t i ) const { return rows[i]; }
+};
+
 // ---- reflection over a block (docs/SPEC-TABLES.md §8, §19.2) ----
 //
 // The descriptors are the mechanism, and they are what retires a hand-kept
@@ -448,6 +490,18 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("    uint8_t * base = NULL;          // the extent's base, 64-byte aligned\n")
 	g.pf("    Projection * projection = NULL; // the projection, at offset 0\n")
 	g.pf("    int64_t bytes = 0;              // the extent in use\n")
+	g.pf("\n    // THE CONSUMER's handle: this same block over bytes it may not write\n")
+	g.pf("    // (docs/SPEC-TABLES.md §19.2). A block is memory another build wrote,\n")
+	g.pf("    // and a consumer that received it reads it: the const overload of\n")
+	g.pf("    // %sBlockOpen fills this from a `const void *`, so a read-only\n", name)
+	g.pf("    // mapping opens with no cast, and the row accessors overloaded on it\n")
+	g.pf("    // hand back const rows. It is a MEMBER TYPE and claims no name of its\n")
+	g.pf("    // own (§11): the producer's handle above is unchanged in every way.\n")
+	g.pf("    struct Const\n    {\n")
+	g.pf("        const uint8_t * base = NULL;          // the extent's base, 64-byte aligned\n")
+	g.pf("        const Projection * projection = NULL; // the projection, at offset 0\n")
+	g.pf("        int64_t bytes = 0;                    // the extent in use\n")
+	g.pf("    };\n")
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
 		g.pf("\n    // %s: the constants this build asserts against. A consumer INDEXES with\n", a.Field.Name)
@@ -486,6 +540,17 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("// mismatch is a refusal; regenerate both sides. Data that must outlive the\n")
 	g.pf("// build that wrote it takes the wire (§3), which this same table still has.\n")
 	g.pf("bool %sBlockOpen( %sBlock & block, void * base, int64_t bytes, TableRefuseReason * reason = NULL );\n\n", name, name)
+
+	g.pf("// AND ITS CONST OVERLOAD, for the consumer of foreign bytes (§19.2). A\n")
+	g.pf("// block arrives from another language, another process or an mmap of a\n")
+	g.pf("// read-only file, and a consumer that only reads should neither need a\n")
+	g.pf("// const_cast to open it nor receive write access to it. It is the SAME\n")
+	g.pf("// CHECK (one body, the same clauses in the same order, the same reason on\n")
+	g.pf("// the same refusal) over a base it never writes through, and it fills the\n")
+	g.pf("// const handle, whose row accessors hand back const rows.\n")
+	g.pf("bool %sBlockOpen( %sBlock::Const & block, const void * base, int64_t bytes, TableRefuseReason * reason = NULL );\n\n", name, name)
+
+	g.emitBlockConstReadPath(bl)
 
 	g.pf("// ---- the block form of table %s: end ----\n\n", name)
 }
@@ -654,6 +719,45 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	g.pf("// ---- block fill path: end ----\n\n")
 }
 
+// emitBlockConstReadPath emits the row accessors overloaded on the CONST
+// handle (docs/SPEC-TABLES.md §19.2, schema#455): the consumer's half of the
+// surface the fill path above gives the producer.
+//
+// It sits OUTSIDE the fill-path markers on purpose: nothing here is reached at
+// fill time, and the conformance refuser reads what lies between them. Each
+// accessor is the same one add the producer's is, typed const, so a consumer
+// of foreign bytes iterates at the pitch the instance gives and writes
+// nothing. The names are the producer's own, an overload rather than a second
+// spelling, so a call site written against §19.2 reads the same either way.
+func (g *tableGen) emitBlockConstReadPath(bl *ir.BlockLayout) {
+	name := bl.Table.Name
+	if len(bl.Arrays) == 0 {
+		return
+	}
+	g.pf("// ---- the block form's CONST read path (docs/SPEC-TABLES.md §19.2) ----\n\n")
+	for _, a := range bl.Arrays {
+		field := ir.GoExportName(a.Field.Name)
+		g.pf("// %s, over a block a consumer RECEIVED: the same one add, the same pitch\n", a.Field.Name)
+		g.pf("// out of the instance, and a row reference the caller cannot write\n")
+		g.pf("// through. A producer holds the mutable overload above; a consumer of\n")
+		g.pf("// foreign bytes holds this one.\n")
+		g.pf("inline TableBlockConstRows<%s> %s%s( const %sBlock::Const & block )\n{\n", a.ElemName, name, field, name)
+		g.pf("    TableBlockConstRows<%s> rows;\n", a.ElemName)
+		g.pf("    rows.base = block.base + block.projection->%s.offset_of;\n", a.Field.Name)
+		g.pf("    rows.count = (int32_t) block.projection->%s.count;\n", a.Field.Name)
+		g.pf("    rows.stride = (int32_t) block.projection->%s.stride;\n", a.Field.Name)
+		g.pf("    return rows;\n}\n\n")
+
+		g.pf("// %s, as a CONTIGUOUS const view, available because the pitch IS sizeof\n", a.Field.Name)
+		g.pf("// (§2.7), which is how a consumer's fast path is actually written.\n")
+		g.pf("inline TableBlockConstSpan<%s> %s%sSpan( const %sBlock::Const & block )\n{\n", a.ElemName, name, field, name)
+		g.pf("    TableBlockConstSpan<%s> span;\n", a.ElemName)
+		g.pf("    span.rows = (const %s *) ( block.base + block.projection->%s.offset_of );\n", a.ElemName, a.Field.Name)
+		g.pf("    span.count = (int32_t) block.projection->%s.count;\n", a.Field.Name)
+		g.pf("    return span;\n}\n\n")
+	}
+}
+
 // blockStartAlign is where one out-of-line array begins: aligned to
 // max( 64, alignof( element ) ) (docs/SPEC-TABLES.md §19.1).
 func blockStartAlign(a ir.BlockArray) int64 {
@@ -674,8 +778,18 @@ func (g *tableGen) emitBlockDefinitions(bl *ir.BlockLayout) {
 
 func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 	name := bl.Table.Name
-	g.pf("bool %sBlockOpen( %sBlock & block, void * base, int64_t bytes, TableRefuseReason * reason )\n{\n", name, name)
-	g.pf("    block.base = NULL;\n    block.projection = NULL;\n    block.bytes = 0;\n")
+	check := strings.ToLower(name) + "_block_open_check"
+	g.pf("// THE CHECK ITSELF, over a base it never writes through, because a check\n")
+	g.pf("// READS (docs/SPEC-TABLES.md §19.2). Both overloads of %sBlockOpen are\n", name)
+	g.pf("// this one body, so the producer's path and the consumer's cannot drift:\n")
+	g.pf("// the same clauses in the same order, and the same reason on the same\n")
+	g.pf("// refusal, whether the caller handed over bytes it owns or bytes it may\n")
+	g.pf("// only read. It answers the USED EXTENT beside the verdict, which is the\n")
+	g.pf("// one thing each overload has to write into its own handle.\n")
+	g.pf("//\n")
+	g.pf("// It sits in an anonymous namespace and claims no name (§11).\n")
+	g.pf("namespace {\n\n")
+	g.pf("bool %s( const void * base, int64_t bytes, int64_t * used_out, TableRefuseReason * reason )\n{\n", check)
 	g.pf("    // a null buffer is the CALLER's defect, as an unaligned base is; a buffer\n")
 	g.pf("    // shorter than the prologue has no prologue to read and is truncated\n")
 	g.pf("    if ( base == NULL ) { return TableCookRefuse( reason, unaligned_base ) != NULL; }\n")
@@ -730,8 +844,30 @@ func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 	g.pf("    // the base's alignment, LAST: the only clause that reads nothing out of\n")
 	g.pf("    // the block, and the caller's defect rather than the file's\n")
 	g.pf("    if ( ( (uintptr_t) base %% %d ) != 0 ) { return TableCookRefuse( reason, unaligned_base ) != NULL; }\n", ir.BlockAlign)
+	g.pf("    *used_out = used;\n")
+	g.pf("    return true;\n}\n\n")
+	g.pf("} // namespace\n\n")
+
+	g.pf("// THE PRODUCER's overload, unchanged in what it does: the check above, and\n")
+	g.pf("// then a handle over bytes the caller may write.\n")
+	g.pf("bool %sBlockOpen( %sBlock & block, void * base, int64_t bytes, TableRefuseReason * reason )\n{\n", name, name)
+	g.pf("    block.base = NULL;\n    block.projection = NULL;\n    block.bytes = 0;\n")
+	g.pf("    int64_t used = 0;\n")
+	g.pf("    if ( !%s( base, bytes, &used, reason ) ) { return false; }\n", check)
 	g.pf("    block.base = (uint8_t *) base;\n")
 	g.pf("    block.projection = (%sBlock::Projection *) base;\n", name)
+	g.pf("    block.bytes = used;\n")
+	g.pf("    return true;\n}\n\n")
+
+	g.pf("// THE CONSUMER's overload (schema#455): the same check, and then a handle\n")
+	g.pf("// that carries const the whole way down. A read-only mapping opens through\n")
+	g.pf("// it with no cast, and nothing it hands back can be written through.\n")
+	g.pf("bool %sBlockOpen( %sBlock::Const & block, const void * base, int64_t bytes, TableRefuseReason * reason )\n{\n", name, name)
+	g.pf("    block.base = NULL;\n    block.projection = NULL;\n    block.bytes = 0;\n")
+	g.pf("    int64_t used = 0;\n")
+	g.pf("    if ( !%s( base, bytes, &used, reason ) ) { return false; }\n", check)
+	g.pf("    block.base = (const uint8_t *) base;\n")
+	g.pf("    block.projection = (const %sBlock::Projection *) base;\n", name)
 	g.pf("    block.bytes = used;\n")
 	g.pf("    return true;\n}\n\n")
 }

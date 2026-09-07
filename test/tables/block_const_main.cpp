@@ -18,7 +18,7 @@
         that build MUST NOT COMPILE. A read-only view whose writes compile is a
         view in name only, which is what the negative compile control holds.
 
-    Prints OK and exits 0 — no test framework, exit code is the verdict.
+    Prints OK and exits 0: no test framework, exit code is the verdict.
 */
 
 #include "RenderBlock.h"
@@ -41,8 +41,8 @@ static void check( bool ok, const char * what )
     }
 }
 
-// The image, read off disk into a 64-byte aligned buffer — §19.1's base
-// alignment, which BlockOpen's last clause reads. The allocation is handed
+// The image, read off disk into a 64-byte aligned buffer, which is §19.1's
+// base alignment and BlockOpen's last clause. The allocation is handed
 // back beside the base so the caller frees what it was given rather than the
 // pointer it aligned.
 static uint8_t * load_image( const char * path, int64_t * bytes, void ** allocation )
@@ -90,8 +90,8 @@ int main( int argc, char ** argv )
     check( block.projection != NULL, "the const handle carries the projection" );
     check( block.bytes > 0 && block.bytes <= bytes, "the used extent lies inside the caller's bytes" );
 
-    // THE ROWS, READ-ONLY. The iteration is §19.2's — at the pitch the
-    // instance gives, never spelled at the call site — and what it yields is a
+    // THE ROWS, READ-ONLY. The iteration is §19.2's, at the pitch the instance
+    // gives and never spelled at the call site, and what it yields is a
     // reference a consumer cannot write through.
     int32_t iterated = 0;
     uint32_t checksum = 0;
@@ -149,9 +149,23 @@ int main( int argc, char ** argv )
     reason = ok;
     check( !RenderFrameBlockOpen( refused, region, 8, &reason ), "a const buffer shorter than the projection refuses" );
     check( reason == truncated, "and names it truncated" );
+    // the base's alignment is the LAST clause (§19.2), so the image is moved
+    // whole to a base eight bytes off the sixty-four: every clause before it
+    // reads exactly what it read above, and only the alignment is wrong.
+    void * offset_allocation = malloc( (size_t) bytes + 128 );
+    if ( offset_allocation == NULL )
+    {
+        printf( "FAILED: could not allocate the unaligned image\n" );
+        free( allocation );
+        return 1;
+    }
+    uint8_t * offset_base = (uint8_t *) ( ( (uintptr_t) offset_allocation + 63 ) & ~(uintptr_t) 63 ) + 8;
+    memcpy( offset_base, region, (size_t) bytes );
     reason = ok;
-    check( !RenderFrameBlockOpen( refused, region + 1, bytes - 1, &reason ), "an unaligned const base refuses" );
+    check( !RenderFrameBlockOpen( refused, (const uint8_t *) offset_base, bytes, &reason ),
+           "an unaligned const base refuses" );
     check( reason == unaligned_base, "and names the caller's own defect, last (§19.2)" );
+    free( offset_allocation );
 
 #if defined( BLOCK_CONST_WRITE )
     // THE NEGATIVE COMPILE CONTROL. One assignment through the const view, and

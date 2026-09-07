@@ -726,7 +726,7 @@ tables-block-const: build/schema_test_block_const build/schema_test_block_const_
 # handing back a reference a consumer can WRITE through is a read-only view in
 # name only, and no green run of the gate above would ever say so. The same
 # program, one assignment through the const view added by -DBLOCK_CONST_WRITE,
-# and the COMPILE must go red — on the const qualification and not on some
+# and the COMPILE must go red, on the const qualification and not on some
 # other error, which is what the second grep is for.
 .PHONY: tables-block-const-negative-control
 tables-block-const-negative-control: build/tables-generated/.stamp test/tables/block_const_main.cpp
