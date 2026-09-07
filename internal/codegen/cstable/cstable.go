@@ -69,10 +69,6 @@ const (
 	tkTable  = 13
 	tkArray  = 14
 	tkUnion  = 15
-	// an ENUM-KEYED array body is its OWN kind (docs/SPEC-TABLES.md §3.2): the
-	// positional array body and the keyed one are incompatible, so a reader
-	// meeting the other must see a KIND MISMATCH and skip, never misdecode.
-	tkKeyed = 16
 )
 
 func tableScalarKind(f *ir.Field) int {
