@@ -1,0 +1,15 @@
+package mapdemo
+
+// A map whose VALUE is a FIXED ARRAY OF POINTERS (docs/SPEC-TABLES.md §2.1,
+// §2.8): "A VALUE is anything a table field can hold ... `[N]T`", and the
+// element is a pointer, so the value is an ordinary field of the generated
+// entry and its storage is that field's own row, `TableRef value[N]` (§4.2).
+// That is ONE member, so the handle points at the ARRAY and keeps the extent.
+// Every slot names a node, and two slots may name one node exactly as two
+// pointer fields may.
+
+table Pairs
+{
+    slots map[uint32][2]*Item // [N]*T: a fixed extent of pointer slots
+    after int32
+}

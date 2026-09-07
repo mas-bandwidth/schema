@@ -405,6 +405,26 @@ var messageTextSabotages = map[string][]edit{
 		old: "\t\tg.pf(\"%s    const int32_t kept%s = (int32_t) TableUtf8Clamp( text%s, n%s, %d );\\n\", ind, sfx, sfx, sfx, f.Type.Size)\n",
 		new: "\t\tg.pf(\"%s    const int32_t kept%s = n%s > (uint64_t) %d ? (int32_t) %d : (int32_t) n%s; // SABOTAGED: the clamp is off the boundary\\n\", ind, sfx, sfx, f.Type.Size, f.Type.Size, sfx)\n",
 	}},
+
+	// A TEXT BLOB'S CONTENT IS REFUSED ON THE SAME TERMS AS A KIND 12 PAYLOAD
+	// (docs/SPEC-TABLES.md §3.1), and a form-2 body's content rules are §3's
+	// (§3.3). One blade an engine: take the call out of the message site and
+	// the record a file reader refuses is placed by a message reader.
+	//
+	// THE ORACLE's, held by TestAStringBlobRecordOnAMessageBodyCarriesTheContentRule
+	// and by the pinned vectors message_blob_ill_formed_text and
+	// message_blob_zero_byte.
+	"message-blob-accepts-ill-formed": {{
+		old: "\t\t\tif kind == ir.TString && !textValid(rec.blob) {\n",
+		new: "\t\t\tif false && !textValid(rec.blob) { // SABOTAGED: the blob content rule is gone\n",
+	}},
+
+	// AND THE C++ EMITTER's, held by test/tables/message_blob_main.cpp and by
+	// the same two vectors.
+	"message-emitter-blob-accepts-ill-formed": {{
+		old: "\t\tg.pf(\"            if ( type_id == kTableStringTypeId && !TableUtf8Valid( r.buffer + r.offset / 8, length ) ) { out->malformed = true; return false; }\\n\")\n",
+		new: "\t\tg.pf(\"            // SABOTAGED: the blob content rule is gone\\n\")\n",
+	}},
 }
 
 // THE MESSAGE FORM'S RETENTION (docs/SPEC-TABLES.md §3.3, §6.6). The unknown

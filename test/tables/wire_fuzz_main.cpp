@@ -49,6 +49,7 @@
 #include "P2Table.h"
 #include "P3Table.h"
 #include "GraphTable.h"
+#include "AssetsTable.h" // the BLOB unit (tables/blobs): a *string node record
 #include "MessagesTable.h"
 #include "StreamTable.h"
 #include "M1Table.h"
@@ -404,6 +405,12 @@ static const Codec codecs[] = {
     MESSAGE( "vocab9demo", vocab9demo, Wide00 ),
     MESSAGE( "vocab9demo", vocab9demo, Wide19 ),
     MESSAGE_VARIABLE( "graphdemo", graphdemo, Scene ),
+    // AND THE BLOB UNIT UNDER THE MESSAGE FORM (docs/SPEC-TABLES.md §2.5,
+    // §3.1, §3.3): `Catalog`'s numbering reaches a *string blob through `note`
+    // and a *bytes blob through `thumb`, which is the only root on this roster
+    // that can PLACE a text blob record, and so the only one whose wire can
+    // carry the content rule §3.1 states at a node.
+    MESSAGE_VARIABLE( "blobdemo", blobdemo, Catalog ),
     // AND THE SAME VARIABLE-CLASS FILE ROOTS THROUGH THE RETAIN FAMILY
     // (docs/SPEC-TABLES.md §6.6). RETENTION IS THE VARIABLE CLASS'S: a
     // fixed-class root's LoadRetain is refused by name, and a form-2

@@ -271,6 +271,17 @@ func (g *tableGen) emitVariableMessageLoadSurface(st *ir.Struct) {
 	g.pf("        if ( type_id == kTableBytesTypeId || type_id == kTableStringTypeId )\n        {\n")
 	g.pf("            uint64_t length = 0;\n")
 	g.pf("            if ( !r.get( length, 32 ) || !r.align() || !r.has( (int64_t) length * 8 ) ) { out->malformed = true; return false; }\n")
+	if g.rootReachesStringBlob(st) {
+		// A TEXT BLOB'S CONTENT IS REFUSED ON THE SAME TERMS as a kind 12
+		// payload (docs/SPEC-TABLES.md §3.1), through the runtime's own
+		// TableUtf8Valid, which is what the FILE form reads one with in
+		// pointers.go. The align above already left the bytes on a byte
+		// boundary, so the span goes to the check as it goes to the memcpy
+		// below. What differs from the file form is only the RECOVERY, which
+		// a bit stream does not have: the damage is TERMINAL for the batch,
+		// one malformed counts, and the bodies before it stand (§3.3).
+		g.pf("            if ( type_id == kTableStringTypeId && !TableUtf8Valid( r.buffer + r.offset / 8, length ) ) { out->malformed = true; return false; }\n")
+	}
 	g.pf("            if ( directory[k + 1].offset != kTableNodeAbsent && length > 0 ) { memcpy( region + directory[k + 1].offset + kTableBlobHeader, r.buffer + r.offset / 8, (size_t) length ); }\n")
 	g.pf("            r.offset += (int64_t) length * 8;\n")
 	g.pf("            continue;\n        }\n")

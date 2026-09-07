@@ -391,6 +391,16 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 				d.report.Unknown++
 				continue
 			}
+			// A TEXT BLOB'S CONTENT IS REFUSED ON THE SAME TERMS as a kind 12
+			// payload (§3.1), through the same textValid decodenodes.go reads
+			// the FILE form's record with, so there is one rule and no second
+			// copy. What differs is only the RECOVERY, which a bit stream does
+			// not have: the damage is TERMINAL for the batch, one malformed
+			// counts, and the bodies before it stand (§3.3).
+			if kind == ir.TString && !textValid(rec.blob) {
+				d.report.Malformed = true
+				return false
+			}
 			st.nodes[i] = Node{Blob: &tabletext.Blob{Data: rec.blob}, Kind: kind}
 			continue
 		}
