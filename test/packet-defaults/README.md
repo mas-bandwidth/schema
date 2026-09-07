@@ -44,3 +44,12 @@ Fast PR CI does not invoke these packet runtime checks or controls. Full
 `certify.yml` invokes `make test`, whose `TEST_LEGS` loop calls `test-c` and
 `test-go`; those targets depend on the corresponding positive and negative
 checks here. The C++ oracle is also a direct dependency of `test`.
+
+`make packet-defaults-rust` checks the same eight pins in debug and release,
+including every constructor, explicit-empty and short literals, 33-bit and
+64-bit masks, a defaultless twin, backing arrays and repeated union selection.
+Rust's `Default` stays the zero form; `new()` applies declared defaults.
+`make packet-defaults-rust-negative-control` removes only constructor byte
+copies through an overlay and requires the compiled consumer to fail the
+constructor-bytes marker. Both targets are dependencies of `test-rust`, and
+table-closure defaults remain refused in Rust.

@@ -1,0 +1,9 @@
+[package]
+name = "packet-defaults-test"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+packetdefaults = { path = "../../../build/packet-defaults/rust/defaults" }
+packetplain = { path = "../../../build/packet-defaults/rust/plain" }
+serialize = { package = "serialize-official", path = "../../../../serialize.rs" }

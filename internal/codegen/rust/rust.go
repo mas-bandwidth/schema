@@ -561,6 +561,19 @@ func (g *gen) emitDefaultInit(f *ir.Field) {
 		g.pf("        %s_count = %d;\n", name, n)
 	}
 	if f.HasDefault {
+		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+			// new() starts from the zero form, so copying only the literal
+			// prefix preserves zero backing tails without escaping source text.
+			if len(f.DefBytes) > 0 {
+				g.pf("        %s[..%d].copy_from_slice(&[", name, len(f.DefBytes))
+				for _, b := range f.DefBytes {
+					g.pf("0x%02x, ", b)
+				}
+				g.pf("]);\n")
+			}
+			g.pf("        %s_length = %d;\n", name, len(f.DefBytes))
+			return
+		}
 		g.pf("        %s = %s;\n", name, g.defaultValue(f))
 		return
 	}
